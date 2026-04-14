@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.FetchContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 
@@ -13,23 +12,23 @@ import network.crypta.keys.FreenetURI;
  * an FCP reply. The snapshot stores object references as provided and does not perform validation
  * or normalization; mutable array inputs are defensively copied.
  *
- * <p>The instance is immutable. Referenced objects such as {@link FetchContext} may still be
- * mutable and shared, while array fields are defensively copied at construction and access time.
- * The snapshot intentionally does not interpret compatibility mode ordering or URI normalization,
- * leaving those concerns to downstream consumers.
+ * <p>The instance is immutable. The detached fetch configuration remains mutable by type but is
+ * copied at construction and access time, while array fields are defensively copied at construction
+ * and access time. The snapshot intentionally does not interpret compatibility mode ordering or URI
+ * normalization, leaving those concerns to downstream consumers.
  *
  * <ul>
- *   <li>Preserves fetch-context settings that influence status output and filtering.
+ *   <li>Preserves detached fetch settings that influence status output and filtering.
  *   <li>Captures compatibility modes and splitfile key overrides, if any.
  *   <li>Holds request URI and compression policy for reporting purposes.
  * </ul>
  *
- * @see FetchContext
+ * @see ClientGetFetchConfig
  * @see DownloadRequestStatusDetails
  */
 @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class DownloadContextSnapshot {
-  private final FetchContext fetchContext;
+  private final ClientGetFetchConfig fetchConfig;
   private final CompatibilityMode[] compatModes;
   private final byte[] splitfileKey;
   private final FreenetURI uri;
@@ -47,22 +46,23 @@ public final class DownloadContextSnapshot {
    *
    * <pre>{@code
    * DownloadContextSnapshot context =
-   *     new DownloadContextSnapshot(fetchContext, compatModes, splitfileKey, uri, dontCompress);
+   *     new DownloadContextSnapshot(fetchConfig, compatModes, splitfileKey, uri, dontCompress);
    * }</pre>
    *
-   * @param fetchContext fetch context providing filter and MIME overrides, or {@code null}
+   * @param fetchConfig detached fetch configuration providing filter and MIME overrides, or {@code
+   *     null}
    * @param compatModes compatibility modes observed for the request, possibly empty or {@code null}
    * @param splitfileKey splitfile crypto key override bytes, or {@code null} if not applicable
    * @param uri request URI to report, or {@code null} when not yet resolved
    * @param dontCompress whether reinsertion should skip compression when producing output
    */
   public DownloadContextSnapshot(
-      FetchContext fetchContext,
+      ClientGetFetchConfig fetchConfig,
       CompatibilityMode[] compatModes,
       byte[] splitfileKey,
       FreenetURI uri,
       boolean dontCompress) {
-    this.fetchContext = fetchContext;
+    this.fetchConfig = copyFetchConfig(fetchConfig);
     this.compatModes = copyCompatModes(compatModes);
     this.splitfileKey = copySplitfileKey(splitfileKey);
     this.uri = uri;
@@ -70,17 +70,17 @@ public final class DownloadContextSnapshot {
   }
 
   /**
-   * Returns the fetch context captured in this snapshot.
+   * Returns the detached fetch configuration captured in this snapshot.
    *
-   * <p>The context can include filtering settings, MIME overrides, and other request-scoped
-   * options. The returned reference is the original object supplied at construction time and is not
-   * copied. It may be {@code null} when no context was available, and callers should handle that
-   * case by applying their own defaults or by omitting context-derived fields in status output.
+   * <p>The configuration can include filtering settings, MIME overrides, and other request-scoped
+   * options. The returned value is a defensive copy. It may be {@code null} when no configuration
+   * was available, and callers should handle that case by applying their own defaults or by
+   * omitting context-derived fields in status output.
    *
-   * @return the fetch context reference, or {@code null} when not available
+   * @return detached fetch configuration, or {@code null} when not available
    */
-  public FetchContext fetchContext() {
-    return fetchContext;
+  public ClientGetFetchConfig fetchConfig() {
+    return copyFetchConfig(fetchConfig);
   }
 
   /**
@@ -134,6 +134,10 @@ public final class DownloadContextSnapshot {
 
   private static CompatibilityMode[] copyCompatModes(CompatibilityMode[] input) {
     return input == null ? null : input.clone();
+  }
+
+  private static ClientGetFetchConfig copyFetchConfig(ClientGetFetchConfig input) {
+    return input == null ? null : input.copy();
   }
 
   private static byte[] copySplitfileKey(byte[] input) {

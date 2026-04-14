@@ -15,6 +15,7 @@ import org.mockito.MockedStatic;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
@@ -44,7 +45,11 @@ class FcpPersistentRequestRecoveryCodecTest {
           .when(
               () ->
                   ClientRequest.restartFrom(
-                      same(dis), eq(requestIdentifier), same(context), same(checker)))
+                      same(dis),
+                      eq(requestIdentifier),
+                      any(network.crypta.clients.fcp.FcpFetchRuntimeSupport.class),
+                      same(context),
+                      same(checker)))
           .thenReturn(expectedRequest);
 
       PersistentRequestHandle restored =
@@ -55,7 +60,11 @@ class FcpPersistentRequestRecoveryCodecTest {
       clientRequestMock.verify(
           () ->
               ClientRequest.restartFrom(
-                  same(dis), eq(requestIdentifier), same(context), same(checker)));
+                  same(dis),
+                  eq(requestIdentifier),
+                  any(network.crypta.clients.fcp.FcpFetchRuntimeSupport.class),
+                  same(context),
+                  same(checker)));
     }
   }
 

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.FetchContext;
 import network.crypta.support.api.Bucket;
 
 /**
@@ -16,7 +15,7 @@ import network.crypta.support.api.Bucket;
  * mutate or enrich the record later, so a {@link ClientGet} can treat each component as the
  * authoritative setup decided by the factory stage.
  *
- * @param fetchContext fully prepared fetch context that should be used by the request
+ * @param fetchConfig fully prepared detached fetch configuration for the request
  * @param returnSetup resolved return-handling plan, including any bucket or target file
  * @param returnType requested return mode that controls how fetched data is exposed
  * @param binaryBlob whether the request should produce Binary Blob output
@@ -24,7 +23,7 @@ import network.crypta.support.api.Bucket;
  * @param fetchRuntimeSupport runtime support seam used for getter creation and request start
  */
 record ClientGetSetup(
-    FetchContext fetchContext,
+    ClientGetFetchConfig fetchConfig,
     ClientGetReturnPlanner.ReturnSetup returnSetup,
     ClientGet.ReturnType returnType,
     boolean binaryBlob,

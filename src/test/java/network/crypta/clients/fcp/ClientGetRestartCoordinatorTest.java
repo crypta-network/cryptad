@@ -1,12 +1,8 @@
 package network.crypta.clients.fcp;
 
 import java.lang.reflect.Field;
-import java.util.concurrent.atomic.AtomicBoolean;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import org.junit.jupiter.api.Test;
@@ -24,7 +20,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -45,43 +40,43 @@ class ClientGetRestartCoordinatorTest {
   @Test
   void canRestart_whenRequestNotFinished_returnsFalseWithoutConsultingGetter() throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    setClientGetField(request, "getter", getter);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    setClientGetField(request, "execution", execution);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
     assertFalse(coordinator.canRestart());
-    verifyNoInteractions(getter);
+    verifyNoInteractions(execution);
   }
 
   @Test
   void canRestart_whenRequestAlreadySucceeded_returnsFalseWithoutConsultingGetter()
       throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    setClientGetField(request, "getter", getter);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    setClientGetField(request, "execution", execution);
     setClientRequestField(request, "finished", true);
     request.state().setSucceeded(true);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
     assertFalse(coordinator.canRestart());
-    verifyNoInteractions(getter);
+    verifyNoInteractions(execution);
   }
 
   @Test
   void canRestart_whenFinishedAndGetterCanRestart_returnsTrue() throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    when(getter.canRestart()).thenReturn(true);
-    setClientGetField(request, "getter", getter);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    when(execution.canRestart()).thenReturn(true);
+    setClientGetField(request, "execution", execution);
     setClientRequestField(request, "finished", true);
     request.state().setSucceeded(false);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
     assertTrue(coordinator.canRestart());
-    verify(getter).canRestart();
+    verify(execution).canRestart();
   }
 
   @Test
@@ -112,59 +107,50 @@ class ClientGetRestartCoordinatorTest {
     ClientGet request = new ClientGet();
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
-    assertFalse(coordinator.restart(mock(ClientContext.class), false));
+    assertFalse(coordinator.restart(false));
   }
 
   @Test
   void restart_whenFetchContextMissing_returnsFalseWithoutRestartingGetter() throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    when(getter.canRestart()).thenReturn(true);
-    setClientGetField(request, "getter", getter);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    when(execution.canRestart()).thenReturn(true);
+    setClientGetField(request, "execution", execution);
     setClientRequestField(request, "finished", true);
     request.state().setSucceeded(false);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
-    assertFalse(coordinator.restart(mock(ClientContext.class), false));
-    verify(getter).canRestart();
-    verify(getter, never()).restart(any(), anyBoolean(), any(ClientContext.class));
+    assertFalse(coordinator.restart(false));
+    verify(execution).canRestart();
+    verify(execution, never()).restart(any(), anyBoolean());
   }
 
   @Test
   void restart_whenGetterRestartsWithRedirect_resetsStateAndNotifiesCache() throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    FetchContext fetchContext = mock(FetchContext.class);
-    ClientContext context = mock(ClientContext.class);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     RequestStatusCache cache = mock(RequestStatusCache.class);
     when(client.getRequestStatusCache()).thenReturn(cache);
-    AtomicBoolean filterData = new AtomicBoolean(true);
-    when(fetchContext.getFilterData()).thenAnswer(_ -> filterData.get());
-    doAnswer(
-            invocation -> {
-              filterData.set(invocation.getArgument(0));
-              return null;
-            })
-        .when(fetchContext)
-        .setFilterData(anyBoolean());
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setFilterData(true);
 
     FreenetURI original = new FreenetURI("KSK@original");
     FreenetURI redirect = new FreenetURI("KSK@redirect");
     FetchException failure =
         new FetchException(FetchExceptionMode.PERMANENT_REDIRECT, "redirecting", redirect);
 
-    when(getter.canRestart()).thenReturn(true);
-    when(getter.restart(redirect, false, context)).thenReturn(true);
+    when(execution.canRestart()).thenReturn(true);
+    when(execution.restart(redirect, false)).thenReturn(true);
 
     setClientRequestField(request, "identifier", "req-redirect");
     setClientRequestField(request, "uri", original);
     setClientRequestField(request, "client", client);
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
-    setClientGetField(request, "getter", getter);
-    setClientGetField(request, "fctx", fetchContext);
+    setClientGetField(request, "execution", execution);
+    setClientGetField(request, "fetchConfig", fetchConfig);
 
     request.state().setSucceeded(false);
     request.state().setFailedMessage(new GetFailedMessage(failure, "req-redirect", false));
@@ -174,10 +160,10 @@ class ClientGetRestartCoordinatorTest {
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
-    assertTrue(coordinator.restart(context, true));
+    assertTrue(coordinator.restart(true));
 
-    verify(fetchContext).setFilterData(false);
-    verify(getter).restart(redirect, false, context);
+    assertFalse(fetchConfig.getFilterData());
+    verify(execution).restart(redirect, false);
     verify(cache).updateStarted("req-redirect", redirect);
     verify(cache).updateStarted("req-redirect", true);
     assertFalse(getClientRequestBooleanField(request, "finished"));
@@ -193,27 +179,25 @@ class ClientGetRestartCoordinatorTest {
   @Test
   void restart_whenGetterDeclinesRestart_returnsTrueAndKeepsStartedFalse() throws Exception {
     ClientGet request = new ClientGet();
-    ClientGetter getter = mock(ClientGetter.class);
-    FetchContext fetchContext = mock(FetchContext.class);
-    ClientContext context = mock(ClientContext.class);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
     FreenetURI original = new FreenetURI("KSK@original-no-restart");
 
-    when(getter.canRestart()).thenReturn(true);
-    when(getter.restart(null, true, context)).thenReturn(false);
-    when(fetchContext.getFilterData()).thenReturn(true);
+    when(execution.canRestart()).thenReturn(true);
+    when(execution.restart(null, true)).thenReturn(false);
+    fetchConfig.setFilterData(true);
 
     setClientRequestField(request, "uri", original);
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
-    setClientGetField(request, "getter", getter);
-    setClientGetField(request, "fctx", fetchContext);
+    setClientGetField(request, "execution", execution);
+    setClientGetField(request, "fetchConfig", fetchConfig);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
-    assertTrue(coordinator.restart(context, false));
+    assertTrue(coordinator.restart(false));
 
-    verify(fetchContext, never()).setFilterData(anyBoolean());
-    verify(getter).restart(null, true, context);
+    verify(execution).restart(null, true);
     assertFalse(getClientRequestBooleanField(request, "finished"));
     assertFalse(getClientRequestBooleanField(request, "started"));
     assertSame(original, request.getURI());
@@ -222,28 +206,27 @@ class ClientGetRestartCoordinatorTest {
   @Test
   void restart_whenGetterThrowsFetchException_invokesOnFailureAndReturnsFalse() throws Exception {
     ClientGet request = spy(new ClientGet());
-    ClientGetter getter = mock(ClientGetter.class);
-    FetchContext fetchContext = mock(FetchContext.class);
-    ClientContext context = mock(ClientContext.class);
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
     PersistentRequestClient client = mock(PersistentRequestClient.class);
     RequestStatusCache cache = mock(RequestStatusCache.class);
     when(client.getRequestStatusCache()).thenReturn(cache);
 
     FetchException failure = new FetchException(FetchExceptionMode.INTERNAL_ERROR, "boom");
-    when(getter.canRestart()).thenReturn(true);
-    when(getter.restart(null, false, context)).thenThrow(failure);
-    when(fetchContext.getFilterData()).thenReturn(false);
+    when(execution.canRestart()).thenReturn(true);
+    when(execution.restart(null, false)).thenThrow(failure);
+    fetchConfig.setFilterData(false);
     doNothing().when(request).onFailure(any(FetchException.class));
 
     setClientRequestField(request, "identifier", "req-failure");
     setClientRequestField(request, "client", client);
     setClientRequestField(request, "finished", true);
-    setClientGetField(request, "getter", getter);
-    setClientGetField(request, "fctx", fetchContext);
+    setClientGetField(request, "execution", execution);
+    setClientGetField(request, "fetchConfig", fetchConfig);
 
     ClientGetRestartCoordinator coordinator = new ClientGetRestartCoordinator(request);
 
-    assertFalse(coordinator.restart(context, false));
+    assertFalse(coordinator.restart(false));
 
     verify(request).onFailure(failure);
     verify(cache).updateStarted(eq("req-failure"), isNull(FreenetURI.class));

@@ -20,8 +20,9 @@ import network.crypta.support.io.StorageFormatException;
  * It converts the client-owned durable identifier into the legacy FCP identifier type, narrows the
  * runtime-context seam back to {@link ClientContext} at the bridge boundary, and then delegates
  * reconstruction to {@link ClientRequest#restartFrom(DataInputStream, RequestIdentifier,
- * ClientContext, ChecksumChecker)}. The adapter stays stateless, so startup wiring can reuse a
- * single instance without coordinating additional caches or configuration.
+ * network.crypta.clients.fcp.FcpFetchRuntimeSupport, ClientContext, ChecksumChecker)}. The adapter
+ * stays stateless, so startup wiring can reuse a single instance without coordinating additional
+ * caches or configuration.
  */
 public final class FcpPersistentRequestRecoveryCodec implements PersistentRequestRecoveryCodec {
 
@@ -45,8 +46,18 @@ public final class FcpPersistentRequestRecoveryCodec implements PersistentReques
       throws StorageFormatException, IOException, ResumeFailedException {
     RequestIdentifier requestIdentifier =
         RequestIdentifier.fromPersistentRequestIdentifier(identifier);
+    ClientContext clientContext = requireClientContext(context);
     return ClientRequest.restartFrom(
-        dis, requestIdentifier, requireClientContext(context), checker);
+        dis,
+        requestIdentifier,
+        new CoreFcpFetchRuntimeSupport(
+            clientContext,
+            () -> {
+              throw new UnsupportedOperationException(
+                  "transferAccess is unavailable during persistent request recovery");
+            }),
+        clientContext,
+        checker);
   }
 
   private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {

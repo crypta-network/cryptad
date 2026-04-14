@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.time.Instant;
 import java.util.Arrays;
-import network.crypta.client.FetchContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -273,17 +272,17 @@ public final class ClientGetStatusSnapshot {
   }
 
   /**
-   * Returns the fetch context used for the request.
+   * Returns the detached fetch configuration used for the request.
    *
-   * <p>The context can include MIME overrides, filter settings, and other request-scoped options.
-   * The snapshot stores the reference as provided and does not copy or validate it. A {@code null}
-   * value is permitted when a context is not available, and consumers should handle that case by
-   * falling back to their own defaults.
+   * <p>The configuration can include MIME overrides, filter settings, and other request-scoped
+   * options. The snapshot stores a defensive copy and returns a defensive copy. A {@code null}
+   * value is permitted when configuration is not available, and consumers should handle that case
+   * by falling back to their own defaults.
    *
-   * @return the fetch context, or {@code null} when no context is available
+   * @return detached fetch configuration, or {@code null} when unavailable
    */
-  public FetchContext fetchContext() {
-    return contextSnapshot.fetchContext();
+  public ClientGetFetchConfig fetchConfig() {
+    return contextSnapshot.fetchConfig();
   }
 
   /**
@@ -390,7 +389,7 @@ public final class ClientGetStatusSnapshot {
         && java.util.Objects.equals(foundDataMimeType(), otherSnapshot.foundDataMimeType())
         && java.util.Objects.equals(destinationFile(), otherSnapshot.destinationFile())
         && java.util.Objects.equals(dataBucket(), otherSnapshot.dataBucket())
-        && java.util.Objects.equals(fetchContext(), otherSnapshot.fetchContext())
+        && java.util.Objects.equals(fetchConfig(), otherSnapshot.fetchConfig())
         && Arrays.equals(compatModes(), otherSnapshot.compatModes())
         && Arrays.equals(splitfileKey(), otherSnapshot.splitfileKey())
         && java.util.Objects.equals(uri(), otherSnapshot.uri());
@@ -421,7 +420,7 @@ public final class ClientGetStatusSnapshot {
             foundDataLength(),
             destinationFile(),
             dataBucket(),
-            fetchContext(),
+            fetchConfig(),
             priorityClass(),
             uri(),
             dontCompress());
@@ -466,8 +465,8 @@ public final class ClientGetStatusSnapshot {
         + destinationFile()
         + ", dataBucket="
         + dataBucket()
-        + ", fetchContext="
-        + (fetchContext() == null ? "null" : java.util.Objects.toIdentityString(fetchContext()))
+        + ", fetchConfig="
+        + fetchConfig()
         + ", priorityClass="
         + priorityClass()
         + ", compatModes="

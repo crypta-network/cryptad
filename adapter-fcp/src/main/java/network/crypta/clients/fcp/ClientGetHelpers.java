@@ -20,6 +20,9 @@ final class ClientGetHelpers {
   /** Helper that applies success, failure, and cleanup transitions to the request. */
   private final ClientGetLifecycle lifecycle;
 
+  /** Helper that exposes payload-oriented accessors without bloating the request class. */
+  private final ClientGetPayloadAccess payloadAccess;
+
   /** Helper that captures the request state used to build status snapshots. */
   private final ClientGetStatusSnapshotBuilder statusSnapshotBuilder;
 
@@ -41,6 +44,7 @@ final class ClientGetHelpers {
   ClientGetHelpers(ClientGet request) {
     messageReplay = new ClientGetMessageReplay(request);
     lifecycle = new ClientGetLifecycle(request);
+    payloadAccess = new ClientGetPayloadAccess(request);
     statusSnapshotBuilder = new ClientGetStatusSnapshotBuilder(request);
     restartCoordinator = new ClientGetRestartCoordinator(request);
     statusReporter = new ClientGetStatusReporter(request);
@@ -62,6 +66,15 @@ final class ClientGetHelpers {
    */
   ClientGetLifecycle lifecycle() {
     return lifecycle;
+  }
+
+  /**
+   * Returns the helper that exposes payload data and delivery-mode views.
+   *
+   * @return payload helper used for bucket, size, MIME, and return-type access
+   */
+  ClientGetPayloadAccess payloadAccess() {
+    return payloadAccess;
   }
 
   /**

@@ -6,13 +6,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
@@ -26,9 +23,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates a single FCP GET request over the asynchronous client interface.
  *
- * <p>This request owns its {@link FetchContext}, {@link ClientGetter}, progress caches, and
- * persistence metadata so it can migrate cleanly between a connection queue, the global queue, and
- * durable storage across node restarts. It translates client-side events into higher-level FCP
+ * <p>This request owns its detached fetch configuration, opaque execution handle, progress caches,
+ * and persistence metadata so it can migrate cleanly between a connection queue, the global queue,
+ * and durable storage across node restarts. It translates client-side events into higher-level FCP
  * messages, tracks retry and restart policy, and resolves the selected delivery strategy (direct
  * bucket, disk file, chunked stream, or acknowledgement only). The class therefore acts as the
  * boundary between long-lived persistent jobs and transient FCP sessions.
@@ -39,9 +36,10 @@ import org.slf4j.LoggerFactory;
  * returned objects or assuming immediate cross-thread visibility without synchronization.
  *
  * <p>Typical usage is to construct the request from a {@link ClientGetMessage}, register it with
- * the owning client queue, and then invoke {@link #start(ClientContext)}. The request may persist
- * across reconnections, and callers should treat it as a long-lived state machine whose outputs are
- * FCP messages rather than synchronous return values.
+ * the owning client queue, and then invoke {@link
+ * #start(network.crypta.client.async.ClientContext)}. The request may persist across reconnections,
+ * and callers should treat it as a long-lived state machine whose outputs are FCP messages rather
+ * than synchronous return values.
  *
  * <ul>
  *   <li><strong>Queueing and persistence</strong>: registers against either the connection-scoped
@@ -53,7 +51,6 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see ClientRequest
- * @see ClientGetter
  * @see network.crypta.client.async.ClientGetCallback
  */
 public final class ClientGet extends ClientRequest {
@@ -61,14 +58,11 @@ public final class ClientGet extends ClientRequest {
 
   @Serial private static final long serialVersionUID = 1L;
 
-  /**
-   * Fetch context. Never passed in: always created new by the ClientGet. Therefore, we can safely
-   * delete it in requestWasRemoved().
-   */
-  private final FetchContext fctx;
+  /** Detached fetch configuration owned by the request. */
+  private final ClientGetFetchConfig fetchConfig;
 
-  /** Underlying asynchronous fetcher responsible for talking to the node core. */
-  private final ClientGetter getter;
+  /** Opaque live execution responsible for talking to the node core. */
+  private final transient ClientGetExecution execution;
 
   /** Selected return strategy describing how result data should be surfaced to the caller. */
   private final ReturnType returnType;
@@ -88,9 +82,12 @@ public final class ClientGet extends ClientRequest {
   /** Optional client-provided filename extension used to validate post-filtering output. */
   private final String extensionCheck;
 
-  /** Metadata bucket supplied at creation time, relayed untouched to the {@link ClientGetter}. */
+  /** Metadata bucket supplied at creation time, relayed untouched to the live execution. */
   @SuppressWarnings("java:S1948")
   private final Bucket initialMetadata;
+
+  /** Runtime bridge used to encode fetch configuration and create live execution on demand. */
+  private final transient FcpFetchRuntimeSupport runtimeFetchSupport;
 
   private transient ClientGetHelpers helpers;
 
@@ -254,24 +251,24 @@ public final class ClientGet extends ClientRequest {
    * Creates a new request that has already been validated and configured by {@link
    * ClientGetFactory}.
    *
-   * <p>Callers are expected to supply an initialized {@link FetchContext}, return routing data, and
-   * any initial metadata buckets. The constructor wires up request state, event listeners, and the
-   * underlying {@link ClientGetter} but performs no validation on the inputs.
+   * <p>Callers are expected to supply detached fetch configuration, return routing data, and any
+   * initial metadata buckets. The constructor wires up the request state and the underlying runtime
+   * execution but performs no validation on the inputs.
    */
   ClientGet(ClientRequestParams params, PersistentRequestClient globalClient, ClientGetSetup setup)
       throws IOException {
     super(prepareConstructorInit(params, null, globalClient));
     state = new ClientGetState(this);
-    fctx = setup.fetchContext();
-    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
+    fetchConfig = setup.fetchConfig();
     this.returnType = setup.returnType();
     this.binaryBlob = setup.binaryBlob();
     ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
     this.targetFile = returnSetup.targetFile();
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
-    getter = makeGetter(setup.fetchRuntimeSupport(), returnSetup.bucket());
-    applyDiagnosticIdentifier(getter);
+    this.runtimeFetchSupport = setup.fetchRuntimeSupport();
+    execution = makeExecution(setup.fetchRuntimeSupport(), returnSetup.bucket());
+    applyDiagnosticIdentifier(execution.requester());
     initHelpers();
   }
 
@@ -283,52 +280,51 @@ public final class ClientGet extends ClientRequest {
       throws IOException {
     super(prepareConstructorInit(params, handler));
     state = new ClientGetState(this);
-    fctx = setup.fetchContext();
-    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
+    fetchConfig = setup.fetchConfig();
     this.returnType = setup.returnType();
     this.binaryBlob = setup.binaryBlob();
     ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
     this.targetFile = returnSetup.targetFile();
     this.extensionCheck = returnSetup.extension();
     this.initialMetadata = setup.initialMetadata();
-    getter = makeGetter(setup.fetchRuntimeSupport(), returnSetup.bucket());
-    applyDiagnosticIdentifier(getter);
+    this.runtimeFetchSupport = setup.fetchRuntimeSupport();
+    execution = makeExecution(setup.fetchRuntimeSupport(), returnSetup.bucket());
+    applyDiagnosticIdentifier(execution.requester());
     initHelpers();
   }
 
-  private ClientGetter makeGetter(Bucket ret) throws IOException {
-    return makeGetter(null, ret);
-  }
-
-  private ClientGetter makeGetter(FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret)
+  private ClientGetExecution makeExecution(FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret)
       throws IOException {
-    return ClientGetGetterFactory.createGetterForRequest(this, ret, fetchRuntimeSupport);
+    return ClientGetExecutionFactory.create(this, fetchRuntimeSupport, ret);
   }
 
-  ClientGetter makeGetterForPersistence(Bucket ret) throws IOException {
-    return makeGetter(ret);
+  ClientGetExecution makeExecutionForPersistence(
+      FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret) throws IOException {
+    return ClientGetExecutionFactory.create(this, fetchRuntimeSupport, ret);
   }
 
   /**
    * Serialization-only constructor used when reconstructing requests from persistent storage.
    *
    * <p>All fields are intentionally left {@code null} (or primitive defaults) so that the
-   * deserialization helpers can populate them explicitly via {@link #innerResume(ClientContext)}
-   * and related restoration methods. Production code should never invoke this constructor directly;
-   * always use one of the fully parameterized alternatives that configure a {@link FetchContext}
-   * and {@link ClientGetter}. This constructor exists solely to satisfy the Java serialization
-   * framework and keep field initialization centralized in the resume path.
+   * deserialization helpers can populate them explicitly via {@link
+   * #innerResume(network.crypta.client.async.ClientContext)} and related restoration methods.
+   * Production code should never invoke this constructor directly; always use one of the fully
+   * parameterized alternatives that configure detached fetch settings and a live execution handle.
+   * This constructor exists solely to satisfy the Java serialization framework and keep field
+   * initialization centralized in the resume path.
    */
   ClientGet() {
     // For serialization.
     state = new ClientGetState(this);
-    fctx = null;
-    getter = null;
+    fetchConfig = null;
+    execution = null;
     returnType = null;
     targetFile = null;
     binaryBlob = false;
     extensionCheck = null;
     initialMetadata = null;
+    runtimeFetchSupport = null;
   }
 
   private void initHelpers() {
@@ -395,28 +391,29 @@ public final class ClientGet extends ClientRequest {
    * Starts the asynchronous fetch if it has not yet reached a terminal state.
    *
    * <p>This method synchronizes briefly to avoid racing with completion logic, kicks off the
-   * underlying {@link ClientGetter}, and emits a persistent tag when the request is tracked beyond
-   * the connection scope. It updates {@link RequestStatusCache} listeners so UIs can reflect the
-   * {@code started} flag even if the fetch fails before any progress callbacks are produced. The
-   * call is idempotent with respect to terminal state: if the request is already finished, it
-   * returns immediately without side effects. Exceptions raised by the getter are translated into
-   * {@link FetchException} instances and routed through {@link #onFailure(FetchException)} to
-   * ensure consistent cleanup.
+   * underlying live execution, and emits a persistent tag when the request is tracked beyond the
+   * connection scope. It updates {@link RequestStatusCache} listeners so UIs can reflect the {@code
+   * started} flag even if the fetch fails before any progress callbacks are produced. The call is
+   * idempotent with respect to terminal state: if the request is already finished, it returns
+   * immediately without side effects. Exceptions raised by the execution are translated into {@link
+   * FetchException} instances and routed through {@link #onFailure(FetchException)} to ensure
+   * consistent cleanup.
    *
    * <p>On success, this call merely schedules work; it does not block for results. If a failure is
    * raised before progress events fire, the request is still marked as started so external status
    * caches remain consistent. Callers may invoke this multiple times safely; only the first call
    * before completion has any effect.
    *
-   * @param context client context providing schedulers, bucket factories, and execution lanes.
+   * @param context client context provided by the legacy request API; the live execution keeps its
+   *     own runtime binding.
    */
   @Override
-  public void start(ClientContext context) {
+  public void start(network.crypta.client.async.ClientContext context) {
     try {
       synchronized (persistenceLock) {
         if (finished) return;
       }
-      getter.start(context);
+      execution.start();
       if (shouldSendPersistentTag()) {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
@@ -465,7 +462,7 @@ public final class ClientGet extends ClientRequest {
    * @param context client context owning the request and its scheduler association.
    */
   @Override
-  public void onLostConnection(ClientContext context) {
+  public void onLostConnection(network.crypta.client.async.ClientContext context) {
     if (persistence == Persistence.CONNECTION) cancel(context);
     // Otherwise ignore
   }
@@ -474,7 +471,7 @@ public final class ClientGet extends ClientRequest {
    * Processes a successful fetch completion and notifies all interested parties.
    *
    * <p>The method snapshots final MIME type, payload length, completion timestamp, and the bucket
-   * or blob handle returned by {@link ClientGetter}. Depending on {@link ReturnType}, it either
+   * or blob handle returned by the live execution. Depending on {@link ReturnType}, it either
    * retains the bucket for {@link AllDataMessage} delivery or leaves the bytes on disk. It then
    * emits {@link DataFoundMessage} and {@link AllDataMessage} as appropriate, updates status
    * caches, and informs the owning {@link FCPConnectionHandler} or {@link PersistentRequestClient}.
@@ -485,9 +482,9 @@ public final class ClientGet extends ClientRequest {
    * completion time before any outbound messages so that emitted timestamps remain consistent.
    *
    * @param result result wrapper providing MIME metadata and the decoded data bucket.
-   * @param state client getter instance used to access BinaryBlob payload buckets.
+   * @param state execution handle used to access Binary Blob payload buckets.
    */
-  public void onSuccess(FetchResult result, ClientGetter state) {
+  public void onSuccess(FetchResult result, ClientGetExecution state) {
     helpers().lifecycle().onSuccess(result, state);
   }
 
@@ -505,15 +502,14 @@ public final class ClientGet extends ClientRequest {
    * cached fields so that later status queries and persistence writes reflect the migrated success
    * state.
    *
-   * @param context client context performing migration validation and bucket operations.
    * @param completionTime epoch milliseconds for the recorded completion instant.
    * @param data bucket containing the downloaded payload for direct delivery.
    * @throws ResumeFailedException when stored output does not match recorded metadata.
    */
   @SuppressWarnings("unused")
-  public void setSuccessForMigration(ClientContext context, long completionTime, Bucket data)
+  public void setSuccessForMigration(long completionTime, Bucket data)
       throws ResumeFailedException {
-    helpers().lifecycle().setSuccessForMigration(context, completionTime, data);
+    helpers().lifecycle().setSuccessForMigration(completionTime, data);
   }
 
   void trySendDataFoundOrGetFailed(
@@ -576,7 +572,7 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
-   * Handles failure notifications from the {@link ClientGetter} and propagates them to clients.
+   * Handles failure notifications from the live GET execution and propagates them to clients.
    *
    * <p>The failure path caches any expected size or MIME hints exposed by the exception, builds a
    * {@link GetFailedMessage}, records completion timestamps, and marks the request as finished so
@@ -603,12 +599,12 @@ public final class ClientGet extends ClientRequest {
    * safe to invoke once per removal event.
    *
    * <p>The removal path does not attempt to stop network activity directly; it assumes the owning
-   * scheduler has already detached the underlying {@link ClientGetter}.
+   * scheduler has already detached the underlying live GET execution.
    *
    * @param context client context invoking the removal for lifecycle bookkeeping.
    */
   @Override
-  public void requestWasRemoved(ClientContext context) {
+  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
     helpers().lifecycle().requestWasRemoved();
     super.requestWasRemoved(context);
   }
@@ -626,14 +622,14 @@ public final class ClientGet extends ClientRequest {
    *
    * <p>The base {@link ClientRequest} infrastructure uses this accessor to determine which
    * requester instance owns the in-flight operation for persistence, cancellation, and stats
-   * tracking. The returned object is the request's active {@link ClientGetter} and should be
-   * treated as read-only by callers outside the request lifecycle.
+   * tracking. The returned object is the request's active requester and should be treated as
+   * read-only by callers outside the request lifecycle.
    *
    * @return client requester instance used to run this request.
    */
   @Override
   protected ClientRequester getClientRequest() {
-    return getter;
+    return execution == null ? null : execution.requester();
   }
 
   /**
@@ -662,8 +658,8 @@ public final class ClientGet extends ClientRequest {
    *
    * <p>The value remains {@code true} even after {@link #freeData()} releases buckets so that
    * clients can distinguish between cleanly finished requests and those canceled during restart. It
-   * is set when {@link #onSuccess(FetchResult, ClientGetter)} records the terminal state and never
-   * reset unless a restart is initiated.
+   * is set when {@link #onSuccess(FetchResult, ClientGetExecution)} records the terminal state and
+   * never reset unless a restart is initiated.
    *
    * <p>This flag is a snapshot of the most recent attempt; it does not imply that payload data is
    * still available in memory. Callers should consult {@link #getBucket()} or {@link
@@ -689,7 +685,7 @@ public final class ClientGet extends ClientRequest {
    * @return {@code true} when AllData messages should be emitted upon completion.
    */
   public boolean isDirect() {
-    return this.returnType == ReturnType.DIRECT;
+    return helpers().payloadAccess().isDirect();
   }
 
   /**
@@ -704,7 +700,7 @@ public final class ClientGet extends ClientRequest {
    * @return {@code true} when this request writes into a caller-specified file.
    */
   public boolean isToDisk() {
-    return this.returnType == ReturnType.DISK;
+    return helpers().payloadAccess().isToDisk();
   }
 
   /**
@@ -724,12 +720,20 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
-   * Exposes the fetch context for package-local helpers.
+   * Exposes the detached fetch configuration for package-local helpers.
    *
-   * @return live {@link FetchContext} backing this request for internal helper access.
+   * @return detached fetch configuration backing this request for helper access.
    */
-  FetchContext fetchContextForGetter() {
-    return fctx;
+  ClientGetFetchConfig fetchConfig() {
+    return fetchConfig;
+  }
+
+  ClientGetExecution execution() {
+    return execution;
+  }
+
+  FcpFetchRuntimeSupport runtimeFetchSupport() {
+    return runtimeFetchSupport;
   }
 
   /**
@@ -782,8 +786,7 @@ public final class ClientGet extends ClientRequest {
    * @return recorded payload length in bytes, or {@code -1} when unknown.
    */
   public long getDataSize() {
-    if (state.getFoundDataLength() > 0) return state.getFoundDataLength();
-    return -1;
+    return helpers().payloadAccess().getDataSize();
   }
 
   /**
@@ -800,8 +803,7 @@ public final class ClientGet extends ClientRequest {
    * @return MIME type reported for the payload, or {@code null} if undetermined.
    */
   public String getMIMEType() {
-    if (state.getFoundDataMimeType() != null) return state.getFoundDataMimeType();
-    return null;
+    return helpers().payloadAccess().getMimeType();
   }
 
   /**
@@ -1017,19 +1019,11 @@ public final class ClientGet extends ClientRequest {
    * @return bucket containing the payload, or {@code null} when no bucket form exists.
    */
   public Bucket getBucket() {
-    return makeBucket(true);
+    return helpers().payloadAccess().getBucket();
   }
 
-  Bucket makeBucket(boolean readOnly) {
-    return switch (returnType) {
-      case DIRECT -> {
-        synchronized (persistenceLock) {
-          yield state.getReturnBucketDirect();
-        }
-      }
-      case DISK -> ClientGetGetterFactory.diskBucket(targetFile, readOnly);
-      default -> null;
-    };
+  Bucket makePersistenceBucket() {
+    return helpers().payloadAccess().makePersistenceBucket();
   }
 
   /**
@@ -1038,7 +1032,8 @@ public final class ClientGet extends ClientRequest {
    * <p>The getter must support restart semantics, the request must have finished, and it must not
    * have succeeded yet. Success cases require manual deletion or explicit reset before another
    * attempt. This method performs the minimal checks needed to decide if {@link
-   * #restart(ClientContext, boolean)} is likely to proceed without immediate failure.
+   * #restart(network.crypta.client.async.ClientContext, boolean)} is likely to proceed without
+   * immediate failure.
    *
    * <p>This method does not modify the state; it is intended for UI or scheduler decisions before
    * initiating a restart.
@@ -1054,21 +1049,22 @@ public final class ClientGet extends ClientRequest {
    * Attempts to restart the request after a failure or redirect.
    *
    * <p>The method clears cached errors, resets compatibility tracking, optionally disables
-   * filtering, and hands the restart request to the underlying {@link ClientGetter}. Cache
-   * observers are updated so that frontends show the new redirect or restarted state immediately.
-   * If the underlying getter fails to restart, the failure is routed through {@link
-   * #onFailure(FetchException)} and the method returns {@code false}.
+   * filtering, and hands the restart request to the live execution. Cache observers are updated so
+   * that frontends show the new redirect or restarted state immediately. If the underlying
+   * execution fails to restart, the failure is routed through {@link #onFailure(FetchException)}
+   * and the method returns {@code false}.
    *
    * <p>Restarting does not guarantee success; it merely schedules a new attempt with the updated
-   * parameters. The method returns quickly once the getter acknowledges the restart request.
+   * parameters. The method returns quickly once the execution acknowledges the restart request.
    *
-   * @param context client context providing schedulers and bucket factories for restart logic.
+   * @param context client context provided by the legacy request API.
    * @param disableFilterData {@code true} to disable filtering for the next attempt.
    * @return {@code true} when the restart is accepted and scheduled by the getter.
    */
   @Override
-  public boolean restart(ClientContext context, final boolean disableFilterData) {
-    return helpers().restartCoordinator().restart(context, disableFilterData);
+  public boolean restart(
+      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
+    return helpers().restartCoordinator().restart(disableFilterData);
   }
 
   /**
@@ -1090,20 +1086,20 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
-   * Returns whether filterData is currently enabled on the {@link FetchContext}.
+   * Returns whether filterData is currently enabled on the detached fetch configuration.
    *
    * <p>The flag controls whether content filtering is applied before delivery. It can be toggled
    * during restart flows to temporarily disable filtering for a retry. This method simply reads the
-   * current {@link FetchContext} setting and does not alter any state. Because restarts can change
-   * the flag between attempts, callers should treat the value as a point-in-time snapshot rather
-   * than a promise about future retries.
+   * current configuration setting and does not alter any state. Because restarts can change the
+   * flag between attempts, callers should treat the value as a point-in-time snapshot rather than a
+   * promise about future retries.
    *
    * <p>Use this to reflect the current filtering state in status reporting.
    *
    * @return {@code true} when payloads should be filtered before delivery.
    */
   public boolean filterData() {
-    return fctx.getFilterData();
+    return fetchConfig.getFilterData();
   }
 
   @Override
@@ -1117,10 +1113,10 @@ public final class ClientGet extends ClientRequest {
    * Serializes the request state for persistence so that it can be resumed later.
    *
    * <p>Only {@link Persistence#FOREVER} requests write detail entries. The method records URIs,
-   * return types, binary-blob preferences, fetch contexts, metadata buckets, and—when finished—
-   * either the success bucket or the failure descriptor. It also streams recent progress snapshots
-   * so restarts can resume without re-downloading already verified blocks. Callers should provide a
-   * stream already framed by the persistence layer.
+   * return types, binary-blob preferences, detached fetch configuration, metadata buckets, and—when
+   * finished— either the success bucket or the failure descriptor. It also streams recent progress
+   * snapshots so restarts can resume without re-downloading already verified blocks. Callers should
+   * provide a stream already framed by the persistence layer.
    *
    * <p>The serialization format is versioned; if it changes, the version constants in {@link
    * ClientGetPersistenceCodec} must be updated in lockstep with the restore logic.
@@ -1137,27 +1133,32 @@ public final class ClientGet extends ClientRequest {
   }
 
   ClientGet(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis,
+      RequestIdentifier reqID,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
+      network.crypta.client.async.ClientContext context,
+      ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     super(dis, reqID, context);
     state = new ClientGetState(this);
     ClientGetPersistenceCodec.BasicRestoreData restoreData =
-        ClientGetPersistenceCodec.readBasicRestoreData(this, dis, context, checker);
+        ClientGetPersistenceCodec.readBasicRestoreData(dis, fetchRuntimeSupport, checker);
     uri = restoreData.uri();
     returnType = restoreData.returnType();
     targetFile = restoreData.targetFile();
     binaryBlob = restoreData.binaryBlob();
-    fctx = restoreData.fetchContext();
+    fetchConfig = restoreData.fetchConfig();
     extensionCheck = restoreData.extensionCheck();
     initialMetadata = restoreData.initialMetadata();
-    ClientGetter restoredGetter =
-        ClientGetPersistenceCodec.restoreState(this, dis, reqID, context, checker);
+    runtimeFetchSupport = fetchRuntimeSupport;
+    ClientGetExecution restoredExecution =
+        ClientGetPersistenceCodec.restoreState(this, dis, reqID, fetchRuntimeSupport, checker);
     state.ensureCompatibilityMode();
-    if (restoredGetter == null) {
-      restoredGetter = makeGetterForPersistence(makeBucket(false));
+    if (restoredExecution == null) {
+      restoredExecution = makeExecutionForPersistence(fetchRuntimeSupport, makePersistenceBucket());
     }
-    getter = restoredGetter;
-    applyDiagnosticIdentifier(getter);
+    execution = restoredExecution;
+    applyDiagnosticIdentifier(execution.requester());
     initHelpers();
   }
 
@@ -1165,9 +1166,9 @@ public final class ClientGet extends ClientRequest {
    * Rehydrates transient state after a persistent resuming has restored core fields.
    *
    * <p>This hook is invoked by the base resume flow once serialization has recreated the request
-   * and the {@link ClientGetter}. It forwards the resume signal to any retained buckets and then
-   * repopulates size and MIME hints from the getter if they were not stored explicitly. The method
-   * does not trigger network activity; it only rebinds state so later status queries are
+   * and the live execution. It forwards the resume signal to any retained buckets and then
+   * repopulates size and MIME hints from the execution if they were not stored explicitly. The
+   * method does not trigger network activity; it only rebinds state so later status queries are
    * consistent.
    *
    * <p>Callers should invoke this only during resume flows and not during normal execution.
@@ -1176,12 +1177,13 @@ public final class ClientGet extends ClientRequest {
    * @throws ResumeFailedException if bucket resume logic reports unrecoverable failure.
    */
   @Override
-  protected void innerResume(ClientContext context) throws ResumeFailedException {
+  protected void innerResume(network.crypta.client.async.ClientContext context)
+      throws ResumeFailedException {
     if (state.getReturnBucketDirect() != null) state.getReturnBucketDirect().onResume(context);
     if (initialMetadata != null) initialMetadata.onResume(context);
     // We might already have these if we've just restored.
-    if (state.getFoundDataLength() <= 0) state.setFoundDataLength(getter.expectedSize());
-    if (state.getFoundDataMimeType() == null) state.setFoundDataMimeType(getter.expectedMIME());
+    if (state.getFoundDataLength() <= 0) state.setFoundDataLength(execution.expectedSize());
+    if (state.getFoundDataMimeType() == null) state.setFoundDataMimeType(execution.expectedMime());
   }
 
   @Override
@@ -1193,17 +1195,17 @@ public final class ClientGet extends ClientRequest {
    * Indicates whether every component of the request has been restored successfully after resume.
    *
    * <p>This is a lightweight health check used by persistence logic to decide whether the request
-   * can continue without restarting. It delegates to {@link ClientGetter#resumedFetcher()} and also
-   * ensures the getter itself is present. A {@code false} return indicates that the request should
-   * be restarted or rebuilt.
+   * can continue without restarting. It delegates to the opaque execution handle and also ensures
+   * the execution itself is present. A {@code false} return indicates that the request should be
+   * restarted or rebuilt.
    *
    * <p>The method has no side effects and should be safe to call repeatedly.
    *
-   * @return {@code true} when the getter reports a valid, fully resumed fetcher.
+   * @return {@code true} when the execution reports a valid, fully resumed fetcher.
    */
   @Override
   public boolean fullyResumed() {
-    return getter != null && getter.resumedFetcher();
+    return execution != null && execution.resumedFetcher();
   }
 
   /**

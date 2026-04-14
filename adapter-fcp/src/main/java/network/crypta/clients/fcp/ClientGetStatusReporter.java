@@ -61,7 +61,7 @@ final class ClientGetStatusReporter {
   }
 
   /**
-   * Returns the failure classification associated with the last recorded failure.
+   * Returns the failure classification associated with the last-recorded failure.
    *
    * <p>The classification is derived from the cached {@link GetFailedMessage}. It returns {@code
    * null} when no failure is recorded yet.
@@ -198,7 +198,7 @@ final class ClientGetStatusReporter {
             request.getBucket());
     DownloadContextSnapshot contextSnapshot =
         new DownloadContextSnapshot(
-            request.fetchContextForGetter(),
+            request.fetchConfig(),
             request.getCompatibilityMode(),
             request.getOverriddenSplitfileCryptoKey(),
             request.getURI(),

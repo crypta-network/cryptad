@@ -29,8 +29,35 @@ class AdapterFcpBoundaryTest {
   private static final Path ADAPTER_FCP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp");
   private static final Path ADD_PEER_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("AddPeer.java");
+  private static final Path CLIENT_GET_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("ClientGet.java");
+  private static final Path CLIENT_GET_FACTORY_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetFactory.java");
+  private static final Path CLIENT_GET_GETTER_FACTORY_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetGetterFactory.java");
+  private static final Path CLIENT_GET_LIFECYCLE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetLifecycle.java");
+  private static final Path CLIENT_GET_PERSISTENCE_CODEC_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetPersistenceCodec.java");
+  private static final Path CLIENT_GET_PERSISTENCE_IO_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetPersistenceIO.java");
+  private static final Path CLIENT_GET_RESTART_COORDINATOR_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetRestartCoordinator.java");
+  private static final Path CLIENT_GET_RETURN_PLANNER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetReturnPlanner.java");
+  private static final Path CLIENT_GET_SETUP_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetSetup.java");
+  private static final Path CLIENT_GET_STATUS_BUILDER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetStatusSnapshotBuilder.java");
+  private static final Path DOWNLOAD_CONTEXT_SNAPSHOT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("DownloadContextSnapshot.java");
+  private static final Path FCP_CONNECTION_HANDLER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java");
+  private static final Path FCP_FETCH_RUNTIME_SUPPORT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpFetchRuntimeSupport.java");
   private static final Path FCP_MESSAGE_RUNTIME_SUPPORT_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpMessageRuntimeSupport.java");
+  private static final Path FCP_SERVER_PERSISTENT_OPS_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerPersistentOps.java");
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -64,6 +91,26 @@ class AdapterFcpBoundaryTest {
       Pattern.compile(
           "^import\\s+(network\\.crypta\\.node\\.(?:PeerNode|DarknetPeerNode)|"
               + "network\\.crypta\\.node\\.probe\\.[^;]+);$");
+  private static final Set<String> FORBIDDEN_GET_RUNTIME_IMPORTS =
+      Set.of(
+          "network.crypta.client.FetchContext",
+          "network.crypta.client.async.ClientContext",
+          "network.crypta.client.async.ClientGetter",
+          "network.crypta.client.async.ClientGetterRequest");
+  private static final Set<Path> GET_RUNTIME_SEAM_SOURCES =
+      Set.of(
+          FCP_FETCH_RUNTIME_SUPPORT_SOURCE,
+          CLIENT_GET_SOURCE,
+          CLIENT_GET_FACTORY_SOURCE,
+          CLIENT_GET_GETTER_FACTORY_SOURCE,
+          CLIENT_GET_PERSISTENCE_CODEC_SOURCE,
+          CLIENT_GET_PERSISTENCE_IO_SOURCE,
+          CLIENT_GET_RESTART_COORDINATOR_SOURCE,
+          CLIENT_GET_LIFECYCLE_SOURCE,
+          CLIENT_GET_RETURN_PLANNER_SOURCE,
+          CLIENT_GET_SETUP_SOURCE,
+          CLIENT_GET_STATUS_BUILDER_SOURCE,
+          DOWNLOAD_CONTEXT_SNAPSHOT_SOURCE);
   private static final Set<String> EXPECTED_DEFAULT_BRIDGE_FACTORIES_IMPORTS =
       Set.of(
           "network.crypta.clients.fcp.bridge.FcpPersistentRequestServices",
@@ -238,6 +285,53 @@ class AdapterFcpBoundaryTest {
         "FcpMessageRuntimeSupport must not expose raw makeClient(...) anymore");
   }
 
+  @Test
+  void adapterFcpMain_whenCheckingGetRuntimeSeam_expectNoLiveFetchTypeImports() throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source : GET_RUNTIME_SEAM_SOURCES) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_GET_RUNTIME_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(source + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "GET-path adapter sources must not import live runtime fetch types."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void fetchRuntimeSupport_whenCheckingPublicSurface_expectNoLegacyLiveFetchAccessors()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    String source = Files.readString(repoRoot.resolve(FCP_FETCH_RUNTIME_SUPPORT_SOURCE));
+
+    assertFalse(source.contains("clientContext("));
+    assertFalse(source.contains("defaultPersistentFetchContext("));
+    assertFalse(source.contains("FetchContext"));
+    assertFalse(source.contains("ClientContext"));
+  }
+
+  @Test
+  void getCallSites_whenCheckingMixedFiles_expectNoLegacyFetchRuntimeReachThrough()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    String connectionHandler = Files.readString(repoRoot.resolve(FCP_CONNECTION_HANDLER_SOURCE));
+    String persistentOps = Files.readString(repoRoot.resolve(FCP_SERVER_PERSISTENT_OPS_SOURCE));
+
+    assertFalse(connectionHandler.contains("fetchRuntimeSupport().clientContext()"));
+    assertFalse(connectionHandler.contains("messageFetchRuntimeSupport().clientContext()"));
+    assertFalse(connectionHandler.contains("defaultPersistentFetchContext("));
+    assertFalse(persistentOps.contains("fetchRuntimeSupport.clientContext()"));
+    assertFalse(persistentOps.contains("defaultPersistentFetchContext("));
+  }
+
   private static List<Path> findJavaSources(Path root) throws IOException {
     try (Stream<Path> walk = Files.walk(root)) {
       return walk.filter(Files::isRegularFile)
@@ -280,6 +374,16 @@ class AdapterFcpBoundaryTest {
           .map(FCP_IMPORT_PATTERN::matcher)
           .filter(Matcher::matches)
           .map(matcher -> matcher.group(1))
+          .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static Set<String> readImports(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .map(String::trim)
+          .filter(line -> line.startsWith("import "))
+          .map(line -> line.substring("import ".length(), line.length() - 1))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
   }

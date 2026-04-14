@@ -4,7 +4,6 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.CompatibilityAnalyser;
@@ -40,9 +39,9 @@ class ClientGetMessageReplayTest {
   void sendPendingMessages_whenOnlyDataFalse_expectTagProgressAndMetadataMessages()
       throws Exception {
     // Arrange
-    FetchContext fetchContext = Mockito.mock(FetchContext.class);
-    when(fetchContext.getMaxNonSplitfileRetries()).thenReturn(3);
-    when(fetchContext.getMaxOutputLength()).thenReturn(1_000L);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setMaxNonSplitfileRetries(3);
+    fetchConfig.setMaxOutputLength(1_000L);
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     when(requestClient.realTimeFlag()).thenReturn(false);
     PersistentRequestRoot root = new PersistentRequestRoot();
@@ -61,7 +60,7 @@ class ClientGetMessageReplayTest {
             true,
             Persistence.FOREVER,
             client,
-            fetchContext,
+            fetchConfig,
             requestClient,
             ReturnType.DIRECT);
     request.state().setProgressPending(progressMessage);
@@ -99,7 +98,7 @@ class ClientGetMessageReplayTest {
   @Test
   void sendPendingMessages_whenOnlyDataTrueAndNonDirect_expectProtocolErrorOnly() throws Exception {
     // Arrange
-    FetchContext fetchContext = Mockito.mock(FetchContext.class);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     PersistentRequestClient client =
         new PersistentRequestClient("client", null, false, null, Persistence.REBOOT, null);
@@ -110,7 +109,7 @@ class ClientGetMessageReplayTest {
             false,
             Persistence.REBOOT,
             client,
-            fetchContext,
+            fetchConfig,
             requestClient,
             ReturnType.NONE);
     ClientGetMessageReplay replay = new ClientGetMessageReplay(request);
@@ -254,7 +253,7 @@ class ClientGetMessageReplayTest {
       boolean global,
       Persistence persistence,
       PersistentRequestClient client,
-      FetchContext fetchContext,
+      ClientGetFetchConfig fetchConfig,
       RequestClient requestClient,
       ReturnType returnType)
       throws Exception {
@@ -270,7 +269,7 @@ class ClientGetMessageReplayTest {
     setField(request, "returnType", returnType);
     setField(request, "targetFile", new File("target.bin"));
     setField(request, "binaryBlob", false);
-    setField(request, "fctx", fetchContext);
+    setField(request, "fetchConfig", fetchConfig);
     setField(request, "lowLevelClient", requestClient);
     setField(request, "global", global);
     return request;

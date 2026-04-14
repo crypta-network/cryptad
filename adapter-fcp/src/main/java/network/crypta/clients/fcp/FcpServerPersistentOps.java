@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
@@ -610,11 +609,11 @@ final class FcpServerPersistentOps implements DownloadCache {
   private void innerMakePersistentGlobalRequest(PersistentGlobalRequestSpec spec)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     FcpFetchRuntimeSupport fetchRuntimeSupport = server.fetchRuntimeSupport();
-    FetchContext defaultFetchContext = fetchRuntimeSupport.defaultPersistentFetchContext();
+    ClientGetFetchConfig defaultFetchConfig = fetchRuntimeSupport.defaultPersistentFetchConfig();
     ClientGetGlobalRequestConfig requestConfig =
         new ClientGetGlobalRequestConfig(
-            defaultFetchContext.getLocalRequestOnly(),
-            defaultFetchContext.getIgnoreStore(),
+            defaultFetchConfig.getLocalRequestOnly(),
+            defaultFetchConfig.getIgnoreStore(),
             spec.filterData(),
             FCPServer.QUEUE_MAX_RETRIES,
             FCPServer.QUEUE_MAX_RETRIES,
@@ -636,7 +635,7 @@ final class FcpServerPersistentOps implements DownloadCache {
             requestConfig,
             fetchRuntimeSupport);
     cg.register(false);
-    cg.start(fetchRuntimeSupport.clientContext());
+    cg.start(clientContext());
   }
 
   PersistentRequestClient getGlobalForeverClient() {

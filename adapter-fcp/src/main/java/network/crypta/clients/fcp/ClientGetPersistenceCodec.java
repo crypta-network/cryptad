@@ -4,9 +4,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import network.crypta.client.FetchContext;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
@@ -68,7 +65,7 @@ final class ClientGetPersistenceCodec {
    *
    * @param dis input stream positioned at the serialized client-detail payload.
    * @param reqID identifier tuple describing the request owner and scope.
-   * @param context client context providing factories for restoration.
+   * @param fetchRuntimeSupport fetch runtime support providing factories for restoration.
    * @param checker checksum helper verifying embedded bucket sections.
    * @return reconstructed {@link ClientGet} instance ready for registration.
    * @throws StorageFormatException when magic or version checks fail.
@@ -76,9 +73,13 @@ final class ClientGetPersistenceCodec {
    * @throws ResumeFailedException when state cannot be safely resumed.
    */
   static ClientGet restartFrom(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis,
+      RequestIdentifier reqID,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
+      network.crypta.client.async.ClientContext context,
+      ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
-    return new ClientGet(dis, reqID, context, checker);
+    return new ClientGet(dis, reqID, fetchRuntimeSupport, context, checker);
   }
 
   /**
@@ -106,7 +107,7 @@ final class ClientGetPersistenceCodec {
     }
     dos.writeBoolean(request.binaryBlobRequested());
     try (DataOutputStream ctxStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-      request.fetchContextForGetter().writeTo(ctxStream);
+      request.runtimeFetchSupport().encodeFetchConfig(request.fetchConfig(), ctxStream);
     }
     String extensionCheck = request.extensionCheckForGetter();
     if (extensionCheck != null) {
@@ -149,7 +150,7 @@ final class ClientGetPersistenceCodec {
       }
     }
     try (DataOutputStream progressStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-      if (((ClientGetter) request.getClientRequest()).writeTrivialProgress(progressStream)) {
+      if (request.execution().writeTrivialProgress(progressStream)) {
         synchronized (request.persistenceLock()) {
           writeTransientProgressFields(request, progressStream);
         }
@@ -160,14 +161,13 @@ final class ClientGetPersistenceCodec {
   /**
    * Reads core configuration and metadata needed to reconstruct a {@link ClientGet}.
    *
-   * <p>This method validates the header, parses the return type, fetch context, optional extension
-   * check, and initial metadata bucket. It does not restore progress or final success/failure
-   * state; that work happens in {@link #restoreState(ClientGet, DataInputStream, RequestIdentifier,
-   * ClientContext, ChecksumChecker)}.
+   * <p>This method validates the header, parses the return type, detached fetch configuration,
+   * optional extension check, and initial metadata bucket. It does not restore progress or final
+   * success/failure state; that work happens in {@link #restoreState(ClientGet, DataInputStream,
+   * RequestIdentifier, FcpFetchRuntimeSupport, ChecksumChecker)}.
    *
-   * @param request the request instance that will own the reconstructed state.
    * @param dis input stream positioned at the client-detail payload.
-   * @param context client context providing bucket factories and event handlers.
+   * @param fetchRuntimeSupport fetch runtime support providing bucket factories and event handlers.
    * @param checker checksum helper used to read embedded bucket data.
    * @return basic restore data bundle with configuration and metadata buckets.
    * @throws IOException when reading from the stream fails.
@@ -175,53 +175,56 @@ final class ClientGetPersistenceCodec {
    * @throws ResumeFailedException when metadata buckets fail to resume.
    */
   static BasicRestoreData readBasicRestoreData(
-      ClientGet request, DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      DataInputStream dis, FcpFetchRuntimeSupport fetchRuntimeSupport, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     validateClientDetailHeader(dis);
     FreenetURI uri = parseUri(dis.readUTF());
     ClientGet.ReturnType returnType = parseReturnType(dis.readShort());
     File targetFile = returnType == ClientGet.ReturnType.DISK ? new File(dis.readUTF()) : null;
     boolean binaryBlob = dis.readBoolean();
-    FetchContext fctx = ClientGetGetterFactory.readFetchContextOrDefault(dis, context, checker);
-    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(request));
+    ClientGetFetchConfig fetchConfig =
+        ClientGetPersistenceIO.readFetchConfigOrDefault(dis, fetchRuntimeSupport, checker);
     String extensionCheck = dis.readBoolean() ? dis.readUTF() : null;
-    Bucket initialMetadata = ClientGetGetterFactory.readInitialMetadata(dis, context, checker);
+    Bucket initialMetadata =
+        ClientGetPersistenceIO.readInitialMetadata(dis, fetchRuntimeSupport, checker);
     return new BasicRestoreData(
-        uri, returnType, targetFile, binaryBlob, fctx, extensionCheck, initialMetadata);
+        uri, returnType, targetFile, binaryBlob, fetchConfig, extensionCheck, initialMetadata);
   }
 
   /**
    * Restores progress or terminal state for a {@link ClientGet} from the stream.
    *
    * <p>If the request is already marked as finished, this method reads the final success or failure
-   * payload and updates the request state accordingly. Otherwise, it creates a getter suitable for
-   * resuming and delegates to the lower-level progress restoration helpers. The returned getter is
-   * owned by the caller and should be installed on the request.
+   * payload and updates the request state accordingly. Otherwise, it creates an execution suitable
+   * for resuming and delegates to the lower-level progress restoration helpers. The returned
+   * execution is owned by the caller and should be installed on the request.
    *
    * @param request request whose mutable state is updated from persistence.
    * @param dis input stream positioned at the progress or terminal section.
    * @param reqID identifier tuple describing the request owner and scope.
-   * @param context client context used to rehydrate buckets and caches.
+   * @param fetchRuntimeSupport fetch runtime support used to rehydrate buckets and caches.
    * @param checker checksum helper for embedded bucket segments.
-   * @return restored {@link ClientGetter}, or {@code null} when already finished.
+   * @return restored execution handle, or {@code null} when already finished.
    * @throws IOException when stream I/O fails during restoration.
    * @throws StorageFormatException when encoded values are invalid.
    * @throws ResumeFailedException when the request must restart instead of resuming.
    */
-  static ClientGetter restoreState(
+  static ClientGetExecution restoreState(
       ClientGet request,
       DataInputStream dis,
       RequestIdentifier reqID,
-      ClientContext context,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
       ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     if (request.finished) {
-      restoreFinishedState(request, dis, reqID, context, checker);
+      restoreFinishedState(request, dis, reqID, fetchRuntimeSupport, checker);
       return null;
     }
-    ClientGetter inProgressGetter = request.makeGetterForPersistence(request.makeBucket(false));
-    ClientGetGetterFactory.restoreInProgressState(dis, context, checker, inProgressGetter, request);
-    return inProgressGetter;
+    ClientGetExecution inProgressExecution =
+        request.makeExecutionForPersistence(fetchRuntimeSupport, request.makePersistenceBucket());
+    ClientGetPersistenceIO.restoreInProgressState(
+        dis, fetchRuntimeSupport, checker, inProgressExecution, request);
+    return inProgressExecution;
   }
 
   /**
@@ -294,7 +297,7 @@ final class ClientGetPersistenceCodec {
    * @param request request whose terminal state is being reconstructed.
    * @param dis input stream positioned at the finished-state payload.
    * @param reqID identifier tuple used for failure message decoding.
-   * @param context client context used to restore buckets and metadata.
+   * @param fetchRuntimeSupport fetch runtime support used to restore buckets and metadata.
    * @param checker checksum helper verifying embedded bucket sections.
    * @throws IOException when stream I/O fails while reading data.
    * @throws StorageFormatException when encoded, data is invalid or incompatible.
@@ -304,7 +307,7 @@ final class ClientGetPersistenceCodec {
       ClientGet request,
       DataInputStream dis,
       RequestIdentifier reqID,
-      ClientContext context,
+      FcpFetchRuntimeSupport fetchRuntimeSupport,
       ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     ClientGetState state = request.state();
@@ -313,7 +316,8 @@ final class ClientGetPersistenceCodec {
     if (state.hasSucceeded()) {
       if (request.returnTypeForGetter() == ClientGet.ReturnType.DIRECT) {
         Bucket restoredBucket =
-            ClientGetGetterFactory.restoreCompletedDirectBucketOrNull(dis, context, checker);
+            ClientGetPersistenceIO.restoreCompletedDirectBucketOrNull(
+                dis, fetchRuntimeSupport, checker);
         if (restoredBucket != null) {
           state.setReturnBucketDirect(restoredBucket);
         } else {
@@ -324,12 +328,12 @@ final class ClientGetPersistenceCodec {
       }
     } else {
       GetFailedMessage restoredMessage =
-          ClientGetGetterFactory.restoreFailureMessageOrNull(
+          ClientGetPersistenceIO.restoreFailureMessageOrNull(
               dis,
               reqID,
               state.getFoundDataLength(),
               state.getFoundDataMimeType(),
-              context,
+              fetchRuntimeSupport,
               checker);
       if (restoredMessage != null) {
         state.setFailedMessage(restoredMessage);
@@ -413,9 +417,9 @@ final class ClientGetPersistenceCodec {
    * Bundles the minimal configuration needed to reconstruct a {@link ClientGet}.
    *
    * <p>The container holds immutable values parsed from persistence, such as the target URI, return
-   * type, output destination, and fetch context. It does not carry transient progress or terminal
-   * success/failure state. Callers use these values to populate the request before restoring
-   * progress and completion metadata.
+   * type, output destination, and detached fetch configuration. It does not carry transient
+   * progress or terminal success/failure state. Callers use these values to populate the request
+   * before restoring progress and completion metadata.
    */
   static final class BasicRestoreData {
     /** The target URI parsed from the persistence stream. */
@@ -430,8 +434,10 @@ final class ClientGetPersistenceCodec {
     /** True when the request is configured for BinaryBlob output instead of raw buckets. */
     private final boolean binaryBlob;
 
-    /** Fetch context reconstructed from the persistence stream and ready for reuse. */
-    private final FetchContext fetchContext;
+    /**
+     * Detached fetch configuration reconstructed from the persistence stream and ready for reuse.
+     */
+    private final ClientGetFetchConfig fetchConfig;
 
     /** Optional filename extension hint used to validate filtering output. */
     private final String extensionCheck;
@@ -446,7 +452,7 @@ final class ClientGetPersistenceCodec {
      * @param returnType return type describing delivery semantics; must be non-null.
      * @param targetFile disk target when return type is disk; otherwise {@code null}.
      * @param binaryBlob true when BinaryBlob output is enabled for the request.
-     * @param fetchContext reconstructed fetch context for the request.
+     * @param fetchConfig reconstructed detached fetch configuration for the request.
      * @param extensionCheck optional extension hint used for validation, or {@code null}.
      * @param initialMetadata optional metadata bucket, or {@code null} when absent.
      */
@@ -455,14 +461,14 @@ final class ClientGetPersistenceCodec {
         ClientGet.ReturnType returnType,
         File targetFile,
         boolean binaryBlob,
-        FetchContext fetchContext,
+        ClientGetFetchConfig fetchConfig,
         String extensionCheck,
         Bucket initialMetadata) {
       this.uri = uri;
       this.returnType = returnType;
       this.targetFile = targetFile;
       this.binaryBlob = binaryBlob;
-      this.fetchContext = fetchContext;
+      this.fetchConfig = fetchConfig;
       this.extensionCheck = extensionCheck;
       this.initialMetadata = initialMetadata;
     }
@@ -504,12 +510,12 @@ final class ClientGetPersistenceCodec {
     }
 
     /**
-     * Returns the fetch context reconstructed from persistence.
+     * Returns the detached fetch configuration reconstructed from persistence.
      *
-     * @return fetch context ready to be used by the restored request.
+     * @return detached fetch configuration ready to be used by the restored request.
      */
-    FetchContext fetchContext() {
-      return fetchContext;
+    ClientGetFetchConfig fetchConfig() {
+      return fetchConfig;
     }
 
     /**

@@ -1,111 +1,421 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
+import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientContext;
-import network.crypta.clients.fcp.FCPServer;
+import network.crypta.client.async.ClientGetCallback;
+import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.ClientGetterOptions;
+import network.crypta.client.async.ClientGetterRequest;
+import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.PersistentClientCallback;
+import network.crypta.client.events.ClientEventListener;
+import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.clients.fcp.ClientGet;
+import network.crypta.clients.fcp.ClientGetExecution;
+import network.crypta.clients.fcp.ClientGetExecutionSpec;
+import network.crypta.clients.fcp.ClientGetFetchConfig;
 import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
+import network.crypta.crypt.ChecksumChecker;
+import network.crypta.crypt.ChecksumFailedException;
+import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.io.BucketTools;
+import network.crypta.support.io.NullBucket;
+import network.crypta.support.io.ResumeFailedException;
+import network.crypta.support.io.StorageFormatException;
 
 /**
  * Core-backed implementation of {@link FcpFetchRuntimeSupport}.
  *
- * <p>This adapter is the GET-path assembly seam between {@code clients.fcp} and the broader daemon
- * runtime. It keeps the fetch-specific wiring local to runtime-owned bootstrap code by translating
- * the small set of GET dependencies into direct delegations on the wrapped {@link NodeClientCore}
- * plus the owning server's transfer-access policy supplier. The adapter is immutable after
- * construction and observes the live daemon state on each call.
- *
- * <p>The split between {@code core} and {@code transferAccessSupplier} is intentional. Fetch
- * creation still needs the live client context and bucket factories from the daemon core, while DDA
- * checks and default download locations must remain aligned with the {@link FCPServer} runtime that
- * owns the request flow. Keeping both collaborators here preserves that behavior without letting
- * the GET classes depend on {@code NodeClientCore} directly.
- *
- * @param core live daemon core used for fetch contexts, client starts, and bucket allocation
- * @param transferAccessSupplier live transfer-policy lookup from the owning runtime, used for DDA
- *     checks and download-path defaults
+ * <p>This adapter owns the concrete translation between the adapter-owned detached GET seam and the
+ * live daemon fetch runtime.
  */
 record CoreFcpFetchRuntimeSupport(
-    NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier)
+    Supplier<ClientContext> clientContextSupplier,
+    Supplier<TransferAccessPort> transferAccessSupplier)
     implements FcpFetchRuntimeSupport {
 
-  /**
-   * Creates a fetch runtime adapter for the supplied node core.
-   *
-   * <p>The adapter is a thin wrapper and does not snapshot mutable daemon state. Later method calls
-   * continue to observe the live client context and bucket factories exposed by {@code core}, while
-   * transfer checks continue to read the current port from the supplied runtime lookup.
-   *
-   * @param core live daemon core providing fetch contexts and bucket allocation
-   * @param transferAccessSupplier live transfer-policy lookup from the owning runtime, used for DDA
-   *     checks and default download locations
-   */
+  @SuppressWarnings("java:S2095")
+  private static final Bucket NULL_BUCKET = new NullBucket();
+
   CoreFcpFetchRuntimeSupport(
-      NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier) {
-    this.core = Objects.requireNonNull(core);
+      Supplier<ClientContext> clientContextSupplier,
+      Supplier<TransferAccessPort> transferAccessSupplier) {
+    this.clientContextSupplier = Objects.requireNonNull(clientContextSupplier);
     this.transferAccessSupplier = Objects.requireNonNull(transferAccessSupplier);
   }
 
-  /**
-   * Returns the live client context from the wrapped daemon core.
-   *
-   * <p>GET requests use this context when they start or resume execution. The adapter does not
-   * cache or clone the value, so callers observe the same live context the core currently exposes.
-   *
-   * @return current client context used for FCP fetch execution
-   */
-  @Override
-  public ClientContext clientContext() {
-    return core.getClientContext();
+  CoreFcpFetchRuntimeSupport(
+      NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier) {
+    NodeClientCore nonNullCore = Objects.requireNonNull(core);
+    this(nonNullCore::getClientContext, transferAccessSupplier);
   }
 
-  /**
-   * Returns the default persistent fetch context supplied by the wrapped daemon core.
-   *
-   * <p>Factories typically adjust the returned context immediately for one request, but the
-   * baseline always comes from the live core, so persistent GET defaults remain unchanged.
-   *
-   * @return default persistent fetch context template from the daemon core
-   */
-  @Override
-  public FetchContext defaultPersistentFetchContext() {
-    return core.getClientContext().getDefaultPersistentFetchContext();
+  CoreFcpFetchRuntimeSupport(
+      ClientContext clientContext, Supplier<TransferAccessPort> transferAccessSupplier) {
+    ClientContext nonNullClientContext = Objects.requireNonNull(clientContext);
+    this(() -> nonNullClientContext, transferAccessSupplier);
   }
 
-  /**
-   * Returns the transfer-access policy owned by the surrounding FCP server runtime.
-   *
-   * <p>This intentionally resolves the transfer policy on each call instead of caching a
-   * constructor-time reference. Persistent global GET request planning must stay aligned with the
-   * runtime that supplied the current download policy and default directories.
-   *
-   * @return transfer policy used for DDA checks and default download resolution
-   */
+  @Override
+  public ClientGetFetchConfig defaultPersistentFetchConfig() {
+    return toFetchConfig(clientContext().getDefaultPersistentFetchContext());
+  }
+
+  @Override
+  public void encodeFetchConfig(ClientGetFetchConfig fetchConfig, DataOutputStream dos)
+      throws IOException {
+    materializeFetchContext(fetchConfig, null).writeTo(dos);
+  }
+
+  @Override
+  public ClientGetFetchConfig decodeFetchConfig(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    return toFetchConfig(new FetchContext(dis));
+  }
+
+  @Override
+  public DataInputStream openChecksummed(
+      DataInputStream dis, ChecksumChecker checker, long maxLength)
+      throws IOException, StorageFormatException {
+    try {
+      return new DataInputStream(
+          checker.checksumReaderWithLength(dis, clientContext().tempBucketFactory, maxLength));
+    } catch (ChecksumFailedException e) {
+      StorageFormatException storageFormatException = new StorageFormatException("Checksum failed");
+      storageFormatException.initCause(e);
+      throw storageFormatException;
+    }
+  }
+
+  @Override
+  public Bucket restorePersistentBucket(DataInputStream dis)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    ClientContext context = clientContext();
+    return BucketTools.restoreFrom(
+        dis,
+        context.persistentFG,
+        context.getPersistentFileTracker(),
+        context.getPersistentMasterSecret());
+  }
+
   @Override
   public TransferAccessPort transferAccess() {
     return Objects.requireNonNull(transferAccessSupplier.get());
   }
 
-  /**
-   * Allocates a Binary Blob bucket through the wrapped daemon core.
-   *
-   * <p>The bucket comes from the core's bucket factory for the requested persistence class. This
-   * keeps Binary Blob storage behavior identical to the pre-refactor GET path while exposing only a
-   * narrow runtime-support seam to callers.
-   *
-   * @param maxOutputLength maximum number of bytes the bucket should be prepared to hold
-   * @param persistentForever whether the forever-persistent bucket factory should be used
-   * @return newly allocated bucket suitable for Binary Blob output
-   * @throws IOException if the underlying bucket factory cannot create the bucket
-   */
   @Override
-  public Bucket allocateBinaryBlobBucket(long maxOutputLength, boolean persistentForever)
+  public ClientGetExecution createExecution(ClientGetExecutionSpec executionSpec)
       throws IOException {
-    return core.getClientContext().getBucketFactory(persistentForever).makeBucket(maxOutputLength);
+    return new CoreClientGetExecution(clientContextSupplier, executionSpec);
+  }
+
+  private ClientContext clientContext() {
+    return Objects.requireNonNull(clientContextSupplier.get());
+  }
+
+  private static FetchContext materializeFetchContext(
+      ClientGetFetchConfig fetchConfig, ClientEventListener eventListener) {
+    FetchContextOptions options =
+        FetchContextOptions.builder()
+            .limits(
+                fetchConfig.getMaxOutputLength(),
+                fetchConfig.getMaxTempLength(),
+                fetchConfig.getMaxMetadataSize())
+            .archiveLimits(
+                fetchConfig.getMaxRecursionLevel(),
+                fetchConfig.getMaxArchiveRestarts(),
+                fetchConfig.getMaxArchiveLevels(),
+                fetchConfig.getDontEnterImplicitArchives())
+            .retryLimits(
+                fetchConfig.getMaxSplitfileBlockRetries(),
+                fetchConfig.getMaxNonSplitfileRetries(),
+                fetchConfig.getMaxUSKRetries())
+            .splitfileLimits(
+                fetchConfig.getAllowSplitfiles(),
+                fetchConfig.getMaxDataBlocksPerSegment(),
+                fetchConfig.getMaxCheckBlocksPerSegment())
+            .behavior(
+                fetchConfig.getFollowRedirects(),
+                fetchConfig.getLocalRequestOnly(),
+                fetchConfig.getFilterData())
+            .clientOptions(
+                new SimpleEventProducer(),
+                fetchConfig.getIgnoreTooManyPathComponents(),
+                fetchConfig.getCanWriteClientCache())
+            .filterOverrides(
+                fetchConfig.getCharset(),
+                fetchConfig.getOverrideMime(),
+                fetchConfig.getSchemeHostAndPort())
+            .build();
+    return createFetchContext(fetchConfig, eventListener, options);
+  }
+
+  private static FetchContext createFetchContext(
+      ClientGetFetchConfig fetchConfig,
+      ClientEventListener eventListener,
+      FetchContextOptions options) {
+    FetchContext fetchContext = new FetchContext(options);
+    fetchContext.setIgnoreStore(fetchConfig.getIgnoreStore());
+    fetchContext.setReturnZIPManifests(fetchConfig.getReturnZIPManifests());
+    fetchContext.setAllowedMIMETypes(copyAllowedMimeTypes(fetchConfig.getAllowedMimeTypes()));
+    fetchContext.setCooldownRetries(fetchConfig.getCooldownRetries());
+    fetchContext.setCooldownTime(fetchConfig.getCooldownTime(), true);
+    fetchContext.setIgnoreUSKDatehints(fetchConfig.getIgnoreUSKDatehints());
+    if (eventListener != null) {
+      fetchContext.getEventProducer().addEventListener(eventListener);
+    }
+    return fetchContext;
+  }
+
+  private static ClientGetFetchConfig toFetchConfig(FetchContext fetchContext) {
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setMaxOutputLength(fetchContext.getMaxOutputLength());
+    fetchConfig.setMaxTempLength(fetchContext.getMaxTempLength());
+    fetchConfig.setMaxRecursionLevel(fetchContext.getMaxRecursionLevel());
+    fetchConfig.setMaxArchiveRestarts(fetchContext.getMaxArchiveRestarts());
+    fetchConfig.setMaxArchiveLevels(fetchContext.getMaxArchiveLevels());
+    fetchConfig.setDontEnterImplicitArchives(fetchContext.getDontEnterImplicitArchives());
+    fetchConfig.setMaxSplitfileBlockRetries(fetchContext.getMaxSplitfileBlockRetries());
+    fetchConfig.setMaxNonSplitfileRetries(fetchContext.getMaxNonSplitfileRetries());
+    fetchConfig.setMaxUSKRetries(fetchContext.getMaxUSKRetries());
+    fetchConfig.setAllowSplitfiles(fetchContext.getAllowSplitfiles());
+    fetchConfig.setFollowRedirects(fetchContext.getFollowRedirects());
+    fetchConfig.setLocalRequestOnly(fetchContext.getLocalRequestOnly());
+    fetchConfig.setIgnoreStore(fetchContext.getIgnoreStore());
+    fetchConfig.setMaxMetadataSize(fetchContext.getMaxMetadataSize());
+    fetchConfig.setMaxDataBlocksPerSegment(fetchContext.getMaxDataBlocksPerSegment());
+    fetchConfig.setMaxCheckBlocksPerSegment(fetchContext.getMaxCheckBlocksPerSegment());
+    fetchConfig.setReturnZIPManifests(fetchContext.getReturnZIPManifests());
+    fetchConfig.setFilterData(fetchContext.getFilterData());
+    fetchConfig.setIgnoreTooManyPathComponents(fetchContext.getIgnoreTooManyPathComponents());
+    fetchConfig.setAllowedMimeTypes(copyAllowedMimeTypes(fetchContext.getAllowedMIMETypes()));
+    fetchConfig.setCharset(fetchContext.getCharset());
+    fetchConfig.setCanWriteClientCache(fetchContext.getCanWriteClientCache());
+    fetchConfig.setOverrideMime(fetchContext.getOverrideMIME());
+    fetchConfig.setCooldownRetries(fetchContext.getCooldownRetries());
+    fetchConfig.setCooldownTime(fetchContext.getCooldownTime());
+    fetchConfig.setIgnoreUSKDatehints(fetchContext.getIgnoreUSKDatehints());
+    fetchConfig.setSchemeHostAndPort(fetchContext.getSchemeHostAndPort());
+    return fetchConfig;
+  }
+
+  private static Set<String> copyAllowedMimeTypes(Set<String> allowedMimeTypes) {
+    return allowedMimeTypes == null ? null : new HashSet<>(allowedMimeTypes);
+  }
+
+  private static final class CoreClientGetExecution implements ClientGetExecution {
+    private final Supplier<ClientContext> clientContextSupplier;
+    private final ClientGetter getter;
+
+    private CoreClientGetExecution(
+        Supplier<ClientContext> clientContextSupplier, ClientGetExecutionSpec executionSpec)
+        throws IOException {
+      this.clientContextSupplier = Objects.requireNonNull(clientContextSupplier);
+      CoreCallbackAdapter callback = new CoreCallbackAdapter(executionSpec.request());
+      FetchContext fetchContext =
+          materializeFetchContext(executionSpec.fetchConfig(), executionSpec.eventListener());
+      ClientGetterRequest getterRequest =
+          new ClientGetterRequest(
+              callback, executionSpec.uri(), fetchContext, executionSpec.priorityClass());
+      ClientGetterOptions options = createOptions(executionSpec, fetchContext);
+      this.getter = new ClientGetter(getterRequest, options);
+    }
+
+    @Override
+    public ClientRequester requester() {
+      return getter;
+    }
+
+    @Override
+    public void start() throws FetchException {
+      getter.start(clientContext());
+    }
+
+    @Override
+    public boolean canRestart() {
+      return getter.canRestart();
+    }
+
+    @Override
+    public boolean restart(FreenetURI redirect, boolean filterData) throws FetchException {
+      return getter.restart(redirect, filterData, clientContext());
+    }
+
+    @Override
+    public String expectedMime() {
+      return getter.expectedMIME();
+    }
+
+    @Override
+    public long expectedSize() {
+      return getter.expectedSize();
+    }
+
+    @Override
+    public Bucket blobBucket() {
+      return getter.getBlobBucket();
+    }
+
+    @Override
+    public boolean writeTrivialProgress(DataOutputStream dos) throws IOException {
+      return getter.writeTrivialProgress(dos);
+    }
+
+    @Override
+    public boolean resumeFromTrivialProgress(DataInputStream dis) throws IOException {
+      return getter.resumeFromTrivialProgress(dis, clientContext());
+    }
+
+    @Override
+    public boolean resumedFetcher() {
+      return getter.resumedFetcher();
+    }
+
+    private ClientContext clientContext() {
+      return Objects.requireNonNull(clientContextSupplier.get());
+    }
+
+    private ClientGetterOptions createOptions(
+        ClientGetExecutionSpec executionSpec, FetchContext fetchContext) throws IOException {
+      Bucket returnBucket = executionSpec.returnBucket();
+      if (executionSpec.binaryBlob()) {
+        Bucket blobBucket = returnBucket;
+        if (blobBucket == null) {
+          blobBucket =
+              clientContext()
+                  .getBucketFactory(executionSpec.persistenceForever())
+                  .makeBucket(fetchContext.getMaxOutputLength());
+        }
+        return new ClientGetterOptions(
+            NULL_BUCKET,
+            new BinaryBlobWriter(blobBucket),
+            false,
+            executionSpec.initialMetadata(),
+            executionSpec.extensionCheck());
+      }
+      if (executionSpec.discardData()) {
+        returnBucket = NULL_BUCKET;
+      }
+      return new ClientGetterOptions(
+          returnBucket,
+          null,
+          false,
+          executionSpec.initialMetadata(),
+          executionSpec.extensionCheck());
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CoreCallbackAdapter
+      implements ClientGetCallback, PersistentClientCallback, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final ClientGet request;
+
+    private CoreCallbackAdapter(ClientGet request) {
+      this.request = request;
+    }
+
+    @Override
+    public void onSuccess(FetchResult result, ClientGetter state) {
+      request.onSuccess(result, new CallbackSuccessExecution(state));
+    }
+
+    @Override
+    public void onFailure(FetchException e) {
+      request.onFailure(e);
+    }
+
+    @Override
+    public void onResume(ClientContext context) throws ResumeFailedException {
+      request.onResume(context);
+    }
+
+    @Override
+    public RequestClient getRequestClient() {
+      return request.getRequestClient();
+    }
+
+    @Override
+    public void getClientDetail(DataOutputStream dos, ChecksumChecker checker) throws IOException {
+      request.getClientDetail(dos, checker);
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CallbackSuccessExecution implements ClientGetExecution {
+    private final ClientGetter getter;
+
+    private CallbackSuccessExecution(ClientGetter getter) {
+      this.getter = Objects.requireNonNull(getter);
+    }
+
+    @Override
+    public ClientRequester requester() {
+      return getter;
+    }
+
+    @Override
+    public void start() {
+      throw new UnsupportedOperationException("Success callback execution cannot be started");
+    }
+
+    @Override
+    public boolean canRestart() {
+      return getter.canRestart();
+    }
+
+    @Override
+    public boolean restart(FreenetURI redirect, boolean filterData) {
+      throw new UnsupportedOperationException("Success callback execution cannot be restarted");
+    }
+
+    @Override
+    public String expectedMime() {
+      return getter.expectedMIME();
+    }
+
+    @Override
+    public long expectedSize() {
+      return getter.expectedSize();
+    }
+
+    @Override
+    public Bucket blobBucket() {
+      return getter.getBlobBucket();
+    }
+
+    @Override
+    public boolean writeTrivialProgress(DataOutputStream dos) throws IOException {
+      return getter.writeTrivialProgress(dos);
+    }
+
+    @Override
+    public boolean resumeFromTrivialProgress(DataInputStream dis) {
+      throw new UnsupportedOperationException(
+          "Success callback execution cannot resume trivial progress");
+    }
+
+    @Override
+    public boolean resumedFetcher() {
+      return getter.resumedFetcher();
+    }
   }
 }

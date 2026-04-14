@@ -4,75 +4,39 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.Serial;
-import java.io.Serializable;
+import java.util.Collections;
 import java.util.HashSet;
-import java.util.Objects;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.FetchException;
-import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.BinaryBlob;
-import network.crypta.client.async.BinaryBlobWriter;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetCallback;
-import network.crypta.client.async.ClientGetter;
-import network.crypta.client.async.ClientGetterOptions;
-import network.crypta.client.async.ClientGetterRequest;
-import network.crypta.client.async.PersistentClientCallback;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
-import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.NullBucket;
-import network.crypta.support.io.ResumeFailedException;
-import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Creates {@link ClientGetter} instances for {@link ClientGet} requests, including Binary Blob
- * support.
+ * Houses detached GET helpers that remain adapter-owned after the runtime handoff.
  *
- * <p>This utility centralizes the wiring required to build a {@link ClientGetter} with the correct
- * callback adapter, bucket choices, and optional {@link BinaryBlobWriter} so the request class can
- * focus on persistence and lifecycle duties. Callers typically invoke it during request creation or
- * resume paths to get a fully configured fetcher while keeping Binary Blob concerns out of {@link
- * ClientGet} and under the Sonar coupling limit (rule {@code java:S6539}).
+ * <p>The bridge now owns live fetch execution, but the adapter still owns stable helpers for
+ * detached fetch configuration, return planning, bucket wrappers, and status projection.
  *
- * <p>There is no mutable-shared state beyond a reusable {@link NullBucket} instance, so the class
- * is effectively stateless. Thread-safety is therefore determined by the collaborators passed in,
- * not by this factory. The method contracts favor explicit inputs (for example, whether to discard
- * data or enable Binary Blob recording) and will fail fast when required dependencies such as
- * {@link FcpFetchRuntimeSupport} are missing.
+ * <p>The class is effectively stateless. Thread-safety is therefore determined by the collaborators
+ * passed in, not by this factory. The method contracts favor explicit inputs and will fail fast
+ * when required dependencies such as {@link FcpFetchRuntimeSupport} are missing.
  *
  * <ul>
- *   <li>Wires request callbacks via an adapter that implements persistence interfaces.
- *   <li>Selects output buckets and Binary Blob writers based on caller intent.
+ *   <li>Applies request-visible fetch configuration overrides.
+ *   <li>Plans output buckets and disk-return behavior.
  *   <li>Creates disk-backed buckets and hash envelopes for persistence helpers.
  * </ul>
- *
- * @see ClientGetter
- * @see ClientGet
- * @see BinaryBlobWriter
  */
 final class ClientGetGetterFactory {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetGetterFactory.class);
-
-  /**
-   * Reusable {@link NullBucket} to discard output without allocating per call.
-   *
-   * <p>The instance holds no external resources and has no state changes, so it is safe to share
-   * across factory invocations. It is returned where a caller asks to discard data or when Binary
-   * Blob fetching should ignore the ordinary return bucket.
-   */
-  @SuppressWarnings("java:S2095")
-  private static final Bucket NULL_BUCKET = new NullBucket();
 
   /** Prevents instantiation because this class is a static factory. */
   private ClientGetGetterFactory() {}
@@ -87,57 +51,6 @@ final class ClientGetGetterFactory {
    */
   static String binaryBlobMimeType() {
     return BinaryBlob.MIME_TYPE;
-  }
-
-  /**
-   * Adapter that forwards fetch callbacks back to the owning {@link ClientGet}.
-   *
-   * <p>The adapter implements both {@link ClientGetCallback} and {@link PersistentClientCallback}
-   * so persistent requests can resume and serialize details through a single delegate. The only
-   * state retained is the request instance provided at construction time.
-   */
-  @SuppressWarnings("ClassCanBeRecord")
-  private static final class CallbackAdapter
-      implements ClientGetCallback, PersistentClientCallback, Serializable {
-    /** Serialization identifier for the adapter; no evolving state is persisted. */
-    @Serial private static final long serialVersionUID = 1L;
-
-    /** Request to receive all callback signals from the fetcher. */
-    private final ClientGet request;
-
-    /**
-     * Creates an adapter that forwards callbacks to the supplied request.
-     *
-     * @param request owning request that implements the callback logic; must not be {@code null}.
-     */
-    private CallbackAdapter(ClientGet request) {
-      this.request = request;
-    }
-
-    @Override
-    public void onSuccess(FetchResult result, ClientGetter state) {
-      request.onSuccess(result, state);
-    }
-
-    @Override
-    public void onFailure(FetchException e) {
-      request.onFailure(e);
-    }
-
-    @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
-      request.onResume(context);
-    }
-
-    @Override
-    public RequestClient getRequestClient() {
-      return request.getRequestClient();
-    }
-
-    @Override
-    public void getClientDetail(DataOutputStream dos, ChecksumChecker checker) throws IOException {
-      request.getClientDetail(dos, checker);
-    }
   }
 
   /**
@@ -159,22 +72,21 @@ final class ClientGetGetterFactory {
   }
 
   /**
-   * Applies allowed MIME types to a fetch context.
+   * Applies allowed MIME types to detached fetch configuration.
    *
    * <p>The method initializes the allowed MIME type set when configured in the request message.
-   * Passing {@code null} leaves the fetch context unchanged.
+   * Passing {@code null} leaves the configuration unchanged.
    *
-   * @param fetchContext fetch context to update with allowed MIME types.
+   * @param fetchConfig detached fetch configuration to update with allowed MIME types.
    * @param allowedMimeTypes optional list of allowed MIME type strings.
    */
-  static void applyAllowedMimeTypes(FetchContext fetchContext, String[] allowedMimeTypes) {
+  static void applyAllowedMimeTypes(ClientGetFetchConfig fetchConfig, String[] allowedMimeTypes) {
     if (allowedMimeTypes == null) {
       return;
     }
-    fetchContext.setAllowedMIMETypes(new HashSet<>());
-    for (String mime : allowedMimeTypes) {
-      fetchContext.getAllowedMIMETypes().add(mime);
-    }
+    HashSet<String> updated = new HashSet<>();
+    Collections.addAll(updated, allowedMimeTypes);
+    fetchConfig.setAllowedMimeTypes(updated);
   }
 
   /**
@@ -196,7 +108,7 @@ final class ClientGetGetterFactory {
     long foundDataLength = snapshot.foundDataLength();
     File destinationFile = snapshot.destinationFile();
     Bucket dataBucket = snapshot.dataBucket();
-    FetchContext fetchContext = snapshot.fetchContext();
+    ClientGetFetchConfig fetchConfig = snapshot.fetchConfig();
     InsertContext.CompatibilityMode[] compatModes = snapshot.compatModes();
     byte[] splitfileKey = snapshot.splitfileKey();
     FreenetURI uri = snapshot.uri();
@@ -226,9 +138,9 @@ final class ClientGetGetterFactory {
       }
     }
 
-    boolean filterData = fetchContext.getFilterData();
+    boolean filterData = fetchConfig.getFilterData();
     boolean overriddenDataType =
-        fetchContext.getOverrideMIME() != null || fetchContext.getCharset() != null;
+        fetchConfig.getOverrideMime() != null || fetchConfig.getCharset() != null;
 
     DownloadOutcomeInfo outcome =
         new DownloadOutcomeInfo(
@@ -253,7 +165,7 @@ final class ClientGetGetterFactory {
    * order.
    *
    * @param identifier request identifier used for policy checks.
-   * @param fetchContext fetch context for return planning.
+   * @param fetchConfig detached fetch configuration for return planning.
    * @param returnType configured return type.
    * @param returnFilename target file for disk returns.
    * @param filterData whether to derive an extension hint when filtering.
@@ -264,14 +176,14 @@ final class ClientGetGetterFactory {
    */
   static ClientGetReturnPlanner.ReturnSetup planReturnForGlobal(
       String identifier,
-      FetchContext fetchContext,
+      ClientGetFetchConfig fetchConfig,
       ClientGet.ReturnType returnType,
       File returnFilename,
       boolean filterData,
       TransferAccessPort transferAccess)
       throws NotAllowedException, IOException {
     ClientGetReturnPlanner returnPlanner =
-        new ClientGetReturnPlanner(identifier, true, fetchContext);
+        new ClientGetReturnPlanner(identifier, true, fetchConfig);
     return returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, transferAccess);
   }
 
@@ -283,7 +195,7 @@ final class ClientGetGetterFactory {
    *
    * @param identifier request identifier used for policy checks.
    * @param global whether the request uses the global identifier namespace.
-   * @param fetchContext fetch context for return planning.
+   * @param fetchConfig detached fetch configuration for return planning.
    * @param message message containing return settings.
    * @param transferAccess transfer policy used for policy checks.
    * @param handler connection handler providing DDA validation.
@@ -293,101 +205,14 @@ final class ClientGetGetterFactory {
   static ClientGetReturnPlanner.ReturnSetup planReturnForMessage(
       String identifier,
       boolean global,
-      FetchContext fetchContext,
+      ClientGetFetchConfig fetchConfig,
       ClientGetMessage message,
       TransferAccessPort transferAccess,
       FCPConnectionHandler handler)
       throws MessageInvalidException {
     ClientGetReturnPlanner returnPlanner =
-        new ClientGetReturnPlanner(identifier, global, fetchContext);
+        new ClientGetReturnPlanner(identifier, global, fetchConfig);
     return returnPlanner.forMessage(message, transferAccess, handler);
-  }
-
-  /**
-   * Restores a {@link FetchContext} or defaults when recovery fails.
-   *
-   * @param dis input stream positioned at the fetch context data.
-   * @param context client context providing default fetch settings.
-   * @param checker checksum helper used to verify the serialized block.
-   * @return restored {@link FetchContext} or the default when recovery fails.
-   */
-  static FetchContext readFetchContextOrDefault(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker) {
-    return ClientGetPersistenceIO.readFetchContextOrDefault(dis, context, checker);
-  }
-
-  /**
-   * Restores an initial metadata bucket for the request, if present.
-   *
-   * @param dis input stream positioned at the metadata bucket marker.
-   * @param context client context owning persistent bucket services.
-   * @param checker checksum helper used to verify the bucket metadata.
-   * @return restored bucket or {@code null} when no metadata marker was set.
-   * @throws IOException if the underlying stream cannot be read.
-   * @throws StorageFormatException if metadata integrity checks fail.
-   * @throws ResumeFailedException if bucket restoration fails.
-   */
-  static Bucket readInitialMetadata(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws IOException, StorageFormatException, ResumeFailedException {
-    return ClientGetPersistenceIO.readInitialMetadata(dis, context, checker);
-  }
-
-  /**
-   * Restores a completed direct bucket from persistent storage.
-   *
-   * @param dis input stream positioned at the bucket payload.
-   * @param context client context owning persistent bucket services.
-   * @param checker checksum helper used to verify the bucket metadata.
-   * @return restored bucket, or {@code null} when restoration failed.
-   * @throws ResumeFailedException if bucket restoration fails.
-   */
-  static Bucket restoreCompletedDirectBucketOrNull(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws ResumeFailedException {
-    return ClientGetPersistenceIO.restoreCompletedDirectBucketOrNull(dis, context, checker);
-  }
-
-  /**
-   * Restores the failure message for a finished request.
-   *
-   * @param dis input stream positioned at the failure message payload.
-   * @param reqID request identifier used to populate the failure message.
-   * @param foundDataLength recorded data length for the request.
-   * @param foundDataMimeType recorded MIME type for the request.
-   * @param context client context providing checksum helpers.
-   * @param checker checksum helper used to verify the payload.
-   * @return restored {@link GetFailedMessage} or {@code null} when recovery fails.
-   */
-  static GetFailedMessage restoreFailureMessageOrNull(
-      DataInputStream dis,
-      RequestIdentifier reqID,
-      long foundDataLength,
-      String foundDataMimeType,
-      ClientContext context,
-      ChecksumChecker checker) {
-    return ClientGetPersistenceIO.restoreFailureMessageOrNull(
-        dis, reqID, foundDataLength, foundDataMimeType, context, checker);
-  }
-
-  /**
-   * Restores in-progress getter state along with transient progress fields.
-   *
-   * @param dis input stream positioned at the progress data block.
-   * @param context client context used to resume the getter.
-   * @param checker checksum helper used to validate the block.
-   * @param inProgressGetter getter instance to resume.
-   * @param request request instance for restoring transient fields.
-   * @throws StorageFormatException if the serialized state is invalid.
-   */
-  static void restoreInProgressState(
-      DataInputStream dis,
-      ClientContext context,
-      ChecksumChecker checker,
-      ClientGetter inProgressGetter,
-      ClientGet request)
-      throws StorageFormatException {
-    ClientGetPersistenceIO.restoreInProgressState(dis, context, checker, inProgressGetter, request);
   }
 
   /**
@@ -453,112 +278,5 @@ final class ClientGetGetterFactory {
   static void writeExpectedHashes(DataOutputStream dos, ExpectedHashes expectedHashes)
       throws IOException {
     HashResult.write(expectedHashes == null ? null : expectedHashes.hashes, dos);
-  }
-
-  /**
-   * Builds the {@link ClientGetterRequest} used to start a {@link ClientGet} fetch.
-   *
-   * <p>The request wires a {@link CallbackAdapter} so persistence operations and result delivery
-   * are delegated to the owning {@link ClientGet} instance.
-   *
-   * @param request owning request to receive callbacks and resume signals; must not be {@code
-   *     null}.
-   * @param uri target {@link FreenetURI} to fetch; must not be {@code null}.
-   * @param fetchContext fetch configuration that defines size limits and filters; must not be
-   *     {@code null}.
-   * @param priorityClass scheduler priority class for the request.
-   * @return a {@link ClientGetterRequest} configured for the provided request context.
-   */
-  static ClientGetterRequest createGetterRequest(
-      ClientGet request, FreenetURI uri, FetchContext fetchContext, short priorityClass) {
-    ClientGetCallback callback = new CallbackAdapter(request);
-    return new ClientGetterRequest(callback, uri, fetchContext, priorityClass);
-  }
-
-  /**
-   * Builds a {@link ClientGetter} for the supplied request settings.
-   *
-   * <p>This convenience wrapper keeps the request class free from option and flag types while still
-   * delegating to {@link #createGetter} for the actual fetcher creation.
-   *
-   * @param request owning request that receives fetch callbacks.
-   * @param returnBucket bucket holding returned data when not discarded.
-   * @param fetchRuntimeSupport fetch runtime support used to allocate buckets when required.
-   * @return a configured {@link ClientGetter} ready to run.
-   * @throws IOException if bucket allocation fails.
-   */
-  static ClientGetter createGetterForRequest(
-      ClientGet request, Bucket returnBucket, FcpFetchRuntimeSupport fetchRuntimeSupport)
-      throws IOException {
-    ClientGetterRequest getterRequest =
-        createGetterRequest(
-            request, request.getURI(), request.fetchContextForGetter(), request.getPriority());
-    ClientGetterOptions options =
-        new ClientGetterOptions(
-            returnBucket,
-            null,
-            false,
-            request.initialMetadataBucket(),
-            request.extensionCheckForGetter());
-    ClientGet.ReturnType returnType = request.returnTypeForGetter();
-    ClientGetGetterFlags flags =
-        new ClientGetGetterFlags(
-            returnType == ClientGet.ReturnType.NONE,
-            request.binaryBlobRequested(),
-            request.persistence == ClientRequest.Persistence.FOREVER);
-    return createGetter(getterRequest, options, flags, fetchRuntimeSupport);
-  }
-
-  /**
-   * Creates a configured {@link ClientGetter} for a {@link ClientGet} request.
-   *
-   * <p>The factory chooses the correct return bucket strategy and optionally sets up a {@link
-   * BinaryBlobWriter} when Binary Blob recording is requested. If Binary Blob recording is enabled
-   * and the options do not specify a return bucket, the method uses {@code fetchRuntimeSupport} to
-   * allocate a bucket sized to {@link FetchContext#getMaxOutputLength()}. When {@link
-   * ClientGetGetterFlags#discardData()} is true and Binary Blob is disabled, the returned fetcher
-   * writes into a shared {@link NullBucket} instead of the provided bucket.
-   *
-   * @param request request parameters including the callback, URI, and fetch context.
-   * @param options return bucket, metadata, and extension options for the fetcher.
-   * @param flags behavior flags for Binary Blob recording and discard handling.
-   * @param fetchRuntimeSupport fetch runtime support used to allocate buckets when needed; required
-   *     if Binary Blob recording is enabled and no return bucket is supplied.
-   * @return a fully constructed {@link ClientGetter} ready to start.
-   * @throws IOException if bucket allocation fails or underlying stream setup fails.
-   * @throws NullPointerException if {@code fetchRuntimeSupport} is required but not provided.
-   */
-  static ClientGetter createGetter(
-      ClientGetterRequest request,
-      ClientGetterOptions options,
-      ClientGetGetterFlags flags,
-      FcpFetchRuntimeSupport fetchRuntimeSupport)
-      throws IOException {
-    Bucket returnBucket = options.returnBucket();
-    Bucket initialMetadata = options.initialMetadata();
-    String extensionCheck = options.forceCompatibleExtension();
-    Bucket blobBucket = returnBucket;
-    if (flags.binaryBlob()) {
-      if (blobBucket == null) {
-        Objects.requireNonNull(fetchRuntimeSupport, "fetchRuntimeSupport");
-        blobBucket =
-            fetchRuntimeSupport.allocateBinaryBlobBucket(
-                request.ctx().getMaxOutputLength(), flags.persistenceForever());
-      }
-      return new ClientGetter(
-          request,
-          new ClientGetterOptions(
-              NULL_BUCKET,
-              new BinaryBlobWriter(blobBucket),
-              false,
-              initialMetadata,
-              extensionCheck));
-    }
-    if (flags.discardData()) {
-      returnBucket = NULL_BUCKET;
-    }
-    return new ClientGetter(
-        request,
-        new ClientGetterOptions(returnBucket, null, false, initialMetadata, extensionCheck));
   }
 }

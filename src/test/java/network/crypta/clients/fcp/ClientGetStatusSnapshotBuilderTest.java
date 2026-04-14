@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -28,9 +27,9 @@ class ClientGetStatusSnapshotBuilderTest {
   void persistentTagMessage_whenDiskReturnType_expectFieldSetContainsDiskFilenameAndValues()
       throws Exception {
     // Arrange
-    FetchContext fetchContext = Mockito.mock(FetchContext.class);
-    when(fetchContext.getMaxNonSplitfileRetries()).thenReturn(7);
-    when(fetchContext.getMaxOutputLength()).thenReturn(12_345L);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setMaxNonSplitfileRetries(7);
+    fetchConfig.setMaxOutputLength(12_345L);
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     when(requestClient.realTimeFlag()).thenReturn(true);
     File targetFile = new File("target.bin");
@@ -49,7 +48,7 @@ class ClientGetStatusSnapshotBuilderTest {
             ReturnType.DISK,
             targetFile,
             true,
-            fetchContext,
+            fetchConfig,
             requestClient);
     ClientGetStatusSnapshotBuilder builder = new ClientGetStatusSnapshotBuilder(request);
 
@@ -78,9 +77,9 @@ class ClientGetStatusSnapshotBuilderTest {
   void persistentTagMessage_whenClientTokenNull_expectFieldSetOmitsClientTokenAndFilename()
       throws Exception {
     // Arrange
-    FetchContext fetchContext = Mockito.mock(FetchContext.class);
-    when(fetchContext.getMaxNonSplitfileRetries()).thenReturn(1);
-    when(fetchContext.getMaxOutputLength()).thenReturn(42L);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setMaxNonSplitfileRetries(1);
+    fetchConfig.setMaxOutputLength(42L);
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     when(requestClient.realTimeFlag()).thenReturn(false);
     PersistentRequestClient client =
@@ -98,7 +97,7 @@ class ClientGetStatusSnapshotBuilderTest {
             ReturnType.DIRECT,
             null,
             false,
-            fetchContext,
+            fetchConfig,
             requestClient);
     ClientGetStatusSnapshotBuilder builder = new ClientGetStatusSnapshotBuilder(request);
 
@@ -121,9 +120,9 @@ class ClientGetStatusSnapshotBuilderTest {
   @Test
   void persistentTagMessage_whenUriNull_expectThrowsNullPointerException() throws Exception {
     // Arrange
-    FetchContext fetchContext = Mockito.mock(FetchContext.class);
-    when(fetchContext.getMaxNonSplitfileRetries()).thenReturn(1);
-    when(fetchContext.getMaxOutputLength()).thenReturn(1L);
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setMaxNonSplitfileRetries(1);
+    fetchConfig.setMaxOutputLength(1L);
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     when(requestClient.realTimeFlag()).thenReturn(false);
     PersistentRequestClient client =
@@ -141,7 +140,7 @@ class ClientGetStatusSnapshotBuilderTest {
             ReturnType.NONE,
             null,
             false,
-            fetchContext,
+            fetchConfig,
             requestClient);
     ClientGetStatusSnapshotBuilder builder = new ClientGetStatusSnapshotBuilder(request);
 
@@ -161,7 +160,7 @@ class ClientGetStatusSnapshotBuilderTest {
       ReturnType returnType,
       File targetFile,
       boolean binaryBlob,
-      FetchContext fetchContext,
+      ClientGetFetchConfig fetchConfig,
       RequestClient requestClient)
       throws Exception {
     ClientGet request = new ClientGet();
@@ -176,7 +175,7 @@ class ClientGetStatusSnapshotBuilderTest {
     setField(request, "returnType", returnType);
     setField(request, "targetFile", targetFile);
     setField(request, "binaryBlob", binaryBlob);
-    setField(request, "fctx", fetchContext);
+    setField(request, "fetchConfig", fetchConfig);
     setField(request, "lowLevelClient", requestClient);
     return request;
   }

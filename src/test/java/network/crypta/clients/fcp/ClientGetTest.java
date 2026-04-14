@@ -4,7 +4,6 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.Instant;
-import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -26,16 +25,15 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ClientGetTest {
 
-  @Mock private FetchContext fetchContext;
   @Mock private Bucket directBucket;
 
   @Test
@@ -185,8 +183,10 @@ class ClientGetTest {
 
   @Test
   void filterData_whenFetchContextDemandsFiltering_returnsTrue() {
-    when(fetchContext.getFilterData()).thenReturn(true);
     ClientGet clientGet = newClientGet();
+    ClientGetFetchConfig fetchConfig = clientGet.fetchConfig();
+    assertNotNull(fetchConfig);
+    fetchConfig.setFilterData(true);
 
     assertTrue(clientGet.filterData());
   }
@@ -236,7 +236,7 @@ class ClientGetTest {
   private ClientGet newClientGet() {
     ClientGet clientGet = new ClientGet();
     clientGet.state().setCompatibilityAnalyser(new CompatibilityAnalyser());
-    setField(clientGet, "fctx", fetchContext);
+    setField(clientGet, "fetchConfig", new ClientGetFetchConfig());
     return clientGet;
   }
 
