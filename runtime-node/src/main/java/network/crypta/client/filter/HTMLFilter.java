@@ -76,9 +76,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   private static final String M3U_PLAYER_TAG_FILE =
       "network/crypta/clients/http/staticfiles/js/m3u-player.js";
 
-  /** if true, embed m3u player. Enabled when fproxy javascript is enabled. * */
-  private static boolean embedM3uPlayer = true;
-
   private static final boolean DELETE_WIERD_STUFF = true;
   private static final boolean DELETE_ERRORS = true;
 
@@ -88,14 +85,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * detection can be ambiguous, potentially resulting in attacks.
    */
   private static final boolean ALLOW_NO_HTML_TAG = true;
-
-  // These defaults currently apply globally across documents; future work may allow per-document
-  // overrides once the configuration flow is merged with TagReplacerCallback.
-  /** -1 means don't allow it */
-  private static int metaRefreshSamePageMinInterval = 1;
-
-  /** -1 means don't allow it */
-  private static int metaRefreshRedirectMinInterval = 30;
 
   private static final String M3U_PLAYER_SCRIPT_TAG_CONTENT = loadM3uPlayerScriptTagContent();
 
@@ -828,7 +817,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @return {@code true} when eligible media tags cause the player snippet to be inlined
    */
   public static boolean isEmbedM3uPlayerEnabled() {
-    return embedM3uPlayer;
+    return HTMLFilterPolicy.isEmbedM3uPlayerEnabled();
   }
 
   /**
@@ -840,7 +829,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @param enabled {@code true} to inject the helper script whenever media tags are preserved
    */
   public static void setEmbedM3uPlayerEnabled(boolean enabled) {
-    embedM3uPlayer = enabled;
+    HTMLFilterPolicy.setEmbedM3uPlayerEnabled(enabled);
   }
 
   /**
@@ -851,7 +840,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @return minimum delay, or {@code -1} when zero-delay refreshes must always be dropped
    */
   public static int getMetaRefreshSamePageMinInterval() {
-    return metaRefreshSamePageMinInterval;
+    return HTMLFilterPolicy.getMetaRefreshSamePageMinInterval();
   }
 
   /**
@@ -862,7 +851,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @param interval number of seconds enforced between refreshes targeting the current URI
    */
   public static void setMetaRefreshSamePageMinInterval(int interval) {
-    metaRefreshSamePageMinInterval = interval;
+    HTMLFilterPolicy.setMetaRefreshSamePageMinInterval(interval);
   }
 
   /**
@@ -874,7 +863,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @return minimum redirect delay in seconds, or {@code -1} when redirects are forbidden outright
    */
   public static int getMetaRefreshRedirectMinInterval() {
-    return metaRefreshRedirectMinInterval;
+    return HTMLFilterPolicy.getMetaRefreshRedirectMinInterval();
   }
 
   /**
@@ -886,7 +875,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @param interval number of seconds required before allowing a redirecting refresh to pass
    */
   public static void setMetaRefreshRedirectMinInterval(int interval) {
-    metaRefreshRedirectMinInterval = interval;
+    HTMLFilterPolicy.setMetaRefreshRedirectMinInterval(interval);
   }
 
   String processTag(List<String> splitTag, Writer w, HTMLParseContext pc) throws IOException {

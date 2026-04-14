@@ -36,7 +36,7 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.http.HttpDateParser;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.LineReadingInputStream;
 import network.crypta.support.io.NoFreeBucket;
 import network.crypta.support.io.TooLongException;
@@ -1033,7 +1033,7 @@ public final class ToadletContextImpl implements ToadletContext {
       return DataReadResult.success(data);
     }
 
-    FileUtil.skipFully(is, length);
+    IOUtils.skipFully(is, length);
     if ("POST".equals(method)) {
       ctx.sendMethodNotAllowed("POST", true);
     } else {

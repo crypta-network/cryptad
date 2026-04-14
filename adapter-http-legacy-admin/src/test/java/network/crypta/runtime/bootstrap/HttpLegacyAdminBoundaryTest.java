@@ -64,6 +64,12 @@ class HttpLegacyAdminBoundaryTest {
           "import network.crypta.client.FetchWaiter;",
           "import network.crypta.client.InsertContext;",
           "import network.crypta.client.InsertContext.CompatibilityMode;");
+  private static final Set<String> FORBIDDEN_LEAF_HELPER_IMPORTS =
+      Set.of(
+          "import network.crypta.client.filter.HTMLFilter;",
+          "import network.crypta.support.io.FileUtil;",
+          "import network.crypta.support.io.FileUtil.OperatingSystem;",
+          "import network.crypta.support.io.DatastoreUtil;");
   private static final Path ADAPTER_HTTP_FPROXY_BOOTSTRAP =
       ADAPTER_HTTP_MAIN_JAVA.resolve("HttpShellFProxyBootstrap.java");
   private static final Path ADAPTER_LEGACY_ADMIN_HTTP_ROUTE_REGISTRAR =
@@ -310,6 +316,9 @@ class HttpLegacyAdminBoundaryTest {
     assertFalse(
         adapterBuild.contains("project(\":adapter-http-legacy-browse\")"),
         ":adapter-http-legacy-admin must not depend on :adapter-http-legacy-browse");
+    assertFalse(
+        adapterBuild.contains("implementation(project(\":runtime-node\"))"),
+        ":adapter-http-legacy-admin must not depend on :runtime-node");
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA)),
         ":bridge-http-runtime must declare owned-output-patterns.txt");
@@ -437,6 +446,34 @@ class HttpLegacyAdminBoundaryTest {
         violations.isEmpty(),
         "adapter-http-legacy-admin main sources must not import runtime-node client contracts "
             + "directly anymore."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void mainSources_whenScanningAdminLeafHelperImports_expectDetachedImportsAbsent()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : findMainJavaSources(repoRoot)) {
+      Path relativePath = repoRoot.relativize(sourceFile);
+      if (!relativePath.startsWith(ADAPTER_HTTP_MAIN_JAVA)) {
+        continue;
+      }
+
+      Set<String> imports = readImports(sourceFile);
+      for (String forbiddenImport : FORBIDDEN_LEAF_HELPER_IMPORTS) {
+        if (imports.contains(forbiddenImport)) {
+          violations.add(relativePath + " -> " + forbiddenImport);
+        }
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "adapter-http-legacy-admin main sources must not import HTMLFilter, FileUtil, or "
+            + "DatastoreUtil directly anymore."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }

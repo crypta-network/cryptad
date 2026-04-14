@@ -1,6 +1,7 @@
 package network.crypta.support.io;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.zip.ZipFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,6 +110,26 @@ public class IOUtils {
       } catch (IOException e) { // Catch only IOExceptions; runtime exceptions and Errors propagate.
         LOG.error("Error during close() on ZipFile", e);
       }
+    }
+  }
+
+  /**
+   * Skips exactly {@code skip} bytes from an {@link InputStream} or throws if unable to do so.
+   *
+   * <p>Unlike {@link InputStream#skip(long)}, this method requires forward progress on each
+   * iteration and fails fast if the stream stops advancing before the requested number of bytes has
+   * been discarded.
+   *
+   * @param is input stream (not closed by this method)
+   * @param skip number of bytes to skip; must be non-negative
+   * @throws IOException if the stream cannot skip the requested number of bytes
+   */
+  public static void skipFully(InputStream is, long skip) throws IOException {
+    long skipped = 0;
+    while (skipped < skip) {
+      long x = is.skip(skip - skipped);
+      if (x <= 0) throw new IOException("Unable to skip " + (skip - skipped) + " bytes");
+      skipped += x;
     }
   }
 }

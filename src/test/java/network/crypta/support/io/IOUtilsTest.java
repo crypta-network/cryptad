@@ -7,6 +7,7 @@ import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.stream.Stream;
 import java.util.zip.ZipFile;
@@ -21,9 +22,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link IOUtils}.
@@ -61,6 +65,7 @@ class IOUtilsTest {
     AutoCloseable resource = null;
 
     // Act
+    //noinspection ConstantValue
     IOUtils.closeQuietly(resource);
 
     // Assert
@@ -132,6 +137,7 @@ class IOUtilsTest {
     ZipFile zipFile = null;
 
     // Act
+    //noinspection ConstantValue
     IOUtils.closeQuietly(zipFile);
 
     // Assert
@@ -185,6 +191,37 @@ class IOUtilsTest {
     IllegalStateException ex =
         assertThrows(IllegalStateException.class, () -> IOUtils.closeQuietly(zipFile));
     assertEquals("runtime-bang", ex.getMessage());
+    assertNoErrorLogs();
+  }
+
+  // ---------------------------- skipFully ----------------------------
+
+  @Test
+  void skipFully_whenStreamAdvancesInChunks_discardsRequestedBytes() throws Exception {
+    // Arrange
+    InputStream input = mock(InputStream.class);
+    when(input.skip(anyLong())).thenReturn(2L, 3L);
+
+    // Act
+    IOUtils.skipFully(input, 5);
+
+    // Assert
+    verify(input, times(2)).skip(anyLong());
+    assertNoErrorLogs();
+  }
+
+  @Test
+  void skipFully_whenStreamStopsAdvancing_throwsIOException() throws Exception {
+    // Arrange
+    InputStream input = mock(InputStream.class);
+    when(input.skip(anyLong())).thenReturn(2L, 0L);
+
+    // Act
+    IOException exception = assertThrows(IOException.class, () -> IOUtils.skipFully(input, 5));
+
+    // Assert
+    assertEquals("Unable to skip 3 bytes", exception.getMessage());
+    verify(input, times(2)).skip(anyLong());
     assertNoErrorLogs();
   }
 

@@ -85,6 +85,7 @@ network/crypta/support/io/Fallocate*
 network/crypta/support/io/FilenameGenerator*
 network/crypta/support/io/FilenameSanitizer*
 network/crypta/support/io/InsufficientDiskSpaceException*
+network/crypta/support/io/LegacyFileSupport*
 network/crypta/support/io/LineReader*
 network/crypta/support/io/LineReadingInputStream*
 network/crypta/support/io/InetAddressIpv6FirstComparator*

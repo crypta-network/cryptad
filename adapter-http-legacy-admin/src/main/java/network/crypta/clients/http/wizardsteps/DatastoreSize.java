@@ -1,6 +1,7 @@
 package network.crypta.clients.http.wizardsteps;
 
 import java.util.Objects;
+import java.util.function.LongSupplier;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.DatastoreSizingSupport;
@@ -11,15 +12,14 @@ import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.DatastoreUtil;
 
 /**
  * Wizard step that renders and applies a datastore sizing choice.
  *
  * <p>This step is used by the HTTP first-time wizard to present a dropdown of sensible datastore
  * sizes based on the local environment. The UI is populated from the current {@link Config} (when
- * present) and from a best-effort auto-detection via {@link DatastoreUtil}; it also considers hard
- * limits exported through the detached first-time-wizard snapshot.
+ * present) and from detached runtime snapshot values, including the legacy datastore cap exported
+ * through the first-time-wizard port.
  *
  * <p>When the user submits the form, this step updates multiple related configuration keys under
  * {@code node.*} (datastore size and cache sizes) in a consistent way. On the first run it also
@@ -120,9 +120,9 @@ public class DatastoreSize implements Step {
    * Applies the datastore size selection submitted for this wizard step.
    *
    * <p>The selected size is read from the {@code ds} form field and passed through the same parsing
-   * and validation logic used by {@link #setDatastoreSize(String, Config)}. When this step is
-   * executed as part of the full wizard flow (i.e., not in single-step mode), it advances to the
-   * bandwidth step; otherwise it returns the completion step.
+   * and validation logic used by {@link #setDatastoreSize(String, Config, LongSupplier)}. When this
+   * step is executed as part of the full wizard flow (i.e., not in single-step mode), it advances
+   * to the bandwidth step; otherwise it returns the completion step.
    *
    * @param request HTTP request containing the submitted {@code ds} selection and optional flags
    * @return the next wizard step name, suitable for {@code FirstTimeWizardToadlet.WIZARD_STEP}
@@ -133,12 +133,13 @@ public class DatastoreSize implements Step {
     // can
     // be more
     boolean firsttime = !request.isPartSet("singlestep");
+    FirstTimeWizardSnapshot snapshot = wizardPort.snapshot();
 
     DatastoreSizingSupport.setDatastoreSize(
         request.getPartAsStringFailsafe("ds", 20),
         firsttime,
         config,
-        DatastoreUtil::maxDatastoreSize);
+        snapshot::legacyMaxStorageLimitBytes);
     if (firsttime) {
       return FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH.name();
     } else {
@@ -157,10 +158,12 @@ public class DatastoreSize implements Step {
    *
    * @param selectedStoreSize datastore size selection string, typically including a unit suffix
    * @param config configuration instance that will be updated in-place with the derived values
+   * @param maxDatastoreSizeSupplier detached maximum datastore size bound used to validate the
+   *     selection
    */
-  public static void setDatastoreSize(String selectedStoreSize, Config config) {
-    DatastoreSizingSupport.setDatastoreSize(
-        selectedStoreSize, config, DatastoreUtil::maxDatastoreSize);
+  public static void setDatastoreSize(
+      String selectedStoreSize, Config config, LongSupplier maxDatastoreSizeSupplier) {
+    DatastoreSizingSupport.setDatastoreSize(selectedStoreSize, config, maxDatastoreSizeSupplier);
   }
 
   private static void addDatastoreSizeOptions(
