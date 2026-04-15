@@ -5,7 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import network.crypta.support.io.NullOutputStream;
 
 /**
@@ -18,9 +18,9 @@ import network.crypta.support.io.NullOutputStream;
  * an explicit protocol-level rejection.
  *
  * <p>This approach keeps the connection stream synchronized after a rejected command and avoids
- * turning a legacy feature use into cascading parser errors for subsequent messages on the same
- * socket. The class is intentionally narrow and side-effect free: it never performs plugin
- * execution, state mutation outside protocol responses, or server-originated payload writes.
+ * turning a legacy feature use into cascading parser errors for later messages on the same socket.
+ * The class is intentionally narrow and side-effect-free: it never performs plugin execution, state
+ * mutation outside protocol responses, or server-originated payload writes.
  *
  * <ul>
  *   <li><b>Primary responsibility:</b> preserve deterministic FCP compatibility for removed plugin
@@ -100,7 +100,7 @@ final class UnsupportedPluginMessage extends BaseDataCarryingMessage {
     if (payloadLength <= 0) {
       return;
     }
-    FileUtil.copy(is, new NullOutputStream(), payloadLength);
+    LegacyFileSupport.copy(is, new NullOutputStream(), payloadLength);
   }
 
   @Override
@@ -170,6 +170,11 @@ final class UnsupportedPluginMessage extends BaseDataCarryingMessage {
           false);
     }
 
+    return parsePayloadLength(dataLengthField, requestIdentifier);
+  }
+
+  private static long parsePayloadLength(String dataLengthField, String requestIdentifier)
+      throws MessageInvalidException {
     long parsedLength;
     try {
       parsedLength = Long.parseLong(dataLengthField, 10);

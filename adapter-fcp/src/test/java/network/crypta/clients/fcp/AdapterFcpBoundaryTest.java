@@ -128,6 +128,13 @@ class AdapterFcpBoundaryTest {
           DOWNLOAD_REQUEST_STATUS_SOURCE,
           DOWNLOAD_REQUEST_STATUS_DETAILS_SOURCE,
           REQUEST_STATUS_CACHE_SOURCE);
+  private static final Set<Path> FILE_UTIL_DETACHMENT_SOURCES =
+      Set.of(
+          ADAPTER_FCP_MAIN_JAVA.resolve("DataCarryingMessage.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("DdaAccessController.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetMessage.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("UnsupportedPluginMessage.java"),
+          ADAPTER_FCP_MAIN_JAVA.resolve("TestDdaCompleteMessage.java"));
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -307,6 +314,35 @@ class AdapterFcpBoundaryTest {
         EXPECTED_ADD_REF_IMPORTS,
         addRefImports,
         "AddRef must remain the narrow tool-owned FCP exception");
+  }
+
+  @Test
+  void adapterFcpMain_whenScanningFileUtilImports_expectNoRuntimeFileUtilLeak() throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source : FILE_UTIL_DETACHMENT_SOURCES) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      if (imports.contains("network.crypta.support.io.FileUtil")) {
+        violations.add(source + " -> network.crypta.support.io.FileUtil");
+      }
+    }
+
+    for (Path sourceFile : findJavaSources(repoRoot.resolve(ADAPTER_FCP_MAIN_JAVA))) {
+      if (FILE_UTIL_DETACHMENT_SOURCES.contains(repoRoot.relativize(sourceFile))) {
+        continue;
+      }
+      Set<String> imports = readImports(sourceFile);
+      if (imports.contains("network.crypta.support.io.FileUtil")) {
+        violations.add(repoRoot.relativize(sourceFile) + " -> network.crypta.support.io.FileUtil");
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        ":adapter-fcp main sources must not import network.crypta.support.io.FileUtil."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   @Test

@@ -116,6 +116,40 @@ class FCPMessageTest {
   }
 
   @Test
+  void
+      create_whenUnsupportedFcpPluginMessageUsesNonNumericDataLength_throwsMessageInvalidException() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.putSingle("DataLength", "bogus");
+    fs.setEndMarker("Data");
+
+    MessageInvalidException exception =
+        assertThrows(
+            MessageInvalidException.class,
+            () -> FCPMessage.create("FCPPluginMessage", fs, null, null));
+
+    assertEquals(ProtocolErrorMessage.ERROR_PARSING_NUMBER, exception.protocolCode);
+    assertEquals(IDENTIFIER, exception.ident);
+  }
+
+  @Test
+  void
+      create_whenUnsupportedFcpPluginMessageUsesNegativeDataLength_throwsMessageInvalidException() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.putSingle("DataLength", "-1");
+    fs.setEndMarker("Data");
+
+    MessageInvalidException exception =
+        assertThrows(
+            MessageInvalidException.class,
+            () -> FCPMessage.create("FCPPluginMessage", fs, null, null));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, exception.protocolCode);
+    assertEquals(IDENTIFIER, exception.ident);
+  }
+
+  @Test
   void create_whenComplexDirPersistenceForever_usesPersistentBucketFactory() throws Exception {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);

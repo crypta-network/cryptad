@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Random;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 
 /**
@@ -20,7 +20,7 @@ import org.slf4j.Logger;
  * deterministic marker files so external clients can deliberately prove that the node can touch the
  * desired directory tree.
  *
- * <p>Callers typically obtain a single instance from {@link FCPServer}, invoke {@link
+ * <p>Callers typically get a single instance from {@link FCPServer}, invoke {@link
  * #enqueueDDACheck(String, boolean, boolean)} to create a job, feed the result back through {@link
  * #registerTestDDAResult(String, boolean, boolean)}, and later query {@link #allowDDAFrom(File,
  * boolean)} whenever an upload or download request references new filesystem paths. All access to
@@ -84,7 +84,7 @@ final class DdaAccessController {
    * @return {@code true} when cached permissions or server defaults authorize the requested mode.
    */
   boolean allowDDAFrom(File filename, boolean writeRequest) {
-    String parentDirectory = FileUtil.getCanonicalFile(filename).getParent();
+    String parentDirectory = LegacyFileSupport.getCanonicalFile(filename).getParent();
     DirectoryAccess access;
     synchronized (checkedDirectories) {
       access = checkedDirectories.get(parentDirectory);
@@ -128,8 +128,8 @@ final class DdaAccessController {
    *
    * <p>The controller validates that the directory exists, rejects duplicate concurrent checks, and
    * constructs temporary marker files tailored to the requested read or write assertions. When read
-   * testing is enabled the method creates, populates, and schedules deletion of a random file so
-   * the job can later verify its contents. When write testing is enabled the job records a random
+   * testing is enabled, the method creates, populates, and schedules deletion of a random file so
+   * the job can later verify its contents. When write testing is enabled, the job records a random
    * filename for remote clients to manipulate. The returned job is ready for serialization through
    * FCP responses.
    *
@@ -137,11 +137,12 @@ final class DdaAccessController {
    * @param read {@code true} to include read verification, {@code false} to skip creating test
    *     data.
    * @param write {@code true} to request write verification, including unique temporary filenames.
-   * @return configured job containing marker filenames and expected file contents for validation.
+   * @return the configured job containing marker filenames and expected file contents for
+   *     validation.
    * @throws IllegalArgumentException if the path is invalid or already under active testing.
    */
   DdaCheckJob enqueueDDACheck(String path, boolean read, boolean write) {
-    File directory = FileUtil.getCanonicalFile(new File(path));
+    File directory = LegacyFileSupport.getCanonicalFile(new File(path));
     if (!directory.exists() || !directory.isDirectory()) {
       throw new IllegalArgumentException(
           "The specified path isn't a directory! or doesn't exist or the node doesn't have access"
@@ -191,14 +192,14 @@ final class DdaAccessController {
    * <p>This call mirrors {@link #enqueueDDACheck(String, boolean, boolean)} and should be used
    * after the job completes or times out so the controller can accept future checks targeting the
    * same directory. The method performs the same canonical-path validation and throws the standard
-   * exception if the directory is missing to prevent accidental clean-up of unrelated locations.
+   * exception if the directory is missing to prevent accidental cleanup of unrelated locations.
    *
-   * @param path canonical directory path previously supplied while enqueuing a DDA verification.
+   * @param path canonical directory path previously supplied while enqueuing DDA verification.
    * @return the job that was tracking verification state, or {@code null} when none was stored.
    * @throws IllegalArgumentException if the directory no longer exists or is not a directory.
    */
   DdaCheckJob popDDACheck(String path) {
-    File directory = FileUtil.getCanonicalFile(new File(path));
+    File directory = LegacyFileSupport.getCanonicalFile(new File(path));
     if (!directory.exists() || !directory.isDirectory()) {
       throw new IllegalArgumentException(
           "The specified path isn't a directory! or doesn't exist or the node doesn't have access"
@@ -214,9 +215,9 @@ final class DdaAccessController {
    *
    * <p>Call this method during shutdown or after fatal errors to guarantee that orphaned temporary
    * files do not accumulate on disk. The method iterates through the tracked jobs, attempts to
-   * delete any read marker files, and logs non-fatal failures while keeping the rest of the
-   * clean-up proceeding. Because the underlying map is synchronized, the cleanup safely coexists
-   * with other job lifecycle operations.
+   * delete any read marker files, and logs non-fatal failures while keeping the rest of the cleanup
+   * proceeding. Because the underlying map is synchronized, the cleanup safely coexists with other
+   * job lifecycle operations.
    */
   void freeDDAJobs() {
     synchronized (inTestDirectories) {

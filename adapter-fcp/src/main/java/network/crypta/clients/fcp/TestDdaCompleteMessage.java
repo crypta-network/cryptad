@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,9 +14,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This message is sent by the node after the DDA handshake sequence finishes. During the
  * exchange the client first asks for temporary filenames, writes test content, and echoes back
- * values so the node can validate both directions of access. This class encapsulates the final
- * outcome and conveys it in a compact {@link SimpleFieldSet} that the client parses before
- * unblocking further DDA usage. The instance is immutable after construction; the referenced {@link
+ * values so the node can validate both directions of access. This class encapsulates the outcome
+ * and conveys it in a compact {@link SimpleFieldSet} that the client parses before unblocking
+ * further DDA usage. The instance is immutable after construction; the referenced {@link
  * DdaCheckJob} must therefore be fully populated up front. Side effects, such as deleting temporary
  * files and registering the result with the connection handler, are performed when the field set is
  * built, mirroring historical behavior.
@@ -47,7 +47,7 @@ public class TestDdaCompleteMessage extends FCPMessage {
   /**
    * Field name set to {@code true} or {@code false} indicating whether the node successfully read
    * the client-provided test file from the negotiated directory. Callers rely on this key to decide
-   * whether subsequent DDA reads are permitted.
+   * whether later DDA reads are permitted.
    */
   public static final String READ_ALLOWED = "ReadDirectoryAllowed";
 
@@ -91,7 +91,7 @@ public class TestDdaCompleteMessage extends FCPMessage {
    *
    * <p>When a read filename is present, the method compares the client's echoed content with the
    * original expectation, records the boolean outcome, and deletes the temporary read file. For
-   * write checks it reads back the node-side file, compares it to the staged content, and infers
+   * writing checks it reads back the node-side file, compares it to the staged content, and infers
    * whether the client possessed write access. After both checks, the handler is notified so higher
    * layers can update DDA capability caches. The returned field set contains directory information
    * plus {@link #READ_ALLOWED} and {@link #WRITE_ALLOWED} keys when applicable.
@@ -110,7 +110,7 @@ public class TestDdaCompleteMessage extends FCPMessage {
 
     if (checkJob.readFilename != null) {
       isReadAllowed = checkJob.readContent.equals(readContentFromClient);
-      // cleanup in any case : we created it!... let's hope the client will do the same on its side.
+      // cleanup in any case: we created it!... let's hope the client will do the same on its side.
       try {
         Files.deleteIfExists(checkJob.readFilename.toPath());
       } catch (IOException e) {
@@ -123,7 +123,7 @@ public class TestDdaCompleteMessage extends FCPMessage {
       File maybeWrittenFile = checkJob.writeFilename;
       if (maybeWrittenFile.exists() && maybeWrittenFile.isFile() && maybeWrittenFile.canRead()) {
         try {
-          String existingContent = FileUtil.readUTF(maybeWrittenFile).toString().trim();
+          String existingContent = LegacyFileSupport.readUTF(maybeWrittenFile).toString().trim();
           isWriteAllowed = checkJob.writeContent.equals(existingContent);
         } catch (IOException e) {
           LOG.error(
@@ -159,8 +159,8 @@ public class TestDdaCompleteMessage extends FCPMessage {
    * should never be executed as a client-originated command.
    *
    * <p>Any attempt to process this message via the generic execution path signals a protocol
-   * misuse. The exception includes the message name so upstream logging and diagnostics can
-   * pinpoint the source frame that violated the flow. No side effects occur prior to throwing the
+   * misuse. The exception includes the message name, so upstream logging and diagnostics can
+   * pinpoint the source frame that violated the flow. No side effects occur before throwing the
    * exception.
    *
    * @param handler connection handler that attempted to execute the message; ignored because the
