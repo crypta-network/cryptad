@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.io.ArrayBucket;
@@ -20,7 +19,7 @@ class ClientPutPutterFactoryTest {
 
   @Test
   void create_whenExecutionSpecProvided_delegatesToRuntimeSupport() throws Exception {
-    ClientPutCallback callback = mock(ClientPutCallback.class);
+    FcpInsertCallback callback = mock(FcpInsertCallback.class);
     RequestClient requestClient = mock(RequestClient.class);
     when(callback.getRequestClient()).thenReturn(requestClient);
     FcpInsertRuntimeSupport runtimeSupport = mock(FcpInsertRuntimeSupport.class);

@@ -1,7 +1,11 @@
 package network.crypta.clients.fcp;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
@@ -12,6 +16,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -162,6 +168,32 @@ class PersistentRequestClientTest {
     verify(callback).notifyFailure(request);
   }
 
+  @Test
+  void finishedClientRequest_whenFailedDownloadCompleted_cachesCanonicalLongFailureMessage()
+      throws Exception {
+    PersistentRequestClient client =
+        new PersistentRequestClient(
+            "client", mock(FCPConnectionHandler.class), true, null, Persistence.REBOOT, null);
+    ClientGet download = newPersistentClientGet("download-1", Persistence.REBOOT);
+    client.register(download);
+    GetFailedMessage failureMessage =
+        new GetFailedMessage(
+            new FetchException(FetchExceptionMode.ALL_DATA_NOT_FOUND, "details"),
+            "download-1",
+            false);
+    download.state().setFailedMessage(failureMessage);
+
+    client.finishedClientRequest(download);
+
+    RequestStatusCache cache = client.getRequestStatusCache();
+    assertNotNull(cache);
+    List<RequestStatus> statuses = new ArrayList<>();
+    cache.addTo(statuses);
+    DownloadRequestStatus status = assertInstanceOf(DownloadRequestStatus.class, statuses.get(0));
+    assertEquals(failureMessage.getShortFailedMessage(), status.getFailureReason(false));
+    assertEquals(failureMessage.getLongFailedMessage(), status.getFailureReason(true));
+  }
+
   private static final class TestClientRequest extends ClientRequest {
     int pendingMessagesCalls;
     int cancelCalls;
@@ -197,7 +229,7 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return null;
     }
 
@@ -295,6 +327,24 @@ class PersistentRequestClientTest {
     public void requestWasRemoved(ClientContext context) {
       requestRemovedCalls++;
     }
+  }
+
+  private static ClientGet newPersistentClientGet(String identifier, Persistence persistence)
+      throws Exception {
+    ClientGet request = new ClientGet();
+    ClientGetTestProfiles.setFetchConfig(request, new ClientGetFetchConfig());
+    ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.NONE);
+    setField(ClientRequest.class, request, "identifier", identifier);
+    setField(ClientRequest.class, request, "persistence", persistence);
+    setField(ClientRequest.class, request, "uri", new FreenetURI("KSK@" + identifier));
+    return request;
+  }
+
+  private static void setField(Class<?> owner, Object target, String name, Object value)
+      throws ReflectiveOperationException {
+    Field field = owner.getDeclaredField(name);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   private static final class TestRequestStatus extends RequestStatus {

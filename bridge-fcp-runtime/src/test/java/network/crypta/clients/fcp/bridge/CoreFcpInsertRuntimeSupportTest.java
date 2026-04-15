@@ -6,8 +6,10 @@ import java.io.DataOutputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
+import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -15,18 +17,22 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.clients.fcp.ClientPutDir;
 import network.crypta.clients.fcp.ClientPutDirExecution;
 import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
+import network.crypta.clients.fcp.ClientPutExecution;
+import network.crypta.clients.fcp.ClientPutExecutionSpec;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ClientRequestParams;
 import network.crypta.clients.fcp.DefaultFcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpCompatibilityAnalysis;
 import network.crypta.clients.fcp.FcpCompatibilityMode;
 import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
+import network.crypta.clients.fcp.FcpInsertCallback;
 import network.crypta.clients.fcp.FcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpInsertContextLimits;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -271,6 +277,48 @@ class CoreFcpInsertRuntimeSupportTest {
 
     byte[] serialized = serialize(execution);
 
+    assertTrue(serialized.length > 0);
+  }
+
+  @Test
+  void singleFileExecution_whenLegacyPutterSerialized_keepsSerializableCallbackAdapter()
+      throws Exception {
+    FcpInsertCallback callback = mock(FcpInsertCallback.class, withSettings().serializable());
+    RequestClient requestClient = mock(RequestClient.class, withSettings().serializable());
+    RandomAccessBucket uploadBucket = mock(RandomAccessBucket.class, withSettings().serializable());
+    when(callback.getRequestClient()).thenReturn(requestClient);
+    ClientPutExecutionSpec executionSpec =
+        new ClientPutExecutionSpec(
+            callback,
+            new ClientRequestParams(
+                new FreenetURI("CHK", "target"),
+                "put-file",
+                0,
+                (short) 1,
+                Persistence.REBOOT,
+                false,
+                null,
+                false),
+            new DefaultFcpInsertContextHandle(
+                new SimpleEventProducer(),
+                new FcpInsertContextLimits(4, 10, 11),
+                new FcpInsertOptions(
+                    new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+                    new FcpInsertTuningOptions(
+                        true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
+                    null)),
+            uploadBucket,
+            new ClientMetadata("text/plain"),
+            false,
+            new ClientPutExecutionSpec.ExecutionOptions("index.html", false, null, -1));
+    CoreFcpInsertRuntimeSupport support =
+        new CoreFcpInsertRuntimeSupport(core, () -> transferAccess);
+
+    ClientPutExecution execution = support.createSingleFileExecution(executionSpec);
+    Object legacyPutter = execution.legacySerializableRequester();
+    byte[] serialized = serialize(legacyPutter);
+
+    assertInstanceOf(ClientPutter.class, legacyPutter);
     assertTrue(serialized.length > 0);
   }
 

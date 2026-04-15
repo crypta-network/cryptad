@@ -30,6 +30,7 @@ import network.crypta.clients.fcp.ClientGetExecution;
 import network.crypta.clients.fcp.ClientGetExecutionSpec;
 import network.crypta.clients.fcp.ClientGetFetchConfig;
 import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
+import network.crypta.clients.fcp.FcpRequesterHandle;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.keys.FreenetURI;
@@ -227,6 +228,7 @@ record CoreFcpFetchRuntimeSupport(
 
     private transient Supplier<ClientContext> clientContextSupplier;
     private final ClientGetter getter;
+    private FcpRequesterHandle requesterHandle;
 
     private CoreClientGetExecution(
         Supplier<ClientContext> clientContextSupplier, ClientGetExecutionSpec executionSpec)
@@ -240,11 +242,15 @@ record CoreFcpFetchRuntimeSupport(
               callback, executionSpec.uri(), fetchContext, executionSpec.priorityClass());
       ClientGetterOptions options = createOptions(executionSpec, fetchContext);
       this.getter = new ClientGetter(getterRequest, options);
+      this.requesterHandle = new CoreRequesterHandle(getter);
     }
 
     @Override
-    public ClientRequester requester() {
-      return getter;
+    public FcpRequesterHandle requester() {
+      if (requesterHandle == null) {
+        requesterHandle = new CoreRequesterHandle(getter);
+      }
+      return requesterHandle;
     }
 
     @Override
@@ -305,6 +311,18 @@ record CoreFcpFetchRuntimeSupport(
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
       in.defaultReadObject();
       clientContextSupplier = null;
+      if (requesterHandle == null) {
+        requesterHandle = new CoreRequesterHandle(getter);
+      }
+    }
+
+    private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+      if (context instanceof ClientContext clientContext) {
+        return clientContext;
+      }
+      String contextType = context == null ? "null" : context.getClass().getName();
+      throw new IllegalArgumentException(
+          "FCP GET execution resume requires ClientContext but got " + contextType);
     }
 
     private ClientGetterOptions createOptions(
@@ -374,19 +392,20 @@ record CoreFcpFetchRuntimeSupport(
     }
   }
 
-  @SuppressWarnings("ClassCanBeRecord")
   private static final class CallbackSuccessExecution implements ClientGetExecution {
     @Serial private static final long serialVersionUID = 1L;
 
     private final ClientGetter getter;
+    private final FcpRequesterHandle requesterHandle;
 
     private CallbackSuccessExecution(ClientGetter getter) {
       this.getter = Objects.requireNonNull(getter);
+      this.requesterHandle = new CoreRequesterHandle(getter);
     }
 
     @Override
-    public ClientRequester requester() {
-      return getter;
+    public FcpRequesterHandle requester() {
+      return requesterHandle;
     }
 
     @Override
@@ -441,12 +460,44 @@ record CoreFcpFetchRuntimeSupport(
     }
   }
 
-  private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
-    if (context instanceof ClientContext clientContext) {
-      return clientContext;
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CoreRequesterHandle implements FcpRequesterHandle {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final ClientRequester requester;
+
+    private CoreRequesterHandle(ClientRequester requester) {
+      this.requester = Objects.requireNonNull(requester);
     }
-    String contextType = context == null ? "null" : context.getClass().getName();
-    throw new IllegalArgumentException(
-        "FCP GET execution resume requires ClientContext but got " + contextType);
+
+    @Override
+    public void cancel(ClientContext context) {
+      requester.cancel(context);
+    }
+
+    @Override
+    public void setPriorityClass(short priorityClass, ClientContext context) {
+      requester.setPriorityClass(priorityClass, context);
+    }
+
+    @Override
+    public void setExternalRequestIdentifier(String externalRequestIdentifier) {
+      requester.setExternalRequestIdentifier(externalRequestIdentifier);
+    }
+
+    @Override
+    public void onResume(ClientContext context) throws ResumeFailedException {
+      requester.onResume(context);
+    }
+
+    @Override
+    public void onShutdown(ClientContext context) {
+      requester.onShutdown(context);
+    }
+
+    @Override
+    public String toString() {
+      return requester.toString();
+    }
   }
 }

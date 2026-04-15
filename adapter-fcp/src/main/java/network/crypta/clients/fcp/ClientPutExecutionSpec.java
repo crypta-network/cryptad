@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.RandomAccessBucket;
 
@@ -20,7 +19,7 @@ import network.crypta.support.api.RandomAccessBucket;
  */
 public final class ClientPutExecutionSpec {
   /** Callback surface that receives progress, completion, and failure notifications. */
-  private final ClientPutCallback callback;
+  private final FcpInsertCallback callback;
 
   /** Detached request identity and persistence metadata for the insert. */
   private final ClientRequestParams requestParams;
@@ -57,7 +56,7 @@ public final class ClientPutExecutionSpec {
    * @param executionOptions nested option group containing single-file putter settings
    */
   public ClientPutExecutionSpec(
-      ClientPutCallback callback,
+      FcpInsertCallback callback,
       ClientRequestParams requestParams,
       FcpInsertContextHandle insertContext,
       RandomAccessBucket data,
@@ -81,7 +80,7 @@ public final class ClientPutExecutionSpec {
    *
    * @return callback to use for this single-file insert execution
    */
-  public ClientPutCallback callback() {
+  public FcpInsertCallback callback() {
     return callback;
   }
 

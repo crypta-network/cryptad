@@ -12,8 +12,6 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
-import network.crypta.client.async.BaseClientPutter;
-import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
@@ -33,10 +31,9 @@ import org.slf4j.LoggerFactory;
  * wiring FCP-facing identifiers, scheduling metadata, persistence constraints, and node callbacks
  * into a single state machine. Instances travel through connection-bound and forever-persistent
  * modes, reattaching to {@link network.crypta.client.async.ClientContext ClientContext}s after
- * deserialization, driving {@link BaseClientPutter} progress, and translating internal events into
- * client-visible FCP messages. It is designed to be thread-aware: mutations happen under
- * synchronization, while outbound messages are dispatched via handler abstractions to avoid
- * deadlocks.
+ * deserialization, driving insert progress, and translating internal events into client-visible FCP
+ * messages. It is designed to be thread-aware: mutations happen under synchronization, while
+ * outbound messages are dispatched via handler abstractions to avoid deadlocks.
  *
  * <p>Typical usage involves subclassing to provide data-specific logic (single file or directory
  * tree) while relying on {@code ClientPutBase} to manage retries, metadata capture, and reporting.
@@ -54,7 +51,9 @@ import org.slf4j.LoggerFactory;
  * @see ClientPutDir
  */
 public abstract class ClientPutBase extends ClientRequest
-    implements ClientPutCallback, ClientEventListener {
+    implements FcpInsertCallback,
+        ClientEventListener,
+        network.crypta.client.async.ClientPutCallback {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutBase.class);
   private static final String LEGACY_INSERT_CONTEXT_TYPE = "network.crypta.client.InsertContext";
   private static final String FIELD_SUCCEEDED = "succeeded";
@@ -109,8 +108,8 @@ public abstract class ClientPutBase extends ClientRequest
 
   /**
    * Final URI published by the inserter. The field remains {@code null} until {@link
-   * #onGeneratedURI(FreenetURI, BaseClientPutter)} runs, after which it never changes. Subclasses
-   * and clients should treat it as immutable and safe for reuse across threads.
+   * #onGeneratedURI(FreenetURI, FcpInsertCallbackState)} runs, after which it never changes.
+   * Subclasses and clients should treat it as immutable and safe for reuse across threads.
    */
   protected FreenetURI generatedURI;
 
@@ -329,7 +328,7 @@ public abstract class ClientPutBase extends ClientRequest
    * simply triggers {@link #cancel(network.crypta.client.async.ClientContext)
    * cancel(ClientContext)} for requests that were declared {@link Persistence#CONNECTION}.
    * Persistent and forever requests ignore the event because they expect to be resumed through
-   * {@link network.crypta.client.async.ClientRequester} after deserialization.
+   * their detached requester handle after deserialization.
    *
    * @param context client context that supplies cancellation helpers and resource pools; the value
    *     may be reused across many requests and must not be {@code null}
@@ -353,7 +352,7 @@ public abstract class ClientPutBase extends ClientRequest
    *     debugging
    */
   @Override
-  public void onSuccess(BaseClientPutter state) {
+  public void onSuccess(FcpInsertCallbackState state) {
     FreenetURI resolvedGeneratedUri = generatedUriOrFallback(state);
     synchronized (this) {
       // Including these helps with certain bugs...
@@ -372,7 +371,12 @@ public abstract class ClientPutBase extends ClientRequest
     if (client != null) client.notifySuccess(this);
   }
 
-  private FreenetURI generatedUriOrFallback(BaseClientPutter state) {
+  @Override
+  public final void onSuccess(network.crypta.client.async.BaseClientPutter state) {
+    onSuccess(legacyState(state));
+  }
+
+  private FreenetURI generatedUriOrFallback(FcpInsertCallbackState state) {
     synchronized (this) {
       if (generatedURI != null) {
         return generatedURI;
@@ -403,7 +407,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param state inserter that triggered the failure; used only for logging context
    */
   @Override
-  public void onFailure(InsertException e, BaseClientPutter state) {
+  public void onFailure(InsertException e, FcpInsertCallbackState state) {
     if (finished) return;
     synchronized (this) {
       started = true; // Keep the started flag set for resume compatibility.
@@ -419,6 +423,12 @@ public abstract class ClientPutBase extends ClientRequest
     if (client != null) client.notifyFailure(this);
   }
 
+  @Override
+  public final void onFailure(
+      InsertException e, network.crypta.client.async.BaseClientPutter state) {
+    onFailure(e, legacyState(state));
+  }
+
   /**
    * Accepts the newly derived final URI from the inserter and propagates it to listeners and caches
    * exactly once.
@@ -432,7 +442,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param state inserter providing the URI; used for diagnostics only
    */
   @Override
-  public void onGeneratedURI(FreenetURI uri, BaseClientPutter state) {
+  public void onGeneratedURI(FreenetURI uri, FcpInsertCallbackState state) {
     synchronized (this) {
       if (generatedURI != null) {
         if (!uri.equals(generatedURI))
@@ -453,12 +463,18 @@ public abstract class ClientPutBase extends ClientRequest
     }
   }
 
+  @Override
+  public final void onGeneratedURI(
+      FreenetURI uri, network.crypta.client.async.BaseClientPutter state) {
+    onGeneratedURI(uri, legacyState(state));
+  }
+
   /**
    * Returns the final URI assigned to this insert once {@link #onGeneratedURI(FreenetURI,
-   * BaseClientPutter)} has run. Callers should treat the value as immutable and thread-safe because
-   * access is synchronized, and they should avoid caching {@code null} results since future calls
-   * may return a valid URI after the inserter finishes. The method never throws and therefore fits
-   * polling loops or status pages.
+   * FcpInsertCallbackState)} has run. Callers should treat the value as immutable and thread-safe
+   * because access is synchronized, and they should avoid caching {@code null} results since future
+   * calls may return a valid URI after the inserter finishes. The method never throws and therefore
+   * fits polling loops or status pages.
    *
    * @return generated URI or {@code null} when the insert has not produced one yet
    */
@@ -478,7 +494,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param state inserter reporting metadata generation; used for logging context only
    */
   @Override
-  public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
+  public void onGeneratedMetadata(Bucket metadata, FcpInsertCallbackState state) {
     boolean delete = false;
     synchronized (this) {
       if (generatedURI != null)
@@ -495,6 +511,12 @@ public abstract class ClientPutBase extends ClientRequest
     } else {
       trySendGeneratedMetadataMessage(metadata, null, null);
     }
+  }
+
+  @Override
+  public final void onGeneratedMetadata(
+      Bucket metadata, network.crypta.client.async.BaseClientPutter state) {
+    onGeneratedMetadata(metadata, legacyState(state));
   }
 
   /**
@@ -545,8 +567,8 @@ public abstract class ClientPutBase extends ClientRequest
   }
 
   /**
-   * Consumes asynchronous events emitted by {@link BaseClientPutter} and converts them into a
-   * stable stream of FCP messages according to the active verbosity mask.
+   * Consumes asynchronous events emitted by the live insert runtime and converts them into a stable
+   * stream of FCP messages according to the active verbosity mask.
    *
    * <p>The method is careful to short-circuit quickly when the request has already finished. It
    * handles four event types—splitfile progress, compression start/end, and expected hashes—and
@@ -634,11 +656,11 @@ public abstract class ClientPutBase extends ClientRequest
    * when clients prefer minimal updates. It is safe to call even when the final URI has not been
    * persisted yet because the method reads the current value under synchronization.
    *
-   * @param putter inserter announcing fetchability; it is not dereferenced here but kept for API
-   *     symmetry with the callback interface
+   * @param state minimal bridge-owned state view announcing fetchability; it is not dereferenced
+   *     here but kept for API symmetry with the callback interface
    */
   @Override
-  public void onFetchable(BaseClientPutter putter) {
+  public void onFetchable(FcpInsertCallbackState state) {
     if (finished) return;
     if ((verbosity & VERBOSITY_PUT_FETCHABLE) == VERBOSITY_PUT_FETCHABLE) {
       FreenetURI temp;
@@ -647,6 +669,29 @@ public abstract class ClientPutBase extends ClientRequest
       }
       PutFetchableMessage msg = new PutFetchableMessage(identifier, global, temp);
       trySendProgressMessage(msg, VERBOSITY_PUT_FETCHABLE, null);
+    }
+  }
+
+  @Override
+  public final void onFetchable(network.crypta.client.async.BaseClientPutter state) {
+    onFetchable(legacyState(state));
+  }
+
+  private static FcpInsertCallbackState legacyState(
+      network.crypta.client.async.BaseClientPutter state) {
+    return state == null ? null : new LegacyInsertCallbackState(state);
+  }
+
+  private record LegacyInsertCallbackState(network.crypta.client.async.BaseClientPutter putter)
+      implements FcpInsertCallbackState {
+    @Override
+    public FreenetURI getURI() {
+      return putter.getURI();
+    }
+
+    @Override
+    public String toString() {
+      return putter.toString();
     }
   }
 

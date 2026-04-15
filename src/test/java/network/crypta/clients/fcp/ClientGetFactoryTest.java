@@ -6,7 +6,6 @@ import java.net.Socket;
 import java.nio.file.Path;
 import java.util.Arrays;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -44,7 +43,7 @@ class ClientGetFactoryTest {
 
   @Mock private FcpFetchRuntimeSupport fetchRuntimeSupport;
   @Mock private ClientGetExecution execution;
-  @Mock private ClientRequester requester;
+  @Mock private FcpRequesterHandle requester;
   @Mock private TransferAccessPort transferAccess;
 
   @Test
@@ -464,7 +463,7 @@ class ClientGetFactoryTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return null;
     }
 

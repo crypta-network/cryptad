@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.keys.FreenetURI;
@@ -32,7 +31,7 @@ class ClientRequestModifyRequestTest {
     when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     PersistentRequestClient client =
         spy(
             new PersistentRequestClient(
@@ -68,7 +67,7 @@ class ClientRequestModifyRequestTest {
     when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     PersistentRequestClient client =
         spy(
             new PersistentRequestClient(
@@ -181,9 +180,9 @@ class ClientRequestModifyRequestTest {
   }
 
   private static final class TestClientRequest extends ClientRequest {
-    private final ClientRequester requester;
+    private final FcpRequesterHandle requester;
 
-    private TestClientRequest(ConstructorInit init, ClientRequester requester) {
+    private TestClientRequest(ConstructorInit init, FcpRequesterHandle requester) {
       super(init);
       this.requester = requester;
     }
@@ -193,7 +192,7 @@ class ClientRequestModifyRequestTest {
         short priorityClass,
         String clientToken,
         PersistentRequestClient client,
-        ClientRequester requester) {
+        FcpRequesterHandle requester) {
       return new TestClientRequest(
           prepareConstructorInit(
               new ClientRequestParams(
@@ -223,7 +222,7 @@ class ClientRequestModifyRequestTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return requester;
     }
 

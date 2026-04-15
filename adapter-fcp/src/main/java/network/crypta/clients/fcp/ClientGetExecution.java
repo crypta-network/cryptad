@@ -5,7 +5,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
 import network.crypta.client.FetchException;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -50,16 +49,16 @@ public interface ClientGetExecution extends Serializable {
   void onResume(PersistentRequestRuntimeContext context);
 
   /**
-   * Returns the low-level requester currently backing this execution.
+   * Returns the detached requester handle currently backing this execution.
    *
    * <p>The request lifecycle uses this value for diagnostics, persistent tagging, and other legacy
-   * integration points that still operate on the common requester abstraction. The returned object
-   * belongs to the live runtime execution and should be treated as an observational handle rather
-   * than as an ownership transfer.
+   * integration points that still operate on the common requester abstraction. The returned handle
+   * remains bridge-owned and should be treated as an observational/control handle rather than as an
+   * ownership transfer.
    *
-   * @return runtime-backed requester associated with this fetch attempt.
+   * @return detached requester handle associated with this fetch attempt.
    */
-  ClientRequester requester();
+  FcpRequesterHandle requester();
 
   /**
    * Starts the live fetch using the runtime-bound execution context.
