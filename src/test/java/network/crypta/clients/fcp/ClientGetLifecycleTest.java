@@ -85,8 +85,7 @@ class ClientGetLifecycleTest {
   }
 
   @Test
-  void setSuccessForMigration_whenDirectMismatch_expectResumeFailedExceptionAndBucketStored()
-      throws Exception {
+  void setSuccessForMigration_whenDirectMismatch_expectResumeFailedExceptionAndBucketStored() {
     // Arrange
     ClientGet request = new ClientGet();
     Bucket bucket = Mockito.mock(Bucket.class);
@@ -101,7 +100,7 @@ class ClientGetLifecycleTest {
   }
 
   @Test
-  void setSuccessForMigration_whenChunked_expectResumeFailedException() throws Exception {
+  void setSuccessForMigration_whenChunked_expectResumeFailedException() {
     // Arrange
     ClientGet request = new ClientGet();
     //noinspection resource
