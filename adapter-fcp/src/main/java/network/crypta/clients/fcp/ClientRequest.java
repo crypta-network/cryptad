@@ -7,7 +7,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Locale;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
@@ -50,7 +49,7 @@ import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
  *
  * @see RequestIdentifier
  * @see PersistentRequestClient
- * @see ClientRequester
+ * @see FcpRequesterHandle
  */
 public abstract class ClientRequest implements Serializable, PersistentRequestHandle {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequest.class);
@@ -458,19 +457,19 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   /**
    * Cancels this request and releases any associated resources.
    *
-   * <p>If the underlying {@link ClientRequester} is still active it is asked to cancel itself via
-   * the supplied {@link ClientContext}. Persistent state and any cached buckets are then freed by
+   * <p>If the underlying requester handle is still active, it is asked to cancel itself via the
+   * supplied {@link ClientContext}. Persistent state and any cached buckets are then freed by
    * calling {@link #freeData()}. This method is idempotent and may be invoked after completion when
    * the caller no longer cares about remaining notifications.
    *
    * @param context client context used when propagating the cancellation into the core node
    */
   public void cancel(ClientContext context) {
-    ClientRequester cr = getClientRequest();
+    FcpRequesterHandle requester = getClientRequest();
     // It might have been finished on startup.
     if (LOG.isDebugEnabled())
-      LOG.debug("Cancelling {} for {} persistence = {}", cr, this, persistence);
-    if (cr != null) cr.cancel(context);
+      LOG.debug("Cancelling {} for {} persistence = {}", requester, this, persistence);
+    if (requester != null) requester.cancel(context);
     freeData();
   }
 
@@ -547,11 +546,11 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   }
 
   /**
-   * Assigns this request's diagnostics identifier to a low-level requester.
+   * Assigns this request's diagnostics identifier to a detached requester handle.
    *
    * @param requester requester that should carry the diagnostics identifier
    */
-  protected final void applyDiagnosticIdentifier(ClientRequester requester) {
+  protected final void applyDiagnosticIdentifier(FcpRequesterHandle requester) {
     if (requester == null) {
       return;
     }
@@ -559,15 +558,15 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   }
 
   /**
-   * Returns the underlying {@link ClientRequester} that performs the actual network work.
+   * Returns the underlying requester handle that performs the actual network work.
    *
    * <p>Subclasses typically create a concrete requester in {@link #start(ClientContext)} and return
    * it here so that lifecycle callbacks such as {@link #cancel(ClientContext)} and {@link
    * #onShutdown(ClientContext)} can delegate to it.
    *
-   * @return currently associated requester instance, or {@code null} when no requester is active
+   * @return currently associated requester handle, or {@code null} when no requester is active
    */
-  protected abstract ClientRequester getClientRequest();
+  protected abstract FcpRequesterHandle getClientRequest();
 
   /**
    * Invoked when a completed request is dropped without explicit client acknowledgement.
@@ -714,7 +713,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * Returns whether this request has completed successfully according to the subclass semantics.
    *
    * <p>Implementations typically base this on internal counters or status codes reported by the
-   * {@link ClientRequester}. It must return {@code false} while the request is still running.
+   * requester handle. It must return {@code false} while the request is still running.
    *
    * @return {@code true} when the request has finished and was considered successful
    */
@@ -787,7 +786,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
       return false;
     }
     priorityClass = newPriorityClass;
-    ClientRequester requester = getClientRequest();
+    FcpRequesterHandle requester = getClientRequest();
     requester.setPriorityClass(priorityClass, server.serverRuntimeSupport().clientContext());
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
@@ -1055,8 +1054,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   /**
    * Reconnects this request to runtime services after it has been deserialized.
    *
-   * <p>This method is invoked by the owning {@link ClientRequester} immediately after the request
-   * has been read from persistent storage. It recreates transient collaborators such as the {@link
+   * <p>This method is invoked by the owning requester immediately after the request has been read
+   * from persistent storage. It recreates transient collaborators such as the {@link
    * PersistentRequestClient}, low-level {@link RequestClient} and any subclass state via {@link
    * #innerResume(ClientContext)} before registering the request with the persistent-request
    * coordinator again.
@@ -1073,8 +1072,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   /**
    * Reconnects this request to runtime services after it has been deserialized.
    *
-   * <p>This method is invoked by the owning {@link ClientRequester} immediately after the request
-   * has been read from persistent storage. It recreates transient collaborators such as the {@link
+   * <p>This method is invoked by the owning requester immediately after the request has been read
+   * from persistent storage. It recreates transient collaborators such as the {@link
    * PersistentRequestClient}, low-level {@link RequestClient} and any subclass state via {@link
    * #innerResume(ClientContext)} before registering the request with the persistent-request
    * coordinator again.
@@ -1089,8 +1088,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
             context.persistentRequestCoordinator.getOrCreateClientHandle(global, clientName));
     lowLevelClient = client.lowLevelClient(realTime);
     innerResume(context);
-    ClientRequester req = getClientRequest();
-    if (req != null) req.onResume(context); // Can legally be null.
+    FcpRequesterHandle requester = getClientRequest();
+    if (requester != null) requester.onResume(context); // Can legally be null.
     context.persistentRequestCoordinator.resumePersistentRequest(this, global, clientName);
   }
 
@@ -1098,8 +1097,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * Performs subclass-specific reattachment work during {@link #onResume(ClientContext)}.
    *
    * <p>Implementations should recreate transient structures that cannot be serialized directly,
-   * such as bucket references or auxiliary state, but must not call back into the {@link
-   * ClientRequester} tree to avoid recursion.
+   * such as bucket references or auxiliary state, but must not call back into the requester tree to
+   * avoid recursion.
    *
    * @param context client context providing access to node-wide services required to resume
    * @throws ResumeFailedException if required, resources cannot be reacquired during resumption
@@ -1150,7 +1149,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    *
    * @param dis input stream positioned at the start of a client-detail record
    * @param reqID identifier describing the request type and queue used during serialization
-   * @param fetchRuntimeSupport fetch runtime support used to rebuild detached GET execution state
+   * @param fetchRuntimeSupport fetch runtime support used to rebuild the detached GET execution
+   *     state
    * @param context client context used to create any dependent objects during restart
    * @param checker checksum helper responsible for validating the integrity of the serialized data
    * @return reconstructed request instance, or {@code null} when the type is not supported here
@@ -1176,7 +1176,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    *
    * <p>Subclasses can override this hook to flush any outstanding state to disk or perform
    * bookkeeping that cannot be recovered automatically after restart. The default implementation
-   * forwards the call to the underlying {@link ClientRequester}, if present.
+   * forwards the call to the underlying requester handle, if present.
    *
    * @param context client context giving access to persistence mechanisms used during shutdown
    */
@@ -1190,12 +1190,12 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    *
    * <p>Subclasses can override this hook to flush any outstanding state to disk or perform
    * bookkeeping that cannot be recovered automatically after restart. The default implementation
-   * forwards the call to the underlying {@link ClientRequester}, if present.
+   * forwards the call to the underlying requester handle, if present.
    *
    * @param context client context giving access to persistence mechanisms used during shutdown
    */
   public void onShutdown(ClientContext context) {
-    ClientRequester request = getClientRequest();
-    if (request != null) request.onShutdown(context);
+    FcpRequesterHandle requester = getClientRequest();
+    if (requester != null) requester.onShutdown(context);
   }
 }

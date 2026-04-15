@@ -1,7 +1,9 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
+import java.io.Serializable;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
@@ -9,7 +11,9 @@ import java.util.function.Supplier;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
@@ -21,6 +25,7 @@ import network.crypta.client.async.InsertRequestParams;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.async.PersistentClientCallback;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
@@ -36,20 +41,25 @@ import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FcpCompatibilityAnalysis;
 import network.crypta.clients.fcp.FcpCompatibilityMode;
 import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
+import network.crypta.clients.fcp.FcpInsertCallback;
+import network.crypta.clients.fcp.FcpInsertCallbackState;
 import network.crypta.clients.fcp.FcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpInsertContextLimits;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
+import network.crypta.clients.fcp.FcpRequesterHandle;
 import network.crypta.clients.fcp.SubscribeUSKCallbacks;
 import network.crypta.clients.fcp.SubscribeUSKMessage;
 import network.crypta.clients.fcp.UskSubscriptionHandle;
+import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
@@ -290,7 +300,7 @@ record CoreFcpInsertRuntimeSupport(
       ClientPutterRequest putterRequest =
           new ClientPutterRequest(
               new InsertRequestParams(
-                  spec.callback(),
+                  new CoreInsertCallbackAdapter(spec.callback()),
                   spec.targetURI(),
                   toRuntimeInsertContext(spec.insertContext()),
                   spec.requestParams().priorityClass()),
@@ -311,7 +321,12 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public ClientRequester requester() {
+    public FcpRequesterHandle requester() {
+      return new CoreRequesterHandle(putter);
+    }
+
+    @Override
+    public Object legacySerializableRequester() {
       return putter;
     }
 
@@ -348,7 +363,12 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public ClientRequester requester() {
+    public FcpRequesterHandle requester() {
+      return new CoreRequesterHandle(putter);
+    }
+
+    @Override
+    public Object legacySerializableRequester() {
       return putter;
     }
 
@@ -400,7 +420,7 @@ record CoreFcpInsertRuntimeSupport(
     ManifestPutterParams params =
         new ManifestPutterParams(
             new InsertRequestParams(
-                spec.callback(),
+                new CoreInsertCallbackAdapter(spec.callback()),
                 spec.requestParams().uri(),
                 toRuntimeInsertContext(spec.insertContext()),
                 spec.priorityClass()),
@@ -410,6 +430,122 @@ record CoreFcpInsertRuntimeSupport(
             context);
     return DefaultManifestPutter.create(
         params, spec.requestParams().persistence() == Persistence.FOREVER);
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CoreRequesterHandle implements FcpRequesterHandle {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final ClientRequester requester;
+
+    private CoreRequesterHandle(ClientRequester requester) {
+      this.requester = Objects.requireNonNull(requester);
+    }
+
+    @Override
+    public void cancel(ClientContext context) {
+      requester.cancel(context);
+    }
+
+    @Override
+    public void setPriorityClass(short priorityClass, ClientContext context) {
+      requester.setPriorityClass(priorityClass, context);
+    }
+
+    @Override
+    public void setExternalRequestIdentifier(String externalRequestIdentifier) {
+      requester.setExternalRequestIdentifier(externalRequestIdentifier);
+    }
+
+    @Override
+    public void onResume(ClientContext context) throws ResumeFailedException {
+      requester.onResume(context);
+    }
+
+    @Override
+    public void onShutdown(ClientContext context) {
+      requester.onShutdown(context);
+    }
+
+    @Override
+    public String toString() {
+      return requester.toString();
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CoreInsertCallbackAdapter
+      implements ClientPutCallback, PersistentClientCallback, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final FcpInsertCallback callback;
+
+    private CoreInsertCallbackAdapter(FcpInsertCallback callback) {
+      this.callback = Objects.requireNonNull(callback);
+    }
+
+    @Override
+    public void onGeneratedURI(FreenetURI uri, BaseClientPutter state) {
+      callback.onGeneratedURI(uri, wrapState(state));
+    }
+
+    @Override
+    public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
+      callback.onGeneratedMetadata(metadata, wrapState(state));
+    }
+
+    @Override
+    public void onFetchable(BaseClientPutter state) {
+      callback.onFetchable(wrapState(state));
+    }
+
+    @Override
+    public void onSuccess(BaseClientPutter state) {
+      callback.onSuccess(wrapState(state));
+    }
+
+    @Override
+    public void onFailure(InsertException e, BaseClientPutter state) {
+      callback.onFailure(e, wrapState(state));
+    }
+
+    @Override
+    public void onResume(ClientContext context) throws ResumeFailedException {
+      callback.onResume(context);
+    }
+
+    @Override
+    public RequestClient getRequestClient() {
+      return callback.getRequestClient();
+    }
+
+    @Override
+    public void getClientDetail(DataOutputStream dos, ChecksumChecker checker) throws IOException {
+      callback.getClientDetail(dos, checker);
+    }
+
+    private static FcpInsertCallbackState wrapState(BaseClientPutter state) {
+      return state == null ? null : new CoreInsertCallbackState(state);
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class CoreInsertCallbackState implements FcpInsertCallbackState {
+    private final BaseClientPutter putter;
+
+    private CoreInsertCallbackState(BaseClientPutter putter) {
+      this.putter = Objects.requireNonNull(putter);
+    }
+
+    @Override
+    public FreenetURI getURI() {
+      return putter.getURI();
+    }
+
+    @Override
+    public String toString() {
+      return putter.toString();
+    }
   }
 
   private final class CoreUskSubscription implements UskSubscriptionHandle {

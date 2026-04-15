@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.Serial;
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.node.PrioRunnable;
@@ -178,7 +177,7 @@ class ClientRequestRestartAsyncTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return null;
     }
 

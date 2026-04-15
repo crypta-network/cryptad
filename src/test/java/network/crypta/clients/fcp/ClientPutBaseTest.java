@@ -8,7 +8,6 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.client.events.SimpleEventProducer;
@@ -120,7 +119,7 @@ class ClientPutBaseTest {
   void onSuccess_whenConnectionScoped_freesDataSendsSuccessAndNotifiesClient() throws Exception {
     TestClientPutBase request = new TestClientPutBase();
     PersistentRequestClient client = mock(PersistentRequestClient.class);
-    BaseClientPutter state = mock(BaseClientPutter.class);
+    FcpInsertCallbackState state = mock(FcpInsertCallbackState.class);
     FreenetURI generatedUri = mock(FreenetURI.class);
     setField(ClientRequest.class, request, "identifier", "success-id");
     setField(ClientRequest.class, request, "persistence", Persistence.CONNECTION);
@@ -143,9 +142,32 @@ class ClientPutBaseTest {
   void onSuccess_whenGeneratedUriMissing_usesStateUriForPutSuccessfulAndStatus() throws Exception {
     TestClientPutBase request = new TestClientPutBase();
     PersistentRequestClient client = mock(PersistentRequestClient.class);
-    BaseClientPutter state = mock(BaseClientPutter.class);
+    FcpInsertCallbackState state = mock(FcpInsertCallbackState.class);
     FreenetURI generatedUri = new FreenetURI("KSK", "fallback-uri");
     setField(ClientRequest.class, request, "identifier", "fallback-id");
+    setField(ClientRequest.class, request, "persistence", Persistence.CONNECTION);
+    setField(ClientRequest.class, request, "origHandler", handler);
+    setField(ClientRequest.class, request, "client", client);
+    when(state.getURI()).thenReturn(generatedUri);
+
+    request.onSuccess(state);
+
+    ArgumentCaptor<PutSuccessfulMessage> successCaptor =
+        ArgumentCaptor.forClass(PutSuccessfulMessage.class);
+    verify(handler).send(successCaptor.capture());
+    assertSame(generatedUri, request.getGeneratedURI());
+    assertSame(generatedUri, successCaptor.getValue().uri);
+    verify(client).notifySuccess(request);
+  }
+
+  @Test
+  void onSuccess_whenLegacyBaseClientPutterProvided_usesStateUriForPutSuccessfulAndStatus()
+      throws Exception {
+    TestClientPutBase request = new TestClientPutBase();
+    PersistentRequestClient client = mock(PersistentRequestClient.class);
+    BaseClientPutter state = mock(BaseClientPutter.class);
+    FreenetURI generatedUri = new FreenetURI("KSK", "legacy-fallback-uri");
+    setField(ClientRequest.class, request, "identifier", "legacy-fallback-id");
     setField(ClientRequest.class, request, "persistence", Persistence.CONNECTION);
     setField(ClientRequest.class, request, "origHandler", handler);
     setField(ClientRequest.class, request, "client", client);
@@ -165,7 +187,7 @@ class ClientPutBaseTest {
   void onFailure_whenConnectionScoped_freesDataSendsFailureAndNotifiesClient() throws Exception {
     TestClientPutBase request = new TestClientPutBase();
     PersistentRequestClient client = mock(PersistentRequestClient.class);
-    BaseClientPutter state = mock(BaseClientPutter.class);
+    FcpInsertCallbackState state = mock(FcpInsertCallbackState.class);
     InsertException failure = new InsertException(InsertExceptionMode.INTERNAL_ERROR, "boom", null);
     setField(ClientRequest.class, request, "identifier", "failure-id");
     setField(ClientRequest.class, request, "persistence", Persistence.CONNECTION);
@@ -346,7 +368,7 @@ class ClientPutBaseTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return null;
     }
 

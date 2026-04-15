@@ -192,7 +192,7 @@ class ClientPutDirTest {
 
     putDir.start(mock(ClientContext.class));
 
-    verify(putDir).onFailure(failure, null);
+    verify(putDir).onFailure(failure, (FcpInsertCallbackState) null);
   }
 
   @Test
@@ -310,7 +310,7 @@ class ClientPutDirTest {
     ClientPutDir putDir = newClientPutDir();
     ManifestPutter legacyPutter = mock(ManifestPutter.class, withSettings().serializable());
     ClientPutDirExecution execution = mock(ClientPutDirExecution.class);
-    when(execution.requester()).thenReturn(legacyPutter);
+    when(execution.legacySerializableRequester()).thenReturn(legacyPutter);
     setField(ClientPutDir.class, putDir, "putter", execution);
     setField(ClientPutDir.class, putDir, "manifestElements", new HashMap<>());
     setField(ClientPutDir.class, putDir, "defaultName", "index.html");
@@ -323,7 +323,10 @@ class ClientPutDirTest {
 
     assertInstanceOf(ClientPutDirExecution.class, getField(ClientPutDir.class, restored, "putter"));
     assertInstanceOf(FcpInsertContextHandle.class, getField(ClientPutBase.class, restored, "ctx"));
-    assertInstanceOf(ManifestPutter.class, restored.getClientRequest());
+    ClientPutDirExecution restoredExecution =
+        (ClientPutDirExecution) getField(ClientPutDir.class, restored, "putter");
+    assertInstanceOf(ManifestPutter.class, restoredExecution.legacySerializableRequester());
+    assertInstanceOf(FcpRequesterHandle.class, restored.getClientRequest());
   }
 
   @Test
@@ -333,7 +336,7 @@ class ClientPutDirTest {
     ClientPutDir putDir = newClientPutDir();
     ClientRequester requester = mock(ClientRequester.class, withSettings().serializable());
     ClientPutDirExecution execution = mock(ClientPutDirExecution.class);
-    when(execution.requester()).thenReturn(requester);
+    when(execution.legacySerializableRequester()).thenReturn(requester);
     setField(ClientPutDir.class, putDir, "putter", execution);
 
     assertThrows(NotSerializableException.class, () -> roundTrip(putDir));

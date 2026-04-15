@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.Serializable;
 import network.crypta.client.InsertException;
-import network.crypta.client.async.ClientRequester;
 
 /**
  * Opaque adapter-owned handle for one live single-file insert execution.
@@ -23,15 +22,27 @@ import network.crypta.client.async.ClientRequester;
 public interface ClientPutExecution extends Serializable {
 
   /**
-   * Returns the low-level requester backing this execution.
+   * Returns the detached requester handle backing this execution.
    *
-   * <p>The adapter uses the requester for generic request bookkeeping such as diagnostics, cache
-   * updates, and priority changes. Callers should treat the returned object as a bridge-owned live
-   * state and should not assume that its concrete type is stable across implementations.
+   * <p>The adapter uses the handle for generic request bookkeeping such as diagnostics, cache
+   * updates, and priority changes. Callers should treat the returned object as a bridge-owned
+   * runtime control surface and should not assume that its concrete type is stable across
+   * implementations.
    *
-   * @return live requester that currently backs this insert execution
+   * @return detached requester handle that currently backs this insert execution
    */
-  ClientRequester requester();
+  FcpRequesterHandle requester();
+
+  /**
+   * Returns the legacy runtime requester object that must be written into older serialized fields.
+   *
+   * <p>{@link ClientPut} and {@link ClientPutDir} still preserve Java-serialization compatibility
+   * by writing the original runtime putter object into their legacy serial fields. The adapter uses
+   * this opaque hook instead of importing the runtime requester type directly.
+   *
+   * @return legacy runtime requester object suitable for legacy serialization, or {@code null}
+   */
+  Object legacySerializableRequester();
 
   /**
    * Starts the live insert execution in the supplied client context.

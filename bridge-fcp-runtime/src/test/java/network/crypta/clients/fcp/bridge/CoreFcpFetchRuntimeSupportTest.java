@@ -4,6 +4,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
@@ -13,6 +17,7 @@ import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientGetExecution;
 import network.crypta.clients.fcp.ClientGetExecutionSpec;
 import network.crypta.clients.fcp.ClientGetFetchConfig;
+import network.crypta.clients.fcp.FcpRequesterHandle;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
@@ -176,8 +181,61 @@ class CoreFcpFetchRuntimeSupportTest {
     verify(clientContext, never()).getBucketFactory(false);
   }
 
+  @Test
+  void requester_whenLegacyExecutionHasNoSerializedHandle_rebuildsHandle() throws Exception {
+    when(request.getRequestClient()).thenReturn(requestClient);
+    when(clientContext.getBucketFactory(false)).thenReturn(transientBucketFactory);
+    when(transientBucketFactory.makeBucket(128L)).thenReturn(bucket);
+    CoreFcpFetchRuntimeSupport support =
+        new CoreFcpFetchRuntimeSupport(clientContext, () -> firstTransferAccess);
+    ClientGetExecution execution = createBinaryBlobExecution(support);
+    Field requesterHandleField = execution.getClass().getDeclaredField("requesterHandle");
+    requesterHandleField.setAccessible(true);
+    requesterHandleField.set(execution, null);
+
+    FcpRequesterHandle rebuilt = execution.requester();
+
+    assertNotNull(rebuilt);
+    assertSame(rebuilt, requesterHandleField.get(execution));
+  }
+
+  @Test
+  void readObject_whenLegacyExecutionHasNoSerializedHandle_rebuildsHandle() throws Exception {
+    when(clientContext.getBucketFactory(false)).thenReturn(transientBucketFactory);
+    when(transientBucketFactory.makeBucket(128L)).thenReturn(bucket);
+    CoreFcpFetchRuntimeSupport support = support();
+    ClientGet serializableRequest = newSerializableRequestForExecution(support);
+    ClientGetExecution execution = createBinaryBlobExecution(support, serializableRequest);
+    Field requesterHandleField = execution.getClass().getDeclaredField("requesterHandle");
+    requesterHandleField.setAccessible(true);
+    requesterHandleField.set(execution, null);
+    byte[] serialized;
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
+      objectOutput.writeObject(execution);
+      objectOutput.flush();
+      serialized = output.toByteArray();
+    }
+
+    ClientGetExecution restored;
+    try (ObjectInputStream objectInput =
+        new ObjectInputStream(new ByteArrayInputStream(serialized))) {
+      restored = (ClientGetExecution) objectInput.readObject();
+    }
+
+    assertNotNull(restored.requester());
+    Field restoredRequesterHandleField = restored.getClass().getDeclaredField("requesterHandle");
+    restoredRequesterHandleField.setAccessible(true);
+    assertNotNull(restoredRequesterHandleField.get(restored));
+  }
+
   private ClientGetExecution createBinaryBlobExecution(CoreFcpFetchRuntimeSupport support)
       throws Exception {
+    return createBinaryBlobExecution(support, request);
+  }
+
+  private ClientGetExecution createBinaryBlobExecution(
+      CoreFcpFetchRuntimeSupport support, ClientGet request) throws Exception {
     return support.createExecution(
         new ClientGetExecutionSpec(
             request,
@@ -191,6 +249,74 @@ class CoreFcpFetchRuntimeSupportTest {
             null,
             null,
             eventListener));
+  }
+
+  private CoreFcpFetchRuntimeSupport support() {
+    return new CoreFcpFetchRuntimeSupport(clientContext, () -> firstTransferAccess);
+  }
+
+  private ClientGet newSerializableRequestForExecution(CoreFcpFetchRuntimeSupport support)
+      throws Exception {
+    Constructor<ClientGet> constructor = ClientGet.class.getDeclaredConstructor();
+    constructor.setAccessible(true);
+    ClientGet serializableRequest = constructor.newInstance();
+    setRequestProfile(
+        serializableRequest,
+        withRuntimeFetchSupport(
+            withNoneReturnType(
+                withFetchConfig(getRequestProfile(serializableRequest), binaryBlobFetchConfig())),
+            support));
+    Field lowLevelClientField =
+        network.crypta.clients.fcp.ClientRequest.class.getDeclaredField("lowLevelClient");
+    lowLevelClientField.setAccessible(true);
+    lowLevelClientField.set(serializableRequest, requestClient);
+    return serializableRequest;
+  }
+
+  private static Object withFetchConfig(Object requestProfile, ClientGetFetchConfig fetchConfig)
+      throws Exception {
+    return invokeProfileMethod(
+        requestProfile,
+        "withFetchConfig",
+        new Class<?>[] {ClientGetFetchConfig.class},
+        new Object[] {fetchConfig});
+  }
+
+  private static Object withNoneReturnType(Object requestProfile) throws Exception {
+    return invokeProfileMethod(
+        requestProfile,
+        "withReturnType",
+        new Class<?>[] {ClientGet.ReturnType.class},
+        new Object[] {ClientGet.ReturnType.NONE});
+  }
+
+  private static Object withRuntimeFetchSupport(
+      Object requestProfile, CoreFcpFetchRuntimeSupport support) throws Exception {
+    return invokeProfileMethod(
+        requestProfile,
+        "withRuntimeFetchSupport",
+        new Class<?>[] {Class.forName("network.crypta.clients.fcp.FcpFetchRuntimeSupport")},
+        new Object[] {support});
+  }
+
+  private static Object invokeProfileMethod(
+      Object requestProfile, String name, Class<?>[] parameterTypes, Object[] args)
+      throws Exception {
+    var method = requestProfile.getClass().getDeclaredMethod(name, parameterTypes);
+    method.setAccessible(true);
+    return method.invoke(requestProfile, args);
+  }
+
+  private static Object getRequestProfile(ClientGet target) throws Exception {
+    Field field = target.getClass().getDeclaredField("requestProfile");
+    field.setAccessible(true);
+    return field.get(target);
+  }
+
+  private static void setRequestProfile(ClientGet target, Object value) throws Exception {
+    Field field = target.getClass().getDeclaredField("requestProfile");
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   private static ClientGetFetchConfig sampleFetchConfig() {

@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
@@ -235,7 +234,7 @@ class PersistentRequestRootTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return null;
     }
 

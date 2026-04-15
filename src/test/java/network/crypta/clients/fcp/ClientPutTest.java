@@ -7,11 +7,14 @@ import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
+import java.io.Serial;
+import java.io.Serializable;
 import java.lang.reflect.Field;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.events.SimpleEventProducer;
@@ -244,7 +247,7 @@ class ClientPutTest {
 
     put.start(context);
 
-    verify(put).onFailure(failure, null);
+    verify(put).onFailure(failure, (FcpInsertCallbackState) null);
   }
 
   @Test
@@ -260,7 +263,7 @@ class ClientPutTest {
 
   @Test
   void innerResume_whenPutterPresent_reappliesDiagnosticIdentifier() throws Exception {
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientPutExecution putter = createExecution(requester);
     setField(ClientPut.class, clientPut, "putter", putter);
     ClientContext context = mock(ClientContext.class);
@@ -355,7 +358,7 @@ class ClientPutTest {
     boolean restarted = spyPut.restart(context, false);
 
     assertFalse(restarted);
-    verify(spyPut).onFailure(failure, null);
+    verify(spyPut).onFailure(failure, (FcpInsertCallbackState) null);
   }
 
   @Test
@@ -392,7 +395,7 @@ class ClientPutTest {
 
   @Test
   void getClientRequest_whenPutterSet_returnsPutter() throws Exception {
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientPutExecution putter = createExecution(requester);
     setField(ClientPut.class, clientPut, "putter", putter);
 
@@ -434,6 +437,15 @@ class ClientPutTest {
   }
 
   @Test
+  void legacyClientPutCallbackField_whenRoundTripped_acceptsClientPutInstance() throws Exception {
+    LegacyClientPutCallbackHolder restored =
+        roundTripObject(
+            new LegacyClientPutCallbackHolder(clientPut), LegacyClientPutCallbackHolder.class);
+
+    assertInstanceOf(ClientPut.class, restored.callback);
+  }
+
+  @Test
   void serialization_whenRoundTripped_restoresExecutionFromLegacyClientPutter() throws Exception {
     ClientPutter legacyPutter = mock(ClientPutter.class, withSettings().serializable());
     ClientPutExecution execution = createExecution(legacyPutter);
@@ -444,7 +456,10 @@ class ClientPutTest {
 
     assertInstanceOf(ClientPutExecution.class, getField(ClientPut.class, restored, "putter"));
     assertInstanceOf(FcpInsertContextHandle.class, getField(ClientPutBase.class, restored, "ctx"));
-    assertInstanceOf(ClientPutter.class, restored.getClientRequest());
+    ClientPutExecution restoredExecution =
+        (ClientPutExecution) getField(ClientPut.class, restored, "putter");
+    assertInstanceOf(ClientPutter.class, restoredExecution.legacySerializableRequester());
+    assertInstanceOf(FcpRequesterHandle.class, restored.getClientRequest());
   }
 
   @Test
@@ -476,13 +491,23 @@ class ClientPutTest {
     return mock(ClientPutExecution.class);
   }
 
-  private static ClientPutExecution createExecution(ClientRequester requester) {
+  private static ClientPutExecution createExecution(FcpRequesterHandle requester) {
     ClientPutExecution execution = mock(ClientPutExecution.class);
     when(execution.requester()).thenReturn(requester);
     return execution;
   }
 
+  private static ClientPutExecution createExecution(ClientRequester requester) {
+    ClientPutExecution execution = mock(ClientPutExecution.class);
+    when(execution.legacySerializableRequester()).thenReturn(requester);
+    return execution;
+  }
+
   private static ClientPut roundTrip(ClientPut value) throws Exception {
+    return roundTripObject(value, ClientPut.class);
+  }
+
+  private static <T> T roundTripObject(Object value, Class<T> type) throws Exception {
     byte[] serialized;
     try (ByteArrayOutputStream output = new ByteArrayOutputStream();
         ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
@@ -492,7 +517,18 @@ class ClientPutTest {
     }
     try (ObjectInputStream objectInput =
         new ObjectInputStream(new ByteArrayInputStream(serialized))) {
-      return (ClientPut) objectInput.readObject();
+      return type.cast(objectInput.readObject());
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class LegacyClientPutCallbackHolder implements Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final ClientPutCallback callback;
+
+    private LegacyClientPutCallbackHolder(ClientPutCallback callback) {
+      this.callback = callback;
     }
   }
 }

@@ -167,6 +167,11 @@ class AdapterFcpBoundaryTest {
           "network.crypta.client.async.USKFoundEdition",
           "network.crypta.client.async.USKManager",
           "network.crypta.client.async.USKProgressCallback");
+  private static final Set<String> FORBIDDEN_REQUESTER_CALLBACK_IMPORTS =
+      Set.of(
+          "network.crypta.client.async.BaseClientPutter",
+          "network.crypta.client.async.ClientPutCallback",
+          "network.crypta.client.async.ClientRequester");
   private static final Set<Path> GET_RUNTIME_SEAM_SOURCES =
       Set.of(
           FCP_FETCH_RUNTIME_SUPPORT_SOURCE,
@@ -447,6 +452,31 @@ class AdapterFcpBoundaryTest {
     assertTrue(
         violations.isEmpty(),
         "Insert-family adapter sources must not import live runtime insert execution types."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void adapterFcpMain_whenScanningRequesterCallbackImports_expectNoLiveRequesterOrCallbackLeaks()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+    Path adapterFcpMain = repoRoot.resolve(ADAPTER_FCP_MAIN_JAVA);
+
+    for (Path sourceFile : findJavaSources(adapterFcpMain)) {
+      Set<String> imports = readImports(sourceFile);
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_REQUESTER_CALLBACK_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(
+            repoRoot.relativize(sourceFile) + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        ":adapter-fcp main sources must not import live requester or insert-callback runtime "
+            + "types."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }

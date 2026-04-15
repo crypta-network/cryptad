@@ -7,7 +7,6 @@ import java.time.Instant;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -257,7 +256,7 @@ class ClientGetTest {
     clientGet.state().setFoundDataMimeType("text/plain");
 
     ClientGetExecution execution = mock(ClientGetExecution.class);
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     when(execution.requester()).thenReturn(requester);
     FcpFetchRuntimeSupport fetchRuntimeSupport = mock(FcpFetchRuntimeSupport.class);
     when(fetchRuntimeSupport.createExecution(any())).thenReturn(execution);

@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.Serial;
 import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
@@ -136,7 +135,7 @@ class ClientRequestTest {
 
   @Test
   void applyDiagnosticIdentifier_whenRequesterPresent_expectPrefixedIdentifierAssigned() {
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     TestClientRequest request =
         new TestClientRequest(
             ClientRequest.prepareConstructorInit(
@@ -161,7 +160,7 @@ class ClientRequestTest {
   @Test
   void cancel_whenRequesterPresent_expectRequesterCancelledAndDataFreed() {
     // Arrange
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientContext context = mock(ClientContext.class);
     PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
@@ -187,7 +186,7 @@ class ClientRequestTest {
   @Test
   void onShutdown_whenRequesterPresent_expectDelegatesToRequester() {
     // Arrange
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientContext context = mock(ClientContext.class);
     PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
@@ -362,7 +361,7 @@ class ClientRequestTest {
             false,
             false,
             root.registerForeverClient("resume-client", null),
-            mock(ClientRequester.class));
+            mock(FcpRequesterHandle.class));
     PersistentRequestCoordinator coordinator = mock(PersistentRequestCoordinator.class);
     when(coordinator.getOrCreateClientHandle(false, "resume-client"))
         .thenReturn(new OpaqueHandle());
@@ -375,7 +374,7 @@ class ClientRequestTest {
   void onResume_whenRequesterPresent_expectInnerResumeRequesterAndCoordinator()
       throws ResumeFailedException {
     // Arrange
-    ClientRequester requester = mock(ClientRequester.class);
+    FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     PersistentRequestRoot originalRoot = new PersistentRequestRoot();
     TestClientRequest request =
         TestClientRequest.forever(
@@ -487,12 +486,12 @@ class ClientRequestTest {
   private static final class TestClientRequest extends ClientRequest {
     @Serial private static final long serialVersionUID = 1L;
 
-    private final ClientRequester requester;
+    private final FcpRequesterHandle requester;
     private transient ClientContext innerResumeContext;
     private transient ClientContext startContext;
     private int freeDataCalls;
 
-    private TestClientRequest(ConstructorInit init, ClientRequester requester) {
+    private TestClientRequest(ConstructorInit init, FcpRequesterHandle requester) {
       super(init);
       this.requester = requester;
     }
@@ -501,7 +500,7 @@ class ClientRequestTest {
         DataInputStream input,
         RequestIdentifier requestIdentifier,
         ClientContext context,
-        ClientRequester requester)
+        FcpRequesterHandle requester)
         throws IOException, StorageFormatException {
       super(input, requestIdentifier, context);
       this.requester = requester;
@@ -515,7 +514,7 @@ class ClientRequestTest {
         boolean global,
         boolean realTime,
         PersistentRequestClient client,
-        ClientRequester requester) {
+        FcpRequesterHandle requester) {
       return new TestClientRequest(
           ClientRequest.prepareConstructorInit(
               new ClientRequestParams(
@@ -556,7 +555,7 @@ class ClientRequestTest {
       return diagnosticIdentifier();
     }
 
-    void applyDiagnosticIdentifierTo(ClientRequester requester) {
+    void applyDiagnosticIdentifierTo(FcpRequesterHandle requester) {
       applyDiagnosticIdentifier(requester);
     }
 
@@ -584,7 +583,7 @@ class ClientRequestTest {
     }
 
     @Override
-    protected ClientRequester getClientRequest() {
+    protected FcpRequesterHandle getClientRequest() {
       return requester;
     }
 

@@ -8,7 +8,6 @@ import java.util.Map;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.PersistentListJob;
@@ -252,14 +251,14 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
   }
 
   private void handleDownloadCompletion(ClientGet download) {
-    GetFailedMessage msg = download.getFailureMessage();
+    GetFailedMessage failureMessage = download.state().getFailedMessage();
     FetchExceptionMode failureCode = null;
     String shortFailMessage = null;
     String longFailMessage = null;
-    if (msg != null) {
-      failureCode = msg.failureMode;
-      shortFailMessage = msg.getShortFailedMessage();
-      longFailMessage = msg.getLongFailedMessage();
+    if (failureMessage != null) {
+      failureCode = failureMessage.failureMode;
+      shortFailMessage = failureMessage.getShortFailedMessage();
+      longFailMessage = failureMessage.getLongFailedMessage();
     }
     Bucket shadow = download.getBucket();
     if (shadow != null) shadow = shadow.createShadow();
@@ -860,13 +859,13 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
   }
 
   /**
-   * Appends the {@link ClientRequester} objects for all tracked requests to the supplied list.
+   * Appends the requester handles for all tracked requests to the supplied list.
    *
-   * @param requesters destination list that will be populated with requesters from running and
-   *     completed requests; must not be {@code null}.
+   * @param requesters destination list that will be populated with requester handles from running
+   *     and completed requests; must not be {@code null}.
    */
   @SuppressWarnings("unused")
-  public void addPersistentRequesters(List<ClientRequester> requesters) {
+  public void addPersistentRequesters(List<FcpRequesterHandle> requesters) {
     for (ClientRequest req : runningPersistentRequests) requesters.add(req.getClientRequest());
     for (ClientRequest req : completedUnackedRequests) requesters.add(req.getClientRequest());
   }

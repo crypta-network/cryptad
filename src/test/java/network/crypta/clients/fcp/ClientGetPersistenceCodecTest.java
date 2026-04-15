@@ -425,7 +425,6 @@ class ClientGetPersistenceCodecTest {
     import java.io.File;
     import java.io.Serial;
     import network.crypta.client.async.ClientContext;
-    import network.crypta.client.async.ClientRequester;
     import network.crypta.support.api.Bucket;
     import network.crypta.support.io.ResumeFailedException;
 
@@ -475,7 +474,7 @@ class ClientGetPersistenceCodecTest {
       public void start(ClientContext context) {}
 
       @Override
-      protected ClientRequester getClientRequest() {
+      protected FcpRequesterHandle getClientRequest() {
         return null;
       }
 

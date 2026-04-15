@@ -16,7 +16,6 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.Metadata;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
@@ -371,7 +370,7 @@ public final class ClientPutDir extends ClientPutBase {
     if (putter == null) {
       return null;
     }
-    Object requester = putter.requester();
+    Object requester = putter.legacySerializableRequester();
     if (requester == null) {
       return null;
     }
@@ -533,7 +532,7 @@ public final class ClientPutDir extends ClientPutBase {
       }
     } catch (InsertException e) {
       started = true;
-      onFailure(e, null);
+      onFailure(e, (FcpInsertCallbackState) null);
     }
   }
 
@@ -583,7 +582,7 @@ public final class ClientPutDir extends ClientPutBase {
   }
 
   /**
-   * Exposes the underlying {@link ClientRequester} so schedulers can introspect progress.
+   * Exposes the underlying requester handle so schedulers can introspect progress.
    *
    * <p>The manifest putter encapsulates all block scheduling and retry logic. Returning it here
    * lets the superclass manage cross-cutting behaviors such as throttling, serialization, and
@@ -591,11 +590,11 @@ public final class ClientPutDir extends ClientPutBase {
    * {@link #freeData()} runs or the request completes, the putter may be {@code null} and should
    * not be reused.
    *
-   * @return currently active requester coordinating splitfile inserts, or {@code null} when torn
-   *     down.
+   * @return currently active requester handle coordinating splitfile inserts, or {@code null} when
+   *     torn down.
    */
   @Override
-  protected ClientRequester getClientRequest() {
+  protected FcpRequesterHandle getClientRequest() {
     return putter == null ? null : putter.requester();
   }
 
@@ -765,7 +764,7 @@ public final class ClientPutDir extends ClientPutBase {
         }
       }
     } catch (InsertException e) {
-      this.onFailure(e, null);
+      this.onFailure(e, (FcpInsertCallbackState) null);
       return false;
     }
     if (client != null) {

@@ -12,7 +12,6 @@ import java.io.Serializable;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
@@ -597,17 +596,17 @@ public final class ClientGet extends ClientRequest {
   }
 
   /**
-   * Exposes the underlying {@link ClientRequester} for base-class scheduling operations.
+   * Exposes the underlying requester handle for base-class scheduling operations.
    *
    * <p>The base {@link ClientRequest} infrastructure uses this accessor to determine which
    * requester instance owns the in-flight operation for persistence, cancellation, and stats
    * tracking. The returned object is the request's active requester and should be treated as
    * read-only by callers outside the request lifecycle.
    *
-   * @return client requester instance used to run this request.
+   * @return requester handle used to run this request.
    */
   @Override
-  protected ClientRequester getClientRequest() {
+  protected FcpRequesterHandle getClientRequest() {
     return execution == null ? null : execution.requester();
   }
 
@@ -915,10 +914,10 @@ public final class ClientGet extends ClientRequest {
   /**
    * Returns a textual explanation for the most recent failure, if any.
    *
-   * <p>The summary is derived from the cached {@link GetFailedMessage} and may include additional
-   * diagnostic text when requested. It returns {@code null} when no failure has been recorded,
-   * which typically means the request is still running or has completed successfully. The returned
-   * text is suitable for UI display and is not guaranteed to be stable across versions.
+   * <p>The summary is derived from the cached failure state and may include additional diagnostic
+   * text when requested. It returns {@code null} when no failure has been recorded, which typically
+   * means the request is still running or has completed successfully. The returned text is suitable
+   * for UI display and is not guaranteed to be stable across versions.
    *
    * <p>This accessor does not alter the request state. Callers should treat the value as a snapshot
    * of the last recorded failure rather than a live view of the underlying fetcher.
@@ -929,10 +928,6 @@ public final class ClientGet extends ClientRequest {
   @Override
   public String getFailureReason(boolean longDescription) {
     return helpers().statusReporter().getFailureReason(longDescription);
-  }
-
-  GetFailedMessage getFailureMessage() {
-    return state.getFailedMessage();
   }
 
   /**

@@ -11,7 +11,6 @@ import java.io.Serializable;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertException;
 import network.crypta.client.MetadataUnresolvedException;
-import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -43,7 +42,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see ClientPutBase
- * @see ClientRequester
+ * @see FcpRequesterHandle
  */
 public final class ClientPut extends ClientPutBase {
   /** Logger for lifecycle and diagnostic messages. */
@@ -459,7 +458,7 @@ public final class ClientPut extends ClientPutBase {
     if (putter == null) {
       return null;
     }
-    Object requester = putter.requester();
+    Object requester = putter.legacySerializableRequester();
     if (requester == null) {
       return null;
     }
@@ -479,6 +478,33 @@ public final class ClientPut extends ClientPutBase {
     } catch (ClassNotFoundException e) {
       throw new ExceptionInInitializerError(e);
     }
+  }
+
+  ClientRequestParams currentRequestParams() {
+    return new ClientRequestParams(
+        publicURI,
+        identifier,
+        verbosity,
+        priorityClass,
+        persistence,
+        isRealTime(),
+        clientToken,
+        client.isGlobalQueue);
+  }
+
+  ClientPutUpload persistentUploadDescriptor() {
+    return new ClientPutUpload(
+        uploadFrom,
+        origFilename,
+        clientMetadata.getMIMEType(),
+        null,
+        targetURI,
+        targetFilename,
+        binaryBlob);
+  }
+
+  byte[] splitfileCryptoKeyForPersistentTag() {
+    return putter != null ? putter.getSplitfileCryptoKey() : null;
   }
 
   @Override
@@ -529,13 +555,14 @@ public final class ClientPut extends ClientPutBase {
       synchronized (this) {
         started = true;
       }
-      onFailure(e, null);
+      onFailure(e, (FcpInsertCallbackState) null);
     } catch (Exception t) {
       synchronized (this) {
         started = true;
       }
       onFailure(
-          new InsertException(InsertException.InsertExceptionMode.INTERNAL_ERROR, t, null), null);
+          new InsertException(InsertException.InsertExceptionMode.INTERNAL_ERROR, t, null),
+          (FcpInsertCallbackState) null);
     }
   }
 
@@ -552,42 +579,14 @@ public final class ClientPut extends ClientPutBase {
   }
 
   @Override
-  protected ClientRequester getClientRequest() {
+  protected FcpRequesterHandle getClientRequest() {
     return putter == null ? null : putter.requester();
   }
 
   @Override
   protected FCPMessage persistentTagMessage() {
     if (putter == null) LOG.warn("putter == null");
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            publicURI,
-            identifier,
-            verbosity,
-            priorityClass,
-            persistence,
-            isRealTime(),
-            clientToken,
-            client.isGlobalQueue);
-    PersistentPutRequestMetadata metadata =
-        new PersistentPutRequestMetadata(
-            uri,
-            started,
-            ctx.getMaxInsertRetries(),
-            this.ctx.getCompatibilityMode(),
-            this.ctx.isDontCompress(),
-            this.ctx.getCompressorDescriptor(),
-            putter != null ? putter.getSplitfileCryptoKey() : null);
-    ClientPutUpload upload =
-        new ClientPutUpload(
-            uploadFrom,
-            origFilename,
-            clientMetadata.getMIMEType(),
-            null,
-            targetURI,
-            targetFilename,
-            binaryBlob);
-    return new PersistentPut(requestParams, upload, metadata, getDataSize());
+    return new ClientPutPersistentTagBuilder(this).persistentTagMessage();
   }
 
   /**
@@ -758,8 +757,8 @@ public final class ClientPut extends ClientPutBase {
    * <p>Before scheduling the new attempt, the method resets the local state, updates status caches,
    * and notifies observers that the request left the finished state. Failures during {@link
    * ClientPutExecution} startup are handed to {@link ClientPutBase#onFailure(InsertException,
-   * network.crypta.client.async.BaseClientPutter)} so retry logic remains consistent with the
-   * normal start path. The method returns immediately if the request is not eligible for restart.
+   * FcpInsertCallbackState)} so retry logic remains consistent with the normal start path. The
+   * method returns immediately if the request is not eligible for restart.
    *
    * @param context execution context containing shared schedulers and crypto factories; must not be
    *     {@code null} and should be active.
@@ -792,7 +791,7 @@ public final class ClientPut extends ClientPutBase {
       }
       return true;
     } catch (InsertException e) {
-      onFailure(e, null);
+      onFailure(e, (FcpInsertCallbackState) null);
       return false;
     }
   }
