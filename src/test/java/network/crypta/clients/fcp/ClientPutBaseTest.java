@@ -1,11 +1,9 @@
 package network.crypta.clients.fcp;
 
+import java.io.ObjectStreamClass;
 import java.io.Serial;
 import java.lang.reflect.Field;
 import java.time.Instant;
-import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.InsertContext;
-import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.BaseClientPutter;
@@ -59,6 +57,14 @@ class ClientPutBaseTest {
   @Mock private Bucket generatedMetadata;
 
   @Test
+  void serializationFields_whenInspected_keepLegacyInsertContextType() {
+    ObjectStreamClass descriptor = ObjectStreamClass.lookup(ClientPutBase.class);
+
+    assertEquals(
+        "network.crypta.client.InsertContext", descriptor.getField("ctx").getType().getName());
+  }
+
+  @Test
   void uploadFromGetByCode_whenValidCodeProvided_returnsMatchingEnum() {
     assertSame(ClientPutBase.UploadFrom.DIRECT, ClientPutBase.UploadFrom.getByCode(0));
     assertSame(ClientPutBase.UploadFrom.DISK, ClientPutBase.UploadFrom.getByCode(1));
@@ -72,8 +78,8 @@ class ClientPutBaseTest {
 
   @Test
   void constructor_whenConnectionScoped_appliesInsertOptionsToRuntimeContext() {
-    InsertContext insertContext = newInsertContext();
-    when(runtimeSupport.defaultPersistentInsertContext()).thenReturn(insertContext);
+    DefaultFcpInsertContextHandle insertContext = newInsertContextHandle();
+    when(runtimeSupport.defaultPersistentInsertContextHandle()).thenReturn(insertContext);
     ClientRequestParams params = newRequestParams("conn-id", Persistence.CONNECTION);
 
     TestClientPutBase request =
@@ -81,20 +87,20 @@ class ClientPutBaseTest {
             params, "bad[", newOptions(), handler, runtimeSupport, mock(FreenetURI.class));
 
     assertSame(insertContext, request.ctx);
-    assertTrue(insertContext.isGetCHKOnly());
+    assertTrue(insertContext.getCHKOnly());
     assertTrue(insertContext.isDontCompress());
     assertEquals(5, insertContext.getMaxInsertRetries());
-    assertTrue(insertContext.isCanWriteClientCache());
+    assertTrue(insertContext.canWriteClientCache());
     assertEquals("GZIP", insertContext.getCompressorDescriptor());
-    assertTrue(insertContext.isLocalRequestOnly());
-    assertTrue(insertContext.isEarlyEncode());
-    assertTrue(insertContext.isIgnoreUSKDatehints());
+    assertTrue(insertContext.localRequestOnly());
+    assertTrue(insertContext.earlyEncode());
+    assertTrue(insertContext.ignoreUSKDatehints());
   }
 
   @Test
   void constructor_whenPersistentScoped_appliesInsertOptionsToRuntimeContext() {
-    InsertContext insertContext = newInsertContext();
-    when(runtimeSupport.defaultPersistentInsertContext()).thenReturn(insertContext);
+    DefaultFcpInsertContextHandle insertContext = newInsertContextHandle();
+    when(runtimeSupport.defaultPersistentInsertContextHandle()).thenReturn(insertContext);
     ClientRequestParams params = newRequestParams("persistent-id", Persistence.REBOOT);
     PersistentRequestClient client =
         new PersistentRequestClient("client-a", null, false, null, Persistence.REBOOT, null);
@@ -104,8 +110,8 @@ class ClientPutBaseTest {
             params, null, newOptions(), null, client, runtimeSupport, mock(FreenetURI.class));
 
     assertSame(insertContext, request.ctx);
-    assertTrue(insertContext.isGetCHKOnly());
-    assertEquals(CompatibilityMode.latest(), insertContext.getCompatibilityMode());
+    assertTrue(insertContext.getCHKOnly());
+    assertEquals(FcpCompatibilityMode.latest(), insertContext.getCompatibilityMode());
     assertEquals(2, insertContext.getExtraInsertsSingleBlock());
     assertEquals(3, insertContext.getExtraInsertsSplitfileHeaderBlock());
   }
@@ -249,20 +255,19 @@ class ClientPutBaseTest {
   private static FcpInsertOptions newOptions() {
     return new FcpInsertOptions(
         new FcpInsertBehaviorOptions(true, true, true, 5, true, true, true),
-        new FcpInsertTuningOptions(true, true, "GZIP", 2, 3, CompatibilityMode.COMPAT_CURRENT),
+        new FcpInsertTuningOptions(true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_CURRENT),
         null);
   }
 
-  private static InsertContext newInsertContext() {
-    return new InsertContext(
-        InsertContextOptions.builder()
-            .retryLimits(1, 0)
-            .splitfileSegmentLimits(1, 1)
-            .clientOptions(new SimpleEventProducer(), true, false, false)
-            .compressorDescriptor(null)
-            .redundancy(0, 0)
-            .compatibility(CompatibilityMode.COMPAT_CURRENT)
-            .build());
+  private static DefaultFcpInsertContextHandle newInsertContextHandle() {
+    return new DefaultFcpInsertContextHandle(
+        new SimpleEventProducer(),
+        new FcpInsertContextLimits(0, 1, 1),
+        new FcpInsertOptions(
+            new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+            new FcpInsertTuningOptions(
+                true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
+            null));
   }
 
   private static void setField(Class<?> owner, Object target, String name, Object value)

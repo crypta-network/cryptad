@@ -1,9 +1,15 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.InvalidObjectException;
 import java.util.Objects;
+import network.crypta.clients.fcp.ClientPutDirExecution;
+import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
+import network.crypta.clients.fcp.ClientPutExecution;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
+import network.crypta.clients.fcp.FcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
+import network.crypta.clients.fcp.FcpLegacyInsertExecutionBridge;
 import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
 import network.crypta.clients.fcp.FcpServerDependencies;
 import network.crypta.clients.fcp.FcpServerRuntimeSupport;
@@ -18,7 +24,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  * typically from node startup code such as {@code
  * network.crypta.runtime.endpoints.NodeClientPersistence}, to translate the remaining {@link
  * NodeClientCore}-backed services into the narrow seams that {@link FCPServer} accepts. That keeps
- * main code under {@code clients.fcp} free of direct daemon-core imports while preserving the
+ * the main code under {@code clients.fcp} free of direct daemon-core imports while preserving the
  * runtime behavior that older code paths expected.
  *
  * <p>The factory is stateless and creates one fresh {@link FcpServerDependencies} bundle per call.
@@ -37,7 +43,58 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @see FcpServerDependencies
  */
 public final class CoreFcpServerDependenciesFactory {
+  /**
+   * Bridge-owned adapter for re-wrapping legacy runtime putters during Java deserialization.
+   *
+   * <p>The adapter module loads this constant reflectively so older persistent requests can rebuild
+   * adapter-owned execution handles without taking a direct compile-time dependency on {@code
+   * :bridge-fcp-runtime}. The implementation stays colocated with the bridge factory because the
+   * actual wrapping logic remains owned by {@link CoreFcpInsertRuntimeSupport}.
+   */
+  private static final FcpLegacyInsertExecutionBridge LEGACY_INSERT_EXECUTION_BRIDGE =
+      new FcpLegacyInsertExecutionBridge() {
+        @Override
+        public FcpInsertContextHandle wrapLegacyInsertContext(Object legacyInsertContext)
+            throws InvalidObjectException {
+          return CoreFcpInsertRuntimeSupport.wrapLegacyInsertContext(legacyInsertContext);
+        }
+
+        @Override
+        public Object legacyInsertContextForSerialization(FcpInsertContextHandle contextHandle) {
+          return CoreFcpInsertRuntimeSupport.legacyInsertContextForSerialization(contextHandle);
+        }
+
+        @Override
+        public ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter)
+            throws InvalidObjectException {
+          return CoreFcpInsertRuntimeSupport.wrapLegacySingleFileExecution(legacyPutter);
+        }
+
+        @Override
+        public ClientPutDirExecution wrapLegacyDirectoryExecution(
+            Object legacyPutter, ClientPutDirExecutionSpec executionSpec)
+            throws InvalidObjectException {
+          return CoreFcpInsertRuntimeSupport.wrapLegacyDirectoryExecution(
+              legacyPutter, executionSpec);
+        }
+      };
+
   private CoreFcpServerDependenciesFactory() {}
+
+  /**
+   * Exposes the legacy insert-execution bridge for reflective adapter deserialization.
+   *
+   * <p>{@code :adapter-fcp} loads this accessor reflectively so it can rebuild older persisted PUT
+   * requests without taking a direct compile-time dependency on {@code :bridge-fcp-runtime}. The
+   * returned bridge is a singleton because it is stateless and only forwards to {@link
+   * CoreFcpInsertRuntimeSupport}.
+   *
+   * @return singleton bridge that adapts legacy insert contexts and putter implementations
+   */
+  @SuppressWarnings("unused")
+  public static FcpLegacyInsertExecutionBridge legacyInsertExecutionBridge() {
+    return LEGACY_INSERT_EXECUTION_BRIDGE;
+  }
 
   /**
    * Builds the full dependency bundle required by {@link FCPServer}.

@@ -7,12 +7,14 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.ContainerInserter;
 import network.crypta.client.async.DefaultManifestPutter;
 import network.crypta.client.async.InsertRequestParams;
@@ -29,8 +31,16 @@ import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
 import network.crypta.clients.fcp.ClientPutExecution;
 import network.crypta.clients.fcp.ClientPutExecutionSpec;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
+import network.crypta.clients.fcp.DefaultFcpInsertContextHandle;
 import network.crypta.clients.fcp.FCPConnectionHandler;
+import network.crypta.clients.fcp.FcpCompatibilityAnalysis;
+import network.crypta.clients.fcp.FcpCompatibilityMode;
+import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
+import network.crypta.clients.fcp.FcpInsertContextHandle;
+import network.crypta.clients.fcp.FcpInsertContextLimits;
+import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
+import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.clients.fcp.SubscribeUSKCallbacks;
 import network.crypta.clients.fcp.SubscribeUSKMessage;
 import network.crypta.clients.fcp.UskSubscriptionHandle;
@@ -48,7 +58,9 @@ import network.crypta.support.io.ResumeFailedException;
  * Core-backed implementation of {@link FcpInsertRuntimeSupport}.
  *
  * <p>This adapter owns the concrete translation between the adapter-owned detached insert/USK seam
- * and the live daemon runtime.
+ * and the live daemon runtime. It also centralizes the compatibility-mode translation used when
+ * detached FCP compatibility snapshots are mapped back onto the runtime's mutable {@link
+ * InsertContext} and {@link CompatibilityAnalyser} implementations.
  */
 record CoreFcpInsertRuntimeSupport(
     NodeClientCore core, Supplier<TransferAccessPort> transferAccessSupplier)
@@ -61,8 +73,8 @@ record CoreFcpInsertRuntimeSupport(
   }
 
   @Override
-  public InsertContext defaultPersistentInsertContext() {
-    return clientContext().getDefaultPersistentInsertContext();
+  public FcpInsertContextHandle defaultPersistentInsertContextHandle() {
+    return toInsertContextHandle(clientContext().getDefaultPersistentInsertContext());
   }
 
   @Override
@@ -94,6 +106,38 @@ record CoreFcpInsertRuntimeSupport(
     return uri;
   }
 
+  static FcpCompatibilityMode toCompatibilityMode(
+      InsertContext.CompatibilityMode compatibilityMode) {
+    return FcpCompatibilityMode.valueOf(compatibilityMode.name());
+  }
+
+  static InsertContext.CompatibilityMode toRuntimeCompatibilityMode(
+      FcpCompatibilityMode compatibilityMode) {
+    return InsertContext.CompatibilityMode.byCode(compatibilityMode.intern().code());
+  }
+
+  static FcpCompatibilityAnalysis toCompatibilityAnalysis(CompatibilityAnalyser analyser) {
+    FcpCompatibilityAnalysis analysis = new FcpCompatibilityAnalysis();
+    analysis.merge(
+        toCompatibilityMode(analyser.min()),
+        toCompatibilityMode(analyser.max()),
+        analyser.getCryptoKey(),
+        analyser.dontCompress(),
+        analyser.definitive());
+    return analysis;
+  }
+
+  static CompatibilityAnalyser toRuntimeCompatibilityAnalyser(FcpCompatibilityAnalysis analysis) {
+    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    analyser.merge(
+        toRuntimeCompatibilityMode(analysis.min()),
+        toRuntimeCompatibilityMode(analysis.max()),
+        analysis.getCryptoKey(),
+        analysis.dontCompress(),
+        analysis.definitive());
+    return analyser;
+  }
+
   @Override
   public ClientPutExecution createSingleFileExecution(ClientPutExecutionSpec executionSpec) {
     return new CoreClientPutExecution(executionSpec);
@@ -116,29 +160,127 @@ record CoreFcpInsertRuntimeSupport(
     return Objects.requireNonNull(core.getClientContext());
   }
 
-  static ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter) {
+  private static FcpInsertContextHandle toInsertContextHandle(InsertContext context) {
+    return new DefaultFcpInsertContextHandle(
+        new FcpInsertContextLimits(
+            context.getConsecutiveRNFsCountAsSuccess(),
+            context.getSplitfileSegmentDataBlocks(),
+            context.getSplitfileSegmentCheckBlocks()),
+        new FcpInsertOptions(
+            new FcpInsertBehaviorOptions(
+                context.isGetCHKOnly(),
+                context.isDontCompress(),
+                context.isLocalRequestOnly(),
+                context.getMaxInsertRetries(),
+                context.isEarlyEncode(),
+                false,
+                context.isIgnoreUSKDatehints()),
+            new FcpInsertTuningOptions(
+                context.isCanWriteClientCache(),
+                context.isForkOnCacheable(),
+                context.getCompressorDescriptor(),
+                context.getExtraInsertsSingleBlock(),
+                context.getExtraInsertsSplitfileHeaderBlock(),
+                toCompatibilityMode(context.getCompatibilityMode())),
+            null));
+  }
+
+  static FcpInsertContextHandle wrapLegacyInsertContext(Object legacyInsertContext)
+      throws java.io.InvalidObjectException {
+    if (legacyInsertContext == null) {
+      return null;
+    }
+    if (legacyInsertContext instanceof InsertContext context) {
+      return new DefaultFcpInsertContextHandle(
+          context.getEventProducer(),
+          new FcpInsertContextLimits(
+              context.getConsecutiveRNFsCountAsSuccess(),
+              context.getSplitfileSegmentDataBlocks(),
+              context.getSplitfileSegmentCheckBlocks()),
+          new FcpInsertOptions(
+              new FcpInsertBehaviorOptions(
+                  context.isGetCHKOnly(),
+                  context.isDontCompress(),
+                  context.isLocalRequestOnly(),
+                  context.getMaxInsertRetries(),
+                  context.isEarlyEncode(),
+                  false,
+                  context.isIgnoreUSKDatehints()),
+              new FcpInsertTuningOptions(
+                  context.isCanWriteClientCache(),
+                  context.isForkOnCacheable(),
+                  context.getCompressorDescriptor(),
+                  context.getExtraInsertsSingleBlock(),
+                  context.getExtraInsertsSplitfileHeaderBlock(),
+                  toCompatibilityMode(context.getCompatibilityMode())),
+              null));
+    }
+    throw new java.io.InvalidObjectException(
+        "Legacy insert context is not an InsertContext: "
+            + legacyInsertContext.getClass().getName());
+  }
+
+  private static InsertContext toRuntimeInsertContext(FcpInsertContextHandle contextHandle) {
+    InsertContextOptions options =
+        InsertContextOptions.builder()
+            .retryLimits(
+                contextHandle.getMaxInsertRetries(),
+                contextHandle.getConsecutiveRnfsCountAsSuccess())
+            .splitfileSegmentLimits(
+                contextHandle.getSplitfileSegmentDataBlocks(),
+                contextHandle.getSplitfileSegmentCheckBlocks())
+            .clientOptions(
+                contextHandle.eventProducer(),
+                contextHandle.canWriteClientCache(),
+                contextHandle.forkOnCacheable(),
+                contextHandle.localRequestOnly())
+            .compressorDescriptor(contextHandle.getCompressorDescriptor())
+            .redundancy(
+                contextHandle.getExtraInsertsSingleBlock(),
+                contextHandle.getExtraInsertsSplitfileHeaderBlock())
+            .compatibility(toRuntimeCompatibilityMode(contextHandle.getCompatibilityMode()))
+            .build();
+    InsertContext runtimeContext = new InsertContext(options);
+    runtimeContext.setGetCHKOnly(contextHandle.getCHKOnly());
+    runtimeContext.setDontCompress(contextHandle.isDontCompress());
+    runtimeContext.setIgnoreUSKDatehints(contextHandle.ignoreUSKDatehints());
+    runtimeContext.setEarlyEncode(contextHandle.earlyEncode());
+    return runtimeContext;
+  }
+
+  static Object legacyInsertContextForSerialization(FcpInsertContextHandle contextHandle) {
+    if (contextHandle == null) {
+      return null;
+    }
+    return toRuntimeInsertContext(contextHandle);
+  }
+
+  static ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter)
+      throws java.io.InvalidObjectException {
     if (legacyPutter == null) {
       return null;
     }
     if (legacyPutter instanceof ClientPutter putter) {
       return new CoreClientPutExecution(putter);
     }
-    throw new IllegalArgumentException(
+    throw new java.io.InvalidObjectException(
         "Legacy single-file putter is not a ClientPutter: " + legacyPutter.getClass().getName());
   }
 
   static ClientPutDirExecution wrapLegacyDirectoryExecution(
-      Object legacyPutter, ClientPutDirExecutionSpec executionSpec) {
+      Object legacyPutter, ClientPutDirExecutionSpec executionSpec)
+      throws java.io.InvalidObjectException {
     if (legacyPutter == null) {
       return null;
     }
     if (legacyPutter instanceof ManifestPutter putter) {
       return new CoreClientPutDirExecution(executionSpec, putter);
     }
-    throw new IllegalArgumentException(
+    throw new java.io.InvalidObjectException(
         "Legacy directory putter is not a ManifestPutter: " + legacyPutter.getClass().getName());
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class CoreClientPutExecution implements ClientPutExecution {
     @Serial private static final long serialVersionUID = 1L;
 
@@ -150,7 +292,7 @@ record CoreFcpInsertRuntimeSupport(
               new InsertRequestParams(
                   spec.callback(),
                   spec.targetURI(),
-                  spec.insertContext(),
+                  toRuntimeInsertContext(spec.insertContext()),
                   spec.requestParams().priorityClass()),
               spec.data(),
               spec.clientMetadata(),
@@ -260,7 +402,7 @@ record CoreFcpInsertRuntimeSupport(
             new InsertRequestParams(
                 spec.callback(),
                 spec.requestParams().uri(),
-                spec.insertContext(),
+                toRuntimeInsertContext(spec.insertContext()),
                 spec.priorityClass()),
             spec.manifestElements(),
             spec.defaultName(),

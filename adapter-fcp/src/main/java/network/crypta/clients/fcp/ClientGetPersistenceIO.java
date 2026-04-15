@@ -1,7 +1,10 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import network.crypta.client.FetchException;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.support.api.Bucket;
@@ -204,6 +207,83 @@ final class ClientGetPersistenceIO {
       } else {
         throw e;
       }
+    }
+  }
+
+  static FcpFetchRuntimeSupport resolveRuntimeFetchSupport(ClientGet request) {
+    FcpFetchRuntimeSupport runtimeFetchSupport = request.requestProfile().runtimeFetchSupport();
+    if (runtimeFetchSupport != null) {
+      return runtimeFetchSupport;
+    }
+    PersistentRequestClient persistentClient = request.client;
+    if (persistentClient == null) {
+      return null;
+    }
+    FCPConnectionHandler connection = persistentClient.getConnection();
+    if (connection != null) {
+      return connection.getServer().fetchRuntimeSupport();
+    }
+    PersistentRequestRoot persistentRoot = persistentClient.root;
+    return persistentRoot == null ? null : persistentRoot.fetchRuntimeSupport();
+  }
+
+  static void prepareForSerialization(ClientGet request) {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = resolveRuntimeFetchSupport(request);
+    ClientGetFetchConfig fetchConfig = request.requestProfile().fetchConfig();
+    if (fetchRuntimeSupport == null || fetchConfig == null) {
+      return;
+    }
+    try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        DataOutputStream encoded = new DataOutputStream(buffer)) {
+      fetchRuntimeSupport.encodeFetchConfig(fetchConfig, encoded);
+      request.setPersistedFetchConfigEncoding(buffer.toByteArray());
+    } catch (IOException e) {
+      LOG.warn(
+          "Unable to refresh cached fetch configuration encoding for {}", request.identifier, e);
+    }
+  }
+
+  static ClientGetExecution recreateExecutionForResume(ClientGet request)
+      throws ResumeFailedException {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = resolveRuntimeFetchSupport(request);
+    if (fetchRuntimeSupport == null) {
+      throw new ResumeFailedException("Missing fetch runtime support for GET resume");
+    }
+    try {
+      ClientGetExecution resumedExecution =
+          request.makeExecutionForPersistence(request.makePersistenceBucket());
+      request.applyDiagnosticIdentifier(resumedExecution.requester());
+      return resumedExecution;
+    } catch (IOException e) {
+      throw new ResumeFailedException(e);
+    }
+  }
+
+  static void resume(ClientGet request, network.crypta.client.async.ClientContext context)
+      throws ResumeFailedException {
+    if (request.execution() != null) {
+      request.execution().onResume(context);
+    } else if (!request.finished) {
+      request.setExecution(recreateExecutionForResume(request));
+      try {
+        request.execution().start();
+      } catch (FetchException e) {
+        throw new ResumeFailedException(e);
+      }
+    }
+    Bucket returnBucket = request.state().getReturnBucketDirect();
+    if (returnBucket != null) {
+      returnBucket.onResume(context);
+    }
+    Bucket initialMetadata = request.requestProfile().initialMetadata();
+    if (initialMetadata != null) {
+      initialMetadata.onResume(context);
+    }
+    if (request.execution() != null && request.state().getFoundDataLength() <= 0) {
+      request.state().setFoundDataLength(request.execution().expectedSize());
+    }
+    if (request.execution() != null && request.state().getFoundDataMimeType() == null) {
+      request.state().setFoundDataMimeType(request.execution().expectedMime());
     }
   }
 }

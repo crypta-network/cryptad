@@ -51,6 +51,7 @@ final class ClientGetStatusSnapshotBuilder {
    * @return {@link PersistentGet} message describing the request's current persistent metadata.
    */
   FCPMessage persistentTagMessage() {
+    ClientGetRequestProfile requestProfile = request.requestProfile();
     ClientRequestParams requestParams =
         new ClientRequestParams(
             request.uri,
@@ -61,14 +62,15 @@ final class ClientGetStatusSnapshotBuilder {
             request.isRealTime(),
             request.clientToken,
             request.client.isGlobalQueue);
-    ClientGetFetchConfig fetchConfig = Objects.requireNonNull(request.fetchConfig(), "fetchConfig");
+    ClientGetFetchConfig fetchConfig =
+        Objects.requireNonNull(requestProfile.fetchConfig(), "fetchConfig");
     PersistentGetDescriptor descriptor =
         new PersistentGetDescriptor(
-            request.returnTypeForReplay(),
-            request.targetFileForLifecycle(),
+            requestProfile.returnType(),
+            requestProfile.targetFile(),
             request.started,
             fetchConfig.getMaxNonSplitfileRetries(),
-            request.binaryBlobRequested(),
+            requestProfile.binaryBlob(),
             fetchConfig.getMaxOutputLength());
     return new PersistentGet(requestParams, descriptor);
   }

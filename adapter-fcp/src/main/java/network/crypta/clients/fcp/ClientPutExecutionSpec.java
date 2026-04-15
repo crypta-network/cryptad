@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.RandomAccessBucket;
@@ -27,7 +26,7 @@ public final class ClientPutExecutionSpec {
   private final ClientRequestParams requestParams;
 
   /** The insert policy snapshot governing retries, compression, and compatibility. */
-  private final InsertContext insertContext;
+  private final FcpInsertContextHandle insertContext;
 
   /** Payload bucket to insert or redirect metadata bucket for metadata-only inserts. */
   private final RandomAccessBucket data;
@@ -60,7 +59,7 @@ public final class ClientPutExecutionSpec {
   public ClientPutExecutionSpec(
       ClientPutCallback callback,
       ClientRequestParams requestParams,
-      InsertContext insertContext,
+      FcpInsertContextHandle insertContext,
       RandomAccessBucket data,
       ClientMetadata clientMetadata,
       boolean isMetadata,
@@ -107,7 +106,7 @@ public final class ClientPutExecutionSpec {
    *
    * @return the insert policy snapshot to apply to the runtime-owned execution
    */
-  public InsertContext insertContext() {
+  public FcpInsertContextHandle insertContext() {
     return insertContext;
   }
 

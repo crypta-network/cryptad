@@ -78,7 +78,7 @@ final class ClientGetMessageReplay {
       if (request.finished) {
         request.trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
       }
-    } else if (request.returnTypeForReplay() != ClientGet.ReturnType.DIRECT) {
+    } else if (request.requestProfile().returnType() != ClientGet.ReturnType.DIRECT) {
       FCPMessage msg =
           new ProtocolErrorMessage(
               ProtocolErrorMessage.WRONG_RETURN_TYPE,
@@ -100,6 +100,7 @@ final class ClientGetMessageReplay {
     ExpectedDataLength lengthMsg = null;
     synchronized (request.persistenceLock()) {
       ClientGetState state = request.state();
+      state.ensureCompatibilityMode();
       cmsg =
           new CompatibilityMode(
               request.identifier, request.global, state.getCompatibilityAnalyser());
@@ -231,7 +232,7 @@ final class ClientGetMessageReplay {
    * @return a new {@link AllDataMessage} snapshot, or {@code null} when unavailable.
    */
   private AllDataMessage getAllDataMessage() {
-    if (request.returnTypeForReplay() != ClientGet.ReturnType.DIRECT) {
+    if (request.requestProfile().returnType() != ClientGet.ReturnType.DIRECT) {
       return null;
     }
     Bucket bucket;

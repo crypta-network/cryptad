@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.Arrays;
 import java.util.Objects;
-import network.crypta.client.InsertContext;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -11,10 +10,10 @@ import org.jetbrains.annotations.NotNull;
  * <p>This value object aggregates caller-selected flags and numeric limits that shape how insert
  * requests are scheduled, encoded, and cached. Typical call sites assemble the two option group
  * records for behavior and tuning, then pass this instance into a request constructor that
- * initializes an {@link network.crypta.client.InsertContext}. The class is immutable in terms of
- * its field references and does not validate or normalize any inputs, which preserves legacy
- * behavior and keeps construction lightweight. Callers therefore remain responsible for providing
- * coherent combinations such as compatible retry limits and compression settings.
+ * initializes a detached insert-context handle. The class is immutable in terms of its field
+ * references and does not validate or normalize any inputs, which preserves legacy behavior and
+ * keeps construction lightweight. Callers therefore remain responsible for providing coherent
+ * combinations such as compatible retry limits and compression settings.
  *
  * <p>Instances are safe to share between threads because all fields are final, but the optional
  * {@code overrideSplitfileCryptoKey} array is stored by reference; if callers mutate the array
@@ -29,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @see FcpInsertBehaviorOptions
  * @see FcpInsertTuningOptions
- * @see network.crypta.client.InsertContext
+ * @see FcpInsertContextHandle
  */
 public final class FcpInsertOptions {
   private final boolean getCHKOnly;
@@ -43,7 +42,7 @@ public final class FcpInsertOptions {
   private final int extraInsertsSingleBlock;
   private final int extraInsertsSplitfileHeaderBlock;
   private final boolean realTimeFlag;
-  private final InsertContext.CompatibilityMode compatibilityMode;
+  private final FcpCompatibilityMode compatibilityMode;
   private final boolean ignoreUSKDatehints;
   private final byte[] overrideSplitfileCryptoKey;
 
@@ -244,7 +243,7 @@ public final class FcpInsertOptions {
    *
    * @return the compatibility mode selected by the caller for this insert.
    */
-  public InsertContext.CompatibilityMode compatibilityMode() {
+  public FcpCompatibilityMode compatibilityMode() {
     return compatibilityMode;
   }
 
@@ -338,7 +337,7 @@ public final class FcpInsertOptions {
   }
 
   /**
-   * Returns a detailed string representation of this options bundle.
+   * Returns a detailed string representation of this option bundle.
    *
    * <p>The output includes each field name and value, including the override splitfile key rendered
    * via {@link Arrays#toString(byte[])} when present. The method does not redact or sanitize

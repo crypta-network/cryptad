@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 
 /**
  * Detached directory insert description consumed by the bridge runtime.
@@ -27,7 +26,7 @@ public final class ClientPutDirExecutionSpec implements Serializable {
   private final ClientRequestParams requestParams;
 
   /** The insert policy snapshot that the bridge forwards into the manifest putter. */
-  private final InsertContext insertContext;
+  private final FcpInsertContextHandle insertContext;
 
   /** Preferred default document name for the inserted manifest, if any. */
   private final String defaultName;
@@ -52,7 +51,7 @@ public final class ClientPutDirExecutionSpec implements Serializable {
   public ClientPutDirExecutionSpec(
       ClientPutDir callback,
       ClientRequestParams requestParams,
-      InsertContext insertContext,
+      FcpInsertContextHandle insertContext,
       String defaultName,
       byte[] forceCryptoKey) {
     this.callback = callback;
@@ -96,7 +95,7 @@ public final class ClientPutDirExecutionSpec implements Serializable {
    *
    * @return the insert policy snapshot to pass into the runtime-owned manifest putter
    */
-  public InsertContext insertContext() {
+  public FcpInsertContextHandle insertContext() {
     return insertContext;
   }
 

@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InvalidObjectException;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -60,19 +59,25 @@ public final class ClientPutDir extends ClientPutBase {
 
   private static final String LEGACY_PUTTER_TYPE = "network.crypta.client.async.ManifestPutter";
 
-  private static final String BRIDGE_RUNTIME_SUPPORT =
-      "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport";
+  private static final String FIELD_MANIFEST_ELEMENTS = "manifestElements";
+  private static final String FIELD_PUTTER = "putter";
+  private static final String FIELD_DEFAULT_NAME = "defaultName";
+  private static final String FIELD_TOTAL_SIZE = "totalSize";
+  private static final String FIELD_NUMBER_OF_FILES = "numberOfFiles";
+  private static final String FIELD_WAS_DISK_PUT = "wasDiskPut";
+  private static final String FIELD_OVERRIDE_SPLITFILE_CRYPTO_KEY = "overrideSplitfileCryptoKey";
 
   @SuppressWarnings("UnusedVariable")
+  @Serial
   private static final ObjectStreamField[] serialPersistentFields =
       new ObjectStreamField[] {
-        new ObjectStreamField("manifestElements", Map.class),
-        new ObjectStreamField("putter", requiredClass(LEGACY_PUTTER_TYPE)),
-        new ObjectStreamField("defaultName", String.class),
-        new ObjectStreamField("totalSize", long.class),
-        new ObjectStreamField("numberOfFiles", int.class),
-        new ObjectStreamField("wasDiskPut", boolean.class),
-        new ObjectStreamField("overrideSplitfileCryptoKey", byte[].class)
+        new ObjectStreamField(FIELD_MANIFEST_ELEMENTS, Map.class),
+        new ObjectStreamField(FIELD_PUTTER, requiredLegacyPutterClass()),
+        new ObjectStreamField(FIELD_DEFAULT_NAME, String.class),
+        new ObjectStreamField(FIELD_TOTAL_SIZE, long.class),
+        new ObjectStreamField(FIELD_NUMBER_OF_FILES, int.class),
+        new ObjectStreamField(FIELD_WAS_DISK_PUT, boolean.class),
+        new ObjectStreamField(FIELD_OVERRIDE_SPLITFILE_CRYPTO_KEY, byte[].class)
       };
 
   /** Mutable tree describing pending manifest elements keyed by child name. */
@@ -217,7 +222,7 @@ public final class ClientPutDir extends ClientPutBase {
    *                 null,
    *                 0,
    *                 0,
-   *                 InsertContext.CompatibilityMode.COMPAT_DEFAULT),
+   *                 FcpCompatibilityMode.COMPAT_DEFAULT),
    *             null),
    *         new File("site"),
    *         "index.html",
@@ -318,13 +323,13 @@ public final class ClientPutDir extends ClientPutBase {
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
     ObjectOutputStream.PutField fields = out.putFields();
-    fields.put("manifestElements", manifestElements);
-    fields.put("putter", legacyPutterForSerialization());
-    fields.put("defaultName", defaultName);
-    fields.put("totalSize", totalSize);
-    fields.put("numberOfFiles", numberOfFiles);
-    fields.put("wasDiskPut", wasDiskPut);
-    fields.put("overrideSplitfileCryptoKey", overrideSplitfileCryptoKey);
+    fields.put(FIELD_MANIFEST_ELEMENTS, manifestElements);
+    fields.put(FIELD_PUTTER, legacyPutterForSerialization());
+    fields.put(FIELD_DEFAULT_NAME, defaultName);
+    fields.put(FIELD_TOTAL_SIZE, totalSize);
+    fields.put(FIELD_NUMBER_OF_FILES, numberOfFiles);
+    fields.put(FIELD_WAS_DISK_PUT, wasDiskPut);
+    fields.put(FIELD_OVERRIDE_SPLITFILE_CRYPTO_KEY, overrideSplitfileCryptoKey);
     out.writeFields();
   }
 
@@ -343,17 +348,18 @@ public final class ClientPutDir extends ClientPutBase {
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     ObjectInputStream.GetField fields = in.readFields();
-    manifestElements = castManifestElements(fields.get("manifestElements", null));
-    defaultName = (String) fields.get("defaultName", null);
-    totalSize = fields.get("totalSize", 0L);
-    numberOfFiles = fields.get("numberOfFiles", 0);
-    wasDiskPut = fields.get("wasDiskPut", false);
-    overrideSplitfileCryptoKey = (byte[]) fields.get("overrideSplitfileCryptoKey", null);
+    manifestElements = castManifestElements(fields.get(FIELD_MANIFEST_ELEMENTS, null));
+    defaultName = (String) fields.get(FIELD_DEFAULT_NAME, null);
+    totalSize = fields.get(FIELD_TOTAL_SIZE, 0L);
+    numberOfFiles = fields.get(FIELD_NUMBER_OF_FILES, 0);
+    wasDiskPut = fields.get(FIELD_WAS_DISK_PUT, false);
+    overrideSplitfileCryptoKey = (byte[]) fields.get(FIELD_OVERRIDE_SPLITFILE_CRYPTO_KEY, null);
     putter =
-        wrapLegacyDirectoryExecution(
-            fields.get("putter", null),
-            new ClientPutDirExecutionSpec(
-                this, currentRequestParams(), ctx, defaultName, overrideSplitfileCryptoKey));
+        LegacyInsertExecutionBridgeLoader.load()
+            .wrapLegacyDirectoryExecution(
+                fields.get(FIELD_PUTTER, null),
+                new ClientPutDirExecutionSpec(
+                    this, currentRequestParams(), ctx, defaultName, overrideSplitfileCryptoKey));
   }
 
   @SuppressWarnings("unchecked")
@@ -369,7 +375,7 @@ public final class ClientPutDir extends ClientPutBase {
     if (requester == null) {
       return null;
     }
-    if (!requiredClass(LEGACY_PUTTER_TYPE).isInstance(requester)) {
+    if (!requiredLegacyPutterClass().isInstance(requester)) {
       throw new NotSerializableException(
           "Directory putter requester is not compatible with "
               + LEGACY_PUTTER_TYPE
@@ -384,36 +390,12 @@ public final class ClientPutDir extends ClientPutBase {
         uri, identifier, verbosity, priorityClass, persistence, realTime, clientToken, global);
   }
 
-  private static ClientPutDirExecution wrapLegacyDirectoryExecution(
-      Object legacyPutter, ClientPutDirExecutionSpec executionSpec) throws InvalidObjectException {
-    if (legacyPutter == null) {
-      return null;
-    }
+  private static Class<?> requiredLegacyPutterClass() {
     try {
-      Class<?> bridgeClass = Class.forName(BRIDGE_RUNTIME_SUPPORT);
-      java.lang.reflect.Method method =
-          bridgeClass.getDeclaredMethod(
-              "wrapLegacyDirectoryExecution", Object.class, ClientPutDirExecutionSpec.class);
-      method.setAccessible(true);
-      return (ClientPutDirExecution) method.invoke(null, legacyPutter, executionSpec);
-    } catch (ReflectiveOperationException e) {
-      InvalidObjectException failure =
-          new InvalidObjectException("Could not restore legacy directory putter");
-      failure.initCause(rootCause(e));
-      throw failure;
-    }
-  }
-
-  private static Class<?> requiredClass(String className) {
-    try {
-      return Class.forName(className);
+      return Class.forName(LEGACY_PUTTER_TYPE);
     } catch (ClassNotFoundException e) {
       throw new ExceptionInInitializerError(e);
     }
-  }
-
-  private static Throwable rootCause(ReflectiveOperationException e) {
-    return e.getCause() == null ? e : e.getCause();
   }
 
   @Override

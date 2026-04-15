@@ -41,6 +41,7 @@ import network.crypta.runtime.spi.RequestQueueUnavailableException;
  */
 public final class FcpQueuePageBackend implements QueuePageBackend {
   private static final String QUEUE_UNAVAILABLE = "Persistent request queue unavailable";
+  private static final CompatibilityMode[] EMPTY_COMPATIBILITY_MODES = new CompatibilityMode[0];
 
   private final NodeClientCore core;
 
@@ -242,7 +243,15 @@ public final class FcpQueuePageBackend implements QueuePageBackend {
 
     @Override
     public CompatibilityMode[] getCompatibilityMode() {
-      return status.getCompatibilityMode();
+      network.crypta.clients.fcp.FcpCompatibilityMode[] compatModes = status.getCompatibilityMode();
+      if (compatModes == null) {
+        return EMPTY_COMPATIBILITY_MODES;
+      }
+      CompatibilityMode[] runtimeModes = new CompatibilityMode[compatModes.length];
+      for (int i = 0; i < compatModes.length; i++) {
+        runtimeModes[i] = CoreFcpInsertRuntimeSupport.toRuntimeCompatibilityMode(compatModes[i]);
+      }
+      return runtimeModes;
     }
 
     @Override

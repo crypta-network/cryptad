@@ -63,7 +63,8 @@ final class ClientGetLifecycle {
    */
   void onSuccess(FetchResult result, ClientGetExecution state) {
     LOG.debug("Succeeded: {}", request.identifier);
-    Bucket data = request.binaryBlobRequested() ? state.blobBucket() : result.asBucket();
+    ClientGetRequestProfile requestProfile = request.requestProfile();
+    Bucket data = requestProfile.binaryBlob() ? state.blobBucket() : result.asBucket();
     ClientGetState requestState = request.state();
     synchronized (request.persistenceLock()) {
       if (requestState.hasSucceeded()) {
@@ -71,7 +72,7 @@ final class ClientGetLifecycle {
         return; // We might be called twice; ignore it if so.
       }
       request.started = true;
-      if (!request.binaryBlobRequested()) {
+      if (!requestProfile.binaryBlob()) {
         requestState.setFoundDataMimeType(result.getMimeType());
       } else {
         requestState.setFoundDataMimeType(ClientGetGetterFactory.binaryBlobMimeType());
@@ -85,7 +86,7 @@ final class ClientGetLifecycle {
       requestState.setFoundDataLength(data.size());
       requestState.setSucceeded(true);
       request.finished = true;
-      if (request.returnTypeForReplay() == ClientGet.ReturnType.DIRECT) {
+      if (requestProfile.returnType() == ClientGet.ReturnType.DIRECT) {
         requestState.setReturnBucketDirect(data);
       }
     }
@@ -117,11 +118,12 @@ final class ClientGetLifecycle {
       request.started = true;
       request.finished = true;
       request.completionTime = completionTime;
-      ClientGet.ReturnType returnType = request.returnTypeForReplay();
+      ClientGetRequestProfile requestProfile = request.requestProfile();
+      ClientGet.ReturnType returnType = requestProfile.returnType();
       if (returnType == null) {
         throw new ResumeFailedException("Success but return type is missing");
       }
-      java.io.File targetFile = request.targetFileForLifecycle();
+      java.io.File targetFile = requestProfile.targetFile();
       switch (returnType) {
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.NONE -> {
           // Nothing to validate.

@@ -1,7 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.InsertContext;
-
 /**
  * Bundles cache, redundancy, and compatibility tuning parameters for FCP inserts.
  *
@@ -38,4 +36,4 @@ public record FcpInsertTuningOptions(
     String compressorDescriptor,
     int extraInsertsSingleBlock,
     int extraInsertsSplitfileHeaderBlock,
-    InsertContext.CompatibilityMode compatibilityMode) {}
+    FcpCompatibilityMode compatibilityMode) {}

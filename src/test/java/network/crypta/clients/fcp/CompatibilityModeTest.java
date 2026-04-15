@@ -1,34 +1,22 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class CompatibilityModeTest {
 
-  @Mock private CompatibilityAnalyser analyser;
-
   @Test
   void getFieldSet_whenCryptoKeyPresent_expectAllFieldsWritten() {
-    when(analyser.min()).thenReturn(InsertContext.CompatibilityMode.COMPAT_1250);
-    when(analyser.max()).thenReturn(InsertContext.CompatibilityMode.COMPAT_1468);
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
     byte[] cryptoKey = new byte[] {0x00, (byte) 0xAB, (byte) 0xCD, (byte) 0xEF};
-    when(analyser.getCryptoKey()).thenReturn(cryptoKey);
-    when(analyser.dontCompress()).thenReturn(true);
-    when(analyser.definitive()).thenReturn(true);
+    analyser.merge(
+        FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468, cryptoKey, true, true);
 
     CompatibilityMode message = new CompatibilityMode("alpha", true, analyser);
 
@@ -47,11 +35,9 @@ class CompatibilityModeTest {
 
   @Test
   void getFieldSet_whenCryptoKeyMissing_expectOptionalKeyOmitted() {
-    when(analyser.min()).thenReturn(InsertContext.CompatibilityMode.COMPAT_1251);
-    when(analyser.max()).thenReturn(InsertContext.CompatibilityMode.COMPAT_1255);
-    when(analyser.getCryptoKey()).thenReturn(null);
-    when(analyser.dontCompress()).thenReturn(false);
-    when(analyser.definitive()).thenReturn(false);
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
+    analyser.merge(
+        FcpCompatibilityMode.COMPAT_1251, FcpCompatibilityMode.COMPAT_1255, null, false, false);
 
     CompatibilityMode message = new CompatibilityMode("beta", false, analyser);
 
@@ -65,29 +51,30 @@ class CompatibilityModeTest {
 
   @Test
   void getName_whenCalled_returnsCompatibilityMode() {
-    CompatibilityMode message = new CompatibilityMode("id", true, analyser);
+    CompatibilityMode message = new CompatibilityMode("id", true, new FcpCompatibilityAnalysis());
 
     assertEquals("CompatibilityMode", message.getName());
   }
 
   @Test
   void run_whenInvoked_expectUnsupportedOperation() {
-    CompatibilityMode message = new CompatibilityMode("id", true, analyser);
+    CompatibilityMode message = new CompatibilityMode("id", true, new FcpCompatibilityAnalysis());
 
     assertThrows(UnsupportedOperationException.class, () -> message.run(null));
   }
 
   @Test
   void getModes_whenCalled_returnsDelegateResult() {
-    InsertContext.CompatibilityMode[] expected =
-        new InsertContext.CompatibilityMode[] {
-          InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
+    FcpCompatibilityMode[] expected =
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
         };
-    when(analyser.getModes()).thenReturn(expected);
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
+    analyser.merge(
+        FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468, null, true, false);
 
     CompatibilityMode message = new CompatibilityMode("id", true, analyser);
 
-    assertSame(expected, message.getModes());
-    verify(analyser).getModes();
+    assertArrayEquals(expected, message.getModes());
   }
 }

@@ -6,10 +6,8 @@ import java.nio.file.Path;
 import java.time.Instant;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -46,7 +44,7 @@ class ClientGetTest {
   @Test
   void getBucket_whenReturnTypeDirect_returnsSameBucket() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "returnType", ReturnType.DIRECT);
+    ClientGetTestProfiles.setReturnType(clientGet, ReturnType.DIRECT);
     clientGet.state().setReturnBucketDirect(directBucket);
 
     Bucket bucket = clientGet.getBucket();
@@ -57,9 +55,9 @@ class ClientGetTest {
   @Test
   void getBucket_whenReturnTypeDisk_createsBucketForTargetFile(@TempDir Path tempDir) {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "returnType", ReturnType.DISK);
+    ClientGetTestProfiles.setReturnType(clientGet, ReturnType.DISK);
     File target = tempDir.resolve("download.bin").toFile();
-    setField(clientGet, "targetFile", target);
+    ClientGetTestProfiles.setTargetFile(clientGet, target);
 
     Bucket bucket = clientGet.getBucket();
 
@@ -71,7 +69,7 @@ class ClientGetTest {
   @Test
   void getBucket_whenReturnTypeNone_returnsNull() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "returnType", ReturnType.NONE);
+    ClientGetTestProfiles.setReturnType(clientGet, ReturnType.NONE);
 
     assertNull(clientGet.getBucket());
   }
@@ -176,13 +174,16 @@ class ClientGetTest {
   @Test
   void compatibilityAccessors_whenAnalyserUpdated_reflectMergedState() {
     ClientGet clientGet = newClientGet();
-    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
     byte[] key = new byte[] {1, 2, 3, 4};
-    analyser.merge(CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468, key, false, false);
+    analyser.merge(
+        FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468, key, false, false);
     clientGet.state().setCompatibilityAnalyser(analyser);
 
     assertArrayEquals(
-        new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
+        },
         clientGet.getCompatibilityMode());
     assertFalse(clientGet.getDontCompress());
     assertArrayEquals(key, clientGet.getOverriddenSplitfileCryptoKey());
@@ -191,7 +192,7 @@ class ClientGetTest {
   @Test
   void filterData_whenFetchContextDemandsFiltering_returnsTrue() {
     ClientGet clientGet = newClientGet();
-    ClientGetFetchConfig fetchConfig = clientGet.fetchConfig();
+    ClientGetFetchConfig fetchConfig = clientGet.requestProfile().fetchConfig();
     assertNotNull(fetchConfig);
     fetchConfig.setFilterData(true);
 
@@ -225,7 +226,7 @@ class ClientGetTest {
   @Test
   void isDirect_whenConfiguredForDirect_returnsTrue() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "returnType", ReturnType.DIRECT);
+    ClientGetTestProfiles.setReturnType(clientGet, ReturnType.DIRECT);
 
     assertTrue(clientGet.isDirect());
     assertFalse(clientGet.isToDisk());
@@ -234,7 +235,7 @@ class ClientGetTest {
   @Test
   void isToDisk_whenConfiguredForDisk_returnsTrue() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "returnType", ReturnType.DISK);
+    ClientGetTestProfiles.setReturnType(clientGet, ReturnType.DISK);
 
     assertTrue(clientGet.isToDisk());
     assertFalse(clientGet.isDirect());
@@ -278,8 +279,8 @@ class ClientGetTest {
 
   private ClientGet newClientGet() {
     ClientGet clientGet = new ClientGet();
-    clientGet.state().setCompatibilityAnalyser(new CompatibilityAnalyser());
-    setField(clientGet, "fetchConfig", new ClientGetFetchConfig());
+    clientGet.state().setCompatibilityAnalyser(new FcpCompatibilityAnalysis());
+    ClientGetTestProfiles.setFetchConfig(clientGet, new ClientGetFetchConfig());
     return clientGet;
   }
 

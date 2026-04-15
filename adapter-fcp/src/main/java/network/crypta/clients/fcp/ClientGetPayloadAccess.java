@@ -36,7 +36,7 @@ final class ClientGetPayloadAccess {
    * @return {@code true} when payload bytes are returned through the direct bucket path.
    */
   boolean isDirect() {
-    return request.returnTypeForGetter() == ClientGet.ReturnType.DIRECT;
+    return request.requestProfile().returnType() == ClientGet.ReturnType.DIRECT;
   }
 
   /**
@@ -45,7 +45,7 @@ final class ClientGetPayloadAccess {
    * @return {@code true} when payload bytes are returned to a disk file.
    */
   boolean isToDisk() {
-    return request.returnTypeForGetter() == ClientGet.ReturnType.DISK;
+    return request.requestProfile().returnType() == ClientGet.ReturnType.DISK;
   }
 
   /**
@@ -93,7 +93,7 @@ final class ClientGetPayloadAccess {
    * @return caller-facing bucket view, or {@code null} when no such bucket exists.
    */
   Bucket makeClientBucket() {
-    ClientGet.ReturnType returnType = request.returnTypeForGetter();
+    ClientGet.ReturnType returnType = request.requestProfile().returnType();
     if (returnType == null) {
       return null;
     }
@@ -119,7 +119,7 @@ final class ClientGetPayloadAccess {
    *     bucket.
    */
   Bucket makePersistenceBucket() {
-    ClientGet.ReturnType returnType = request.returnTypeForGetter();
+    ClientGet.ReturnType returnType = request.requestProfile().returnType();
     if (returnType == null) {
       return null;
     }

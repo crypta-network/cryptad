@@ -5,8 +5,6 @@ import java.lang.reflect.Field;
 import java.time.Instant;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.InsertContext;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
@@ -163,10 +161,10 @@ class ClientGetStatusReporterTest {
     setClientRequestField(request, "finished", false);
     setClientRequestField(request, "priorityClass", (short) 5);
     setClientRequestField(request, "uri", new FreenetURI("KSK@status"));
-    setClientGetField(request, "returnType", ClientGet.ReturnType.DIRECT);
-    setClientGetField(request, "targetFile", new File("download.bin"));
+    ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.DIRECT);
+    ClientGetTestProfiles.setTargetFile(request, new File("download.bin"));
     ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
-    setClientGetField(request, "fetchConfig", fetchConfig);
+    ClientGetTestProfiles.setFetchConfig(request, fetchConfig);
 
     Bucket bucket = mock(Bucket.class);
     request.state().setReturnBucketDirect(bucket);
@@ -174,10 +172,10 @@ class ClientGetStatusReporterTest {
     request.state().setFoundDataMimeType("text/plain");
     request.state().setSucceeded(false);
     byte[] splitfileKey = new byte[] {7, 8, 9, 10};
-    CompatibilityAnalyser analyser = new CompatibilityAnalyser();
+    FcpCompatibilityAnalysis analyser = new FcpCompatibilityAnalysis();
     analyser.merge(
-        InsertContext.CompatibilityMode.COMPAT_1250,
-        InsertContext.CompatibilityMode.COMPAT_1468,
+        FcpCompatibilityMode.COMPAT_1250,
+        FcpCompatibilityMode.COMPAT_1468,
         splitfileKey,
         false,
         false);
@@ -227,8 +225,8 @@ class ClientGetStatusReporterTest {
       assertSame(bucket, snapshot.dataBucket());
       assertEquals(fetchConfig, snapshot.fetchConfig());
       assertArrayEquals(
-          new InsertContext.CompatibilityMode[] {
-            InsertContext.CompatibilityMode.COMPAT_1250, InsertContext.CompatibilityMode.COMPAT_1468
+          new FcpCompatibilityMode[] {
+            FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
           },
           snapshot.compatModes());
       assertArrayEquals(splitfileKey, snapshot.splitfileKey());
@@ -251,8 +249,8 @@ class ClientGetStatusReporterTest {
     setClientRequestField(request, "identifier", "req-finished");
     setClientRequestField(request, "finished", true);
     setClientRequestField(request, "started", true);
-    setClientGetField(request, "returnType", ClientGet.ReturnType.NONE);
-    setClientGetField(request, "fetchConfig", new ClientGetFetchConfig());
+    ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.NONE);
+    ClientGetTestProfiles.setFetchConfig(request, new ClientGetFetchConfig());
     request.state().setSucceeded(true);
     SimpleProgressMessage progress = mock(SimpleProgressMessage.class);
     when(progress.isTotalFinalized()).thenReturn(false);
@@ -288,14 +286,6 @@ class ClientGetStatusReporterTest {
   private static void setClientRequestField(ClientRequest target, String fieldName, Object value)
       throws ReflectiveOperationException {
     Field field = ClientRequest.class.getDeclaredField(fieldName);
-    field.setAccessible(true);
-    field.set(target, value);
-  }
-
-  @SuppressWarnings({"java:S3011"})
-  private static void setClientGetField(ClientGet target, String fieldName, Object value)
-      throws ReflectiveOperationException {
-    Field field = ClientGet.class.getDeclaredField(fieldName);
     field.setAccessible(true);
     field.set(target, value);
   }

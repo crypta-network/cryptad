@@ -85,13 +85,12 @@ class ClientGetLifecycleTest {
   }
 
   @Test
-  void setSuccessForMigration_whenDirectMismatch_expectResumeFailedExceptionAndBucketStored()
-      throws Exception {
+  void setSuccessForMigration_whenDirectMismatch_expectResumeFailedExceptionAndBucketStored() {
     // Arrange
     ClientGet request = new ClientGet();
     Bucket bucket = Mockito.mock(Bucket.class);
     when(bucket.size()).thenReturn(7L);
-    setField(request, "returnType", ReturnType.DIRECT);
+    ClientGetTestProfiles.setReturnType(request, ReturnType.DIRECT);
     request.state().setFoundDataLength(5L);
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
@@ -101,12 +100,12 @@ class ClientGetLifecycleTest {
   }
 
   @Test
-  void setSuccessForMigration_whenChunked_expectResumeFailedException() throws Exception {
+  void setSuccessForMigration_whenChunked_expectResumeFailedException() {
     // Arrange
     ClientGet request = new ClientGet();
     //noinspection resource
     Bucket bucket = Mockito.mock(Bucket.class);
-    setField(request, "returnType", ReturnType.CHUNKED);
+    ClientGetTestProfiles.setReturnType(request, ReturnType.CHUNKED);
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act + Assert
@@ -161,15 +160,15 @@ class ClientGetLifecycleTest {
   private static ClientGet newSpyRequest(ReturnType returnType, boolean binaryBlob)
       throws Exception {
     ClientGet request = Mockito.spy(new ClientGet());
-    setField(request, "returnType", returnType);
-    setField(request, "binaryBlob", binaryBlob);
+    ClientGetTestProfiles.setReturnType(request, returnType);
+    ClientGetTestProfiles.setBinaryBlob(request, binaryBlob);
     setField(request, "identifier", "req-1");
     setField(request, "global", false);
     setField(request, "started", false);
     setField(request, "finished", false);
     request.state().setSucceeded(false);
     request.state().setFoundDataLength(-1L);
-    setField(request, "targetFile", new File("target.bin"));
+    ClientGetTestProfiles.setTargetFile(request, new File("target.bin"));
     return request;
   }
 

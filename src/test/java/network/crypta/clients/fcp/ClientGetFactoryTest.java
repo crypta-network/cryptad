@@ -358,7 +358,7 @@ class ClientGetFactoryTest {
   }
 
   private static ClientGetFetchConfig fetchConfigFrom(ClientGet request) {
-    ClientGetFetchConfig fetchConfig = request.fetchConfig();
+    ClientGetFetchConfig fetchConfig = request.requestProfile().fetchConfig();
     assertNotNull(fetchConfig);
     return fetchConfig;
   }

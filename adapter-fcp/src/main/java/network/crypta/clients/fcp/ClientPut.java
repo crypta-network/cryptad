@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InvalidObjectException;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -62,23 +61,31 @@ public final class ClientPut extends ClientPutBase {
   @Serial private static final long serialVersionUID = 1L;
 
   private static final String LEGACY_PUTTER_TYPE = "network.crypta.client.async.ClientPutter";
-
-  private static final String BRIDGE_RUNTIME_SUPPORT =
-      "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport";
+  private static final String FIELD_PUTTER = "putter";
+  private static final String FIELD_UPLOAD_FROM = "uploadFrom";
+  private static final String FIELD_ORIG_FILENAME = "origFilename";
+  private static final String FIELD_TARGET_URI = "targetURI";
+  private static final String FIELD_DATA = "data";
+  private static final String FIELD_CLIENT_METADATA = "clientMetadata";
+  private static final String FIELD_FINISHED_SIZE = "finishedSize";
+  private static final String FIELD_TARGET_FILENAME = "targetFilename";
+  private static final String FIELD_BINARY_BLOB = "binaryBlob";
+  private static final String FIELD_COMPRESSED = "compressed";
 
   @SuppressWarnings("UnusedVariable")
+  @Serial
   private static final ObjectStreamField[] serialPersistentFields =
       new ObjectStreamField[] {
-        new ObjectStreamField("putter", requiredClass(LEGACY_PUTTER_TYPE)),
-        new ObjectStreamField("uploadFrom", UploadFrom.class),
-        new ObjectStreamField("origFilename", File.class),
-        new ObjectStreamField("targetURI", FreenetURI.class),
-        new ObjectStreamField("data", RandomAccessBucket.class),
-        new ObjectStreamField("clientMetadata", ClientMetadata.class),
-        new ObjectStreamField("finishedSize", long.class),
-        new ObjectStreamField("targetFilename", String.class),
-        new ObjectStreamField("binaryBlob", boolean.class),
-        new ObjectStreamField("compressed", boolean.class)
+        new ObjectStreamField(FIELD_PUTTER, requiredLegacyPutterClass()),
+        new ObjectStreamField(FIELD_UPLOAD_FROM, UploadFrom.class),
+        new ObjectStreamField(FIELD_ORIG_FILENAME, File.class),
+        new ObjectStreamField(FIELD_TARGET_URI, FreenetURI.class),
+        new ObjectStreamField(FIELD_DATA, RandomAccessBucket.class),
+        new ObjectStreamField(FIELD_CLIENT_METADATA, ClientMetadata.class),
+        new ObjectStreamField(FIELD_FINISHED_SIZE, long.class),
+        new ObjectStreamField(FIELD_TARGET_FILENAME, String.class),
+        new ObjectStreamField(FIELD_BINARY_BLOB, boolean.class),
+        new ObjectStreamField(FIELD_COMPRESSED, boolean.class)
       };
 
   /** Active execution handle driving the insert; nulled only after FOREVER persistence removal. */
@@ -411,16 +418,16 @@ public final class ClientPut extends ClientPutBase {
       throw new NotSerializableException(data.getClass().getName());
     }
     ObjectOutputStream.PutField fields = out.putFields();
-    fields.put("putter", legacyPutterForSerialization());
-    fields.put("uploadFrom", uploadFrom);
-    fields.put("origFilename", origFilename);
-    fields.put("targetURI", targetURI);
-    fields.put("data", data);
-    fields.put("clientMetadata", clientMetadata);
-    fields.put("finishedSize", finishedSize);
-    fields.put("targetFilename", targetFilename);
-    fields.put("binaryBlob", binaryBlob);
-    fields.put("compressed", compressed);
+    fields.put(FIELD_PUTTER, legacyPutterForSerialization());
+    fields.put(FIELD_UPLOAD_FROM, uploadFrom);
+    fields.put(FIELD_ORIG_FILENAME, origFilename);
+    fields.put(FIELD_TARGET_URI, targetURI);
+    fields.put(FIELD_DATA, data);
+    fields.put(FIELD_CLIENT_METADATA, clientMetadata);
+    fields.put(FIELD_FINISHED_SIZE, finishedSize);
+    fields.put(FIELD_TARGET_FILENAME, targetFilename);
+    fields.put(FIELD_BINARY_BLOB, binaryBlob);
+    fields.put(FIELD_COMPRESSED, compressed);
     out.writeFields();
   }
 
@@ -434,16 +441,18 @@ public final class ClientPut extends ClientPutBase {
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     ObjectInputStream.GetField fields = in.readFields();
-    putter = wrapLegacySingleFileExecution(fields.get("putter", null));
-    uploadFrom = (UploadFrom) fields.get("uploadFrom", null);
-    origFilename = (File) fields.get("origFilename", null);
-    targetURI = (FreenetURI) fields.get("targetURI", null);
-    data = (RandomAccessBucket) fields.get("data", null);
-    clientMetadata = (ClientMetadata) fields.get("clientMetadata", null);
-    finishedSize = fields.get("finishedSize", 0L);
-    targetFilename = (String) fields.get("targetFilename", null);
-    binaryBlob = fields.get("binaryBlob", false);
-    compressed = fields.get("compressed", false);
+    putter =
+        LegacyInsertExecutionBridgeLoader.load()
+            .wrapLegacySingleFileExecution(fields.get(FIELD_PUTTER, null));
+    uploadFrom = (UploadFrom) fields.get(FIELD_UPLOAD_FROM, null);
+    origFilename = (File) fields.get(FIELD_ORIG_FILENAME, null);
+    targetURI = (FreenetURI) fields.get(FIELD_TARGET_URI, null);
+    data = (RandomAccessBucket) fields.get(FIELD_DATA, null);
+    clientMetadata = (ClientMetadata) fields.get(FIELD_CLIENT_METADATA, null);
+    finishedSize = fields.get(FIELD_FINISHED_SIZE, 0L);
+    targetFilename = (String) fields.get(FIELD_TARGET_FILENAME, null);
+    binaryBlob = fields.get(FIELD_BINARY_BLOB, false);
+    compressed = fields.get(FIELD_COMPRESSED, false);
   }
 
   private Object legacyPutterForSerialization() throws NotSerializableException {
@@ -454,7 +463,7 @@ public final class ClientPut extends ClientPutBase {
     if (requester == null) {
       return null;
     }
-    if (!requiredClass(LEGACY_PUTTER_TYPE).isInstance(requester)) {
+    if (!requiredLegacyPutterClass().isInstance(requester)) {
       throw new NotSerializableException(
           "Single-file putter requester is not compatible with "
               + LEGACY_PUTTER_TYPE
@@ -464,35 +473,12 @@ public final class ClientPut extends ClientPutBase {
     return requester;
   }
 
-  private static ClientPutExecution wrapLegacySingleFileExecution(Object legacyPutter)
-      throws InvalidObjectException {
-    if (legacyPutter == null) {
-      return null;
-    }
+  private static Class<?> requiredLegacyPutterClass() {
     try {
-      Class<?> bridgeClass = Class.forName(BRIDGE_RUNTIME_SUPPORT);
-      java.lang.reflect.Method method =
-          bridgeClass.getDeclaredMethod("wrapLegacySingleFileExecution", Object.class);
-      method.setAccessible(true);
-      return (ClientPutExecution) method.invoke(null, legacyPutter);
-    } catch (ReflectiveOperationException e) {
-      InvalidObjectException failure =
-          new InvalidObjectException("Could not restore legacy single-file putter");
-      failure.initCause(rootCause(e));
-      throw failure;
-    }
-  }
-
-  private static Class<?> requiredClass(String className) {
-    try {
-      return Class.forName(className);
+      return Class.forName(LEGACY_PUTTER_TYPE);
     } catch (ClassNotFoundException e) {
       throw new ExceptionInInitializerError(e);
     }
-  }
-
-  private static Throwable rootCause(ReflectiveOperationException e) {
-    return e.getCause() == null ? e : e.getCause();
   }
 
   @Override

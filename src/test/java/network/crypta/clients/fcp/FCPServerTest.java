@@ -63,6 +63,23 @@ class FCPServerTest {
     lenient().when(coreRuntimePorts.transferAccess()).thenReturn(coreTransferAccess);
     lenient().when(core.getClientContext()).thenReturn(clientContext);
     lenient().when(clientContext.getDefaultPersistentInsertContext()).thenReturn(insertContext);
+    lenient().when(insertContext.isGetCHKOnly()).thenReturn(false);
+    lenient().when(insertContext.isDontCompress()).thenReturn(false);
+    lenient().when(insertContext.getMaxInsertRetries()).thenReturn(0);
+    lenient().when(insertContext.getConsecutiveRNFsCountAsSuccess()).thenReturn(0);
+    lenient().when(insertContext.getSplitfileSegmentDataBlocks()).thenReturn(0);
+    lenient().when(insertContext.getSplitfileSegmentCheckBlocks()).thenReturn(0);
+    lenient().when(insertContext.isCanWriteClientCache()).thenReturn(false);
+    lenient().when(insertContext.getCompressorDescriptor()).thenReturn(null);
+    lenient().when(insertContext.isForkOnCacheable()).thenReturn(false);
+    lenient().when(insertContext.getExtraInsertsSingleBlock()).thenReturn(0);
+    lenient().when(insertContext.getExtraInsertsSplitfileHeaderBlock()).thenReturn(0);
+    lenient()
+        .when(insertContext.getCompatibilityMode())
+        .thenReturn(InsertContext.CompatibilityMode.COMPAT_1468);
+    lenient().when(insertContext.isLocalRequestOnly()).thenReturn(false);
+    lenient().when(insertContext.isEarlyEncode()).thenReturn(false);
+    lenient().when(insertContext.isIgnoreUSKDatehints()).thenReturn(false);
     lenient().when(core.getTempBucketFactory()).thenReturn(tempBucketFactory);
     lenient().when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
     lenient().when(core.getRandom()).thenReturn(randomSource);
@@ -292,7 +309,9 @@ class FCPServerTest {
     FCPServer server = newServer(false, false);
     FcpInsertRuntimeSupport support = server.insertRuntimeSupport();
 
-    assertSame(insertContext, support.defaultPersistentInsertContext());
+    assertSame(
+        FcpCompatibilityMode.valueOf(insertContext.getCompatibilityMode().name()),
+        support.defaultPersistentInsertContextHandle().getCompatibilityMode());
   }
 
   @Test

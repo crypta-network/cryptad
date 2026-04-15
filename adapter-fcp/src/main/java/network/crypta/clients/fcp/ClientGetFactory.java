@@ -127,7 +127,10 @@ final class ClientGetFactory {
             requestConfig.binaryBlob(),
             null,
             fetchRuntimeSupport);
-    return new ClientGet(params, globalClient, requestSetup);
+    return new ClientGet(
+        ClientRequest.prepareConstructorInit(params, null, globalClient),
+        ClientGetRequestProfile.fromSetup(requestSetup),
+        returnSetup.bucket());
   }
 
   /**
@@ -185,7 +188,10 @@ final class ClientGetFactory {
               message.binaryBlob,
               initialMetadata,
               fetchRuntimeSupport);
-      return new ClientGet(params, handler, requestSetup);
+      return new ClientGet(
+          ClientRequest.prepareConstructorInit(params, handler),
+          ClientGetRequestProfile.fromSetup(requestSetup),
+          returnSetup.bucket());
     } catch (IOException e) {
       throw bucketCreationFailure(e, message.identifier, message.global);
     }

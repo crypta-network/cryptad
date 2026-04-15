@@ -38,18 +38,30 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetLifecycle.java");
   private static final Path CLIENT_GET_PERSISTENCE_CODEC_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetPersistenceCodec.java");
+  private static final Path CLIENT_GET_MESSAGE_REPLAY_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetMessageReplay.java");
   private static final Path CLIENT_GET_PERSISTENCE_IO_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetPersistenceIO.java");
   private static final Path CLIENT_GET_RESTART_COORDINATOR_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetRestartCoordinator.java");
+  private static final Path CLIENT_GET_STATE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetState.java");
+  private static final Path CLIENT_GET_STATUS_REPORTER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetStatusReporter.java");
+  private static final Path CLIENT_GET_STATUS_BUILDER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetStatusSnapshotBuilder.java");
   private static final Path CLIENT_GET_RETURN_PLANNER_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetReturnPlanner.java");
   private static final Path CLIENT_GET_SETUP_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetSetup.java");
-  private static final Path CLIENT_GET_STATUS_BUILDER_SOURCE =
-      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetStatusSnapshotBuilder.java");
+  private static final Path CLIENT_GET_STATUS_SNAPSHOT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetStatusSnapshot.java");
   private static final Path DOWNLOAD_CONTEXT_SNAPSHOT_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("DownloadContextSnapshot.java");
+  private static final Path DOWNLOAD_REQUEST_STATUS_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("DownloadRequestStatus.java");
+  private static final Path DOWNLOAD_REQUEST_STATUS_DETAILS_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("DownloadRequestStatusDetails.java");
   private static final Path FCP_CONNECTION_HANDLER_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java");
   private static final Path FCP_FETCH_RUNTIME_SUPPORT_SOURCE =
@@ -58,6 +70,18 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpMessageRuntimeSupport.java");
   private static final Path FCP_SERVER_PERSISTENT_OPS_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerPersistentOps.java");
+  private static final Path COMPATIBILITY_MODE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("CompatibilityMode.java");
+  private static final Path FCP_COMPATIBILITY_MODE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpCompatibilityMode.java");
+  private static final Path FCP_COMPATIBILITY_ANALYSIS_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpCompatibilityAnalysis.java");
+  private static final Path FCP_INSERT_CONTEXT_HANDLE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertContextHandle.java");
+  private static final Path DEFAULT_FCP_INSERT_CONTEXT_HANDLE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("DefaultFcpInsertContextHandle.java");
+  private static final Path REQUEST_STATUS_CACHE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("RequestStatusCache.java");
   private static final Set<Path> INSERT_FAMILY_SEAM_SOURCES =
       Set.of(
           ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertRuntimeSupport.java"),
@@ -69,6 +93,25 @@ class AdapterFcpBoundaryTest {
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDirMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("SubscribeUSK.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java"));
+  private static final Set<Path> DETACHED_COMPATIBILITY_SOURCES =
+      Set.of(
+          CLIENT_GET_SOURCE,
+          CLIENT_GET_GETTER_FACTORY_SOURCE,
+          CLIENT_GET_MESSAGE_REPLAY_SOURCE,
+          CLIENT_GET_PERSISTENCE_CODEC_SOURCE,
+          CLIENT_GET_RESTART_COORDINATOR_SOURCE,
+          CLIENT_GET_STATE_SOURCE,
+          CLIENT_GET_STATUS_REPORTER_SOURCE,
+          CLIENT_GET_STATUS_SNAPSHOT_SOURCE,
+          COMPATIBILITY_MODE_SOURCE,
+          FCP_COMPATIBILITY_MODE_SOURCE,
+          FCP_COMPATIBILITY_ANALYSIS_SOURCE,
+          FCP_INSERT_CONTEXT_HANDLE_SOURCE,
+          DEFAULT_FCP_INSERT_CONTEXT_HANDLE_SOURCE,
+          DOWNLOAD_CONTEXT_SNAPSHOT_SOURCE,
+          DOWNLOAD_REQUEST_STATUS_SOURCE,
+          DOWNLOAD_REQUEST_STATUS_DETAILS_SOURCE,
+          REQUEST_STATUS_CACHE_SOURCE);
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -185,6 +228,10 @@ class AdapterFcpBoundaryTest {
     assertTrue(
         bridgeMetadataPatterns.contains("network/crypta/clients/fcp/bridge/**"),
         ":bridge-fcp-runtime must own network/crypta/clients/fcp/bridge/**");
+    assertTrue(Files.isRegularFile(repoRoot.resolve(FCP_COMPATIBILITY_MODE_SOURCE)));
+    assertTrue(Files.isRegularFile(repoRoot.resolve(FCP_COMPATIBILITY_ANALYSIS_SOURCE)));
+    assertTrue(Files.isRegularFile(repoRoot.resolve(FCP_INSERT_CONTEXT_HANDLE_SOURCE)));
+    assertTrue(Files.isRegularFile(repoRoot.resolve(DEFAULT_FCP_INSERT_CONTEXT_HANDLE_SOURCE)));
   }
 
   @Test
@@ -257,6 +304,29 @@ class AdapterFcpBoundaryTest {
         "Every :adapter-fcp main package with production Java files must declare package-info.java."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), missingPackageInfos));
+  }
+
+  @Test
+  void detachedCompatibilitySources_whenScanningImports_expectNoLiveRuntimeCompatibilityTypes()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : DETACHED_COMPATIBILITY_SOURCES) {
+      String source = Files.readString(repoRoot.resolve(sourceFile));
+      if (source.contains("import network.crypta.client.async.CompatibilityAnalyser;")) {
+        violations.add(sourceFile + " imports CompatibilityAnalyser");
+      }
+      if (source.contains("import network.crypta.client.InsertContext.CompatibilityMode;")) {
+        violations.add(sourceFile + " imports InsertContext.CompatibilityMode");
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Detached compatibility sources must not import live runtime compatibility types."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   @Test

@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.util.Locale;
-import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -52,7 +51,7 @@ public class PersistentPut extends FCPMessage {
   final int maxRetries;
   final String targetFilename;
   final boolean binaryBlob;
-  final InsertContext.CompatibilityMode compatMode;
+  final FcpCompatibilityMode compatMode;
   final boolean dontCompress;
   final boolean realTime;
   final byte[] splitfileCryptoKey;

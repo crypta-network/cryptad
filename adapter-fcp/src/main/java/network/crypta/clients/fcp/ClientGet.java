@@ -1,17 +1,17 @@
 package network.crypta.clients.fcp;
 
-import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
@@ -19,8 +19,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Coordinates a single FCP GET request over the asynchronous client interface.
@@ -56,40 +54,49 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.async.ClientGetCallback
  */
 public final class ClientGet extends ClientRequest {
-  private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
-
   @Serial private static final long serialVersionUID = 1L;
 
-  /** Detached fetch configuration owned by the request. */
-  private final ClientGetFetchConfig fetchConfig;
+  private static final String FIELD_REQUEST_PROFILE = "requestProfile";
+  private static final String FIELD_EXECUTION = "execution";
+  private static final String FIELD_STATE = "state";
+  private static final String FIELD_PERSISTENCE_LOCK = "persistenceLock";
+  private static final String FIELD_PERSISTED_FETCH_CONFIG_ENCODING =
+      "persistedFetchConfigEncoding";
+  private static final String LEGACY_FIELD_FETCH_CONFIG = "fetchConfig";
+  private static final String LEGACY_FIELD_RETURN_TYPE = "returnType";
+  private static final String LEGACY_FIELD_TARGET_FILE = "targetFile";
+  private static final String LEGACY_FIELD_BINARY_BLOB = "binaryBlob";
+  private static final String LEGACY_FIELD_EXTENSION_CHECK = "extensionCheck";
+  private static final String LEGACY_FIELD_INITIAL_METADATA = "initialMetadata";
+
+  @SuppressWarnings("UnusedVariable")
+  @Serial
+  private static final ObjectStreamField[] serialPersistentFields =
+      new ObjectStreamField[] {
+        new ObjectStreamField(FIELD_REQUEST_PROFILE, ClientGetRequestProfile.class),
+        new ObjectStreamField(FIELD_EXECUTION, ClientGetExecution.class),
+        new ObjectStreamField(FIELD_STATE, ClientGetState.class),
+        new ObjectStreamField(FIELD_PERSISTENCE_LOCK, PersistenceLock.class),
+        new ObjectStreamField(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, byte[].class),
+        new ObjectStreamField(LEGACY_FIELD_FETCH_CONFIG, ClientGetFetchConfig.class),
+        new ObjectStreamField(LEGACY_FIELD_RETURN_TYPE, ReturnType.class),
+        new ObjectStreamField(LEGACY_FIELD_TARGET_FILE, File.class),
+        new ObjectStreamField(LEGACY_FIELD_BINARY_BLOB, boolean.class),
+        new ObjectStreamField(LEGACY_FIELD_EXTENSION_CHECK, String.class),
+        new ObjectStreamField(LEGACY_FIELD_INITIAL_METADATA, Bucket.class)
+      };
+
+  /** Stable request-owned setup selected during factory assembly. */
+  private ClientGetRequestProfile requestProfile;
 
   /** Opaque live execution responsible for talking to the node core. */
   private ClientGetExecution execution;
 
-  /** Selected return strategy describing how result data should be surfaced to the caller. */
-  private final ReturnType returnType;
-
-  /** Destination file when {@link ReturnType#DISK} is in effect; {@code null} otherwise. */
-  private final File targetFile;
-
   /** Holds mutable state such as progress snapshots and cached buckets. */
-  private final ClientGetState state;
+  private ClientGetState state;
 
   /** Stable lock used for persistence-related synchronization. */
-  private final PersistenceLock persistenceLock = new PersistenceLock();
-
-  /** Indicates that the caller expects the result as a BinaryBlob stream rather than a bucket. */
-  private final boolean binaryBlob;
-
-  /** Optional client-provided filename extension used to validate post-filtering output. */
-  private final String extensionCheck;
-
-  /** Metadata bucket supplied at creation time, relayed untouched to the live execution. */
-  @SuppressWarnings("java:S1948")
-  private final Bucket initialMetadata;
-
-  /** Runtime bridge used to encode fetch configuration and create live execution on demand. */
-  private final transient FcpFetchRuntimeSupport runtimeFetchSupport;
+  private PersistenceLock persistenceLock = new PersistenceLock();
 
   /**
    * Last canonical fetch-configuration encoding written into a serialized request snapshot.
@@ -266,51 +273,30 @@ public final class ClientGet extends ClientRequest {
    * initial metadata buckets. The constructor wires up the request state and the underlying runtime
    * execution but performs no validation on the inputs.
    */
-  ClientGet(ClientRequestParams params, PersistentRequestClient globalClient, ClientGetSetup setup)
+  ClientGet(ConstructorInit init, ClientGetRequestProfile requestProfile, Bucket returnBucket)
       throws IOException {
-    super(prepareConstructorInit(params, null, globalClient));
+    super(init);
     state = new ClientGetState(this);
-    fetchConfig = setup.fetchConfig();
-    this.returnType = setup.returnType();
-    this.binaryBlob = setup.binaryBlob();
-    ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
-    this.targetFile = returnSetup.targetFile();
-    this.extensionCheck = returnSetup.extension();
-    this.initialMetadata = setup.initialMetadata();
-    this.runtimeFetchSupport = setup.fetchRuntimeSupport();
-    execution = makeExecution(setup.fetchRuntimeSupport(), returnSetup.bucket());
+    this.requestProfile = requestProfile;
+    execution = makeExecution(returnBucket);
     applyDiagnosticIdentifier(execution.requester());
     initHelpers();
   }
 
-  /**
-   * Creates a connection-scoped request that has already been validated and configured by {@link
-   * ClientGetFactory}.
-   */
-  ClientGet(ClientRequestParams params, FCPConnectionHandler handler, ClientGetSetup setup)
-      throws IOException {
-    super(prepareConstructorInit(params, handler));
-    state = new ClientGetState(this);
-    fetchConfig = setup.fetchConfig();
-    this.returnType = setup.returnType();
-    this.binaryBlob = setup.binaryBlob();
-    ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
-    this.targetFile = returnSetup.targetFile();
-    this.extensionCheck = returnSetup.extension();
-    this.initialMetadata = setup.initialMetadata();
-    this.runtimeFetchSupport = setup.fetchRuntimeSupport();
-    execution = makeExecution(setup.fetchRuntimeSupport(), returnSetup.bucket());
-    applyDiagnosticIdentifier(execution.requester());
-    initHelpers();
-  }
-
-  private ClientGetExecution makeExecution(FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret)
-      throws IOException {
+  private ClientGetExecution makeExecution(Bucket ret) throws IOException {
+    FcpFetchRuntimeSupport fetchRuntimeSupport = requestProfile.runtimeFetchSupport();
+    if (fetchRuntimeSupport == null) {
+      throw new IllegalStateException("Missing fetch runtime support for GET execution");
+    }
     return ClientGetExecutionFactory.create(this, fetchRuntimeSupport, ret);
   }
 
-  ClientGetExecution makeExecutionForPersistence(
-      FcpFetchRuntimeSupport fetchRuntimeSupport, Bucket ret) throws IOException {
+  ClientGetExecution makeExecutionForPersistence(Bucket ret) throws IOException {
+    FcpFetchRuntimeSupport fetchRuntimeSupport =
+        ClientGetPersistenceIO.resolveRuntimeFetchSupport(this);
+    if (fetchRuntimeSupport == null) {
+      throw new IllegalStateException("Missing fetch runtime support for GET execution");
+    }
     return ClientGetExecutionFactory.create(this, fetchRuntimeSupport, ret);
   }
 
@@ -328,14 +314,8 @@ public final class ClientGet extends ClientRequest {
   ClientGet() {
     // For serialization.
     state = new ClientGetState(this);
-    fetchConfig = null;
+    requestProfile = ClientGetRequestProfile.empty();
     execution = null;
-    returnType = null;
-    targetFile = null;
-    binaryBlob = false;
-    extensionCheck = null;
-    initialMetadata = null;
-    runtimeFetchSupport = null;
     persistedFetchConfigEncoding = null;
   }
 
@@ -385,11 +365,8 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   void register(boolean noTags) throws IdentifierCollisionException {
-    assert client == null || (this.persistence == client.persistence);
     if (persistence != Persistence.CONNECTION) {
-      if (client == null) {
-        throw new NullPointerException("Persistent client must be available to register");
-      }
+      // Non-connection requests are assembled with a persistent client before registration.
       PersistentRequestClient persistentClient = client;
       persistentClient.register(this);
       if (!noTags) {
@@ -422,7 +399,7 @@ public final class ClientGet extends ClientRequest {
   @Override
   public void start(network.crypta.client.async.ClientContext context) {
     try {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         if (finished) return;
       }
       execution.start();
@@ -430,7 +407,7 @@ public final class ClientGet extends ClientRequest {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
       }
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       }
       if (client != null) {
@@ -440,12 +417,12 @@ public final class ClientGet extends ClientRequest {
         }
       }
     } catch (FetchException e) {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       } // before the failure handler
       onFailure(e);
     } catch (Exception t) {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       }
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t));
@@ -453,7 +430,7 @@ public final class ClientGet extends ClientRequest {
   }
 
   private boolean shouldSendPersistentTag() {
-    synchronized (persistenceLock) {
+    synchronized (requestLock()) {
       return persistence != Persistence.CONNECTION && !finished;
     }
   }
@@ -575,9 +552,7 @@ public final class ClientGet extends ClientRequest {
   // Mirrors ClientPut/ClientPutDir to keep low-level scheduling flags accessible to subclasses.
   boolean isRealTime() {
     if (lowLevelClient == null) {
-      // This can happen but only due to data corruption - old databases on which various bugs have
-      // resulted in it getting deleted and also possibly failed deletions.
-      LOG.warn("lowLevelClient == null");
+      // This can happen only for corrupt legacy persistence state. Treat it as non-real-time.
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -621,14 +596,6 @@ public final class ClientGet extends ClientRequest {
     super.requestWasRemoved(context);
   }
 
-  ReturnType returnTypeForReplay() {
-    return returnType;
-  }
-
-  File targetFileForLifecycle() {
-    return targetFile;
-  }
-
   /**
    * Exposes the underlying {@link ClientRequester} for base-class scheduling operations.
    *
@@ -656,13 +623,16 @@ public final class ClientGet extends ClientRequest {
   protected void freeData() {
     // We don't remove the data if written to a file.
     Bucket data;
-    synchronized (persistenceLock) {
+    synchronized (requestLock()) {
       data = state.takeReturnBucketDirect();
     }
     if (data != null) {
       data.close();
     }
-    if (initialMetadata != null) initialMetadata.free();
+    Bucket initialMetadata = requestProfile.initialMetadata();
+    if (initialMetadata != null) {
+      initialMetadata.free();
+    }
   }
 
   /**
@@ -703,9 +673,9 @@ public final class ClientGet extends ClientRequest {
   /**
    * Indicates whether the payload should be written directly to the caller's disk path.
    *
-   * <p>{@link ReturnType#DISK} requests rely on {@link #targetFile} for their lifecycle checks,
-   * including restart validation to ensure partially written files are safe to reuse. This flag
-   * mirrors the configured return type and does not check whether the file already exists.
+   * <p>{@link ReturnType#DISK} requests rely on {@link #getDestFilename()} for their lifecycle
+   * checks, including restart validation to ensure partially written files are safe to reuse. This
+   * flag mirrors the configured return type and does not check whether the file already exists.
    *
    * <p>Callers should treat this as configuration metadata, not proof of a completed download.
    *
@@ -736,28 +706,20 @@ public final class ClientGet extends ClientRequest {
    *
    * @return detached fetch configuration backing this request for helper access.
    */
-  ClientGetFetchConfig fetchConfig() {
-    return fetchConfig;
+  ClientGetRequestProfile requestProfile() {
+    return requestProfile;
+  }
+
+  void setRequestProfile(ClientGetRequestProfile requestProfile) {
+    this.requestProfile = requestProfile;
   }
 
   ClientGetExecution execution() {
     return execution;
   }
 
-  FcpFetchRuntimeSupport runtimeFetchSupport() {
-    if (runtimeFetchSupport != null) {
-      return runtimeFetchSupport;
-    }
-    PersistentRequestClient persistentClient = client;
-    if (persistentClient == null) {
-      return null;
-    }
-    FCPConnectionHandler connection = persistentClient.getConnection();
-    if (connection != null) {
-      return connection.getServer().fetchRuntimeSupport();
-    }
-    PersistentRequestRoot persistentRoot = persistentClient.root;
-    return persistentRoot == null ? null : persistentRoot.fetchRuntimeSupport();
+  void setExecution(ClientGetExecution execution) {
+    this.execution = execution;
   }
 
   byte[] persistedFetchConfigEncoding() {
@@ -767,42 +729,6 @@ public final class ClientGet extends ClientRequest {
   void setPersistedFetchConfigEncoding(byte[] persistedFetchConfigEncoding) {
     this.persistedFetchConfigEncoding =
         persistedFetchConfigEncoding == null ? null : persistedFetchConfigEncoding.clone();
-  }
-
-  /**
-   * Exposes the metadata bucket associated with this request.
-   *
-   * @return initial metadata bucket, or {@code null} when no metadata is provided.
-   */
-  Bucket initialMetadataBucket() {
-    return initialMetadata;
-  }
-
-  /**
-   * Returns the optional filename extension hint used for validation.
-   *
-   * @return extension hint or {@code null} when none is set.
-   */
-  String extensionCheckForGetter() {
-    return extensionCheck;
-  }
-
-  /**
-   * Returns the configured delivery strategy for the request.
-   *
-   * @return configured {@link ReturnType} used to decide how results are delivered.
-   */
-  ReturnType returnTypeForGetter() {
-    return returnType;
-  }
-
-  /**
-   * Indicates whether Binary Blob recording is enabled for this request.
-   *
-   * @return {@code true} when Binary Blob output is expected for this request.
-   */
-  boolean binaryBlobRequested() {
-    return binaryBlob;
   }
 
   /**
@@ -852,7 +778,7 @@ public final class ClientGet extends ClientRequest {
    * @return destination file for disk downloads, or {@code null} otherwise.
    */
   public File getDestFilename() {
-    return targetFile;
+    return requestProfile.targetFile();
   }
 
   /**
@@ -951,7 +877,8 @@ public final class ClientGet extends ClientRequest {
    *
    * @return array of compatibility modes; may be empty but never {@code null}.
    */
-  public CompatibilityMode[] getCompatibilityMode() {
+  public FcpCompatibilityMode[] getCompatibilityMode() {
+    state.ensureCompatibilityMode();
     return state.getCompatibilityMode();
   }
 
@@ -967,6 +894,7 @@ public final class ClientGet extends ClientRequest {
    * @return {@code true} when compression should not be applied to later insert contexts.
    */
   public boolean getDontCompress() {
+    state.ensureCompatibilityMode();
     return state.getDontCompress();
   }
 
@@ -980,6 +908,7 @@ public final class ClientGet extends ClientRequest {
    * @return copy of the crypto key bytes, or {@code null} when no override was observed.
    */
   public byte[] getOverriddenSplitfileCryptoKey() {
+    state.ensureCompatibilityMode();
     return state.getOverriddenSplitfileCryptoKey();
   }
 
@@ -1132,7 +1061,8 @@ public final class ClientGet extends ClientRequest {
    * @return {@code true} when payloads should be filtered before delivery.
    */
   public boolean filterData() {
-    return fetchConfig.getFilterData();
+    ClientGetFetchConfig fetchConfig = requestProfile.fetchConfig();
+    return fetchConfig != null && fetchConfig.getFilterData();
   }
 
   @Override
@@ -1177,18 +1107,12 @@ public final class ClientGet extends ClientRequest {
     ClientGetPersistenceCodec.BasicRestoreData restoreData =
         ClientGetPersistenceCodec.readBasicRestoreData(dis, fetchRuntimeSupport, checker);
     uri = restoreData.uri();
-    returnType = restoreData.returnType();
-    targetFile = restoreData.targetFile();
-    binaryBlob = restoreData.binaryBlob();
-    fetchConfig = restoreData.fetchConfig();
-    extensionCheck = restoreData.extensionCheck();
-    initialMetadata = restoreData.initialMetadata();
-    runtimeFetchSupport = fetchRuntimeSupport;
+    requestProfile = ClientGetRequestProfile.fromRestoreData(restoreData, fetchRuntimeSupport);
     ClientGetExecution restoredExecution =
         ClientGetPersistenceCodec.restoreState(this, dis, reqID, fetchRuntimeSupport, checker);
     state.ensureCompatibilityMode();
     if (restoredExecution == null) {
-      restoredExecution = makeExecutionForPersistence(fetchRuntimeSupport, makePersistenceBucket());
+      restoredExecution = makeExecutionForPersistence(makePersistenceBucket());
     }
     execution = restoredExecution;
     applyDiagnosticIdentifier(execution.requester());
@@ -1212,25 +1136,7 @@ public final class ClientGet extends ClientRequest {
   @Override
   protected void innerResume(network.crypta.client.async.ClientContext context)
       throws ResumeFailedException {
-    if (execution != null) {
-      execution.onResume(context);
-    } else if (!finished) {
-      execution = recreateExecutionForResume();
-      try {
-        execution.start();
-      } catch (FetchException e) {
-        throw new ResumeFailedException(e);
-      }
-    }
-    if (state.getReturnBucketDirect() != null) state.getReturnBucketDirect().onResume(context);
-    if (initialMetadata != null) initialMetadata.onResume(context);
-    // We might already have these if we've just restored.
-    if (execution != null && state.getFoundDataLength() <= 0) {
-      state.setFoundDataLength(execution.expectedSize());
-    }
-    if (execution != null && state.getFoundDataMimeType() == null) {
-      state.setFoundDataMimeType(execution.expectedMime());
-    }
+    ClientGetPersistenceIO.resume(this, context);
   }
 
   @Override
@@ -1257,37 +1163,67 @@ public final class ClientGet extends ClientRequest {
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    refreshPersistedFetchConfigEncoding();
-    out.defaultWriteObject();
+    ClientGetPersistenceIO.prepareForSerialization(this);
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put(FIELD_REQUEST_PROFILE, requestProfile);
+    fields.put(FIELD_EXECUTION, execution);
+    fields.put(FIELD_STATE, state);
+    fields.put(FIELD_PERSISTENCE_LOCK, persistenceLock);
+    fields.put(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, persistedFetchConfigEncoding);
+    fields.put(
+        LEGACY_FIELD_FETCH_CONFIG, requestProfile == null ? null : requestProfile.fetchConfig());
+    fields.put(
+        LEGACY_FIELD_RETURN_TYPE, requestProfile == null ? null : requestProfile.returnType());
+    fields.put(
+        LEGACY_FIELD_TARGET_FILE, requestProfile == null ? null : requestProfile.targetFile());
+    fields.put(LEGACY_FIELD_BINARY_BLOB, requestProfile != null && requestProfile.binaryBlob());
+    fields.put(
+        LEGACY_FIELD_EXTENSION_CHECK,
+        requestProfile == null ? null : requestProfile.extensionCheck());
+    fields.put(
+        LEGACY_FIELD_INITIAL_METADATA,
+        requestProfile == null ? null : requestProfile.initialMetadata());
+    out.writeFields();
   }
 
-  private void refreshPersistedFetchConfigEncoding() {
-    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupport();
-    if (fetchRuntimeSupport == null || fetchConfig == null) {
-      return;
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    ObjectInputStream.GetField fields = in.readFields();
+    requestProfile = (ClientGetRequestProfile) fields.get(FIELD_REQUEST_PROFILE, null);
+    execution = (ClientGetExecution) fields.get(FIELD_EXECUTION, null);
+    state = (ClientGetState) fields.get(FIELD_STATE, null);
+    persistenceLock = (PersistenceLock) fields.get(FIELD_PERSISTENCE_LOCK, null);
+    setPersistedFetchConfigEncoding(
+        (byte[]) fields.get(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, null));
+    if (state == null) {
+      state = new ClientGetState(this);
     }
-    try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        DataOutputStream encoded = new DataOutputStream(buffer)) {
-      fetchRuntimeSupport.encodeFetchConfig(fetchConfig, encoded);
-      persistedFetchConfigEncoding = buffer.toByteArray();
-    } catch (IOException e) {
-      LOG.warn("Unable to refresh cached fetch configuration encoding for {}", identifier, e);
+    if (persistenceLock == null) {
+      persistenceLock = new PersistenceLock();
     }
+    if (requestProfile == null) {
+      requestProfile = legacyRequestProfileOrEmpty(fields);
+    }
+    initHelpers();
   }
 
-  private ClientGetExecution recreateExecutionForResume() throws ResumeFailedException {
-    FcpFetchRuntimeSupport fetchRuntimeSupport = runtimeFetchSupport();
-    if (fetchRuntimeSupport == null) {
-      throw new ResumeFailedException("Missing fetch runtime support for GET resume");
+  private static ClientGetRequestProfile legacyRequestProfileOrEmpty(
+      ObjectInputStream.GetField fields) throws IOException, ClassNotFoundException {
+    if (fields.defaulted(LEGACY_FIELD_FETCH_CONFIG)
+        && fields.defaulted(LEGACY_FIELD_RETURN_TYPE)
+        && fields.defaulted(LEGACY_FIELD_TARGET_FILE)
+        && fields.defaulted(LEGACY_FIELD_BINARY_BLOB)
+        && fields.defaulted(LEGACY_FIELD_EXTENSION_CHECK)
+        && fields.defaulted(LEGACY_FIELD_INITIAL_METADATA)) {
+      return ClientGetRequestProfile.empty();
     }
-    try {
-      ClientGetExecution resumedExecution =
-          makeExecutionForPersistence(fetchRuntimeSupport, makePersistenceBucket());
-      applyDiagnosticIdentifier(resumedExecution.requester());
-      return resumedExecution;
-    } catch (IOException e) {
-      throw new ResumeFailedException(e);
-    }
+    return ClientGetRequestProfile.fromLegacySerializedFields(
+        (ClientGetFetchConfig) fields.get(LEGACY_FIELD_FETCH_CONFIG, null),
+        (ReturnType) fields.get(LEGACY_FIELD_RETURN_TYPE, null),
+        (File) fields.get(LEGACY_FIELD_TARGET_FILE, null),
+        fields.get(LEGACY_FIELD_BINARY_BLOB, false),
+        (String) fields.get(LEGACY_FIELD_EXTENSION_CHECK, null),
+        (Bucket) fields.get(LEGACY_FIELD_INITIAL_METADATA, null));
   }
 
   /**
