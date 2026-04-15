@@ -7,13 +7,7 @@ import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.filter.ContentFilter.FilterStatus;
-import network.crypta.client.filter.ContentFilter;
-import network.crypta.client.filter.ContentFilterCallbacks;
-import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
-import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.FSParseException;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -26,12 +20,13 @@ import org.slf4j.LoggerFactory;
  * Encapsulates a single FCP message that exercises the node's content filter pipeline and reports
  * whether a payload would be accepted for publication.
  *
- * <p>The instance mediates between untrusted client input and the {@link ContentFilter} subsystem:
- * it parses the {@link SimpleFieldSet}, determines whether the payload is streamed directly or read
+ * <p>The instance mediates between untrusted client input and the runtime-backed filter seam: it
+ * parses the {@link SimpleFieldSet}, determines whether the payload is streamed directly or read
  * from disk, infers MIME metadata when absent, and stages data inside a {@link Bucket} so the
- * filter can treat the request identically to production traffic. Each message is short-lived and
- * is designed to be instantiated, validated, and consumed entirely on a single thread while the
- * caller holds the relevant protocol connection locks; no shared mutable state escapes the object.
+ * bridge-side filter implementation can treat the request identically to production traffic. Each
+ * message is short-lived and is designed to be instantiated, validated, and consumed entirely on a
+ * single thread while the caller holds the relevant protocol connection locks; no shared mutable
+ * state escapes the object.
  *
  * <p>Typical callers build a {@code Filter} FCP message before uploading content that might trip
  * safety policies. The reply, {@link FilterResultMessage}, lets the client decide whether to redact
@@ -48,7 +43,6 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see FilterResultMessage
- * @see ContentFilter
  */
 public final class FilterMessage extends DataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(FilterMessage.class);
@@ -298,8 +292,8 @@ public final class FilterMessage extends DataCarryingMessage {
   }
 
   /**
-   * Executes the content filter by streaming the prepared payload through {@link ContentFilter} and
-   * returning a {@link FilterResultMessage} to the caller.
+   * Executes the content filter by streaming the prepared payload through the runtime-backed filter
+   * seam and returning a {@link FilterResultMessage} to the caller.
    *
    * <p>The method allocates a result bucket, relays bytes through the filtering pipeline, captures
    * MIME or charset adjustments, and records whether the content was rejected as unsafe. It is
@@ -324,17 +318,16 @@ public final class FilterMessage extends DataCarryingMessage {
     } catch (IOException e) {
       throw internalError("Failed to create temporary bucket", e);
     }
-    String resultCharset = null;
-    String resultMimeType = null;
-    boolean unsafe = false;
+    String resultCharset;
+    String resultMimeType;
+    boolean unsafe;
     try (InputStream input = bucket.getInputStream();
         OutputStream output = resultBucket.getOutputStream()) {
-      FilterStatus status =
-          applyFilter(input, output, handler.getServer().serverRuntimeSupport().clientContext());
-      resultCharset = status.charset;
-      resultMimeType = status.mimeType;
-    } catch (UnsafeContentTypeException _) {
-      unsafe = true;
+      FcpFilterResult status =
+          applyFilter(input, output, handler.getServer().messageRuntimeSupport());
+      resultCharset = status.charset();
+      resultMimeType = status.mimeType();
+      unsafe = status.unsafeContentType();
     } catch (IOException e) {
       throw internalError("IO error running content filter", e);
     }
@@ -343,16 +336,11 @@ public final class FilterMessage extends DataCarryingMessage {
     handler.send(response);
   }
 
-  private FilterStatus applyFilter(
-      InputStream input, OutputStream output, ClientContext clientContext) throws IOException {
+  private FcpFilterResult applyFilter(
+      InputStream input, OutputStream output, FcpMessageRuntimeSupport runtimeSupport)
+      throws IOException {
     URI fakeUri = resolveFilterUri();
-    // ContentFilter currently only supports read filtering; update once write filtering is
-    // available.
-    ContentFilterRequest request =
-        new ContentFilterRequest(input, output, mimeType, null, null, null);
-    ContentFilterCallbacks callbacks =
-        new ContentFilterCallbacks(fakeUri, null, null, clientContext.linkFilterExceptionProvider);
-    return ContentFilter.filter(request, callbacks);
+    return runtimeSupport.filterContent(input, output, mimeType, fakeUri);
   }
 
   private URI resolveFilterUri() {

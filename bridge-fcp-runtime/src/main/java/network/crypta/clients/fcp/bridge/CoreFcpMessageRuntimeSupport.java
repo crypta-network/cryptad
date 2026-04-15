@@ -1,12 +1,20 @@
 package network.crypta.clients.fcp.bridge;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.net.URL;
 import java.util.Objects;
 import network.crypta.client.FetchException;
+import network.crypta.client.filter.ContentFilter;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
+import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.FcpDarknetPeerHandle;
+import network.crypta.clients.fcp.FcpFilterResult;
 import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
 import network.crypta.clients.fcp.FcpPeerLookupResult;
 import network.crypta.clients.fcp.FcpPeerReferenceFetchException;
@@ -111,6 +119,22 @@ record CoreFcpMessageRuntimeSupport(NodeClientCore core) implements FcpMessageRu
   @Override
   public void shutdownNode(String reason) {
     core.getNode().exit(reason);
+  }
+
+  @Override
+  public FcpFilterResult filterContent(
+      InputStream input, OutputStream output, String mimeType, URI fakeUri) throws IOException {
+    ContentFilterRequest request =
+        new ContentFilterRequest(input, output, mimeType, null, null, null);
+    ContentFilterCallbacks callbacks =
+        new ContentFilterCallbacks(
+            fakeUri, null, null, core.getClientContext().linkFilterExceptionProvider);
+    try {
+      ContentFilter.FilterStatus status = ContentFilter.filter(request, callbacks);
+      return FcpFilterResult.safe(status.charset, status.mimeType);
+    } catch (UnsafeContentTypeException _) {
+      return FcpFilterResult.unsafe();
+    }
   }
 
   /**

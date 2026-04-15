@@ -16,7 +16,6 @@ import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +46,7 @@ class ClientPutComplexDirMessageTest {
 
   private final BucketFactory tempBucketFactory = new ArrayBucketFactory();
 
-  @Mock private PersistentTempBucketFactory persistentBucketFactory;
+  @Mock private BucketFactory persistentBucketFactory;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
   @Mock private RuntimePorts runtimePorts;
@@ -97,7 +96,7 @@ class ClientPutComplexDirMessageTest {
     addDirectFile(fs, 0, "payload.bin", 9);
 
     BucketFactory tempFactory = mock(BucketFactory.class);
-    PersistentTempBucketFactory persistentFactory = mock(PersistentTempBucketFactory.class);
+    BucketFactory persistentFactory = mock(BucketFactory.class);
     when(persistentFactory.makeBucket(9L)).thenReturn(new ArrayBucket());
 
     new ClientPutComplexDirMessage(fs, tempFactory, persistentFactory);

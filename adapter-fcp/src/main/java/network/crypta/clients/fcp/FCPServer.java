@@ -678,7 +678,8 @@ public class FCPServer implements Runnable, FcpDownloadCache {
    * Returns runtime support for residual message-level FCP infrastructure concerns.
    *
    * <p>This package-local seam keeps message execution code independent of direct daemon-core
-   * access while preserving the current runtime behavior. It is an internal wiring detail of {@code
+   * access while preserving the current runtime behavior. It now also owns the detached
+   * content-filter bridge used by {@link FilterMessage}. It is an internal wiring detail of {@code
    * clients.fcp}, not a public server API.
    *
    * @return message runtime support backing the remaining message-level FCP operations

@@ -257,9 +257,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   after the generic HTTP, multimap, size-formatting, and file-backed bucket slice moved into
   `:foundation-support` and the manifest/model helper subset moved into `:kernel-content`.
-- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree.
+- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree and its
+  protocol-side persistent-bucket/filter seams.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
-  `network.crypta.clients.fcp.bridge`.
+  `network.crypta.clients.fcp.bridge`, including the live persistent-bucket and content-filter
+  bindings.
 - `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
   admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
   `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`.
@@ -792,10 +794,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `CoreFcpServerDependenciesFactory`, with package-local seams such as
   `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
   `FcpInsertRuntimeSupport` splitting server-owned, message-owned, GET/fetch, and insert/USK
-  concerns. Runtime-owned FCP seam types now live under `network.crypta.runtime.fcp` and
-  `network.crypta.runtime.endpoints.fcp`, while concrete persistent-request services, queue
-  adapters, alert-feed adapters, and endpoint-handle wrappers now live under
-  `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
+  concerns. The protocol leaf also keeps the persistent-bucket and filter seams detached from the
+  concrete runtime, while runtime-owned FCP seam types now live under `network.crypta.runtime.fcp`
+  and `network.crypta.runtime.endpoints.fcp`. Concrete persistent-request services, queue
+  adapters, alert-feed adapters, persistent-bucket bindings, filter bindings, and endpoint-handle
+  wrappers now live under `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
   `staticfiles/**` and `templates/**` resources, excluding `network.crypta.clients.http.bridge`
   and `network.crypta.clients.http.geoip`. The legacy HTTP surface now has a physical browse leaf:
@@ -885,8 +888,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
   transport/message execution code, and the remaining daemon-coupled support helpers outside the
   small `:kernel-content` manifest/model helper subset;
-  `:adapter-fcp` provides `network.crypta.clients.fcp`;
-  `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge`;
+  `:adapter-fcp` provides `network.crypta.clients.fcp` plus the protocol-side persistent-bucket
+  and filter seams;
+  `:bridge-fcp-runtime` provides `network.crypta.clients.fcp.bridge` plus the concrete
+  persistent-bucket and filter bindings;
   `:bridge-http-runtime` provides `network.crypta.clients.http.bridge` and
   `network.crypta.clients.http.geoip`;
   `:adapter-http-legacy-browse` provides the concrete legacy browse/FProxy classes and browse-only

@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
+import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -111,5 +113,27 @@ class FCPMessageTest {
 
     assertThrows(
         MessageInvalidException.class, () -> FCPMessage.create("GetPluginInfo", fs, null, null));
+  }
+
+  @Test
+  void create_whenComplexDirPersistenceForever_usesPersistentBucketFactory() throws Exception {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    fs.putSingle("URI", "KSK@site");
+    fs.putSingle("Persistence", "forever");
+    fs.putSingle("Files.0.Name", "payload.bin");
+    fs.putSingle("Files.0.UploadFrom", "direct");
+    fs.put("Files.0.DataLength", 4L);
+    BucketFactory tempFactory = mock(BucketFactory.class);
+    BucketFactory persistentFactory = mock(BucketFactory.class);
+    when(persistentFactory.makeBucket(4L)).thenReturn(new ArrayBucket());
+
+    FCPMessage message =
+        FCPMessage.create(ClientPutComplexDirMessage.NAME, fs, tempFactory, persistentFactory);
+
+    assertInstanceOf(ClientPutComplexDirMessage.class, message);
+    //noinspection resource
+    verify(persistentFactory).makeBucket(4L);
+    verifyNoInteractions(tempFactory);
   }
 }

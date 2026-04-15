@@ -5,7 +5,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,8 +22,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>serializing messages to an {@link OutputStream} via {@link #send(OutputStream)}
  *   <li>providing factory methods {@link #create(String, SimpleFieldSet, BucketFactory,
- *       PersistentTempBucketFactory)} and {@link #create(String, SimpleFieldSet)} to reify messages
- *       received from the network
+ *       BucketFactory)} and {@link #create(String, SimpleFieldSet)} to reify messages received from
+ *       the network
  *   <li>defining an execution hook {@link #run(FCPConnectionHandler)} for processing messages on
  *       the server side
  * </ul>
@@ -241,8 +240,8 @@ public abstract class FCPMessage {
    * Returns the FCP message name used on the wire.
    *
    * <p>The name is written as the first line of the serialized message output and is also used by
-   * the static {@link #create(String, SimpleFieldSet, BucketFactory, PersistentTempBucketFactory)}
-   * method to select a concrete implementation when decoding messages from clients.
+   * the static {@link #create(String, SimpleFieldSet, BucketFactory, BucketFactory)} method to
+   * select a concrete implementation when decoding messages from clients.
    *
    * @return non-{@code null} message name token that uniquely identifies the concrete FCP message
    *     type within the protocol
@@ -277,10 +276,7 @@ public abstract class FCPMessage {
    *     the requirements of the corresponding message constructor
    */
   public static FCPMessage create(
-      String name,
-      SimpleFieldSet fs,
-      BucketFactory bfTemp,
-      PersistentTempBucketFactory bfPersistent)
+      String name, SimpleFieldSet fs, BucketFactory bfTemp, BucketFactory bfPersistent)
       throws MessageInvalidException {
     FCPMessage message = createClientMessages(name, fs);
     if (message != null) {
@@ -359,10 +355,7 @@ public abstract class FCPMessage {
   }
 
   private static FCPMessage createSubscriptionAndProbeMessages(
-      String name,
-      SimpleFieldSet fs,
-      BucketFactory bfTemp,
-      PersistentTempBucketFactory bfPersistent)
+      String name, SimpleFieldSet fs, BucketFactory bfTemp, BucketFactory bfPersistent)
       throws MessageInvalidException {
     return switch (name) {
       case ClientPutComplexDirMessage.NAME ->
@@ -381,8 +374,8 @@ public abstract class FCPMessage {
    * Convenience overload that creates a message without bucket factories.
    *
    * <p>This method delegates to {@link #create(String, SimpleFieldSet, BucketFactory,
-   * PersistentTempBucketFactory)} with {@code null} factories and is therefore only suitable for
-   * message types that do not require temporary or persistent bucket storage.
+   * BucketFactory)} with {@code null} factories and is therefore only suitable for message types
+   * that do not require temporary or persistent bucket storage.
    *
    * @param name protocol message name to resolve to a concrete implementation
    * @param fs decoded field set representing the message payload received from the client

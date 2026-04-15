@@ -13,7 +13,6 @@ import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,11 +81,11 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
    *
    * @param fs structured field set describing {@code Files.*} entries plus metadata
    * @param bfTemp transient bucket factory for non-forever uploads and streaming buffers
-   * @param bfPersistent a persistent bucket factory keeping FOREVER payloads durably available
+   * @param bfPersistent the persistent bucket factory keeping FOREVER payloads durably available
    * @throws MessageInvalidException if mandatory headers are missing or hierarchy rules break
    */
   public ClientPutComplexDirMessage(
-      SimpleFieldSet fs, BucketFactory bfTemp, PersistentTempBucketFactory bfPersistent)
+      SimpleFieldSet fs, BucketFactory bfTemp, BucketFactory bfPersistent)
       throws MessageInvalidException {
     SimpleFieldSet files = requireFilesSection(fs);
     super(parseCommonFields(fs));

@@ -10,7 +10,6 @@ import network.crypta.clients.fcp.FcpPersistentJob;
 import network.crypta.clients.fcp.FcpServerRuntimeSupport;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.PersistentTempBucketFactory;
 
 /**
  * Core-backed implementation of {@link FcpServerRuntimeSupport}.
@@ -105,7 +104,7 @@ record CoreFcpServerRuntimeSupport(NodeClientCore core) implements FcpServerRunt
   }
 
   @Override
-  public PersistentTempBucketFactory persistentTempBucketFactory() {
+  public BucketFactory persistentTempBucketFactory() {
     return core.getPersistentTempBucketFactory();
   }
 

@@ -21,7 +21,6 @@ import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -661,7 +660,7 @@ class FcpServerPersistentOpsTest {
     Supplier<ClientContext> clientContextSupplier = core::getClientContext;
     BooleanSupplier persistenceDisabledSupplier = core::killedDatabase;
     Supplier<BucketFactory> tempBucketFactorySupplier = core::getTempBucketFactory;
-    Supplier<PersistentTempBucketFactory> persistentTempBucketFactorySupplier =
+    Supplier<BucketFactory> persistentTempBucketFactorySupplier =
         core::getPersistentTempBucketFactory;
     Supplier<RandomSource> randomSourceSupplier = core::getRandom;
     return new FcpServerRuntimeSupport() {
@@ -697,7 +696,7 @@ class FcpServerPersistentOpsTest {
       }
 
       @Override
-      public PersistentTempBucketFactory persistentTempBucketFactory() {
+      public BucketFactory persistentTempBucketFactory() {
         return persistentTempBucketFactorySupplier.get();
       }
 
