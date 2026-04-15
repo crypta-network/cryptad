@@ -3,7 +3,9 @@ package network.crypta.clients.fcp.bridge;
 import java.util.Objects;
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpDownloadCache;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 import network.crypta.support.api.Bucket;
@@ -20,7 +22,7 @@ import network.crypta.support.api.Bucket;
  * runtime package a stable seam for later decoupling work.
  */
 @SuppressWarnings({"ClassCanBeRecord", "java:S6206"})
-final class CoreFcpEndpointHandle implements FcpEndpointHandle {
+final class CoreFcpEndpointHandle implements FcpEndpointHandle, FcpDownloadCache {
   /** Concrete FCP server that still owns queue state, startup, and cache lookups. */
   private final FCPServer server;
 
@@ -58,6 +60,16 @@ final class CoreFcpEndpointHandle implements FcpEndpointHandle {
   @Override
   public CacheFetchResult lookup(
       FreenetURI key, boolean noFilter, ClientContext context, boolean mustCopy, Bucket preferred) {
+    return server.lookup(key, noFilter, context, mustCopy, preferred);
+  }
+
+  @Override
+  public CacheFetchResult lookup(
+      FreenetURI key,
+      boolean noFilter,
+      PersistentRequestRuntimeContext context,
+      boolean mustCopy,
+      Bucket preferred) {
     return server.lookup(key, noFilter, context, mustCopy, preferred);
   }
 

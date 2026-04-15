@@ -292,12 +292,10 @@ class ClientGetFactoryTest {
   private FCPConnectionHandler newConnectionHandler() {
     FCPServer server = mock(FCPServer.class);
     FcpServerRuntimeSupport serverRuntimeSupport = mock(FcpServerRuntimeSupport.class);
-    ClientContext clientContext = mock(ClientContext.class);
     Socket socket = mock(Socket.class);
     RuntimePorts handlerRuntimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     when(server.serverRuntimeSupport()).thenReturn(serverRuntimeSupport);
-    when(serverRuntimeSupport.clientContext()).thenReturn(clientContext);
     when(server.runtime()).thenReturn(handlerRuntimePorts);
     when(handlerRuntimePorts.randomness()).thenReturn(randomnessPort);
     doAnswer(

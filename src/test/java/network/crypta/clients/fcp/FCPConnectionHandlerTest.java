@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.crypt.EntropySource;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.RequestClient;
@@ -58,6 +59,9 @@ class FCPConnectionHandlerTest {
 
     lenient().when(server.serverRuntimeSupport()).thenReturn(serverRuntimeSupport);
     lenient().when(serverRuntimeSupport.clientContext()).thenReturn(clientContext);
+    lenient()
+        .when(serverRuntimeSupport.persistentRequestRuntimeContext())
+        .thenReturn(clientContext);
     lenient().when(server.runtime()).thenReturn(runtimePorts);
     lenient().when(runtimePorts.randomness()).thenReturn(randomnessPort);
     lenient()
@@ -126,8 +130,8 @@ class FCPConnectionHandlerTest {
     ClientRequest removed = handler.removeRequestByIdentifier("id", true);
 
     assertSame(request, removed);
-    verify(request).cancel(clientContext);
-    verify(request).requestWasRemoved(clientContext);
+    verify(request).cancel((PersistentRequestRuntimeContext) clientContext);
+    verify(request).requestWasRemoved((PersistentRequestRuntimeContext) clientContext);
     verifyNoMoreInteractions(request);
   }
 
@@ -139,7 +143,7 @@ class FCPConnectionHandlerTest {
     ClientRequest removed = handler.removeRequestByIdentifier("id", false);
 
     assertSame(request, removed);
-    verify(request).requestWasRemoved(clientContext);
+    verify(request).requestWasRemoved((PersistentRequestRuntimeContext) clientContext);
     verifyNoMoreInteractions(request);
   }
 
@@ -268,7 +272,7 @@ class FCPConnectionHandlerTest {
       handler.startClientPut(message);
 
       ClientPut request = ignored.constructed().getFirst();
-      verify(request).start(clientContext);
+      verify(request).start((PersistentRequestRuntimeContext) clientContext);
     }
   }
 
@@ -281,7 +285,7 @@ class FCPConnectionHandlerTest {
 
       ClientPut request = ignored.constructed().getFirst();
       verify(request).register(false);
-      verify(request).start(clientContext);
+      verify(request).start((PersistentRequestRuntimeContext) clientContext);
     }
   }
 
@@ -295,7 +299,7 @@ class FCPConnectionHandlerTest {
       handler.startClientPutDir(message, buckets, true);
 
       ClientPutDir request = ignored.constructed().getFirst();
-      verify(request).start(clientContext);
+      verify(request).start((PersistentRequestRuntimeContext) clientContext);
     }
   }
 
@@ -310,7 +314,7 @@ class FCPConnectionHandlerTest {
 
       ClientPutDir request = ignored.constructed().getFirst();
       verify(request).register(false);
-      verify(request).start(clientContext);
+      verify(request).start((PersistentRequestRuntimeContext) clientContext);
     }
   }
 

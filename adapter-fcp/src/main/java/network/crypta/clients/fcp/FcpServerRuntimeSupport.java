@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.PersistentTempBucketFactory;
 
@@ -13,12 +15,31 @@ import network.crypta.support.io.PersistentTempBucketFactory;
  * factories, and secure randomness currently required by the FCP server's infrastructure classes.
  *
  * <p>The seam remains owned by {@code clients.fcp} even though core-backed implementations now live
- * under runtime bootstrap wiring. It is public only so those runtime-owned adapters can implement
+ * under runtime bootstrap wiring. It is public only, so those runtime-owned adapters can implement
  * it from outside this package. It is not a new shared platform API; callers should add methods
  * only when a later refactoring needs another demonstrably server-infrastructure-specific
  * capability.
  */
 public interface FcpServerRuntimeSupport {
+
+  /**
+   * Returns the detached runtime context used by server-owned persistent request flows.
+   *
+   * @return detached runtime context backed by the current live daemon runtime
+   */
+  PersistentRequestRuntimeContext persistentRequestRuntimeContext();
+
+  /**
+   * Queues detached persistent work on the live runtime-owned persistent job runner.
+   *
+   * @param job detached persistent job to execute
+   * @param priority queue priority for the underlying runtime job runner
+   * @throws PersistenceDisabledException if persistent storage is unavailable
+   */
+  void queuePersistentJob(FcpPersistentJob job, int priority) throws PersistenceDisabledException;
+
+  /** Requests an immediate persistence checkpoint from the live runtime. */
+  void setCheckpointASAP();
 
   /**
    * Returns the live client context used for request lifecycle and persistent job work.

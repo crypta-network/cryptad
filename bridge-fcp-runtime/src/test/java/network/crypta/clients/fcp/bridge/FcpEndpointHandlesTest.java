@@ -2,7 +2,9 @@ package network.crypta.clients.fcp.bridge;
 
 import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpDownloadCache;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 import network.crypta.support.api.Bucket;
@@ -26,28 +28,39 @@ class FcpEndpointHandlesTest {
     FcpEndpointHandle handle = FcpEndpointHandles.wrap(server);
     FreenetURI key = mock(FreenetURI.class);
     ClientContext context = mock(ClientContext.class);
+    PersistentRequestRuntimeContext detachedContext = mock(PersistentRequestRuntimeContext.class);
     Bucket preferred = mock(Bucket.class);
     CacheFetchResult instantResult = mock(CacheFetchResult.class);
     CacheFetchResult lookupResult = mock(CacheFetchResult.class);
+    CacheFetchResult detachedLookupResult = mock(CacheFetchResult.class);
     when(server.lookupInstant(key, true, false, preferred)).thenReturn(instantResult);
     when(server.lookup(key, false, context, true, preferred)).thenReturn(lookupResult);
+    when(server.lookup(key, false, detachedContext, false, preferred))
+        .thenReturn(detachedLookupResult);
 
     // Act
+    FcpDownloadCache detachedCache = FcpEndpointHandles.downloadCache(server);
     handle.load();
     handle.maybeStart();
     CacheFetchResult actualInstant = handle.lookupInstant(key, true, false, preferred);
     CacheFetchResult actualLookup = handle.lookup(key, false, context, true, preferred);
+    CacheFetchResult actualDetachedLookup =
+        detachedCache.lookup(key, false, detachedContext, false, preferred);
 
     // Assert
     assertSame(server, FcpEndpointHandles.unwrap(handle));
     assertSame(server, FcpEndpointHandles.serverOrNull(handle));
     assertSame(server, FcpEndpointHandles.requireServer(handle));
+    assertSame(handle, FcpEndpointHandles.downloadCacheOrNull(handle));
+    assertSame(handle, FcpEndpointHandles.requireDownloadCache(handle));
     assertSame(instantResult, actualInstant);
     assertSame(lookupResult, actualLookup);
+    assertSame(detachedLookupResult, actualDetachedLookup);
     verify(server).load();
     verify(server).maybeStart();
     verify(server).lookupInstant(key, true, false, preferred);
     verify(server).lookup(key, false, context, true, preferred);
+    verify(server).lookup(key, false, detachedContext, false, preferred);
   }
 
   @Test
@@ -103,6 +116,16 @@ class FcpEndpointHandlesTest {
         FreenetURI key,
         boolean noFilter,
         ClientContext context,
+        boolean mustCopy,
+        Bucket preferred) {
+      return null;
+    }
+
+    @SuppressWarnings("unused")
+    public CacheFetchResult lookup(
+        FreenetURI key,
+        boolean noFilter,
+        PersistentRequestRuntimeContext context,
         boolean mustCopy,
         Bucket preferred) {
       return null;

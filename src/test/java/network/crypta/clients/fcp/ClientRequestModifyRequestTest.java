@@ -1,14 +1,10 @@
 package network.crypta.clients.fcp;
 
-import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -25,8 +21,7 @@ class ClientRequestModifyRequestTest {
 
   @Test
   void modifyRequest_whenPriorityAndTokenChange_updatesRequesterCacheAndQueuesMessage() {
-    TrackingJobRunner jobRunner = new TrackingJobRunner();
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
     when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
@@ -45,7 +40,7 @@ class ClientRequestModifyRequestTest {
 
     verify(requester).setPriorityClass((short) 4, context);
     verify(client).queueClientRequestMessage(any(PersistentRequestModifiedMessage.class), eq(0));
-    assertEquals(1, jobRunner.checkpointRequests);
+    verify(runtimeSupport).setCheckpointASAP();
     assertEquals(4, request.priorityClass);
     assertEquals("token-b", request.clientToken);
     assertEquals(4, status.getPriority());
@@ -61,8 +56,7 @@ class ClientRequestModifyRequestTest {
 
   @Test
   void modifyRequest_whenNothingChanges_skipsCheckpointRequesterAndMessageQueue() {
-    TrackingJobRunner jobRunner = new TrackingJobRunner();
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
     when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
@@ -77,24 +71,9 @@ class ClientRequestModifyRequestTest {
 
     request.modifyRequest("same-token", (short) 2, server);
 
-    assertEquals(0, jobRunner.checkpointRequests);
+    verify(runtimeSupport, never()).setCheckpointASAP();
     verify(requester, never()).setPriorityClass(any(short.class), any(ClientContext.class));
     verify(client, never()).queueClientRequestMessage(any(FCPMessage.class), eq(0));
-  }
-
-  @SuppressWarnings("java:S3011")
-  private static ClientContext newContextWithJobRunner(PersistentJobRunner jobRunner) {
-    ClientContext context =
-        Mockito.mock(
-            ClientContext.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
-    try {
-      Field field = ClientContext.class.getDeclaredField("jobRunner");
-      field.setAccessible(true);
-      field.set(context, jobRunner);
-      return context;
-    } catch (ReflectiveOperationException e) {
-      throw new LinkageError("Failed to set ClientContext.jobRunner", e);
-    }
   }
 
   private static RequestStatusCache requireStatusCache(PersistentRequestClient client) {
@@ -128,55 +107,6 @@ class ClientRequestModifyRequestTest {
         new DownloadRequestStatusDetails(
             outcome, null, null, null, mock(FreenetURI.class), false, false);
     return new DownloadRequestStatus(statusSnapshot, details);
-  }
-
-  private static final class TrackingJobRunner implements PersistentJobRunner {
-    private int checkpointRequests;
-
-    @Override
-    public void queue(PersistentJob persistentJob, int threadPriority) {
-      throw new UnsupportedOperationException("Not used by modifyRequest()");
-    }
-
-    @Override
-    public void queueNormalOrDrop(PersistentJob persistentJob) {
-      throw new UnsupportedOperationException("Not used by modifyRequest()");
-    }
-
-    @Override
-    public void queueInternal(PersistentJob job, int threadPriority) {
-      throw new UnsupportedOperationException("Not used by modifyRequest()");
-    }
-
-    @Override
-    public void queueInternal(PersistentJob job) {
-      throw new UnsupportedOperationException("Not used by modifyRequest()");
-    }
-
-    @Override
-    public void setCheckpointASAP() {
-      checkpointRequests++;
-    }
-
-    @Override
-    public boolean hasLoaded() {
-      return true;
-    }
-
-    @Override
-    public CheckpointLock lock() {
-      return (_, _) -> {};
-    }
-
-    @Override
-    public boolean newSalt() {
-      return false;
-    }
-
-    @Override
-    public boolean shuttingDown() {
-      return false;
-    }
   }
 
   private static final class TestClientRequest extends ClientRequest {

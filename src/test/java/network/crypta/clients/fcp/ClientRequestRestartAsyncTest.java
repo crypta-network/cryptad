@@ -1,17 +1,13 @@
 package network.crypta.clients.fcp;
 
 import java.io.Serial;
-import java.lang.reflect.Field;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.node.PrioRunnable;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,10 +33,9 @@ class ClientRequestRestartAsyncTest {
     ExecutionPort executionPort = mock(ExecutionPort.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     when(runtimePorts.execution()).thenReturn(executionPort);
-    PersistentJobRunner jobRunner = mock(PersistentJobRunner.class);
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
-    when(runtimeSupport.clientContext()).thenReturn(context);
+    when(runtimeSupport.persistentRequestRuntimeContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.runtime()).thenReturn(runtimePorts);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
@@ -54,7 +49,7 @@ class ClientRequestRestartAsyncTest {
     assertFalse(request.isStarted());
     ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
     verify(executionPort).execute(taskCaptor.capture(), eq("Restart request"));
-    verify(jobRunner, never()).queue(any(PersistentJob.class), anyInt());
+    verify(runtimeSupport, never()).queuePersistentJob(any(FcpPersistentJob.class), anyInt());
     Runnable submittedTask = taskCaptor.getValue();
     PrioRunnable prioRunnable = assertInstanceOf(PrioRunnable.class, submittedTask);
     assertEquals(NativeThread.PriorityLevel.NORM_PRIORITY.value, prioRunnable.getPriority());
@@ -73,10 +68,8 @@ class ClientRequestRestartAsyncTest {
     ExecutionPort executionPort = mock(ExecutionPort.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     when(runtimePorts.execution()).thenReturn(executionPort);
-    PersistentJobRunner jobRunner = mock(PersistentJobRunner.class);
-    ClientContext context = newContextWithJobRunner(jobRunner);
+    ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
-    when(runtimeSupport.clientContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.runtime()).thenReturn(runtimePorts);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
@@ -88,9 +81,10 @@ class ClientRequestRestartAsyncTest {
 
     // Assert
     assertFalse(request.isStarted());
-    ArgumentCaptor<PersistentJob> jobCaptor = ArgumentCaptor.forClass(PersistentJob.class);
-    verify(jobRunner)
-        .queue(jobCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
+    ArgumentCaptor<FcpPersistentJob> jobCaptor = ArgumentCaptor.forClass(FcpPersistentJob.class);
+    verify(runtimeSupport)
+        .queuePersistentJob(
+            jobCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
     verify(executionPort, never()).execute(any(), anyString());
 
     boolean checkpointRequested = jobCaptor.getValue().run(context);
@@ -99,21 +93,6 @@ class ClientRequestRestartAsyncTest {
     assertEquals(1, request.restartCalls);
     assertSame(context, request.lastRestartContext);
     assertFalse(request.lastDisableFilterData);
-  }
-
-  @SuppressWarnings("java:S3011")
-  private static ClientContext newContextWithJobRunner(PersistentJobRunner jobRunner) {
-    ClientContext context =
-        Mockito.mock(
-            ClientContext.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
-    try {
-      Field field = ClientContext.class.getDeclaredField("jobRunner");
-      field.setAccessible(true);
-      field.set(context, jobRunner);
-      return context;
-    } catch (ReflectiveOperationException e) {
-      throw new LinkageError("Failed to set ClientContext.jobRunner", e);
-    }
   }
 
   private static final class TestClientRequest extends ClientRequest {
