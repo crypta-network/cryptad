@@ -124,6 +124,33 @@ final class ClientGetRequestProfile implements Serializable {
   }
 
   /**
+   * Recreates a profile from the field layout used before the request-profile refactor.
+   *
+   * <p>Older Java-serialized {@link ClientGet} instances stored these values directly on the
+   * request rather than grouping them in this value object. The runtime seam was transient even in
+   * the legacy layout, so resumed requests still need to resolve it separately after
+   * deserialization.
+   *
+   * @param fetchConfig detached fetch configuration stored on the legacy request
+   * @param returnType return mode stored on the legacy request
+   * @param targetFile legacy disk target file, or {@code null} when none was configured
+   * @param binaryBlob whether the legacy request used binary-blob handling
+   * @param extensionCheck legacy extension-check hint, or {@code null} when absent
+   * @param initialMetadata legacy staged metadata bucket, or {@code null} when absent
+   * @return immutable profile reconstructed from the legacy serialized field set
+   */
+  static ClientGetRequestProfile fromLegacySerializedFields(
+      ClientGetFetchConfig fetchConfig,
+      ClientGet.ReturnType returnType,
+      File targetFile,
+      boolean binaryBlob,
+      String extensionCheck,
+      Bucket initialMetadata) {
+    return new ClientGetRequestProfile(
+        fetchConfig, returnType, targetFile, binaryBlob, extensionCheck, initialMetadata, null);
+  }
+
+  /**
    * Returns an inert placeholder profile for serialization-only constructors and test scaffolding.
    *
    * <p>The placeholder keeps every member null or false, which allows callers to instantiate {@link

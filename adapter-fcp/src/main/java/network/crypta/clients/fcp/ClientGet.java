@@ -4,7 +4,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -54,6 +56,36 @@ import network.crypta.support.io.StorageFormatException;
 public final class ClientGet extends ClientRequest {
   @Serial private static final long serialVersionUID = 1L;
 
+  private static final String FIELD_REQUEST_PROFILE = "requestProfile";
+  private static final String FIELD_EXECUTION = "execution";
+  private static final String FIELD_STATE = "state";
+  private static final String FIELD_PERSISTENCE_LOCK = "persistenceLock";
+  private static final String FIELD_PERSISTED_FETCH_CONFIG_ENCODING =
+      "persistedFetchConfigEncoding";
+  private static final String LEGACY_FIELD_FETCH_CONFIG = "fetchConfig";
+  private static final String LEGACY_FIELD_RETURN_TYPE = "returnType";
+  private static final String LEGACY_FIELD_TARGET_FILE = "targetFile";
+  private static final String LEGACY_FIELD_BINARY_BLOB = "binaryBlob";
+  private static final String LEGACY_FIELD_EXTENSION_CHECK = "extensionCheck";
+  private static final String LEGACY_FIELD_INITIAL_METADATA = "initialMetadata";
+
+  @SuppressWarnings("UnusedVariable")
+  @Serial
+  private static final ObjectStreamField[] serialPersistentFields =
+      new ObjectStreamField[] {
+        new ObjectStreamField(FIELD_REQUEST_PROFILE, ClientGetRequestProfile.class),
+        new ObjectStreamField(FIELD_EXECUTION, ClientGetExecution.class),
+        new ObjectStreamField(FIELD_STATE, ClientGetState.class),
+        new ObjectStreamField(FIELD_PERSISTENCE_LOCK, PersistenceLock.class),
+        new ObjectStreamField(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, byte[].class),
+        new ObjectStreamField(LEGACY_FIELD_FETCH_CONFIG, ClientGetFetchConfig.class),
+        new ObjectStreamField(LEGACY_FIELD_RETURN_TYPE, ReturnType.class),
+        new ObjectStreamField(LEGACY_FIELD_TARGET_FILE, File.class),
+        new ObjectStreamField(LEGACY_FIELD_BINARY_BLOB, boolean.class),
+        new ObjectStreamField(LEGACY_FIELD_EXTENSION_CHECK, String.class),
+        new ObjectStreamField(LEGACY_FIELD_INITIAL_METADATA, Bucket.class)
+      };
+
   /** Stable request-owned setup selected during factory assembly. */
   private ClientGetRequestProfile requestProfile;
 
@@ -61,10 +93,10 @@ public final class ClientGet extends ClientRequest {
   private ClientGetExecution execution;
 
   /** Holds mutable state such as progress snapshots and cached buckets. */
-  private final ClientGetState state;
+  private ClientGetState state;
 
   /** Stable lock used for persistence-related synchronization. */
-  private final PersistenceLock persistenceLock = new PersistenceLock();
+  private PersistenceLock persistenceLock = new PersistenceLock();
 
   /**
    * Last canonical fetch-configuration encoding written into a serialized request snapshot.
@@ -367,7 +399,7 @@ public final class ClientGet extends ClientRequest {
   @Override
   public void start(network.crypta.client.async.ClientContext context) {
     try {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         if (finished) return;
       }
       execution.start();
@@ -375,7 +407,7 @@ public final class ClientGet extends ClientRequest {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
       }
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       }
       if (client != null) {
@@ -385,12 +417,12 @@ public final class ClientGet extends ClientRequest {
         }
       }
     } catch (FetchException e) {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       } // before the failure handler
       onFailure(e);
     } catch (Exception t) {
-      synchronized (persistenceLock) {
+      synchronized (requestLock()) {
         started = true;
       }
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t));
@@ -398,7 +430,7 @@ public final class ClientGet extends ClientRequest {
   }
 
   private boolean shouldSendPersistentTag() {
-    synchronized (persistenceLock) {
+    synchronized (requestLock()) {
       return persistence != Persistence.CONNECTION && !finished;
     }
   }
@@ -591,7 +623,7 @@ public final class ClientGet extends ClientRequest {
   protected void freeData() {
     // We don't remove the data if written to a file.
     Bucket data;
-    synchronized (persistenceLock) {
+    synchronized (requestLock()) {
       data = state.takeReturnBucketDirect();
     }
     if (data != null) {
@@ -1132,7 +1164,66 @@ public final class ClientGet extends ClientRequest {
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
     ClientGetPersistenceIO.prepareForSerialization(this);
-    out.defaultWriteObject();
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put(FIELD_REQUEST_PROFILE, requestProfile);
+    fields.put(FIELD_EXECUTION, execution);
+    fields.put(FIELD_STATE, state);
+    fields.put(FIELD_PERSISTENCE_LOCK, persistenceLock);
+    fields.put(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, persistedFetchConfigEncoding);
+    fields.put(
+        LEGACY_FIELD_FETCH_CONFIG, requestProfile == null ? null : requestProfile.fetchConfig());
+    fields.put(
+        LEGACY_FIELD_RETURN_TYPE, requestProfile == null ? null : requestProfile.returnType());
+    fields.put(
+        LEGACY_FIELD_TARGET_FILE, requestProfile == null ? null : requestProfile.targetFile());
+    fields.put(LEGACY_FIELD_BINARY_BLOB, requestProfile != null && requestProfile.binaryBlob());
+    fields.put(
+        LEGACY_FIELD_EXTENSION_CHECK,
+        requestProfile == null ? null : requestProfile.extensionCheck());
+    fields.put(
+        LEGACY_FIELD_INITIAL_METADATA,
+        requestProfile == null ? null : requestProfile.initialMetadata());
+    out.writeFields();
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    ObjectInputStream.GetField fields = in.readFields();
+    requestProfile = (ClientGetRequestProfile) fields.get(FIELD_REQUEST_PROFILE, null);
+    execution = (ClientGetExecution) fields.get(FIELD_EXECUTION, null);
+    state = (ClientGetState) fields.get(FIELD_STATE, null);
+    persistenceLock = (PersistenceLock) fields.get(FIELD_PERSISTENCE_LOCK, null);
+    setPersistedFetchConfigEncoding(
+        (byte[]) fields.get(FIELD_PERSISTED_FETCH_CONFIG_ENCODING, null));
+    if (state == null) {
+      state = new ClientGetState(this);
+    }
+    if (persistenceLock == null) {
+      persistenceLock = new PersistenceLock();
+    }
+    if (requestProfile == null) {
+      requestProfile = legacyRequestProfileOrEmpty(fields);
+    }
+    initHelpers();
+  }
+
+  private static ClientGetRequestProfile legacyRequestProfileOrEmpty(
+      ObjectInputStream.GetField fields) throws IOException, ClassNotFoundException {
+    if (fields.defaulted(LEGACY_FIELD_FETCH_CONFIG)
+        && fields.defaulted(LEGACY_FIELD_RETURN_TYPE)
+        && fields.defaulted(LEGACY_FIELD_TARGET_FILE)
+        && fields.defaulted(LEGACY_FIELD_BINARY_BLOB)
+        && fields.defaulted(LEGACY_FIELD_EXTENSION_CHECK)
+        && fields.defaulted(LEGACY_FIELD_INITIAL_METADATA)) {
+      return ClientGetRequestProfile.empty();
+    }
+    return ClientGetRequestProfile.fromLegacySerializedFields(
+        (ClientGetFetchConfig) fields.get(LEGACY_FIELD_FETCH_CONFIG, null),
+        (ReturnType) fields.get(LEGACY_FIELD_RETURN_TYPE, null),
+        (File) fields.get(LEGACY_FIELD_TARGET_FILE, null),
+        fields.get(LEGACY_FIELD_BINARY_BLOB, false),
+        (String) fields.get(LEGACY_FIELD_EXTENSION_CHECK, null),
+        (Bucket) fields.get(LEGACY_FIELD_INITIAL_METADATA, null));
   }
 
   /**

@@ -4,11 +4,17 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.tools.ToolProvider;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
@@ -16,6 +22,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -34,6 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.withSettings;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
@@ -205,6 +213,32 @@ class ClientGetPersistenceCodecTest {
   }
 
   @Test
+  void deserializeLegacySerializedRequest_whenRequestProfileMissing_reconstructsLegacyValues(
+      @TempDir Path tempDir) throws Exception {
+    ClientGetFetchConfig fetchConfig = new ClientGetFetchConfig();
+    fetchConfig.setFilterData(true);
+    Bucket initialMetadata = mock(Bucket.class, withSettings().serializable());
+    File targetFile = tempDir.resolve("legacy-target.bin").toFile();
+    byte[] cachedEncoding = new byte[] {7, 8, 9};
+
+    ClientGet restored =
+        deserializeLegacySerializedRequest(
+            tempDir, fetchConfig, targetFile, initialMetadata, cachedEncoding);
+
+    assertNotNull(restored.requestProfile());
+    assertNotNull(restored.requestProfile().fetchConfig());
+    assertTrue(restored.requestProfile().fetchConfig().getFilterData());
+    assertSame(ClientGet.ReturnType.DIRECT, restored.requestProfile().returnType());
+    assertEquals(targetFile.getPath(), restored.requestProfile().targetFile().getPath());
+    assertTrue(restored.requestProfile().binaryBlob());
+    assertEquals("bin", restored.requestProfile().extensionCheck());
+    assertNotNull(restored.requestProfile().initialMetadata());
+    assertNotNull(restored.state());
+    assertNotNull(restored.persistenceLock());
+    assertArrayEquals(cachedEncoding, restored.persistedFetchConfigEncoding());
+  }
+
+  @Test
   void writeClientDetail_whenRuntimeFetchSupportMissing_usesCachedFetchConfigEncoding()
       throws Exception {
     ClientGet request = persistenceReadyRequest();
@@ -323,6 +357,207 @@ class ClientGetPersistenceCodecTest {
     return new DataInputStream(new ByteArrayInputStream(payload));
   }
 
+  private static ClientGet deserializeLegacySerializedRequest(
+      Path tempDir,
+      ClientGetFetchConfig fetchConfig,
+      File targetFile,
+      Bucket initialMetadata,
+      byte[] cachedEncoding)
+      throws Exception {
+    compileLegacyClientGet(tempDir);
+    Path classesRoot = tempDir.resolve("legacy-classes");
+    try (URLClassLoader classLoader =
+        new ChildFirstClientGetClassLoader(
+            classesRoot.toUri().toURL(), ClientGet.class.getClassLoader())) {
+      Class<?> legacyClientGetClass =
+          Class.forName("network.crypta.clients.fcp.ClientGet", true, classLoader);
+      Object legacyClientGet = legacyClientGetClass.getDeclaredConstructor().newInstance();
+      setLegacyField(legacyClientGetClass, legacyClientGet, "fetchConfig", fetchConfig);
+      setLegacyField(
+          legacyClientGetClass, legacyClientGet, "returnType", legacyReturnType(classLoader));
+      setLegacyField(legacyClientGetClass, legacyClientGet, "targetFile", targetFile);
+      setLegacyField(legacyClientGetClass, legacyClientGet, "binaryBlob", true);
+      setLegacyField(legacyClientGetClass, legacyClientGet, "extensionCheck", "bin");
+      setLegacyField(legacyClientGetClass, legacyClientGet, "initialMetadata", initialMetadata);
+      setLegacyField(
+          legacyClientGetClass, legacyClientGet, "persistedFetchConfigEncoding", cachedEncoding);
+
+      ByteArrayOutputStream serialized = new ByteArrayOutputStream();
+      try (ObjectOutputStream out = new ObjectOutputStream(serialized)) {
+        out.writeObject(legacyClientGet);
+      }
+      try (ObjectInputStream in =
+          new ObjectInputStream(new ByteArrayInputStream(serialized.toByteArray()))) {
+        return (ClientGet) in.readObject();
+      }
+    }
+  }
+
+  private static void compileLegacyClientGet(Path tempDir) throws IOException {
+    Path sourceRoot = tempDir.resolve("legacy-src");
+    Path classesRoot = tempDir.resolve("legacy-classes");
+    Path sourceFile = sourceRoot.resolve("network/crypta/clients/fcp/ClientGet.java");
+    Files.createDirectories(sourceFile.getParent());
+    Files.createDirectories(classesRoot);
+    Files.writeString(sourceFile, legacyClientGetSource());
+    ByteArrayOutputStream compilerOutput = new ByteArrayOutputStream();
+    int rc =
+        ToolProvider.getSystemJavaCompiler()
+            .run(
+                null,
+                compilerOutput,
+                compilerOutput,
+                "-classpath",
+                System.getProperty("java.class.path"),
+                "-d",
+                classesRoot.toString(),
+                sourceFile.toString());
+    if (rc != 0) {
+      throw new IOException(
+          "javac failed for legacy ClientGet: rc=" + rc + System.lineSeparator() + compilerOutput);
+    }
+  }
+
+  private static String legacyClientGetSource() {
+    return """
+    package network.crypta.clients.fcp;
+
+    import java.io.File;
+    import java.io.Serial;
+    import network.crypta.client.async.ClientContext;
+    import network.crypta.client.async.ClientRequester;
+    import network.crypta.support.api.Bucket;
+    import network.crypta.support.io.ResumeFailedException;
+
+    public final class ClientGet extends ClientRequest {
+      @Serial private static final long serialVersionUID = 1L;
+
+      ClientGetFetchConfig fetchConfig;
+      ClientGetExecution execution;
+      ReturnType returnType;
+      File targetFile;
+      boolean binaryBlob;
+      String extensionCheck;
+      Bucket initialMetadata;
+      byte[] persistedFetchConfigEncoding;
+
+      public enum ReturnType {
+        DIRECT((short) 0),
+        NONE((short) 1),
+        DISK((short) 2),
+        CHUNKED((short) 3);
+
+        final short code;
+
+        ReturnType(short code) {
+          this.code = code;
+        }
+      }
+
+      public ClientGet() {
+        super();
+      }
+
+      @Override
+      public void onLostConnection(ClientContext context) {}
+
+      @Override
+      public void sendPendingMessages(
+          FCPConnectionOutputHandler handler,
+          String listRequestIdentifier,
+          boolean includeData,
+          boolean onlyData) {}
+
+      @Override
+      void register(boolean noTags) {}
+
+      @Override
+      public void start(ClientContext context) {}
+
+      @Override
+      protected ClientRequester getClientRequest() {
+        return null;
+      }
+
+      @Override
+      protected void freeData() {}
+
+      @Override
+      public double getSuccessFraction() {
+        return 0;
+      }
+
+      @Override
+      public double getTotalBlocks() {
+        return 0;
+      }
+
+      @Override
+      public double getMinBlocks() {
+        return 0;
+      }
+
+      @Override
+      public double getFetchedBlocks() {
+        return 0;
+      }
+
+      @Override
+      public double getFailedBlocks() {
+        return 0;
+      }
+
+      @Override
+      public double getFatalyFailedBlocks() {
+        return 0;
+      }
+
+      @Override
+      public String getFailureReason(boolean longDescription) {
+        return null;
+      }
+
+      @Override
+      public boolean isTotalFinalized() {
+        return false;
+      }
+
+      @Override
+      public boolean hasSucceeded() {
+        return false;
+      }
+
+      @Override
+      public boolean canRestart() {
+        return false;
+      }
+
+          @Override
+          public boolean restart(ClientContext context, boolean disableFilterData) {
+            return false;
+          }
+
+          @Override
+          public boolean fullyResumed() {
+            return false;
+          }
+
+          @Override
+          RequestStatus getStatus() {
+            return null;
+          }
+
+      @Override
+      protected void innerResume(ClientContext context) throws ResumeFailedException {}
+
+      @Override
+      RequestIdentifier.RequestType getType() {
+        return RequestIdentifier.RequestType.GET;
+      }
+    }
+    """;
+  }
+
   private static byte[] basicRestoreHeaderPayload() throws IOException {
     ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     try (DataOutputStream out = new DataOutputStream(buffer)) {
@@ -369,9 +604,48 @@ class ClientGetPersistenceCodecTest {
     field.set(target, value);
   }
 
+  private static void setLegacyField(Class<?> owner, Object target, String fieldName, Object value)
+      throws ReflectiveOperationException {
+    Field field = owner.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private static Object legacyReturnType(ClassLoader classLoader) throws ClassNotFoundException {
+    Class<? extends Enum> legacyReturnType =
+        Class.forName("network.crypta.clients.fcp.ClientGet$ReturnType", true, classLoader)
+            .asSubclass(Enum.class);
+    return Enum.valueOf((Class) legacyReturnType, "DIRECT");
+  }
+
   private static boolean isFinished(ClientGet request) throws Exception {
     Field field = ClientRequest.class.getDeclaredField("finished");
     field.setAccessible(true);
     return field.getBoolean(request);
+  }
+
+  private static final class ChildFirstClientGetClassLoader extends URLClassLoader {
+    private static final String LEGACY_CLIENT_GET_CLASS = "network.crypta.clients.fcp.ClientGet";
+
+    private ChildFirstClientGetClassLoader(URL url, ClassLoader parent) {
+      super(new URL[] {url}, parent);
+    }
+
+    @Override
+    protected synchronized Class<?> loadClass(String name, boolean resolve)
+        throws ClassNotFoundException {
+      if (name.equals(LEGACY_CLIENT_GET_CLASS) || name.startsWith(LEGACY_CLIENT_GET_CLASS + "$")) {
+        Class<?> loaded = findLoadedClass(name);
+        if (loaded == null) {
+          loaded = findClass(name);
+        }
+        if (resolve) {
+          resolveClass(loaded);
+        }
+        return loaded;
+      }
+      return super.loadClass(name, resolve);
+    }
   }
 }
