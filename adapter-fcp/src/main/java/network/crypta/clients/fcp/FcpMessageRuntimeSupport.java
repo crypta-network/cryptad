@@ -1,6 +1,9 @@
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.net.URL;
 import network.crypta.keys.FreenetURI;
 
@@ -19,9 +22,9 @@ import network.crypta.keys.FreenetURI;
  * runtime-spi}, and it is not intended to become a general daemon abstraction. Its job is narrower:
  * preserve existing node behavior while removing direct core dependencies from message-level
  * execution paths, so later refactors can adjust server bootstrap and configuration seams without
- * touching protocol handlers again. Peer lookup, probe execution, and AddPeer peer-reference
- * loading now use adapter-owned seam types, so the protocol package no longer imports concrete node
- * peer, probe, or client/fetch classes directly.
+ * touching protocol handlers again. Peer lookup, probe execution, AddPeer peer-reference loading,
+ * and the detached filter pass now use adapter-owned seam types, so the protocol package no longer
+ * imports concrete node peer, probe, or filter runtime classes directly.
  *
  * <ul>
  *   <li>Exposes only the runtime actions still needed by residual message classes.
@@ -93,6 +96,25 @@ public interface FcpMessageRuntimeSupport {
    * @param reason shutdown reason passed through to the node lifecycle machinery
    */
   void shutdownNode(String reason);
+
+  /**
+   * Filters content through the live runtime filter implementation.
+   *
+   * <p>This operation is intentionally narrow: the adapter provides the already-prepared input and
+   * output buckets, the MIME type that should be evaluated, and the fake/loopback URI used for
+   * filter context. The runtime-side implementation owns the concrete filter request and callback
+   * objects, then returns the protocol-visible filter outcome, including whether the payload was
+   * rejected as unsafe.
+   *
+   * @param input filtered input stream supplied by the message layer
+   * @param output destination stream for filtered output
+   * @param mimeType MIME type to present to the filter
+   * @param fakeUri loopback URI used to preserve historical filter context behavior
+   * @return detached protocol-visible outcome from the filter pass
+   * @throws IOException if the filter or underlying I/O fails
+   */
+  FcpFilterResult filterContent(
+      InputStream input, OutputStream output, String mimeType, URI fakeUri) throws IOException;
 
   /**
    * Resolves a peer node by its FCP node identifier.

@@ -4,7 +4,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.PersistentTempBucketFactory;
 
 /**
  * Narrow runtime support seam for server-owned FCP infrastructure.
@@ -65,9 +64,9 @@ public interface FcpServerRuntimeSupport {
   /**
    * Returns the persistent temporary bucket factory used for forever-persistent inbound payloads.
    *
-   * @return persistent temporary bucket factory owned by the current runtime
+   * @return persistent bucket factory owned by the current runtime
    */
-  PersistentTempBucketFactory persistentTempBucketFactory();
+  BucketFactory persistentTempBucketFactory();
 
   /**
    * Fills the supplied byte array with secure random data from the owning runtime.

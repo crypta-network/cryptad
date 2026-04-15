@@ -30,11 +30,12 @@ import network.crypta.runtime.spi.RuntimePorts;
  * <p>The factory is stateless and creates one fresh {@link FcpServerDependencies} bundle per call.
  * Each bundle contains lightweight adapters over live daemon services rather than detached
  * snapshots, so later requests still observe the current transfer-access policy, client context,
- * and persistence state exposed by the node.
+ * filter runtime, and persistence state exposed by the node.
  *
  * <ul>
  *   <li>Builds server-owned runtime support for listener, persistence, and connection plumbing.
- *   <li>Builds message-path runtime support for residual FCP protocol handlers.
+ *   <li>Builds message-path runtime support for residual FCP protocol handlers, including the
+ *       detached content-filter bridge.
  *   <li>Preserves the intentional split between server-owned and core-owned transfer policy
  *       lookups.
  * </ul>

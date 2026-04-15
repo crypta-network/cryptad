@@ -13,7 +13,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param runtimePorts runtime SPI bridge used by server-owned infrastructure
  * @param persistentRoot persistence root used to access global clients and caches
  * @param serverRuntimeSupport server-owned runtime seam for persistent ops and connection handling
- * @param messageRuntimeSupport residual message-path runtime seam
+ * @param messageRuntimeSupport residual message-path runtime seam, including the detached filter
+ *     operation now owned by the bridge
  * @param fetchRuntimeSupport GET/fetch runtime seam for server-owned request flows
  * @param messageFetchRuntimeSupport GET/fetch runtime seam for inbound message request flows
  * @param insertRuntimeSupport insert/USK runtime seam for server-owned request flows

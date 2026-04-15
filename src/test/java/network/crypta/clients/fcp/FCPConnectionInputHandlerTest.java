@@ -20,7 +20,6 @@ import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.LineReadingInputStream;
-import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -322,7 +321,7 @@ class FCPConnectionInputHandlerTest {
     ctx.runtimeSupport = mock(FcpServerRuntimeSupport.class);
     ctx.runtimePorts = mock(RuntimePorts.class);
     ctx.nodeInfoPort = mock(NodeInfoPort.class);
-    ctx.persistentFactory = mock(PersistentTempBucketFactory.class);
+    ctx.persistentFactory = mock(BucketFactory.class);
     ctx.socket = mock(Socket.class);
 
     when(ctx.handler.getSocket()).thenReturn(ctx.socket);
@@ -387,7 +386,7 @@ class FCPConnectionInputHandlerTest {
     NodeInfoPort nodeInfoPort;
     Socket socket;
     TempBucketFactory bucketFactory;
-    PersistentTempBucketFactory persistentFactory;
+    BucketFactory persistentFactory;
   }
 
   private static final class FakeDataMessage extends BaseDataCarryingMessage {

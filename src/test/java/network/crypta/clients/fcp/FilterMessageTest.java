@@ -3,26 +3,20 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Constructor;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.filter.ContentFilter.FilterStatus;
-import network.crypta.client.filter.ContentFilter;
-import network.crypta.client.filter.ContentFilterCallbacks;
-import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
-import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucketFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,8 +34,16 @@ import static org.junit.jupiter.api.Assertions.fail;
 class FilterMessageTest {
 
   private static final BucketFactory ARRAY_BUCKET_FACTORY = new ArrayBucketFactory();
+  private static final String FILTER_URI_PROPERTY =
+      "network.crypta.clients.fcp.FilterMessage.loopbackUri";
+  private static final URI DEFAULT_FILTER_URI = URI.create("http://127.0.0.1:8888/");
 
   @TempDir Path tempDir;
+
+  @AfterEach
+  void clearFilterUriProperty() {
+    System.clearProperty(FILTER_URI_PROPERTY);
+  }
 
   @Test
   void constructor_directSourceWithoutMimeType_expectMissingField() {
@@ -149,7 +151,8 @@ class FilterMessageTest {
     FilterMessage message = createDirectMessage("req-run-nobucket", new byte[] {1, 2, 3});
     message.bucket = null;
 
-    FCPConnectionHandler handler = handlerWithContext(Mockito.mock(ClientContext.class));
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> message.run(handler));
@@ -174,7 +177,8 @@ class FilterMessageTest {
     FilterMessage message = new FilterMessage(fs, failingFactory);
     message.bucket = new SimpleReadOnlyArrayBucket(new byte[] {9, 9, 9, 9});
 
-    FCPConnectionHandler handler = handlerWithContext(Mockito.mock(ClientContext.class));
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> message.run(handler));
@@ -185,38 +189,39 @@ class FilterMessageTest {
   }
 
   @Test
-  @SuppressWarnings("resource")
   void run_whenContentFilterSucceeds_sendsResultMessage() throws Exception {
     byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
     FilterMessage message = createDirectMessage("req-run-success", payload);
 
-    ClientContext clientContext = Mockito.mock(ClientContext.class);
-    FCPConnectionHandler handler = handlerWithContext(clientContext);
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
     ArgumentCaptor<FilterResultMessage> responseCaptor =
         ArgumentCaptor.forClass(FilterResultMessage.class);
+    ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
 
-    FilterStatus status = filterStatusUtf8Text();
+    Mockito.when(
+            runtimeSupport.filterContent(
+                Mockito.any(InputStream.class),
+                Mockito.any(OutputStream.class),
+                Mockito.anyString(),
+                uriCaptor.capture()))
+        .thenAnswer(
+            invocation -> {
+              InputStream input = invocation.getArgument(0);
+              OutputStream output = invocation.getArgument(1);
+              output.write(input.readAllBytes());
+              return FcpFilterResult.safe("UTF-8", "text/plain");
+            });
 
-    try (MockedStatic<ContentFilter> staticFilter = Mockito.mockStatic(ContentFilter.class)) {
-      staticFilter
-          .when(
-              () ->
-                  ContentFilter.filter(
-                      Mockito.any(ContentFilterRequest.class),
-                      Mockito.any(ContentFilterCallbacks.class)))
-          .thenAnswer(
-              invocation -> {
-                ContentFilterRequest request = invocation.getArgument(0);
-                InputStream input = request.input();
-                OutputStream output = request.output();
-                output.write(input.readAllBytes());
-                return status;
-              });
-
-      message.run(handler);
-    }
+    message.run(handler);
 
     Mockito.verify(handler).send(responseCaptor.capture());
+    Mockito.verify(runtimeSupport)
+        .filterContent(
+            Mockito.any(InputStream.class),
+            Mockito.any(OutputStream.class),
+            Mockito.eq("text/plain"),
+            Mockito.any(URI.class));
     FilterResultMessage response = responseCaptor.getValue();
 
     assertEquals("req-run-success", response.getIdentifier());
@@ -230,35 +235,92 @@ class FilterMessageTest {
     } catch (IOException e) {
       fail(e);
     }
+    assertEquals(DEFAULT_FILTER_URI, uriCaptor.getValue());
   }
 
   @Test
-  @SuppressWarnings("resource")
-  void run_whenContentFilterSucceeds_readsClientContextFromServerRuntimeSupport() throws Exception {
+  void run_whenFilterUriPropertyValid_usesConfiguredUri() throws Exception {
+    byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
+    FilterMessage message = createDirectMessage("req-run-custom-uri", payload);
+    URI configuredUri = URI.create("http://127.0.0.1:9999/filter");
+
+    System.setProperty(FILTER_URI_PROPERTY, configuredUri.toString());
+
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
+    ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
+
+    Mockito.when(
+            runtimeSupport.filterContent(
+                Mockito.any(InputStream.class),
+                Mockito.any(OutputStream.class),
+                Mockito.anyString(),
+                uriCaptor.capture()))
+        .thenAnswer(
+            invocation -> {
+              OutputStream output = invocation.getArgument(1);
+              output.write(invocation.getArgument(0, InputStream.class).readAllBytes());
+              return FcpFilterResult.safe("UTF-8", "text/plain");
+            });
+
+    message.run(handler);
+
+    assertEquals(configuredUri, uriCaptor.getValue());
+  }
+
+  @Test
+  void run_whenFilterUriPropertyInvalid_fallsBackToDefaultUri() throws Exception {
     byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
     FilterMessage message = createDirectMessage("req-run-context", payload);
 
-    ClientContext clientContext = Mockito.mock(ClientContext.class);
-    FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
-    FCPServer server = Mockito.mock(FCPServer.class);
-    FcpServerRuntimeSupport runtimeSupport = Mockito.mock(FcpServerRuntimeSupport.class);
-    Mockito.when(handler.getServer()).thenReturn(server);
-    Mockito.when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
-    Mockito.when(runtimeSupport.clientContext()).thenReturn(clientContext);
+    System.setProperty(FILTER_URI_PROPERTY, "not a uri");
 
-    try (MockedStatic<ContentFilter> staticFilter = Mockito.mockStatic(ContentFilter.class)) {
-      staticFilter
-          .when(
-              () ->
-                  ContentFilter.filter(
-                      Mockito.any(ContentFilterRequest.class),
-                      Mockito.any(ContentFilterCallbacks.class)))
-          .thenReturn(filterStatusUtf8Text());
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
+    ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
 
-      message.run(handler);
-    }
+    Mockito.when(
+            runtimeSupport.filterContent(
+                Mockito.any(InputStream.class),
+                Mockito.any(OutputStream.class),
+                Mockito.anyString(),
+                uriCaptor.capture()))
+        .thenAnswer(
+            invocation -> {
+              OutputStream output = invocation.getArgument(1);
+              output.write(invocation.getArgument(0, InputStream.class).readAllBytes());
+              return FcpFilterResult.safe("UTF-8", "text/plain");
+            });
 
-    Mockito.verify(runtimeSupport).clientContext();
+    message.run(handler);
+
+    assertEquals(DEFAULT_FILTER_URI, uriCaptor.getValue());
+  }
+
+  @Test
+  void run_whenRuntimeFilterThrowsIo_expectInternalError() throws Exception {
+    byte[] payload = "payload".getBytes(StandardCharsets.UTF_8);
+    FilterMessage message = createDirectMessage("req-run-io", payload);
+    IOException ioException = new IOException("filter failed");
+
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
+    Mockito.when(
+            runtimeSupport.filterContent(
+                Mockito.any(InputStream.class),
+                Mockito.any(OutputStream.class),
+                Mockito.anyString(),
+                Mockito.any(URI.class)))
+        .thenThrow(ioException);
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> message.run(handler));
+
+    assertEquals(ProtocolErrorMessage.INTERNAL_ERROR, exception.protocolCode);
+    assertEquals("IO error running content filter", exception.getMessage());
+    assertEquals("req-run-io", exception.ident);
+    assertEquals(ioException, exception.getCause());
+    Mockito.verify(handler, Mockito.never()).send(Mockito.any());
   }
 
   @Test
@@ -266,40 +328,20 @@ class FilterMessageTest {
     byte[] payload = "unsafe".getBytes(StandardCharsets.UTF_8);
     FilterMessage message = createDirectMessage("req-run-unsafe", payload);
 
-    ClientContext clientContext = Mockito.mock(ClientContext.class);
-    FCPConnectionHandler handler = handlerWithContext(clientContext);
+    FcpMessageRuntimeSupport runtimeSupport = Mockito.mock(FcpMessageRuntimeSupport.class);
+    FCPConnectionHandler handler = handlerWithRuntimeSupport(runtimeSupport);
     ArgumentCaptor<FilterResultMessage> responseCaptor =
         ArgumentCaptor.forClass(FilterResultMessage.class);
 
-    UnsafeContentTypeException unsafe =
-        new UnsafeContentTypeException() {
-          @Override
-          public String getMessage() {
-            return "unsafe";
-          }
+    Mockito.when(
+            runtimeSupport.filterContent(
+                Mockito.any(InputStream.class),
+                Mockito.any(OutputStream.class),
+                Mockito.anyString(),
+                Mockito.any(URI.class)))
+        .thenReturn(FcpFilterResult.unsafe());
 
-          @Override
-          public String getHTMLEncodedTitle() {
-            return "unsafe";
-          }
-
-          @Override
-          public String getRawTitle() {
-            return "unsafe";
-          }
-        };
-
-    try (MockedStatic<ContentFilter> staticFilter = Mockito.mockStatic(ContentFilter.class)) {
-      staticFilter
-          .when(
-              () ->
-                  ContentFilter.filter(
-                      Mockito.any(ContentFilterRequest.class),
-                      Mockito.any(ContentFilterCallbacks.class)))
-          .thenThrow(unsafe);
-
-      message.run(handler);
-    }
+    message.run(handler);
 
     Mockito.verify(handler).send(responseCaptor.capture());
     FilterResultMessage response = responseCaptor.getValue();
@@ -328,25 +370,11 @@ class FilterMessageTest {
     return fs;
   }
 
-  private FCPConnectionHandler handlerWithContext(ClientContext context) {
+  private FCPConnectionHandler handlerWithRuntimeSupport(FcpMessageRuntimeSupport runtimeSupport) {
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
     FCPServer server = Mockito.mock(FCPServer.class);
-    FcpServerRuntimeSupport runtimeSupport = Mockito.mock(FcpServerRuntimeSupport.class);
     Mockito.lenient().when(handler.getServer()).thenReturn(server);
-    Mockito.lenient().when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
-    Mockito.lenient().when(runtimeSupport.clientContext()).thenReturn(context);
+    Mockito.lenient().when(server.messageRuntimeSupport()).thenReturn(runtimeSupport);
     return handler;
-  }
-
-  @SuppressWarnings("java:S3011")
-  private FilterStatus filterStatusUtf8Text() {
-    try {
-      Constructor<FilterStatus> constructor =
-          ContentFilter.FilterStatus.class.getDeclaredConstructor(String.class, String.class);
-      constructor.setAccessible(true);
-      return constructor.newInstance("UTF-8", "text/plain");
-    } catch (ReflectiveOperationException e) {
-      throw new IllegalStateException("Unable to construct FilterStatus", e);
-    }
   }
 }

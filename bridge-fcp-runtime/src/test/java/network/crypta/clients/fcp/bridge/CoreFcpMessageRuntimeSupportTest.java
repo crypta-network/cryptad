@@ -1,13 +1,25 @@
 package network.crypta.clients.fcp.bridge;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URL;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.async.ClientContext;
+import network.crypta.client.filter.ContentFilter;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
+import network.crypta.client.filter.LinkFilterExceptionProvider;
+import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FcpDarknetPeerHandle;
+import network.crypta.clients.fcp.FcpFilterResult;
 import network.crypta.clients.fcp.FcpPeerLookupResult;
 import network.crypta.clients.fcp.FcpPeerReferenceFetchException;
 import network.crypta.clients.fcp.FcpProbeError;
@@ -33,9 +45,13 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
@@ -52,6 +68,7 @@ class CoreFcpMessageRuntimeSupportTest {
   @Mock private DarknetPeerNode darknetPeerNode;
   @Mock private PeerNode peerNode;
   @Mock private FCPConnectionHandler handler;
+  @Mock private LinkFilterExceptionProvider linkFilterExceptionProvider;
 
   private static final class RecordingAlerts extends UserAlertManager {
     private FcpUserAlertFeedSubscriber watched;
@@ -215,6 +232,116 @@ class CoreFcpMessageRuntimeSupportTest {
   }
 
   @Test
+  void filterContent_whenCalled_delegatesToContentFilterAndWrapsResult() throws Exception {
+    byte[] payload = "payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    InputStream input = new ByteArrayInputStream(payload);
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    ClientContext clientContext = clientContextWith(linkFilterExceptionProvider);
+    when(core.getClientContext()).thenReturn(clientContext);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    URI fakeUri = URI.create("http://127.0.0.1:8888/");
+
+    try (MockedStatic<ContentFilter> staticFilter =
+        org.mockito.Mockito.mockStatic(ContentFilter.class)) {
+      staticFilter
+          .when(
+              () ->
+                  ContentFilter.filter(
+                      any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
+          .thenAnswer(
+              invocation -> {
+                ContentFilterRequest request = invocation.getArgument(0);
+                //noinspection resource
+                request.output().write(request.input().readAllBytes());
+                ContentFilterCallbacks callbacks = invocation.getArgument(1);
+                assertEquals(fakeUri, callbacks.baseURI());
+                assertSame(linkFilterExceptionProvider, callbacks.linkFilterExceptionProvider());
+                return filterStatusUtf8Text();
+              });
+
+      FcpFilterResult actual = support.filterContent(input, output, "text/plain", fakeUri);
+
+      assertEquals("UTF-8", actual.charset());
+      assertEquals("text/plain", actual.mimeType());
+      assertFalse(actual.unsafeContentType());
+    }
+
+    assertEquals("payload", output.toString(java.nio.charset.StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void filterContent_whenRuntimeRejectsUnsafe_returnsUnsafeResult() throws Exception {
+    InputStream input = new ByteArrayInputStream(new byte[] {1, 2, 3});
+    OutputStream output = new ByteArrayOutputStream();
+    ClientContext clientContext = clientContextWith(linkFilterExceptionProvider);
+    when(core.getClientContext()).thenReturn(clientContext);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    UnsafeContentTypeException unsafe =
+        new UnsafeContentTypeException() {
+          @Override
+          public String getMessage() {
+            return "unsafe";
+          }
+
+          @Override
+          public String getHTMLEncodedTitle() {
+            return "unsafe";
+          }
+
+          @Override
+          public String getRawTitle() {
+            return "unsafe";
+          }
+        };
+
+    try (MockedStatic<ContentFilter> staticFilter =
+        org.mockito.Mockito.mockStatic(ContentFilter.class)) {
+      staticFilter
+          .when(
+              () ->
+                  ContentFilter.filter(
+                      any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
+          .thenThrow(unsafe);
+
+      FcpFilterResult actual =
+          support.filterContent(input, output, "text/plain", URI.create("http://127.0.0.1:8888/"));
+
+      assertTrue(actual.unsafeContentType());
+      assertNull(actual.charset());
+      assertNull(actual.mimeType());
+    }
+  }
+
+  @Test
+  void filterContent_whenFilterThrowsIo_propagatesIOException() throws Exception {
+    InputStream input = new ByteArrayInputStream(new byte[] {1, 2, 3});
+    OutputStream output = new ByteArrayOutputStream();
+    ClientContext clientContext = clientContextWith(linkFilterExceptionProvider);
+    when(core.getClientContext()).thenReturn(clientContext);
+    CoreFcpMessageRuntimeSupport support = new CoreFcpMessageRuntimeSupport(core);
+    IOException ioException = new IOException("filter failed");
+
+    try (MockedStatic<ContentFilter> staticFilter =
+        org.mockito.Mockito.mockStatic(ContentFilter.class)) {
+      staticFilter
+          .when(
+              () ->
+                  ContentFilter.filter(
+                      any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
+          .thenThrow(ioException);
+
+      IOException actual =
+          assertThrows(
+              IOException.class,
+              () ->
+                  support.filterContent(
+                      input, output, "text/plain", URI.create("http://127.0.0.1:8888/")));
+
+      assertSame(ioException, actual);
+    }
+  }
+
+  @Test
   void findPeer_whenPeerUnknown_returnsUnknownResult() {
     when(core.getNode()).thenReturn(node);
     when(node.network()).thenReturn(network);
@@ -361,5 +488,26 @@ class CoreFcpMessageRuntimeSupportTest {
 
   private static StringBuilder referenceText(String text) {
     return new StringBuilder().append(text);
+  }
+
+  private static ClientContext clientContextWith(LinkFilterExceptionProvider provider)
+      throws ReflectiveOperationException {
+    ClientContext context = mock(ClientContext.class);
+    Field field = ClientContext.class.getField("linkFilterExceptionProvider");
+    field.setAccessible(true);
+    field.set(context, provider);
+    return context;
+  }
+
+  @SuppressWarnings("java:S3011")
+  private static ContentFilter.FilterStatus filterStatusUtf8Text() {
+    try {
+      java.lang.reflect.Constructor<ContentFilter.FilterStatus> constructor =
+          ContentFilter.FilterStatus.class.getDeclaredConstructor(String.class, String.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance("UTF-8", "text/plain");
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException("Unable to construct FilterStatus", e);
+    }
   }
 }

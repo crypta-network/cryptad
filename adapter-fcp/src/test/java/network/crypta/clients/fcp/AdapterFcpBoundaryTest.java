@@ -75,6 +75,15 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerPersistentOps.java");
   private static final Path FCP_SERVER_RUNTIME_SUPPORT_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerRuntimeSupport.java");
+  private static final Path FILTER_MESSAGE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FilterMessage.java");
+  private static final Path FCP_MESSAGE_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("FCPMessage.java");
+  private static final Path CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutComplexDirMessage.java");
+  private static final Path FCP_CONNECTION_INPUT_HANDLER_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionInputHandler.java");
+  private static final Path FCP_SERVER_DEPENDENCIES_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerDependencies.java");
   private static final Path COMPATIBILITY_MODE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("CompatibilityMode.java");
   private static final Path FCP_COMPATIBILITY_MODE_SOURCE =
@@ -184,6 +193,12 @@ class AdapterFcpBoundaryTest {
           "network.crypta.client.async.ClientContext",
           "network.crypta.client.async.PersistentJob",
           "network.crypta.client.async.DownloadCache");
+  private static final Set<String> FORBIDDEN_FILTER_RUNTIME_IMPORTS =
+      Set.of(
+          "network.crypta.client.async.ClientContext",
+          "network.crypta.client.filter.ContentFilter",
+          "network.crypta.client.filter.ContentFilterCallbacks",
+          "network.crypta.client.filter.ContentFilterRequest");
   private static final Set<Path> GET_RUNTIME_SEAM_SOURCES =
       Set.of(
           FCP_FETCH_RUNTIME_SUPPORT_SOURCE,
@@ -209,6 +224,8 @@ class AdapterFcpBoundaryTest {
           "network.crypta.clients.fcp.FCPServer",
           "network.crypta.clients.fcp.MessageInvalidException",
           "network.crypta.clients.fcp.NodeHelloMessage");
+  private static final Set<String> FORBIDDEN_PERSISTENT_TEMP_BUCKET_IMPORTS =
+      Set.of("network.crypta.support.io.PersistentTempBucketFactory");
 
   @Test
   void mainSourceLayout_whenCheckingFcpOwnership_expectLeafOwnsPackageTree() throws IOException {
@@ -397,6 +414,62 @@ class AdapterFcpBoundaryTest {
     assertFalse(
         messageRuntimeSupportSource.contains(" makeClient("),
         "FcpMessageRuntimeSupport must not expose raw makeClient(...) anymore");
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingPersistentBucketSeam_expectNoLegacyTempFactoryImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source :
+        Set.of(
+            FCP_MESSAGE_SOURCE,
+            CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE,
+            FCP_CONNECTION_INPUT_HANDLER_SOURCE,
+            FCP_SERVER_RUNTIME_SUPPORT_SOURCE,
+            FCP_SERVER_DEPENDENCIES_SOURCE)) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_PERSISTENT_TEMP_BUCKET_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(source + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Persistent bucket adapter sources must not import PersistentTempBucketFactory."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingFilterSeam_expectNoLegacyRuntimeFilterImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source :
+        Set.of(
+            FILTER_MESSAGE_SOURCE,
+            FCP_MESSAGE_RUNTIME_SUPPORT_SOURCE,
+            FCP_SERVER_SOURCE,
+            FCP_SERVER_DEPENDENCIES_SOURCE)) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_FILTER_RUNTIME_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(source + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Filter adapter sources must not import ClientContext, ContentFilter, "
+            + "ContentFilterCallbacks, or ContentFilterRequest."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
   }
 
   @Test
