@@ -1,19 +1,30 @@
 package network.crypta.clients.fcp;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
-import network.crypta.client.FetchException.FetchExceptionMode;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import javax.tools.ToolProvider;
 import network.crypta.client.FetchException;
+import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -197,6 +208,23 @@ class ClientGetStateTest {
   }
 
   @Test
+  void deserializeLegacyState_whenCompatibilityAnalyserSerialized_migratesDetachedAnalysis(
+      @TempDir Path tempDir) throws Exception {
+    ClientGetState restored = deserializeLegacyClientGetState(tempDir);
+    FcpCompatibilityAnalysis compatibilityAnalysis = restored.getCompatibilityAnalyser();
+
+    assertInstanceOf(FcpCompatibilityAnalysis.class, getCompatModeField(restored));
+    assertArrayEquals(
+        new FcpCompatibilityMode[] {
+          FcpCompatibilityMode.COMPAT_1250, FcpCompatibilityMode.COMPAT_1468
+        },
+        restored.getCompatibilityMode());
+    assertFalse(restored.getDontCompress());
+    assertArrayEquals(new byte[] {1, 2, 3, 4}, restored.getOverriddenSplitfileCryptoKey());
+    assertTrue(compatibilityAnalysis.definitive());
+  }
+
+  @Test
   void mergeCompatibilityMode_whenNoClientAndNoVerbosity_updatesAnalyserWithoutQueueing() {
     ClientGet request = spy(new ClientGet());
     ClientGetState state = new ClientGetState(request);
@@ -297,5 +325,113 @@ class ClientGetStateTest {
     Field field = ClientRequest.class.getDeclaredField(fieldName);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  @SuppressWarnings({"java:S3011"})
+  private static Object getCompatModeField(ClientGetState state)
+      throws ReflectiveOperationException {
+    Field field = ClientGetState.class.getDeclaredField("compatMode");
+    field.setAccessible(true);
+    return field.get(state);
+  }
+
+  private static ClientGetState deserializeLegacyClientGetState(Path tempDir) throws Exception {
+    compileLegacyClientGetState(tempDir);
+    Path classesRoot = tempDir.resolve("legacy-classes");
+    try (URLClassLoader classLoader =
+        new ChildFirstClientGetStateClassLoader(
+            classesRoot.toUri().toURL(), ClientGetState.class.getClassLoader())) {
+      Class<?> legacyStateClass =
+          Class.forName("network.crypta.clients.fcp.ClientGetState", true, classLoader);
+      Object legacyState = legacyStateClass.getDeclaredConstructor().newInstance();
+      ByteArrayOutputStream serialized = new ByteArrayOutputStream();
+      try (ObjectOutputStream out = new ObjectOutputStream(serialized)) {
+        out.writeObject(legacyState);
+      }
+      try (ObjectInputStream in =
+          new ObjectInputStream(new ByteArrayInputStream(serialized.toByteArray()))) {
+        return (ClientGetState) in.readObject();
+      }
+    }
+  }
+
+  private static void compileLegacyClientGetState(Path tempDir) throws Exception {
+    Path sourceRoot = tempDir.resolve("legacy-src");
+    Path classesRoot = tempDir.resolve("legacy-classes");
+    Path sourceFile = sourceRoot.resolve("network/crypta/clients/fcp/ClientGetState.java");
+    Files.createDirectories(sourceFile.getParent());
+    Files.createDirectories(classesRoot);
+    Files.writeString(sourceFile, legacyClientGetStateSource());
+    ByteArrayOutputStream compilerOutput = new ByteArrayOutputStream();
+    int rc =
+        ToolProvider.getSystemJavaCompiler()
+            .run(
+                null,
+                compilerOutput,
+                compilerOutput,
+                "-classpath",
+                System.getProperty("java.class.path"),
+                "-d",
+                classesRoot.toString(),
+                sourceFile.toString());
+    if (rc != 0) {
+      throw new IllegalStateException(
+          "javac failed for legacy ClientGetState: rc="
+              + rc
+              + System.lineSeparator()
+              + compilerOutput);
+    }
+  }
+
+  private static String legacyClientGetStateSource() {
+    return """
+    package network.crypta.clients.fcp;
+
+    import java.io.Serial;
+    import java.io.Serializable;
+    import network.crypta.client.InsertContext.CompatibilityMode;
+    import network.crypta.client.async.CompatibilityAnalyser;
+
+    public final class ClientGetState implements Serializable {
+      @Serial private static final long serialVersionUID = 1L;
+
+      CompatibilityAnalyser compatMode;
+
+      public ClientGetState() {
+        compatMode = new CompatibilityAnalyser();
+        compatMode.merge(
+            CompatibilityMode.COMPAT_1250,
+            CompatibilityMode.COMPAT_1468,
+            new byte[] {1, 2, 3, 4},
+            false,
+            true);
+      }
+    }
+    """;
+  }
+
+  private static final class ChildFirstClientGetStateClassLoader extends URLClassLoader {
+    private static final String LEGACY_CLIENT_GET_STATE_CLASS =
+        "network.crypta.clients.fcp.ClientGetState";
+
+    private ChildFirstClientGetStateClassLoader(URL url, ClassLoader parent) {
+      super(new URL[] {url}, parent);
+    }
+
+    @Override
+    protected synchronized Class<?> loadClass(String name, boolean resolve)
+        throws ClassNotFoundException {
+      if (name.equals(LEGACY_CLIENT_GET_STATE_CLASS)) {
+        Class<?> loaded = findLoadedClass(name);
+        if (loaded == null) {
+          loaded = findClass(name);
+        }
+        if (resolve) {
+          resolveClass(loaded);
+        }
+        return loaded;
+      }
+      return super.loadClass(name, resolve);
+    }
   }
 }

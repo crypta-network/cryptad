@@ -2,6 +2,8 @@ package network.crypta.clients.fcp;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.Objects;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
@@ -32,6 +34,9 @@ final class ClientGetState implements Serializable {
   /** Serialization version for the mutable request state container. */
   @Serial private static final long serialVersionUID = 1L;
 
+  private static final String LEGACY_COMPATIBILITY_ANALYSER_CLASS =
+      "network.crypta.client.async.CompatibilityAnalyser";
+
   /** Logger for unexpected state transitions or duplicate metadata. */
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetState.class);
 
@@ -56,8 +61,13 @@ final class ClientGetState implements Serializable {
   /** True once a {@link SendingToNetworkMessage} has been observed. */
   private boolean sentToNetwork;
 
-  /** Compatibility analysis accumulating splitfile compatibility hints. */
-  private FcpCompatibilityAnalysis compatMode;
+  /**
+   * Compatibility analysis accumulating splitfile compatibility hints.
+   *
+   * <p>The field intentionally tolerates a legacy serialized {@code CompatibilityAnalyser} object
+   * until the first accessor normalizes it into {@link FcpCompatibilityAnalysis}.
+   */
+  private Object compatMode;
 
   /** Expected hashes derived from splitfile metadata, or {@code null} when unknown. */
   private ExpectedHashes expectedHashes;
@@ -227,7 +237,7 @@ final class ClientGetState implements Serializable {
    * @return compatibility analyzer instance; may be {@code null} if not initialized.
    */
   FcpCompatibilityAnalysis getCompatibilityAnalyser() {
-    return compatMode;
+    return compatibilityAnalysis();
   }
 
   /**
@@ -241,9 +251,7 @@ final class ClientGetState implements Serializable {
 
   /** Ensures a compatibility analysis exists, creating one if missing. */
   void ensureCompatibilityMode() {
-    if (compatMode == null) {
-      compatMode = new FcpCompatibilityAnalysis();
-    }
+    compatibilityAnalysis();
   }
 
   /** Resets the compatibility analysis to a fresh, empty instance. */
@@ -257,7 +265,7 @@ final class ClientGetState implements Serializable {
    * @return array of compatibility modes; never {@code null}.
    */
   FcpCompatibilityMode[] getCompatibilityMode() {
-    return compatMode.getModes();
+    return compatibilityAnalysis().getModes();
   }
 
   /**
@@ -266,7 +274,7 @@ final class ClientGetState implements Serializable {
    * @return {@code true} when the payload is already compressed.
    */
   boolean getDontCompress() {
-    return compatMode.dontCompress();
+    return compatibilityAnalysis().dontCompress();
   }
 
   /**
@@ -275,7 +283,7 @@ final class ClientGetState implements Serializable {
    * @return crypto key bytes, or {@code null} when no override exists.
    */
   byte[] getOverriddenSplitfileCryptoKey() {
-    return compatMode.getCryptoKey();
+    return compatibilityAnalysis().getCryptoKey();
   }
 
   /**
@@ -297,22 +305,97 @@ final class ClientGetState implements Serializable {
       boolean dontCompress,
       boolean bottomLayer) {
     ensureCompatibilityMode();
-    compatMode.merge(
+    FcpCompatibilityAnalysis compatibilityAnalysis = compatibilityAnalysis();
+    compatibilityAnalysis.merge(
         minCompatibilityMode, maxCompatibilityMode, splitfileCryptoKey, dontCompress, bottomLayer);
     if (request.client != null) {
       RequestStatusCache cache = request.client.getRequestStatusCache();
       if (cache != null) {
         cache.updateDetectedCompatModes(
             request.identifier,
-            compatMode.getModes(),
-            compatMode.getCryptoKey(),
-            compatMode.dontCompress());
+            compatibilityAnalysis.getModes(),
+            compatibilityAnalysis.getCryptoKey(),
+            compatibilityAnalysis.dontCompress());
       }
     }
     if ((request.verbosity & ClientGet.VERBOSITY_COMPATIBILITY_MODE) != 0) {
       request.queueProgressMessageInner(
-          new CompatibilityMode(request.identifier, request.global, compatMode),
+          new CompatibilityMode(request.identifier, request.global, compatibilityAnalysis),
           ClientGet.VERBOSITY_COMPATIBILITY_MODE);
+    }
+  }
+
+  private FcpCompatibilityAnalysis compatibilityAnalysis() {
+    if (compatMode instanceof FcpCompatibilityAnalysis compatibilityAnalysis) {
+      return compatibilityAnalysis;
+    }
+    if (compatMode == null) {
+      FcpCompatibilityAnalysis compatibilityAnalysis = new FcpCompatibilityAnalysis();
+      compatMode = compatibilityAnalysis;
+      return compatibilityAnalysis;
+    }
+    if (isLegacyCompatibilityAnalyser(compatMode)) {
+      FcpCompatibilityAnalysis compatibilityAnalysis =
+          migrateLegacyCompatibilityAnalyser(compatMode);
+      compatMode = compatibilityAnalysis;
+      return compatibilityAnalysis;
+    }
+    throw new IllegalStateException(
+        "Unsupported ClientGetState compatibility analysis type: "
+            + compatMode.getClass().getName());
+  }
+
+  private static boolean isLegacyCompatibilityAnalyser(Object value) {
+    return value.getClass().getName().equals(LEGACY_COMPATIBILITY_ANALYSER_CLASS);
+  }
+
+  private static FcpCompatibilityAnalysis migrateLegacyCompatibilityAnalyser(
+      Object legacyCompatibilityAnalyser) {
+    FcpCompatibilityAnalysis compatibilityAnalysis = new FcpCompatibilityAnalysis();
+    compatibilityAnalysis.merge(
+        detachedCompatibilityMode(invokeLegacyAnalyserMethod(legacyCompatibilityAnalyser, "min")),
+        detachedCompatibilityMode(invokeLegacyAnalyserMethod(legacyCompatibilityAnalyser, "max")),
+        copyCryptoKey(invokeLegacyAnalyserMethod(legacyCompatibilityAnalyser, "getCryptoKey")),
+        (boolean) invokeLegacyAnalyserMethod(legacyCompatibilityAnalyser, "dontCompress"),
+        (boolean) invokeLegacyAnalyserMethod(legacyCompatibilityAnalyser, "definitive"));
+    return compatibilityAnalysis;
+  }
+
+  private static FcpCompatibilityMode detachedCompatibilityMode(Object legacyMode) {
+    if (legacyMode instanceof Enum<?> enumValue) {
+      return FcpCompatibilityMode.valueOf(enumValue.name());
+    }
+    throw new IllegalStateException(
+        "Legacy compatibility mode is not an enum: "
+            + (legacyMode == null ? "null" : legacyMode.getClass().getName()));
+  }
+
+  private static byte[] copyCryptoKey(Object legacyCryptoKey) {
+    if (legacyCryptoKey == null) {
+      return null;
+    }
+    if (legacyCryptoKey instanceof byte[] cryptoKey) {
+      return Arrays.copyOf(cryptoKey, cryptoKey.length);
+    }
+    throw new IllegalStateException(
+        "Legacy compatibility crypto key is not a byte array: "
+            + legacyCryptoKey.getClass().getName());
+  }
+
+  private static Object invokeLegacyAnalyserMethod(
+      Object legacyCompatibilityAnalyser, String method) {
+    try {
+      return legacyCompatibilityAnalyser
+          .getClass()
+          .getMethod(method)
+          .invoke(legacyCompatibilityAnalyser);
+    } catch (IllegalAccessException | NoSuchMethodException e) {
+      throw new IllegalStateException(
+          "Legacy compatibility analyser does not expose method " + method, e);
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() == null ? e : e.getCause();
+      throw new IllegalStateException(
+          "Legacy compatibility analyser method " + method + " failed", cause);
     }
   }
 
