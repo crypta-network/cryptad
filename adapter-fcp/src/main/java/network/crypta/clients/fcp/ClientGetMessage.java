@@ -14,7 +14,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,7 +190,9 @@ public final class ClientGetMessage extends BaseDataCarryingMessage {
           ProtocolErrorMessage.DISK_TARGET_EXISTS, null, identifier, global);
     }
     try {
-      File temp = FileUtil.createTempFile(target.getName(), ".freenet-tmp", target.getParentFile());
+      File temp =
+          LegacyFileSupport.createTempFile(
+              target.getName(), ".freenet-tmp", target.getParentFile());
       Files.delete(temp.toPath());
     } catch (IOException e) {
       throw new MessageInvalidException(

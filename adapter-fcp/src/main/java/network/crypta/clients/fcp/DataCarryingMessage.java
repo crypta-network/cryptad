@@ -8,7 +8,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.NullOutputStream;
 
@@ -59,9 +59,9 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
    *     value reported by {@link #dataLength()}
    * @param server the FCP server context; overriding implementations may consult it to select a
    *     persistent or transient bucket factory as appropriate
-   * @return a new {@link RandomAccessBucket} whose capacity is sufficient for the requested length;
-   *     the caller is responsible for eventually freeing it
-   * @throws IOException if the underlying storage cannot be allocated or another I/O problem is
+   * @return a new {@link RandomAccessBucket} whose capacity is enough for the requested length; the
+   *     caller is responsible for eventually freeing it
+   * @throws IOException if the underlying storage cannot be allocated, or another I/O problem is
    *     detected while preparing the bucket
    * @throws PersistenceDisabledException if persistence is disabled and a persistent bucket would
    *     be required; typically thrown by overrides that use persistent storage
@@ -89,8 +89,8 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
    * Request that the payload bucket be freed automatically after the message has been written.
    *
    * <p>This is a convenience for callers that attach a transient bucket and want to ensure it is
-   * released as soon as the corresponding network write completes. It only affects subsequent calls
-   * to {@link #writeData(OutputStream)} and has no impact on how the payload is read.
+   * released as soon as the corresponding network writing completes. It only affects later calls to
+   * {@link #writeData(OutputStream)} and has no impact on how the payload is read.
    */
   void setFreeOnSent() {
     freeOnSent = true;
@@ -113,7 +113,7 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
    *     #createBucket(BucketFactory, long, FCPServer)} so subclasses can make persistence decisions
    * @throws IOException if an I/O error occurs while allocating the bucket or copying bytes from
    *     the input stream into the bucket
-   * @throws MessageInvalidException if the payload cannot be stored, for example because
+   * @throws MessageInvalidException if the payload cannot be stored, for example, because
    *     persistence is disabled or an internal error occurs while creating the bucket
    */
   @Override
@@ -129,11 +129,11 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
     try {
       tempBucket = createBucket(bf, len, server);
     } catch (IOException e) {
-      FileUtil.copy(is, new NullOutputStream(), len);
+      LegacyFileSupport.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), getIdentifier(), isGlobal());
     } catch (PersistenceDisabledException _) {
-      FileUtil.copy(is, new NullOutputStream(), len);
+      LegacyFileSupport.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.PERSISTENCE_DISABLED, null, getIdentifier(), isGlobal());
     }

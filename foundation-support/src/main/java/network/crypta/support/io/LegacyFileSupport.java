@@ -1,9 +1,14 @@
 package network.crypta.support.io;
 
+import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import network.crypta.fs.AppEnv;
 
@@ -14,9 +19,10 @@ import network.crypta.fs.AppEnv;
  * <p>This class exists so code such as the legacy HTTP admin UI can keep a handful of historical
  * behaviors without depending on the much larger runtime-owned {@code FileUtil}. The exported
  * surface is intentionally narrow: it covers filename suggestions used in download headers,
- * canonical-path normalization for human-readable status pages, tail reading for wrapper logs, and
- * stable operating-system naming for localized UI copy. Callers should treat these helpers as
- * compatibility shims rather than as a new general-purpose file API.
+ * canonical-path normalization for human-readable status pages, bounded stream copying for FCP
+ * payload drains, temp-file creation with legacy prefix padding, UTF-8 file reads, tail reading for
+ * wrapper logs, and stable operating-system naming for localized UI copy. Callers should treat
+ * these helpers as compatibility shims rather than as a new general-purpose file API.
  *
  * <p>The implementation favors behavioral continuity over abstraction purity. It preserves the old
  * filename and log-tail semantics closely enough that existing admin pages and tests do not need to
@@ -32,6 +38,8 @@ import network.crypta.fs.AppEnv;
  * </ul>
  */
 public final class LegacyFileSupport {
+  private static final int COPY_BUFFER_SIZE = 32 * 1024;
+
   private enum LegacyOperatingSystem {
     UNKNOWN(false, false, false),
     MAC_OS(false, true, true),
@@ -121,6 +129,84 @@ public final class LegacyFileSupport {
       return file.getAbsoluteFile().getCanonicalFile();
     } catch (IOException _) {
       return file.getAbsoluteFile();
+    }
+  }
+
+  /**
+   * Copies bytes from {@code source} to {@code destination} with legacy bounded-length semantics.
+   *
+   * <p>When {@code length == -1}, the copy runs until end-of-stream. Otherwise, the method copies
+   * exactly {@code length} bytes and throws an {@link EOFException} if the source ends too early.
+   * This method closes neither stream.
+   *
+   * @param source input stream to read from
+   * @param destination output stream to write to
+   * @param length number of bytes to copy, or {@code -1} to copy until EOF
+   * @throws IOException if reading, writing, or the exact-length EOF contract fails
+   */
+  public static void copy(InputStream source, OutputStream destination, long length)
+      throws IOException {
+    long remaining = length == -1 ? Long.MAX_VALUE : length;
+    byte[] buffer = new byte[(int) Math.min(remaining, COPY_BUFFER_SIZE)];
+    int read;
+    while (remaining > 0
+        && (read = source.read(buffer, 0, (int) Math.min(remaining, COPY_BUFFER_SIZE))) != -1) {
+      destination.write(buffer, 0, read);
+      remaining -= read;
+    }
+    if (remaining > 0 && length != -1) {
+      throw new EOFException("stream reached eof");
+    }
+  }
+
+  /**
+   * Creates a temporary file while preserving the legacy short-prefix padding behavior.
+   *
+   * <p>When {@code directory} is {@code null}, the current working directory is used. If the
+   * supplied prefix is shorter than three characters, {@code -TMP} is appended before delegating to
+   * {@link File#createTempFile(String, String, File)} so historical callers continue to satisfy the
+   * JDK's minimum prefix requirement.
+   *
+   * @param prefix filename prefix
+   * @param suffix filename suffix
+   * @param directory directory in which to create the file, or {@code null} for the current working
+   *     directory
+   * @return the created temporary file
+   * @throws IOException if the file cannot be created
+   */
+  public static File createTempFile(String prefix, String suffix, File directory)
+      throws IOException {
+    if (directory == null) {
+      directory = new File(".");
+    }
+    if (prefix.length() < 3) {
+      prefix += "-TMP";
+    }
+    return File.createTempFile(prefix, suffix, directory);
+  }
+
+  /**
+   * Reads an entire file as UTF-8 into a {@link StringBuilder}.
+   *
+   * @param file file to read
+   * @return decoded UTF-8 content
+   * @throws IOException if the file cannot be opened or read
+   */
+  public static StringBuilder readUTF(File file) throws IOException {
+    try (FileInputStream fis = new FileInputStream(file)) {
+      return readUTF(fis);
+    }
+  }
+
+  private static StringBuilder readUTF(InputStream stream) throws IOException {
+    try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+      StringBuilder result = new StringBuilder();
+      char[] buf = new char[4096];
+      int length;
+      while ((length = reader.read(buf)) > 0) {
+        result.append(buf, 0, length);
+      }
+      return result;
     }
   }
 
