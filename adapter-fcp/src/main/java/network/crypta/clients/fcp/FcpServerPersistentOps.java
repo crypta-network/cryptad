@@ -13,10 +13,8 @@ import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.DownloadCache;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -38,23 +36,23 @@ import org.slf4j.LoggerFactory;
  * class is intentionally package-private, so the server façade can delegate to it while keeping
  * persistence-specific details localized.
  *
- * <p>The instance uses the {@link ClientContext} job runner for operations that must be serialized
- * against persistent state. Methods that call into {@link PersistentRequestClient} may block until
- * a queued job completes, so callers should avoid invoking them from latency-sensitive threads.
- * Synchronization is limited to the reboot-client map and does not cover the underlying request
- * queues, which manage their own concurrency.
+ * <p>The instance uses the detached persistent-job seam on {@link FcpServerRuntimeSupport} for
+ * operations that must be serialized against persistent state. Methods that call into {@link
+ * PersistentRequestClient} may block until a queued job completes, so callers should avoid invoking
+ * them from latency-sensitive threads. Synchronization is limited to the reboot-client map and does
+ * not cover the underlying request queues, which manage their own concurrency.
  *
  * <ul>
  *   <li>Registers persistent clients and routes global queue operations.
  *   <li>Schedules persistence-affecting work on the job runner.
- *   <li>Implements {@link DownloadCache} lookups for completed requests.
+ *   <li>Implements {@link FcpDownloadCache} lookups for completed requests.
  * </ul>
  *
  * @see FCPServer
  * @see PersistentRequestClient
  * @see PersistentRequestRoot
  */
-final class FcpServerPersistentOps implements DownloadCache {
+final class FcpServerPersistentOps implements FcpDownloadCache {
   /** Logger for persistence operations and cache lookup diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(FcpServerPersistentOps.class);
 
@@ -224,36 +222,32 @@ final class FcpServerPersistentOps implements DownloadCache {
    * @throws PersistenceDisabledException when persistence is unavailable or disabled.
    */
   boolean removeGlobalRequestBlocking(final String identifier) throws PersistenceDisabledException {
-    if (!globalRebootClient.removeByIdentifier(identifier, true, server, clientContext())) {
+    if (!globalRebootClient.removeByIdentifier(identifier, true, server, runtimeContext())) {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicBoolean success = new AtomicBoolean();
-      clientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
+      runtimeSupport.queuePersistentJob(
+          new FcpPersistentJob() {
+            @Override
+            public boolean run(PersistentRequestRuntimeContext context) {
+              boolean succeeded = false;
+              try {
+                succeeded =
+                    globalForeverClient.removeByIdentifier(identifier, true, server, context);
+              } catch (Exception e) {
+                LOG.error("Caught removing identifier {}: {}", identifier, e, e);
+              } finally {
+                success.set(succeeded);
+                done.countDown();
+              }
+              return true;
+            }
 
-                @Override
-                public String toString() {
-                  return "FCP removeGlobalRequestBlocking";
-                }
-
-                @Override
-                public boolean run(ClientContext context) {
-                  boolean succeeded = false;
-                  try {
-                    succeeded =
-                        globalForeverClient.removeByIdentifier(
-                            identifier, true, server, clientContext());
-                  } catch (Exception e) {
-                    LOG.error("Caught removing identifier {}: {}", identifier, e, e);
-                  } finally {
-                    success.set(succeeded);
-                    done.countDown();
-                  }
-                  return true;
-                }
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+            @Override
+            public String toString() {
+              return "FCP removeGlobalRequestBlocking";
+            }
+          },
+          NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       try {
         done.await();
       } catch (InterruptedException _) {
@@ -277,32 +271,29 @@ final class FcpServerPersistentOps implements DownloadCache {
     globalRebootClient.removeAll();
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicBoolean success = new AtomicBoolean();
-    clientContext()
-        .jobRunner
-        .queue(
-            new PersistentJob() {
+    runtimeSupport.queuePersistentJob(
+        new FcpPersistentJob() {
+          @Override
+          public boolean run(PersistentRequestRuntimeContext context) {
+            boolean succeeded = false;
+            try {
+              globalForeverClient.removeAll();
+              succeeded = true;
+            } catch (Exception e) {
+              LOG.error("Caught while processing panic: {}", e, e);
+            } finally {
+              success.set(succeeded);
+              done.countDown();
+            }
+            return true;
+          }
 
-              @Override
-              public String toString() {
-                return "FCP removeAllGlobalRequestsBlocking";
-              }
-
-              @Override
-              public boolean run(ClientContext context) {
-                boolean succeeded = false;
-                try {
-                  globalForeverClient.removeAll();
-                  succeeded = true;
-                } catch (Exception e) {
-                  LOG.error("Caught while processing panic: {}", e, e);
-                } finally {
-                  success.set(succeeded);
-                  done.countDown();
-                }
-                return true;
-              }
-            },
-            NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+          @Override
+          public String toString() {
+            return "FCP removeAllGlobalRequestsBlocking";
+          }
+        },
+        NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     try {
       done.await();
     } catch (InterruptedException _) {
@@ -337,34 +328,31 @@ final class FcpServerPersistentOps implements DownloadCache {
         boolean done;
       }
       final OutputWrapper ow = new OutputWrapper();
-      clientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
-
-                @Override
-                public String toString() {
-                  return "FCP modifyGlobalRequestBlocking";
+      runtimeSupport.queuePersistentJob(
+          new FcpPersistentJob() {
+            @Override
+            public boolean run(PersistentRequestRuntimeContext context) {
+              boolean success = false;
+              try {
+                ClientRequest req = globalForeverClient.getRequest(identifier);
+                if (req != null) req.modifyRequest(newToken, newPriority, server);
+                success = true;
+              } finally {
+                synchronized (ow) {
+                  ow.success = success;
+                  ow.done = true;
+                  ow.notifyAll();
                 }
+              }
+              return true;
+            }
 
-                @Override
-                public boolean run(ClientContext context) {
-                  boolean success = false;
-                  try {
-                    ClientRequest req = globalForeverClient.getRequest(identifier);
-                    if (req != null) req.modifyRequest(newToken, newPriority, server);
-                    success = true;
-                  } finally {
-                    synchronized (ow) {
-                      ow.success = success;
-                      ow.done = true;
-                      ow.notifyAll();
-                    }
-                  }
-                  return true;
-                }
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+            @Override
+            public String toString() {
+              return "FCP modifyGlobalRequestBlocking";
+            }
+          },
+          NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
       synchronized (ow) {
         while (true) {
@@ -399,36 +387,33 @@ final class FcpServerPersistentOps implements DownloadCache {
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicReference<NotAllowedException> notAllowed = new AtomicReference<>();
     final AtomicReference<IOException> ioException = new AtomicReference<>();
-    clientContext()
-        .jobRunner
-        .queue(
-            new PersistentJob() {
+    runtimeSupport.queuePersistentJob(
+        new FcpPersistentJob() {
+          @Override
+          public boolean run(PersistentRequestRuntimeContext context) {
+            try {
+              makePersistentGlobalRequest(params);
+              return true;
+            } catch (NotAllowedException e) {
+              notAllowed.set(e);
+              return false;
+            } catch (IOException e) {
+              ioException.set(e);
+              return false;
+            } catch (Exception t) {
+              LOG.error("Failed to make persistent request: {}", t, t);
+              return false;
+            } finally {
+              done.countDown();
+            }
+          }
 
-              @Override
-              public String toString() {
-                return "FCP makePersistentGlobalRequestBlocking";
-              }
-
-              @Override
-              public boolean run(ClientContext context) {
-                try {
-                  makePersistentGlobalRequest(params);
-                  return true;
-                } catch (NotAllowedException e) {
-                  notAllowed.set(e);
-                  return false;
-                } catch (IOException e) {
-                  ioException.set(e);
-                  return false;
-                } catch (Exception t) {
-                  LOG.error("Failed to make persistent request: {}", t, t);
-                  return false;
-                } finally {
-                  done.countDown();
-                }
-              }
-            },
-            NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+          @Override
+          public String toString() {
+            return "FCP makePersistentGlobalRequestBlocking";
+          }
+        },
+        NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
     try {
       done.await();
@@ -635,7 +620,7 @@ final class FcpServerPersistentOps implements DownloadCache {
             requestConfig,
             fetchRuntimeSupport);
     cg.register(false);
-    cg.start(clientContext());
+    cg.start(runtimeContext());
   }
 
   PersistentRequestClient getGlobalForeverClient() {
@@ -656,34 +641,31 @@ final class FcpServerPersistentOps implements DownloadCache {
   void startBlocking(final ClientRequest req)
       throws IdentifierCollisionException, PersistenceDisabledException {
     if (req.persistence == Persistence.REBOOT) {
-      req.start(clientContext());
+      req.start(runtimeContext());
     } else {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicReference<IdentifierCollisionException> collision = new AtomicReference<>();
-      clientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
+      runtimeSupport.queuePersistentJob(
+          new FcpPersistentJob() {
+            @Override
+            public boolean run(PersistentRequestRuntimeContext context) {
+              try {
+                req.register(false);
+                req.start(context);
+              } catch (IdentifierCollisionException e) {
+                collision.set(e);
+              } finally {
+                done.countDown();
+              }
+              return true;
+            }
 
-                @Override
-                public String toString() {
-                  return "FCP startBlocking";
-                }
-
-                @Override
-                public boolean run(ClientContext context) {
-                  try {
-                    req.register(false);
-                    req.start(context);
-                  } catch (IdentifierCollisionException e) {
-                    collision.set(e);
-                  } finally {
-                    done.countDown();
-                  }
-                  return true;
-                }
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+            @Override
+            public String toString() {
+              return "FCP startBlocking";
+            }
+          },
+          NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
       try {
         done.await();
@@ -700,42 +682,39 @@ final class FcpServerPersistentOps implements DownloadCache {
       throws PersistenceDisabledException {
     ClientRequest req = globalRebootClient.getRequest(identifier);
     if (req != null) {
-      req.restart(clientContext(), disableFilterData);
+      req.restart(runtimeContext(), disableFilterData);
       return true;
     } else {
       final CountDownLatch done = new CountDownLatch(1);
       final AtomicBoolean success = new AtomicBoolean();
       if (LOG.isDebugEnabled()) LOG.debug("Queueing restart of {}", identifier);
-      clientContext()
-          .jobRunner
-          .queue(
-              new PersistentJob() {
-
-                @Override
-                public String toString() {
-                  return "FCP restartBlocking";
+      runtimeSupport.queuePersistentJob(
+          new FcpPersistentJob() {
+            @Override
+            public boolean run(PersistentRequestRuntimeContext context) {
+              boolean restarted = false;
+              try {
+                ClientRequest req = globalForeverClient.getRequest(identifier);
+                if (LOG.isDebugEnabled()) LOG.debug("Restarting {} for {}", req, identifier);
+                if (req != null) {
+                  req.restart(context, disableFilterData);
+                  restarted = true;
                 }
+              } catch (PersistenceDisabledException e) {
+                LOG.error("Failed to restart {}: {}", identifier, e.getMessage(), e);
+              } finally {
+                success.set(restarted);
+                done.countDown();
+              }
+              return true;
+            }
 
-                @Override
-                public boolean run(ClientContext context) {
-                  boolean restarted = false;
-                  try {
-                    ClientRequest req = globalForeverClient.getRequest(identifier);
-                    if (LOG.isDebugEnabled()) LOG.debug("Restarting {} for {}", req, identifier);
-                    if (req != null) {
-                      req.restart(context, disableFilterData);
-                      restarted = true;
-                    }
-                  } catch (PersistenceDisabledException e) {
-                    LOG.error("Failed to restart {}: {}", identifier, e.getMessage(), e);
-                  } finally {
-                    success.set(restarted);
-                    done.countDown();
-                  }
-                  return true;
-                }
-              },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+            @Override
+            public String toString() {
+              return "FCP restartBlocking";
+            }
+          },
+          NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
       try {
         done.await();
@@ -761,28 +740,25 @@ final class FcpServerPersistentOps implements DownloadCache {
 
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicReference<FetchResult> resultRef = new AtomicReference<>();
-    clientContext()
-        .jobRunner
-        .queue(
-            new PersistentJob() {
+    runtimeSupport.queuePersistentJob(
+        new FcpPersistentJob() {
+          @Override
+          public boolean run(PersistentRequestRuntimeContext context) {
+            try {
+              CacheFetchResult lookup = lookup(key, false, context, false, null);
+              resultRef.set(lookup);
+            } finally {
+              done.countDown();
+            }
+            return false;
+          }
 
-              @Override
-              public String toString() {
-                return "FCP getCompletedRequestBlocking";
-              }
-
-              @Override
-              public boolean run(ClientContext context) {
-                try {
-                  CacheFetchResult lookup = lookup(key, false, context, false, null);
-                  resultRef.set(lookup);
-                } finally {
-                  done.countDown();
-                }
-                return false;
-              }
-            },
-            NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+          @Override
+          public String toString() {
+            return "FCP getCompletedRequestBlocking";
+          }
+        },
+        NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
     try {
       done.await();
@@ -843,7 +819,11 @@ final class FcpServerPersistentOps implements DownloadCache {
 
   @Override
   public CacheFetchResult lookup(
-      FreenetURI key, boolean noFilter, ClientContext context, boolean mustCopy, Bucket preferred) {
+      FreenetURI key,
+      boolean noFilter,
+      PersistentRequestRuntimeContext context,
+      boolean mustCopy,
+      Bucket preferred) {
     if (globalForeverClient == null) return null;
     ClientGet get = globalForeverClient.getCompletedRequest(key);
     if (get != null) {
@@ -881,7 +861,7 @@ final class FcpServerPersistentOps implements DownloadCache {
     return globalRebootClient;
   }
 
-  private ClientContext clientContext() {
-    return runtimeSupport.clientContext();
+  private PersistentRequestRuntimeContext runtimeContext() {
+    return runtimeSupport.persistentRequestRuntimeContext();
   }
 }

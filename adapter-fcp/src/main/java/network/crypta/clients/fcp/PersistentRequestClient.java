@@ -5,17 +5,14 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import network.crypta.client.FetchException.FetchExceptionMode;
-import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.PersistentListJob;
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.TransientListJob;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.RequestQueuePort;
-import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,14 +99,13 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
     lowLevelClientRT = new FCPClientRequestClient(this, forever, true);
     completionCallbacks = new ArrayList<>();
     if (cb != null) completionCallbacks.add(cb);
+    statusTracker = new PersistentRequestClientStatusTracker(isGlobalQueue);
     if (persistence == Persistence.FOREVER) {
       if (root == null) {
         throw new IllegalArgumentException("Persistent root must be provided for FOREVER mode");
       }
       this.root = root;
     } else this.root = null;
-    if (isGlobalQueue) statusCache = new RequestStatusCache();
-    else statusCache = null;
   }
 
   /** The persistent root object, null if persistence is PERSIST_REBOOT */
@@ -145,9 +141,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
   private final RequestClient lowLevelClient;
   private final RequestClient lowLevelClientRT;
   private List<RequestCompletionCallback> completionCallbacks;
-
-  /** The cache where ClientRequests report their progress */
-  private final RequestStatusCache statusCache;
+  private final PersistentRequestClientStatusTracker statusTracker;
 
   /** Connection mode */
   final Persistence persistence;
@@ -222,56 +216,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
         completedUnackedRequests.add(get);
       }
     }
-    if (statusCache != null) {
-      switch (get) {
-        case ClientGet download -> handleDownloadCompletion(download);
-        case ClientPutBase upload -> handleUploadCompletion(upload);
-        default -> throw new IllegalStateException("Unexpected request type: " + get.getClass());
-      }
-    }
-  }
-
-  private void handleUploadCompletion(ClientPutBase upload) {
-    PutFailedMessage msg = upload.getFailureMessage();
-    InsertExceptionMode failureCode = null;
-    String shortFailMessage = null;
-    String longFailMessage = null;
-    if (msg != null) {
-      failureCode = msg.failureMode;
-      shortFailMessage = msg.getShortFailedMessage();
-      longFailMessage = msg.getLongFailedMessage();
-    }
-    statusCache.finishedUpload(
-        upload.getIdentifier(),
-        upload.hasSucceeded(),
-        upload.getGeneratedURI(),
-        failureCode,
-        shortFailMessage,
-        longFailMessage);
-  }
-
-  private void handleDownloadCompletion(ClientGet download) {
-    GetFailedMessage failureMessage = download.state().getFailedMessage();
-    FetchExceptionMode failureCode = null;
-    String shortFailMessage = null;
-    String longFailMessage = null;
-    if (failureMessage != null) {
-      failureCode = failureMessage.failureMode;
-      shortFailMessage = failureMessage.getShortFailedMessage();
-      longFailMessage = failureMessage.getLongFailedMessage();
-    }
-    Bucket shadow = download.getBucket();
-    if (shadow != null) shadow = shadow.createShadow();
-    DownloadOutcomeInfo outcome =
-        new DownloadOutcomeInfo(
-            download.getDataSize(),
-            download.getMIMEType(),
-            failureCode,
-            shortFailMessage,
-            longFailMessage,
-            shadow,
-            download.filterData());
-    statusCache.finishedDownload(download.getIdentifier(), download.hasSucceeded(), outcome);
+    statusTracker.finishedClientRequest(get);
   }
 
   /**
@@ -404,13 +349,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
       }
       clientRequestsByIdentifier.put(ident, cg);
     }
-    if (statusCache != null) {
-      if (cg instanceof ClientGet) {
-        statusCache.addDownload((DownloadRequestStatus) cg.getStatus());
-      } else if (cg instanceof ClientPutBase) {
-        statusCache.addUpload((UploadRequestStatus) cg.getStatus());
-      }
-    }
+    statusTracker.register(cg);
   }
 
   /**
@@ -429,12 +368,12 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
    * @return {@code true} if a matching request was found and removed; {@code false} otherwise.
    */
   public boolean removeByIdentifier(
-      String identifier, boolean kill, FCPServer server, ClientContext context) {
+      String identifier, boolean kill, FCPServer server, PersistentRequestRuntimeContext context) {
     if (server == null) {
       LOG.warn("removeByIdentifier invoked without server instance for {}", identifier);
     }
     if (LOG.isDebugEnabled()) LOG.debug("removeByIdentifier({},{})", identifier, kill);
-    if (statusCache != null) statusCache.removeByIdentifier(identifier);
+    statusTracker.removeByIdentifier(identifier);
     ClientRequest req = removeTrackedRequest(identifier);
     if (req == null) return false;
     if (kill) {
@@ -541,35 +480,18 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
     }
   }
 
-  /** From database */
-  private void addPersistentRequestStatusFromDatabase(List<RequestStatus> status) {
-    // Merging with addPersistentRequests would require revisiting locking semantics.
-    List<ClientRequest> reqs = new ArrayList<>();
-    addPersistentRequests(reqs, true);
-    for (ClientRequest req : reqs) {
-      try {
-        status.add(req.getStatus());
-      } catch (Exception t) {
-        // Try to load the rest.
-        LOG.error("BROKEN REQUEST LOADING PERSISTENT REQUEST STATUS: {}", t.getMessage(), t);
-        // Consider surfacing this to the user if it becomes frequent.
-      }
-      // The deactivation policy depends on callers; keep current behavior.
-    }
-  }
-
   /**
    * Adds cached status snapshots for all tracked requests to the supplied list.
    *
-   * <p>Unlike {@link #addPersistentRequestStatusFromDatabase(List)}, this relies on the in-memory
-   * {@link RequestStatusCache} populated during the current runtime. It appends to the provided
-   * list, preserving any existing entries, and does not clear the cache.
+   * <p>This relies on the in-memory {@link RequestStatusCache} populated during the current
+   * runtime. It appends to the provided list, preserving any existing entries, and does not clear
+   * the cache.
    *
    * @param status destination list that will receive status objects for both uploads and downloads;
    *     must be mutable and non-null.
    */
   public void addPersistentRequestStatus(List<RequestStatus> status) {
-    statusCache.addTo(status);
+    statusTracker.addPersistentRequestStatus(status);
   }
 
   /**
@@ -785,7 +707,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
    * required.
    */
   public void removeAll() {
-    if (statusCache != null) statusCache.clear();
+    statusTracker.clear();
     synchronized (this) {
       runningPersistentRequests.clear();
       completedUnackedRequests.clear();
@@ -804,14 +726,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
    *     same URI is present.
    */
   public ClientGet getCompletedRequest(FreenetURI key) {
-    // Potential optimization: a transient hashmap keyed by URI could speed lookups.
-    for (ClientRequest req : completedUnackedRequests) {
-      if (!(req instanceof ClientGet getter)) continue;
-      if (getter.getURI().equals(key)) {
-        return getter;
-      }
-    }
-    return null;
+    return statusTracker.getCompletedRequest(completedUnackedRequests, key);
   }
 
   /**
@@ -821,7 +736,7 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
    *     configured as the global queue.
    */
   public RequestStatusCache getRequestStatusCache() {
-    return statusCache;
+    return statusTracker.getRequestStatusCache();
   }
 
   /**
@@ -831,18 +746,10 @@ public final class PersistentRequestClient implements PersistentRequestClientHan
    * disk-backed request state. No effect occurs for reboot-persistent clients.
    */
   public void updateRequestStatusCache() {
-    updateRequestStatusCache(statusCache);
-  }
-
-  private void updateRequestStatusCache(RequestStatusCache cache) {
     if (persistence == Persistence.FOREVER) {
-      LOG.info("Loading cache of request statuses...");
-      ArrayList<RequestStatus> statuses = new ArrayList<>();
-      addPersistentRequestStatusFromDatabase(statuses);
-      for (RequestStatus status : statuses) {
-        if (status instanceof DownloadRequestStatus requestStatus) cache.addDownload(requestStatus);
-        else cache.addUpload((UploadRequestStatus) status);
-      }
+      List<ClientRequest> requests = new ArrayList<>();
+      addPersistentRequests(requests, true);
+      statusTracker.updateRequestStatusCache(requests);
     }
   }
 

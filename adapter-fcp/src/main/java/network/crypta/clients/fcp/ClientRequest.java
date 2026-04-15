@@ -8,7 +8,6 @@ import java.io.Serializable;
 import java.util.Locale;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
@@ -361,6 +360,15 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * @param context client context providing access to schedulers, queues, and persistent roots
    */
   public abstract void onLostConnection(ClientContext context);
+
+  /**
+   * Detached wrapper for {@link #onLostConnection(ClientContext)} used by server-owned callers.
+   *
+   * @param context detached runtime context backed by the live daemon runtime
+   */
+  public final void onLostConnection(PersistentRequestRuntimeContext context) {
+    onLostConnection(requireClientContext(context, "lost-connection"));
+  }
 
   /**
    * Sends any queued protocol messages for this request to a reconnecting client.
@@ -723,8 +731,9 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * Indicates whether this request can currently be restarted.
    *
    * <p>Subclasses may disallow restarts after certain fatal errors or once resources have been
-   * discarded. Callers usually check this before invoking {@link #restart(ClientContext, boolean)}
-   * or {@link #restartAsync(FCPServer, boolean)}.
+   * discarded. Callers usually check this before invoking {@link
+   * #restart(PersistentRequestRuntimeContext, boolean)} or {@link #restartAsync(FCPServer,
+   * boolean)}.
    *
    * @return {@code true} if restarting is supported in the current state
    */
@@ -748,6 +757,19 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
       throws PersistenceDisabledException;
 
   /**
+   * Detached wrapper for {@link #restart(ClientContext, boolean)}.
+   *
+   * @param context detached runtime context backed by the live daemon runtime
+   * @param disableFilterData whether associated filter data should be disabled for the restart
+   * @return {@code true} if the restart was submitted successfully and should be visible to clients
+   * @throws PersistenceDisabledException if persistent storage required for restart is not enabled
+   */
+  public final boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData)
+      throws PersistenceDisabledException {
+    return restart(requireClientContext(context, "restart"), disableFilterData);
+  }
+
+  /**
    * Called after a ModifyPersistentRequest. Sends a PersistentRequestModified message to clients if
    * any value changed.
    *
@@ -763,7 +785,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
       return;
     }
 
-    server.serverRuntimeSupport().clientContext().jobRunner.setCheckpointASAP();
+    server.serverRuntimeSupport().setCheckpointASAP();
 
     PersistentRequestModifiedMessage modifiedMsg =
         buildPersistentRequestModifiedMessage(clientTokenChanged, priorityClassChanged);
@@ -837,20 +859,24 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
       }
     }
     if (persistence == Persistence.FOREVER) {
-      runtimeSupport
-          .clientContext()
-          .jobRunner
-          .queue(
-              (PersistentJob)
-                  context -> {
-                    try {
-                      restart(context, disableFilterData);
-                    } catch (PersistenceDisabledException _) {
-                      // Impossible
-                    }
-                    return true;
-                  },
-              NativeThread.PriorityLevel.HIGH_PRIORITY.value);
+      runtimeSupport.queuePersistentJob(
+          new FcpPersistentJob() {
+            @Override
+            public boolean run(PersistentRequestRuntimeContext context) {
+              try {
+                restart(context, disableFilterData);
+              } catch (PersistenceDisabledException _) {
+                // Impossible
+              }
+              return true;
+            }
+
+            @Override
+            public String toString() {
+              return "FCP request restartAsync";
+            }
+          },
+          NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     } else {
       server
           .runtime()
@@ -866,7 +892,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
                 @Override
                 public void run() {
                   try {
-                    restart(runtimeSupport.clientContext(), disableFilterData);
+                    restart(runtimeSupport.persistentRequestRuntimeContext(), disableFilterData);
                   } catch (PersistenceDisabledException _) {
                     // Impossible
                   }
@@ -896,6 +922,15 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * @param context client context that can be used to access persistence services if necessary
    */
   public void requestWasRemoved(ClientContext context) {}
+
+  /**
+   * Detached wrapper for {@link #requestWasRemoved(ClientContext)} used by server-owned callers.
+   *
+   * @param context detached runtime context backed by the live daemon runtime
+   */
+  public final void requestWasRemoved(PersistentRequestRuntimeContext context) {
+    requestWasRemoved(requireClientContext(context, "remove"));
+  }
 
   /**
    * Returns whether this request belongs to one of the global queues.

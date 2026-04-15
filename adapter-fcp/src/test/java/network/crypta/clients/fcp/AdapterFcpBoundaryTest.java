@@ -62,6 +62,9 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("DownloadRequestStatus.java");
   private static final Path DOWNLOAD_REQUEST_STATUS_DETAILS_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("DownloadRequestStatusDetails.java");
+  private static final Path CLIENT_REQUEST_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientRequest.java");
+  private static final Path FCP_SERVER_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("FCPServer.java");
   private static final Path FCP_CONNECTION_HANDLER_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java");
   private static final Path FCP_FETCH_RUNTIME_SUPPORT_SOURCE =
@@ -70,6 +73,8 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpMessageRuntimeSupport.java");
   private static final Path FCP_SERVER_PERSISTENT_OPS_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerPersistentOps.java");
+  private static final Path FCP_SERVER_RUNTIME_SUPPORT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("FcpServerRuntimeSupport.java");
   private static final Path COMPATIBILITY_MODE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("CompatibilityMode.java");
   private static final Path FCP_COMPATIBILITY_MODE_SOURCE =
@@ -80,6 +85,8 @@ class AdapterFcpBoundaryTest {
       ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertContextHandle.java");
   private static final Path DEFAULT_FCP_INSERT_CONTEXT_HANDLE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("DefaultFcpInsertContextHandle.java");
+  private static final Path PERSISTENT_REQUEST_CLIENT_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("PersistentRequestClient.java");
   private static final Path REQUEST_STATUS_CACHE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("RequestStatusCache.java");
   private static final Set<Path> INSERT_FAMILY_SEAM_SOURCES =
@@ -172,6 +179,11 @@ class AdapterFcpBoundaryTest {
           "network.crypta.client.async.BaseClientPutter",
           "network.crypta.client.async.ClientPutCallback",
           "network.crypta.client.async.ClientRequester");
+  private static final Set<String> FORBIDDEN_SERVER_INFRA_RUNTIME_TYPES =
+      Set.of(
+          "network.crypta.client.async.ClientContext",
+          "network.crypta.client.async.PersistentJob",
+          "network.crypta.client.async.DownloadCache");
   private static final Set<Path> GET_RUNTIME_SEAM_SOURCES =
       Set.of(
           FCP_FETCH_RUNTIME_SUPPORT_SOURCE,
@@ -481,6 +493,177 @@ class AdapterFcpBoundaryTest {
             + String.join(System.lineSeparator(), violations));
   }
 
+  @Test
+  void serverInfrastructure_whenCheckingDetachedRuntimeSeams_expectNoLiveRuntimeInfraLeaks()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+    String serverSource = Files.readString(repoRoot.resolve(FCP_SERVER_SOURCE));
+    String persistentOpsSource =
+        Files.readString(repoRoot.resolve(FCP_SERVER_PERSISTENT_OPS_SOURCE));
+    String connectionHandlerSource =
+        Files.readString(repoRoot.resolve(FCP_CONNECTION_HANDLER_SOURCE));
+    String persistentRequestClientSource =
+        Files.readString(repoRoot.resolve(PERSISTENT_REQUEST_CLIENT_SOURCE));
+    String clientRequestSource = Files.readString(repoRoot.resolve(CLIENT_REQUEST_SOURCE));
+    String runtimeSupportSource =
+        Files.readString(repoRoot.resolve(FCP_SERVER_RUNTIME_SUPPORT_SOURCE));
+
+    collectForbiddenRuntimeInfraImportViolations(violations, FCP_SERVER_SOURCE, repoRoot);
+    collectForbiddenRuntimeInfraImportViolations(
+        violations, FCP_SERVER_PERSISTENT_OPS_SOURCE, repoRoot);
+    collectForbiddenRuntimeInfraImportViolations(
+        violations, FCP_CONNECTION_HANDLER_SOURCE, repoRoot);
+    collectForbiddenRuntimeInfraImportViolations(
+        violations, PERSISTENT_REQUEST_CLIENT_SOURCE, repoRoot);
+
+    requireAbsent(
+        violations,
+        FCP_SERVER_SOURCE,
+        serverSource,
+        "implements Runnable, DownloadCache",
+        "must not implement runtime-owned DownloadCache");
+    requireAbsent(
+        violations,
+        FCP_SERVER_SOURCE,
+        serverSource,
+        "lookup(\n      FreenetURI key, boolean noFilter, ClientContext context",
+        "must not expose cache lookup with live ClientContext");
+
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "new PersistentJob()",
+        "must not allocate runtime-owned PersistentJob directly");
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "run(ClientContext context)",
+        "must not declare queued work against live ClientContext");
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "req.restart(clientContext(),",
+        "must use detached restart wrapper");
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "clientContext().jobRunner.queue(",
+        "must queue through the detached server runtime seam");
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "lookup(\n      FreenetURI key, boolean noFilter, ClientContext context",
+        "must not expose cache lookup with live ClientContext");
+    requireAbsent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "private ClientContext clientContext()",
+        "must not keep a live ClientContext helper");
+    requirePresent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "implements FcpDownloadCache",
+        "must implement the detached FcpDownloadCache seam");
+    requirePresent(
+        violations,
+        FCP_SERVER_PERSISTENT_OPS_SOURCE,
+        persistentOpsSource,
+        "runtimeSupport.queuePersistentJob(",
+        "must queue persistent work through the detached runtime seam");
+
+    requireAbsent(
+        violations,
+        FCP_CONNECTION_HANDLER_SOURCE,
+        connectionHandlerSource,
+        "new PersistentJob()",
+        "must not allocate runtime-owned PersistentJob directly");
+    requireAbsent(
+        violations,
+        FCP_CONNECTION_HANDLER_SOURCE,
+        connectionHandlerSource,
+        "serverRuntimeSupport().clientContext()",
+        "must not reach through to live ClientContext for server infrastructure");
+    requireAbsent(
+        violations,
+        FCP_CONNECTION_HANDLER_SOURCE,
+        connectionHandlerSource,
+        "private ClientContext serverClientContext()",
+        "must not keep a live ClientContext helper");
+    requirePresent(
+        violations,
+        FCP_CONNECTION_HANDLER_SOURCE,
+        connectionHandlerSource,
+        "private void queuePersistentJob(FcpPersistentJob job",
+        "must queue detached FcpPersistentJob work");
+
+    requireAbsent(
+        violations,
+        PERSISTENT_REQUEST_CLIENT_SOURCE,
+        persistentRequestClientSource,
+        "removeByIdentifier(\n"
+            + "      String identifier, boolean kill, FCPServer server, ClientContext context)",
+        "must not require live ClientContext in removeByIdentifier");
+    requirePresent(
+        violations,
+        PERSISTENT_REQUEST_CLIENT_SOURCE,
+        persistentRequestClientSource,
+        "PersistentRequestRuntimeContext context",
+        "must use detached PersistentRequestRuntimeContext");
+
+    requirePresent(
+        violations,
+        CLIENT_REQUEST_SOURCE,
+        clientRequestSource,
+        "public final boolean restart(PersistentRequestRuntimeContext context, boolean"
+            + " disableFilterData)",
+        "must expose detached restart wrapper");
+    requireAbsent(
+        violations,
+        CLIENT_REQUEST_SOURCE,
+        clientRequestSource,
+        "restart(runtimeSupport.clientContext(), disableFilterData)",
+        "must not restart through live ClientContext reach-through");
+    requirePresent(
+        violations,
+        CLIENT_REQUEST_SOURCE,
+        clientRequestSource,
+        "runtimeSupport.queuePersistentJob(",
+        "must queue restart work through the detached runtime seam");
+
+    requirePresent(
+        violations,
+        FCP_SERVER_RUNTIME_SUPPORT_SOURCE,
+        runtimeSupportSource,
+        "PersistentRequestRuntimeContext persistentRequestRuntimeContext();",
+        "must expose detached runtime context");
+    requirePresent(
+        violations,
+        FCP_SERVER_RUNTIME_SUPPORT_SOURCE,
+        runtimeSupportSource,
+        "void queuePersistentJob(FcpPersistentJob job, int priority)",
+        "must expose detached persistent job queueing");
+    requirePresent(
+        violations,
+        FCP_SERVER_RUNTIME_SUPPORT_SOURCE,
+        runtimeSupportSource,
+        "void setCheckpointASAP();",
+        "must expose detached checkpoint signaling");
+
+    assertTrue(
+        violations.isEmpty(),
+        "Server/runtime infrastructure sources must use detached adapter-owned seams only."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
   private static List<Path> findJavaSources(Path root) throws IOException {
     try (Stream<Path> walk = Files.walk(root)) {
       return walk.filter(Files::isRegularFile)
@@ -544,6 +727,41 @@ class AdapterFcpBoundaryTest {
           .filter(line -> !line.isEmpty())
           .filter(line -> !line.startsWith("#"))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static void collectForbiddenRuntimeInfraImportViolations(
+      List<String> violations, Path source, Path repoRoot) throws IOException {
+    Set<String> imports = readImports(repoRoot.resolve(source));
+    Set<String> forbiddenImports = new TreeSet<>(imports);
+    forbiddenImports.retainAll(FORBIDDEN_SERVER_INFRA_RUNTIME_TYPES);
+    if (!forbiddenImports.isEmpty()) {
+      violations.add(
+          source
+              + " must not import live server/runtime infrastructure types: "
+              + forbiddenImports);
+    }
+  }
+
+  private static void requireAbsent(
+      List<String> violations,
+      Path source,
+      String sourceText,
+      String forbiddenSnippet,
+      String requirement) {
+    if (sourceText.contains(forbiddenSnippet)) {
+      violations.add(source + " " + requirement + " [found: " + forbiddenSnippet + ']');
+    }
+  }
+
+  private static void requirePresent(
+      List<String> violations,
+      Path source,
+      String sourceText,
+      String requiredSnippet,
+      String requirement) {
+    if (!sourceText.contains(requiredSnippet)) {
+      violations.add(source + " " + requirement + " [missing: " + requiredSnippet + ']');
     }
   }
 

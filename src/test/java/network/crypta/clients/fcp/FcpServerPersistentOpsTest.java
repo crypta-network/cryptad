@@ -12,6 +12,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
@@ -240,7 +241,9 @@ class FcpServerPersistentOpsTest {
     ClientContext context = clientContextWithJobRunner(new ImmediateJobRunner());
     when(core.getClientContext()).thenReturn(context);
     when(rebootClient.removeByIdentifier("id", true, server, context)).thenReturn(false);
-    when(foreverClient.removeByIdentifier("id", true, server, context)).thenReturn(true);
+    when(foreverClient.removeByIdentifier(
+            eq("id"), eq(true), eq(server), any(PersistentRequestRuntimeContext.class)))
+        .thenReturn(true);
     setField(ops, "globalRebootClient", rebootClient);
     setField(ops, "globalForeverClient", foreverClient);
 
@@ -249,7 +252,9 @@ class FcpServerPersistentOpsTest {
 
     // Assert
     assertTrue(result);
-    verify(foreverClient).removeByIdentifier("id", true, server, context);
+    verify(foreverClient)
+        .removeByIdentifier(
+            eq("id"), eq(true), eq(server), any(PersistentRequestRuntimeContext.class));
   }
 
   @Test
@@ -499,7 +504,7 @@ class FcpServerPersistentOpsTest {
     ops.startBlocking(request);
 
     // Assert
-    verify(request).start(any(ClientContext.class));
+    verify(request).start(any(PersistentRequestRuntimeContext.class));
   }
 
   @Test
@@ -516,7 +521,7 @@ class FcpServerPersistentOpsTest {
 
     // Assert
     verify(request).register(false);
-    verify(request).start(any(ClientContext.class));
+    verify(request).start(any(PersistentRequestRuntimeContext.class));
   }
 
   @Test
@@ -535,7 +540,7 @@ class FcpServerPersistentOpsTest {
 
     // Assert
     assertTrue(result);
-    verify(request).restart(context, true);
+    verify(request).restart((PersistentRequestRuntimeContext) context, true);
   }
 
   @Test
@@ -557,7 +562,7 @@ class FcpServerPersistentOpsTest {
 
     // Assert
     assertTrue(result);
-    verify(request).restart(any(ClientContext.class), eq(false));
+    verify(request).restart(any(PersistentRequestRuntimeContext.class), eq(false));
   }
 
   @Test
@@ -660,6 +665,22 @@ class FcpServerPersistentOpsTest {
         core::getPersistentTempBucketFactory;
     Supplier<RandomSource> randomSourceSupplier = core::getRandom;
     return new FcpServerRuntimeSupport() {
+      @Override
+      public ClientContext persistentRequestRuntimeContext() {
+        return clientContextSupplier.get();
+      }
+
+      @Override
+      public void queuePersistentJob(FcpPersistentJob job, int priority)
+          throws PersistenceDisabledException {
+        clientContextSupplier.get().jobRunner.queue(job::run, priority);
+      }
+
+      @Override
+      public void setCheckpointASAP() {
+        clientContextSupplier.get().jobRunner.setCheckpointASAP();
+      }
+
       @Override
       public ClientContext clientContext() {
         return clientContextSupplier.get();

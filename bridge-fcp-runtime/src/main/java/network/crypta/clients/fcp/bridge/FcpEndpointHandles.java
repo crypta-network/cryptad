@@ -2,6 +2,7 @@ package network.crypta.clients.fcp.bridge;
 
 import java.util.Objects;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpDownloadCache;
 import network.crypta.runtime.endpoints.fcp.FcpEndpointHandle;
 
 /**
@@ -37,6 +38,19 @@ public final class FcpEndpointHandles {
   }
 
   /**
+   * Returns the detached cache-view seam backed by the supplied concrete server.
+   *
+   * <p>Use this when bridge-owned code needs the lookup behavior without the runtime-owned {@link
+   * FcpEndpointHandle} contract.
+   *
+   * @param server concrete FCP server to expose behind the detached cache seam
+   * @return bridge-owned detached cache view that delegates to {@code server}
+   */
+  public static FcpDownloadCache downloadCache(FCPServer server) {
+    return new CoreFcpEndpointHandle(server);
+  }
+
+  /**
    * Returns the concrete FCP server behind the supplied handle.
    *
    * <p>This is the strict unwrapping path for bridge code that still needs full FCP access. It
@@ -65,6 +79,34 @@ public final class FcpEndpointHandles {
    */
   public static FCPServer serverOrNull(FcpEndpointHandle endpointHandle) {
     return endpointHandle == null ? null : requireCoreHandle(endpointHandle).server();
+  }
+
+  /**
+   * Returns the detached cache view when present, otherwise {@code null}.
+   *
+   * @param endpointHandle runtime-owned handle, or {@code null}
+   * @return detached cache view, or {@code null} when no handle is available
+   * @throws IllegalArgumentException if the handle was not created by this bridge package
+   */
+  public static FcpDownloadCache downloadCacheOrNull(FcpEndpointHandle endpointHandle) {
+    return endpointHandle == null ? null : requireCoreHandle(endpointHandle);
+  }
+
+  /**
+   * Returns the detached cache view or throws when no handle is available.
+   *
+   * @param endpointHandle runtime-owned handle expected to wrap a live FCP server
+   * @return detached cache view backed by the wrapped server
+   * @throws IllegalStateException if {@code endpointHandle} is {@code null}
+   * @throws IllegalArgumentException if the handle was not created by this bridge package
+   */
+  @SuppressWarnings("unused")
+  public static FcpDownloadCache requireDownloadCache(FcpEndpointHandle endpointHandle) {
+    FcpDownloadCache downloadCache = downloadCacheOrNull(endpointHandle);
+    if (downloadCache == null) {
+      throw new IllegalStateException("FCP download cache unavailable");
+    }
+    return downloadCache;
   }
 
   /**

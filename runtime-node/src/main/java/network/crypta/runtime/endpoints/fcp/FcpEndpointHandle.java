@@ -8,7 +8,9 @@ import network.crypta.client.async.DownloadCache;
  * <p>The runtime-endpoints package depends on this narrow handle rather than directly on the
  * concrete {@code network.crypta.clients.fcp.FCPServer}. Bridge code in this package can still
  * unwrap the legacy server when it needs protocol-specific operations. Higher-level runtime wiring
- * uses the seam only for endpoint lifecycle and cache registration.
+ * uses the seam only for endpoint lifecycle and cache registration. Bridge code may also expose a
+ * detached cache-view seam alongside this handle when adapter-owned infrastructure needs the lookup
+ * behavior without the full runtime contract.
  *
  * <p>Typical usage is straightforward: endpoint bootstrap creates one handle, registers it as the
  * {@link DownloadCache}, and later asks it to load persistent requests and maybe start listening.

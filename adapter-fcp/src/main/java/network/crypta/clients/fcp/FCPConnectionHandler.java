@@ -11,8 +11,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.support.HexUtil;
@@ -267,9 +267,9 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   private void notifyLostRequests(ClientRequest[] requests) {
-    network.crypta.client.async.ClientContext clientContext = serverClientContext();
+    PersistentRequestRuntimeContext runtimeContext = serverRuntimeContext();
     for (ClientRequest request : requests) {
-      request.onLostConnection(clientContext);
+      request.onLostConnection(runtimeContext);
     }
   }
 
@@ -281,21 +281,28 @@ public class FCPConnectionHandler implements Closeable {
 
   private void enqueueClientCleanup() {
     try {
-      serverClientContext()
-          .jobRunner
-          .queue(
-              (PersistentJob)
-                  _ -> {
-                    if ((rebootClient != null) && !rebootClient.hasPersistentRequests()) {
-                      server.unregisterClient(rebootClient);
-                    }
-                    PersistentRequestClient cleanupForeverClient = foreverClient.get();
-                    if ((cleanupForeverClient != null)
-                        && !cleanupForeverClient.hasPersistentRequests()) {
-                      server.unregisterClient(cleanupForeverClient);
-                    }
-                    return false;
-                  },
+      server
+          .serverRuntimeSupport()
+          .queuePersistentJob(
+              new FcpPersistentJob() {
+                @Override
+                public boolean run(PersistentRequestRuntimeContext context) {
+                  if ((rebootClient != null) && !rebootClient.hasPersistentRequests()) {
+                    server.unregisterClient(rebootClient);
+                  }
+                  PersistentRequestClient cleanupForeverClient = foreverClient.get();
+                  if ((cleanupForeverClient != null)
+                      && !cleanupForeverClient.hasPersistentRequests()) {
+                    server.unregisterClient(cleanupForeverClient);
+                  }
+                  return false;
+                }
+
+                @Override
+                public String toString() {
+                  return "FCP connection cleanup";
+                }
+              },
               NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } catch (PersistenceDisabledException _) {
       // Ignore: cleanups already best-effort.
@@ -481,7 +488,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(serverClientContext());
+    request.start(serverRuntimeContext());
   }
 
   private void startRebootClientGet(ClientGetMessage message) {
@@ -492,7 +499,7 @@ public class FCPConnectionHandler implements Closeable {
     if (!registerPersistentRequest(request, message.identifier, message.global)) {
       return;
     }
-    request.start(serverClientContext());
+    request.start(serverRuntimeContext());
   }
 
   private void startForeverClientGet(ClientGetMessage message) {
@@ -578,7 +585,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(serverClientContext());
+    request.start(serverRuntimeContext());
   }
 
   private void startRebootClientPut(ClientPutMessage message) {
@@ -590,7 +597,7 @@ public class FCPConnectionHandler implements Closeable {
       request.freeData();
       return;
     }
-    request.start(serverClientContext());
+    request.start(serverRuntimeContext());
   }
 
   private void startForeverClientPut(ClientPutMessage message) {
@@ -659,17 +666,16 @@ public class FCPConnectionHandler implements Closeable {
       return;
     }
     RegistrationResult registration = registerConnectionScopedRequest(message.identifier, request);
-    network.crypta.client.async.ClientContext clientContext = serverClientContext();
     if (registration == RegistrationResult.DUPLICATE) {
-      request.cancel(clientContext);
+      request.cancel(serverRuntimeContext());
       handleIdentifierCollision(message.identifier, message.global);
       return;
     }
     if (registration == RegistrationResult.CLOSED) {
-      request.cancel(clientContext);
+      request.cancel(serverRuntimeContext());
       return;
     }
-    request.start(clientContext);
+    request.start(serverRuntimeContext());
   }
 
   private void startRebootClientPutDir(
@@ -678,12 +684,11 @@ public class FCPConnectionHandler implements Closeable {
     if (request == null) {
       return;
     }
-    network.crypta.client.async.ClientContext clientContext = serverClientContext();
     if (!registerPersistentRequest(request, message.identifier, message.global)) {
-      request.cancel(clientContext);
+      request.cancel(serverRuntimeContext());
       return;
     }
-    request.start(clientContext);
+    request.start(serverRuntimeContext());
   }
 
   private void startForeverClientPutDir(
@@ -695,7 +700,7 @@ public class FCPConnectionHandler implements Closeable {
             return false;
           }
           if (!registerPersistentRequest(request, message.identifier, message.global)) {
-            request.cancel(serverClientContext());
+            request.cancel(serverRuntimeContext());
             return false;
           }
           request.start(context);
@@ -799,11 +804,11 @@ public class FCPConnectionHandler implements Closeable {
             ProtocolErrorMessage.TOO_MANY_FILES_IN_INSERT, true, null, identifier, global));
   }
 
-  private void queuePersistentJob(PersistentJob job, String identifier, boolean global) {
+  private void queuePersistentJob(FcpPersistentJob job, String identifier, boolean global) {
     try {
-      serverClientContext()
-          .jobRunner
-          .queue(job, NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
+      server
+          .serverRuntimeSupport()
+          .queuePersistentJob(job, NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
     } catch (PersistenceDisabledException _) {
       sendPersistenceDisabled(identifier, global);
     }
@@ -1001,9 +1006,9 @@ public class FCPConnectionHandler implements Closeable {
       req = requestsByIdentifier.remove(identifier);
     }
     if (req != null) {
-      network.crypta.client.async.ClientContext clientContext = serverClientContext();
-      if (kill) req.cancel(clientContext);
-      req.requestWasRemoved(clientContext);
+      PersistentRequestRuntimeContext runtimeContext = serverRuntimeContext();
+      if (kill) req.cancel(runtimeContext);
+      req.requestWasRemoved(runtimeContext);
     }
     return req;
   }
@@ -1022,7 +1027,7 @@ public class FCPConnectionHandler implements Closeable {
     PersistentRequestClient client = global ? server.getGlobalRebootClient() : getRebootClient();
     ClientRequest req = client.getRequest(identifier);
     if (req != null) {
-      client.removeByIdentifier(identifier, true, server, serverClientContext());
+      client.removeByIdentifier(identifier, true, server, serverRuntimeContext());
     }
     return req;
   }
@@ -1031,13 +1036,13 @@ public class FCPConnectionHandler implements Closeable {
     PersistentRequestClient client = global ? server.getGlobalForeverClient() : getForeverClient();
     ClientRequest req = client.getRequest(identifier);
     if (req != null) {
-      client.removeByIdentifier(identifier, true, server, serverClientContext());
+      client.removeByIdentifier(identifier, true, server, serverRuntimeContext());
     }
     return req;
   }
 
-  private network.crypta.client.async.ClientContext serverClientContext() {
-    return server.serverRuntimeSupport().clientContext();
+  private PersistentRequestRuntimeContext serverRuntimeContext() {
+    return server.serverRuntimeSupport().persistentRequestRuntimeContext();
   }
 
   /**

@@ -4,9 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.DownloadCache;
 import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.config.Config;
 import network.crypta.io.AllowedHosts;
 import network.crypta.keys.FreenetURI;
@@ -21,8 +20,8 @@ import network.crypta.support.api.Bucket;
  * and the download cache so clients can resume work across node restarts. The server is created
  * from configured defaults, started lazily through {@link #maybeStart()}, and runs a dedicated
  * accept-loop on a daemon thread so shutdown does not block. Runtime-facing listener work is
- * scheduled through {@link RuntimePorts#execution()}, and request jobs are marshaled onto the
- * {@link ClientContext} job runner.
+ * scheduled through {@link RuntimePorts#execution()}, and persistence-affecting work is routed
+ * through the server runtime-support seam.
  *
  * <p>Responsibilities include:
  *
@@ -37,7 +36,7 @@ import network.crypta.support.api.Bucket;
  * thread-confined startup hooks. Network listeners are long-lived and started only when enabled by
  * configuration.
  */
-public class FCPServer implements Runnable, DownloadCache {
+public class FCPServer implements Runnable, FcpDownloadCache {
 
   /**
    * Default TCP port (9481) exposed by the FCP listener for network clients.
@@ -667,7 +666,11 @@ public class FCPServer implements Runnable, DownloadCache {
    */
   @Override
   public CacheFetchResult lookup(
-      FreenetURI key, boolean noFilter, ClientContext context, boolean mustCopy, Bucket preferred) {
+      FreenetURI key,
+      boolean noFilter,
+      PersistentRequestRuntimeContext context,
+      boolean mustCopy,
+      Bucket preferred) {
     return persistentOps.lookup(key, noFilter, context, mustCopy, preferred);
   }
 
