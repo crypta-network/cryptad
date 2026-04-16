@@ -1122,7 +1122,7 @@ class HttpLegacyAdminBoundaryTest {
     for (int index = 0; index < text.length(); index++) {
       char current = text.charAt(index);
       char previous = index > 0 ? text.charAt(index - 1) : 0;
-      StringBuilder currentScope = visibleScopes.get(visibleScopes.size() - 1);
+      StringBuilder currentScope = visibleScopes.getLast();
 
       if (inString) {
         currentScope.append(current);
@@ -1147,9 +1147,9 @@ class HttpLegacyAdminBoundaryTest {
 
       if (current == '}') {
         if (visibleScopes.size() > 1) {
-          visibleScopes.remove(visibleScopes.size() - 1);
+          visibleScopes.removeLast();
         }
-        visibleScopes.get(visibleScopes.size() - 1).append(' ');
+        visibleScopes.getLast().append(' ');
         continue;
       }
 
