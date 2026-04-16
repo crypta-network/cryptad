@@ -346,7 +346,8 @@ class BridgeFcpRuntimeBoundaryTest {
 
   private static String resolveIdentifierAssignment(
       String identifier, String dependencyScopePrefix, String scriptPrefix) {
-    String localAssignment = findLastAssignmentInScope(identifier, dependencyScopePrefix);
+    String localAssignment =
+        findLastAssignmentInScope(identifier, extractVisibleScopePrefix(dependencyScopePrefix));
     if (localAssignment != null) {
       return localAssignment;
     }
@@ -417,6 +418,56 @@ class BridgeFcpRuntimeBoundaryTest {
     }
 
     return scopeText.toString();
+  }
+
+  private static String extractVisibleScopePrefix(String text) {
+    List<StringBuilder> visibleScopes = new ArrayList<>();
+    visibleScopes.add(new StringBuilder(text.length()));
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = 0; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+      StringBuilder currentScope = visibleScopes.get(visibleScopes.size() - 1);
+
+      if (inString) {
+        currentScope.append(current);
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        currentScope.append(current);
+        continue;
+      }
+
+      if (current == '{') {
+        currentScope.append(' ');
+        visibleScopes.add(new StringBuilder());
+        continue;
+      }
+
+      if (current == '}') {
+        if (visibleScopes.size() > 1) {
+          visibleScopes.remove(visibleScopes.size() - 1);
+        }
+        visibleScopes.get(visibleScopes.size() - 1).append(' ');
+        continue;
+      }
+
+      currentScope.append(current);
+    }
+
+    StringBuilder visibleScopePrefix = new StringBuilder(text.length());
+    for (StringBuilder scope : visibleScopes) {
+      visibleScopePrefix.append(scope);
+    }
+    return visibleScopePrefix.toString();
   }
 
   private static int findExpressionEnd(String text, int expressionStart) {
