@@ -844,11 +844,173 @@ class HttpLegacyAdminBoundaryTest {
         continue;
       }
       String invocationArgs = uncommentedScript.substring(openParen + 1, closeParen);
-      if (invocationArgs.contains("\"" + modulePath + "\"")) {
+      String pathExpression = extractProjectPathExpression(invocationArgs);
+      if (pathExpression == null) {
+        continue;
+      }
+      String resolvedPath =
+          resolveStringExpression(
+              stripEnclosingParentheses(pathExpression),
+              uncommentedScript,
+              new java.util.HashSet<>());
+      if (modulePath.equals(resolvedPath)) {
         return true;
       }
     }
     return false;
+  }
+
+  private static String extractProjectPathExpression(String invocationArgs) {
+    String trimmedArgs = stripEnclosingParentheses(invocationArgs.trim());
+    if (trimmedArgs.startsWith("mapOf")) {
+      int openParen = trimmedArgs.indexOf('(');
+      if (openParen == -1) {
+        return null;
+      }
+      int closeParen = findMatchingParenthesis(trimmedArgs, openParen);
+      if (closeParen == -1) {
+        return null;
+      }
+      String mapArgs = trimmedArgs.substring(openParen + 1, closeParen);
+      for (String entry : splitTopLevel(mapArgs, ',')) {
+        Matcher pathEntryMatcher =
+            Pattern.compile("^\\s*\"path\"\\s*to\\s*(.+)$", Pattern.DOTALL).matcher(entry);
+        if (pathEntryMatcher.matches()) {
+          return pathEntryMatcher.group(1).trim();
+        }
+      }
+      return null;
+    }
+
+    int equalsIndex = findTopLevelChar(trimmedArgs, '=');
+    if (equalsIndex != -1) {
+      String leftSide = trimmedArgs.substring(0, equalsIndex).trim();
+      if (leftSide.equals("path")) {
+        return trimmedArgs.substring(equalsIndex + 1).trim();
+      }
+    }
+
+    return trimmedArgs;
+  }
+
+  private static String resolveStringExpression(
+      String expression, String script, Set<String> visitedIdentifiers) {
+    String trimmedExpression = stripEnclosingParentheses(expression.trim());
+    if (trimmedExpression.isEmpty()) {
+      return null;
+    }
+
+    if (trimmedExpression.startsWith("\"") && trimmedExpression.endsWith("\"")) {
+      return trimmedExpression.substring(1, trimmedExpression.length() - 1);
+    }
+
+    List<String> concatenatedParts = splitTopLevel(trimmedExpression, '+');
+    if (concatenatedParts.size() > 1) {
+      StringBuilder resolved = new StringBuilder();
+      for (String part : concatenatedParts) {
+        String resolvedPart = resolveStringExpression(part, script, visitedIdentifiers);
+        if (resolvedPart == null) {
+          return null;
+        }
+        resolved.append(resolvedPart);
+      }
+      return resolved.toString();
+    }
+
+    if (trimmedExpression.matches("[A-Za-z_][A-Za-z0-9_]*")
+        && visitedIdentifiers.add(trimmedExpression)) {
+      Matcher assignmentMatcher =
+          Pattern.compile(
+                  "(?m)^\\s*(?:val|var)\\s+" + Pattern.quote(trimmedExpression) + "\\s*=\\s*(.+)$")
+              .matcher(script);
+      if (assignmentMatcher.find()) {
+        return resolveStringExpression(assignmentMatcher.group(1), script, visitedIdentifiers);
+      }
+    }
+
+    return null;
+  }
+
+  private static String stripEnclosingParentheses(String expression) {
+    String trimmed = expression.trim();
+    while (trimmed.startsWith("(")
+        && trimmed.endsWith(")")
+        && findMatchingParenthesis(trimmed, 0) == trimmed.length() - 1) {
+      trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+    }
+    return trimmed;
+  }
+
+  private static List<String> splitTopLevel(String text, char delimiter) {
+    List<String> parts = new ArrayList<>();
+    int segmentStart = 0;
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = 0; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        continue;
+      }
+
+      if (current == '(') {
+        depth++;
+      } else if (current == ')') {
+        depth--;
+      } else if (current == delimiter && depth == 0) {
+        parts.add(text.substring(segmentStart, index).trim());
+        segmentStart = index + 1;
+      }
+    }
+
+    parts.add(text.substring(segmentStart).trim());
+    return parts;
+  }
+
+  private static int findTopLevelChar(String text, char target) {
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = 0; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        continue;
+      }
+
+      if (current == '(') {
+        depth++;
+      } else if (current == ')') {
+        depth--;
+      } else if (current == target && depth == 0) {
+        return index;
+      }
+    }
+
+    return -1;
   }
 
   private static int findMatchingParenthesis(String text, int openParen) {
