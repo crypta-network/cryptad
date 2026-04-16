@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp.bridge;
 
 import java.io.InvalidObjectException;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import network.crypta.clients.fcp.ClientPutDirExecution;
 import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
@@ -13,6 +15,7 @@ import network.crypta.clients.fcp.FcpLegacyInsertExecutionBridge;
 import network.crypta.clients.fcp.FcpMessageRuntimeSupport;
 import network.crypta.clients.fcp.FcpServerDependencies;
 import network.crypta.clients.fcp.FcpServerRuntimeSupport;
+import network.crypta.clients.fcp.PersistentPutDirEntrySnapshot;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.node.NodeClientCore;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -77,6 +80,12 @@ public final class CoreFcpServerDependenciesFactory {
             throws InvalidObjectException {
           return CoreFcpInsertRuntimeSupport.wrapLegacyDirectoryExecution(
               legacyPutter, executionSpec);
+        }
+
+        @Override
+        public List<PersistentPutDirEntrySnapshot> snapshotPersistentPutDirEntries(
+            Map<String, Object> manifestElements) {
+          return CorePersistentPutDirSnapshotter.snapshot(manifestElements);
         }
       };
 

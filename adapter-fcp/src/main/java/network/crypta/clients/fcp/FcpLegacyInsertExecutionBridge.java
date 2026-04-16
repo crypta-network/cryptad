@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
 import java.io.InvalidObjectException;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Re-wraps legacy runtime-owned insert executions during persistent-request deserialization.
@@ -64,4 +66,20 @@ public interface FcpLegacyInsertExecutionBridge {
    */
   ClientPutDirExecution wrapLegacyDirectoryExecution(
       Object legacyPutter, ClientPutDirExecutionSpec executionSpec) throws InvalidObjectException;
+
+  /**
+   * Converts a persisted manifest tree into detached directory-entry snapshots for replay.
+   *
+   * <p>This replay-only fallback exists for persistent directory requests whose serialized manifest
+   * survived deserialization but whose live execution wrapper could not be reattached. The bridge
+   * owns any runtime-specific bucket classification needed to preserve the historical {@code
+   * PersistentPutDir} wire output in that state.
+   *
+   * @param manifestElements persisted manifest tree restored from the serialized request, or {@code
+   *     null} when none is available
+   * @return detached manifest-entry snapshots in the wire order expected by {@code Files.N}
+   * @throws InvalidObjectException if the manifest cannot be converted safely
+   */
+  List<PersistentPutDirEntrySnapshot> snapshotPersistentPutDirEntries(
+      Map<String, Object> manifestElements) throws InvalidObjectException;
 }

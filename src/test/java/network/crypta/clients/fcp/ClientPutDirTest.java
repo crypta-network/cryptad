@@ -9,6 +9,7 @@ import java.io.ObjectStreamClass;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
@@ -21,6 +22,7 @@ import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -367,6 +370,40 @@ class ClientPutDirTest {
 
     assertEquals(6, spec.priorityClass());
     assertSame(manifest, spec.manifestElements());
+  }
+
+  @Test
+  void persistentTagMessage_whenPutterExposesDetachedEntries_serializesSnapshot() throws Exception {
+    ClientPutDir putDir = newClientPutDir();
+    ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
+    setField(ClientPutDir.class, putDir, "putter", putter);
+    setField(ClientPutDir.class, putDir, "defaultName", "index.html");
+    setField(ClientPutBase.class, putDir, "ctx", newSerializableInsertContextHandle());
+    setField(ClientRequest.class, putDir, "identifier", "put-dir");
+    setField(ClientRequest.class, putDir, "uri", new FreenetURI("SSK", "private"));
+    setField(ClientPutBase.class, putDir, "publicURI", new FreenetURI("CHK", "public"));
+    setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.REBOOT);
+    when(putter.persistentPutDirEntries())
+        .thenReturn(
+            List.of(
+                new PersistentPutDirEntrySnapshot(
+                    "disk.dat",
+                    ClientPutBase.UploadFrom.DISK,
+                    4,
+                    "/tmp/disk.dat",
+                    "text/plain",
+                    null)));
+
+    PersistentPutDir message = (PersistentPutDir) putDir.persistentTagMessage();
+
+    SimpleFieldSet files = message.getFieldSet().subset("Files");
+    assertNotNull(files);
+    assertEquals("1", files.get("Count"));
+    SimpleFieldSet file = files.subset("0");
+    assertNotNull(file);
+    assertEquals("disk", file.get("UploadFrom"));
+    assertEquals("/tmp/disk.dat", file.get("Filename"));
+    verify(putter).persistentPutDirEntries();
   }
 
   private static ClientPutDir newClientPutDir() {

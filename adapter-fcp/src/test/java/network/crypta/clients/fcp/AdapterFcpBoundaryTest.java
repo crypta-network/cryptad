@@ -80,6 +80,12 @@ class AdapterFcpBoundaryTest {
   private static final Path FCP_MESSAGE_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("FCPMessage.java");
   private static final Path CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutComplexDirMessage.java");
+  private static final Path CLIENT_PUT_DIR_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDir.java");
+  private static final Path CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPreparedDataFactory.java");
+  private static final Path PERSISTENT_PUT_DIR_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("PersistentPutDir.java");
   private static final Path FCP_CONNECTION_INPUT_HANDLER_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionInputHandler.java");
   private static final Path FCP_SERVER_DEPENDENCIES_SOURCE =
@@ -102,11 +108,12 @@ class AdapterFcpBoundaryTest {
       Set.of(
           ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertRuntimeSupport.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPut.java"),
-          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDir.java"),
-          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPreparedDataFactory.java"),
+          CLIENT_PUT_DIR_SOURCE,
+          CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE,
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPutterFactory.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDirMessage.java"),
+          PERSISTENT_PUT_DIR_SOURCE,
           ADAPTER_FCP_MAIN_JAVA.resolve("SubscribeUSK.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("FCPConnectionHandler.java"));
   private static final Set<Path> DETACHED_COMPATIBILITY_SOURCES =
@@ -233,6 +240,20 @@ class AdapterFcpBoundaryTest {
           "network.crypta.clients.fcp.NodeHelloMessage");
   private static final Set<String> FORBIDDEN_PERSISTENT_TEMP_BUCKET_IMPORTS =
       Set.of("network.crypta.support.io.PersistentTempBucketFactory");
+  private static final Set<Path> FORBIDDEN_METADATA_CLUSTER_SOURCES =
+      Set.of(
+          CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE,
+          CLIENT_PUT_DIR_SOURCE,
+          CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE);
+  private static final Set<String> FORBIDDEN_METADATA_CLUSTER_IMPORTS =
+      Set.of("network.crypta.client.Metadata");
+  private static final Set<String> FORBIDDEN_PERSISTENT_PUT_DIR_RUNTIME_IMPORTS =
+      Set.of(
+          "network.crypta.client.async.BaseManifestPutter",
+          "network.crypta.support.io.DelayedFreeBucket",
+          "network.crypta.support.io.DelayedFreeRandomAccessBucket",
+          "network.crypta.support.io.PaddedEphemerallyEncryptedBucket",
+          "network.crypta.support.io.TempBucketFactory");
 
   @Test
   void mainSourceLayout_whenCheckingFcpOwnership_expectLeafOwnsPackageTree() throws IOException {
@@ -478,6 +499,45 @@ class AdapterFcpBoundaryTest {
         "Persistent bucket adapter sources must not import PersistentTempBucketFactory."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingMetadataBoundary_expectNoRuntimeMetadataImports()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path source : FORBIDDEN_METADATA_CLUSTER_SOURCES) {
+      Set<String> imports = readImports(repoRoot.resolve(source));
+      Set<String> forbiddenImports = new TreeSet<>(imports);
+      forbiddenImports.retainAll(FORBIDDEN_METADATA_CLUSTER_IMPORTS);
+      if (!forbiddenImports.isEmpty()) {
+        violations.add(source + " -> " + String.join(", ", forbiddenImports));
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        "Metadata boundary adapter sources must not import runtime-owned Metadata."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
+  void adapterFcpMain_whenCheckingPersistentPutDirBoundary_expectNoRuntimeManifestHelpers()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    Set<String> imports = readImports(repoRoot.resolve(PERSISTENT_PUT_DIR_SOURCE));
+    Set<String> forbiddenImports = new TreeSet<>(imports);
+    forbiddenImports.retainAll(FORBIDDEN_PERSISTENT_PUT_DIR_RUNTIME_IMPORTS);
+
+    assertTrue(
+        forbiddenImports.isEmpty(),
+        "PersistentPutDir must not import runtime-owned manifest helpers or bucket wrappers."
+            + System.lineSeparator()
+            + PERSISTENT_PUT_DIR_SOURCE
+            + " -> "
+            + String.join(", ", forbiddenImports));
   }
 
   @Test
