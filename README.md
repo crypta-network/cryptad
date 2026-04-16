@@ -178,14 +178,17 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
   `network.crypta.support.IllegalValueException`, `network.crypta.support.JVMVersion`, the generic
   `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` support surface, and the
-  cycle-safe file-backed support I/O slice (`BaseFileBucket`, `FileBucket`,
-  `FileRandomAccessBuffer`, `PersistentTempFileBucket`, `PooledFileRandomAccessBuffer`,
-  `TempFileBucket`, and their related exceptions/factories).
+  generic utility/file-helper surface around `URIPreEncoder`, `IOUtils`, and
+  `LegacyFileSupport`, plus the cycle-safe file-backed support I/O slice (`BaseFileBucket`,
+  `FileBucket`, `FileRandomAccessBuffer`, `PersistentTempFileBucket`,
+  `PooledFileRandomAccessBuffer`, `TempFileBucket`, and their related
+  exceptions/factories).
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the store-maintenance alert seam under
   `network.crypta.store.alerts`.
 - `:foundation-crypto-keys` owns `network.crypta.crypt`, `network.crypta.keys`, and the
-  crypto-adjacent `network.crypta.support.io.BucketTools` and
+  crypto-adjacent `network.crypta.support.io.BucketTools`,
+  `network.crypta.support.io.NoFreeBucket`, and
   `network.crypta.support.io.PrependLengthOutputStream` helpers.
 - `:foundation-store` owns the reusable `network.crypta.store` implementations plus
   `network.crypta.store.caching` and `network.crypta.store.saltedhash`.
@@ -209,25 +212,26 @@ Cryptad now uses a partial multi-project Gradle build.
   leaf-safe `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
   `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
   `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
-  client failure/filter exception subset, the MIME helper `network.crypta.support.MediaType`, and
-  the small manifest/model helper subset under `network.crypta.support.*` (`ManifestElement` and
-  `ContainerSizeEstimator`) that stay free of `:runtime-node`, adapter, and root-composition
-  dependencies.
+  client failure/filter exception subset, selected filter policy/helper types such as
+  `HTMLFilterPolicy`, the MIME helper `network.crypta.support.MediaType`, and the small
+  manifest/model helper subset under `network.crypta.support.*` (`ManifestElement`,
+  `ContainerSizeEstimator`) plus `InsertUriChecks` that stay free of `:runtime-node`, adapter,
+  and root-composition dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-  address matching, allowlist parsing, listener abstraction, I/O statistics collection, transfer
-  throttling, and partially received block assembly that stay free of `:runtime-node`, adapters,
-  and root-composition dependencies.
+  address matching, allowlist parsing, listener abstraction, `SSLNetworkInterface`,
+  I/O statistics collection, transfer throttling, and partially received block assembly that stay
+  free of `:runtime-node`, adapters, and root-composition dependencies.
 - `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
   `PeerStatusCounts`, and `SendableRequestItem*` that stay free of `:runtime-node`, adapters, and
   root-composition dependencies.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
-  by higher layers, including detached FCP peer management plus the admin-HTTP config,
-  connectivity, connections, queue, security-levels, shared page-chrome, core-update action,
-  first-time-wizard, symlinker, and welcome-page slices plus shared path constants such as
-  `ConnectivityPagePaths` and `UpdaterPaths`.
+  by higher layers, including the admin-HTTP config, connectivity, connections, queue,
+  security-levels, shared page-chrome, core-update action, first-time-wizard, symlinker, and
+  welcome-page slices plus shared path constants such as `ConnectivityPagePaths` and
+  `UpdaterPaths`.
 - `:platform-api` owns the transport-neutral Platform API v1 under
   `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
   and the minimal local AppHost control surface as JSON-oriented responses, and is currently
@@ -258,17 +262,20 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   after the generic HTTP, multimap, size-formatting, and file-backed bucket slice moved into
   `:foundation-support` and the manifest/model helper subset moved into `:kernel-content`.
-- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` package tree and its
-  protocol-side persistent-bucket/filter seams.
+- `:adapter-fcp` owns the detached protocol-side `network.crypta.clients.fcp` package tree and
+  its protocol-side persistent-bucket/filter seams. It does not depend directly on
+  `:runtime-node`. See [docs/fcp-boundary.md](docs/fcp-boundary.md) for the explicit maintenance
+  boundary.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding bridge package
   `network.crypta.clients.fcp.bridge`, including the live persistent-bucket and content-filter
-  bindings.
+  bindings, and remains the only FCP leaf that depends directly on `:runtime-node`.
 - `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
   admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
   `network/crypta/clients/http/**` main resources such as `staticfiles/**` and `templates/**`.
-  It keeps the browse-neutral shell and seam types, but no longer owns the concrete browse/FProxy
-  implementations. See [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the
-  explicit maintenance boundary.
+  It is detached from `:runtime-node`, keeps the browse-neutral shell and seam types, and no
+  longer owns the concrete browse/FProxy implementations. See
+  [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
+  boundary.
 - `:adapter-http-legacy-browse` owns the concrete legacy browse/FProxy routes, toadlets, helper
   models, and browse-only packages under `network.crypta.clients.http`.
 - `:bridge-http-runtime` owns the concrete `network.crypta.clients.http.bridge` runtime-binding
@@ -613,14 +620,16 @@ Root build also includes:
 - `:foundation-support`: extracted stable support/api/io/compress/math/transport subset plus
   `network.crypta.support.http`, `network.crypta.io.AddressIdentifier`,
   `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
-  `network.crypta.node.FastRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
-  `network.crypta.support.IllegalValueException`, including the generic `HTTPRequest` /
-  `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface and the cycle-safe file-backed
-  support I/O slice.
+  `network.crypta.node.FastRunnable`, `network.crypta.node.PrioRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
+  and `network.crypta.support.JVMVersion`, including the generic `HTTPRequest` /
+  `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface, generic helpers such as
+  `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, and the cycle-safe file-backed support
+  I/O slice.
 - `:foundation-store-contracts`: neutral store contracts plus the store-maintenance alert seam
   shared by store code and root runtime/UI adapters.
 - `:foundation-crypto-keys`: extracted `network.crypta.crypt`, `network.crypta.keys`, and the
-  adjacent `BucketTools` / `PrependLengthOutputStream` helpers.
+  adjacent `BucketTools` / `NoFreeBucket` / `PrependLengthOutputStream` helpers.
 - `:foundation-store`: extracted reusable `network.crypta.store` implementations, caching, and
   salted-hash storage code.
 - `:interop-wire`: extracted wire/message/schema/address/version/probe nucleus plus
@@ -638,19 +647,19 @@ Root build also includes:
   `ClientEventProducer`, `SimpleEventProducer`, `EventLogger`, `EventDumper`,
   `SplitfileProgressEvent`, `SplitfileCompatibilityModeEvent`, `SplitfileCompatibilityMode`), the
   leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe client
-  failure/filter exception subset, `network.crypta.support.MediaType`, and the small manifest/model
-  helper subset under `network.crypta.support.*`.
+  failure/filter exception subset, selected filter policy/helper types such as
+  `HTMLFilterPolicy`, `network.crypta.support.MediaType`, `InsertUriChecks`, and the small
+  manifest/model helper subset under `network.crypta.support.*`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-  allowlist parsing, listener abstraction, statistics collection, throttling, and partially
-  received block assembly.
+  allowlist parsing, listener abstraction, `SSLNetworkInterface`, statistics collection,
+  throttling, and partially received block assembly.
 - `:kernel-routing`: compile-neutral phase-1 routing/helper leaf spanning selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
   `PeerStatusCounts`, and `SendableRequestItem*`.
-- `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types used by FCP
-  and other infrastructure code, including shared path constants such as `ConnectivityPagePaths`
-  and `UpdaterPaths`.
+- `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types and shared
+  path constants such as `ConnectivityPagePaths` and `UpdaterPaths`.
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
@@ -666,15 +675,16 @@ Root build also includes:
   support helpers after the generic HTTP, multimap, size-formatting, and file-backed bucket slice
   moved into `:foundation-support` and the manifest/model helper subset moved into
   `:kernel-content`.
-- `:adapter-fcp`: extracted `network.crypta.clients.fcp` protocol leaf.
+- `:adapter-fcp`: detached `network.crypta.clients.fcp` protocol leaf. See
+  [docs/fcp-boundary.md](docs/fcp-boundary.md) for the explicit maintenance boundary.
 - `:bridge-fcp-runtime`: extracted concrete `network.crypta.clients.fcp.bridge` runtime-binding
-  leaf.
+  leaf and the only FCP leaf that depends directly on `:runtime-node`.
 - `:adapter-http-legacy-admin`: extracted shared legacy `network.crypta.clients.http` shell plus
   `network/crypta/clients/http/**` main resources. The root project no longer owns that main
   HTTP source/resource tree, and the browse/FProxy implementation now lives in
   `:adapter-http-legacy-browse`. The shared shell uses browse-neutral bookmark, push, client-side
   localization, and route-registration seams instead of importing or instantiating the concrete
-  browse-owned collaborators directly. It still hosts the temporary `/api/v1/` bridge for
+  browse-owned collaborators directly. It still hosts the current `/api/v1/` bridge for
   `:platform-api` and the `/app/node/` bridge for `:platform-web-shell`. See
   [docs/legacy-http-boundary.md](docs/legacy-http-boundary.md) for the explicit maintenance
   boundary.
@@ -800,7 +810,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   concrete runtime, while runtime-owned FCP seam types now live under `network.crypta.runtime.fcp`
   and `network.crypta.runtime.endpoints.fcp`. Concrete persistent-request services, queue
   adapters, alert-feed adapters, persistent-bucket bindings, filter bindings, and endpoint-handle
-  wrappers now live under `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`.
+  wrappers now live under `network.crypta.clients.fcp.bridge` in `:bridge-fcp-runtime`. See
+  [docs/fcp-boundary.md](docs/fcp-boundary.md) for the maintained protocol/bridge split.
   `network.crypta.clients.http` now lives in `:adapter-http-legacy-admin` together with its
   `staticfiles/**` and `templates/**` resources, excluding `network.crypta.clients.http.bridge`
   and `network.crypta.clients.http.geoip`. The legacy HTTP surface now has a physical browse leaf:
@@ -853,7 +864,10 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
   `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
   `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
-  `network.crypta.support.IllegalValueException`, plus `network.crypta.support.JVMVersion`.
+  `network.crypta.support.IllegalValueException`, plus `network.crypta.support.JVMVersion`, the
+  generic `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface, generic
+  helpers such as `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, and the cycle-safe
+  file-backed support I/O slice.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
   foundation leaf; daemon-coupled support code still remains in the root.
@@ -861,7 +875,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `com.jthemedetecor`, launcher resources, and desktop-theme integration.
 - Extracted foundations: `:foundation-support` provides the stable generic support subset,
   `:foundation-store-contracts` provides neutral store contracts and alert seams,
-  `:foundation-crypto-keys` provides `network.crypta.crypt` and `network.crypta.keys`,
+  `:foundation-crypto-keys` provides `network.crypta.crypt`, `network.crypta.keys`, and adjacent
+  support-IO helpers such as `BucketTools`, `NoFreeBucket`, and
+  `PrependLengthOutputStream`,
   `:foundation-store` provides reusable store implementations, `:interop-wire` provides the
   wire/version/probe nucleus, `:foundation-config` provides config/l10n plus datastore-sizing
   helpers,
@@ -871,13 +887,15 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Runtime boundary leaves: `:kernel-content` provides the compile-neutral phase-1 content slice
   across selected `network.crypta.client*` classes, the leaf-safe client failure/filter
   exception subset, the `network.crypta.client.async.persistence` seam, the leaf-safe
-  `network.crypta.client.async` utility/value subset, plus
-  `network.crypta.support.MediaType` and the small manifest/model helper subset under
-  `network.crypta.support.*`;
+  `network.crypta.client.async` utility/value subset, event/helper types such as
+  `SplitfileCompatibilityMode*`, selected filter policy/helper types such as `HTMLFilterPolicy`,
+  plus `network.crypta.support.MediaType`, `InsertUriChecks`, and the small manifest/model helper
+  subset under `network.crypta.support.*`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
-  `network.crypta.io*` helpers; `:kernel-routing` provides the compile-neutral phase-1
-  `network.crypta.node` helper slice across selected request/routing value, exception, callback,
-  and request-item types; `:runtime-spi` provides `network.crypta.runtime.spi`;
+  `network.crypta.io*` helpers including `SSLNetworkInterface`; `:kernel-routing` provides the
+  compile-neutral phase-1 `network.crypta.node` helper slice across selected request/routing
+  value, exception, callback, and request-item types; `:runtime-spi` provides
+  `network.crypta.runtime.spi`;
   `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
   feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
