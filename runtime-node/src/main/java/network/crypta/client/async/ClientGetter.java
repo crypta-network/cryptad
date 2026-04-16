@@ -31,6 +31,7 @@ import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
+import network.crypta.client.events.SplitfileCompatibilityMode;
 import network.crypta.client.events.SplitfileCompatibilityModeEvent;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -1372,10 +1373,21 @@ public class ClientGetter extends BaseClientGetter
               ClientEventProducer.dispatchEvent(
                   ctx.getEventProducer(),
                   new SplitfileCompatibilityModeEvent(
-                      min, max, customSplitfileKey, dontCompress, bottomLayer || definitiveAnyway),
+                      detachCompatibilityMode(min),
+                      detachCompatibilityMode(max),
+                      customSplitfileKey,
+                      dontCompress,
+                      bottomLayer || definitiveAnyway),
                   context1);
               return false;
             });
+  }
+
+  private static SplitfileCompatibilityMode detachCompatibilityMode(CompatibilityMode mode) {
+    if (mode == null) {
+      return null;
+    }
+    return SplitfileCompatibilityMode.byCode(mode.code);
   }
 
   @Override

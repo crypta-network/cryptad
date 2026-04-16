@@ -30,6 +30,8 @@ class AdapterFcpBoundaryTest {
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp");
   private static final Path ADD_PEER_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("AddPeer.java");
   private static final Path CLIENT_GET_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("ClientGet.java");
+  private static final Path CLIENT_GET_EVENT_HANDLING_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetEventHandling.java");
   private static final Path CLIENT_GET_FACTORY_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetFactory.java");
   private static final Path CLIENT_GET_GETTER_FACTORY_SOURCE =
@@ -119,6 +121,7 @@ class AdapterFcpBoundaryTest {
   private static final Set<Path> DETACHED_COMPATIBILITY_SOURCES =
       Set.of(
           CLIENT_GET_SOURCE,
+          CLIENT_GET_EVENT_HANDLING_SOURCE,
           CLIENT_GET_GETTER_FACTORY_SOURCE,
           CLIENT_GET_MESSAGE_REPLAY_SOURCE,
           CLIENT_GET_PERSISTENCE_CODEC_SOURCE,
@@ -157,6 +160,10 @@ class AdapterFcpBoundaryTest {
       Path.of(MODULE_NAME, "gradle", "owned-output-patterns.txt");
   private static final Path BRIDGE_OWNERSHIP_METADATA =
       Path.of("bridge-fcp-runtime", "gradle", "owned-output-patterns.txt");
+  private static final Path KERNEL_CONTENT_OWNERSHIP_METADATA =
+      Path.of("kernel-content", "gradle", "owned-output-patterns.txt");
+  private static final Path RUNTIME_NODE_OWNERSHIP_METADATA =
+      Path.of("runtime-node", "gradle", "owned-output-patterns.txt");
   private static final Path DEFAULT_BRIDGE_FACTORIES =
       Path.of(
           "src",
@@ -278,6 +285,10 @@ class AdapterFcpBoundaryTest {
     Set<String> metadataPatterns = readOwnershipPatterns(repoRoot.resolve(OWNERSHIP_METADATA));
     Set<String> bridgeMetadataPatterns =
         readOwnershipPatterns(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
+    Set<String> kernelContentPatterns =
+        readOwnershipPatterns(repoRoot.resolve(KERNEL_CONTENT_OWNERSHIP_METADATA));
+    Set<String> runtimeNodePatterns =
+        readOwnershipPatterns(repoRoot.resolve(RUNTIME_NODE_OWNERSHIP_METADATA));
 
     assertTrue(settings.contains("\":adapter-fcp\""));
     assertTrue(settings.contains("\":bridge-fcp-runtime\""));
@@ -294,6 +305,17 @@ class AdapterFcpBoundaryTest {
     assertTrue(Files.isRegularFile(repoRoot.resolve(FCP_COMPATIBILITY_ANALYSIS_SOURCE)));
     assertTrue(Files.isRegularFile(repoRoot.resolve(FCP_INSERT_CONTEXT_HANDLE_SOURCE)));
     assertTrue(Files.isRegularFile(repoRoot.resolve(DEFAULT_FCP_INSERT_CONTEXT_HANDLE_SOURCE)));
+    assertTrue(
+        kernelContentPatterns.contains(
+            "network/crypta/client/events/SplitfileCompatibilityMode.class"));
+    assertTrue(
+        kernelContentPatterns.contains(
+            "network/crypta/client/events/SplitfileCompatibilityModeEvent.class"));
+    assertTrue(kernelContentPatterns.contains("network/crypta/client/events/package-info*"));
+    assertFalse(
+        runtimeNodePatterns.contains(
+            "network/crypta/client/events/SplitfileCompatibilityModeEvent.class"));
+    assertFalse(runtimeNodePatterns.contains("network/crypta/client/events/package-info*"));
   }
 
   @Test

@@ -205,7 +205,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the leaf-safe
   `network.crypta.client.events` contract/helper subset (`ClientEventListener`,
   `ClientEventProducer`, `SimpleEventProducer`, `EventLogger`, `EventDumper`,
-  `SplitfileProgressEvent`), the leaf-safe `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
+  `SplitfileProgressEvent`, `SplitfileCompatibilityModeEvent`, `SplitfileCompatibilityMode`), the
+  leaf-safe `network.crypta.client.async` utility/value subset (`BlockSet`, `BinaryBlob`,
   `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
   `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
   client failure/filter exception subset, the MIME helper `network.crypta.support.MediaType`, and
@@ -635,9 +636,10 @@ Root build also includes:
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`, the
   `network.crypta.client.events` contract/helper subset (`ClientEventListener`,
   `ClientEventProducer`, `SimpleEventProducer`, `EventLogger`, `EventDumper`,
-  `SplitfileProgressEvent`), the leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe
-  client failure/filter exception subset, `network.crypta.support.MediaType`, and the small
-  manifest/model helper subset under `network.crypta.support.*`.
+  `SplitfileProgressEvent`, `SplitfileCompatibilityModeEvent`, `SplitfileCompatibilityMode`), the
+  leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe client
+  failure/filter exception subset, `network.crypta.support.MediaType`, and the small manifest/model
+  helper subset under `network.crypta.support.*`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allowlist parsing, listener abstraction, statistics collection, throttling, and partially

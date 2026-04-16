@@ -1,17 +1,14 @@
 package network.crypta.client.events;
 
-import network.crypta.client.InsertContext.CompatibilityMode;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class SplitfileCompatibilityModeEventTest {
 
@@ -21,7 +18,11 @@ class SplitfileCompatibilityModeEventTest {
     byte[] key = new byte[] {1, 2, 3, 4};
     SplitfileCompatibilityModeEvent evt =
         new SplitfileCompatibilityModeEvent(
-            CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468, key, false, true);
+            SplitfileCompatibilityMode.COMPAT_1250,
+            SplitfileCompatibilityMode.COMPAT_1468,
+            key,
+            false,
+            true);
 
     // Act
     int code = evt.getCode();
@@ -37,7 +38,11 @@ class SplitfileCompatibilityModeEventTest {
     byte[] key = new byte[] {9};
     SplitfileCompatibilityModeEvent evt =
         new SplitfileCompatibilityModeEvent(
-            CompatibilityMode.COMPAT_1250_EXACT, CompatibilityMode.COMPAT_1468, key, true, false);
+            SplitfileCompatibilityMode.COMPAT_1250_EXACT,
+            SplitfileCompatibilityMode.COMPAT_1468,
+            key,
+            true,
+            false);
 
     // Act
     String description = evt.getDescription();
@@ -49,8 +54,8 @@ class SplitfileCompatibilityModeEventTest {
   @Test
   void constructor_whenValuesProvided_setsAllFields() {
     // Arrange
-    CompatibilityMode min = CompatibilityMode.COMPAT_1251;
-    CompatibilityMode max = CompatibilityMode.COMPAT_1416;
+    SplitfileCompatibilityMode min = SplitfileCompatibilityMode.COMPAT_1251;
+    SplitfileCompatibilityMode max = SplitfileCompatibilityMode.COMPAT_1416;
     byte[] key = new byte[] {10, 11, 12};
     boolean dontCompress = true;
     boolean bottomLayer = true;
@@ -87,12 +92,33 @@ class SplitfileCompatibilityModeEventTest {
     // Arrange
     SplitfileCompatibilityModeEvent evt =
         new SplitfileCompatibilityModeEvent(
-            null, CompatibilityMode.COMPAT_1250, new byte[] {1}, false, false);
+            null, SplitfileCompatibilityMode.COMPAT_1250, new byte[] {1}, false, false);
 
     // Act
     String description = evt.getDescription();
 
     // Assert
     assertEquals("CompatibilityMode between null and COMPAT_1250", description);
+  }
+
+  @Test
+  void byCode_whenKnownCode_returnsDetachedMode() {
+    // Arrange
+    short code = SplitfileCompatibilityMode.COMPAT_1416.code;
+
+    // Act
+    SplitfileCompatibilityMode mode = SplitfileCompatibilityMode.byCode(code);
+
+    // Assert
+    assertSame(SplitfileCompatibilityMode.COMPAT_1416, mode);
+  }
+
+  @Test
+  void byCode_whenUnknownCode_throwsIllegalArgumentException() {
+    // Arrange
+    short code = 99;
+
+    // Act & Assert
+    assertThrows(IllegalArgumentException.class, () -> SplitfileCompatibilityMode.byCode(code));
   }
 }

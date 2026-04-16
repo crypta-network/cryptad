@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
-import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventDispatchContext;
@@ -12,6 +11,7 @@ import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
+import network.crypta.client.events.SplitfileCompatibilityMode;
 import network.crypta.client.events.SplitfileCompatibilityModeEvent;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
@@ -262,8 +262,8 @@ class ClientGetEventHandlingTest {
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
-            CompatibilityMode.COMPAT_1250,
-            CompatibilityMode.COMPAT_1468,
+            SplitfileCompatibilityMode.COMPAT_1250,
+            SplitfileCompatibilityMode.COMPAT_1468,
             new byte[] {1, 2, 3},
             true,
             false);
@@ -295,8 +295,8 @@ class ClientGetEventHandlingTest {
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
-            CompatibilityMode.COMPAT_1250,
-            CompatibilityMode.COMPAT_1468,
+            SplitfileCompatibilityMode.COMPAT_1250,
+            SplitfileCompatibilityMode.COMPAT_1468,
             new byte[] {4, 5, 6},
             false,
             true);
@@ -327,8 +327,8 @@ class ClientGetEventHandlingTest {
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     SplitfileCompatibilityModeEvent event =
         new SplitfileCompatibilityModeEvent(
-            CompatibilityMode.COMPAT_1250,
-            CompatibilityMode.COMPAT_1468,
+            SplitfileCompatibilityMode.COMPAT_1250,
+            SplitfileCompatibilityMode.COMPAT_1468,
             new byte[] {7, 8, 9},
             true,
             true);
