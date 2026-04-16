@@ -14,9 +14,9 @@ import network.crypta.support.api.ResumeContext;
  *
  * <p>The interface is intentionally small and asymmetric. Adapter-owned code should depend on this
  * detached view when it needs restart-safe bucket or metadata reattachment, while bridge-owned code
- * remains responsible for any narrowing back to live runtime classes such as the daemon's {@code
- * ClientContext}. That keeps the adapter-side lifecycle logic independent of the live runtime
- * implementation without weakening the resume contract needed by persistent storage.
+ * remains responsible for any narrowing back to live daemon runtime types. That keeps the
+ * adapter-side lifecycle logic independent of the live runtime implementation without weakening the
+ * resume contract needed by persistent storage.
  */
 public interface FcpRequestRuntimeContext extends PersistentRequestRuntimeContext, ResumeContext {
 
