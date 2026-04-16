@@ -974,29 +974,47 @@ class AdapterFcpBoundaryTest {
   private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
     String uncommentedScript =
         buildScript.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "");
-    Matcher invocationMatcher = Pattern.compile("\\bproject\\s*\\(").matcher(uncommentedScript);
+    for (String dependencyBlock : extractDependencyBlocks(uncommentedScript)) {
+      Matcher invocationMatcher = Pattern.compile("\\bproject\\s*\\(").matcher(dependencyBlock);
 
-    while (invocationMatcher.find()) {
-      int openParen = uncommentedScript.indexOf('(', invocationMatcher.start());
-      int closeParen = findMatchingParenthesis(uncommentedScript, openParen);
-      if (closeParen == -1) {
-        continue;
-      }
-      String invocationArgs = uncommentedScript.substring(openParen + 1, closeParen);
-      String pathExpression = extractProjectPathExpression(invocationArgs);
-      if (pathExpression == null) {
-        continue;
-      }
-      String resolvedPath =
-          resolveStringExpression(
-              stripEnclosingParentheses(pathExpression),
-              uncommentedScript,
-              new java.util.HashSet<>());
-      if (modulePath.equals(resolvedPath)) {
-        return true;
+      while (invocationMatcher.find()) {
+        int openParen = dependencyBlock.indexOf('(', invocationMatcher.start());
+        int closeParen = findMatchingParenthesis(dependencyBlock, openParen);
+        if (closeParen == -1) {
+          continue;
+        }
+        String invocationArgs = dependencyBlock.substring(openParen + 1, closeParen);
+        String pathExpression = extractProjectPathExpression(invocationArgs);
+        if (pathExpression == null) {
+          continue;
+        }
+        String resolvedPath =
+            resolveStringExpression(
+                stripEnclosingParentheses(pathExpression),
+                uncommentedScript,
+                new java.util.HashSet<>());
+        if (modulePath.equals(resolvedPath)) {
+          return true;
+        }
       }
     }
     return false;
+  }
+
+  private static List<String> extractDependencyBlocks(String script) {
+    List<String> blocks = new ArrayList<>();
+    Matcher dependenciesMatcher = Pattern.compile("\\bdependencies\\s*\\{").matcher(script);
+
+    while (dependenciesMatcher.find()) {
+      int openBrace = script.indexOf('{', dependenciesMatcher.start());
+      int closeBrace = findMatchingBrace(script, openBrace);
+      if (closeBrace == -1) {
+        continue;
+      }
+      blocks.add(script.substring(openBrace + 1, closeBrace));
+    }
+
+    return blocks;
   }
 
   private static String extractProjectPathExpression(String invocationArgs) {
@@ -1130,6 +1148,41 @@ class AdapterFcpBoundaryTest {
     }
 
     return text.length();
+  }
+
+  private static int findMatchingBrace(String text, int openBrace) {
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = openBrace; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        continue;
+      }
+
+      if (current == '{') {
+        depth++;
+      } else if (current == '}') {
+        depth--;
+        if (depth == 0) {
+          return index;
+        }
+      }
+    }
+
+    return -1;
   }
 
   private static boolean continuesExpression(String expressionSoFar) {
