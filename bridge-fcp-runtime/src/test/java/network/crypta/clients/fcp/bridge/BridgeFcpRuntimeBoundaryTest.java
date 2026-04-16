@@ -139,12 +139,10 @@ class BridgeFcpRuntimeBoundaryTest {
   }
 
   private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
+    String uncommentedScript = buildScript.replaceAll("(?s)/\\*.*?\\*/", "");
     Pattern dependencyPattern =
-        Pattern.compile(
-            "(?m)^\\s*[A-Za-z][A-Za-z0-9_]*\\s*\\(\\s*project\\(\""
-                + Pattern.quote(modulePath)
-                + "\"\\)\\s*\\)");
-    return dependencyPattern.matcher(buildScript).find();
+        Pattern.compile("(?m)^(?!\\s*//).*\\bproject\\(\"" + Pattern.quote(modulePath) + "\"\\)");
+    return dependencyPattern.matcher(uncommentedScript).find();
   }
 
   private static boolean hasJavaSources(Path root) throws IOException {
