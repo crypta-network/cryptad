@@ -973,24 +973,27 @@ class AdapterFcpBoundaryTest {
 
   private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
     String uncommentedScript = stripCommentsPreservingStrings(buildScript);
-    for (String dependencyBlock : extractDependencyBlocks(uncommentedScript)) {
-      Matcher invocationMatcher = Pattern.compile("\\bproject\\s*\\(").matcher(dependencyBlock);
+    for (DependencyBlock dependencyBlock : extractDependencyBlocks(uncommentedScript)) {
+      Matcher invocationMatcher =
+          Pattern.compile("\\bproject\\s*\\(").matcher(dependencyBlock.content());
 
       while (invocationMatcher.find()) {
-        int openParen = dependencyBlock.indexOf('(', invocationMatcher.start());
-        int closeParen = findMatchingParenthesis(dependencyBlock, openParen);
+        int openParen = dependencyBlock.content().indexOf('(', invocationMatcher.start());
+        int closeParen = findMatchingParenthesis(dependencyBlock.content(), openParen);
         if (closeParen == -1) {
           continue;
         }
-        String invocationArgs = dependencyBlock.substring(openParen + 1, closeParen);
+        String invocationArgs = dependencyBlock.content().substring(openParen + 1, closeParen);
         String pathExpression = extractProjectPathExpression(invocationArgs);
         if (pathExpression == null) {
           continue;
         }
+        int invocationStartInScript = dependencyBlock.bodyStartIndex() + invocationMatcher.start();
         String resolvedPath =
             resolveStringExpression(
                 stripEnclosingParentheses(pathExpression),
-                uncommentedScript,
+                uncommentedScript.substring(0, invocationStartInScript),
+                dependencyBlock.content().substring(0, invocationMatcher.start()),
                 new java.util.HashSet<>());
         if (modulePath.equals(resolvedPath)) {
           return true;
@@ -1000,8 +1003,10 @@ class AdapterFcpBoundaryTest {
     return false;
   }
 
-  private static List<String> extractDependencyBlocks(String script) {
-    List<String> blocks = new ArrayList<>();
+  private record DependencyBlock(String content, int bodyStartIndex) {}
+
+  private static List<DependencyBlock> extractDependencyBlocks(String script) {
+    List<DependencyBlock> blocks = new ArrayList<>();
     Matcher dependenciesMatcher = Pattern.compile("\\bdependencies\\s*\\{").matcher(script);
 
     while (dependenciesMatcher.find()) {
@@ -1010,7 +1015,7 @@ class AdapterFcpBoundaryTest {
       if (closeBrace == -1) {
         continue;
       }
-      blocks.add(script.substring(openBrace + 1, closeBrace));
+      blocks.add(new DependencyBlock(script.substring(openBrace + 1, closeBrace), openBrace + 1));
     }
 
     return blocks;
@@ -1053,7 +1058,10 @@ class AdapterFcpBoundaryTest {
   }
 
   private static String resolveStringExpression(
-      String expression, String script, Set<String> visitedIdentifiers) {
+      String expression,
+      String scriptPrefix,
+      String dependencyScopePrefix,
+      Set<String> visitedIdentifiers) {
     String trimmedExpression = stripEnclosingParentheses(expression.trim());
     if (trimmedExpression.isEmpty()) {
       return null;
@@ -1062,7 +1070,8 @@ class AdapterFcpBoundaryTest {
     if (trimmedExpression.startsWith("\"") && trimmedExpression.endsWith("\"")) {
       return resolveKotlinStringLiteral(
           trimmedExpression.substring(1, trimmedExpression.length() - 1),
-          script,
+          scriptPrefix,
+          dependencyScopePrefix,
           visitedIdentifiers);
     }
 
@@ -1070,7 +1079,8 @@ class AdapterFcpBoundaryTest {
     if (concatenatedParts.size() > 1) {
       StringBuilder resolved = new StringBuilder();
       for (String part : concatenatedParts) {
-        String resolvedPart = resolveStringExpression(part, script, visitedIdentifiers);
+        String resolvedPart =
+            resolveStringExpression(part, scriptPrefix, dependencyScopePrefix, visitedIdentifiers);
         if (resolvedPart == null) {
           return null;
         }
@@ -1081,9 +1091,11 @@ class AdapterFcpBoundaryTest {
 
     if (trimmedExpression.matches("[A-Za-z_][A-Za-z0-9_]*")
         && visitedIdentifiers.add(trimmedExpression)) {
-      String assignedExpression = resolveIdentifierAssignment(trimmedExpression, script);
+      String assignedExpression =
+          resolveIdentifierAssignment(trimmedExpression, dependencyScopePrefix, scriptPrefix);
       if (assignedExpression != null) {
-        return resolveStringExpression(assignedExpression, script, visitedIdentifiers);
+        return resolveStringExpression(
+            assignedExpression, scriptPrefix, dependencyScopePrefix, visitedIdentifiers);
       }
     }
 
@@ -1091,7 +1103,10 @@ class AdapterFcpBoundaryTest {
   }
 
   private static String resolveKotlinStringLiteral(
-      String literalBody, String script, Set<String> visitedIdentifiers) {
+      String literalBody,
+      String scriptPrefix,
+      String dependencyScopePrefix,
+      Set<String> visitedIdentifiers) {
     StringBuilder resolved = new StringBuilder();
 
     for (int index = 0; index < literalBody.length(); index++) {
@@ -1116,7 +1131,8 @@ class AdapterFcpBoundaryTest {
         }
         String templateExpression = literalBody.substring(index + 2, templateEnd);
         String resolvedTemplate =
-            resolveStringExpression(templateExpression, script, visitedIdentifiers);
+            resolveStringExpression(
+                templateExpression, scriptPrefix, dependencyScopePrefix, visitedIdentifiers);
         if (resolvedTemplate == null) {
           return null;
         }
@@ -1132,7 +1148,9 @@ class AdapterFcpBoundaryTest {
           identifierEnd++;
         }
         String identifier = literalBody.substring(index + 1, identifierEnd);
-        String resolvedIdentifier = resolveStringExpression(identifier, script, visitedIdentifiers);
+        String resolvedIdentifier =
+            resolveStringExpression(
+                identifier, scriptPrefix, dependencyScopePrefix, visitedIdentifiers);
         if (resolvedIdentifier == null) {
           return null;
         }
@@ -1147,20 +1165,79 @@ class AdapterFcpBoundaryTest {
     return resolved.toString();
   }
 
-  private static String resolveIdentifierAssignment(String identifier, String script) {
+  private static String resolveIdentifierAssignment(
+      String identifier, String dependencyScopePrefix, String scriptPrefix) {
+    String localAssignment = findLastAssignmentInScope(identifier, dependencyScopePrefix);
+    if (localAssignment != null) {
+      return localAssignment;
+    }
+    return findLastAssignmentInScope(identifier, extractTopLevelScopePrefix(scriptPrefix));
+  }
+
+  private static String findLastAssignmentInScope(String identifier, String scopePrefix) {
     Matcher declarationMatcher =
         Pattern.compile(
                 "(?m)^\\s*(?:val|var)\\s+"
                     + Pattern.quote(identifier)
                     + "(?:\\s*:\\s*[^=\\n]+)?\\s*=")
-            .matcher(script);
-    if (!declarationMatcher.find()) {
+            .matcher(scopePrefix);
+    int lastExpressionStart = -1;
+    while (declarationMatcher.find()) {
+      lastExpressionStart = declarationMatcher.end();
+    }
+    if (lastExpressionStart == -1) {
       return null;
     }
 
-    int expressionStart = declarationMatcher.end();
-    int expressionEnd = findExpressionEnd(script, expressionStart);
-    return script.substring(expressionStart, expressionEnd).trim();
+    int expressionEnd = findExpressionEnd(scopePrefix, lastExpressionStart);
+    return scopePrefix.substring(lastExpressionStart, expressionEnd).trim();
+  }
+
+  private static String extractTopLevelScopePrefix(String text) {
+    StringBuilder scopeText = new StringBuilder(text.length());
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = 0; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        scopeText.append(depth == 0 ? current : ' ');
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        scopeText.append(depth == 0 ? current : ' ');
+        continue;
+      }
+
+      if (current == '{') {
+        scopeText.append(depth == 0 ? ' ' : current == '\n' ? '\n' : ' ');
+        depth++;
+        continue;
+      }
+
+      if (current == '}') {
+        depth = Math.max(0, depth - 1);
+        scopeText.append(depth == 0 && current == '\n' ? '\n' : ' ');
+        continue;
+      }
+
+      if (depth == 0) {
+        scopeText.append(current);
+      } else {
+        scopeText.append(current == '\n' ? '\n' : ' ');
+      }
+    }
+
+    return scopeText.toString();
   }
 
   private static int findExpressionEnd(String text, int expressionStart) {
