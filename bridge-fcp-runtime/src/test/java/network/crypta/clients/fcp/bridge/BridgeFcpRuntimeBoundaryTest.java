@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class BridgeFcpRuntimeBoundaryTest {
         Files.exists(repoRoot.resolve(ROOT_BRIDGE_MAIN_JAVA)),
         "Root project must not own network/crypta/clients/fcp/bridge main sources");
     assertFalse(
-        hasJavaSources(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
+        Files.exists(repoRoot.resolve(ADAPTER_BRIDGE_MAIN_JAVA)),
         ":adapter-fcp must not own network/crypta/clients/fcp/bridge main sources");
   }
 
@@ -141,19 +142,55 @@ class BridgeFcpRuntimeBoundaryTest {
   private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
     String uncommentedScript =
         buildScript.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "");
-    Pattern dependencyPattern =
-        Pattern.compile("\\bproject\\(\\s*\"" + Pattern.quote(modulePath) + "\"\\s*\\)");
-    return dependencyPattern.matcher(uncommentedScript).find();
+    Matcher invocationMatcher = Pattern.compile("\\bproject\\s*\\(").matcher(uncommentedScript);
+
+    while (invocationMatcher.find()) {
+      int openParen = uncommentedScript.indexOf('(', invocationMatcher.start());
+      int closeParen = findMatchingParenthesis(uncommentedScript, openParen);
+      if (closeParen == -1) {
+        continue;
+      }
+      String invocationArgs = uncommentedScript.substring(openParen + 1, closeParen);
+      if (invocationArgs.contains("\"" + modulePath + "\"")) {
+        return true;
+      }
+    }
+    return false;
   }
 
-  private static boolean hasJavaSources(Path root) throws IOException {
-    if (!Files.exists(root)) {
-      return false;
+  private static int findMatchingParenthesis(String text, int openParen) {
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = openParen; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        continue;
+      }
+
+      if (current == '(') {
+        depth++;
+      } else if (current == ')') {
+        depth--;
+        if (depth == 0) {
+          return index;
+        }
+      }
     }
-    try (Stream<Path> walk = Files.walk(root)) {
-      return walk.filter(Files::isRegularFile)
-          .anyMatch(BridgeFcpRuntimeBoundaryTest::isTrackedJavaSource);
-    }
+
+    return -1;
   }
 
   private static Path parentOrThrow(Path path) {
