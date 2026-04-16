@@ -226,16 +226,98 @@ class BridgeFcpRuntimeBoundaryTest {
 
     if (trimmedExpression.matches("[A-Za-z_][A-Za-z0-9_]*")
         && visitedIdentifiers.add(trimmedExpression)) {
-      Matcher assignmentMatcher =
-          Pattern.compile(
-                  "(?m)^\\s*(?:val|var)\\s+" + Pattern.quote(trimmedExpression) + "\\s*=\\s*(.+)$")
-              .matcher(script);
-      if (assignmentMatcher.find()) {
-        return resolveStringExpression(assignmentMatcher.group(1), script, visitedIdentifiers);
+      String assignedExpression = resolveIdentifierAssignment(trimmedExpression, script);
+      if (assignedExpression != null) {
+        return resolveStringExpression(assignedExpression, script, visitedIdentifiers);
       }
     }
 
     return null;
+  }
+
+  private static String resolveIdentifierAssignment(String identifier, String script) {
+    Matcher declarationMatcher =
+        Pattern.compile(
+                "(?m)^\\s*(?:val|var)\\s+"
+                    + Pattern.quote(identifier)
+                    + "(?:\\s*:\\s*[^=\\n]+)?\\s*=")
+            .matcher(script);
+    if (!declarationMatcher.find()) {
+      return null;
+    }
+
+    int expressionStart = declarationMatcher.end();
+    int expressionEnd = findExpressionEnd(script, expressionStart);
+    return script.substring(expressionStart, expressionEnd).trim();
+  }
+
+  private static int findExpressionEnd(String text, int expressionStart) {
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+    boolean sawNonWhitespace = false;
+
+    for (int index = expressionStart; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > expressionStart ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        sawNonWhitespace = true;
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        sawNonWhitespace = true;
+        continue;
+      }
+
+      if (current == '(' || current == '[' || current == '{') {
+        depth++;
+      } else if (current == ')' || current == ']' || current == '}') {
+        depth--;
+      } else if (current == ';' && depth == 0 && sawNonWhitespace) {
+        return index;
+      } else if (current == '\n' && depth == 0 && sawNonWhitespace) {
+        String expressionSoFar = text.substring(expressionStart, index);
+        if (!continuesExpression(expressionSoFar)) {
+          return index;
+        }
+      }
+
+      if (!Character.isWhitespace(current)) {
+        sawNonWhitespace = true;
+      }
+    }
+
+    return text.length();
+  }
+
+  private static boolean continuesExpression(String expressionSoFar) {
+    String trimmed = expressionSoFar.trim();
+    if (trimmed.isEmpty()) {
+      return true;
+    }
+
+    return trimmed.endsWith("+")
+        || trimmed.endsWith("-")
+        || trimmed.endsWith("*")
+        || trimmed.endsWith("/")
+        || trimmed.endsWith("%")
+        || trimmed.endsWith("&&")
+        || trimmed.endsWith("||")
+        || trimmed.endsWith("?:")
+        || trimmed.endsWith("?.")
+        || trimmed.endsWith("..")
+        || trimmed.endsWith(",")
+        || trimmed.endsWith("(")
+        || trimmed.endsWith("[")
+        || trimmed.endsWith("{")
+        || trimmed.endsWith("to");
   }
 
   private static String stripEnclosingParentheses(String expression) {
