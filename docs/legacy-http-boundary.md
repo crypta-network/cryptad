@@ -3,7 +3,7 @@
 `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
 admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
 `network/crypta/clients/http/**` main resources. It does not own the concrete browse/FProxy
-implementation classes.
+implementation classes. The admin leaf is now detached from `:runtime-node`.
 
 `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, helper models,
 and browse-only packages under `network.crypta.clients.http`.
@@ -22,8 +22,8 @@ HTTP/admin alert rendering now crosses the detached
 `network.crypta.runtime.alerts.UserAlertSurface` owned by `:runtime-alerts`. The concrete
 `UserAlertManager` remains runtime-node-owned, while `:adapter-http-legacy-admin` and
 `:bridge-http-runtime` consume the narrower alert surface instead of importing that concrete
-manager type directly. This is one focused step in the ongoing removal of
-`adapter-http-legacy-admin -> :runtime-node` coupling without widening `:runtime-spi`.
+manager type directly. This keeps `:adapter-http-legacy-admin` detached from `:runtime-node`
+without widening `:runtime-spi`.
 
 Admin config classification now also crosses a detached config-owned marker:
 `network.crypta.config.DirectorySelectionCallback` in `:foundation-config`. `ConfigToadlet`
@@ -42,5 +42,6 @@ Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-brow
 `src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java`, and the
 updater-action adapters remain in `:adapter-http-legacy-admin`.
 
-Future browse/FProxy decomposition or replacement is still deferred beyond the physical module
-split. This page documents the current admin/shared-shell, browse, and runtime boundary.
+Future browse/FProxy decomposition or replacement remains a separate concern. This page documents
+the current admin/shared-shell, browse, and runtime boundary, and the concrete browse leaf remains
+out of scope for this closeout.

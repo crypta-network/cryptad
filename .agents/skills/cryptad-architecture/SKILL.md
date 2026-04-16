@@ -25,12 +25,16 @@ Use this skill when you need to:
     `network.crypta.support.transport.ip`, and `network.crypta.support.http`, plus
     `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
     `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
-    `network.crypta.node.SemiOrderedShutdownHook`, and `network.crypta.support.IllegalValueException`
+    `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
+    `network.crypta.support.IllegalValueException`, `network.crypta.support.JVMVersion`, the
+    generic `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` support surface,
+    generic helpers such as `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, and the
+    cycle-safe file-backed support I/O slice
   - `:foundation-store-contracts` → neutral `network.crypta.store` contracts
     `BlockMetadata`, `GetPubkey`, `StorableBlock`, plus the `network.crypta.store.alerts` seam
     (`StoreAlertSink`, `StoreMaintenanceAlertKind`, `StoreMaintenanceAlertSource`)
   - `:foundation-crypto-keys` → `network.crypta.crypt`, `network.crypta.keys`, plus
-    `network.crypta.support.io.BucketTools` and
+    `network.crypta.support.io.BucketTools`, `network.crypta.support.io.NoFreeBucket`, and
     `network.crypta.support.io.PrependLengthOutputStream`
   - `:foundation-store` → reusable `network.crypta.store` implementations plus
     `network.crypta.store.caching` and `network.crypta.store.saltedhash`
@@ -46,12 +50,14 @@ Use this skill when you need to:
     `network.crypta.compat.bandwidth`
   - `:kernel-content` → the compile-neutral phase-1 content slice across selected
     `network.crypta.client`, `network.crypta.client.events`,
-    `network.crypta.client.filter`, `network.crypta.client.async.alerts`, and
+    `network.crypta.client.filter`, `network.crypta.client.async.alerts`,
+    `network.crypta.client.async.persistence`, selected filter policy/helper types such as
+    `HTMLFilterPolicy`, selected event/helper types such as `SplitfileCompatibilityMode*`, and
     `network.crypta.support.MediaType`
   - `:kernel-transport` → the compile-neutral phase-1 transport slice across selected
     `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-    address matchers, allow-list parsing, listener abstractions, I/O statistics collection,
-    throttling, and partially received block assembly
+    address matchers, allow-list parsing, listener abstractions, `SSLNetworkInterface`,
+    I/O statistics collection, throttling, and partially received block assembly
   - `:kernel-routing` → the compile-neutral phase-1 routing/helper slice across selected
     `network.crypta.node` value, exception, callback, and request-item helper types such as
     `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
@@ -68,11 +74,11 @@ Use this skill when you need to:
     `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
     transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
     `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
-  - `:adapter-fcp` → the protocol-side `network.crypta.clients.fcp` package tree
+  - `:adapter-fcp` → the detached protocol-side `network.crypta.clients.fcp` package tree
   - `:bridge-fcp-runtime` → the concrete runtime-binding FCP bridge package
     `network.crypta.clients.fcp.bridge`
-  - `:adapter-http-legacy-admin` → the shared legacy `network.crypta.clients.http` shell, admin
-    toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and matching
+  - `:adapter-http-legacy-admin` → the detached shared legacy `network.crypta.clients.http`
+    shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and matching
     `network/crypta/clients/http/**` main resources
   - `:adapter-http-legacy-browse` → the concrete legacy browse/FProxy routes, toadlets, helper
     models, and browse-only packages under `network.crypta.clients.http`
@@ -119,11 +125,14 @@ Use this skill when you need to:
 - The wire split is intentionally narrow:
   `:interop-wire` owns the message/schema nucleus, `:kernel-transport` owns the compile-neutral
   transport helper slice (`AllowedHosts`, `NetworkInterface`, `IOStatisticCollector`,
-  `SocketHandler`, `PacketThrottle`, `PartiallyReceivedBlock`, etc.), while `:runtime-node` keeps
-  `MessageCore`, `MessageFilter`, `AsyncMessageFilterCallback`, `SlowAsyncMessageFilterCallback`,
-  `PeerContext`, incoming-packet filters, active socket handlers, and transfer send/receive code.
+  `SSLNetworkInterface`, `SocketHandler`, `PacketThrottle`, `PartiallyReceivedBlock`, etc.),
+  while `:runtime-node` keeps `MessageCore`, `MessageFilter`, `AsyncMessageFilterCallback`,
+  `SlowAsyncMessageFilterCallback`, `PeerContext`, incoming-packet filters, active socket
+  handlers, and transfer send/receive code.
   `network.crypta.io.comm.Message` now depends on the minimal `MessageSource` seam instead of
   directly on `PeerContext`.
+- For the detached adapter/runtime boundary details, prefer the maintenance docs in
+  `docs/fcp-boundary.md` and `docs/legacy-http-boundary.md` over older migration narratives.
 - `:foundation-config` is the current home for all main `network.crypta.config` and
   `network.crypta.l10n` sources. Their unit tests still live in the root test tree and are run by
   the root project.
@@ -210,8 +219,12 @@ Use this skill when you need to:
 ### Client APIs
 - High-level client: `network.crypta.client`
   - `:kernel-content` now owns the compile-neutral phase-1 content slice: selected
-    archive/value/helper classes, immutable event values, a conservative subset of filter
-    helper/parser types, the full `network.crypta.client.async.alerts` seam, and
+    archive/value/helper classes, immutable event values, the full
+    `network.crypta.client.async.alerts` seam, client-local seams under
+    `network.crypta.client.async.persistence`, a conservative subset of filter helper/parser
+    types plus policy holders such as `HTMLFilterPolicy`, event/helper types such as
+    `ClientEventProducer` and `SplitfileCompatibilityMode*`, utility/value types such as
+    `ClientGetterOptions` and `ClientPutterOptions`, `InsertUriChecks`, and
     `network.crypta.support.MediaType`.
   - `:runtime-node` still owns the cyclic async scheduler/request engine, high-level client APIs,
     and the remaining filter/archive surfaces that still depend on request scheduling or node
@@ -358,8 +371,11 @@ Use this skill when you need to:
   `network.crypta.support.transport.ip`, and `network.crypta.support.http`.
 - `:foundation-support` also owns `network.crypta.io.AddressIdentifier`,
   `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FastRunnable`,
-  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
-  and `network.crypta.support.SerializationLimits`.
+  `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
+  `network.crypta.support.IllegalValueException`, `network.crypta.support.JVMVersion`, the
+  generic HTTP request/upload and multimap/size-formatting surface, generic helpers such as
+  `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, the cycle-safe file-backed support I/O
+  slice, and `network.crypta.support.SerializationLimits`.
 - The root project still owns daemon-coupled support code and higher-level wiring that is not yet
   stable enough to extract cleanly.
 
@@ -372,11 +388,16 @@ Use this skill when you need to:
 - `:foundation-support`: stable generic `network.crypta.support*` subset plus
   `network.crypta.io.AddressIdentifier`, `network.crypta.io.WritableToDataOutputStream`,
   `network.crypta.node.FSParseException`, `network.crypta.node.FastRunnable`,
-  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.http`, and
-  `network.crypta.support.IllegalValueException`
+  `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
+  `network.crypta.support.http`, `network.crypta.support.IllegalValueException`,
+  `network.crypta.support.JVMVersion`, the generic `HTTPRequest` / `HTTPUploadedFile` /
+  `MultiValueTable` / `SizeUtil` surface, generic helpers such as `URIPreEncoder`, `IOUtils`,
+  and `LegacyFileSupport`, and the cycle-safe file-backed support I/O slice
 - `:foundation-store-contracts`: neutral `network.crypta.store` contracts plus
   `network.crypta.store.alerts`
-- `:foundation-crypto-keys`: `network.crypta.crypt`, `network.crypta.keys`
+- `:foundation-crypto-keys`: `network.crypta.crypt`, `network.crypta.keys`, plus adjacent
+  support-IO helpers such as `BucketTools`, `NoFreeBucket`, and
+  `PrependLengthOutputStream`
 - `:foundation-store`: reusable `network.crypta.store` implementations
 - `:interop-wire`: wire/message/schema/version/probe nucleus
 - `:foundation-config`: `network.crypta.config`, `network.crypta.l10n`,
@@ -384,9 +405,11 @@ Use this skill when you need to:
 - `:foundation-fs`: `network.crypta.fs`
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:kernel-content`: compile-neutral phase-1 content slice across selected `network.crypta.client*`
-  classes plus `network.crypta.support.MediaType`
+  classes, `network.crypta.client.async.persistence`, event/helper types such as
+  `SplitfileCompatibilityMode*`, filter policy/helper types such as `HTMLFilterPolicy`,
+  `InsertUriChecks`, and `network.crypta.support.MediaType`
 - `:kernel-transport`: compile-neutral phase-1 transport slice across selected
-  `network.crypta.io*` helpers
+  `network.crypta.io*` helpers including `SSLNetworkInterface`
 - `:kernel-routing`: compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` helper/value types
 - `:runtime-spi`: `network.crypta.runtime.spi`

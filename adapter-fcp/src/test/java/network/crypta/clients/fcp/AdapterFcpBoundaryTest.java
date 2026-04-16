@@ -26,8 +26,12 @@ class AdapterFcpBoundaryTest {
       Path.of("src", "main", "java", "network", "crypta", "clients", "fcp");
   private static final Path ROOT_FCP_BRIDGE_MAIN_JAVA =
       Path.of("src", "main", "java", "network", "crypta", "clients", "fcp", "bridge");
+  private static final Path ADAPTER_FCP_BRIDGE_MAIN_JAVA =
+      Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp", "bridge");
   private static final Path ADAPTER_FCP_MAIN_JAVA =
       Path.of(MODULE_NAME, "src", "main", "java", "network", "crypta", "clients", "fcp");
+  private static final Path ADAPTER_BUILD_FILE = Path.of(MODULE_NAME, "build.gradle.kts");
+  private static final Path BRIDGE_BUILD_FILE = Path.of("bridge-fcp-runtime", "build.gradle.kts");
   private static final Path ADD_PEER_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("AddPeer.java");
   private static final Path CLIENT_GET_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("ClientGet.java");
   private static final Path CLIENT_GET_EVENT_HANDLING_SOURCE =
@@ -275,6 +279,9 @@ class AdapterFcpBoundaryTest {
     assertFalse(
         Files.exists(repoRoot.resolve(ROOT_FCP_BRIDGE_MAIN_JAVA)),
         "Root project must not re-own network/crypta/clients/fcp/bridge main sources");
+    assertFalse(
+        hasJavaSources(repoRoot.resolve(ADAPTER_FCP_BRIDGE_MAIN_JAVA)),
+        ":adapter-fcp must not own network/crypta/clients/fcp/bridge main sources");
   }
 
   @Test
@@ -282,6 +289,8 @@ class AdapterFcpBoundaryTest {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
+    String adapterBuild = Files.readString(repoRoot.resolve(ADAPTER_BUILD_FILE));
+    String bridgeBuild = Files.readString(repoRoot.resolve(BRIDGE_BUILD_FILE));
     Set<String> metadataPatterns = readOwnershipPatterns(repoRoot.resolve(OWNERSHIP_METADATA));
     Set<String> bridgeMetadataPatterns =
         readOwnershipPatterns(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA));
@@ -294,6 +303,15 @@ class AdapterFcpBoundaryTest {
     assertTrue(settings.contains("\":bridge-fcp-runtime\""));
     assertTrue(build.contains("project(\":adapter-fcp\")"));
     assertTrue(build.contains("project(\":bridge-fcp-runtime\")"));
+    assertFalse(
+        adapterBuild.contains("implementation(project(\":runtime-node\"))"),
+        ":adapter-fcp must not depend on :runtime-node");
+    assertTrue(
+        bridgeBuild.contains("project(\":adapter-fcp\")"),
+        ":bridge-fcp-runtime must depend on :adapter-fcp");
+    assertTrue(
+        bridgeBuild.contains("implementation(project(\":runtime-node\"))"),
+        ":bridge-fcp-runtime must remain the concrete runtime-binding owner for FCP");
     assertTrue(metadataPatterns.contains("network/crypta/clients/fcp/*"));
     assertFalse(
         metadataPatterns.contains("network/crypta/clients/fcp/bridge/**"),
@@ -351,12 +369,11 @@ class AdapterFcpBoundaryTest {
     assertEquals(
         EXPECTED_DEFAULT_BRIDGE_FACTORIES_IMPORTS,
         bootstrapImports,
-        "DefaultNodeRuntimeBridgeFactories must remain the narrow bootstrap-owned FCP binding "
-            + "site");
+        "DefaultNodeRuntimeBridgeFactories must be the only bootstrap-owned FCP binding " + "site");
     assertEquals(
         EXPECTED_ADD_REF_IMPORTS,
         addRefImports,
-        "AddRef must remain the narrow tool-owned FCP exception");
+        "AddRef must be the only tool-owned FCP exception");
   }
 
   @Test
@@ -951,6 +968,16 @@ class AdapterFcpBoundaryTest {
           .filter(line -> !line.isEmpty())
           .filter(line -> !line.startsWith("#"))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+  }
+
+  private static boolean hasJavaSources(Path root) throws IOException {
+    if (!Files.exists(root)) {
+      return false;
+    }
+    try (Stream<Path> walk = Files.walk(root)) {
+      return walk.filter(Files::isRegularFile)
+          .anyMatch(AdapterFcpBoundaryTest::isTrackedJavaSource);
     }
   }
 

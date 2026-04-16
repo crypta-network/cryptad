@@ -288,7 +288,7 @@ class HttpLegacyAdminBoundaryTest {
   }
 
   @Test
-  void buildWiring_whenCheckingLeafMetadata_expectBridgeSplitDeclaredAndOwned() throws IOException {
+  void buildWiring_whenCheckingLeafMetadata_expectLeafDeclaredAndOwned() throws IOException {
     Path repoRoot = repoRoot();
     String settings = Files.readString(repoRoot.resolve("settings.gradle.kts"));
     String build = Files.readString(repoRoot.resolve("build.gradle.kts"));
@@ -368,7 +368,7 @@ class HttpLegacyAdminBoundaryTest {
     assertEquals(
         EXPECTED_DEFAULT_BRIDGE_FACTORIES_HTTP_IMPORTS,
         bootstrapHttpImports,
-        "DefaultNodeRuntimeBridgeFactories must remain the narrow bootstrap-owned HTTP binding "
+        "DefaultNodeRuntimeBridgeFactories must be the only bootstrap-owned HTTP binding "
             + "site");
   }
 

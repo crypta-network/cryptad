@@ -32,13 +32,16 @@ Use this skill when you need to:
   `network.crypta.support*`, `network.crypta.support.transport.ip`,
   `network.crypta.support.http`, `network.crypta.io.AddressIdentifier`,
   `network.crypta.io.WritableToDataOutputStream`, `network.crypta.node.FSParseException`,
-  `network.crypta.node.FastRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
-  `network.crypta.support.IllegalValueException`.
+  `network.crypta.node.FastRunnable`, `network.crypta.node.PrioRunnable`,
+  `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
+  `network.crypta.support.JVMVersion`, the generic `HTTPRequest` / `HTTPUploadedFile` /
+  `MultiValueTable` / `SizeUtil` surface, generic helpers such as `URIPreEncoder`, `IOUtils`,
+  and `LegacyFileSupport`, plus the cycle-safe file-backed support I/O slice.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the `network.crypta.store.alerts`
   seam.
 - `:foundation-crypto-keys` owns `network.crypta.crypt`, `network.crypta.keys`, and the adjacent
-  `BucketTools` / `PrependLengthOutputStream` helpers.
+  `BucketTools` / `NoFreeBucket` / `PrependLengthOutputStream` helpers.
 - `:foundation-store` owns reusable `network.crypta.store` implementations plus
   `network.crypta.store.caching` and `network.crypta.store.saltedhash`.
 - `:interop-wire` owns the narrow wire/message/schema/version/probe nucleus:
@@ -52,11 +55,13 @@ Use this skill when you need to:
   `network.crypta.compat.bandwidth`.
 - `:kernel-content` owns the compile-neutral phase-1 content slice across selected
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
-  `network.crypta.client.async.alerts`, and `network.crypta.support.MediaType`.
+  `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`,
+  event/helper types such as `SplitfileCompatibilityMode*`, filter policy/helper types such as
+  `HTMLFilterPolicy`, `InsertUriChecks`, and `network.crypta.support.MediaType`.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
-  allow-list parsing, listener abstraction, I/O statistics collection, throttling, and partially
-  received block assembly.
+  allow-list parsing, listener abstraction, `SSLNetworkInterface`, I/O statistics collection,
+  throttling, and partially received block assembly.
 - `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
@@ -91,14 +96,16 @@ Use this skill when you need to:
   `network.crypta.node`, the retained node-coupled transport/message execution code in
   `network.crypta.io*`, `network.crypta.runtime.*`, and the remaining daemon-coupled support
   helpers.
-- `:adapter-fcp` owns the protocol-side `network.crypta.clients.fcp` tree.
-- `:bridge-fcp-runtime` owns the concrete runtime-binding `network.crypta.clients.fcp.bridge`
-  implementations and its focused leaf tests under `bridge-fcp-runtime/src/test/java`.
+- `:adapter-fcp` owns the detached protocol-side `network.crypta.clients.fcp` tree.
+- `:bridge-fcp-runtime` owns the concrete runtime-binding
+  `network.crypta.clients.fcp.bridge` implementations, remains the only FCP leaf with the direct
+  `:runtime-node` binding, and keeps its focused leaf tests under
+  `bridge-fcp-runtime/src/test/java`.
 - `:bridge-http-runtime` owns the concrete `network.crypta.clients.http.bridge` runtime-binding
   implementations plus the legacy HTTP `network.crypta.clients.http.geoip` helper package, with
   focused leaf tests under `bridge-http-runtime/src/test/java`.
-- `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, admin
-  toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
+- `:adapter-http-legacy-admin` owns the detached shared legacy `network.crypta.clients.http`
+  shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
   `network/crypta/clients/http/**` main resources.
 - `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, and helper
   models under `network.crypta.clients.http`, with focused leaf tests under
@@ -155,9 +162,13 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava`
 - Compile the support leaf when you touched extracted generic support classes:
   - `./gradlew :foundation-support:classes`
+  - Representative moved types: `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, file-backed
+    buckets, generic HTTP request/upload helpers.
 - Compile the crypto/keys leaf when you touched `network.crypta.crypt`, `network.crypta.keys`,
   or the moved bucket/length helpers:
   - `./gradlew :foundation-crypto-keys:classes`
+  - Representative moved types: `NoFreeBucket`, `BucketTools`,
+    `PrependLengthOutputStream`.
 - Compile the reusable store leaf when you touched extracted `network.crypta.store`,
   `network.crypta.store.caching`, or `network.crypta.store.saltedhash` code:
   - `./gradlew :foundation-store:compileJava`
@@ -174,9 +185,14 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Compile the phase-1 kernel-content leaf when you touched extracted compile-neutral client/content
   classes:
   - `./gradlew :kernel-content:compileJava`
+  - Representative moved types: `ClientEventProducer`, `SplitfileCompatibilityMode*`,
+    `HTMLFilterPolicy`, `InsertUriChecks`, `PersistentRequestCoordinatorContext`,
+    `ClientGetterOptions`.
 - Compile the phase-1 kernel-transport leaf when you touched extracted compile-neutral transport
   helpers:
   - `./gradlew :kernel-transport:compileJava`
+  - Representative moved types: `SSLNetworkInterface`, `NetworkInterface`,
+    `AllowedHosts`, `SocketHandler`.
 - Compile the phase-1 kernel-routing leaf when you touched extracted compile-neutral routing/helper
   classes:
   - `./gradlew :kernel-routing:compileJava`
