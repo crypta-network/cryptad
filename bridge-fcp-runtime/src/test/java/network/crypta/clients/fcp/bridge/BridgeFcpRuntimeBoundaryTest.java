@@ -140,8 +140,7 @@ class BridgeFcpRuntimeBoundaryTest {
   }
 
   private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
-    String uncommentedScript =
-        buildScript.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "");
+    String uncommentedScript = stripCommentsPreservingStrings(buildScript);
     for (String dependencyBlock : extractDependencyBlocks(uncommentedScript)) {
       Matcher invocationMatcher = Pattern.compile("\\bproject\\s*\\(").matcher(dependencyBlock);
 
@@ -229,7 +228,10 @@ class BridgeFcpRuntimeBoundaryTest {
     }
 
     if (trimmedExpression.startsWith("\"") && trimmedExpression.endsWith("\"")) {
-      return trimmedExpression.substring(1, trimmedExpression.length() - 1);
+      return resolveKotlinStringLiteral(
+          trimmedExpression.substring(1, trimmedExpression.length() - 1),
+          script,
+          visitedIdentifiers);
     }
 
     List<String> concatenatedParts = splitTopLevel(trimmedExpression, '+');
@@ -254,6 +256,63 @@ class BridgeFcpRuntimeBoundaryTest {
     }
 
     return null;
+  }
+
+  private static String resolveKotlinStringLiteral(
+      String literalBody, String script, Set<String> visitedIdentifiers) {
+    StringBuilder resolved = new StringBuilder();
+
+    for (int index = 0; index < literalBody.length(); index++) {
+      char current = literalBody.charAt(index);
+      char previous = index > 0 ? literalBody.charAt(index - 1) : 0;
+
+      if (current != '$' || previous == '\\') {
+        resolved.append(current);
+        continue;
+      }
+
+      if (index + 1 >= literalBody.length()) {
+        resolved.append(current);
+        continue;
+      }
+
+      char next = literalBody.charAt(index + 1);
+      if (next == '{') {
+        int templateEnd = findMatchingTemplateBrace(literalBody, index + 1);
+        if (templateEnd == -1) {
+          return null;
+        }
+        String templateExpression = literalBody.substring(index + 2, templateEnd);
+        String resolvedTemplate =
+            resolveStringExpression(templateExpression, script, visitedIdentifiers);
+        if (resolvedTemplate == null) {
+          return null;
+        }
+        resolved.append(resolvedTemplate);
+        index = templateEnd;
+        continue;
+      }
+
+      if (Character.isJavaIdentifierStart(next)) {
+        int identifierEnd = index + 2;
+        while (identifierEnd < literalBody.length()
+            && Character.isJavaIdentifierPart(literalBody.charAt(identifierEnd))) {
+          identifierEnd++;
+        }
+        String identifier = literalBody.substring(index + 1, identifierEnd);
+        String resolvedIdentifier = resolveStringExpression(identifier, script, visitedIdentifiers);
+        if (resolvedIdentifier == null) {
+          return null;
+        }
+        resolved.append(resolvedIdentifier);
+        index = identifierEnd - 1;
+        continue;
+      }
+
+      resolved.append(current);
+    }
+
+    return resolved.toString();
   }
 
   private static String resolveIdentifierAssignment(String identifier, String script) {
@@ -318,6 +377,41 @@ class BridgeFcpRuntimeBoundaryTest {
     return text.length();
   }
 
+  private static int findMatchingTemplateBrace(String text, int openBrace) {
+    int depth = 0;
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = openBrace; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        continue;
+      }
+
+      if (current == '{') {
+        depth++;
+      } else if (current == '}') {
+        depth--;
+        if (depth == 0) {
+          return index;
+        }
+      }
+    }
+
+    return -1;
+  }
+
   private static int findMatchingBrace(String text, int openBrace) {
     int depth = 0;
     boolean inString = false;
@@ -351,6 +445,61 @@ class BridgeFcpRuntimeBoundaryTest {
     }
 
     return -1;
+  }
+
+  private static String stripCommentsPreservingStrings(String text) {
+    StringBuilder stripped = new StringBuilder(text.length());
+    boolean inString = false;
+    char stringDelimiter = 0;
+
+    for (int index = 0; index < text.length(); index++) {
+      char current = text.charAt(index);
+      char next = index + 1 < text.length() ? text.charAt(index + 1) : 0;
+      char previous = index > 0 ? text.charAt(index - 1) : 0;
+
+      if (inString) {
+        stripped.append(current);
+        if (current == stringDelimiter && previous != '\\') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (current == '"' || current == '\'') {
+        inString = true;
+        stringDelimiter = current;
+        stripped.append(current);
+        continue;
+      }
+
+      if (current == '/' && next == '/') {
+        index += 2;
+        while (index < text.length() && text.charAt(index) != '\n') {
+          index++;
+        }
+        if (index < text.length()) {
+          stripped.append('\n');
+        }
+        continue;
+      }
+
+      if (current == '/' && next == '*') {
+        index += 2;
+        while (index + 1 < text.length()
+            && !(text.charAt(index) == '*' && text.charAt(index + 1) == '/')) {
+          if (text.charAt(index) == '\n') {
+            stripped.append('\n');
+          }
+          index++;
+        }
+        index++;
+        continue;
+      }
+
+      stripped.append(current);
+    }
+
+    return stripped.toString();
   }
 
   private static boolean continuesExpression(String expressionSoFar) {
