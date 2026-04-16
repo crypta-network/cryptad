@@ -7,14 +7,11 @@ import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
-import java.io.Serial;
-import java.io.Serializable;
 import java.lang.reflect.Field;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.events.SimpleEventProducer;
@@ -437,15 +434,6 @@ class ClientPutTest {
   }
 
   @Test
-  void legacyClientPutCallbackField_whenRoundTripped_acceptsClientPutInstance() throws Exception {
-    LegacyClientPutCallbackHolder restored =
-        roundTripObject(
-            new LegacyClientPutCallbackHolder(clientPut), LegacyClientPutCallbackHolder.class);
-
-    assertInstanceOf(ClientPut.class, restored.callback);
-  }
-
-  @Test
   void serialization_whenRoundTripped_restoresExecutionFromLegacyClientPutter() throws Exception {
     ClientPutter legacyPutter = mock(ClientPutter.class, withSettings().serializable());
     ClientPutExecution execution = createExecution(legacyPutter);
@@ -518,17 +506,6 @@ class ClientPutTest {
     try (ObjectInputStream objectInput =
         new ObjectInputStream(new ByteArrayInputStream(serialized))) {
       return type.cast(objectInput.readObject());
-    }
-  }
-
-  @SuppressWarnings("ClassCanBeRecord")
-  private static final class LegacyClientPutCallbackHolder implements Serializable {
-    @Serial private static final long serialVersionUID = 1L;
-
-    private final ClientPutCallback callback;
-
-    private LegacyClientPutCallbackHolder(ClientPutCallback callback) {
-      this.callback = callback;
     }
   }
 }

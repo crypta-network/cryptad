@@ -22,7 +22,6 @@ import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.StartedCompressionEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,9 +52,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientPutDir
  */
 public abstract class ClientPutBase extends ClientRequest
-    implements FcpInsertCallback,
-        ClientEventListener,
-        network.crypta.client.async.ClientPutCallback {
+    implements FcpInsertCallback, ClientEventListener {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutBase.class);
   private static final String LEGACY_INSERT_CONTEXT_TYPE = "network.crypta.client.InsertContext";
   private static final String FIELD_SUCCEEDED = "succeeded";
@@ -338,12 +335,6 @@ public abstract class ClientPutBase extends ClientRequest
     // otherwise ignore
   }
 
-  @Override
-  public final void onResume(network.crypta.client.async.ClientContext context)
-      throws network.crypta.support.io.ResumeFailedException {
-    super.onResume(context);
-  }
-
   /**
    * Finalizes a successful insert by freezing timing statistics, cleaning up transient buckets, and
    * emitting the appropriate {@code PutSuccessful} message.
@@ -374,11 +365,6 @@ public abstract class ClientPutBase extends ClientRequest
     finish();
     trySendFinalMessage(null, null);
     if (client != null) client.notifySuccess(this);
-  }
-
-  @Override
-  public final void onSuccess(network.crypta.client.async.BaseClientPutter state) {
-    onSuccess(legacyState(state));
   }
 
   private FreenetURI generatedUriOrFallback(FcpInsertCallbackState state) {
@@ -428,12 +414,6 @@ public abstract class ClientPutBase extends ClientRequest
     if (client != null) client.notifyFailure(this);
   }
 
-  @Override
-  public final void onFailure(
-      InsertException e, network.crypta.client.async.BaseClientPutter state) {
-    onFailure(e, legacyState(state));
-  }
-
   /**
    * Accepts the newly derived final URI from the inserter and propagates it to listeners and caches
    * exactly once.
@@ -466,12 +446,6 @@ public abstract class ClientPutBase extends ClientRequest
         cache.gotFinalURI(identifier, uri);
       }
     }
-  }
-
-  @Override
-  public final void onGeneratedURI(
-      FreenetURI uri, network.crypta.client.async.BaseClientPutter state) {
-    onGeneratedURI(uri, legacyState(state));
   }
 
   /**
@@ -516,12 +490,6 @@ public abstract class ClientPutBase extends ClientRequest
     } else {
       trySendGeneratedMetadataMessage(metadata, null, null);
     }
-  }
-
-  @Override
-  public final void onGeneratedMetadata(
-      Bucket metadata, network.crypta.client.async.BaseClientPutter state) {
-    onGeneratedMetadata(metadata, legacyState(state));
   }
 
   /**
@@ -676,29 +644,6 @@ public abstract class ClientPutBase extends ClientRequest
       }
       PutFetchableMessage msg = new PutFetchableMessage(identifier, global, temp);
       trySendProgressMessage(msg, VERBOSITY_PUT_FETCHABLE, null);
-    }
-  }
-
-  @Override
-  public final void onFetchable(network.crypta.client.async.BaseClientPutter state) {
-    onFetchable(legacyState(state));
-  }
-
-  private static FcpInsertCallbackState legacyState(
-      network.crypta.client.async.BaseClientPutter state) {
-    return state == null ? null : new LegacyInsertCallbackState(state);
-  }
-
-  private record LegacyInsertCallbackState(network.crypta.client.async.BaseClientPutter putter)
-      implements FcpInsertCallbackState {
-    @Override
-    public FreenetURI getURI() {
-      return putter.getURI();
-    }
-
-    @Override
-    public @NotNull String toString() {
-      return putter.toString();
     }
   }
 
