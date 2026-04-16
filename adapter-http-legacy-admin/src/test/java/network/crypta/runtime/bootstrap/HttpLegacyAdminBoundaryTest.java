@@ -317,7 +317,7 @@ class HttpLegacyAdminBoundaryTest {
         adapterBuild.contains("project(\":adapter-http-legacy-browse\")"),
         ":adapter-http-legacy-admin must not depend on :adapter-http-legacy-browse");
     assertFalse(
-        adapterBuild.contains("implementation(project(\":runtime-node\"))"),
+        containsDirectProjectDependency(adapterBuild, ":runtime-node"),
         ":adapter-http-legacy-admin must not depend on :runtime-node");
     assertTrue(
         Files.isRegularFile(repoRoot.resolve(BRIDGE_OWNERSHIP_METADATA)),
@@ -830,6 +830,15 @@ class HttpLegacyAdminBoundaryTest {
           .map(matcher -> matcher.group(1))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
+  }
+
+  private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
+    Pattern dependencyPattern =
+        Pattern.compile(
+            "(?m)^\\s*[A-Za-z][A-Za-z0-9_]*\\s*\\(\\s*project\\(\""
+                + Pattern.quote(modulePath)
+                + "\"\\)\\s*\\)");
+    return dependencyPattern.matcher(buildScript).find();
   }
 
   private static Set<String> readImports(Path file) throws IOException {

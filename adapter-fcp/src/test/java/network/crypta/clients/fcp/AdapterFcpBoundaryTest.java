@@ -304,13 +304,13 @@ class AdapterFcpBoundaryTest {
     assertTrue(build.contains("project(\":adapter-fcp\")"));
     assertTrue(build.contains("project(\":bridge-fcp-runtime\")"));
     assertFalse(
-        adapterBuild.contains("implementation(project(\":runtime-node\"))"),
+        containsDirectProjectDependency(adapterBuild, ":runtime-node"),
         ":adapter-fcp must not depend on :runtime-node");
     assertTrue(
-        bridgeBuild.contains("project(\":adapter-fcp\")"),
+        containsDirectProjectDependency(bridgeBuild, ":adapter-fcp"),
         ":bridge-fcp-runtime must depend on :adapter-fcp");
     assertTrue(
-        bridgeBuild.contains("implementation(project(\":runtime-node\"))"),
+        containsDirectProjectDependency(bridgeBuild, ":runtime-node"),
         ":bridge-fcp-runtime must remain the concrete runtime-binding owner for FCP");
     assertTrue(metadataPatterns.contains("network/crypta/clients/fcp/*"));
     assertFalse(
@@ -969,6 +969,15 @@ class AdapterFcpBoundaryTest {
           .filter(line -> !line.startsWith("#"))
           .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
     }
+  }
+
+  private static boolean containsDirectProjectDependency(String buildScript, String modulePath) {
+    Pattern dependencyPattern =
+        Pattern.compile(
+            "(?m)^\\s*[A-Za-z][A-Za-z0-9_]*\\s*\\(\\s*project\\(\""
+                + Pattern.quote(modulePath)
+                + "\"\\)\\s*\\)");
+    return dependencyPattern.matcher(buildScript).find();
   }
 
   private static boolean hasJavaSources(Path root) throws IOException {
