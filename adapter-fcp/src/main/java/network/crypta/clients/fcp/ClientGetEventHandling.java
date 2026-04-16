@@ -10,6 +10,7 @@ import network.crypta.client.events.ExpectedFileSizeEvent;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
+import network.crypta.client.events.SplitfileCompatibilityMode;
 import network.crypta.client.events.SplitfileCompatibilityModeEvent;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.support.io.NativeThread;
@@ -151,8 +152,8 @@ final class ClientGetEventHandling implements ClientEventListener {
                 request
                     .state()
                     .mergeCompatibilityMode(
-                        FcpCompatibilityMode.byCode(event.minCompatibilityMode.code),
-                        FcpCompatibilityMode.byCode(event.maxCompatibilityMode.code),
+                        toFcpCompatibilityMode(event.minCompatibilityMode),
+                        toFcpCompatibilityMode(event.maxCompatibilityMode),
                         event.splitfileCryptoKey,
                         event.dontCompress,
                         event.bottomLayer);
@@ -168,12 +169,16 @@ final class ClientGetEventHandling implements ClientEventListener {
         request
             .state()
             .mergeCompatibilityMode(
-                FcpCompatibilityMode.byCode(event.minCompatibilityMode.code),
-                FcpCompatibilityMode.byCode(event.maxCompatibilityMode.code),
+                toFcpCompatibilityMode(event.minCompatibilityMode),
+                toFcpCompatibilityMode(event.maxCompatibilityMode),
                 event.splitfileCryptoKey,
                 event.dontCompress,
                 event.bottomLayer);
       }
     }
+  }
+
+  private static FcpCompatibilityMode toFcpCompatibilityMode(SplitfileCompatibilityMode mode) {
+    return FcpCompatibilityMode.byCode(mode.code);
   }
 }

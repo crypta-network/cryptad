@@ -20,7 +20,11 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
+import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.client.events.SplitfileCompatibilityMode;
+import network.crypta.client.events.SplitfileCompatibilityModeEvent;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
@@ -55,8 +59,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -484,6 +490,62 @@ class ClientGetterTest {
     assertEquals(uri, getter.getURI());
     // completion file is null for non-FileBucket
     assertNull(getter.getCompletionFile());
+  }
+
+  @Test
+  void onSplitfileCompatibilityMode_whenConcreteModesProvided_dispatchesDetachedEvent() {
+    // Arrange
+    FetchContext fctx = newFetchContext(false);
+    ClientContext ctx = newContext(fctx, newInsertContext());
+    ClientGetter getter = newGetter(new FreenetURI("KSK", "compat"), fctx, null, null);
+    ClientEventListener listener = Mockito.mock(ClientEventListener.class);
+    fctx.getEventProducer().addEventListener(listener);
+    byte[] splitfileKey = new byte[] {1, 2, 3};
+
+    // Act
+    getter.onSplitfileCompatibilityMode(
+        InsertContext.CompatibilityMode.COMPAT_1250,
+        InsertContext.CompatibilityMode.COMPAT_1468,
+        splitfileKey,
+        true,
+        false,
+        true,
+        ctx);
+
+    // Assert
+    ArgumentCaptor<ClientEvent> eventCaptor = ArgumentCaptor.forClass(ClientEvent.class);
+    verify(listener).receive(eventCaptor.capture(), eq(ctx));
+    SplitfileCompatibilityModeEvent event =
+        assertInstanceOf(SplitfileCompatibilityModeEvent.class, eventCaptor.getValue());
+    assertSame(SplitfileCompatibilityMode.COMPAT_1250, event.minCompatibilityMode);
+    assertSame(SplitfileCompatibilityMode.COMPAT_1468, event.maxCompatibilityMode);
+    assertSame(splitfileKey, event.splitfileCryptoKey);
+    assertTrue(event.dontCompress);
+    assertTrue(event.bottomLayer);
+  }
+
+  @Test
+  void onSplitfileCompatibilityMode_whenBoundsNull_preservesNullModes() {
+    // Arrange
+    FetchContext fctx = newFetchContext(false);
+    ClientContext ctx = newContext(fctx, newInsertContext());
+    ClientGetter getter = newGetter(new FreenetURI("KSK", "compat-null"), fctx, null, null);
+    ClientEventListener listener = Mockito.mock(ClientEventListener.class);
+    fctx.getEventProducer().addEventListener(listener);
+
+    // Act
+    getter.onSplitfileCompatibilityMode(null, null, null, false, false, false, ctx);
+
+    // Assert
+    ArgumentCaptor<ClientEvent> eventCaptor = ArgumentCaptor.forClass(ClientEvent.class);
+    verify(listener).receive(eventCaptor.capture(), eq(ctx));
+    SplitfileCompatibilityModeEvent event =
+        assertInstanceOf(SplitfileCompatibilityModeEvent.class, eventCaptor.getValue());
+    assertNull(event.minCompatibilityMode);
+    assertNull(event.maxCompatibilityMode);
+    assertNull(event.splitfileCryptoKey);
+    assertFalse(event.dontCompress);
+    assertFalse(event.bottomLayer);
   }
 
   // no helper methods

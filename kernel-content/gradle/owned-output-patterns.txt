@@ -55,6 +55,10 @@ network/crypta/client/events/FinishedCompressionEvent.class
 network/crypta/client/events/FinishedCompressionEvent$*.class
 network/crypta/client/events/SendingToNetworkEvent.class
 network/crypta/client/events/SendingToNetworkEvent$*.class
+network/crypta/client/events/SplitfileCompatibilityMode.class
+network/crypta/client/events/SplitfileCompatibilityMode$*.class
+network/crypta/client/events/SplitfileCompatibilityModeEvent.class
+network/crypta/client/events/SplitfileCompatibilityModeEvent$*.class
 network/crypta/client/events/SplitfileProgressCounts.class
 network/crypta/client/events/SplitfileProgressCounts$*.class
 network/crypta/client/events/SplitfileProgressTimestamps.class
@@ -69,6 +73,7 @@ network/crypta/client/events/EventDumper.class
 network/crypta/client/events/EventDumper$*.class
 network/crypta/client/events/EventLogger.class
 network/crypta/client/events/EventLogger$*.class
+network/crypta/client/events/package-info*
 network/crypta/client/events/SimpleEventProducer.class
 network/crypta/client/events/SimpleEventProducer$*.class
 network/crypta/client/events/SplitfileProgressEvent.class

@@ -1,16 +1,14 @@
 package network.crypta.client.events;
 
-import network.crypta.client.InsertContext.CompatibilityMode;
-
 /**
  * Event describing the compatibility window and encoding flags chosen for a splitfile operation.
  *
  * <p>This value object is emitted by higher-level insert/fetch logic to announce the selected
- * {@link CompatibilityMode} range a splitfile should honor as it is encoded or interpreted, along
- * with auxiliary properties that influence the on-disk representation. The event is useful for
- * operators and UIs that want to display why a particular splitfile layout was picked, and for
- * programmatic consumers that gate behavior based on a stable event code exposed via {@link
- * #getCode()}.
+ * {@link SplitfileCompatibilityMode} range a splitfile should honor as it is encoded or
+ * interpreted, along with auxiliary properties that influence the on-disk representation. The event
+ * is useful for operators and UIs that want to display why a particular splitfile layout was
+ * picked, and for programmatic consumers that gate behavior based on a stable event code exposed
+ * via {@link #getCode()}.
  *
  * <p>Instances carry a lower and upper bound for compatibility, an optional cryptographic key
  * associated with the splitfile, and two booleans that indicate compression and layer context. The
@@ -25,28 +23,29 @@ import network.crypta.client.InsertContext.CompatibilityMode;
  * </ul>
  *
  * @see ClientEvent
- * @see CompatibilityMode
+ * @see SplitfileCompatibilityMode
  */
+@SuppressWarnings("ClassCanBeRecord")
 public class SplitfileCompatibilityModeEvent implements ClientEvent {
 
   /**
-   * The minimum {@link CompatibilityMode} that the operation must satisfy.
+   * The minimum {@link SplitfileCompatibilityMode} that the operation must satisfy.
    *
    * <p>This lower bound constrains how data is laid out so previously deployed readers can still
-   * process the splitfile. It is typically determined by configuration or the environment’s
+   * process the splitfile. It is typically determined by configuration or the environment's
    * defaults. The value is inclusive; producers choose parameters at or above this level depending
    * on the {@link #maxCompatibilityMode} bound.
    */
-  public final CompatibilityMode minCompatibilityMode;
+  public final SplitfileCompatibilityMode minCompatibilityMode;
 
   /**
-   * The maximum {@link CompatibilityMode} that the operation may target.
+   * The maximum {@link SplitfileCompatibilityMode} that the operation may target.
    *
    * <p>This upper bound allows newer, more efficient layouts to be used when available while still
    * honoring {@link #minCompatibilityMode}. It is inclusive and represents the highest mode that a
    * consumer of the resulting data is expected to understand.
    */
-  public final CompatibilityMode maxCompatibilityMode;
+  public final SplitfileCompatibilityMode maxCompatibilityMode;
 
   /**
    * Opaque cryptographic key material associated with the splitfile, if any.
@@ -62,7 +61,7 @@ public class SplitfileCompatibilityModeEvent implements ClientEvent {
    *
    * <p>When {@code true}, producers skip applying compression for the associated portion of the
    * splitfile, preserving exact bytes at the cost of larger size. When {@code false}, compression
-   * policy is left to the producer’s defaults.
+   * policy is left to the producer's defaults.
    */
   public final boolean dontCompress;
 
@@ -82,36 +81,11 @@ public class SplitfileCompatibilityModeEvent implements ClientEvent {
    */
   public static final int CODE = 0x0D;
 
-  /**
-   * Returns the stable integer identifier for this event type.
-   *
-   * <p>Clients may switch on this code to aggregate metrics or to route the event to specialized
-   * handlers. The value is constant for all instances of this class and does not depend on field
-   * contents.
-   *
-   * @return a stable integer code identifying the compatibility-mode event; suitable for
-   *     comparisons and counters across instances.
-   */
   @Override
   public int getCode() {
     return CODE;
   }
 
-  /**
-   * Returns a concise, human-readable summary of the compatibility range.
-   *
-   * <p>The description lists the lower and upper {@link CompatibilityMode} bounds selected for the
-   * splitfile. It is intended for logs, progress displays, and diagnostics and should not be parsed
-   * programmatically. Use {@link #getCode()} for machine handling when needed.
-   *
-   * <pre>{@code
-   * // Example: record the chosen window
-   * LOG.info("Selected: {}", event.getDescription());
-   * }</pre>
-   *
-   * @return a non-null summary describing the minimum and maximum compatibility modes in plain
-   *     text; callers must treat the returned string as read-only.
-   */
   @Override
   public String getDescription() {
     return "CompatibilityMode between " + minCompatibilityMode + " and " + maxCompatibilityMode;
@@ -121,13 +95,13 @@ public class SplitfileCompatibilityModeEvent implements ClientEvent {
    * Creates a new event with the provided compatibility window and flags.
    *
    * <p>The array reference for {@code splitfileCryptoKey} is stored directly and is not copied.
-   * Pass a fresh or immutable instance if later modification is a concern. Booleans control
+   * Pass a fresh or immutable instance if a later modification is a concern. Booleans controls
    * compression policy and layer context used by producers or UIs.
    *
-   * @param min the lower, inclusive {@link CompatibilityMode} bound to honor; must not be {@code
-   *     null} when a concrete mode is required by the producer.
-   * @param max the upper, inclusive {@link CompatibilityMode} bound allowed for encoding; must not
-   *     be {@code null} when a concrete mode is required by the producer.
+   * @param min the lower, inclusive {@link SplitfileCompatibilityMode} bound to honor; may be
+   *     {@code null} if the producer has not learned a concrete lower bound yet.
+   * @param max the upper, inclusive {@link SplitfileCompatibilityMode} bound allowed for encoding;
+   *     may be {@code null} if the producer has not learned a concrete upper bound yet.
    * @param splitfileCryptoKey optional key bytes associated with the splitfile; reference is stored
    *     as-is and must not be mutated after construction; may be {@code null}.
    * @param dontCompress {@code true} to disable compression for the relevant layer; {@code false}
@@ -136,8 +110,8 @@ public class SplitfileCompatibilityModeEvent implements ClientEvent {
    *     refers to a higher layer or global context.
    */
   public SplitfileCompatibilityModeEvent(
-      CompatibilityMode min,
-      CompatibilityMode max,
+      SplitfileCompatibilityMode min,
+      SplitfileCompatibilityMode max,
       byte[] splitfileCryptoKey,
       boolean dontCompress,
       boolean bottomLayer) {
