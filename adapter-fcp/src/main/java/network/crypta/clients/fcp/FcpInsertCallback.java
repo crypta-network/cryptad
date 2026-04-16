@@ -14,9 +14,9 @@ import network.crypta.support.io.ResumeFailedException;
 /**
  * Adapter-owned callback contract for live insert lifecycle events.
  *
- * <p>This interface is the adapter-side replacement for the runtime {@code ClientPutCallback}. The
- * bridge runtime owns the concrete daemon inserter and adapts that inserter back to this detached
- * surface, which lets {@code :adapter-fcp} react to insert progress without importing the
+ * <p>This interface is the adapter-side replacement for the live runtime insert callback contract.
+ * The bridge runtime owns the concrete daemon inserter and adapts that inserter back to this
+ * detached surface, which lets {@code :adapter-fcp} react to insert progress without importing the
  * runtime-owned callback or putter classes directly. In practice, implementations are long-lived
  * request objects such as {@link ClientPutBase} descendants that need to survive reconnections,
  * Java serialization, and persistent-request resume.
@@ -36,7 +36,7 @@ import network.crypta.support.io.ResumeFailedException;
  * <ul>
  *   <li>Receives user-visible insert lifecycle notifications from the bridge runtime.
  *   <li>Provides persistent-request resume and serialization hooks for the owning request.
- *   <li>Hides the concrete runtime {@code ClientPutCallback} and putter types from the adapter.
+ *   <li>Hides the concrete runtime callback and putter types from the adapter.
  * </ul>
  */
 public interface FcpInsertCallback extends Serializable {

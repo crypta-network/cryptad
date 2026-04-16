@@ -82,8 +82,7 @@ class AdapterFcpBoundaryTest {
   private static final Path FCP_MESSAGE_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("FCPMessage.java");
   private static final Path CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutComplexDirMessage.java");
-  private static final Path CLIENT_PUT_BASE_SOURCE =
-      ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutBase.java");
+  private static final Path CLIENT_PUT_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("ClientPut.java");
   private static final Path CLIENT_PUT_DIR_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDir.java");
   private static final Path CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE =
@@ -111,7 +110,7 @@ class AdapterFcpBoundaryTest {
   private static final Set<Path> INSERT_FAMILY_SEAM_SOURCES =
       Set.of(
           ADAPTER_FCP_MAIN_JAVA.resolve("FcpInsertRuntimeSupport.java"),
-          ADAPTER_FCP_MAIN_JAVA.resolve("ClientPut.java"),
+          CLIENT_PUT_SOURCE,
           CLIENT_PUT_DIR_SOURCE,
           CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE,
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutPutterFactory.java"),
@@ -147,7 +146,6 @@ class AdapterFcpBoundaryTest {
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("UnsupportedPluginMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("TestDdaCompleteMessage.java"));
-  private static final Set<Path> CLIENT_CONTEXT_RESIDUE_ALLOWLIST = Set.of(CLIENT_PUT_BASE_SOURCE);
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -207,11 +205,10 @@ class AdapterFcpBoundaryTest {
           "network.crypta.client.async.USKFoundEdition",
           "network.crypta.client.async.USKManager",
           "network.crypta.client.async.USKProgressCallback");
-  private static final Set<String> FORBIDDEN_REQUESTER_CALLBACK_IMPORTS =
-      Set.of(
-          "network.crypta.client.async.BaseClientPutter",
-          "network.crypta.client.async.ClientPutCallback",
-          "network.crypta.client.async.ClientRequester");
+  private static final Set<String> FORBIDDEN_RUNTIME_TYPE_REFERENCES =
+      Set.of("BaseClientPutter", "ClientContext", "ClientPutCallback");
+  private static final Set<String> FORBIDDEN_REQUESTER_IMPORTS =
+      Set.of("network.crypta.client.async.ClientRequester");
   private static final Set<String> FORBIDDEN_SERVER_INFRA_RUNTIME_TYPES =
       Set.of(
           "network.crypta.client.async.ClientContext",
@@ -594,27 +591,30 @@ class AdapterFcpBoundaryTest {
   }
 
   @Test
-  void adapterFcpMain_whenCheckingClientContextBoundary_expectNoLiveClientContextOutsideResidue()
-      throws IOException {
+  void
+      adapterFcpMain_whenCheckingLegacyRuntimeTypeBoundary_expectNoClientContextOrInsertCallbackReferences()
+          throws IOException {
     Path repoRoot = repoRoot();
     List<String> violations = new ArrayList<>();
 
     for (Path sourceFile : findJavaSources(repoRoot.resolve(ADAPTER_FCP_MAIN_JAVA))) {
       Path relativePath = repoRoot.relativize(sourceFile);
-      if (CLIENT_CONTEXT_RESIDUE_ALLOWLIST.contains(relativePath)) {
-        continue;
-      }
       String source = Files.readString(sourceFile);
-      if (source.contains("network.crypta.client.async.ClientContext")
-          || source.contains("ClientContext")) {
-        violations.add(relativePath.toString());
+      Set<String> forbiddenReferences = new TreeSet<>();
+      for (String forbiddenReference : FORBIDDEN_RUNTIME_TYPE_REFERENCES) {
+        if (source.contains(forbiddenReference)) {
+          forbiddenReferences.add(forbiddenReference);
+        }
+      }
+      if (!forbiddenReferences.isEmpty()) {
+        violations.add(relativePath + " -> " + String.join(", ", forbiddenReferences));
       }
     }
 
     assertTrue(
         violations.isEmpty(),
-        ":adapter-fcp main sources must not import or reference ClientContext outside the"
-            + " legacy BaseClientPutter/ClientPutCallback residue."
+        ":adapter-fcp main sources must not reference ClientContext, BaseClientPutter, or "
+            + "ClientPutCallback."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }
@@ -689,7 +689,7 @@ class AdapterFcpBoundaryTest {
   }
 
   @Test
-  void adapterFcpMain_whenScanningRequesterCallbackImports_expectNoLiveRequesterOrCallbackLeaks()
+  void adapterFcpMain_whenScanningRequesterImports_expectNoLiveClientRequesterLeak()
       throws IOException {
     Path repoRoot = repoRoot();
     List<String> violations = new ArrayList<>();
@@ -698,7 +698,7 @@ class AdapterFcpBoundaryTest {
     for (Path sourceFile : findJavaSources(adapterFcpMain)) {
       Set<String> imports = readImports(sourceFile);
       Set<String> forbiddenImports = new TreeSet<>(imports);
-      forbiddenImports.retainAll(FORBIDDEN_REQUESTER_CALLBACK_IMPORTS);
+      forbiddenImports.retainAll(FORBIDDEN_REQUESTER_IMPORTS);
       if (!forbiddenImports.isEmpty()) {
         violations.add(
             repoRoot.relativize(sourceFile) + " -> " + String.join(", ", forbiddenImports));
@@ -707,8 +707,7 @@ class AdapterFcpBoundaryTest {
 
     assertTrue(
         violations.isEmpty(),
-        ":adapter-fcp main sources must not import live requester or insert-callback runtime "
-            + "types."
+        ":adapter-fcp main sources must not import ClientRequester."
             + System.lineSeparator()
             + String.join(System.lineSeparator(), violations));
   }
