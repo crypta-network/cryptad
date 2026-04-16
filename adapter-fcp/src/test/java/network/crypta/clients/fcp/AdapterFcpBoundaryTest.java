@@ -1044,7 +1044,7 @@ class AdapterFcpBoundaryTest {
     }
 
     for (String argument : splitTopLevel(trimmedArgs, ',')) {
-      int equalsIndex = findTopLevelChar(argument, '=');
+      int equalsIndex = findTopLevelEquals(argument);
       if (equalsIndex == -1) {
         continue;
       }
@@ -1067,12 +1067,22 @@ class AdapterFcpBoundaryTest {
       return null;
     }
 
+    if (trimmedExpression.startsWith("\"\"\"") && trimmedExpression.endsWith("\"\"\"")) {
+      return resolveKotlinStringLiteral(
+          trimmedExpression.substring(3, trimmedExpression.length() - 3),
+          scriptPrefix,
+          dependencyScopePrefix,
+          visitedIdentifiers,
+          true);
+    }
+
     if (trimmedExpression.startsWith("\"") && trimmedExpression.endsWith("\"")) {
       return resolveKotlinStringLiteral(
           trimmedExpression.substring(1, trimmedExpression.length() - 1),
           scriptPrefix,
           dependencyScopePrefix,
-          visitedIdentifiers);
+          visitedIdentifiers,
+          false);
     }
 
     List<String> concatenatedParts = splitTopLevel(trimmedExpression, '+');
@@ -1106,14 +1116,15 @@ class AdapterFcpBoundaryTest {
       String literalBody,
       String scriptPrefix,
       String dependencyScopePrefix,
-      Set<String> visitedIdentifiers) {
+      Set<String> visitedIdentifiers,
+      boolean rawString) {
     StringBuilder resolved = new StringBuilder();
 
     for (int index = 0; index < literalBody.length(); index++) {
       char current = literalBody.charAt(index);
       char previous = index > 0 ? literalBody.charAt(index - 1) : 0;
 
-      if (current != '$' || previous == '\\') {
+      if (current != '$' || (!rawString && previous == '\\')) {
         resolved.append(current);
         continue;
       }
@@ -1219,14 +1230,14 @@ class AdapterFcpBoundaryTest {
       }
 
       if (current == '{') {
-        scopeText.append(depth == 0 ? ' ' : current == '\n' ? '\n' : ' ');
+        scopeText.append(' ');
         depth++;
         continue;
       }
 
       if (current == '}') {
         depth = Math.max(0, depth - 1);
-        scopeText.append(depth == 0 && current == '\n' ? '\n' : ' ');
+        scopeText.append(' ');
         continue;
       }
 
@@ -1254,7 +1265,6 @@ class AdapterFcpBoundaryTest {
         if (current == stringDelimiter && previous != '\\') {
           inString = false;
         }
-        sawNonWhitespace = true;
         continue;
       }
 
@@ -1287,41 +1297,14 @@ class AdapterFcpBoundaryTest {
   }
 
   private static int findMatchingTemplateBrace(String text, int openBrace) {
-    int depth = 0;
-    boolean inString = false;
-    char stringDelimiter = 0;
-
-    for (int index = openBrace; index < text.length(); index++) {
-      char current = text.charAt(index);
-      char previous = index > 0 ? text.charAt(index - 1) : 0;
-
-      if (inString) {
-        if (current == stringDelimiter && previous != '\\') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (current == '"' || current == '\'') {
-        inString = true;
-        stringDelimiter = current;
-        continue;
-      }
-
-      if (current == '{') {
-        depth++;
-      } else if (current == '}') {
-        depth--;
-        if (depth == 0) {
-          return index;
-        }
-      }
-    }
-
-    return -1;
+    return findMatchingCurlyBrace(text, openBrace);
   }
 
   private static int findMatchingBrace(String text, int openBrace) {
+    return findMatchingCurlyBrace(text, openBrace);
+  }
+
+  private static int findMatchingCurlyBrace(String text, int openBrace) {
     int depth = 0;
     boolean inString = false;
     char stringDelimiter = 0;
@@ -1482,7 +1465,7 @@ class AdapterFcpBoundaryTest {
     return parts;
   }
 
-  private static int findTopLevelChar(String text, char target) {
+  private static int findTopLevelEquals(String text) {
     int depth = 0;
     boolean inString = false;
     char stringDelimiter = 0;
@@ -1508,7 +1491,7 @@ class AdapterFcpBoundaryTest {
         depth++;
       } else if (current == ')') {
         depth--;
-      } else if (current == target && depth == 0) {
+      } else if (current == '=' && depth == 0) {
         return index;
       }
     }
