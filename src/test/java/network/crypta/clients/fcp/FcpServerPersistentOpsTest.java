@@ -681,11 +681,6 @@ class FcpServerPersistentOpsTest {
       }
 
       @Override
-      public ClientContext clientContext() {
-        return clientContextSupplier.get();
-      }
-
-      @Override
       public boolean persistenceDisabled() {
         return persistenceDisabledSupplier.getAsBoolean();
       }

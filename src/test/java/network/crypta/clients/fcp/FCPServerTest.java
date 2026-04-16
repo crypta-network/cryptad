@@ -208,7 +208,7 @@ class FCPServerTest {
 
     FcpServerRuntimeSupport support = server.serverRuntimeSupport();
 
-    assertSame(clientContext, support.clientContext());
+    assertSame(clientContext, support.persistentRequestRuntimeContext());
     assertTrue(support.persistenceDisabled());
     assertSame(tempBucketFactory, support.tempBucketFactory());
     assertSame(persistentTempBucketFactory, support.persistentTempBucketFactory());

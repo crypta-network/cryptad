@@ -8,6 +8,7 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.client.events.SimpleEventProducer;
@@ -378,7 +379,7 @@ class ClientPutBaseTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // The test double never schedules real network work.
     }
 
@@ -393,7 +394,7 @@ class ClientPutBaseTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -403,7 +404,7 @@ class ClientPutBaseTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // No-op for test double.
     }
 

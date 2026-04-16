@@ -16,8 +16,8 @@ import network.crypta.support.api.Bucket;
  *
  * <p>Typical callers are server-owned helper paths such as persistent-request replay and
  * get-completed-request lookups. Those call sites need immediate access to previously downloaded
- * data, but they should not depend directly on runtime-owned cache abstractions or on a live {@code
- * ClientContext}. The interface therefore stays intentionally small and keeps the copy, filtering,
+ * data, but they should not depend directly on runtime-owned cache abstractions or on a live
+ * runtime class. The interface therefore stays intentionally small and keeps the copy, filtering,
  * and detached-runtime-context decisions explicit at the call site.
  *
  * <ul>

@@ -6,6 +6,7 @@ import java.util.List;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
@@ -174,7 +175,7 @@ class PersistentRequestClientTest {
     PersistentRequestClient client =
         new PersistentRequestClient(
             "client", mock(FCPConnectionHandler.class), true, null, Persistence.REBOOT, null);
-    ClientGet download = newPersistentClientGet("download-1", Persistence.REBOOT);
+    ClientGet download = newPersistentClientGet();
     client.register(download);
     GetFailedMessage failureMessage =
         new GetFailedMessage(
@@ -189,7 +190,8 @@ class PersistentRequestClientTest {
     assertNotNull(cache);
     List<RequestStatus> statuses = new ArrayList<>();
     cache.addTo(statuses);
-    DownloadRequestStatus status = assertInstanceOf(DownloadRequestStatus.class, statuses.get(0));
+    DownloadRequestStatus status =
+        assertInstanceOf(DownloadRequestStatus.class, statuses.getFirst());
     assertEquals(failureMessage.getShortFailedMessage(), status.getFailureReason(false));
     assertEquals(failureMessage.getLongFailedMessage(), status.getFailureReason(true));
   }
@@ -210,7 +212,7 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // Deliberately no-op: test stub does not model connection loss behavior.
     }
 
@@ -279,7 +281,7 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // Deliberately no-op: start logic exercised via pending message counting only.
     }
 
@@ -294,7 +296,7 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -304,7 +306,7 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // Deliberately no-op: resumption mechanics not needed for these tests.
     }
 
@@ -319,30 +321,30 @@ class PersistentRequestClientTest {
     }
 
     @Override
-    public void cancel(ClientContext context) {
+    public void cancel(PersistentRequestRuntimeContext context) {
       cancelCalls++;
     }
 
     @Override
-    public void requestWasRemoved(ClientContext context) {
+    public void requestWasRemoved(PersistentRequestRuntimeContext context) {
       requestRemovedCalls++;
     }
   }
 
-  private static ClientGet newPersistentClientGet(String identifier, Persistence persistence)
-      throws Exception {
+  private static ClientGet newPersistentClientGet() throws Exception {
+    String identifier = "download-1";
     ClientGet request = new ClientGet();
     ClientGetTestProfiles.setFetchConfig(request, new ClientGetFetchConfig());
     ClientGetTestProfiles.setReturnType(request, ClientGet.ReturnType.NONE);
-    setField(ClientRequest.class, request, "identifier", identifier);
-    setField(ClientRequest.class, request, "persistence", persistence);
-    setField(ClientRequest.class, request, "uri", new FreenetURI("KSK@" + identifier));
+    setField(request, "identifier", identifier);
+    setField(request, "persistence", Persistence.REBOOT);
+    setField(request, "uri", new FreenetURI("KSK@" + identifier));
     return request;
   }
 
-  private static void setField(Class<?> owner, Object target, String name, Object value)
+  private static void setField(Object target, String name, Object value)
       throws ReflectiveOperationException {
-    Field field = owner.getDeclaredField(name);
+    Field field = ClientRequest.class.getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
   }

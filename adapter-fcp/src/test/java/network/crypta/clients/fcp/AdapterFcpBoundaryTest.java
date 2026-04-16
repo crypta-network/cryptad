@@ -82,6 +82,8 @@ class AdapterFcpBoundaryTest {
   private static final Path FCP_MESSAGE_SOURCE = ADAPTER_FCP_MAIN_JAVA.resolve("FCPMessage.java");
   private static final Path CLIENT_PUT_COMPLEX_DIR_MESSAGE_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutComplexDirMessage.java");
+  private static final Path CLIENT_PUT_BASE_SOURCE =
+      ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutBase.java");
   private static final Path CLIENT_PUT_DIR_SOURCE =
       ADAPTER_FCP_MAIN_JAVA.resolve("ClientPutDir.java");
   private static final Path CLIENT_PUT_PREPARED_DATA_FACTORY_SOURCE =
@@ -145,6 +147,7 @@ class AdapterFcpBoundaryTest {
           ADAPTER_FCP_MAIN_JAVA.resolve("ClientGetMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("UnsupportedPluginMessage.java"),
           ADAPTER_FCP_MAIN_JAVA.resolve("TestDdaCompleteMessage.java"));
+  private static final Set<Path> CLIENT_CONTEXT_RESIDUE_ALLOWLIST = Set.of(CLIENT_PUT_BASE_SOURCE);
   private static final Path BRIDGE_FCP_RUNTIME_MAIN_JAVA =
       Path.of(
           "bridge-fcp-runtime",
@@ -591,6 +594,32 @@ class AdapterFcpBoundaryTest {
   }
 
   @Test
+  void adapterFcpMain_whenCheckingClientContextBoundary_expectNoLiveClientContextOutsideResidue()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    List<String> violations = new ArrayList<>();
+
+    for (Path sourceFile : findJavaSources(repoRoot.resolve(ADAPTER_FCP_MAIN_JAVA))) {
+      Path relativePath = repoRoot.relativize(sourceFile);
+      if (CLIENT_CONTEXT_RESIDUE_ALLOWLIST.contains(relativePath)) {
+        continue;
+      }
+      String source = Files.readString(sourceFile);
+      if (source.contains("network.crypta.client.async.ClientContext")
+          || source.contains("ClientContext")) {
+        violations.add(relativePath.toString());
+      }
+    }
+
+    assertTrue(
+        violations.isEmpty(),
+        ":adapter-fcp main sources must not import or reference ClientContext outside the"
+            + " legacy BaseClientPutter/ClientPutCallback residue."
+            + System.lineSeparator()
+            + String.join(System.lineSeparator(), violations));
+  }
+
+  @Test
   void adapterFcpMain_whenCheckingGetRuntimeSeam_expectNoLiveFetchTypeImports() throws IOException {
     Path repoRoot = repoRoot();
     List<String> violations = new ArrayList<>();
@@ -813,9 +842,8 @@ class AdapterFcpBoundaryTest {
         violations,
         CLIENT_REQUEST_SOURCE,
         clientRequestSource,
-        "public final boolean restart(PersistentRequestRuntimeContext context, boolean"
-            + " disableFilterData)",
-        "must expose detached restart wrapper");
+        "public abstract boolean restart(",
+        "must expose detached restart signature");
     requireAbsent(
         violations,
         CLIENT_REQUEST_SOURCE,
@@ -847,6 +875,12 @@ class AdapterFcpBoundaryTest {
         runtimeSupportSource,
         "void setCheckpointASAP();",
         "must expose detached checkpoint signaling");
+    requireAbsent(
+        violations,
+        FCP_SERVER_RUNTIME_SUPPORT_SOURCE,
+        runtimeSupportSource,
+        "ClientContext",
+        "must not expose live ClientContext");
 
     assertTrue(
         violations.isEmpty(),

@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
@@ -21,6 +22,7 @@ import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.StartedCompressionEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,10 +32,10 @@ import org.slf4j.LoggerFactory;
  * <p>The class centralizes common state tracking for {@link ClientPut} and {@link ClientPutDir},
  * wiring FCP-facing identifiers, scheduling metadata, persistence constraints, and node callbacks
  * into a single state machine. Instances travel through connection-bound and forever-persistent
- * modes, reattaching to {@link network.crypta.client.async.ClientContext ClientContext}s after
- * deserialization, driving insert progress, and translating internal events into client-visible FCP
- * messages. It is designed to be thread-aware: mutations happen under synchronization, while
- * outbound messages are dispatched via handler abstractions to avoid deadlocks.
+ * modes, reattaching to runtime contexts after deserialization, driving insert progress, and
+ * translating internal events into client-visible FCP messages. It is designed to be thread-aware:
+ * mutations happen under synchronization, while outbound messages are dispatched via handler
+ * abstractions to avoid deadlocks.
  *
  * <p>Typical usage involves subclassing to provide data-specific logic (single file or directory
  * tree) while relying on {@code ClientPutBase} to manage retries, metadata capture, and reporting.
@@ -80,8 +82,7 @@ public abstract class ClientPutBase extends ClientRequest
   /**
    * Per-request detached insert-context handle seeded from the node defaults. It carries retry
    * rules, redundancy knobs, and compatibility flags and therefore must be explicitly cleaned up in
-   * {@link #requestWasRemoved(network.crypta.client.async.ClientContext)
-   * requestWasRemoved(ClientContext)} to avoid leaking stale listeners.
+   * {@link #requestWasRemoved(PersistentRequestRuntimeContext)} to avoid leaking stale listeners.
    */
   FcpInsertContextHandle ctx;
 
@@ -217,23 +218,9 @@ public abstract class ClientPutBase extends ClientRequest
       FCPConnectionHandler handler,
       FcpInsertRuntimeSupport runtimeSupport,
       FreenetURI publicURI) {
-    super(prepareConstructorInit(requestParams, handler));
-    warnIfUnsupportedCharset(charset);
-    ctx = runtimeSupport.defaultPersistentInsertContextHandle();
-    ctx.setGetCHKOnly(options.getCHKOnly());
-    ctx.setDontCompress(options.dontCompress());
-    ctx.addEventListener(this);
-    ctx.setMaxInsertRetries(options.maxRetries());
-    ctx.setCanWriteClientCache(options.canWriteClientCache());
-    ctx.setCompressorDescriptor(options.compressorDescriptor());
-    ctx.setForkOnCacheable(options.forkOnCacheable());
-    ctx.setExtraInsertsSingleBlock(options.extraInsertsSingleBlock());
-    ctx.setExtraInsertsSplitfileHeaderBlock(options.extraInsertsSplitfileHeaderBlock());
-    ctx.setCompatibilityMode(options.compatibilityMode());
-    ctx.setLocalRequestOnly(options.localRequestOnly());
-    ctx.setEarlyEncode(options.earlyEncode());
-    ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
-    this.publicURI = publicURI;
+    this(
+        new ClientPutConstructorSupport.BaseInit(
+            requestParams, charset, options, handler, null, runtimeSupport, publicURI));
   }
 
   /**
@@ -290,9 +277,20 @@ public abstract class ClientPutBase extends ClientRequest
       PersistentRequestClient client,
       FcpInsertRuntimeSupport runtimeSupport,
       FreenetURI publicURI) {
-    super(prepareConstructorInit(requestParams, handler, client));
-    warnIfUnsupportedCharset(charset);
-    ctx = runtimeSupport.defaultPersistentInsertContextHandle();
+    this(
+        new ClientPutConstructorSupport.BaseInit(
+            requestParams, charset, options, handler, client, runtimeSupport, publicURI));
+  }
+
+  ClientPutBase(ClientPutConstructorSupport.BaseInit init) {
+    super(
+        init.persistentClient() == null
+            ? prepareConstructorInit(init.requestParams(), init.handler())
+            : prepareConstructorInit(
+                init.requestParams(), init.handler(), init.persistentClient()));
+    warnIfUnsupportedCharset(init.charset());
+    FcpInsertOptions options = init.options();
+    ctx = init.runtimeSupport().defaultPersistentInsertContextHandle();
     ctx.setGetCHKOnly(options.getCHKOnly());
     ctx.setDontCompress(options.dontCompress());
     ctx.addEventListener(this);
@@ -306,7 +304,7 @@ public abstract class ClientPutBase extends ClientRequest
     ctx.setCompatibilityMode(options.compatibilityMode());
     ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
     ctx.setEarlyEncode(options.earlyEncode());
-    this.publicURI = publicURI;
+    this.publicURI = init.publicUri();
   }
 
   /**
@@ -325,18 +323,25 @@ public abstract class ClientPutBase extends ClientRequest
    * leaving persistent ones untouched so they can resume later without extra chatter.
    *
    * <p>The method keeps side effects intentionally small. It does not throw nor block; instead it
-   * simply triggers {@link #cancel(network.crypta.client.async.ClientContext)
-   * cancel(ClientContext)} for requests that were declared {@link Persistence#CONNECTION}.
-   * Persistent and forever requests ignore the event because they expect to be resumed through
-   * their detached requester handle after deserialization.
+   * simply triggers {@link #cancel(PersistentRequestRuntimeContext)} for requests that were
+   * declared {@link Persistence#CONNECTION}. Persistent and forever requests ignore the event
+   * because they expect to be resumed through their detached requester handle after
+   * deserialization.
    *
-   * @param context client context that supplies cancellation helpers and resource pools; the value
-   *     may be reused across many requests and must not be {@code null}
+   * @param context detached runtime context that supplies cancellation helpers and resource pools;
+   *     the value may be reused across many requests and must not be {@code null}
    */
   @Override
-  public void onLostConnection(network.crypta.client.async.ClientContext context) {
+  public void onLostConnection(
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context) {
     if (persistence == Persistence.CONNECTION) cancel(context);
     // otherwise ignore
+  }
+
+  @Override
+  public final void onResume(network.crypta.client.async.ClientContext context)
+      throws network.crypta.support.io.ResumeFailedException {
+    super.onResume(context);
   }
 
   /**
@@ -528,10 +533,12 @@ public abstract class ClientPutBase extends ClientRequest
    * the persistent client queue, frees metadata buckets, and resets URIs and messages when the
    * persistence tier is {@link Persistence#FOREVER} to avoid replaying stale data on requeue.
    *
-   * @param context client context through which cleanup helpers and factories can be reached
+   * @param context detached runtime context through which cleanup helpers and factories can be
+   *     reached
    */
   @Override
-  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
+  public void requestWasRemoved(
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context) {
     if (ctx != null) {
       ctx.removeEventListener(this);
     }
@@ -690,7 +697,7 @@ public abstract class ClientPutBase extends ClientRequest
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return putter.toString();
     }
   }
@@ -1028,8 +1035,7 @@ public abstract class ClientPutBase extends ClientRequest
 
   /**
    * Restores persistent fields during deserialization. Subclasses are expected to rebuild transient
-   * collaborators during {@link #innerResume(network.crypta.client.async.ClientContext)
-   * innerResume(ClientContext)} rather than in this hook.
+   * collaborators during {@link #innerResume(FcpRequestRuntimeContext)} rather than in this hook.
    *
    * @param in source stream containing a previously serialized form of the object
    * @throws IOException when reading fails

@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -215,7 +215,7 @@ class PersistentRequestRootTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // No-op: connection lifecycle is irrelevant for this stubbed request.
     }
 
@@ -284,7 +284,7 @@ class PersistentRequestRootTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // No-op: a start lifecycle isn't needed in these tests.
     }
 
@@ -299,7 +299,7 @@ class PersistentRequestRootTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -309,7 +309,7 @@ class PersistentRequestRootTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // No-op: resume side effects are unnecessary for the stub.
     }
 

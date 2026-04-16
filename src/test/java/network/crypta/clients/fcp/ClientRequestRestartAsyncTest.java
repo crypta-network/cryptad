@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.Serial;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.node.PrioRunnable;
 import network.crypta.runtime.spi.ExecutionPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -98,7 +99,7 @@ class ClientRequestRestartAsyncTest {
   private static final class TestClientRequest extends ClientRequest {
     @Serial private static final long serialVersionUID = 1L;
 
-    private transient ClientContext lastRestartContext;
+    private transient PersistentRequestRuntimeContext lastRestartContext;
     private boolean lastDisableFilterData;
     private int restartCalls;
 
@@ -137,7 +138,7 @@ class ClientRequestRestartAsyncTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // This test double only exercises restart scheduling and does not simulate connection loss.
     }
 
@@ -206,7 +207,7 @@ class ClientRequestRestartAsyncTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // Starting the request is outside this test's scope; only restart dispatch is validated.
     }
 
@@ -221,7 +222,7 @@ class ClientRequestRestartAsyncTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       restartCalls++;
       lastRestartContext = context;
       lastDisableFilterData = disableFilterData;
@@ -234,7 +235,7 @@ class ClientRequestRestartAsyncTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // This focused test covers restartAsync() only and does not model resume behavior.
     }
 

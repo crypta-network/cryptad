@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.util.Arrays;
-import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -442,7 +442,7 @@ class ClientGetFactoryTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // No-op for this focused registration stub.
     }
 
@@ -511,7 +511,7 @@ class ClientGetFactoryTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // Start semantics are irrelevant to identifier collision coverage.
     }
 
@@ -526,7 +526,7 @@ class ClientGetFactoryTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -536,7 +536,7 @@ class ClientGetFactoryTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // Resume is intentionally unsupported for this lightweight test double.
     }
 

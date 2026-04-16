@@ -12,6 +12,7 @@ import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
@@ -28,15 +29,15 @@ import org.slf4j.LoggerFactory;
  * re-enumerating the source tree. Typical callers construct this class either from a {@link
  * ClientPutDirMessage} delivered by the network stack or from an on-disk directory chosen by an
  * operator, register it with a {@code PersistentRequestClient}, and finally invoke {@link
- * #start(network.crypta.client.async.ClientContext)} to launch the asynchronous transfer. The
- * object records defaults such as the preferred manifest name, cryptographic overrides, persistence
- * flavor, and file counts so that serialized requests can survive node restarts.
+ * #start(PersistentRequestRuntimeContext)} to launch the asynchronous transfer. The object records
+ * defaults such as the preferred manifest name, cryptographic overrides, persistence flavor, and
+ * file counts so that serialized requests can survive node restarts.
  *
  * <p>The class is not thread-safe; the owning request scheduler must serialize calls such as {@link
- * #start(network.crypta.client.async.ClientContext)}, {@link
- * #restart(network.crypta.client.async.ClientContext, boolean)}, and {@link
- * #requestWasRemoved(network.crypta.client.async.ClientContext)}. Internal caches are mutable until
- * {@link #freeData()} runs, after which the manifest tree is eligible for garbage collection.
+ * #start(PersistentRequestRuntimeContext)}, {@link #restart(PersistentRequestRuntimeContext,
+ * boolean)}, and {@link #requestWasRemoved(PersistentRequestRuntimeContext)}. Internal caches are
+ * mutable until {@link #freeData()} runs, after which the manifest tree is eligible for garbage
+ * collection.
  *
  * <ul>
  *   <li>Builds manifests from disk or pre-parsed maps.
@@ -105,12 +106,12 @@ public final class ClientPutDir extends ClientPutBase {
    * manifest tree locally, wires persistence, throttling, and crypto settings as requested, and
    * instantiates the backing {@link ClientPutDirExecution} so file counts and total sizes are
    * available for quick replies. Typical callers construct the object, register it with the
-   * persistent client cache, and then call {@link #start(network.crypta.client.async.ClientContext)
-   * start(ClientContext)} to launch asynchronous transmission toward peers.
+   * persistent client cache, and then call {@link #start(PersistentRequestRuntimeContext)} to
+   * launch asynchronous transmission toward peers.
    *
    * <pre>{@code
    * var request = new ClientPutDir(handler, msg, msg.manifest, false, server);
-   * request.start(core.getClientContext());
+   * request.start(server.serverRuntimeSupport().persistentRequestRuntimeContext());
    * }</pre>
    *
    * @param handler the connection handler responsible for routing progress replies to the caller.
@@ -200,8 +201,8 @@ public final class ClientPutDir extends ClientPutBase {
    * registered with a {@link PersistentRequestClient}. The constructor immediately counts files and
    * bytes, so progress meters have deterministic totals, and it captures the optional override
    * splitfile key for callers who precompute keys. After construction, invoke {@link
-   * #start(network.crypta.client.async.ClientContext) start(ClientContext)} to stream blocks while
-   * leveraging the provided {@link FCPServer}.
+   * #start(PersistentRequestRuntimeContext)} to stream blocks while leveraging the provided {@link
+   * FCPServer}.
    *
    * <pre>{@code
    * var request =
@@ -223,7 +224,7 @@ public final class ClientPutDir extends ClientPutBase {
    *         false,
    *         false,
    *         core);
-   * request.start(core.getClientContext());
+   * request.start(server.serverRuntimeSupport().persistentRequestRuntimeContext());
    * }</pre>
    *
    * @param request persistent insert request metadata for the directory insert.
@@ -422,14 +423,15 @@ public final class ClientPutDir extends ClientPutBase {
    * <p>The method is idempotent: repeated calls after the first successful start are ignored. It
    * configures the request cache so that CALL/RESULT messages reflect the running state, queues a
    * persistent tag message when applicable, and handles {@link InsertException}s by reporting
-   * immediate failure. Callers should provide the same {@link
-   * network.crypta.client.async.ClientContext ClientContext} used during construction so caches,
-   * thread pools, and retry policies remain consistent.
+   * immediate failure. Callers should provide the same detached runtime context used during
+   * construction so caches, thread pools, and retry policies remain consistent.
    *
-   * @param context client context supplying thread pools and scheduler knobs for this transfer.
+   * @param context detached runtime context supplying thread pools and scheduler knobs for this
+   *     transfer.
    */
   @Override
-  public void start(network.crypta.client.async.ClientContext context) {
+  public void start(
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context) {
     if (finished) return;
     if (started) return;
     try {
@@ -580,7 +582,7 @@ public final class ClientPutDir extends ClientPutBase {
    * <p>The method blocks restarts while work is still running or after success, only allowing
    * retries for finished-but-failed requests. It also emits debug logging so operators can diagnose
    * why a restart attempt was rejected. Callers should check this flag before invoking {@link
-   * #restart(network.crypta.client.async.ClientContext, boolean) restart(ClientContext, boolean)}.
+   * #restart(PersistentRequestRuntimeContext, boolean)}.
    *
    * @return {@code true} when the request is finished, not successful, and eligible for restart.
    */
@@ -607,13 +609,14 @@ public final class ClientPutDir extends ClientPutBase {
    * any updated splitfile key. If the bridge reports an {@link InsertException}, the method aborts
    * and surfaces the failure through the usual request path.
    *
-   * @param context client context used for thread pools, throttling, and crypto settings.
+   * @param context detached runtime context used for thread pools, throttling, and crypto settings.
    * @param disableFilterData ignored flag maintained for backwards compatibility with filters.
    * @return {@code true} when the restart was scheduled; {@code false} if prerequisites failed.
    */
   @Override
   public boolean restart(
-      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context,
+      final boolean disableFilterData) {
     if (!canRestart()) return false;
     setVarsRestart();
     if (client != null) {
@@ -654,10 +657,11 @@ public final class ClientPutDir extends ClientPutBase {
    * superclass observes the event as well, ensuring that shared bookkeeping such as rate limiting
    * and identifier mappings stay consistent.
    *
-   * @param context client context associated with the scheduler issuing the removal.
+   * @param context detached runtime context associated with the scheduler issuing the removal.
    */
   @Override
-  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
+  public void requestWasRemoved(
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context) {
     if (persistence == Persistence.FOREVER) {
       putter = null;
     }
@@ -695,22 +699,19 @@ public final class ClientPutDir extends ClientPutBase {
   }
 
   /**
-   * Reattaches persisted manifests to a live {@link network.crypta.client.async.ClientContext
-   * ClientContext} during resume sequences.
+   * Reattaches persisted manifests to the detached request runtime context during resume sequences.
    *
    * <p>The method delegates to {@link ClientPutDirExecution#resumeMetadata(Map,
-   * network.crypta.client.async.ClientContext)}, which rebuilds transient metadata for each {@link
-   * ManifestElement} so the putter can continue where it left off. Any metadata mismatch triggers a
-   * {@link ResumeFailedException}, signaling that the request should be abandoned or rebuilt from
-   * disk.
+   * FcpRequestRuntimeContext)}, which rebuilds transient metadata for each {@link ManifestElement}
+   * so the putter can continue where it left off. Any metadata mismatch triggers a {@link
+   * ResumeFailedException}, signaling that the request should be abandoned or rebuilt from disk.
    *
    * @param context context supplying the memory pools and cryptographic providers required for
    *     resumed manifests.
    * @throws ResumeFailedException if the persisted manifest cannot be revalidated or restored.
    */
   @Override
-  public void innerResume(network.crypta.client.async.ClientContext context)
-      throws ResumeFailedException {
+  public void innerResume(FcpRequestRuntimeContext context) throws ResumeFailedException {
     if (putter != null) {
       putter.resumeMetadata(manifestElements, context);
     }
@@ -725,9 +726,9 @@ public final class ClientPutDir extends ClientPutBase {
    * Indicates whether every component of the request has been fully restored after resuming.
    *
    * <p>Directory inserts currently resume lazily, rebuilding manifest metadata only when {@link
-   * #innerResume(network.crypta.client.async.ClientContext) innerResume(ClientContext)} is invoked
-   * later in the lifecycle. Consequently, this method always returns {@code false}, signaling to
-   * higher layers that additional resume work may be pending.
+   * #innerResume(FcpRequestRuntimeContext)} is invoked later in the lifecycle. Consequently, this
+   * method always returns {@code false}, signaling to higher layers that additional resume work may
+   * be pending.
    *
    * @return always {@code false} because manifest metadata is resumed incrementally.
    */

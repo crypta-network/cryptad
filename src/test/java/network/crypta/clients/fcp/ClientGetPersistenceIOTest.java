@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -209,6 +210,54 @@ class ClientGetPersistenceIOTest {
         input, fetchRuntimeSupport, checker, execution, request);
 
     verifyNoInteractions(execution, request);
+  }
+
+  @Test
+  void resume_whenExecutionPresent_resumesBucketsAndBackfillsMissingState()
+      throws ResumeFailedException {
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    Bucket returnBucket = mock(Bucket.class);
+    Bucket initialMetadata = mock(Bucket.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
+    ClientGet request = newRequestWithState();
+    request.setExecution(execution);
+    request.state().setReturnBucketDirect(returnBucket);
+    request.setRequestProfile(request.requestProfile().withInitialMetadata(initialMetadata));
+    request.state().setFoundDataLength(0L);
+    request.state().setFoundDataMimeType(null);
+    when(execution.expectedSize()).thenReturn(42L);
+    when(execution.expectedMime()).thenReturn("text/plain");
+
+    ClientGetPersistenceIO.resume(request, context);
+
+    verify(execution).onResume(context);
+    verify(returnBucket).onResume(context);
+    verify(initialMetadata).onResume(context);
+    assertEquals(42L, request.state().getFoundDataLength());
+    assertEquals("text/plain", request.state().getFoundDataMimeType());
+  }
+
+  @Test
+  void resume_whenStateAlreadyPopulated_keepsExistingLengthAndMime() throws ResumeFailedException {
+    ClientGetExecution execution = mock(ClientGetExecution.class);
+    Bucket returnBucket = mock(Bucket.class);
+    Bucket initialMetadata = mock(Bucket.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
+    ClientGet request = newRequestWithState();
+    request.setExecution(execution);
+    request.state().setReturnBucketDirect(returnBucket);
+    request.setRequestProfile(request.requestProfile().withInitialMetadata(initialMetadata));
+    request.state().setFoundDataLength(7L);
+    request.state().setFoundDataMimeType("existing/type");
+
+    ClientGetPersistenceIO.resume(request, context);
+
+    verify(execution).onResume(context);
+    verify(returnBucket).onResume(context);
+    verify(initialMetadata).onResume(context);
+    assertEquals(7L, request.state().getFoundDataLength());
+    assertEquals("existing/type", request.state().getFoundDataMimeType());
+    verifyNoMoreInteractions(execution);
   }
 
   private static StorageFormatException storageFormatExceptionWithChecksumFailure() {

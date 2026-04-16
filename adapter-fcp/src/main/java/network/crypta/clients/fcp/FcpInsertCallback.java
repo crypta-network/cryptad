@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.InsertException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
@@ -52,16 +51,16 @@ public interface FcpInsertCallback extends Serializable {
    * Reattaches transient runtime collaborators after persistent-request resume.
    *
    * <p>Persistent FCP requests are Java-serialized and later rebound to a fresh daemon runtime. The
-   * bridge invokes this hook during that resume flow so the owning request can recreate any
-   * transient state that depends on the live {@link ClientContext}, such as persistent-request
-   * coordinator handles, bucket factories, or scheduler-facing state.
+   * bridge invokes this hook during that resume flow, so the owning request can recreate any
+   * transient state that depends on the detached request runtime context, such as
+   * persistent-request coordinator handles, bucket factories, or scheduler-facing state.
    *
-   * @param context live client context supplied during resume; it carries the runtime services
-   *     needed to reattach the owning request safely
+   * @param context detached request runtime context supplied during resume; it carries the runtime
+   *     services needed to reattach the owning request safely
    * @throws ResumeFailedException if the request cannot rebind its transient collaborators and
    *     should therefore fail, resume rather than continue in a partially attached state
    */
-  void onResume(ClientContext context) throws ResumeFailedException;
+  void onResume(FcpRequestRuntimeContext context) throws ResumeFailedException;
 
   /**
    * Returns the low-level request client associated with the owning request.

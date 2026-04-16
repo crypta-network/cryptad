@@ -60,16 +60,16 @@ public interface ClientPutDirExecution extends ClientPutExecution {
    * <p>Persistent directory inserts can survive JVM restarts, but nested manifest elements may need
    * to reopen buckets or rebuild runtime-owned metadata before insertion can continue. The adapter
    * calls this hook during request resume, passing the request-owned manifest tree and the current
-   * client context so the bridge can restore that transient state without leaking runtime types
-   * back into the adapter layer.
+   * detached request runtime context so the bridge can restore that transient state without leaking
+   * runtime types back into the adapter layer.
    *
    * @param manifestElements request-owned manifest tree whose elements should be reattached to live
    *     runtime state
-   * @param context live client context that provides resume-time factories and services
+   * @param context detached request runtime context that provides resume-time factories and
+   *     services
    * @throws ResumeFailedException if any manifest element cannot restore the required transient
    *     runtime state
    */
-  void resumeMetadata(
-      Map<String, Object> manifestElements, network.crypta.client.async.ClientContext context)
+  void resumeMetadata(Map<String, Object> manifestElements, FcpRequestRuntimeContext context)
       throws ResumeFailedException;
 }

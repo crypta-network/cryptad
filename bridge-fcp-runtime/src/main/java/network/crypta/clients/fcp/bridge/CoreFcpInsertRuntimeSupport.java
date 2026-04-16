@@ -36,6 +36,7 @@ import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.async.USKProgressCallback;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientPutDirExecution;
 import network.crypta.clients.fcp.ClientPutDirExecutionSpec;
 import network.crypta.clients.fcp.ClientPutExecution;
@@ -53,12 +54,15 @@ import network.crypta.clients.fcp.FcpInsertContextLimits;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
+import network.crypta.clients.fcp.FcpRequestRuntimeContext;
 import network.crypta.clients.fcp.FcpRequesterHandle;
 import network.crypta.clients.fcp.PersistentPutDirEntrySnapshot;
 import network.crypta.clients.fcp.SubscribeUSKCallbacks;
 import network.crypta.clients.fcp.SubscribeUSKMessage;
 import network.crypta.clients.fcp.UskSubscriptionHandle;
 import network.crypta.crypt.ChecksumChecker;
+import network.crypta.crypt.CryptoResumeContext;
+import network.crypta.crypt.MasterSecret;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.keys.USK;
@@ -183,6 +187,18 @@ record CoreFcpInsertRuntimeSupport(
 
   private ClientContext clientContext() {
     return Objects.requireNonNull(core.getClientContext());
+  }
+
+  private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+    if (context instanceof FcpRequestRuntimeContext requestContext) {
+      return requireClientContext(requestContext.persistentRequestRuntimeContext());
+    }
+    if (context instanceof ClientContext clientContext) {
+      return clientContext;
+    }
+    String contextType = context == null ? "null" : context.getClass().getName();
+    throw new IllegalArgumentException(
+        "FCP insert runtime requires ClientContext but got " + contextType);
   }
 
   private static FcpInsertContextHandle toInsertContextHandle(InsertContext context) {
@@ -346,8 +362,8 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public void start(ClientContext context) throws InsertException {
-      putter.start(context);
+    public void start(PersistentRequestRuntimeContext context) throws InsertException {
+      putter.start(requireClientContext(context));
     }
 
     @Override
@@ -356,8 +372,8 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public boolean restart(ClientContext context) throws InsertException {
-      return putter.restart(context);
+    public boolean restart(PersistentRequestRuntimeContext context) throws InsertException {
+      return putter.restart(requireClientContext(context));
     }
 
     @Override
@@ -388,8 +404,8 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public void start(ClientContext context) throws InsertException {
-      putter.start(context);
+    public void start(PersistentRequestRuntimeContext context) throws InsertException {
+      putter.start(requireClientContext(context));
     }
 
     @Override
@@ -398,13 +414,14 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public boolean restart(ClientContext context) throws InsertException {
+    public boolean restart(PersistentRequestRuntimeContext context) throws InsertException {
+      ClientContext clientContext = requireClientContext(context);
       try {
-        putter = createManifestPutter(spec, context);
+        putter = createManifestPutter(spec, clientContext);
       } catch (TooManyFilesInsertException e) {
         throw new InsertException(InsertException.InsertExceptionMode.TOO_MANY_FILES, e, null);
       }
-      putter.start(context);
+      putter.start(clientContext);
       return true;
     }
 
@@ -429,9 +446,10 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public void resumeMetadata(Map<String, Object> manifestElements, ClientContext context)
+    public void resumeMetadata(
+        Map<String, Object> manifestElements, FcpRequestRuntimeContext context)
         throws ResumeFailedException {
-      ContainerInserter.resumeMetadata(manifestElements, context);
+      ContainerInserter.resumeMetadata(manifestElements, requireClientContext(context));
     }
   }
 
@@ -463,13 +481,13 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public void cancel(ClientContext context) {
-      requester.cancel(context);
+    public void cancel(PersistentRequestRuntimeContext context) {
+      requester.cancel(requireClientContext(context));
     }
 
     @Override
-    public void setPriorityClass(short priorityClass, ClientContext context) {
-      requester.setPriorityClass(priorityClass, context);
+    public void setPriorityClass(short priorityClass, PersistentRequestRuntimeContext context) {
+      requester.setPriorityClass(priorityClass, requireClientContext(context));
     }
 
     @Override
@@ -478,13 +496,13 @@ record CoreFcpInsertRuntimeSupport(
     }
 
     @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
-      requester.onResume(context);
+    public void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException {
+      requester.onResume(requireClientContext(context));
     }
 
     @Override
-    public void onShutdown(ClientContext context) {
-      requester.onShutdown(context);
+    public void onShutdown(PersistentRequestRuntimeContext context) {
+      requester.onShutdown(requireClientContext(context));
     }
 
     @Override
@@ -531,7 +549,7 @@ record CoreFcpInsertRuntimeSupport(
 
     @Override
     public void onResume(ClientContext context) throws ResumeFailedException {
-      callback.onResume(context);
+      callback.onResume(toRequestRuntimeContext(context));
     }
 
     @Override
@@ -546,6 +564,10 @@ record CoreFcpInsertRuntimeSupport(
 
     private static FcpInsertCallbackState wrapState(BaseClientPutter state) {
       return state == null ? null : new CoreInsertCallbackState(state);
+    }
+
+    private static FcpRequestRuntimeContext toRequestRuntimeContext(ClientContext context) {
+      return new CoreFcpRequestRuntimeContext(Objects.requireNonNull(context));
     }
   }
 
@@ -653,6 +675,35 @@ record CoreFcpInsertRuntimeSupport(
       public void onRoundFinished(ClientContext context) {
         callbacks.onRoundFinished();
       }
+    }
+  }
+
+  private record CoreFcpRequestRuntimeContext(ClientContext clientContext)
+      implements FcpRequestRuntimeContext, CryptoResumeContext {
+
+    @Override
+    public java.util.Random fastWeakRandom() {
+      return clientContext.fastWeakRandom();
+    }
+
+    @Override
+    public network.crypta.support.io.PersistentFilenameGenerator getPersistentFilenameGenerator() {
+      return clientContext.getPersistentFilenameGenerator();
+    }
+
+    @Override
+    public network.crypta.support.io.PersistentFileTracker getPersistentFileTracker() {
+      return clientContext.getPersistentFileTracker();
+    }
+
+    @Override
+    public MasterSecret getPersistentMasterSecret() {
+      return clientContext.getPersistentMasterSecret();
+    }
+
+    @Override
+    public PersistentRequestRuntimeContext persistentRequestRuntimeContext() {
+      return clientContext;
     }
   }
 }

@@ -6,18 +6,24 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Locale;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
+import network.crypta.client.async.persistence.PersistentRequestCoordinator;
+import network.crypta.client.async.persistence.PersistentRequestCoordinatorContext;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.crypt.ChecksumChecker;
+import network.crypta.crypt.CryptoResumeContext;
+import network.crypta.crypt.MasterSecret;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
+import network.crypta.support.api.ResumeContext;
 import network.crypta.support.io.NativeThread;
+import network.crypta.support.io.PersistentFileTracker;
+import network.crypta.support.io.PersistentFilenameGenerator;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
@@ -38,7 +44,7 @@ import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
  * <p>Requests may be connection-bound, reboot-persistent, or fully persistent on disk. Each
  * instance keeps a stable identifier, priority class, client token, and statistics that are used
  * for progress reporting and scheduling. Implementations are typically confined to the owning
- * {@link ClientContext} and must be safe to invoke from the node's worker threads.
+ * runtime context and must be safe to invoke from the node's worker threads.
  *
  * <ul>
  *   <li>Tracks client-visible metadata such as identifiers, tokens, and verbosity.
@@ -318,14 +324,80 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
         "Persistent request client handle is not a PersistentRequestClient: " + handle);
   }
 
-  private static ClientContext requireClientContext(
-      PersistentRequestRuntimeContext context, String operation) {
-    if (context instanceof ClientContext clientContext) {
-      return clientContext;
+  private static FcpRequestRuntimeContext requireRequestRuntimeContext(
+      PersistentRequestRuntimeContext context) {
+    if (context instanceof FcpRequestRuntimeContext requestContext) {
+      return requestContext;
+    }
+    if (context instanceof CryptoResumeContext cryptoResumeContext) {
+      return new CryptoResumeBackedRequestRuntimeContext(context, cryptoResumeContext);
+    }
+    if (context instanceof ResumeContext resumeContext) {
+      return new ResumeBackedRequestRuntimeContext(context, resumeContext);
     }
     String contextType = context == null ? "null" : context.getClass().getName();
     throw new IllegalArgumentException(
-        "FCP persistent request " + operation + " requires ClientContext but got " + contextType);
+        "FCP persistent request resume requires a resume-capable runtime context but got "
+            + contextType);
+  }
+
+  private static PersistentRequestCoordinator requirePersistentRequestCoordinator(
+      PersistentRequestRuntimeContext context, String operation) {
+    if (context instanceof PersistentRequestCoordinatorContext coordinatorContext) {
+      return coordinatorContext.persistentRequestCoordinator();
+    }
+    String contextType = context == null ? "null" : context.getClass().getName();
+    throw new IllegalArgumentException(
+        "FCP persistent request "
+            + operation
+            + " requires a persistent-request coordinator context but got "
+            + contextType);
+  }
+
+  private record ResumeBackedRequestRuntimeContext(
+      PersistentRequestRuntimeContext persistentRequestRuntimeContext, ResumeContext resumeContext)
+      implements FcpRequestRuntimeContext {
+
+    @Override
+    public java.util.Random fastWeakRandom() {
+      return resumeContext.fastWeakRandom();
+    }
+
+    @Override
+    public PersistentFilenameGenerator getPersistentFilenameGenerator() {
+      return resumeContext.getPersistentFilenameGenerator();
+    }
+
+    @Override
+    public PersistentFileTracker getPersistentFileTracker() {
+      return resumeContext.getPersistentFileTracker();
+    }
+  }
+
+  private record CryptoResumeBackedRequestRuntimeContext(
+      PersistentRequestRuntimeContext persistentRequestRuntimeContext,
+      CryptoResumeContext cryptoResumeContext)
+      implements FcpRequestRuntimeContext, CryptoResumeContext {
+
+    @Override
+    public java.util.Random fastWeakRandom() {
+      return cryptoResumeContext.fastWeakRandom();
+    }
+
+    @Override
+    public PersistentFilenameGenerator getPersistentFilenameGenerator() {
+      return cryptoResumeContext.getPersistentFilenameGenerator();
+    }
+
+    @Override
+    public PersistentFileTracker getPersistentFileTracker() {
+      return cryptoResumeContext.getPersistentFileTracker();
+    }
+
+    @Override
+    public MasterSecret getPersistentMasterSecret() {
+      return cryptoResumeContext.getPersistentMasterSecret();
+    }
   }
 
   /**
@@ -357,18 +429,10 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * job or be canceled outright. This callback is invoked on a node worker thread and should return
    * quickly.
    *
-   * @param context client context providing access to schedulers, queues, and persistent roots
+   * @param context detached runtime context providing access to schedulers, queues, and persistent
+   *     roots
    */
-  public abstract void onLostConnection(ClientContext context);
-
-  /**
-   * Detached wrapper for {@link #onLostConnection(ClientContext)} used by server-owned callers.
-   *
-   * @param context detached runtime context backed by the live daemon runtime
-   */
-  public final void onLostConnection(PersistentRequestRuntimeContext context) {
-    onLostConnection(requireClientContext(context, "lost-connection"));
-  }
+  public abstract void onLostConnection(PersistentRequestRuntimeContext context);
 
   /**
    * Sends any queued protocol messages for this request to a reconnecting client.
@@ -445,46 +509,24 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   abstract void register(boolean noTags) throws IdentifierCollisionException;
 
   /**
-   * Starts the request using the full daemon-owned client context.
-   *
-   * <p>Concrete FCP request implementations still operate directly on {@link ClientContext} because
-   * their scheduling, persistence, and queue interactions remain runtime-owned. The client-owned
-   * persistence seam delegates to this overload only after the adapter has narrowed the callback
-   * seam back to the expected daemon context type.
-   *
-   * @param context live daemon client context used to create and schedule the request
-   */
-  public abstract void start(ClientContext context);
-
-  /** {@inheritDoc} */
-  @Override
-  public final void start(PersistentRequestRuntimeContext context) {
-    start(requireClientContext(context, "start"));
-  }
-
-  /**
    * Cancels this request and releases any associated resources.
    *
    * <p>If the underlying requester handle is still active, it is asked to cancel itself via the
-   * supplied {@link ClientContext}. Persistent state and any cached buckets are then freed by
+   * supplied detached runtime context. Persistent state and any cached buckets are then freed by
    * calling {@link #freeData()}. This method is idempotent and may be invoked after completion when
    * the caller no longer cares about remaining notifications.
    *
-   * @param context client context used when propagating the cancellation into the core node
+   * @param context detached runtime context used when propagating the cancellation into the core
+   *     node
    */
-  public void cancel(ClientContext context) {
+  @Override
+  public void cancel(PersistentRequestRuntimeContext context) {
     FcpRequesterHandle requester = getClientRequest();
     // It might have been finished on startup.
     if (LOG.isDebugEnabled())
       LOG.debug("Cancelling {} for {} persistence = {}", requester, this, persistence);
     if (requester != null) requester.cancel(context);
     freeData();
-  }
-
-  /** {@inheritDoc} */
-  @Override
-  public final void cancel(PersistentRequestRuntimeContext context) {
-    cancel(requireClientContext(context, "cancel"));
   }
 
   /**
@@ -568,9 +610,10 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   /**
    * Returns the underlying requester handle that performs the actual network work.
    *
-   * <p>Subclasses typically create a concrete requester in {@link #start(ClientContext)} and return
-   * it here so that lifecycle callbacks such as {@link #cancel(ClientContext)} and {@link
-   * #onShutdown(ClientContext)} can delegate to it.
+   * <p>Subclasses typically create a concrete requester in {@link
+   * #start(PersistentRequestRuntimeContext)} and return it here so that lifecycle callbacks such as
+   * {@link #cancel(PersistentRequestRuntimeContext)} and {@link
+   * #onShutdown(PersistentRequestRuntimeContext)} can delegate to it.
    *
    * @return currently associated requester handle, or {@code null} when no requester is active
    */
@@ -582,9 +625,9 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * <p>The default implementation cancels the internal requester again and frees cached data.
    * Subclasses may override this to perform additional accounting or logging as required.
    *
-   * @param context client context used when propagating the drop semantics into the core
+   * @param context detached runtime context used when propagating the drop semantics into the core
    */
-  public void dropped(ClientContext context) {
+  public void dropped(PersistentRequestRuntimeContext context) {
     cancel(context);
     freeData();
   }
@@ -702,7 +745,10 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   @SuppressWarnings("unused")
   public abstract boolean isTotalFinalized();
 
-  /** Indicates whether {@link #start(ClientContext)} has been invoked for this request. */
+  /**
+   * Indicates whether {@link #start(PersistentRequestRuntimeContext)} has been invoked for this
+   * request.
+   */
   protected boolean started;
 
   /**
@@ -748,26 +794,14 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * Depending on the request type, this operation can be expensive and may block briefly while
    * scheduling work.
    *
-   * @param context client context used to create new requesters and schedule work
+   * @param context detached runtime context used to create new requesters and schedule work
    * @param disableFilterData whether associated filter data should be disabled for the restart
    * @return {@code true} if the restart was submitted successfully and should be visible to clients
    * @throws PersistenceDisabledException if persistent storage required for restart is not enabled
    */
-  public abstract boolean restart(ClientContext context, boolean disableFilterData)
+  public abstract boolean restart(
+      PersistentRequestRuntimeContext context, boolean disableFilterData)
       throws PersistenceDisabledException;
-
-  /**
-   * Detached wrapper for {@link #restart(ClientContext, boolean)}.
-   *
-   * @param context detached runtime context backed by the live daemon runtime
-   * @param disableFilterData whether associated filter data should be disabled for the restart
-   * @return {@code true} if the restart was submitted successfully and should be visible to clients
-   * @throws PersistenceDisabledException if persistent storage required for restart is not enabled
-   */
-  public final boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData)
-      throws PersistenceDisabledException {
-    return restart(requireClientContext(context, "restart"), disableFilterData);
-  }
 
   /**
    * Called after a ModifyPersistentRequest. Sends a PersistentRequestModified message to clients if
@@ -809,7 +843,8 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
     }
     priorityClass = newPriorityClass;
     FcpRequesterHandle requester = getClientRequest();
-    requester.setPriorityClass(priorityClass, server.serverRuntimeSupport().clientContext());
+    requester.setPriorityClass(
+        priorityClass, server.serverRuntimeSupport().persistentRequestRuntimeContext());
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
       if (cache != null) {
@@ -919,18 +954,10 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * override to send {@code PersistentRequestRemoved} notifications or clean up any on-disk
    * artifacts. The request will no longer be visible in persistent listings after this point.
    *
-   * @param context client context that can be used to access persistence services if necessary
+   * @param context detached runtime context that can be used to access persistence services if
+   *     necessary
    */
-  public void requestWasRemoved(ClientContext context) {}
-
-  /**
-   * Detached wrapper for {@link #requestWasRemoved(ClientContext)} used by server-owned callers.
-   *
-   * @param context detached runtime context backed by the live daemon runtime
-   */
-  public final void requestWasRemoved(PersistentRequestRuntimeContext context) {
-    requestWasRemoved(requireClientContext(context, "remove"));
-  }
+  public void requestWasRemoved(PersistentRequestRuntimeContext context) {}
 
   /**
    * Returns whether this request belongs to one of the global queues.
@@ -1018,11 +1045,12 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    *
    * @param dis input stream positioned at the beginning of a client-detail record
    * @param reqID identifier that the caller expects, used to guard against mismatches
-   * @param context client execution context used to rebuild persistent client structures
+   * @param context detached runtime context used to rebuild persistent client structures
    * @throws IOException if reading from {@code dis} fails or is prematurely truncated
    * @throws StorageFormatException if the stored structure is incompatible or has invalid values
    */
-  protected ClientRequest(DataInputStream dis, RequestIdentifier reqID, ClientContext context)
+  protected ClientRequest(
+      DataInputStream dis, RequestIdentifier reqID, PersistentRequestRuntimeContext context)
       throws IOException, StorageFormatException {
     this(parsePersistentState(dis, reqID, context));
   }
@@ -1049,7 +1077,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
   }
 
   private static PersistentState parsePersistentState(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context)
+      DataInputStream dis, RequestIdentifier reqID, PersistentRequestRuntimeContext context)
       throws IOException, StorageFormatException {
     long magic = dis.readLong();
     if (magic != CLIENT_DETAIL_MAGIC) throw new StorageFormatException("Bad magic");
@@ -1067,10 +1095,11 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
     boolean finished = dis.readBoolean();
     // We can't wait until onResume() to get the client, because it may be used in the
     // constructors.
+    PersistentRequestCoordinator coordinator =
+        requirePersistentRequestCoordinator(context, "restart");
     PersistentRequestClient client =
         requirePersistentRequestClient(
-            context.persistentRequestCoordinator.getOrCreateClientHandle(
-                reqID.globalQueue, reqID.clientName));
+            coordinator.getOrCreateClientHandle(reqID.globalQueue, reqID.clientName));
     RequestClient lowLevelClient = client.lowLevelClient(realTime);
     return new PersistentState(
         realTime,
@@ -1092,53 +1121,46 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * <p>This method is invoked by the owning requester immediately after the request has been read
    * from persistent storage. It recreates transient collaborators such as the {@link
    * PersistentRequestClient}, low-level {@link RequestClient} and any subclass state via {@link
-   * #innerResume(ClientContext)} before registering the request with the persistent-request
-   * coordinator again.
+   * #innerResume(FcpRequestRuntimeContext)} before registering the request with the
+   * persistent-request coordinator again.
    *
-   * @param context client context that provides access to the persistent-request coordinator and
-   *     utility factories
+   * @param context detached request runtime context that provides access to utility factories
    * @throws ResumeFailedException if the request cannot be reattached to the runtime environment
    */
-  @Override
-  public final void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException {
-    onResume(requireClientContext(context, "resume"));
-  }
-
-  /**
-   * Reconnects this request to runtime services after it has been deserialized.
-   *
-   * <p>This method is invoked by the owning requester immediately after the request has been read
-   * from persistent storage. It recreates transient collaborators such as the {@link
-   * PersistentRequestClient}, low-level {@link RequestClient} and any subclass state via {@link
-   * #innerResume(ClientContext)} before registering the request with the persistent-request
-   * coordinator again.
-   *
-   * @param context client context that provides access to the persistent-request coordinator and
-   *     utility factories
-   * @throws ResumeFailedException if the request cannot be reattached to the runtime environment
-   */
-  public final void onResume(ClientContext context) throws ResumeFailedException {
+  public final void onResume(FcpRequestRuntimeContext context) throws ResumeFailedException {
+    PersistentRequestCoordinator coordinator =
+        requirePersistentRequestCoordinator(context.persistentRequestRuntimeContext(), "resume");
     client =
-        requirePersistentRequestClient(
-            context.persistentRequestCoordinator.getOrCreateClientHandle(global, clientName));
+        requirePersistentRequestClient(coordinator.getOrCreateClientHandle(global, clientName));
     lowLevelClient = client.lowLevelClient(realTime);
     innerResume(context);
     FcpRequesterHandle requester = getClientRequest();
-    if (requester != null) requester.onResume(context); // Can legally be null.
-    context.persistentRequestCoordinator.resumePersistentRequest(this, global, clientName);
+    if (requester != null) {
+      requester.onResume(context.persistentRequestRuntimeContext()); // Can legally be null.
+    }
+    coordinator.resumePersistentRequest(this, global, clientName);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public final void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException {
+    onResume(requireRequestRuntimeContext(context));
   }
 
   /**
-   * Performs subclass-specific reattachment work during {@link #onResume(ClientContext)}.
+   * Performs subclass-specific reattachment work during {@link
+   * #onResume(FcpRequestRuntimeContext)}.
    *
    * <p>Implementations should recreate transient structures that cannot be serialized directly,
    * such as bucket references or auxiliary state, but must not call back into the requester tree to
    * avoid recursion.
    *
-   * @param context client context providing access to node-wide services required to resume
+   * @param context detached request runtime context providing access to node-wide services required
+   *     to resume
    * @throws ResumeFailedException if required, resources cannot be reacquired during resumption
    */
-  protected abstract void innerResume(ClientContext context) throws ResumeFailedException;
+  protected abstract void innerResume(FcpRequestRuntimeContext context)
+      throws ResumeFailedException;
 
   /**
    * Returns the low-level {@link RequestClient} used to interact with the core node.
@@ -1186,7 +1208,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * @param reqID identifier describing the request type and queue used during serialization
    * @param fetchRuntimeSupport fetch runtime support used to rebuild the detached GET execution
    *     state
-   * @param context client context used to create any dependent objects during restart
+   * @param context detached runtime context used to create any dependent objects during restart
    * @param checker checksum helper responsible for validating the integrity of the serialized data
    * @return reconstructed request instance, or {@code null} when the type is not supported here
    * @throws StorageFormatException if the stored data is malformed or inconsistent with {@code
@@ -1198,7 +1220,7 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
       DataInputStream dis,
       RequestIdentifier reqID,
       FcpFetchRuntimeSupport fetchRuntimeSupport,
-      ClientContext context,
+      PersistentRequestRuntimeContext context,
       ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
     return reqID.type == GET
@@ -1213,23 +1235,11 @@ public abstract class ClientRequest implements Serializable, PersistentRequestHa
    * bookkeeping that cannot be recovered automatically after restart. The default implementation
    * forwards the call to the underlying requester handle, if present.
    *
-   * @param context client context giving access to persistence mechanisms used during shutdown
+   * @param context detached runtime context giving access to persistence mechanisms used during
+   *     shutdown
    */
   @Override
-  public final void onShutdown(PersistentRequestRuntimeContext context) {
-    onShutdown(requireClientContext(context, "shutdown"));
-  }
-
-  /**
-   * Called just before the node performs its final writing during shutdown.
-   *
-   * <p>Subclasses can override this hook to flush any outstanding state to disk or perform
-   * bookkeeping that cannot be recovered automatically after restart. The default implementation
-   * forwards the call to the underlying requester handle, if present.
-   *
-   * @param context client context giving access to persistence mechanisms used during shutdown
-   */
-  public void onShutdown(ClientContext context) {
+  public void onShutdown(PersistentRequestRuntimeContext context) {
     FcpRequesterHandle requester = getClientRequest();
     if (requester != null) requester.onShutdown(context);
   }

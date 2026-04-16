@@ -3,6 +3,7 @@ package network.crypta.clients.fcp;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -48,6 +49,84 @@ final class ClientGetLifecycle {
    */
   ClientGetLifecycle(ClientGet request) {
     this.request = request;
+  }
+
+  /**
+   * Registers a newly constructed request with its owning persistent client when required.
+   *
+   * <p>Connection-scoped requests are already owned by the active handler and therefore do not
+   * participate in persistent-client registration. Reboot- and forever-persistent requests are
+   * registered with their client immediately and may queue a persistent tag message unless the
+   * caller explicitly suppresses tag emission.
+   *
+   * @param noTags {@code true} to suppress the initial persistent-tag message after registration
+   * @throws IdentifierCollisionException if the request identifier is already in use
+   */
+  void register(boolean noTags) throws IdentifierCollisionException {
+    if (request.persistence != ClientRequest.Persistence.CONNECTION) {
+      PersistentRequestClient persistentClient = request.client;
+      persistentClient.register(request);
+      if (!noTags) {
+        FCPMessage msg = request.persistentTagMessage();
+        persistentClient.queueClientRequestMessage(msg, 0);
+      }
+    }
+  }
+
+  /**
+   * Starts the live GET execution and synchronizes queue-side bookkeeping.
+   *
+   * <p>The method preserves the request's original lifecycle semantics: it skips terminal requests,
+   * starts the underlying execution, emits a persistent tag for non-connection requests, records
+   * the {@code started} flag, and updates any associated {@link RequestStatusCache}. Failures are
+   * normalized through the request's existing failure path, so cleanup and client notifications
+   * remain unchanged.
+   */
+  void start() {
+    try {
+      synchronized (request.requestLock()) {
+        if (request.finished) return;
+      }
+      request.execution().start();
+      if (shouldSendPersistentTag()) {
+        FCPMessage msg = request.persistentTagMessage();
+        request.client.queueClientRequestMessage(msg, 0);
+      }
+      synchronized (request.requestLock()) {
+        request.started = true;
+      }
+      if (request.client != null) {
+        RequestStatusCache cache = request.client.getRequestStatusCache();
+        if (cache != null) {
+          cache.updateStarted(request.identifier, true);
+        }
+      }
+    } catch (FetchException e) {
+      synchronized (request.requestLock()) {
+        request.started = true;
+      }
+      request.onFailure(e);
+    } catch (Exception t) {
+      synchronized (request.requestLock()) {
+        request.started = true;
+      }
+      request.onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t));
+    }
+  }
+
+  /**
+   * Handles loss of the transport or scheduler association for the request.
+   *
+   * <p>Only connection-scoped requests are canceled immediately because they can no longer deliver
+   * results once the owning connection disappears. Persistent requests stay in their queues and are
+   * expected to resume delivery on reconnection.
+   *
+   * @param context detached runtime context used when canceling connection-scoped work
+   */
+  void onLostConnection(PersistentRequestRuntimeContext context) {
+    if (request.persistence == ClientRequest.Persistence.CONNECTION) {
+      request.cancel(context);
+    }
   }
 
   /**
@@ -221,5 +300,11 @@ final class ClientGetLifecycle {
     }
 
     request.freeData();
+  }
+
+  private boolean shouldSendPersistentTag() {
+    synchronized (request.requestLock()) {
+      return request.persistence != ClientRequest.Persistence.CONNECTION && !request.finished;
+    }
   }
 }
