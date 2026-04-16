@@ -1021,11 +1021,14 @@ class AdapterFcpBoundaryTest {
       return null;
     }
 
-    int equalsIndex = findTopLevelChar(trimmedArgs, '=');
-    if (equalsIndex != -1) {
-      String leftSide = trimmedArgs.substring(0, equalsIndex).trim();
+    for (String argument : splitTopLevel(trimmedArgs, ',')) {
+      int equalsIndex = findTopLevelChar(argument, '=');
+      if (equalsIndex == -1) {
+        continue;
+      }
+      String leftSide = argument.substring(0, equalsIndex).trim();
       if (leftSide.equals("path")) {
-        return trimmedArgs.substring(equalsIndex + 1).trim();
+        return argument.substring(equalsIndex + 1).trim();
       }
     }
 
