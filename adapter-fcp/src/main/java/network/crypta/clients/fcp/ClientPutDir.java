@@ -9,17 +9,12 @@ import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.net.MalformedURLException;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
-import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
-import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -200,13 +195,13 @@ public final class ClientPutDir extends ClientPutBase {
    * Scans a local directory tree and schedules it for encrypted asynchronous insertion.
    *
    * <p>This overload inspects the filesystem on behalf of desktop or node-local tooling. It walks
-   * the directory, optionally skipping hidden files, builds {@link ManifestElement} instances
-   * backed by {@link FileBucket}s, and configures retry, compression, and persistence knobs before
-   * the request is registered with a {@link PersistentRequestClient}. The constructor immediately
-   * counts files and bytes, so progress meters have deterministic totals, and it captures the
-   * optional override splitfile key for callers who precompute keys. After construction, invoke
-   * {@link #start(network.crypta.client.async.ClientContext) start(ClientContext)} to stream blocks
-   * while leveraging the provided {@link FCPServer}.
+   * the directory, optionally skipping hidden files, builds {@link ManifestElement} instances for
+   * local files, and configures retry, compression, and persistence knobs before the request is
+   * registered with a {@link PersistentRequestClient}. The constructor immediately counts files and
+   * bytes, so progress meters have deterministic totals, and it captures the optional override
+   * splitfile key for callers who precompute keys. After construction, invoke {@link
+   * #start(network.crypta.client.async.ClientContext) start(ClientContext)} to stream blocks while
+   * leveraging the provided {@link FCPServer}.
    *
    * <pre>{@code
    * var request =
@@ -276,7 +271,9 @@ public final class ClientPutDir extends ClientPutBase {
     wasDiskPut = true;
     this.overrideSplitfileCryptoKey = options.overrideSplitfileCryptoKey();
     // debug level captured via LOG.isDebugEnabled()
-    this.manifestElements = makeDiskDirManifest(dir, "", allowUnreadableFiles, includeHiddenFiles);
+    this.manifestElements =
+        ClientPutDirManifestSupport.buildDiskManifest(
+            dir, allowUnreadableFiles, includeHiddenFiles);
     this.defaultName = defaultName;
     makePutter(runtimeSupport, requestParams);
     if (putter != null) {
@@ -406,85 +403,6 @@ public final class ClientPutDir extends ClientPutBase {
     }
   }
 
-  private Map<String, Object> makeDiskDirManifest(
-      File dir, String prefix, boolean allowUnreadableFiles, boolean includeHiddenFiles)
-      throws FileNotFoundException {
-
-    Map<String, Object> map = new HashMap<>();
-    File[] files = dir.listFiles();
-
-    if (files == null) throw new IllegalArgumentException("No such directory");
-
-    for (File file : files) {
-      if (shouldSkipHiddenFile(file, includeHiddenFiles)) {
-        continue;
-      }
-
-      if (!file.exists() || !file.canRead()) {
-        handleUnreadableFile(file, allowUnreadableFiles);
-      } else if (file.isFile()) {
-        addFileEntry(map, file, prefix);
-      } else if (file.isDirectory()) {
-        addDirectoryEntry(map, file, prefix, allowUnreadableFiles, includeHiddenFiles);
-      } else {
-        handleUnsupportedEntry(file, allowUnreadableFiles);
-      }
-    }
-
-    return map;
-  }
-
-  private boolean shouldSkipHiddenFile(File file, boolean includeHiddenFiles) {
-    return file.isHidden() && !includeHiddenFiles;
-  }
-
-  private void handleUnreadableFile(File file, boolean allowUnreadableFiles)
-      throws FileNotFoundException {
-    if (!allowUnreadableFiles) {
-      throw new FileNotFoundException("The file does not exist or is unreadable : " + file);
-    }
-  }
-
-  private void handleUnsupportedEntry(File file, boolean allowUnreadableFiles)
-      throws FileNotFoundException {
-    if (!allowUnreadableFiles) {
-      throw new FileNotFoundException("Not a file and not a directory : " + file);
-    }
-  }
-
-  private void addFileEntry(Map<String, Object> map, File file, String prefix) {
-    FileBucket bucket = new FileBucket(file, true, false, false, false);
-    if (LOG.isDebugEnabled()) LOG.debug("Manifest add file path={}", file.getAbsolutePath());
-
-    map.put(
-        file.getName(),
-        new ManifestElement(
-            file.getName(),
-            prefix + file.getName(),
-            bucket,
-            DefaultMIMETypes.guessMIMEType(file.getName(), true),
-            file.length()));
-  }
-
-  private void addDirectoryEntry(
-      Map<String, Object> map,
-      File directory,
-      String prefix,
-      boolean allowUnreadableFiles,
-      boolean includeHiddenFiles)
-      throws FileNotFoundException {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Manifest add directory path={}", directory.getAbsolutePath());
-
-    map.put(
-        directory.getName(),
-        makeDiskDirManifest(
-            directory,
-            prefix + directory.getName() + "/",
-            allowUnreadableFiles,
-            includeHiddenFiles));
-  }
-
   private void makePutter(FcpInsertRuntimeSupport runtimeSupport, ClientRequestParams requestParams)
       throws network.crypta.client.async.TooManyFilesInsertException {
     putter =
@@ -558,27 +476,8 @@ public final class ClientPutDir extends ClientPutBase {
     }
     if (LOG.isDebugEnabled())
       LOG.debug("Free-data continue request={} persistence={}", this, persistence);
-    // We have to commit everything, so activating everything here costs us little memory...?
-    freeData(manifestElements);
+    ClientPutDirManifestSupport.freeManifest(manifestElements);
     manifestElements = null;
-  }
-
-  private void freeData(Map<String, Object> manifestElements) {
-    if (LOG.isDebugEnabled())
-      LOG.debug(
-          "Free-data recurse request={} persistence={} size={}",
-          this,
-          persistence,
-          manifestElements.size());
-    for (Object o : manifestElements.values()) {
-      if (o instanceof Map) {
-        freeData(Metadata.forceMap(o));
-      } else {
-        ManifestElement e = (ManifestElement) o;
-        if (LOG.isDebugEnabled()) LOG.debug("Free-data release element={}", e);
-        e.freeData();
-      }
-    }
   }
 
   /**
@@ -611,40 +510,7 @@ public final class ClientPutDir extends ClientPutBase {
    */
   @Override
   protected FCPMessage persistentTagMessage() {
-    if (lowLevelClient == null) LOG.warn("Persistent snapshot missing low-level client");
-    if (putter == null) LOG.warn("Persistent snapshot missing putter");
-    HashMap<String, Object> manifestSnapshot =
-        manifestElements != null ? new HashMap<>(manifestElements) : null;
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            publicURI,
-            identifier,
-            verbosity,
-            priorityClass,
-            persistence,
-            isRealTime(),
-            clientToken,
-            global);
-    PersistentPutRequestMetadata metadata =
-        new PersistentPutRequestMetadata(
-            uri,
-            started,
-            ctx.getMaxInsertRetries(),
-            this.ctx.getCompatibilityMode(),
-            ctx.isDontCompress(),
-            ctx.getCompressorDescriptor(),
-            putter != null ? putter.getSplitfileCryptoKey() : null);
-    return new PersistentPutDir(requestParams, metadata, defaultName, manifestSnapshot, wasDiskPut);
-  }
-
-  private boolean isRealTime() {
-    if (lowLevelClient == null) {
-      // This can happen but only due to data corruption - old databases on which various bugs have
-      // resulted in it getting deleted and also possibly failed deletions.
-      LOG.warn("Realtime flag unavailable: lowLevelClient is null");
-      return false;
-    }
-    return lowLevelClient.realTimeFlag();
+    return new ClientPutDirPersistentTagBuilder(this).persistentTagMessage();
   }
 
   /**
@@ -825,56 +691,7 @@ public final class ClientPutDir extends ClientPutBase {
 
   @Override
   RequestStatus getStatus() {
-    FreenetURI finalURI = getFinalURI();
-    InsertExceptionMode failureCode = null;
-    String failureReasonShort = null;
-    PutFailedMessage failureMessage = getFailureMessage();
-    if (failureMessage != null) {
-      failureCode = failureMessage.failureMode;
-      failureReasonShort = failureMessage.getLongFailedMessage();
-    }
-
-    int total = 0;
-    int min = 0;
-    int fetched = 0;
-    int fatal = 0;
-    int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Instant latestSuccess = Instant.now();
-    Instant latestFailure = null;
-    boolean totalFinalized = false;
-
-    FCPMessage progressSnapshot = getProgressMessageSnapshot();
-    if (progressSnapshot instanceof SimpleProgressMessage msg) {
-      total = (int) msg.getTotalBlocks();
-      min = (int) msg.getMinBlocks();
-      fetched = (int) msg.getFetchedBlocks();
-      latestSuccess = msg.getLatestSuccess();
-      fatal = (int) msg.getFatalyFailedBlocks();
-      failed = (int) msg.getFailedBlocks();
-      latestFailure = msg.getLatestFailure();
-      totalFinalized = msg.isTotalFinalized();
-    }
-
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            identifier,
-            persistence,
-            started,
-            finished,
-            succeeded,
-            total,
-            min,
-            fetched,
-            latestSuccess,
-            fatal,
-            failed,
-            latestFailure,
-            totalFinalized,
-            priorityClass);
-    UploadRequestStatusDetails details =
-        new UploadRequestStatusDetails(finalURI, uri, failureCode, failureReasonShort, null);
-    return new UploadDirRequestStatus(statusSnapshot, details, totalSize, numberOfFiles);
+    return ClientPutDirStatusSnapshotBuilder.build(this);
   }
 
   /**
@@ -917,6 +734,22 @@ public final class ClientPutDir extends ClientPutBase {
   @Override
   public boolean fullyResumed() {
     return false;
+  }
+
+  ClientPutDirExecution persistentTagExecution() {
+    return putter;
+  }
+
+  String persistentTagDefaultName() {
+    return defaultName;
+  }
+
+  boolean persistentTagWasDiskPut() {
+    return wasDiskPut;
+  }
+
+  Map<String, Object> persistentTagManifestElements() {
+    return manifestElements;
   }
 
   @Override

@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
+import network.crypta.client.ClientMetadata;
+import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -66,6 +68,24 @@ public interface FcpInsertRuntimeSupport {
    * @return bucket factory aligned with the insert persistence mode
    */
   BucketFactory bucketFactory(boolean persistentForever);
+
+  /**
+   * Builds a redirect metadata bucket aligned with the insert persistence mode.
+   *
+   * <p>Single-file put requests use this when {@code UploadFrom=redirect} is selected. Keeping the
+   * metadata construction behind the runtime seam lets the adapter prepare redirect inserts without
+   * importing the runtime-owned metadata implementation.
+   *
+   * @param metadata client metadata to embed in the redirect document
+   * @param redirectTarget redirect target URI
+   * @param persistentForever whether the surrounding request persists forever
+   * @return bucket containing serialized redirect metadata
+   * @throws MetadataUnresolvedException if the redirect metadata cannot be serialized
+   * @throws IOException if bucket allocation or serialization fails
+   */
+  RandomAccessBucket createRedirectMetadataBucket(
+      ClientMetadata metadata, FreenetURI redirectTarget, boolean persistentForever)
+      throws MetadataUnresolvedException, IOException;
 
   /**
    * Allocates a forever-persistent upload bucket for inbound FCP payloads.

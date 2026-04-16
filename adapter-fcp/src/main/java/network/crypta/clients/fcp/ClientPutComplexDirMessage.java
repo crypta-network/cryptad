@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.SimpleFieldSet;
@@ -134,7 +133,7 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
       Object o = byName.get(before);
       if (o != null) {
         if (o instanceof Map) {
-          addFile(Metadata.forceMap(o), after, f);
+          addFile(ManifestTreeMaps.forceMap(o), after, f);
         } else {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_MESSAGE,
@@ -259,7 +258,7 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
       String tempName = entry.getKey();
       Object val = entry.getValue();
       if (val instanceof HashMap) {
-        Map<String, Object> h = Metadata.forceMap(val);
+        Map<String, Object> h = ManifestTreeMaps.forceMap(val);
         HashMap<String, Object> manifests = new HashMap<>();
         manifestElements.put(tempName, manifests);
         convertFilesByNameToManifestElements(h, manifests, transferAccess);

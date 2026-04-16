@@ -1,24 +1,14 @@
 package network.crypta.clients.fcp;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.ManifestElement;
-import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.DelayedFreeRandomAccessBucket;
-import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.NullBucket;
-import network.crypta.support.io.PersistentFileTracker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,7 +33,6 @@ class PersistentPutDirTest {
   private static final String FILENAME_KEY = "Filename";
   private static final String FILE_TXT_NAME = "file.txt";
   private static final String DEFAULT_NAME = "default";
-  private static final String WRAPPED_FILE_NAME = "wrapped.dat";
   private static final String[] ROOT_KEYS =
       new String[] {
         "Identifier",
@@ -65,35 +54,40 @@ class PersistentPutDirTest {
         SPLITFILE_KEY
       };
 
-  @TempDir Path tempDir;
-
   @Mock FCPConnectionHandler connectionHandler;
 
   @Test
-  void getFieldSet_whenDiskDirectAndRedirectElements_populatesAllFields() throws Exception {
+  void getFieldSet_whenDiskDirectAndRedirectEntries_populatesAllFields() {
     FreenetURI publicUri = new FreenetURI("CHK", "public");
     FreenetURI privateUri = new FreenetURI("SSK", "private");
-
-    File diskFile = Files.createFile(tempDir.resolve(DISK_FILE_NAME)).toFile();
-    FileBucket diskBucket = new FileBucket(diskFile, false, false, false, false);
-    ManifestElement diskElement = new ManifestElement(DISK_FILE_NAME, diskBucket, "text/plain", 4);
-
-    NullBucket directBucket = new NullBucket(8);
-    ManifestElement nestedElement =
-        new ManifestElement("nested.bin", directBucket, "application/octet-stream", 8);
-
     FreenetURI redirectUri = new FreenetURI("CHK", "target");
-    ManifestElement redirectElement = new ManifestElement(REDIRECT_FILE_NAME, redirectUri, null);
 
-    Map<String, Object> manifest = new LinkedHashMap<>();
-    manifest.put(DISK_FILE_NAME, diskElement);
-    Map<String, Object> subdir = new LinkedHashMap<>();
-    subdir.put("nested.bin", nestedElement);
-    manifest.put("subdir", subdir);
-    manifest.put(REDIRECT_FILE_NAME, redirectElement);
+    List<PersistentPutDirEntrySnapshot> manifestEntries =
+        List.of(
+            new PersistentPutDirEntrySnapshot(
+                DISK_FILE_NAME,
+                ClientPutBase.UploadFrom.DISK,
+                4,
+                "disk/path/" + DISK_FILE_NAME,
+                "text/plain",
+                null),
+            new PersistentPutDirEntrySnapshot(
+                "subdir/nested.bin",
+                ClientPutBase.UploadFrom.DIRECT,
+                8,
+                null,
+                "application/octet-stream",
+                null),
+            new PersistentPutDirEntrySnapshot(
+                REDIRECT_FILE_NAME,
+                ClientPutBase.UploadFrom.REDIRECT,
+                -1,
+                null,
+                null,
+                redirectUri));
 
     byte[] cryptoKey = new byte[] {0x0a, 0x0b, 0x0c};
-    SimpleFieldSet fs = buildFullFieldSet(manifest, publicUri, privateUri, cryptoKey);
+    SimpleFieldSet fs = buildFullFieldSet(manifestEntries, publicUri, privateUri, cryptoKey);
 
     Map<String, String> expectedRoot = new LinkedHashMap<>();
     expectedRoot.put("Identifier", "id-123");
@@ -124,7 +118,7 @@ class PersistentPutDirTest {
     Map<String, String> expectedFirst = new LinkedHashMap<>();
     expectedFirst.put("Name", DISK_FILE_NAME);
     expectedFirst.put(UPLOAD_FROM_KEY, "disk");
-    expectedFirst.put(FILENAME_KEY, diskFile.getPath());
+    expectedFirst.put(FILENAME_KEY, "disk/path/" + DISK_FILE_NAME);
     expectedFirst.put(DATA_LENGTH_KEY, "4");
     expectedFirst.put(CONTENT_TYPE_KEY, "text/plain");
     assertEquals(
@@ -157,12 +151,11 @@ class PersistentPutDirTest {
 
   @Test
   void getFieldSet_whenOptionalFieldsOmitted_doesNotIncludeThem() {
-    NullBucket bucket = new NullBucket(1);
-    ManifestElement element = new ManifestElement(FILE_TXT_NAME, bucket, null, 1);
-    Map<String, Object> manifest = new LinkedHashMap<>();
-    manifest.put(FILE_TXT_NAME, element);
-
-    SimpleFieldSet fs = buildOptionalFieldSet(manifest);
+    SimpleFieldSet fs =
+        buildOptionalFieldSet(
+            List.of(
+                new PersistentPutDirEntrySnapshot(
+                    FILE_TXT_NAME, ClientPutBase.UploadFrom.DIRECT, 1, null, null, null)));
 
     assertNull(fs.get(PRIVATE_URI_KEY));
     assertNull(fs.get(CLIENT_TOKEN_KEY));
@@ -171,26 +164,41 @@ class PersistentPutDirTest {
   }
 
   @Test
-  void generateFieldSet_whenBucketWrappedInDelayedFree_usesUnderlyingBucket() {
-    File underlyingFile = tempDir.resolve(WRAPPED_FILE_NAME).toFile();
-    RandomAccessBucket underlyingBucket =
-        new FileBucket(underlyingFile, false, false, false, false);
-    PersistentFileTracker tracker = Mockito.mock(PersistentFileTracker.class);
-    Mockito.when(tracker.commitID()).thenReturn(1L);
+  void getFieldSet_whenUploadSourceUnknown_omitsUploadFromButKeepsOtherFields() {
+    PersistentPutDir message =
+        buildMessage(
+            "id-wrap",
+            Persistence.REBOOT,
+            false,
+            List.of(
+                new PersistentPutDirEntrySnapshot(
+                    "wrapped.dat", null, 12, null, "application/octet-stream", null)));
 
-    DelayedFreeRandomAccessBucket wrapped =
-        new DelayedFreeRandomAccessBucket(tracker, underlyingBucket);
-    ManifestElement element = new ManifestElement(WRAPPED_FILE_NAME, wrapped, null, 12);
-    Map<String, Object> manifest = new LinkedHashMap<>();
-    manifest.put(WRAPPED_FILE_NAME, element);
-
-    PersistentPutDir message = buildWrappedMessage(manifest);
     SimpleFieldSet filesSubset = message.getFieldSet().subset("Files");
     assertNotNull(filesSubset);
     SimpleFieldSet fileSubset = filesSubset.subset("0");
     assertNotNull(fileSubset);
-    assertEquals("disk", fileSubset.get(UPLOAD_FROM_KEY));
-    assertEquals(underlyingFile.getPath(), fileSubset.get(FILENAME_KEY));
+    assertNull(fileSubset.get(UPLOAD_FROM_KEY));
+    assertEquals("12", fileSubset.get(DATA_LENGTH_KEY));
+    assertEquals("application/octet-stream", fileSubset.get(CONTENT_TYPE_KEY));
+  }
+
+  @Test
+  void run_whenInvoked_throwsMessageInvalidExceptionWithContext() {
+    PersistentPutDir message =
+        buildMessage(
+            "ident",
+            Persistence.CONNECTION,
+            true,
+            List.of(
+                new PersistentPutDirEntrySnapshot(
+                    FILE_TXT_NAME, ClientPutBase.UploadFrom.DIRECT, 1, null, null, null)));
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler));
+    assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
+    assertEquals("ident", ex.ident);
+    assertTrue(ex.global);
   }
 
   private Map<String, String> extract(SimpleFieldSet fieldSet, String... keys) {
@@ -202,7 +210,10 @@ class PersistentPutDirTest {
   }
 
   private SimpleFieldSet buildFullFieldSet(
-      Map<String, Object> manifest, FreenetURI publicUri, FreenetURI privateUri, byte[] cryptoKey) {
+      List<PersistentPutDirEntrySnapshot> manifestEntries,
+      FreenetURI publicUri,
+      FreenetURI privateUri,
+      byte[] cryptoKey) {
     ClientRequestParams requestParams =
         new ClientRequestParams(
             publicUri, "id-123", 2, (short) 3, Persistence.FOREVER, true, "client-token", true);
@@ -210,108 +221,33 @@ class PersistentPutDirTest {
         new PersistentPutRequestMetadata(
             privateUri, true, 5, FcpCompatibilityMode.COMPAT_1468, true, "gzip", cryptoKey);
     PersistentPutDir message =
-        new PersistentPutDir(
-            requestParams, metadata, "index.html", new LinkedHashMap<>(manifest), true);
+        new PersistentPutDir(requestParams, metadata, "index.html", manifestEntries, true);
     return message.getFieldSet();
   }
 
-  private SimpleFieldSet buildOptionalFieldSet(Map<String, Object> manifest) {
+  private SimpleFieldSet buildOptionalFieldSet(
+      List<PersistentPutDirEntrySnapshot> manifestEntries) {
+    return buildMessage("id-opt", Persistence.CONNECTION, false, manifestEntries).getFieldSet();
+  }
+
+  private PersistentPutDir buildMessage(
+      String identifier,
+      Persistence persistence,
+      boolean global,
+      List<PersistentPutDirEntrySnapshot> manifestEntries) {
     ClientRequestParams requestParams =
         new ClientRequestParams(
             new FreenetURI("CHK", "pub"),
-            "id-opt",
+            identifier,
             0,
             (short) 1,
-            Persistence.CONNECTION,
+            persistence,
             false,
             null,
-            false);
+            global);
     PersistentPutRequestMetadata metadata =
         new PersistentPutRequestMetadata(
             null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
-    PersistentPutDir message =
-        new PersistentPutDir(
-            requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
-    return message.getFieldSet();
-  }
-
-  private PersistentPutDir buildWrappedMessage(Map<String, Object> manifest) {
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            new FreenetURI("CHK", "pub2"),
-            "id-wrap",
-            1,
-            (short) 1,
-            Persistence.REBOOT,
-            false,
-            null,
-            false);
-    PersistentPutRequestMetadata metadata =
-        new PersistentPutRequestMetadata(
-            null, false, 1, FcpCompatibilityMode.COMPAT_1250, false, null, null);
-    return new PersistentPutDir(
-        requestParams, metadata, "wrapped", new LinkedHashMap<>(manifest), false);
-  }
-
-  private PersistentPutDir buildRunMessage(Map<String, Object> manifest) {
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            new FreenetURI("CHK", "pub3"),
-            "ident",
-            1,
-            (short) 1,
-            Persistence.CONNECTION,
-            false,
-            null,
-            true);
-    PersistentPutRequestMetadata metadata =
-        new PersistentPutRequestMetadata(
-            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
-    return new PersistentPutDir(
-        requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
-  }
-
-  @Test
-  void run_whenInvoked_throwsMessageInvalidExceptionWithContext() {
-    NullBucket bucket = new NullBucket();
-    ManifestElement element = new ManifestElement(FILE_TXT_NAME, bucket, null, 1);
-    Map<String, Object> manifest = new LinkedHashMap<>();
-    manifest.put(FILE_TXT_NAME, element);
-
-    PersistentPutDir message = buildRunMessage(manifest);
-
-    MessageInvalidException ex =
-        assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler));
-    assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
-    assertEquals("ident", ex.ident);
-    assertTrue(ex.global);
-  }
-
-  @Test
-  void constructor_whenBucketTypeUnknown_throwsIllegalStateException() {
-    RandomAccessBucket unknownBucket = Mockito.mock(RandomAccessBucket.class);
-    ManifestElement element = new ManifestElement("unknown.bin", unknownBucket, null, 2);
-    Map<String, Object> manifest = new LinkedHashMap<>();
-    manifest.put("unknown.bin", element);
-
-    assertThrows(IllegalStateException.class, () -> createPersistentPutDirWith(manifest));
-  }
-
-  private void createPersistentPutDirWith(Map<String, Object> manifest) {
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            new FreenetURI("CHK", "pub4"),
-            "id-bad",
-            0,
-            (short) 1,
-            Persistence.CONNECTION,
-            false,
-            null,
-            false);
-    PersistentPutRequestMetadata metadata =
-        new PersistentPutRequestMetadata(
-            null, false, 0, FcpCompatibilityMode.COMPAT_CURRENT, false, null, null);
-    new PersistentPutDir(
-        requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
+    return new PersistentPutDir(requestParams, metadata, DEFAULT_NAME, manifestEntries, false);
   }
 }

@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.util.List;
 import java.util.Map;
 import network.crypta.support.io.ResumeFailedException;
 
@@ -41,6 +42,17 @@ public interface ClientPutDirExecution extends ClientPutExecution {
    * @return total number of payload bytes represented by this manifest execution
    */
   long totalSize();
+
+  /**
+   * Returns a detached snapshot of the manifest entries for persistent-tag serialization.
+   *
+   * <p>The bridge/runtime side owns manifest flattening and upload-source classification. The
+   * adapter consumes only the resulting detached entry descriptors when rebuilding a {@link
+   * PersistentPutDir} message.
+   *
+   * @return detached manifest entry snapshots in the wire order expected by {@code Files.N}
+   */
+  List<PersistentPutDirEntrySnapshot> persistentPutDirEntries();
 
   /**
    * Rehydrates transient manifest metadata after a persistent request resumes.

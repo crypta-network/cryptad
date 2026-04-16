@@ -3,9 +3,20 @@ package network.crypta.clients.fcp.bridge;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InvalidObjectException;
 import java.io.ObjectOutputStream;
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.VarHandle;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
@@ -30,15 +41,22 @@ import network.crypta.clients.fcp.FcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpInsertContextLimits;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
+import network.crypta.clients.fcp.PersistentPutDirEntrySnapshot;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.BucketFactory;
+import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.io.DelayedFreeRandomAccessBucket;
+import network.crypta.support.io.FileBucket;
+import network.crypta.support.io.NullBucket;
+import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -58,6 +76,17 @@ import static org.mockito.Mockito.withSettings;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class CoreFcpInsertRuntimeSupportTest {
+  private static final String MIME_TEXT_PLAIN = "text/plain";
+  private static final String DISK_FILE_NAME = "disk.dat";
+  private static final String TARGET_NAME = "target";
+  private static final String REDIRECT_FILE_NAME = "redirect.bin";
+  private static final String VALID_CHK =
+      "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
+          + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml";
+  private static final String WRAPPED_FILE_NAME = "wrapped.dat";
+  private static final String DEFAULT_NAME = "index.html";
+  private static final Supplier<ClientPutDir> CLIENT_PUT_DIR_FACTORY = clientPutDirFactory();
+  private static final VarHandle MANIFEST_ELEMENTS_HANDLE = manifestElementsHandle();
 
   @Mock private NodeClientCore core;
   @Mock private ClientContext clientContext;
@@ -65,6 +94,8 @@ class CoreFcpInsertRuntimeSupportTest {
   @Mock private BucketFactory bucketFactory;
   @Mock private PersistentTempBucketFactory persistentTempBucketFactory;
   @Mock private RandomAccessBucket bucket;
+
+  @TempDir Path tempDir;
 
   @Test
   void defaultPersistentInsertContextHandle_whenRequested_returnsDetachedCopyOfClientDefaults() {
@@ -227,6 +258,25 @@ class CoreFcpInsertRuntimeSupportTest {
   }
 
   @Test
+  void createRedirectMetadataBucket_whenRedirectRequested_returnsNewMetadataBucket()
+      throws Exception {
+    ClientMetadata metadata = new ClientMetadata(MIME_TEXT_PLAIN);
+    FreenetURI redirectTarget = new FreenetURI(VALID_CHK);
+    RandomAccessBucket redirectBucket = new NullBucket();
+    when(core.getClientContext()).thenReturn(clientContext);
+    when(clientContext.getBucketFactory(true)).thenReturn(bucketFactory);
+    when(bucketFactory.makeBucket(-1)).thenReturn(redirectBucket);
+    CoreFcpInsertRuntimeSupport support =
+        new CoreFcpInsertRuntimeSupport(core, () -> transferAccess);
+
+    RandomAccessBucket actual =
+        support.createRedirectMetadataBucket(metadata, redirectTarget, true);
+
+    assertSame(redirectBucket, actual);
+    verify(clientContext).getBucketFactory(true);
+  }
+
+  @Test
   void allocatePersistentUploadBucket_whenDatabaseKilled_throwsPersistenceDisabledException() {
     when(core.killedDatabase()).thenReturn(true);
     CoreFcpInsertRuntimeSupport support =
@@ -255,12 +305,98 @@ class CoreFcpInsertRuntimeSupportTest {
   }
 
   @Test
+  void persistentPutDirEntries_whenManifestContainsDiskDirectAndRedirect_snapshotsDetachedEntries()
+      throws Exception {
+    Path diskFilePath = Files.createFile(tempDir.resolve(DISK_FILE_NAME));
+    FileBucket diskBucket = new FileBucket(diskFilePath.toFile(), false, false, false, false);
+    ManifestElement diskElement =
+        new ManifestElement(DISK_FILE_NAME, diskBucket, MIME_TEXT_PLAIN, 4);
+    ManifestElement directElement =
+        new ManifestElement("nested.bin", new NullBucket(8), "application/octet-stream", 8);
+    FreenetURI redirectUri = new FreenetURI("CHK", TARGET_NAME);
+    ManifestElement redirectElement = new ManifestElement(REDIRECT_FILE_NAME, redirectUri, null);
+
+    Map<String, Object> manifest = new LinkedHashMap<>();
+    manifest.put(DISK_FILE_NAME, diskElement);
+    Map<String, Object> subdir = new LinkedHashMap<>();
+    subdir.put("nested.bin", directElement);
+    manifest.put("subdir", subdir);
+    manifest.put(REDIRECT_FILE_NAME, redirectElement);
+
+    ClientPutDirExecution execution = newDirectoryExecution(manifest);
+
+    List<PersistentPutDirEntrySnapshot> entries = execution.persistentPutDirEntries();
+
+    assertEquals(3, entries.size());
+    assertEquals(
+        new PersistentPutDirEntrySnapshot(
+            DISK_FILE_NAME,
+            network.crypta.clients.fcp.ClientPutBase.UploadFrom.DISK,
+            4,
+            diskFilePath.toFile().getPath(),
+            MIME_TEXT_PLAIN,
+            null),
+        entries.getFirst());
+    assertEquals(
+        new PersistentPutDirEntrySnapshot(
+            "subdir/nested.bin",
+            network.crypta.clients.fcp.ClientPutBase.UploadFrom.DIRECT,
+            8,
+            null,
+            "application/octet-stream",
+            null),
+        entries.get(1));
+    assertEquals(
+        new PersistentPutDirEntrySnapshot(
+            REDIRECT_FILE_NAME,
+            network.crypta.clients.fcp.ClientPutBase.UploadFrom.REDIRECT,
+            -1,
+            null,
+            null,
+            redirectUri),
+        entries.get(2));
+  }
+
+  @Test
+  void persistentPutDirEntries_whenBucketWrappedInDelayedFree_usesUnderlyingFileBucket()
+      throws Exception {
+    Path wrappedFilePath = Files.createFile(tempDir.resolve(WRAPPED_FILE_NAME));
+    FileBucket underlyingBucket =
+        new FileBucket(wrappedFilePath.toFile(), false, false, false, false);
+    PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+    when(tracker.commitID()).thenReturn(1L);
+    DelayedFreeRandomAccessBucket wrapped =
+        new DelayedFreeRandomAccessBucket(tracker, underlyingBucket);
+    Map<String, Object> manifest = new LinkedHashMap<>();
+    manifest.put(WRAPPED_FILE_NAME, new ManifestElement(WRAPPED_FILE_NAME, wrapped, null, 12));
+
+    List<PersistentPutDirEntrySnapshot> entries =
+        newDirectoryExecution(manifest).persistentPutDirEntries();
+
+    assertEquals(1, entries.size());
+    PersistentPutDirEntrySnapshot entry = entries.getFirst();
+    assertSame(network.crypta.clients.fcp.ClientPutBase.UploadFrom.DISK, entry.uploadFrom());
+    assertEquals(wrappedFilePath.toFile().getPath(), entry.filename());
+  }
+
+  @Test
+  void persistentPutDirEntries_whenBucketTypeUnknown_throwsIllegalStateException()
+      throws Exception {
+    Map<String, Object> manifest = new LinkedHashMap<>();
+    manifest.put("unknown.bin", new ManifestElement("unknown.bin", bucket, null, 2));
+
+    ClientPutDirExecution execution = newDirectoryExecution(manifest);
+
+    assertThrows(IllegalStateException.class, execution::persistentPutDirEntries);
+  }
+
+  @Test
   void directoryExecution_whenSerialized_doesNotCaptureEnclosingRuntimeSupport() throws Exception {
     ClientPutDirExecutionSpec executionSpec =
         new ClientPutDirExecutionSpec(
             newSerializableClientPutDir(),
             new ClientRequestParams(
-                new FreenetURI("CHK", "target"),
+                new FreenetURI("CHK", TARGET_NAME),
                 "put-dir",
                 0,
                 (short) 1,
@@ -269,7 +405,7 @@ class CoreFcpInsertRuntimeSupportTest {
                 null,
                 false),
             mock(FcpInsertContextHandle.class, withSettings().serializable()),
-            "index.html",
+            DEFAULT_NAME,
             null);
     ManifestPutter putter = mock(ManifestPutter.class, withSettings().serializable());
 
@@ -291,7 +427,7 @@ class CoreFcpInsertRuntimeSupportTest {
         new ClientPutExecutionSpec(
             callback,
             new ClientRequestParams(
-                new FreenetURI("CHK", "target"),
+                new FreenetURI("CHK", TARGET_NAME),
                 "put-file",
                 0,
                 (short) 1,
@@ -308,9 +444,9 @@ class CoreFcpInsertRuntimeSupportTest {
                         true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
                     null)),
             uploadBucket,
-            new ClientMetadata("text/plain"),
+            new ClientMetadata(MIME_TEXT_PLAIN),
             false,
-            new ClientPutExecutionSpec.ExecutionOptions("index.html", false, null, -1));
+            new ClientPutExecutionSpec.ExecutionOptions(DEFAULT_NAME, false, null, -1));
     CoreFcpInsertRuntimeSupport support =
         new CoreFcpInsertRuntimeSupport(core, () -> transferAccess);
 
@@ -323,24 +459,47 @@ class CoreFcpInsertRuntimeSupportTest {
   }
 
   private static ClientPutDirExecution instantiateDirectoryExecution(
-      ClientPutDirExecutionSpec executionSpec, ManifestPutter putter) throws Exception {
-    Class<?> executionClass =
-        Class.forName(CoreFcpInsertRuntimeSupport.class.getName() + "$CoreClientPutDirExecution");
+      ClientPutDirExecutionSpec executionSpec, ManifestPutter putter)
+      throws InvalidObjectException {
+    ClientPutDirExecution execution =
+        CoreFcpInsertRuntimeSupport.wrapLegacyDirectoryExecution(putter, executionSpec);
+    Class<?> executionClass = execution.getClass();
     assertTrue(Modifier.isStatic(executionClass.getModifiers()));
-    Constructor<?> constructor =
-        executionClass.getDeclaredConstructor(
-            ClientPutDirExecutionSpec.class, ManifestPutter.class);
-    constructor.setAccessible(true);
-    return (ClientPutDirExecution) constructor.newInstance(executionSpec, putter);
+    return execution;
   }
 
-  private static ClientPutDir newSerializableClientPutDir() throws Exception {
-    Constructor<ClientPutDir> constructor = ClientPutDir.class.getDeclaredConstructor();
-    constructor.setAccessible(true);
-    return constructor.newInstance();
+  private static ClientPutDirExecution newDirectoryExecution(Map<String, Object> manifest)
+      throws InvalidObjectException {
+    ClientPutDir request = newSerializableClientPutDir();
+    setManifestElements(request, manifest);
+    ClientPutDirExecutionSpec executionSpec =
+        new ClientPutDirExecutionSpec(
+            request,
+            new ClientRequestParams(
+                new FreenetURI("CHK", TARGET_NAME),
+                "put-dir",
+                0,
+                (short) 1,
+                Persistence.REBOOT,
+                false,
+                null,
+                false),
+            mock(FcpInsertContextHandle.class, withSettings().serializable()),
+            DEFAULT_NAME,
+            null);
+    return instantiateDirectoryExecution(
+        executionSpec, mock(ManifestPutter.class, withSettings().serializable()));
   }
 
-  private static byte[] serialize(Object value) throws Exception {
+  private static ClientPutDir newSerializableClientPutDir() {
+    return CLIENT_PUT_DIR_FACTORY.get();
+  }
+
+  private static void setManifestElements(ClientPutDir request, Map<String, Object> manifest) {
+    MANIFEST_ELEMENTS_HANDLE.set(request, manifest);
+  }
+
+  private static byte[] serialize(Object value) throws IOException {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream();
         ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
       objectOutput.writeObject(value);
@@ -349,7 +508,7 @@ class CoreFcpInsertRuntimeSupportTest {
     }
   }
 
-  private static byte[] serialize(CompatibilityAnalyser analyser) throws Exception {
+  private static byte[] serialize(CompatibilityAnalyser analyser) throws IOException {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream();
         DataOutputStream dataOutput = new DataOutputStream(output)) {
       analyser.writeTo(dataOutput);
@@ -358,12 +517,42 @@ class CoreFcpInsertRuntimeSupportTest {
     }
   }
 
-  private static byte[] serialize(FcpCompatibilityAnalysis analysis) throws Exception {
+  private static byte[] serialize(FcpCompatibilityAnalysis analysis) throws IOException {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream();
         DataOutputStream dataOutput = new DataOutputStream(output)) {
       analysis.writeTo(dataOutput);
       dataOutput.flush();
       return output.toByteArray();
+    }
+  }
+
+  private static VarHandle manifestElementsHandle() {
+    try {
+      return MethodHandles.privateLookupIn(ClientPutDir.class, MethodHandles.lookup())
+          .findVarHandle(ClientPutDir.class, "manifestElements", Map.class);
+    } catch (IllegalAccessException | NoSuchFieldException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private static Supplier<ClientPutDir> clientPutDirFactory() {
+    try {
+      MethodHandle constructor =
+          MethodHandles.privateLookupIn(ClientPutDir.class, MethodHandles.lookup())
+              .findConstructor(ClientPutDir.class, MethodType.methodType(void.class));
+      return () -> instantiateClientPutDir(constructor);
+    } catch (IllegalAccessException | NoSuchMethodException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private static ClientPutDir instantiateClientPutDir(MethodHandle constructor) {
+    try {
+      return (ClientPutDir) constructor.invoke();
+    } catch (RuntimeException | Error e) {
+      throw e;
+    } catch (Throwable t) {
+      throw new IllegalStateException(t);
     }
   }
 }

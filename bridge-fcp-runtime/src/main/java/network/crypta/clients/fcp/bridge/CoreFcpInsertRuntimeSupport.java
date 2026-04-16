@@ -4,13 +4,18 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
+import network.crypta.client.Metadata.DocumentType;
+import network.crypta.client.Metadata;
+import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutCallback;
@@ -49,6 +54,7 @@ import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRuntimeSupport;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.clients.fcp.FcpRequesterHandle;
+import network.crypta.clients.fcp.PersistentPutDirEntrySnapshot;
 import network.crypta.clients.fcp.SubscribeUSKCallbacks;
 import network.crypta.clients.fcp.SubscribeUSKMessage;
 import network.crypta.clients.fcp.UskSubscriptionHandle;
@@ -95,6 +101,15 @@ record CoreFcpInsertRuntimeSupport(
   @Override
   public BucketFactory bucketFactory(boolean persistentForever) {
     return clientContext().getBucketFactory(persistentForever);
+  }
+
+  @Override
+  public RandomAccessBucket createRedirectMetadataBucket(
+      ClientMetadata metadata, FreenetURI redirectTarget, boolean persistentForever)
+      throws MetadataUnresolvedException, IOException {
+    Metadata redirectMetadata =
+        new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, redirectTarget, metadata);
+    return redirectMetadata.toBucket(bucketFactory(persistentForever));
   }
 
   @Override
@@ -406,6 +421,11 @@ record CoreFcpInsertRuntimeSupport(
     @Override
     public long totalSize() {
       return putter.totalSize();
+    }
+
+    @Override
+    public List<PersistentPutDirEntrySnapshot> persistentPutDirEntries() {
+      return CorePersistentPutDirSnapshotter.snapshot(spec.manifestElements());
     }
 
     @Override
