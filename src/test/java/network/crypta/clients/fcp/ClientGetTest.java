@@ -305,16 +305,9 @@ class ClientGetTest {
     throw new IllegalArgumentException("Field not found: " + fieldName);
   }
 
-  @SuppressWarnings("java:S3011")
   private static ClientContext newContextWithCoordinator(PersistentRequestCoordinator coordinator) {
     ClientContext context = mock(ClientContext.class);
-    try {
-      Field field = ClientContext.class.getDeclaredField("persistentRequestCoordinator");
-      field.setAccessible(true);
-      field.set(context, coordinator);
-      return context;
-    } catch (ReflectiveOperationException e) {
-      throw new LinkageError("Failed to set ClientContext.persistentRequestCoordinator", e);
-    }
+    when(context.persistentRequestCoordinator()).thenReturn(coordinator);
+    return context;
   }
 }

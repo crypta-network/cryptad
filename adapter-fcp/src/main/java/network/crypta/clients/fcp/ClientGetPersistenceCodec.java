@@ -66,6 +66,8 @@ final class ClientGetPersistenceCodec {
    * @param dis input stream positioned at the serialized client-detail payload.
    * @param reqID identifier tuple describing the request owner and scope.
    * @param fetchRuntimeSupport fetch runtime support providing factories for restoration.
+   * @param context detached runtime context used to rebuild persistent-client ownership during
+   *     restart
    * @param checker checksum helper verifying embedded bucket sections.
    * @return reconstructed {@link ClientGet} instance ready for registration.
    * @throws StorageFormatException when magic or version checks fail.
@@ -76,10 +78,11 @@ final class ClientGetPersistenceCodec {
       DataInputStream dis,
       RequestIdentifier reqID,
       FcpFetchRuntimeSupport fetchRuntimeSupport,
-      network.crypta.client.async.ClientContext context,
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context,
       ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
-    return new ClientGet(dis, reqID, fetchRuntimeSupport, context, checker);
+    return new ClientGet(
+        new ClientGetRestoreInput(dis, reqID, fetchRuntimeSupport, context, checker));
   }
 
   /**

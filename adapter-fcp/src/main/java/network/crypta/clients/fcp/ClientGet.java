@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -12,6 +11,7 @@ import java.io.Serializable;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
@@ -35,10 +35,9 @@ import network.crypta.support.io.StorageFormatException;
  * returned objects or assuming immediate cross-thread visibility without synchronization.
  *
  * <p>Typical usage is to construct the request from a {@link ClientGetMessage}, register it with
- * the owning client queue, and then invoke {@link
- * #start(network.crypta.client.async.ClientContext)}. The request may persist across reconnections,
- * and callers should treat it as a long-lived state machine whose outputs are FCP messages rather
- * than synchronous return values.
+ * the owning client queue, and then invoke {@link #start(PersistentRequestRuntimeContext)}. The
+ * request may persist across reconnections, and callers should treat it as a long-lived state
+ * machine whose outputs are FCP messages rather than synchronous return values.
  *
  * <ul>
  *   <li><strong>Queueing and persistence</strong>: registers against either the connection-scoped
@@ -304,11 +303,11 @@ public final class ClientGet extends ClientRequest {
    *
    * <p>All fields are intentionally left {@code null} (or primitive defaults) so that the
    * deserialization helpers can populate them explicitly via {@link
-   * #innerResume(network.crypta.client.async.ClientContext)} and related restoration methods.
-   * Production code should never invoke this constructor directly; always use one of the fully
-   * parameterized alternatives that configure detached fetch settings and a live execution handle.
-   * This constructor exists solely to satisfy the Java serialization framework and keep field
-   * initialization centralized in the resume path.
+   * #innerResume(FcpRequestRuntimeContext)} and related restoration methods. Production code should
+   * never invoke this constructor directly; always use one of the fully parameterized alternatives
+   * that configure detached fetch settings and a live execution handle. This constructor exists
+   * solely to satisfy the Java serialization framework and keep field initialization centralized in
+   * the resume path.
    */
   ClientGet() {
     // For serialization.
@@ -364,15 +363,7 @@ public final class ClientGet extends ClientRequest {
    */
   @Override
   void register(boolean noTags) throws IdentifierCollisionException {
-    if (persistence != Persistence.CONNECTION) {
-      // Non-connection requests are assembled with a persistent client before registration.
-      PersistentRequestClient persistentClient = client;
-      persistentClient.register(this);
-      if (!noTags) {
-        FCPMessage msg = persistentTagMessage();
-        persistentClient.queueClientRequestMessage(msg, 0);
-      }
-    }
+    helpers().lifecycle().register(noTags);
   }
 
   /**
@@ -392,46 +383,12 @@ public final class ClientGet extends ClientRequest {
    * caches remain consistent. Callers may invoke this multiple times safely; only the first call
    * before completion has any effect.
    *
-   * @param context client context provided by the legacy request API; the live execution keeps its
-   *     own runtime binding.
+   * @param context detached runtime context provided by the request API; the live execution keeps
+   *     its own runtime binding.
    */
   @Override
-  public void start(network.crypta.client.async.ClientContext context) {
-    try {
-      synchronized (requestLock()) {
-        if (finished) return;
-      }
-      execution.start();
-      if (shouldSendPersistentTag()) {
-        FCPMessage msg = persistentTagMessage();
-        client.queueClientRequestMessage(msg, 0);
-      }
-      synchronized (requestLock()) {
-        started = true;
-      }
-      if (client != null) {
-        RequestStatusCache cache = client.getRequestStatusCache();
-        if (cache != null) {
-          cache.updateStarted(identifier, true);
-        }
-      }
-    } catch (FetchException e) {
-      synchronized (requestLock()) {
-        started = true;
-      } // before the failure handler
-      onFailure(e);
-    } catch (Exception t) {
-      synchronized (requestLock()) {
-        started = true;
-      }
-      onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t));
-    }
-  }
-
-  private boolean shouldSendPersistentTag() {
-    synchronized (requestLock()) {
-      return persistence != Persistence.CONNECTION && !finished;
-    }
+  public void start(PersistentRequestRuntimeContext context) {
+    helpers().lifecycle().start();
   }
 
   /**
@@ -447,12 +404,11 @@ public final class ClientGet extends ClientRequest {
    * possible cancellation. It exists primarily so connection handlers can dispose of
    * connection-scoped work without leaking persistent tasks.
    *
-   * @param context client context owning the request and its scheduler association.
+   * @param context detached runtime context owning the request and its scheduler association.
    */
   @Override
-  public void onLostConnection(network.crypta.client.async.ClientContext context) {
-    if (persistence == Persistence.CONNECTION) cancel(context);
-    // Otherwise ignore
+  public void onLostConnection(PersistentRequestRuntimeContext context) {
+    helpers().lifecycle().onLostConnection(context);
   }
 
   /**
@@ -587,10 +543,11 @@ public final class ClientGet extends ClientRequest {
    * <p>The removal path does not attempt to stop network activity directly; it assumes the owning
    * scheduler has already detached the underlying live GET execution.
    *
-   * @param context client context invoking the removal for lifecycle bookkeeping.
+   * @param context detached runtime context invoking the removal for lifecycle bookkeeping.
    */
   @Override
-  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
+  public void requestWasRemoved(
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context) {
     helpers().lifecycle().requestWasRemoved();
     super.requestWasRemoved(context);
   }
@@ -989,8 +946,8 @@ public final class ClientGet extends ClientRequest {
    * <p>The getter must support restart semantics, the request must have finished, and it must not
    * have succeeded yet. Success cases require manual deletion or explicit reset before another
    * attempt. This method performs the minimal checks needed to decide if {@link
-   * #restart(network.crypta.client.async.ClientContext, boolean)} is likely to proceed without
-   * immediate failure.
+   * #restart(PersistentRequestRuntimeContext, boolean)} is likely to proceed without immediate
+   * failure.
    *
    * <p>This method does not modify the state; it is intended for UI or scheduler decisions before
    * initiating a restart.
@@ -1014,13 +971,14 @@ public final class ClientGet extends ClientRequest {
    * <p>Restarting does not guarantee success; it merely schedules a new attempt with the updated
    * parameters. The method returns quickly once the execution acknowledges the restart request.
    *
-   * @param context client context provided by the legacy request API.
+   * @param context detached runtime context provided by the request API.
    * @param disableFilterData {@code true} to disable filtering for the next attempt.
    * @return {@code true} when the restart is accepted and scheduled by the getter.
    */
   @Override
   public boolean restart(
-      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
+      network.crypta.client.async.persistence.PersistentRequestRuntimeContext context,
+      final boolean disableFilterData) {
     return helpers().restartCoordinator().restart(disableFilterData);
   }
 
@@ -1090,21 +1048,23 @@ public final class ClientGet extends ClientRequest {
     ClientGetPersistenceCodec.writeClientDetail(this, dos, checker);
   }
 
-  ClientGet(
-      DataInputStream dis,
-      RequestIdentifier reqID,
-      FcpFetchRuntimeSupport fetchRuntimeSupport,
-      network.crypta.client.async.ClientContext context,
-      ChecksumChecker checker)
+  ClientGet(ClientGetRestoreInput restoreInput)
       throws IOException, StorageFormatException, ResumeFailedException {
-    super(dis, reqID, context);
+    super(restoreInput.input(), restoreInput.requestIdentifier(), restoreInput.runtimeContext());
     state = new ClientGetState(this);
     ClientGetPersistenceCodec.BasicRestoreData restoreData =
-        ClientGetPersistenceCodec.readBasicRestoreData(dis, fetchRuntimeSupport, checker);
+        ClientGetPersistenceCodec.readBasicRestoreData(
+            restoreInput.input(), restoreInput.fetchRuntimeSupport(), restoreInput.checker());
     uri = restoreData.uri();
-    requestProfile = ClientGetRequestProfile.fromRestoreData(restoreData, fetchRuntimeSupport);
+    requestProfile =
+        ClientGetRequestProfile.fromRestoreData(restoreData, restoreInput.fetchRuntimeSupport());
     ClientGetExecution restoredExecution =
-        ClientGetPersistenceCodec.restoreState(this, dis, reqID, fetchRuntimeSupport, checker);
+        ClientGetPersistenceCodec.restoreState(
+            this,
+            restoreInput.input(),
+            restoreInput.requestIdentifier(),
+            restoreInput.fetchRuntimeSupport(),
+            restoreInput.checker());
     state.ensureCompatibilityMode();
     if (restoredExecution == null) {
       restoredExecution = makeExecutionForPersistence(makePersistenceBucket());
@@ -1125,12 +1085,11 @@ public final class ClientGet extends ClientRequest {
    *
    * <p>Callers should invoke this only during resume flows and not during normal execution.
    *
-   * @param context client context used for bucket resume callbacks and defaults.
+   * @param context detached request runtime context used for bucket resume callbacks and defaults.
    * @throws ResumeFailedException if bucket resume logic reports unrecoverable failure.
    */
   @Override
-  protected void innerResume(network.crypta.client.async.ClientContext context)
-      throws ResumeFailedException {
+  protected void innerResume(FcpRequestRuntimeContext context) throws ResumeFailedException {
     ClientGetPersistenceIO.resume(this, context);
   }
 

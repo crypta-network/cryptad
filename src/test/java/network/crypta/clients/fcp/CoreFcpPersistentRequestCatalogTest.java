@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.persistence.PersistentRequestHandle;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.bridge.CoreFcpPersistentRequestCatalog;
 import org.junit.jupiter.api.Test;
 
@@ -87,7 +87,7 @@ class CoreFcpPersistentRequestCatalogTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // No-op: connection lifecycle is irrelevant for this adapter test.
     }
 
@@ -156,7 +156,7 @@ class CoreFcpPersistentRequestCatalogTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // No-op: startup mechanics are not part of catalog behavior.
     }
 
@@ -171,7 +171,7 @@ class CoreFcpPersistentRequestCatalogTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -181,7 +181,7 @@ class CoreFcpPersistentRequestCatalogTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // No-op: runtime reattachment is not exercised here.
     }
 

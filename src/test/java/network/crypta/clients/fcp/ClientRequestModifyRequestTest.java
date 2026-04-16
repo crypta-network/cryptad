@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class ClientRequestModifyRequestTest {
   void modifyRequest_whenPriorityAndTokenChange_updatesRequesterCacheAndQueuesMessage() {
     ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
-    when(runtimeSupport.clientContext()).thenReturn(context);
+    when(runtimeSupport.persistentRequestRuntimeContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
@@ -58,7 +59,7 @@ class ClientRequestModifyRequestTest {
   void modifyRequest_whenNothingChanges_skipsCheckpointRequesterAndMessageQueue() {
     ClientContext context = mock(ClientContext.class);
     FcpServerRuntimeSupport runtimeSupport = mock(FcpServerRuntimeSupport.class);
-    when(runtimeSupport.clientContext()).thenReturn(context);
+    when(runtimeSupport.persistentRequestRuntimeContext()).thenReturn(context);
     FCPServer server = mock(FCPServer.class);
     when(server.serverRuntimeSupport()).thenReturn(runtimeSupport);
     FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
@@ -72,7 +73,8 @@ class ClientRequestModifyRequestTest {
     request.modifyRequest("same-token", (short) 2, server);
 
     verify(runtimeSupport, never()).setCheckpointASAP();
-    verify(requester, never()).setPriorityClass(any(short.class), any(ClientContext.class));
+    verify(requester, never())
+        .setPriorityClass(any(short.class), any(PersistentRequestRuntimeContext.class));
     verify(client, never()).queueClientRequestMessage(any(FCPMessage.class), eq(0));
   }
 
@@ -133,7 +135,7 @@ class ClientRequestModifyRequestTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // No-op for focused modifyRequest() testing.
     }
 
@@ -202,7 +204,7 @@ class ClientRequestModifyRequestTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       // No-op for focused modifyRequest() testing.
     }
 
@@ -217,7 +219,7 @@ class ClientRequestModifyRequestTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -227,7 +229,7 @@ class ClientRequestModifyRequestTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       // No-op for focused modifyRequest() testing.
     }
 

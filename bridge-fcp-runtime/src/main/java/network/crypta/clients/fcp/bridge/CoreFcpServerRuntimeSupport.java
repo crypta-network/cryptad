@@ -45,11 +45,6 @@ record CoreFcpServerRuntimeSupport(NodeClientCore core) implements FcpServerRunt
     this.core = Objects.requireNonNull(core);
   }
 
-  @Override
-  public ClientContext clientContext() {
-    return core.getClientContext();
-  }
-
   /**
    * Returns the detached persistence-runtime context for server-side bridge helpers.
    *
@@ -78,8 +73,7 @@ record CoreFcpServerRuntimeSupport(NodeClientCore core) implements FcpServerRunt
   @Override
   public void queuePersistentJob(FcpPersistentJob job, int threadPriority)
       throws PersistenceDisabledException {
-    ClientContext clientContext = clientContext();
-    clientContext.jobRunner.queue(new CorePersistentJob(job), threadPriority);
+    clientContext().jobRunner.queue(new CorePersistentJob(job), threadPriority);
   }
 
   /**
@@ -111,6 +105,10 @@ record CoreFcpServerRuntimeSupport(NodeClientCore core) implements FcpServerRunt
   @Override
   public void fillSecureRandom(byte[] bytes) {
     core.getRandom().nextBytes(bytes);
+  }
+
+  private network.crypta.client.async.ClientContext clientContext() {
+    return Objects.requireNonNull(core.getClientContext());
   }
 
   @SuppressWarnings("ClassCanBeRecord")

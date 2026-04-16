@@ -580,7 +580,7 @@ class NodeClientPersistenceTest {
 
     // Assert
     assertAll(
-        () -> assertSame(coordinator, context.persistentRequestCoordinator),
+        () -> assertSame(coordinator, context.persistentRequestCoordinator()),
         () -> assertSame(persistentRequests, persistence.getPersistentRequests()));
     verify(servicesFactory).create();
     verify(clientLayerPersister).configurePersistenceAdapters(catalog, recoveryCodec);
@@ -638,7 +638,7 @@ class NodeClientPersistenceTest {
     ClientRequest request = mock(ClientRequest.class);
     when(request.hasFinished()).thenReturn(false);
     when(request.isPersistentForever()).thenReturn(true);
-    context.persistentRequestCoordinator.resumePersistentRequest(request, true, "client");
+    context.persistentRequestCoordinator().resumePersistentRequest(request, true, "client");
 
     // Act
     PersistentRequestHandle[] requests = persistence.getPersistentRequests();

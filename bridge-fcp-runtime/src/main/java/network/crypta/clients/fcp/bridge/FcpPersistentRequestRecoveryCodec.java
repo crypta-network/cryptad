@@ -8,6 +8,7 @@ import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.client.async.persistence.PersistentRequestRecoveryCodec;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.ClientRequest;
+import network.crypta.clients.fcp.FcpRequestRuntimeContext;
 import network.crypta.clients.fcp.RequestIdentifier;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.support.io.ResumeFailedException;
@@ -20,9 +21,9 @@ import network.crypta.support.io.StorageFormatException;
  * It converts the client-owned durable identifier into the legacy FCP identifier type, narrows the
  * runtime-context seam back to {@link ClientContext} at the bridge boundary, and then delegates
  * reconstruction to {@link ClientRequest#restartFrom(DataInputStream, RequestIdentifier,
- * network.crypta.clients.fcp.FcpFetchRuntimeSupport, ClientContext, ChecksumChecker)}. The adapter
- * stays stateless, so startup wiring can reuse a single instance without coordinating additional
- * caches or configuration.
+ * network.crypta.clients.fcp.FcpFetchRuntimeSupport, PersistentRequestRuntimeContext,
+ * ChecksumChecker)}. The adapter stays stateless, so startup wiring can reuse a single instance
+ * without coordinating additional caches or configuration.
  */
 public final class FcpPersistentRequestRecoveryCodec implements PersistentRequestRecoveryCodec {
 
@@ -46,21 +47,23 @@ public final class FcpPersistentRequestRecoveryCodec implements PersistentReques
       throws StorageFormatException, IOException, ResumeFailedException {
     RequestIdentifier requestIdentifier =
         RequestIdentifier.fromPersistentRequestIdentifier(identifier);
-    ClientContext clientContext = requireClientContext(context);
     return ClientRequest.restartFrom(
         dis,
         requestIdentifier,
         new CoreFcpFetchRuntimeSupport(
-            clientContext,
+            requireClientContext(context),
             () -> {
               throw new UnsupportedOperationException(
                   "transferAccess is unavailable during persistent request recovery");
             }),
-        clientContext,
+        context,
         checker);
   }
 
   private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+    if (context instanceof FcpRequestRuntimeContext requestContext) {
+      return requireClientContext(requestContext.persistentRequestRuntimeContext());
+    }
     if (context instanceof ClientContext clientContext) {
       return clientContext;
     }

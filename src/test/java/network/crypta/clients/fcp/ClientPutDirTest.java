@@ -205,7 +205,7 @@ class ClientPutDirTest {
     ClientPutDirExecution putter = mock(ClientPutDirExecution.class);
     setField(ClientPutDir.class, putDir, "manifestElements", manifest);
     setField(ClientPutDir.class, putDir, "putter", putter);
-    ClientContext context = mock(ClientContext.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
 
     putDir.innerResume(context);
 

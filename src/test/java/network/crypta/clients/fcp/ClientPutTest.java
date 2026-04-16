@@ -254,7 +254,7 @@ class ClientPutTest {
   void innerResume_whenBucketPresent_delegatesToBucket() throws Exception {
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     setField(ClientPut.class, clientPut, "data", bucket);
-    ClientContext context = mock(ClientContext.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
 
     clientPut.innerResume(context);
 
@@ -266,7 +266,7 @@ class ClientPutTest {
     FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientPutExecution putter = createExecution(requester);
     setField(ClientPut.class, clientPut, "putter", putter);
-    ClientContext context = mock(ClientContext.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
 
     clientPut.innerResume(context);
 
@@ -277,7 +277,7 @@ class ClientPutTest {
   void innerResume_whenBucketThrows_propagatesException() throws Exception {
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     setField(ClientPut.class, clientPut, "data", bucket);
-    ClientContext context = mock(ClientContext.class);
+    FcpRequestRuntimeContext context = mock(FcpRequestRuntimeContext.class);
     ResumeFailedException failure = new ResumeFailedException("boom");
     doThrow(failure).when(bucket).onResume(context);
 

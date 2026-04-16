@@ -65,16 +65,6 @@ class CoreFcpServerRuntimeSupportTest {
   }
 
   @Test
-  void clientContext_whenQueried_returnsCoreClientContext() {
-    ClientContext clientContext = createClientContext(jobRunner);
-    when(core.getClientContext()).thenReturn(clientContext);
-
-    CoreFcpServerRuntimeSupport support = new CoreFcpServerRuntimeSupport(core);
-
-    assertSame(clientContext, support.clientContext());
-  }
-
-  @Test
   void persistentRequestRuntimeContext_whenQueried_returnsCoreClientContext() {
     ClientContext clientContext = createClientContext(jobRunner);
     when(core.getClientContext()).thenReturn(clientContext);

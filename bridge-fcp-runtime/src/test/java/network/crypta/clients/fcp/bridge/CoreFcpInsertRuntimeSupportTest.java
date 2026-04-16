@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.ManifestPutter;
@@ -41,7 +42,10 @@ import network.crypta.clients.fcp.FcpInsertContextHandle;
 import network.crypta.clients.fcp.FcpInsertContextLimits;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertTuningOptions;
+import network.crypta.clients.fcp.FcpRequestRuntimeContext;
 import network.crypta.clients.fcp.PersistentPutDirEntrySnapshot;
+import network.crypta.crypt.CryptoResumeContext;
+import network.crypta.crypt.MasterSecret;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
@@ -57,6 +61,7 @@ import network.crypta.support.io.PersistentTempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -458,6 +463,24 @@ class CoreFcpInsertRuntimeSupportTest {
     assertTrue(serialized.length > 0);
   }
 
+  @Test
+  void insertCallbackAdapter_onResume_preservesCryptoResumeContext() throws Exception {
+    FcpInsertCallback callback = mock(FcpInsertCallback.class);
+    ClientPutCallback adapter = instantiateInsertCallbackAdapter(callback);
+    MasterSecret secret = mock(MasterSecret.class);
+    when(clientContext.getPersistentMasterSecret()).thenReturn(secret);
+
+    adapter.onResume(clientContext);
+
+    ArgumentCaptor<FcpRequestRuntimeContext> captor =
+        ArgumentCaptor.forClass(FcpRequestRuntimeContext.class);
+    verify(callback).onResume(captor.capture());
+    FcpRequestRuntimeContext requestContext = captor.getValue();
+    CryptoResumeContext cryptoContext = assertInstanceOf(CryptoResumeContext.class, requestContext);
+    assertSame(secret, cryptoContext.getPersistentMasterSecret());
+    assertSame(clientContext, requestContext.persistentRequestRuntimeContext());
+  }
+
   private static ClientPutDirExecution instantiateDirectoryExecution(
       ClientPutDirExecutionSpec executionSpec, ManifestPutter putter)
       throws InvalidObjectException {
@@ -505,6 +528,23 @@ class CoreFcpInsertRuntimeSupportTest {
       objectOutput.writeObject(value);
       objectOutput.flush();
       return output.toByteArray();
+    }
+  }
+
+  private static ClientPutCallback instantiateInsertCallbackAdapter(FcpInsertCallback callback) {
+    try {
+      Class<?> adapterClass =
+          Class.forName(
+              "network.crypta.clients.fcp.bridge.CoreFcpInsertRuntimeSupport$CoreInsertCallbackAdapter");
+      MethodHandle constructor =
+          MethodHandles.privateLookupIn(adapterClass, MethodHandles.lookup())
+              .findConstructor(
+                  adapterClass, MethodType.methodType(void.class, FcpInsertCallback.class));
+      return (ClientPutCallback) constructor.invoke(callback);
+    } catch (RuntimeException | Error e) {
+      throw e;
+    } catch (Throwable t) {
+      throw new IllegalStateException(t);
     }
   }
 

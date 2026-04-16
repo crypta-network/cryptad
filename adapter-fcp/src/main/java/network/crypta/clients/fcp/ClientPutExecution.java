@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.Serializable;
 import network.crypta.client.InsertException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 
 /**
  * Opaque adapter-owned handle for one live single-file insert execution.
@@ -51,10 +52,11 @@ public interface ClientPutExecution extends Serializable {
    * insert. Implementations should schedule the underlying work promptly and report any immediate
    * start-up validation failures through the declared exception.
    *
-   * @param context live client context that provides schedulers, randomness, and persistence hooks
+   * @param context detached runtime context that provides schedulers, randomness, and persistence
+   *     hooks
    * @throws InsertException if the insert cannot be started with the supplied runtime state
    */
-  void start(network.crypta.client.async.ClientContext context) throws InsertException;
+  void start(PersistentRequestRuntimeContext context) throws InsertException;
 
   /**
    * Returns whether the current execution can be restarted.
@@ -63,8 +65,8 @@ public interface ClientPutExecution extends Serializable {
    * restart attempt to succeed. The adapter uses it to decide whether a finished failed request
    * should offer a retry path.
    *
-   * @return {@code true} when a later call to {@link
-   *     #restart(network.crypta.client.async.ClientContext)} may succeed
+   * @return {@code true} when a later call to {@link #restart(PersistentRequestRuntimeContext)} may
+   *     succeed
    */
   boolean canRestart();
 
@@ -75,11 +77,11 @@ public interface ClientPutExecution extends Serializable {
    * inserter behind the seam. Callers expect the restart to preserve the user-visible FCP request
    * semantics for the surrounding {@link ClientPut}.
    *
-   * @param context live client context to use for the restart attempt
+   * @param context detached runtime context to use for the restart attempt
    * @return {@code true} when the restart was scheduled successfully
    * @throws InsertException if the restart cannot be scheduled
    */
-  boolean restart(network.crypta.client.async.ClientContext context) throws InsertException;
+  boolean restart(PersistentRequestRuntimeContext context) throws InsertException;
 
   /**
    * Returns the splitfile crypto key currently associated with this execution, if any.

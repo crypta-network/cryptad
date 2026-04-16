@@ -11,9 +11,9 @@ import java.io.Serializable;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertException;
 import network.crypta.client.MetadataUnresolvedException;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
-import network.crypta.runtime.spi.TransferAccessPort;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -47,14 +47,6 @@ import org.slf4j.LoggerFactory;
 public final class ClientPut extends ClientPutBase {
   /** Logger for lifecycle and diagnostic messages. */
   private static final Logger LOG = LoggerFactory.getLogger(ClientPut.class);
-
-  /** Debugging template for persistent uploads to log bucket identity and source. */
-  private static final String PERSISTENT_UPLOAD_LOG_TEMPLATE =
-      "Prepared persistent upload data: data = {}, uploadFrom = {}";
-
-  /** Debugging template for message-based uploads to log bucket identity and source. */
-  private static final String MESSAGE_UPLOAD_LOG_TEMPLATE =
-      "Prepared message upload data: data = {}, uploadFrom = {}";
 
   /** Serialization version for persistent request snapshots. */
   @Serial private static final long serialVersionUID = 1L;
@@ -120,6 +112,8 @@ public final class ClientPut extends ClientPutBase {
   /** Records if compression finished once so we do not resignal redundant progress. */
   private boolean compressed;
 
+  private transient ClientPutLifecycle lifecycle;
+
   // Legacy threshold callback removed.
 
   /**
@@ -151,73 +145,7 @@ public final class ClientPut extends ClientPutBase {
           NotAllowedException,
           MetadataUnresolvedException,
           IOException {
-    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            checkEmptySSK(request.uri(), upload.targetFilename(), runtimeSupport),
-            ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
-            request.verbosity(),
-            request.priorityClass(),
-            request.persistence(),
-            options.realTimeFlag(),
-            null,
-            request.global());
-    super(
-        requestParams,
-        request.charset(),
-        options,
-        null,
-        request.client(),
-        runtimeSupport,
-        derivePublicURI(requestParams.uri()));
-    UploadFrom uploadFromType = upload.uploadFromType();
-    File uploadOrigFilename = upload.origFilename();
-    String contentType = upload.contentType();
-    String uploadTargetFilename = upload.targetFilename();
-    RandomAccessBucket tempData = upload.data();
-
-    if (uploadFromType == UploadFrom.DISK) {
-      ClientPutDiskUploadValidator.validatePersistentDiskUpload(
-          runtimeSupport.transferAccess(), uploadOrigFilename);
-    }
-
-    this.binaryBlob = upload.binaryBlob();
-    if (this.binaryBlob) contentType = null;
-    this.targetFilename = uploadTargetFilename;
-    this.uploadFrom = uploadFromType;
-    this.origFilename = uploadOrigFilename;
-    // Now go through the fields one at a time
-    String mimeType = contentType;
-    this.clientToken = request.clientToken();
-    ClientMetadata cm = new ClientMetadata(mimeType);
-    if (LOG.isDebugEnabled()) LOG.debug(PERSISTENT_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
-    PreparedData preparedData =
-        ClientPutPreparedDataFactory.prepareForPersistentUpload(
-            uploadFrom,
-            cm,
-            tempData,
-            upload.redirectTarget(),
-            runtimeSupport,
-            isPersistentForever());
-    this.data = preparedData.bucket();
-    this.clientMetadata = cm;
-    this.targetURI = preparedData.targetUri();
-    putter =
-        ClientPutPutterFactory.create(
-            runtimeSupport,
-            new ClientPutExecutionSpec(
-                this,
-                requestParams,
-                ctx,
-                data,
-                cm,
-                preparedData.isMetadata(),
-                new ClientPutExecutionSpec.ExecutionOptions(
-                    this.uri.getDocName() == null ? uploadTargetFilename : null,
-                    this.binaryBlob,
-                    options.overrideSplitfileCryptoKey(),
-                    -1)));
-    applyDiagnosticIdentifier(putter.requester());
+    this(ClientPutConstructorSupport.fromPersistentRequest(request, options, upload, server));
   }
 
   /**
@@ -245,144 +173,20 @@ public final class ClientPut extends ClientPutBase {
    */
   public ClientPut(FCPConnectionHandler handler, ClientPutMessage message, FCPServer server)
       throws IdentifierCollisionException, MessageInvalidException, IOException {
-    FcpInsertRuntimeSupport runtimeSupport = server.insertRuntimeSupport();
-    FcpInsertOptions options =
-        new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(
-                message.getCHKOnly,
-                message.dontCompress,
-                message.localRequestOnly,
-                message.maxRetries,
-                message.earlyEncode,
-                message.realTimeFlag,
-                message.ignoreUSKDatehints),
-            new FcpInsertTuningOptions(
-                message.canWriteClientCache,
-                message.forkOnCacheable,
-                message.compressorDescriptor,
-                message.extraInsertsSingleBlock,
-                message.extraInsertsSplitfileHeaderBlock,
-                message.compatibilityMode),
-            message.overrideSplitfileCryptoKey);
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            checkEmptySSK(message.uri, message.targetFilename, runtimeSupport),
-            ensureConnectionIdentifierAvailable(handler, message),
-            message.verbosity,
-            message.priorityClass,
-            message.persistence,
-            options.realTimeFlag(),
-            message.clientToken,
-            message.global);
-    super(
-        requestParams,
-        null,
-        options,
-        handler,
-        runtimeSupport,
-        derivePublicURI(requestParams.uri()));
-    binaryBlob = message.binaryBlob;
-    TransferAccessPort transferAccess = runtimeSupport.transferAccess();
+    this(ClientPutConstructorSupport.fromMessage(handler, message, server));
+  }
 
-    DiskUploadContext diskContext =
-        ClientPutDiskUploadValidator.validateDiskUpload(
-            transferAccess, handler, message, message.identifier, message.global);
-
-    this.targetFilename = message.targetFilename;
-    this.uploadFrom = message.uploadFromType;
-    this.origFilename = message.origFilename;
-
-    String mimeType =
-        ClientPutMimeResolver.resolve(
-            message,
-            this.origFilename,
-            this.targetFilename,
-            binaryBlob,
-            message.identifier,
-            message.global);
-
-    clientToken = message.clientToken;
-    ClientMetadata cm = new ClientMetadata(mimeType);
-    PreparedData preparedData =
-        ClientPutPreparedDataFactory.prepareForMessage(
-            message, cm, runtimeSupport, isPersistentForever(), uploadFrom, identifier, global);
-    this.data = preparedData.bucket();
-    this.clientMetadata = cm;
-    this.targetURI = preparedData.targetUri();
-
-    ClientPutDiskUploadValidator.verifySaltedHash(diskContext, data, identifier, global);
-
-    if (LOG.isDebugEnabled()) LOG.debug(MESSAGE_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
-    putter =
-        ClientPutPutterFactory.create(
-            runtimeSupport,
-            new ClientPutExecutionSpec(
-                this,
-                requestParams,
-                ctx,
-                data,
-                cm,
-                preparedData.isMetadata(),
-                new ClientPutExecutionSpec.ExecutionOptions(
-                    this.uri.getDocName() == null ? targetFilename : null,
-                    binaryBlob,
-                    message.overrideSplitfileCryptoKey,
-                    message.metadataThreshold)));
+  ClientPut(ClientPutConstructorSupport.Init init) throws IOException {
+    super(init.baseInit());
+    this.uploadFrom = init.uploadFrom();
+    this.origFilename = init.origFilename();
+    this.targetURI = init.targetUri();
+    this.data = init.data();
+    this.clientMetadata = init.clientMetadata();
+    this.targetFilename = init.targetFilename();
+    this.binaryBlob = init.binaryBlob();
+    putter = init.createExecution(this);
     applyDiagnosticIdentifier(putter.requester());
-  }
-
-  /**
-   * Ensures the request identifier is unused within a connection-scoped persistence map.
-   *
-   * @param handler connection handler tracking in-flight requests; must not be {@code null}.
-   * @param message parsed put message containing the requested identifier; must not be {@code
-   *     null}.
-   * @return the validated identifier string when no collision exists.
-   * @throws IdentifierCollisionException when the identifier already exists for the connection.
-   */
-  private static String ensureConnectionIdentifierAvailable(
-      FCPConnectionHandler handler, ClientPutMessage message) throws IdentifierCollisionException {
-    if (message.persistence != Persistence.CONNECTION) {
-      return message.identifier;
-    }
-    if (handler.requestsByIdentifier.containsKey(message.identifier)) {
-      throw new IdentifierCollisionException();
-    }
-    return message.identifier;
-  }
-
-  /**
-   * Ensures the identifier is free within the persistent request client, if present.
-   *
-   * @param client persistent request client, or {@code null} when not applicable.
-   * @param identifier identifier requested by the caller; must not be {@code null}.
-   * @return the identifier when it is not already in use.
-   * @throws IdentifierCollisionException when the identifier already exists in persistence.
-   */
-  private static String ensurePersistentIdentifierAvailable(
-      PersistentRequestClient client, String identifier) throws IdentifierCollisionException {
-    if (client != null && client.getRequest(identifier) != null) {
-      throw new IdentifierCollisionException();
-    }
-    return identifier;
-  }
-
-  /**
-   * Returns whether the request is already marked finished.
-   *
-   * @return {@code true} when the request has completed or failed.
-   */
-  private synchronized boolean isFinishedRequest() {
-    return finished;
-  }
-
-  /**
-   * Determines whether a persistent tag message should be queued now.
-   *
-   * @return {@code true} when persistence is enabled and the request is not finished.
-   */
-  private synchronized boolean shouldQueuePersistentTag() {
-    return persistence != Persistence.CONNECTION && !finished;
   }
 
   /**
@@ -402,6 +206,13 @@ public final class ClientPut extends ClientPutBase {
     finishedSize = 0;
     targetFilename = null;
     binaryBlob = false;
+  }
+
+  private ClientPutLifecycle lifecycle() {
+    if (lifecycle == null) {
+      lifecycle = new ClientPutLifecycle(this);
+    }
+    return lifecycle;
   }
 
   /**
@@ -509,11 +320,7 @@ public final class ClientPut extends ClientPutBase {
 
   @Override
   void register(boolean noTags) throws IdentifierCollisionException {
-    if (persistence != Persistence.CONNECTION) client.register(this);
-    if (persistence != Persistence.CONNECTION && !noTags) {
-      FCPMessage msg = persistentTagMessage();
-      client.queueClientRequestMessage(msg, 0);
-    }
+    lifecycle().register(noTags);
   }
 
   /**
@@ -527,43 +334,12 @@ public final class ClientPut extends ClientPutBase {
    * startup failures are routed through the standard failure handler so retry logic stays
    * consistent.
    *
-   * @param context client execution context providing schedulers, bucket factories, and thread
+   * @param context detached runtime context providing schedulers, bucket factories, and thread
    *     pools; must not be {@code null} and should be the active runtime context.
    */
   @Override
-  public void start(network.crypta.client.async.ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Starting {} : {}", this, identifier);
-    if (isFinishedRequest()) {
-      return;
-    }
-    try {
-      putter.start(context);
-      if (shouldQueuePersistentTag()) {
-        FCPMessage msg = persistentTagMessage();
-        client.queueClientRequestMessage(msg, 0);
-      }
-      synchronized (this) {
-        started = true;
-      }
-      if (client != null) {
-        RequestStatusCache cache = client.getRequestStatusCache();
-        if (cache != null) {
-          cache.updateStarted(identifier, true);
-        }
-      }
-    } catch (InsertException e) {
-      synchronized (this) {
-        started = true;
-      }
-      onFailure(e, (FcpInsertCallbackState) null);
-    } catch (Exception t) {
-      synchronized (this) {
-        started = true;
-      }
-      onFailure(
-          new InsertException(InsertException.InsertExceptionMode.INTERNAL_ERROR, t, null),
-          (FcpInsertCallbackState) null);
-    }
+  public void start(PersistentRequestRuntimeContext context) {
+    lifecycle().start(context);
   }
 
   @Override
@@ -760,40 +536,14 @@ public final class ClientPut extends ClientPutBase {
    * FcpInsertCallbackState)} so retry logic remains consistent with the normal start path. The
    * method returns immediately if the request is not eligible for restart.
    *
-   * @param context execution context containing shared schedulers and crypto factories; must not be
-   *     {@code null} and should be active.
+   * @param context detached runtime context containing shared schedulers and crypto factories; must
+   *     not be {@code null} and should be active.
    * @param disableFilterData whether client filtering data should be bypassed for this retry.
    * @return {@code true} when the restart was scheduled successfully; {@code false} otherwise.
    */
   @Override
-  public boolean restart(
-      network.crypta.client.async.ClientContext context, final boolean disableFilterData) {
-    if (!canRestart()) return false;
-    setVarsRestart();
-    try {
-      if (client != null) {
-        RequestStatusCache cache = client.getRequestStatusCache();
-        if (cache != null) {
-          cache.updateStarted(identifier, false);
-        }
-      }
-      if (putter.restart(context)) {
-        synchronized (this) {
-          generatedURI = null;
-          started = true;
-        }
-      }
-      if (client != null) {
-        RequestStatusCache cache = client.getRequestStatusCache();
-        if (cache != null) {
-          cache.updateStarted(identifier, true);
-        }
-      }
-      return true;
-    } catch (InsertException e) {
-      onFailure(e, (FcpInsertCallbackState) null);
-      return false;
-    }
+  public boolean restart(PersistentRequestRuntimeContext context, final boolean disableFilterData) {
+    return lifecycle().restart(context);
   }
 
   /**
@@ -806,13 +556,7 @@ public final class ClientPut extends ClientPutBase {
    */
   @Override
   public synchronized void setVarsRestart() {
-    super.setVarsRestart();
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateCompressionStatus(identifier, isCompressing());
-      }
-    }
+    lifecycle().setVarsRestart();
   }
 
   /**
@@ -827,11 +571,8 @@ public final class ClientPut extends ClientPutBase {
    *     null}.
    */
   @Override
-  public void requestWasRemoved(network.crypta.client.async.ClientContext context) {
-    if (persistence == Persistence.FOREVER) {
-      putter = null;
-    }
-    super.requestWasRemoved(context);
+  public void requestWasRemoved(PersistentRequestRuntimeContext context) {
+    lifecycle().requestWasRemoved(context);
   }
 
   /**
@@ -882,31 +623,12 @@ public final class ClientPut extends ClientPutBase {
 
   @Override
   protected void onStartCompressing() {
-    synchronized (this) {
-      if (compressed) return;
-      compressing = true;
-    }
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateCompressionStatus(identifier, COMPRESS_STATE.COMPRESSING);
-      }
-    }
+    lifecycle().onStartCompressing();
   }
 
   @Override
   protected void onStopCompressing() {
-    synchronized (this) {
-      if (compressed) return; // Race condition possible
-      compressing = false;
-      compressed = true;
-    }
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateCompressionStatus(identifier, COMPRESS_STATE.WORKING);
-      }
-    }
+    lifecycle().onStopCompressing();
   }
 
   @Override
@@ -926,8 +648,7 @@ public final class ClientPut extends ClientPutBase {
    * @throws ResumeFailedException If any bucket cannot restore the backing store for reading.
    */
   @Override
-  public void innerResume(network.crypta.client.async.ClientContext context)
-      throws ResumeFailedException {
+  public void innerResume(FcpRequestRuntimeContext context) throws ResumeFailedException {
     if (putter != null) {
       applyDiagnosticIdentifier(putter.requester());
     }
@@ -951,5 +672,30 @@ public final class ClientPut extends ClientPutBase {
   @Override
   public boolean fullyResumed() {
     return false;
+  }
+
+  void resetBaseVarsForRestart() {
+    super.setVarsRestart();
+  }
+
+  void requestWasRemovedBase(PersistentRequestRuntimeContext context) {
+    super.requestWasRemoved(context);
+  }
+
+  synchronized boolean markCompressionStarted() {
+    if (compressed) {
+      return false;
+    }
+    compressing = true;
+    return true;
+  }
+
+  synchronized boolean markCompressionFinished() {
+    if (compressed) {
+      return false;
+    }
+    compressing = false;
+    compressed = true;
+    return true;
   }
 }

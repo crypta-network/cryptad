@@ -2,7 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.Serial;
 import java.io.Serializable;
-import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
@@ -37,12 +37,13 @@ public interface FcpRequesterHandle extends Serializable {
    * Requests cancellation of the underlying runtime work.
    *
    * <p>This is the detached equivalent of invoking cancellation on the runtime requester directly.
-   * The supplied {@link ClientContext} provides the live runtime services needed to stop work and
-   * release any request-owned state cleanly.
+   * The supplied detached runtime context provides the live runtime services needed to stop work
+   * and release any request-owned state cleanly.
    *
-   * @param context live client context used by the runtime requester when performing cancellation
+   * @param context detached runtime context used by the runtime requester when performing
+   *     cancellation
    */
-  void cancel(ClientContext context);
+  void cancel(PersistentRequestRuntimeContext context);
 
   /**
    * Updates the scheduling priority class on the underlying runtime requester.
@@ -52,10 +53,10 @@ public interface FcpRequesterHandle extends Serializable {
    * requester implementation.
    *
    * @param priorityClass new priority class to apply to the underlying runtime requester
-   * @param context live client context used by the runtime requester while applying the new
+   * @param context detached runtime context used by the runtime requester while applying the new
    *     scheduling priority
    */
-  void setPriorityClass(short priorityClass, ClientContext context);
+  void setPriorityClass(short priorityClass, PersistentRequestRuntimeContext context);
 
   /**
    * Assigns an external diagnostics identifier to the underlying runtime requester.
@@ -76,22 +77,22 @@ public interface FcpRequesterHandle extends Serializable {
    * reconnect to a fresh daemon runtime. The adapter invokes this hook during request resume so the
    * bridge can reattach any transient runtime collaborators behind the detached requester seam.
    *
-   * @param context live client context supplied during persistent-request resume; it carries the
-   *     runtime services needed to rebind the underlying requester
+   * @param context detached runtime context supplied during persistent-request resume; it carries
+   *     the runtime services needed to rebind the underlying requester
    * @throws ResumeFailedException if the runtime requester cannot be reattached safely during
    *     persistent-request resume
    */
-  void onResume(ClientContext context) throws ResumeFailedException;
+  void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException;
 
   /**
    * Invokes the runtime requester's shutdown hook.
    *
    * <p>This is used during node or request shutdown flows to give the runtime requester a final
-   * chance to flush, detach, or release transient state that depends on the live {@link
-   * ClientContext}. Implementations should treat the call as best-effort cleanup rather than as a
-   * normal lifecycle transition.
+   * chance to flush, detach, or release transient state that depends on the live runtime.
+   * Implementations should treat the call as best-effort cleanup rather than as a normal lifecycle
+   * transition.
    *
-   * @param context live client context supplied during shutdown
+   * @param context detached runtime context supplied during shutdown
    */
-  void onShutdown(ClientContext context);
+  void onShutdown(PersistentRequestRuntimeContext context);
 }

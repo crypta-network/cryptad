@@ -9,6 +9,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.async.alerts.ClientAlert;
 import network.crypta.client.async.alerts.ClientAlertSink;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
+import network.crypta.client.async.persistence.PersistentRequestCoordinatorContext;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventPersistentTask;
@@ -68,7 +69,10 @@ import network.crypta.support.io.TempBucketFactory;
  * @see RequestScheduler
  */
 public class ClientContext
-    implements CryptoResumeContext, PersistentRequestRuntimeContext, ClientEventDispatchContext {
+    implements CryptoResumeContext,
+        PersistentRequestCoordinatorContext,
+        PersistentRequestRuntimeContext,
+        ClientEventDispatchContext {
 
   private ClientRequestScheduler sskFetchSchedulerBulk;
   private ClientRequestScheduler chkFetchSchedulerBulk;
@@ -174,7 +178,7 @@ public class ClientContext
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
 
   /** Coordinator for persistent request ownership, including recovery across restarts. */
-  public final PersistentRequestCoordinator persistentRequestCoordinator;
+  public final PersistentRequestCoordinator persistentRequestCoordinatorRef;
 
   private final FetchContext defaultPersistentFetchContext;
   private final InsertContext defaultPersistentInsertContext;
@@ -239,12 +243,17 @@ public class ClientContext
     this.linkFilterExceptionProvider = services.linkFilterExceptionProvider();
     this.memoryLimitedJobRunner = runtime.memoryLimitedJobRunner();
     this.tempRAFFactory = rafFactories.tempRAFFactory();
-    this.persistentRequestCoordinator = services.persistentRequestCoordinator();
+    this.persistentRequestCoordinatorRef = services.persistentRequestCoordinator();
     this.dummyJobRunner = new DummyJobRunner(mainExecutorInternal, this);
     this.defaultPersistentFetchContext = defaults.defaultPersistentFetchContext();
     this.defaultPersistentInsertContext = defaults.defaultPersistentInsertContext();
     this.cryptoSecretTransient = runtime.cryptoSecretTransient();
     this.config = defaults.config();
+  }
+
+  @Override
+  public PersistentRequestCoordinator persistentRequestCoordinator() {
+    return persistentRequestCoordinatorRef;
   }
 
   /**

@@ -30,6 +30,7 @@ import network.crypta.clients.fcp.ClientGetExecution;
 import network.crypta.clients.fcp.ClientGetExecutionSpec;
 import network.crypta.clients.fcp.ClientGetFetchConfig;
 import network.crypta.clients.fcp.FcpFetchRuntimeSupport;
+import network.crypta.clients.fcp.FcpRequestRuntimeContext;
 import network.crypta.clients.fcp.FcpRequesterHandle;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
@@ -223,6 +224,18 @@ record CoreFcpFetchRuntimeSupport(
     return allowedMimeTypes == null ? null : new HashSet<>(allowedMimeTypes);
   }
 
+  private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
+    if (context instanceof FcpRequestRuntimeContext requestContext) {
+      return requireClientContext(requestContext.persistentRequestRuntimeContext());
+    }
+    if (context instanceof ClientContext clientContext) {
+      return clientContext;
+    }
+    String contextType = context == null ? "null" : context.getClass().getName();
+    throw new IllegalArgumentException(
+        "FCP GET execution resume requires ClientContext but got " + contextType);
+  }
+
   private static final class CoreClientGetExecution implements ClientGetExecution {
     @Serial private static final long serialVersionUID = 1L;
 
@@ -314,15 +327,6 @@ record CoreFcpFetchRuntimeSupport(
       if (requesterHandle == null) {
         requesterHandle = new CoreRequesterHandle(getter);
       }
-    }
-
-    private static ClientContext requireClientContext(PersistentRequestRuntimeContext context) {
-      if (context instanceof ClientContext clientContext) {
-        return clientContext;
-      }
-      String contextType = context == null ? "null" : context.getClass().getName();
-      throw new IllegalArgumentException(
-          "FCP GET execution resume requires ClientContext but got " + contextType);
     }
 
     private ClientGetterOptions createOptions(
@@ -471,13 +475,13 @@ record CoreFcpFetchRuntimeSupport(
     }
 
     @Override
-    public void cancel(ClientContext context) {
-      requester.cancel(context);
+    public void cancel(PersistentRequestRuntimeContext context) {
+      requester.cancel(requireClientContext(context));
     }
 
     @Override
-    public void setPriorityClass(short priorityClass, ClientContext context) {
-      requester.setPriorityClass(priorityClass, context);
+    public void setPriorityClass(short priorityClass, PersistentRequestRuntimeContext context) {
+      requester.setPriorityClass(priorityClass, requireClientContext(context));
     }
 
     @Override
@@ -486,13 +490,13 @@ record CoreFcpFetchRuntimeSupport(
     }
 
     @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
-      requester.onResume(context);
+    public void onResume(PersistentRequestRuntimeContext context) throws ResumeFailedException {
+      requester.onResume(requireClientContext(context));
     }
 
     @Override
-    public void onShutdown(ClientContext context) {
-      requester.onShutdown(context);
+    public void onShutdown(PersistentRequestRuntimeContext context) {
+      requester.onShutdown(requireClientContext(context));
     }
 
     @Override

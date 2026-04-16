@@ -424,7 +424,7 @@ class ClientGetPersistenceCodecTest {
 
     import java.io.File;
     import java.io.Serial;
-    import network.crypta.client.async.ClientContext;
+    import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
     import network.crypta.support.api.Bucket;
     import network.crypta.support.io.ResumeFailedException;
 
@@ -458,7 +458,7 @@ class ClientGetPersistenceCodecTest {
       }
 
       @Override
-      public void onLostConnection(ClientContext context) {}
+      public void onLostConnection(PersistentRequestRuntimeContext context) {}
 
       @Override
       public void sendPendingMessages(
@@ -471,7 +471,7 @@ class ClientGetPersistenceCodecTest {
       void register(boolean noTags) {}
 
       @Override
-      public void start(ClientContext context) {}
+      public void start(PersistentRequestRuntimeContext context) {}
 
       @Override
       protected FcpRequesterHandle getClientRequest() {
@@ -528,11 +528,12 @@ class ClientGetPersistenceCodecTest {
 
       @Override
       public boolean canRestart() {
-        return false;
-      }
+          return false;
+        }
 
           @Override
-          public boolean restart(ClientContext context, boolean disableFilterData) {
+          public boolean restart(
+              PersistentRequestRuntimeContext context, boolean disableFilterData) {
             return false;
           }
 
@@ -547,7 +548,7 @@ class ClientGetPersistenceCodecTest {
           }
 
       @Override
-      protected void innerResume(ClientContext context) throws ResumeFailedException {}
+      protected void innerResume(FcpRequestRuntimeContext context) throws ResumeFailedException {}
 
       @Override
       RequestIdentifier.RequestType getType() {

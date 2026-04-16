@@ -6,14 +6,20 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
-import java.lang.reflect.Field;
+import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.persistence.PersistentRequestClientHandle;
 import network.crypta.client.async.persistence.PersistentRequestCoordinator;
+import network.crypta.client.async.persistence.PersistentRequestCoordinatorContext;
 import network.crypta.client.async.persistence.PersistentRequestIdentifier;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.crypt.ChecksumChecker;
+import network.crypta.crypt.CryptoResumeContext;
+import network.crypta.crypt.MasterSecret;
 import network.crypta.node.RequestClient;
+import network.crypta.support.api.ResumeContext;
+import network.crypta.support.io.PersistentFileTracker;
+import network.crypta.support.io.PersistentFilenameGenerator;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
@@ -21,6 +27,7 @@ import org.mockito.InOrder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -162,6 +169,7 @@ class ClientRequestTest {
     // Arrange
     FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientContext context = mock(ClientContext.class);
+    //noinspection UnnecessaryLocalVariable
     PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
@@ -188,6 +196,7 @@ class ClientRequestTest {
     // Arrange
     FcpRequesterHandle requester = mock(FcpRequesterHandle.class);
     ClientContext context = mock(ClientContext.class);
+    //noinspection UnnecessaryLocalVariable
     PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
@@ -212,6 +221,7 @@ class ClientRequestTest {
   void start_whenRuntimeContextUsesClientContext_expectDelegatesToTypedOverload() {
     // Arrange
     ClientContext context = mock(ClientContext.class);
+    //noinspection UnnecessaryLocalVariable
     PersistentRequestRuntimeContext runtimeContext = context;
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
@@ -394,6 +404,7 @@ class ClientRequestTest {
     when(coordinator.resumePersistentRequest(request, false, "resume-client"))
         .thenReturn(resumedClient);
     ClientContext context = newContextWithCoordinator(coordinator);
+    //noinspection UnnecessaryLocalVariable
     PersistentRequestRuntimeContext runtimeContext = context;
 
     // Act
@@ -404,13 +415,84 @@ class ClientRequestTest {
     inOrder.verify(coordinator).getOrCreateClientHandle(false, "resume-client");
     inOrder.verify(requester).onResume(context);
     inOrder.verify(coordinator).resumePersistentRequest(request, false, "resume-client");
-    assertSame(context, request.innerResumeContext());
+    assertSame(context, request.innerResumeContext().persistentRequestRuntimeContext());
     assertSame(resumedClient, request.getClient());
     assertSame(resumedClient.lowLevelClient(false), request.getRequestClient());
   }
 
   @Test
-  void onResume_whenRuntimeContextIsNotClientContext_expectIllegalArgumentException() {
+  void onResume_whenRuntimeContextIsCryptoResumeCapable_preservesCryptoResumeContext()
+      throws ResumeFailedException {
+    PersistentRequestRoot originalRoot = new PersistentRequestRoot();
+    TestClientRequest request =
+        TestClientRequest.forever(
+            "resume-crypto",
+            0,
+            (short) 1,
+            null,
+            false,
+            false,
+            originalRoot.registerForeverClient("resume-crypto-client", null),
+            null);
+    PersistentRequestRoot resumedRoot = new PersistentRequestRoot();
+    PersistentRequestClient resumedClient =
+        resumedRoot.registerForeverClient("resume-crypto-client", null);
+    PersistentRequestCoordinator coordinator = mock(PersistentRequestCoordinator.class);
+    when(coordinator.getOrCreateClientHandle(false, "resume-crypto-client"))
+        .thenReturn(resumedClient);
+    when(coordinator.resumePersistentRequest(request, false, "resume-crypto-client"))
+        .thenReturn(resumedClient);
+    MasterSecret secret = mock(MasterSecret.class);
+    ClientContext context = newContextWithCoordinator(coordinator);
+    when(context.getPersistentMasterSecret()).thenReturn(secret);
+
+    request.onResume((PersistentRequestRuntimeContext) context);
+
+    CryptoResumeContext cryptoContext =
+        assertInstanceOf(CryptoResumeContext.class, request.innerResumeContext());
+    assertSame(secret, cryptoContext.getPersistentMasterSecret());
+    assertSame(context, request.innerResumeContext().persistentRequestRuntimeContext());
+  }
+
+  @Test
+  void onResume_whenRuntimeContextIsResumeCapableOnly_wrapsResumeContextWithoutCrypto()
+      throws ResumeFailedException {
+    PersistentRequestRoot originalRoot = new PersistentRequestRoot();
+    TestClientRequest request =
+        TestClientRequest.forever(
+            "resume-resume-only",
+            0,
+            (short) 1,
+            null,
+            false,
+            false,
+            originalRoot.registerForeverClient("resume-only-client", null),
+            null);
+    PersistentRequestRoot resumedRoot = new PersistentRequestRoot();
+    PersistentRequestClient resumedClient =
+        resumedRoot.registerForeverClient("resume-only-client", null);
+    PersistentRequestCoordinator coordinator = mock(PersistentRequestCoordinator.class);
+    when(coordinator.getOrCreateClientHandle(false, "resume-only-client"))
+        .thenReturn(resumedClient);
+    when(coordinator.resumePersistentRequest(request, false, "resume-only-client"))
+        .thenReturn(resumedClient);
+    Random fastWeakRandom = mock(Random.class);
+    PersistentFilenameGenerator filenameGenerator = mock(PersistentFilenameGenerator.class);
+    PersistentFileTracker fileTracker = mock(PersistentFileTracker.class);
+    ResumeOnlyRuntimeContext runtimeContext =
+        new ResumeOnlyRuntimeContext(coordinator, fastWeakRandom, filenameGenerator, fileTracker);
+
+    request.onResume(runtimeContext);
+
+    assertFalse(request.innerResumeContext() instanceof CryptoResumeContext);
+    assertSame(runtimeContext, request.innerResumeContext().persistentRequestRuntimeContext());
+    assertSame(fastWeakRandom, request.innerResumeContext().fastWeakRandom());
+    assertSame(filenameGenerator, request.innerResumeContext().getPersistentFilenameGenerator());
+    assertSame(fileTracker, request.innerResumeContext().getPersistentFileTracker());
+  }
+
+  @Test
+  void onResume_whenRuntimeContextIsNotResumeCapable_expectIllegalArgumentException() {
     // Arrange
     PersistentRequestRoot root = new PersistentRequestRoot();
     TestClientRequest request =
@@ -431,7 +513,7 @@ class ClientRequestTest {
 
     // Assert
     assertEquals(
-        "FCP persistent request resume requires ClientContext but got "
+        "FCP persistent request resume requires a resume-capable runtime context but got "
             + runtimeContext.getClass().getName(),
         ex.getMessage());
   }
@@ -466,29 +548,50 @@ class ClientRequestTest {
     }
   }
 
-  @SuppressWarnings("java:S3011")
   private static ClientContext newContextWithCoordinator(PersistentRequestCoordinator coordinator) {
     ClientContext context = mock(ClientContext.class);
-    try {
-      Field field = ClientContext.class.getDeclaredField("persistentRequestCoordinator");
-      field.setAccessible(true);
-      field.set(context, coordinator);
-      return context;
-    } catch (ReflectiveOperationException e) {
-      throw new LinkageError("Failed to set ClientContext.persistentRequestCoordinator", e);
-    }
+    when(context.persistentRequestCoordinator()).thenReturn(coordinator);
+    return context;
   }
 
   private static final class OpaqueHandle implements PersistentRequestClientHandle {}
 
   private static final class OpaqueRuntimeContext implements PersistentRequestRuntimeContext {}
 
+  private record ResumeOnlyRuntimeContext(
+      PersistentRequestCoordinator persistentRequestCoordinator,
+      Random fastWeakRandom,
+      PersistentFilenameGenerator persistentFilenameGenerator,
+      PersistentFileTracker persistentFileTracker)
+      implements PersistentRequestCoordinatorContext, ResumeContext {
+
+    @Override
+    public PersistentRequestCoordinator persistentRequestCoordinator() {
+      return persistentRequestCoordinator;
+    }
+
+    @Override
+    public Random fastWeakRandom() {
+      return fastWeakRandom;
+    }
+
+    @Override
+    public PersistentFilenameGenerator getPersistentFilenameGenerator() {
+      return persistentFilenameGenerator;
+    }
+
+    @Override
+    public PersistentFileTracker getPersistentFileTracker() {
+      return persistentFileTracker;
+    }
+  }
+
   private static final class TestClientRequest extends ClientRequest {
     @Serial private static final long serialVersionUID = 1L;
 
     private final FcpRequesterHandle requester;
-    private transient ClientContext innerResumeContext;
-    private transient ClientContext startContext;
+    private transient FcpRequestRuntimeContext innerResumeContext;
+    private transient PersistentRequestRuntimeContext startContext;
     private int freeDataCalls;
 
     private TestClientRequest(ConstructorInit init, FcpRequesterHandle requester) {
@@ -543,11 +646,11 @@ class ClientRequestTest {
       return freeDataCalls;
     }
 
-    ClientContext innerResumeContext() {
+    FcpRequestRuntimeContext innerResumeContext() {
       return innerResumeContext;
     }
 
-    ClientContext startContext() {
+    PersistentRequestRuntimeContext startContext() {
       return startContext;
     }
 
@@ -564,7 +667,7 @@ class ClientRequestTest {
     }
 
     @Override
-    public void onLostConnection(ClientContext context) {
+    public void onLostConnection(PersistentRequestRuntimeContext context) {
       // No-op for focused ClientRequest base-class tests.
     }
 
@@ -633,7 +736,7 @@ class ClientRequestTest {
     }
 
     @Override
-    public void start(ClientContext context) {
+    public void start(PersistentRequestRuntimeContext context) {
       startContext = context;
     }
 
@@ -648,7 +751,7 @@ class ClientRequestTest {
     }
 
     @Override
-    public boolean restart(ClientContext context, boolean disableFilterData) {
+    public boolean restart(PersistentRequestRuntimeContext context, boolean disableFilterData) {
       return false;
     }
 
@@ -658,7 +761,7 @@ class ClientRequestTest {
     }
 
     @Override
-    protected void innerResume(ClientContext context) {
+    protected void innerResume(FcpRequestRuntimeContext context) {
       innerResumeContext = context;
     }
 

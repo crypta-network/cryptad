@@ -259,7 +259,7 @@ final class ClientGetPersistenceIO {
     }
   }
 
-  static void resume(ClientGet request, network.crypta.client.async.ClientContext context)
+  static void resume(ClientGet request, FcpRequestRuntimeContext context)
       throws ResumeFailedException {
     if (request.execution() != null) {
       request.execution().onResume(context);
@@ -271,19 +271,31 @@ final class ClientGetPersistenceIO {
         throw new ResumeFailedException(e);
       }
     }
-    Bucket returnBucket = request.state().getReturnBucketDirect();
-    if (returnBucket != null) {
-      returnBucket.onResume(context);
-    }
-    Bucket initialMetadata = request.requestProfile().initialMetadata();
-    if (initialMetadata != null) {
-      initialMetadata.onResume(context);
-    }
+    resumeOwnedBucket(request.state().getReturnBucketDirect(), context);
+    resumeOwnedBucket(request.requestProfile().initialMetadata(), context);
     if (request.execution() != null && request.state().getFoundDataLength() <= 0) {
       request.state().setFoundDataLength(request.execution().expectedSize());
     }
     if (request.execution() != null && request.state().getFoundDataMimeType() == null) {
       request.state().setFoundDataMimeType(request.execution().expectedMime());
+    }
+  }
+
+  /**
+   * Resumes a request-owned bucket without transferring or releasing ownership.
+   *
+   * <p>{@link Bucket#close()} is a terminal-free operation, so these buckets must not be wrapped in
+   * try-with-resources during resume. The request continues to own the bucket after the resume
+   * callback returns.
+   *
+   * @param bucket request-owned bucket to reattach, or {@code null} when absent
+   * @param context detached resume context used by the bucket
+   * @throws ResumeFailedException if the bucket cannot reattach to its persisted state
+   */
+  private static void resumeOwnedBucket(Bucket bucket, FcpRequestRuntimeContext context)
+      throws ResumeFailedException {
+    if (bucket != null) {
+      bucket.onResume(context);
     }
   }
 }

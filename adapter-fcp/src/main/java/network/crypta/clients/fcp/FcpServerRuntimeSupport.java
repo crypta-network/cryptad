@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.persistence.PersistentRequestRuntimeContext;
 import network.crypta.support.api.BucketFactory;
@@ -10,8 +9,9 @@ import network.crypta.support.api.BucketFactory;
  *
  * <p>This adapter keeps connection handling, persistent request plumbing, and inbound message
  * parsing independent of direct {@code NodeClientCore} access while preserving the current runtime
- * behavior. It exposes only the live client context, persistence-availability check, bucket
- * factories, and secure randomness currently required by the FCP server's infrastructure classes.
+ * behavior. It exposes only the detached persistent-request context, persistence-availability
+ * check, bucket factories, and secure randomness currently required by the FCP server's
+ * infrastructure classes.
  *
  * <p>The seam remains owned by {@code clients.fcp} even though core-backed implementations now live
  * under runtime bootstrap wiring. It is public only, so those runtime-owned adapters can implement
@@ -39,13 +39,6 @@ public interface FcpServerRuntimeSupport {
 
   /** Requests an immediate persistence checkpoint from the live runtime. */
   void setCheckpointASAP();
-
-  /**
-   * Returns the live client context used for request lifecycle and persistent job work.
-   *
-   * @return current client context backing the owning FCP server
-   */
-  ClientContext clientContext();
 
   /**
    * Reports whether forever-persistent storage is currently unavailable.
