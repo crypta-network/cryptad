@@ -23,8 +23,9 @@ import network.crypta.support.api.HTTPRequest;
  * <p>This toadlet keeps HTTP-specific routing and access control inside the legacy admin adapter
  * while reusing the shell-owned browser contract from {@code :platform-web-shell}. It serves the
  * shell index page at {@value WebShellPaths#SHELL_ROOT}, serves the shell-owned static assets
- * beneath {@value WebShellPaths#ASSET_ROOT}, and injects only the small read-only bootstrap payload
- * needed by the browser-side script.
+ * beneath {@value WebShellPaths#ASSET_ROOT}, and injects the small bootstrap payload needed by the
+ * browser-side script, including the legacy mutation token required by the current Platform API
+ * bridge.
  */
 public final class WebShellToadlet extends Toadlet {
   /** Content type used for the shell document returned from the main route. */
@@ -83,7 +84,7 @@ public final class WebShellToadlet extends Toadlet {
       writeReply(
           ctx,
           ReplyHeaders.of(200, "OK", HTML_CONTENT_TYPE),
-          WebShellPageRenderer.render(bootstrap));
+          WebShellPageRenderer.render(bootstrap.withFormPassword(ctx.getFormPassword())));
       return;
     }
 

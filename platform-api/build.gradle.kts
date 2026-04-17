@@ -9,6 +9,8 @@ version = rootProject.version
 val mainSourceSet = sourceSets.named("main")
 
 dependencies {
+  implementation(project(":foundation-crypto-keys"))
+
   api(project(":runtime-spi"))
   api(project(":platform-apphost"))
 

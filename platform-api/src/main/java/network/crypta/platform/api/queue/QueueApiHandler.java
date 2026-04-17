@@ -1,0 +1,617 @@
+package network.crypta.platform.api.queue;
+
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import network.crypta.keys.FreenetURI;
+import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.runtime.spi.QueueCompletionPort;
+import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueDownloadRejectedException;
+import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueMutationPort;
+import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePageRequest;
+import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
+import network.crypta.runtime.spi.RequestQueueUnavailableException;
+
+/**
+ * Serves the Platform API v1 queue control-plane surface.
+ *
+ * <p>This handler turns the detached queue runtime ports into one transport-neutral JSON API for
+ * the Web Shell and any other local callers that need queue visibility or queue mutation access.
+ * Reads still originate from the legacy page-oriented {@link QueuePagePort}, so the current read
+ * model remains intentionally transitional: the handler wraps detached HTML snapshots in stable
+ * JSON envelopes, strips request-local placeholders that belong only to the legacy HTTP shell, and
+ * leaves the runtime traversal logic behind the existing SPI boundary.
+ *
+ * <p>Mutation requests already cross the detached ports more directly. This type validates the
+ * supported request parameters, normalizes legacy queue form conventions such as repeated
+ * identifiers and checkbox values, and preserves the established queue-backend error mapping.
+ *
+ * <p>It also keeps direct-download creation deliberately narrow. That leaves later queue phases
+ * free to add richer insert flows without reworking the basic control-plane contract.
+ */
+public final class QueueApiHandler {
+  private static final String ALERT_SUMMARY_PLACEHOLDER = "<!--CRYPTA_ALERT_SUMMARY-->";
+  private static final String FORM_PASSWORD_PLACEHOLDER = "<!--CRYPTA_QUEUE_FORM_PASSWORD-->";
+  private static final String PANIC_BOX_PLACEHOLDER = "<!--CRYPTA_QUEUE_PANIC_BOX-->";
+  private static final String FIELD_OPERATION = "operation";
+  private static final String FIELD_IDENTIFIER_COUNT = "identifierCount";
+  private static final String IDENTIFIER_PARAMETER_PREFIX = "identifier-";
+  private static final String PARAMETER_DISABLE_FILTER_DATA = "disableFilterData";
+  private static final String PARAMETER_FETCH_URI = "fetchUri";
+  private static final String PARAMETER_FILTER_DATA = "filterData";
+  private static final String PARAMETER_PAGE = "page";
+  private static final String PARAMETER_PRIORITY = "priority";
+  private static final short MINIMUM_PRIORITY_CLASS = 0;
+  private static final short MAXIMUM_PRIORITY_CLASS = 6;
+  private static final String QUERY_PARAMETER_PREFIX = "Query parameter '";
+  private static final String QUEUE_PAGE_DOWNLOADS = "downloads";
+  private static final String QUEUE_PAGE_UPLOADS = "uploads";
+
+  /** Detached queue snapshot read port. */
+  private final QueuePagePort queuePagePort;
+
+  /** Detached queue mutation port for already-existing requests. */
+  private final QueueMutationPort queueMutationPort;
+
+  /** Detached download-creation port for new direct downloads. */
+  private final QueueDownloadPort queueDownloadPort;
+
+  /** Detached queue support port used for availability checks. */
+  private final QueueSupportPort queueSupportPort;
+
+  /** Detached completion tracker startup hook used when a queue side is rendered. */
+  private final QueueCompletionPort queueCompletionPort;
+
+  /**
+   * Creates a queue API handler backed by the existing queue runtime ports.
+   *
+   * <p>All ports are required because even the small initial queue surface spans detached reads,
+   * existing-request mutations, direct-download creation, backend availability checks, and
+   * completion-tracker startup for rendered queue sides.
+   *
+   * @param queuePagePort detached queue snapshot read port used for queue pages and count views
+   * @param queueMutationPort detached mutation port for already-existing queue requests
+   * @param queueDownloadPort detached direct-download creation port for new download requests
+   * @param queueSupportPort detached queue support port used for backend availability checks
+   * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
+   * @throws NullPointerException if any required detached runtime port reference is {@code null}
+   */
+  public QueueApiHandler(
+      QueuePagePort queuePagePort,
+      QueueMutationPort queueMutationPort,
+      QueueDownloadPort queueDownloadPort,
+      QueueSupportPort queueSupportPort,
+      QueueCompletionPort queueCompletionPort) {
+    this.queuePagePort = Objects.requireNonNull(queuePagePort, "queuePagePort");
+    this.queueMutationPort = Objects.requireNonNull(queueMutationPort, "queueMutationPort");
+    this.queueDownloadPort = Objects.requireNonNull(queueDownloadPort, "queueDownloadPort");
+    this.queueSupportPort = Objects.requireNonNull(queueSupportPort, "queueSupportPort");
+    this.queueCompletionPort = Objects.requireNonNull(queueCompletionPort, "queueCompletionPort");
+  }
+
+  /**
+   * Returns one detached queue page snapshot as a JSON-compatible object.
+   *
+   * <p>The caller selects one queue side with {@code page} and may opt into the same advanced-mode
+   * and sorting controls that the legacy queue page already understands. Successful reads also
+   * ensure that the detached completion tracker is started for the rendered side so the shell sees
+   * the same completion-aware runtime behavior as the legacy operator path.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including page
+   *     selection and optional advanced-mode or sorting fields
+   * @return JSON-compatible queue page snapshot containing the selected side, detached title, and
+   *     placeholder-free HTML fragment for shell rendering
+   * @throws PlatformApiException if required parameters are missing, malformed, or the queue
+   *     backend is currently unavailable
+   */
+  public Map<String, Object> snapshot(Map<String, List<String>> queryParameters) {
+    QueueSide page = requireQueueSide(queryParameters);
+    boolean advancedMode =
+        PlatformApiParameters.readBoolean(queryParameters, "advancedMode", false);
+    String sortBy = optionalString(queryParameters, "sortBy");
+    boolean reversed = PlatformApiParameters.readBoolean(queryParameters, "reversed", false);
+    ensureQueueReadable(page.uploads());
+
+    QueuePageSnapshot snapshot =
+        readQueuePage(
+            () ->
+                queuePagePort.renderPage(
+                    new QueuePageRequest(page.uploads(), advancedMode, sortBy, reversed)));
+
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    json.put("page", page.apiValue());
+    json.put("pageTitle", snapshot.pageTitle());
+    json.put("contentHtml", stripRuntimePlaceholders(snapshot.contentHtmlTemplate()));
+    json.put("advancedMode", advancedMode);
+    json.put("sortBy", sortBy);
+    json.put("reversed", reversed);
+    return json;
+  }
+
+  /**
+   * Returns the detached queue count snapshot for one queue side.
+   *
+   * <p>The underlying runtime currently exposes only the download-side count view. This method
+   * therefore rejects {@code page=uploads} instead of returning mislabeled data. When the count is
+   * available, it is wrapped in the same small JSON envelope shape used by the other queue reads so
+   * the shell can treat it as an auxiliary panel.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including the
+   *     required queue-side selector
+   * @return JSON-compatible count snapshot for the download queue side
+   * @throws PlatformApiException if the page selector is missing, unsupported, or the queue backend
+   *     is currently unavailable
+   */
+  public Map<String, Object> count(Map<String, List<String>> queryParameters) {
+    QueueSide page = requireQueueSide(queryParameters);
+    if (page.uploads()) {
+      throw invalidQuery(
+          queryParameter(PARAMETER_PAGE) + " must be 'downloads' for this endpoint.");
+    }
+    ensureQueueReadable(false);
+
+    QueuePageSnapshot snapshot = readQueuePage(() -> queuePagePort.renderCountPage(false));
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put("page", page.apiValue());
+    json.put("pageTitle", snapshot.pageTitle());
+    json.put("contentHtml", stripRuntimePlaceholders(snapshot.contentHtmlTemplate()));
+    return json;
+  }
+
+  /**
+   * Returns the detached queue key export as a JSON list.
+   *
+   * <p>The runtime port still emits the key list as newline-delimited text. This method trims that
+   * output into a stable JSON array, preserving the legacy queue-side split while giving the shell
+   * and other callers a transport-neutral export shape that is easier to render or download.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including the
+   *     required queue-side selector
+   * @return JSON-compatible queue key export containing the selected side, key count, and trimmed
+   *     key list entries
+   * @throws PlatformApiException if the page selector is missing, invalid, or the queue backend is
+   *     currently unavailable
+   */
+  public Map<String, Object> keys(Map<String, List<String>> queryParameters) {
+    QueueSide page = requireQueueSide(queryParameters);
+    ensureQueueReadable(page.uploads());
+
+    String rawKeyList = readKeyList(page.uploads());
+    List<String> keys =
+        rawKeyList.lines().map(String::trim).filter(line -> !line.isEmpty()).toList();
+
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put("page", page.apiValue());
+    json.put("keyCount", keys.size());
+    json.put("keys", keys);
+    return json;
+  }
+
+  /**
+   * Removes already-existing queue requests.
+   *
+   * <p>The request may identify selections either through repeated {@code identifier} parameters or
+   * the numbered {@code identifier-*} fields emitted by the legacy queue tables. The handler
+   * preserves the caller's row order before invoking the detached mutation port so downstream
+   * partial-failure behavior stays aligned with the user's selection order.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including one or
+   *     more queue request identifiers
+   * @return JSON-compatible mutation summary reporting the remove operation and identifier count
+   * @throws PlatformApiException if no identifiers are supplied, if any identifier field is
+   *     malformed, or if the queue backend is unavailable
+   */
+  public Map<String, Object> removeRequests(Map<String, List<String>> queryParameters) {
+    List<String> identifiers = requireIdentifiers(queryParameters);
+    ensureQueueBackendEnabled();
+    mutateQueue(() -> queueMutationPort.removeRequests(identifiers));
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put(FIELD_OPERATION, "remove");
+    json.put(FIELD_IDENTIFIER_COUNT, identifiers.size());
+    return json;
+  }
+
+  /**
+   * Restarts already-existing queue requests.
+   *
+   * <p>This endpoint accepts the legacy restart checkbox conventions as well as normalized boolean
+   * values. That keeps Web Shell submissions and transplanted legacy form payloads compatible while
+   * still returning one explicit JSON summary that states whether filter bypass was requested.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including one or
+   *     more queue request identifiers and the optional disable-filter checkbox value
+   * @return JSON-compatible mutation summary reporting the restart operation, identifier count, and
+   *     normalized filter-bypass flag
+   * @throws PlatformApiException if the identifiers are missing or malformed, if the checkbox value
+   *     cannot be interpreted, or if the queue backend is unavailable
+   */
+  public Map<String, Object> restartRequests(Map<String, List<String>> queryParameters) {
+    List<String> identifiers = requireIdentifiers(queryParameters);
+    boolean disableFilterData = readCheckboxBoolean(queryParameters, PARAMETER_DISABLE_FILTER_DATA);
+    ensureQueueBackendEnabled();
+    mutateQueue(() -> queueMutationPort.restartRequests(identifiers, disableFilterData));
+
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put(FIELD_OPERATION, "restart");
+    json.put(FIELD_IDENTIFIER_COUNT, identifiers.size());
+    json.put(PARAMETER_DISABLE_FILTER_DATA, disableFilterData);
+    return json;
+  }
+
+  /**
+   * Changes the priority class of already-existing queue requests.
+   *
+   * <p>The handler validates the detached priority value before it reaches the runtime port. That
+   * keeps malformed or out-of-range API calls from becoming misleading no-ops or backend failures
+   * when the queue tries to re-register the affected requests with the scheduler.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including one or
+   *     more queue request identifiers and the requested detached priority class
+   * @return JSON-compatible mutation summary reporting the change-priority operation, identifier
+   *     count, and accepted priority class
+   * @throws PlatformApiException if the identifiers are missing, if the priority is malformed or
+   *     out of the supported range, or if the queue backend is unavailable
+   */
+  public Map<String, Object> changePriority(Map<String, List<String>> queryParameters) {
+    List<String> identifiers = requireIdentifiers(queryParameters);
+    short priority = requirePriority(queryParameters);
+    ensureQueueBackendEnabled();
+    mutateQueue(() -> queueMutationPort.changePriority(identifiers, priority));
+
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put(FIELD_OPERATION, "change_priority");
+    json.put(FIELD_IDENTIFIER_COUNT, identifiers.size());
+    json.put(PARAMETER_PRIORITY, priority);
+    return json;
+  }
+
+  /**
+   * Removes completed upload requests using the legacy cleanup semantics.
+   *
+   * <p>The current cleanup endpoints do not accept additional knobs. The query-parameter map is
+   * still required, so this method shares the same transport-neutral entry shape as the other queue
+   * mutations and can grow later without changing the router contract.
+   *
+   * @param queryParameters decoded request parameters for the current API call; currently present
+   *     only to preserve the shared queue mutation shape
+   * @return JSON-compatible cleanup summary identifying the legacy cleanup operation and upload
+   *     target side
+   * @throws NullPointerException if {@code queryParameters} is {@code null}
+   * @throws PlatformApiException if the queue backend is unavailable when the cleanup runs
+   */
+  public Map<String, Object> cleanupUploads(Map<String, List<String>> queryParameters) {
+    Objects.requireNonNull(queryParameters, "queryParameters");
+    ensureQueueBackendEnabled();
+    mutateQueue(queueMutationPort::removeFinishedUploads);
+    return cleanupResult(QUEUE_PAGE_UPLOADS);
+  }
+
+  /**
+   * Removes completed download requests using the legacy cleanup semantics.
+   *
+   * <p>This endpoint mirrors the legacy finished-download cleanup action and deliberately keeps the
+   * detached JSON response small. Callers get a stable operation and target summary while the
+   * runtime port retains the authoritative definition of what counts as a finished download entry.
+   *
+   * @param queryParameters decoded request parameters for the current API call; currently present
+   *     only to preserve the shared queue mutation shape
+   * @return JSON-compatible cleanup summary identifying the legacy cleanup operation and download
+   *     target side
+   * @throws NullPointerException if {@code queryParameters} is {@code null}
+   * @throws PlatformApiException if the queue backend is unavailable when the cleanup runs
+   */
+  public Map<String, Object> cleanupDownloads(Map<String, List<String>> queryParameters) {
+    Objects.requireNonNull(queryParameters, "queryParameters");
+    ensureQueueBackendEnabled();
+    mutateQueue(queueMutationPort::removeFinishedDownloads);
+    return cleanupResult(QUEUE_PAGE_DOWNLOADS);
+  }
+
+  /**
+   * Queues one new direct download using the existing detached download SPI.
+   *
+   * <p>This initial Platform API surface keeps direct-download creation intentionally narrow. It
+   * always creates a persistent direct-return download and leaves browser uploads and local file or
+   * directory insert flows on the legacy queue pages for now.
+   *
+   * <p>The caller may provide either {@code fetchUri} or the legacy {@code key} alias and may
+   * optionally supply a MIME hint. The handler validates the URI syntax up front, normalizes the
+   * filter checkbox, and then delegates to the detached runtime port with the fixed persistent
+   * direct-return contract for this phase.
+   *
+   * @param queryParameters decoded request parameters for the current API call, including the
+   *     required fetch URI and optional filter or MIME fields
+   * @return JSON-compatible creation summary describing the queued direct download request
+   * @throws PlatformApiException if the URI is missing or invalid, if the queue backend is
+   *     unavailable, or if the runtime port rejects or fails the request
+   */
+  public Map<String, Object> createDirectDownload(Map<String, List<String>> queryParameters) {
+    String fetchUri = requireFetchUri(queryParameters);
+    boolean filterData = readCheckboxBoolean(queryParameters, PARAMETER_FILTER_DATA);
+    String expectedMimeType = optionalString(queryParameters, "expectedMimeType");
+    ensureQueueBackendEnabled();
+
+    try {
+      queueDownloadPort.enqueueDownload(
+          new QueueDownloadRequest(
+              fetchUri, filterData, expectedMimeType, "forever", "direct", null));
+    } catch (QueueDownloadRejectedException _) {
+      throw new PlatformApiException(
+          409, "queue_download_rejected", "Direct download rejected by the queue backend.");
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    } catch (IOException _) {
+      throw new PlatformApiException(500, "internal_error", "Failed to enqueue direct download.");
+    }
+
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
+    json.put(FIELD_OPERATION, "create_direct_download");
+    json.put(PARAMETER_FETCH_URI, fetchUri);
+    json.put(PARAMETER_FILTER_DATA, filterData);
+    json.put("expectedMimeType", expectedMimeType);
+    json.put("returnType", "direct");
+    return json;
+  }
+
+  private void ensureQueueReadable(boolean uploads) {
+    ensureQueueBackendEnabled();
+    queueCompletionPort.ensureTrackingStarted(uploads);
+  }
+
+  private void ensureQueueBackendEnabled() {
+    if (!queueSupportPort.isQueueBackendEnabled()) {
+      throw new PlatformApiException(
+          409, "queue_backend_disabled", "Queue backend is currently disabled.");
+    }
+  }
+
+  private QueuePageSnapshot readQueuePage(QueuePageReadOperation operation) {
+    try {
+      return operation.read();
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    }
+  }
+
+  private String readKeyList(boolean uploads) {
+    try {
+      return queuePagePort.renderKeyList(uploads);
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    }
+  }
+
+  private void mutateQueue(QueueMutationOperation operation) {
+    try {
+      operation.apply();
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    }
+  }
+
+  private static Map<String, Object> cleanupResult(String target) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put(FIELD_OPERATION, "cleanup");
+    json.put("target", target);
+    return json;
+  }
+
+  private static QueueSide requireQueueSide(Map<String, List<String>> queryParameters) {
+    String raw = PlatformApiParameters.requireString(queryParameters, PARAMETER_PAGE);
+    return switch (raw) {
+      case QUEUE_PAGE_DOWNLOADS -> QueueSide.DOWNLOADS;
+      case QUEUE_PAGE_UPLOADS -> QueueSide.UPLOADS;
+      default ->
+          throw invalidQuery(
+              queryParameter(PARAMETER_PAGE)
+                  + " must be either '"
+                  + QUEUE_PAGE_DOWNLOADS
+                  + "' or '"
+                  + QUEUE_PAGE_UPLOADS
+                  + "'.");
+    };
+  }
+
+  private static String requireFetchUri(Map<String, List<String>> queryParameters) {
+    String fetchUri = optionalString(queryParameters, PARAMETER_FETCH_URI);
+    if (fetchUri == null) {
+      fetchUri = optionalString(queryParameters, "key");
+    }
+    if (fetchUri == null || fetchUri.isBlank()) {
+      throw invalidQuery("Missing required query parameter '" + PARAMETER_FETCH_URI + "'.");
+    }
+    try {
+      new FreenetURI(fetchUri);
+    } catch (MalformedURLException _) {
+      throw invalidQuery(queryParameter(PARAMETER_FETCH_URI) + " must be a valid fetch URI.");
+    }
+    return fetchUri;
+  }
+
+  private static List<String> requireIdentifiers(Map<String, List<String>> queryParameters) {
+    ArrayList<String> identifiers = new ArrayList<>();
+    List<String> repeatedIdentifiers = queryParameters.get("identifier");
+    if (repeatedIdentifiers != null) {
+      for (String identifier : repeatedIdentifiers) {
+        addIdentifier(identifiers, identifier);
+      }
+    }
+
+    // Legacy queue pages emit numbered identifier-* fields; sort by suffix so HashMap-backed
+    // request parsing does not scramble the caller's row order before the mutation port sees it.
+    for (Map.Entry<String, List<String>> entry : sortedIdentifierEntries(queryParameters)) {
+      if (entry.getValue().size() != 1) {
+        throw invalidQuery(queryParameter(entry.getKey()) + " must not be repeated.");
+      }
+      addIdentifier(identifiers, entry.getValue().getFirst());
+    }
+
+    if (identifiers.isEmpty()) {
+      throw invalidQuery("At least one queue request identifier must be selected.");
+    }
+    return List.copyOf(identifiers);
+  }
+
+  private static List<Map.Entry<String, List<String>>> sortedIdentifierEntries(
+      Map<String, List<String>> queryParameters) {
+    return queryParameters.entrySet().stream()
+        .filter(entry -> entry.getKey().startsWith(IDENTIFIER_PARAMETER_PREFIX))
+        .sorted(Map.Entry.comparingByKey(QueueApiHandler::compareIdentifierKeys))
+        .toList();
+  }
+
+  private static int compareIdentifierKeys(String firstKey, String secondKey) {
+    String firstSuffix = firstKey.substring(IDENTIFIER_PARAMETER_PREFIX.length());
+    String secondSuffix = secondKey.substring(IDENTIFIER_PARAMETER_PREFIX.length());
+    if (isDigitsOnly(firstSuffix) && isDigitsOnly(secondSuffix)) {
+      int byLength = Integer.compare(firstSuffix.length(), secondSuffix.length());
+      return byLength != 0 ? byLength : firstSuffix.compareTo(secondSuffix);
+    }
+    return firstSuffix.compareTo(secondSuffix);
+  }
+
+  private static boolean isDigitsOnly(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (!Character.isDigit(value.charAt(i))) {
+        return false;
+      }
+    }
+    return !value.isEmpty();
+  }
+
+  private static void addIdentifier(List<String> identifiers, String identifier) {
+    if (identifier == null || identifier.isBlank()) {
+      throw invalidQuery("Queue request identifiers must not be blank.");
+    }
+    identifiers.add(identifier);
+  }
+
+  private static short requirePriority(Map<String, List<String>> queryParameters) {
+    String raw = PlatformApiParameters.requireString(queryParameters, PARAMETER_PRIORITY);
+    short priority;
+    try {
+      priority = Short.parseShort(raw);
+    } catch (NumberFormatException _) {
+      throw invalidQuery(queryParameter(PARAMETER_PRIORITY) + " must be a valid short integer.");
+    }
+    if (priority < MINIMUM_PRIORITY_CLASS || priority > MAXIMUM_PRIORITY_CLASS) {
+      throw invalidQuery(
+          queryParameter(PARAMETER_PRIORITY)
+              + " must be between "
+              + MINIMUM_PRIORITY_CLASS
+              + " and "
+              + MAXIMUM_PRIORITY_CLASS
+              + ".");
+    }
+    return priority;
+  }
+
+  private static boolean readCheckboxBoolean(
+      Map<String, List<String>> queryParameters, String name) {
+    List<String> values = queryParameters.get(name);
+    if (values == null || values.isEmpty()) {
+      return false;
+    }
+    boolean anyTruthy = false;
+    for (String raw : values) {
+      if (raw == null || isTruthyCheckboxValue(raw, name)) {
+        anyTruthy = true;
+      } else if (!isFalseyCheckboxValue(raw)) {
+        throw invalidQuery(
+            queryParameter(name)
+                + " must be a checkbox value or one of 'true', 'false', 'on', or 'off'.");
+      }
+    }
+    return anyTruthy;
+  }
+
+  private static boolean isTruthyCheckboxValue(String raw, String name) {
+    return raw.isBlank()
+        || "true".equalsIgnoreCase(raw)
+        || "on".equalsIgnoreCase(raw)
+        || name.equals(raw);
+  }
+
+  private static boolean isFalseyCheckboxValue(String raw) {
+    return "false".equalsIgnoreCase(raw) || "off".equalsIgnoreCase(raw);
+  }
+
+  private static String optionalString(Map<String, List<String>> queryParameters, String name) {
+    String value = readSingleValue(queryParameters, name);
+    if (value == null) {
+      return null;
+    }
+    return value.isBlank() ? null : value;
+  }
+
+  private static String readSingleValue(Map<String, List<String>> queryParameters, String name) {
+    List<String> values = queryParameters.get(name);
+    if (values == null || values.isEmpty()) {
+      return null;
+    }
+    if (values.size() > 1) {
+      throw invalidQuery(queryParameter(name) + " must not be repeated.");
+    }
+    return values.getFirst();
+  }
+
+  private static String queryParameter(String name) {
+    return QUERY_PARAMETER_PREFIX + name + "'";
+  }
+
+  private static String stripRuntimePlaceholders(String contentHtmlTemplate) {
+    return contentHtmlTemplate
+        .replace(ALERT_SUMMARY_PLACEHOLDER, "")
+        .replace(FORM_PASSWORD_PLACEHOLDER, "")
+        .replace(PANIC_BOX_PLACEHOLDER, "");
+  }
+
+  private static PlatformApiException queueUnavailable() {
+    return new PlatformApiException(
+        409, "queue_unavailable", "Persistent request queue is currently unavailable.");
+  }
+
+  private static PlatformApiException invalidQuery(String message) {
+    return new PlatformApiException(400, "invalid_query_parameter", message);
+  }
+
+  private enum QueueSide {
+    DOWNLOADS(QUEUE_PAGE_DOWNLOADS, false),
+    UPLOADS(QUEUE_PAGE_UPLOADS, true);
+
+    private final String apiValue;
+    private final boolean uploads;
+
+    QueueSide(String apiValue, boolean uploads) {
+      this.apiValue = apiValue;
+      this.uploads = uploads;
+    }
+
+    private String apiValue() {
+      return apiValue;
+    }
+
+    private boolean uploads() {
+      return uploads;
+    }
+  }
+
+  @FunctionalInterface
+  private interface QueuePageReadOperation {
+    QueuePageSnapshot read() throws RequestQueueUnavailableException;
+  }
+
+  @FunctionalInterface
+  private interface QueueMutationOperation {
+    void apply() throws RequestQueueUnavailableException;
+  }
+}

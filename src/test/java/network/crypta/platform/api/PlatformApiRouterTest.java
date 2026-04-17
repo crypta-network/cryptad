@@ -37,6 +37,14 @@ import network.crypta.runtime.spi.NodeReferenceView;
 import network.crypta.runtime.spi.PeerFieldSet;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.QueueCompletionPort;
+import network.crypta.runtime.spi.QueueDownloadPort;
+import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueMutationPort;
+import network.crypta.runtime.spi.QueuePagePort;
+import network.crypta.runtime.spi.QueuePageRequest;
+import network.crypta.runtime.spi.QueuePageSnapshot;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.SecurityLevelsSnapshot;
@@ -75,6 +83,11 @@ class PlatformApiRouterTest {
   @Mock private ConfigPort configPort;
   @Mock private ConnectivityPort connectivityPort;
   @Mock private SecurityLevelsPort securityLevelsPort;
+  @Mock private QueuePagePort queuePagePort;
+  @Mock private QueueMutationPort queueMutationPort;
+  @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueSupportPort queueSupportPort;
+  @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private AppHost appHost;
 
   @TempDir private Path tempDir;
@@ -88,6 +101,11 @@ class PlatformApiRouterTest {
     when(runtimePorts.config()).thenReturn(configPort);
     when(runtimePorts.connectivity()).thenReturn(connectivityPort);
     when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
+    when(runtimePorts.queuePage()).thenReturn(queuePagePort);
+    when(runtimePorts.queueMutation()).thenReturn(queueMutationPort);
+    when(runtimePorts.queueDownload()).thenReturn(queueDownloadPort);
+    when(runtimePorts.queueSupport()).thenReturn(queueSupportPort);
+    when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
@@ -351,6 +369,159 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         "{\"CURRENT\":{\"enabled\":\"true\",\"node\":{\"name\":\"alpha\"}}}", response.body());
+  }
+
+  @Test
+  void route_whenQueueSnapshotRequested_expectDetachedQueueJson() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queuePagePort.renderPage(new QueuePageRequest(false, true, "priority", true)))
+        .thenReturn(
+            new QueuePageSnapshot(
+                "Downloads",
+                "<div>before<!--CRYPTA_ALERT_SUMMARY--><!--CRYPTA_QUEUE_FORM_PASSWORD-->"
+                    + "after</div>"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "GET",
+                List.of("queue"),
+                Map.of(
+                    "page", List.of("downloads"),
+                    "advancedMode", List.of("true"),
+                    "sortBy", List.of("priority"),
+                    "reversed", List.of("true"))));
+
+    verify(queueCompletionPort).ensureTrackingStarted(false);
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("page", "downloads"),
+                Map.entry("pageTitle", "Downloads"),
+                Map.entry("contentHtml", "<div>beforeafter</div>"),
+                Map.entry("advancedMode", true),
+                Map.entry("sortBy", "priority"),
+                Map.entry("reversed", true))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueuePageMissing_expectBadRequestJson() {
+    PlatformApiResponse response = router.route(request("GET", List.of("queue"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_query_parameter\",\"message\":\"Missing required query"
+            + " parameter 'page'.\"}}",
+        response.body());
+    verify(queueSupportPort, never()).isQueueBackendEnabled();
+  }
+
+  @Test
+  void route_whenQueueKeysRequested_expectJsonArrayExport() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queuePagePort.renderKeyList(true)).thenReturn("USK@alpha\nUSK@beta\n");
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("queue", "keys"), Map.of("page", List.of("uploads"))));
+
+    verify(queueCompletionPort).ensureTrackingStarted(true);
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("page", "uploads"),
+                Map.entry("keyCount", 2),
+                Map.entry("keys", List.of("USK@alpha", "USK@beta")))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueCountRequested_expectDetachedCountJson() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queuePagePort.renderCountPage(false))
+        .thenReturn(
+            new QueuePageSnapshot(
+                "Downloads Count", "<div>count<!--CRYPTA_QUEUE_FORM_PASSWORD--></div>"));
+
+    PlatformApiResponse response =
+        router.route(
+            request("GET", List.of("queue", "count"), Map.of("page", List.of("downloads"))));
+
+    verify(queueCompletionPort).ensureTrackingStarted(false);
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("page", "downloads"),
+                Map.entry("pageTitle", "Downloads Count"),
+                Map.entry("contentHtml", "<div>count</div>"))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueRemoveRequested_expectMutationJsonAndIdentifiersPassedThrough()
+      throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "requests", "remove"),
+                orderedStringParameters(
+                    Map.entry("identifier-0", List.of("download-1")),
+                    Map.entry("identifier-1", List.of("download-2")))));
+
+    verify(queueMutationPort).removeRequests(List.of("download-1", "download-2"));
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(Map.entry("operation", "remove"), Map.entry("identifierCount", 2))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueCleanupDownloadsRequested_expectCleanupJson() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("queue", "cleanup", "downloads"), Map.of()));
+
+    verify(queueMutationPort).removeFinishedDownloads();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(Map.entry("operation", "cleanup"), Map.entry("target", "downloads"))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueDirectDownloadRequested_expectCreatedJsonAndDirectRequest() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "downloads"),
+                Map.of(
+                    "fetchUri", List.of("KSK@queued"),
+                    "filterData", List.of("true"),
+                    "expectedMimeType", List.of("text/plain"))));
+
+    verify(queueDownloadPort)
+        .enqueueDownload(
+            new QueueDownloadRequest("KSK@queued", true, "text/plain", "forever", "direct", null));
+    assertEquals(201, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("operation", "create_direct_download"),
+                Map.entry("fetchUri", "KSK@queued"),
+                Map.entry("filterData", true),
+                Map.entry("expectedMimeType", "text/plain"),
+                Map.entry("returnType", "direct"))),
+        response.body());
   }
 
   @Test
@@ -916,6 +1087,25 @@ class PlatformApiRouterTest {
   private static PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
+  }
+
+  @SafeVarargs
+  private static Map<String, Object> orderedJson(Map.Entry<String, Object>... entries) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(entries.length);
+    for (Map.Entry<String, Object> entry : entries) {
+      json.put(entry.getKey(), entry.getValue());
+    }
+    return json;
+  }
+
+  @SafeVarargs
+  private static Map<String, List<String>> orderedStringParameters(
+      Map.Entry<String, List<String>>... entries) {
+    LinkedHashMap<String, List<String>> parameters = LinkedHashMap.newLinkedHashMap(entries.length);
+    for (Map.Entry<String, List<String>> entry : entries) {
+      parameters.put(entry.getKey(), entry.getValue());
+    }
+    return parameters;
   }
 
   private InstalledAppSnapshot installedSnapshot() {

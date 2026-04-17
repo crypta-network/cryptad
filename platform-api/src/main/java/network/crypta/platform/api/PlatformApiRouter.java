@@ -8,6 +8,7 @@ import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
 import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
+import network.crypta.platform.api.queue.QueueApiHandler;
 import network.crypta.platform.api.security.SecurityLevelsApiHandler;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -24,6 +25,12 @@ public final class PlatformApiRouter {
   /** Logger used for unexpected failures that escape endpoint-specific validation. */
   private static final System.Logger LOG = System.getLogger(PlatformApiRouter.class.getName());
 
+  /** Shared 405 message for routes that only support GET. */
+  private static final String GET_ONLY_MESSAGE = "Platform API v1 supports GET requests only.";
+
+  /** Shared 405 message for routes that only support POST. */
+  private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
+
   /** Handler for the {@code /node/...} endpoint family. */
   private final NodeApiHandler nodeApiHandler;
 
@@ -38,6 +45,9 @@ public final class PlatformApiRouter {
 
   /** Handler for the {@code /security-levels} endpoint. */
   private final SecurityLevelsApiHandler securityLevelsApiHandler;
+
+  /** Handler for the {@code /queue/...} endpoint family. */
+  private final QueueApiHandler queueApiHandler;
 
   /** Handler for the {@code /apps/...} endpoint family, when AppHost support is available. */
   private final AppsApiHandler appsApiHandler;
@@ -66,6 +76,13 @@ public final class PlatformApiRouter {
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
     connectivityApiHandler = new ConnectivityApiHandler(runtimePorts.connectivity());
     securityLevelsApiHandler = new SecurityLevelsApiHandler(runtimePorts.securityLevels());
+    queueApiHandler =
+        new QueueApiHandler(
+            runtimePorts.queuePage(),
+            runtimePorts.queueMutation(),
+            runtimePorts.queueDownload(),
+            runtimePorts.queueSupport(),
+            runtimePorts.queueCompletion());
     appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost);
   }
 
@@ -106,13 +123,13 @@ public final class PlatformApiRouter {
     if ("apps".equals(firstSegment)) {
       return routeAppsRequest(segments, request);
     }
+    if ("queue".equals(firstSegment)) {
+      return routeQueueRequest(segments, request);
+    }
 
     if (!"GET".equals(request.method())) {
       return PlatformApiResponse.error(
-          405,
-          Map.of("Allow", "GET"),
-          "method_not_allowed",
-          "Platform API v1 supports GET requests only.");
+          405, Map.of("Allow", "GET"), "method_not_allowed", GET_ONLY_MESSAGE);
     }
 
     if ("node".equals(firstSegment)) {
@@ -163,7 +180,7 @@ public final class PlatformApiRouter {
    */
   private PlatformApiResponse routeAppsCollection(String method) {
     if (!"GET".equals(method)) {
-      return methodNotAllowed("GET", "Platform API v1 supports GET requests only.");
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
     }
     return PlatformApiResponse.ok(envelope("apps", appsApiHandler.list()));
   }
@@ -191,7 +208,7 @@ public final class PlatformApiRouter {
    */
   private PlatformApiResponse routeAppsInstall(PlatformApiRequest request) {
     if (!"POST".equals(request.method())) {
-      return methodNotAllowed("POST", "Platform API v1 supports POST requests only.");
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
     }
     return PlatformApiResponse.created(
         envelope("app", appsApiHandler.install(request.queryParameters())));
@@ -242,7 +259,7 @@ public final class PlatformApiRouter {
       String appId, String action, PlatformApiRequest request) {
     String method = request.method();
     if (!"POST".equals(method)) {
-      return methodNotAllowed("POST", "Platform API v1 supports POST requests only.");
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
     }
     return switch (action) {
       case "start" -> PlatformApiResponse.ok(envelope("app", appsApiHandler.start(appId)));
@@ -252,6 +269,129 @@ public final class PlatformApiRouter {
               envelope("app", appsApiHandler.update(appId, request.queryParameters())));
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
+  }
+
+  /**
+   * Routes requests beneath the {@code /queue} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected queue endpoint
+   */
+  private PlatformApiResponse routeQueueRequest(List<String> segments, PlatformApiRequest request) {
+    return switch (segments.size()) {
+      case 1 -> routeQueueRoot(request);
+      case 2 -> routeQueueResource(segments.get(1), request);
+      case 3 -> routeQueueAction(segments.get(1), segments.get(2), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  /**
+   * Routes the queue snapshot endpoint at {@code /queue}.
+   *
+   * @param request full request metadata, including query parameters
+   * @return JSON response containing one detached queue snapshot
+   */
+  private PlatformApiResponse routeQueueRoot(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(queueApiHandler.snapshot(request.queryParameters()));
+  }
+
+  /**
+   * Routes queue resources such as count, keys, and direct-download creation.
+   *
+   * @param resource second path segment beneath {@code /queue}
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected queue resource
+   */
+  private PlatformApiResponse routeQueueResource(String resource, PlatformApiRequest request) {
+    return switch (resource) {
+      case "count" -> routeQueueCount(request);
+      case "keys" -> routeQueueKeys(request);
+      case "downloads" -> routeQueueDownloads(request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  /**
+   * Routes queue snapshot count requests.
+   *
+   * @param request full request metadata, including query parameters
+   * @return JSON response containing one detached count snapshot
+   */
+  private PlatformApiResponse routeQueueCount(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(queueApiHandler.count(request.queryParameters()));
+  }
+
+  /**
+   * Routes queue key-export requests.
+   *
+   * @param request full request metadata, including query parameters
+   * @return JSON response containing the detached queue key export
+   */
+  private PlatformApiResponse routeQueueKeys(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(queueApiHandler.keys(request.queryParameters()));
+  }
+
+  /**
+   * Routes direct-download creation requests.
+   *
+   * @param request full request metadata, including query parameters
+   * @return JSON response describing the newly queued direct download
+   */
+  private PlatformApiResponse routeQueueDownloads(PlatformApiRequest request) {
+    if (!"POST".equals(request.method())) {
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.created(
+        queueApiHandler.createDirectDownload(request.queryParameters()));
+  }
+
+  /**
+   * Routes queue mutation actions beneath {@code /queue/...}.
+   *
+   * @param resource second path segment beneath {@code /queue}
+   * @param action queue action segment
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected queue mutation
+   */
+  private PlatformApiResponse routeQueueAction(
+      String resource, String action, PlatformApiRequest request) {
+    if (!"POST".equals(request.method())) {
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    if ("requests".equals(resource)) {
+      return switch (action) {
+        case "remove" ->
+            PlatformApiResponse.ok(queueApiHandler.removeRequests(request.queryParameters()));
+        case "restart" ->
+            PlatformApiResponse.ok(queueApiHandler.restartRequests(request.queryParameters()));
+        case "priority" ->
+            PlatformApiResponse.ok(queueApiHandler.changePriority(request.queryParameters()));
+        default ->
+            throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+      };
+    }
+    if ("cleanup".equals(resource)) {
+      return switch (action) {
+        case "uploads" ->
+            PlatformApiResponse.ok(queueApiHandler.cleanupUploads(request.queryParameters()));
+        case "downloads" ->
+            PlatformApiResponse.ok(queueApiHandler.cleanupDownloads(request.queryParameters()));
+        default ->
+            throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+      };
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 
   /**

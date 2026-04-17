@@ -19,6 +19,8 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
  * @param shellRoot canonical mount path for the shell page
  * @param assetRoot canonical mount path for shell-owned static assets
  * @param platformApiRoot Platform API v1 root used by the browser-side fetches
+ * @param formPassword legacy mutation token used by the current Platform API bridge, or {@code
+ *     null} when the shell should stay read-only
  * @param legacyRoot legacy HTTP root used for deep links back to existing pages
  * @param legacyLinks user-visible deep links back to the legacy admin pages
  */
@@ -28,6 +30,7 @@ public record WebShellBootstrap(
     String shellRoot,
     String assetRoot,
     String platformApiRoot,
+    String formPassword,
     String legacyRoot,
     List<LegacyLink> legacyLinks) {
   /** Default shell title used by the node-management UI. */
@@ -35,7 +38,7 @@ public record WebShellBootstrap(
 
   /** Default shell description used by the node-management UI. */
   public static final String DEFAULT_SHELL_DESCRIPTION =
-      "Read-only node management powered by Platform API v1.";
+      "Node management and queue control powered by Platform API v1.";
 
   /** Default Platform API v1 root used by the shell bootstrap payload. */
   public static final String DEFAULT_PLATFORM_API_ROOT = "/api/v1/";
@@ -56,7 +59,28 @@ public record WebShellBootstrap(
         WebShellPaths.SHELL_ROOT,
         WebShellPaths.ASSET_ROOT,
         DEFAULT_PLATFORM_API_ROOT,
+        null,
         DEFAULT_LEGACY_ROOT,
+        legacyLinks);
+  }
+
+  /**
+   * Returns a copy of this bootstrap payload with one explicit mutation token.
+   *
+   * @param formPassword legacy mutation token injected by the serving bridge
+   * @return bootstrap payload carrying the supplied mutation token
+   */
+  public WebShellBootstrap withFormPassword(String formPassword) {
+    String normalizedFormPassword =
+        formPassword == null || formPassword.isBlank() ? null : formPassword;
+    return new WebShellBootstrap(
+        shellTitle,
+        shellDescription,
+        shellRoot,
+        assetRoot,
+        platformApiRoot,
+        normalizedFormPassword,
+        legacyRoot,
         legacyLinks);
   }
 
@@ -119,6 +143,9 @@ public record WebShellBootstrap(
     requireRootPath(shellRoot, "shellRoot");
     requireRootPath(assetRoot, "assetRoot");
     requireRootPath(platformApiRoot, "platformApiRoot");
+    if (formPassword != null) {
+      requireText(formPassword, "formPassword");
+    }
     requireRootPath(legacyRoot, "legacyRoot");
     legacyLinks = List.copyOf(Objects.requireNonNull(legacyLinks, "legacyLinks"));
     if (legacyLinks.isEmpty()) {

@@ -15,7 +15,8 @@
         <p class="eyebrow">Cryptad node management</p>
         <h1>Web Shell v1</h1>
         <p class="lede">
-          Read-only status, snapshot views, and legacy deep links powered by Platform API v1.
+          Snapshot views, queue control, and selective legacy deep links powered by Platform API
+          v1.
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
@@ -65,14 +66,69 @@
         </article>
       </section>
 
+      <section class="panel panel-wide" id="queue-panel">
+        <div class="panel-header">
+          <p class="panel-kicker">Queue</p>
+          <h2>Queue control plane</h2>
+        </div>
+        <p class="panel-description">
+          Detached queue snapshots come from Platform API v1. Supported queue actions stay in the
+          shell and unsupported legacy-only controls can still fall back to the historical pages.
+        </p>
+        <div class="queue-toolbar">
+          <div class="toggle-group" aria-label="Queue page">
+            <button class="toggle-button is-active" id="queue-downloads-button" type="button">
+              Downloads
+            </button>
+            <button class="toggle-button" id="queue-uploads-button" type="button">
+              Uploads
+            </button>
+          </div>
+          <label class="checkbox-inline" for="queue-advanced-toggle">
+            <input id="queue-advanced-toggle" type="checkbox">
+            <span>Advanced mode</span>
+          </label>
+          <button class="button button-secondary" id="queue-refresh-button" type="button">
+            Refresh queue
+          </button>
+          <button class="button button-secondary" id="queue-keys-button" type="button">
+            Show keys
+          </button>
+        </div>
+        <div class="queue-status" id="queue-status" aria-live="polite"></div>
+        <div class="queue-count" id="queue-count"></div>
+        <form class="queue-create-form" hidden id="queue-create-form">
+          <div class="queue-create-copy">
+            <p class="panel-kicker">Direct download</p>
+            <p class="queue-create-description">
+              Queue one persistent direct-return download through the Platform API.
+            </p>
+          </div>
+          <label class="queue-field" for="queue-download-uri">
+            <span>Fetch URI</span>
+            <input id="queue-download-uri" name="fetchUri" type="text" autocomplete="off">
+          </label>
+          <label class="checkbox-inline" for="queue-download-filter">
+            <input id="queue-download-filter" name="filterData" type="checkbox" checked>
+            <span>Filter data</span>
+          </label>
+          <button class="button button-primary" id="queue-download-submit" type="submit">
+            Queue direct download
+          </button>
+        </form>
+        <div class="queue-key-export" hidden id="queue-key-export"></div>
+        <div class="panel-body" id="queue-body">
+          <p class="loading">Loading queue snapshot...</p>
+        </div>
+      </section>
+
       <section class="panel panel-wide" id="legacy-panel">
         <div class="panel-header">
           <p class="panel-kicker">Legacy tools</p>
           <h2>Deep links back to existing admin pages</h2>
         </div>
         <p class="panel-description">
-          Actions that still belong to the legacy UI remain reachable here while the shell stays
-          read-only.
+          Remaining legacy-only pages stay reachable here while queue control moves into the shell.
         </p>
         <ul class="legacy-links" id="legacy-links"></ul>
       </section>

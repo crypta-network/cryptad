@@ -10,6 +10,8 @@ import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
 import network.crypta.support.MultiValueTable;
+import network.crypta.support.SimpleReadOnlyArrayBucket;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,7 @@ class PlatformApiToadletTest {
   @Mock private PlatformApiRouter router;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
+  @Mock private Bucket requestBody;
 
   private PlatformApiToadlet toadlet;
 
@@ -55,6 +58,7 @@ class PlatformApiToadletTest {
     assertEquals("GET", captor.getValue().method());
     assertEquals(List.of("peers", "alice/bob"), captor.getValue().pathSegments());
     assertEquals(Map.of(), captor.getValue().queryParameters());
+    verify(request, never()).getParts();
   }
 
   @Test
@@ -78,8 +82,10 @@ class PlatformApiToadletTest {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.hasFormPassword(request)).thenReturn(true);
     when(request.getParameterNames()).thenReturn(List.of());
-    when(request.isPartSet("stagedDir")).thenReturn(true);
-    when(request.getPartAsStringFailsafe("stagedDir", 4096)).thenReturn("/tmp/staged");
+    when(request.getRawData()).thenReturn(requestBody);
+    when(request.getParts()).thenReturn(new String[] {"stagedDir"});
+    when(request.getPartAsStringFailsafe("stagedDir", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("/tmp/staged");
     when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/apps/install"), request, ctx);
@@ -113,8 +119,10 @@ class PlatformApiToadletTest {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.hasFormPassword(request)).thenReturn(true);
     when(request.getParameterNames()).thenReturn(List.of());
-    when(request.isPartSet("stagedDir")).thenReturn(true);
-    when(request.getPartAsStringFailsafe("stagedDir", 4096)).thenReturn("/tmp/staged");
+    when(request.getRawData()).thenReturn(requestBody);
+    when(request.getParts()).thenReturn(new String[] {"stagedDir"});
+    when(request.getPartAsStringFailsafe("stagedDir", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("/tmp/staged");
     when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
 
     toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/apps/alpha/update"), request, ctx);
@@ -125,6 +133,190 @@ class PlatformApiToadletTest {
                 "POST",
                 List.of("apps", "alpha", "update"),
                 Map.of("stagedDir", List.of("/tmp/staged"))));
+  }
+
+  @Test
+  void handleMethodPOST_whenQueueRemoveRequested_routesDecodedMutationRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of("identifier-0", "identifier-1"));
+    when(request.getMultipleParam("identifier-0")).thenReturn(new String[] {"download-1"});
+    when(request.getMultipleParam("identifier-1")).thenReturn(new String[] {"download-2"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("queue", "requests", "remove"),
+                Map.of(
+                    "identifier-0", List.of("download-1"),
+                    "identifier-1", List.of("download-2"))));
+  }
+
+  @Test
+  void handleMethodPOST_whenQueueRemoveUsesFormParts_routesDecodedMutationRequest()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getRawData()).thenReturn(requestBody);
+    when(request.getParts()).thenReturn(new String[] {"identifier-0", "identifier-1"});
+    when(request.getPartAsStringFailsafe("identifier-0", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("download-1");
+    when(request.getPartAsStringFailsafe("identifier-1", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("download-2");
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("queue", "requests", "remove"),
+                Map.of(
+                    "identifier-0", List.of("download-1"),
+                    "identifier-1", List.of("download-2"))));
+    verify(request).getPartAsStringFailsafe("identifier-0", QueueToadlet.MAX_KEY_LENGTH);
+    verify(request).getPartAsStringFailsafe("identifier-1", QueueToadlet.MAX_KEY_LENGTH);
+  }
+
+  @Test
+  void handleMethodPOST_whenQueueRemoveUsesRepeatedUrlEncodedBody_routesAllIdentifiers()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getHeader("content-type")).thenReturn("application/x-www-form-urlencoded");
+    when(request.getRawData())
+        .thenReturn(
+            new SimpleReadOnlyArrayBucket(
+                "identifier=download-1&identifier=download-2".getBytes(StandardCharsets.US_ASCII)));
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("queue", "requests", "remove"),
+                Map.of("identifier", List.of("download-1", "download-2"))));
+    verify(request, never()).getParts();
+  }
+
+  @Test
+  void handleMethodPOST_whenUrlEncodedBodyOverlapsQuery_expectQueryValuesPreserved()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of("expectedMimeType"));
+    when(request.getMultipleParam("expectedMimeType")).thenReturn(new String[] {"text/html"});
+    when(request.getHeader("content-type"))
+        .thenReturn("application/x-www-form-urlencoded; charset=UTF-8");
+    when(request.getRawData())
+        .thenReturn(
+            new SimpleReadOnlyArrayBucket(
+                ("fetchUri=KSK@direct-download&expectedMimeType=text/plain&filterData=on"
+                        + "&formPassword=secret")
+                    .getBytes(StandardCharsets.US_ASCII)));
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/queue/downloads"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("queue", "downloads"),
+                Map.of(
+                    "expectedMimeType", List.of("text/html"),
+                    "fetchUri", List.of("KSK@direct-download"),
+                    "filterData", List.of("on"))));
+    verify(request, never()).getParts();
+  }
+
+  @Test
+  void handleMethodPOST_whenUrlEncodedBodyExceedsLegacyLimit_expectJson400WithoutRouting()
+      throws Exception {
+    byte[] oversizedBody = new byte[1024 * 1024 + 1];
+    Arrays.fill(oversizedBody, (byte) 'a');
+
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getHeader("content-type")).thenReturn("application/x-www-form-urlencoded");
+    when(request.getRawData()).thenReturn(new SimpleReadOnlyArrayBucket(oversizedBody));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/queue/downloads"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(400, replyHeaders.statusCode());
+    assertEquals("Bad Request", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_request_body\",\"message\":\"URL-encoded request body"
+            + " exceeds the 1048576 byte limit.\"}}",
+        bodyWrite.bodyText());
+  }
+
+  @Test
+  void handleMethodPOST_whenQueueDownloadUsesFormParts_routesDecodedCreationRequest()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getRawData()).thenReturn(requestBody);
+    when(request.getParts())
+        .thenReturn(new String[] {"fetchUri", "filterData", "expectedMimeType"});
+    when(request.getPartAsStringFailsafe("fetchUri", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("KSK@direct-download");
+    when(request.getPartAsStringFailsafe("filterData", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("on");
+    when(request.getPartAsStringFailsafe("expectedMimeType", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("text/plain");
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/queue/downloads"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("queue", "downloads"),
+                Map.of(
+                    "fetchUri", List.of("KSK@direct-download"),
+                    "filterData", List.of("on"),
+                    "expectedMimeType", List.of("text/plain"))));
+    verify(request).getPartAsStringFailsafe("fetchUri", QueueToadlet.MAX_KEY_LENGTH);
+  }
+
+  @Test
+  void handleMethodPOST_whenQueueMutationPasswordMissing_expectJson403WithoutRouting()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals("Forbidden", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
+        bodyWrite.bodyText());
   }
 
   @Test
