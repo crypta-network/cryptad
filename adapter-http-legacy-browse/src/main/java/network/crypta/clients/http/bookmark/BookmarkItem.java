@@ -10,7 +10,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
 import network.crypta.runtime.alerts.AbstractUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * {@link Bookmark}, it stores the target URI, a long and short description, and a small amount of
  * state used for UI behavior and notifications. When the bookmark points to a {@link USK}, the item
  * can mark itself as “updated” after an edition bump; this state is surfaced to the user via a
- * {@link UserAlert} registered with the owning {@link UserAlertManager}.
+ * {@link UserAlert} registered with the owning {@link UserAlertSurface}.
  *
  * <p><b>Notable behaviors</b>
  *
@@ -59,7 +59,7 @@ public final class BookmarkItem extends Bookmark {
   private volatile boolean updated;
   private boolean hasAnActivelink;
   private final BookmarkUpdatedUserAlert alert;
-  private final UserAlertManager alerts;
+  private final UserAlertSurface alerts;
   private final long instanceId = INSTANCE_COUNTER.incrementAndGet();
 
   /**
@@ -85,7 +85,7 @@ public final class BookmarkItem extends Bookmark {
    *
    * <p>This constructor does not perform persistence. The created instance owns a per-item {@link
    * UserAlert} (available via {@link #getUserAlert()}) and will register/unregister it with the
-   * provided {@link UserAlertManager} as the {@code updated} state changes.
+   * provided {@link UserAlertSurface} as the {@code updated} state changes.
    *
    * @param k the target URI for this bookmark; must be non-{@code null} and well-formed
    * @param n the display name for this bookmark; must be non-{@code null} and non-empty
@@ -105,7 +105,7 @@ public final class BookmarkItem extends Bookmark {
       String s,
       boolean hasAnActivelink,
       BookmarkManager bm,
-      UserAlertManager uam) {
+      UserAlertSurface uam) {
     key = k;
     this.name = n;
     this.desc = d;
@@ -130,7 +130,7 @@ public final class BookmarkItem extends Bookmark {
    *
    * <p>This constructor does not automatically register the update notification. If the restored
    * item is both a USK and marked updated, call {@link #registerUserAlert()} after construction to
-   * register its {@link UserAlert} with the provided {@link UserAlertManager}.
+   * register its {@link UserAlert} with the provided {@link UserAlertSurface}.
    *
    * @param sfs the serialized field set containing bookmark item data; must be non-{@code null}
    * @param bm the owning bookmark manager responsible for persistence callbacks; must be non-{@code
@@ -140,7 +140,7 @@ public final class BookmarkItem extends Bookmark {
    * @throws FSParseException if the field set is missing required fields or contains invalid values
    * @throws MalformedURLException if the stored URI cannot be parsed into a {@link FreenetURI}
    */
-  public BookmarkItem(SimpleFieldSet sfs, BookmarkManager bm, UserAlertManager uam)
+  public BookmarkItem(SimpleFieldSet sfs, BookmarkManager bm, UserAlertSurface uam)
       throws FSParseException, MalformedURLException {
     this.name = sfs.get("Name");
     if (name == null || name.isEmpty()) {
@@ -255,7 +255,7 @@ public final class BookmarkItem extends Bookmark {
   /**
    * If this bookmark is marked as updated, registers a {@link UserAlert} which notifies the user.
    * You usually only need to call this function after having loaded a bookmark from disk using
-   * {@link #BookmarkItem(SimpleFieldSet, BookmarkManager, UserAlertManager)}.
+   * {@link #BookmarkItem(SimpleFieldSet, BookmarkManager, UserAlertSurface)}.
    */
   synchronized void registerUserAlert() {
     if (key.isUSK() && updated) alerts.register(alert);
@@ -265,7 +265,7 @@ public final class BookmarkItem extends Bookmark {
    * Returns the per-item {@link UserAlert} representing an update notification for this bookmark.
    *
    * <p>The returned alert object is owned by this {@code BookmarkItem} instance. It is registered
-   * and unregistered with the {@link UserAlertManager} configured at construction time based on the
+   * and unregistered with the {@link UserAlertSurface} configured at construction time based on the
    * {@code updated} state and bookmark type (USK vs. non-USK).
    *
    * @return the non-{@code null} alert instance associated with this bookmark item
@@ -463,7 +463,7 @@ public final class BookmarkItem extends Bookmark {
    * <p>If this item is a USK and the alert was previously registered, clearing the flag affects the
    * alert’s validity check but does not, by itself, force an immediate unregistering; the
    * surrounding alert lifecycle is managed by {@link BookmarkItem} and the {@link
-   * UserAlertManager}.
+   * UserAlertSurface}.
    */
   public void clearUpdated() {
     this.updated = false;
@@ -472,7 +472,7 @@ public final class BookmarkItem extends Bookmark {
   /**
    * Returns whether this bookmark is currently treated as having an active link target.
    *
-   * <p>This flag is persisted as {@code hasAnActivelink} and is typically used by the bookmarks UI
+   * <p>This flag is persisted as {@code hasAnActivelink} and is typically used by the Bookmarks UI
    * to decide how to render or enable the bookmark entry. The meaning of “active” is intentionally
    * coarse-grained: it is a stored UI/state hint rather than an on-demand validation of the target.
    *

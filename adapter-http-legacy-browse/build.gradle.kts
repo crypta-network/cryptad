@@ -23,7 +23,6 @@ dependencies {
   implementation(project(":platform-apphost"))
   implementation(project(":platform-web-shell"))
   implementation(project(":runtime-alerts"))
-  implementation(project(":runtime-node"))
   implementation(project(":thirdparty-onion"))
 
   implementation(libs.slf4jApi)

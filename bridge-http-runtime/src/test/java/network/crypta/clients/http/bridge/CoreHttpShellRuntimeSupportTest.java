@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.client.async.ClientContext;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyToadlet;
@@ -315,7 +315,6 @@ class CoreHttpShellRuntimeSupportTest {
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    ClientContext clientContext = mock(ClientContext.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RuntimePorts bootstrapRuntimePorts = mock(RuntimePorts.class);
     AtomicReference<List<Object>> bookmarkManagerArguments = new AtomicReference<>();
@@ -323,7 +322,6 @@ class CoreHttpShellRuntimeSupportTest {
     AtomicReference<List<Object>> browseRootArguments = new AtomicReference<>();
     when(core.getAlerts()).thenReturn(alerts);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
-    when(core.getClientContext()).thenReturn(clientContext);
     when(client.getFetchContext()).thenReturn(fetchContext);
     CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
 
@@ -348,10 +346,10 @@ class CoreHttpShellRuntimeSupportTest {
       assertInstanceOf(CoreBookmarkRuntimeSupport.class, bookmarkManagerArguments.get().get(0));
       assertSame(alerts, bookmarkManagerArguments.get().get(1));
       assertEquals(Boolean.TRUE, bookmarkManagerArguments.get().get(2));
-      assertSame(clientContext, fetchTrackerArguments.get().get(0));
-      assertSame(fetchContext, fetchTrackerArguments.get().get(1));
+      assertSame(fetchContext, fetchTrackerArguments.get().get(0));
+      assertInstanceOf(CoreFProxyRuntimeSupport.class, fetchTrackerArguments.get().get(1));
       assertNotNull(fetchTrackerArguments.get().get(2));
-      assertSame(client, browseRootArguments.get().get(0));
+      assertInstanceOf(BrowseContentClient.class, browseRootArguments.get().get(0));
       assertInstanceOf(CoreFProxyRuntimeSupport.class, browseRootArguments.get().get(1));
       assertSame(fetchTrackers.constructed().getFirst(), browseRootArguments.get().get(2));
       assertSame(bookmarkManagers.constructed().getFirst(), bootstrap.bookmarkManager());
@@ -361,7 +359,7 @@ class CoreHttpShellRuntimeSupportTest {
       LegacyFProxyBrowseRouteRegistrar browseRouteRegistrar =
           assertInstanceOf(
               LegacyFProxyBrowseRouteRegistrar.class, bootstrap.browseRouteRegistrar());
-      assertSame(client, readRegistrarClient(browseRouteRegistrar));
+      assertInstanceOf(BrowseContentClient.class, readRegistrarClient(browseRouteRegistrar));
       verify(core, never()).getRuntimePorts();
       verifyNoInteractions(bootstrapRuntimePorts);
       verify(core, never()).getEndpoints();
@@ -373,13 +371,11 @@ class CoreHttpShellRuntimeSupportTest {
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
-    ClientContext clientContext = mock(ClientContext.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     when(core.getAlerts()).thenReturn(alerts);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true)).thenReturn(client);
-    when(core.getClientContext()).thenReturn(clientContext);
     when(client.getFetchContext()).thenReturn(fetchContext);
     when(runtimePorts.randomness()).thenReturn(randomnessPort);
     CoreHttpShellRuntimeSupport runtimeSupport = runtimeSupport(core);
@@ -528,12 +524,12 @@ class CoreHttpShellRuntimeSupportTest {
     return new CoreHttpShellRuntimeSupport(core, mock(AppHost.class));
   }
 
-  private static HighLevelSimpleClient readRegistrarClient(
+  private static BrowseContentClient readRegistrarClient(
       LegacyFProxyBrowseRouteRegistrar registrar) {
     try {
       Field field = registrar.getClass().getDeclaredField("client");
       field.setAccessible(true);
-      return (HighLevelSimpleClient) field.get(registrar);
+      return (BrowseContentClient) field.get(registrar);
     } catch (ReflectiveOperationException e) {
       throw new LinkageError("Failed reading field 'client'", e);
     }

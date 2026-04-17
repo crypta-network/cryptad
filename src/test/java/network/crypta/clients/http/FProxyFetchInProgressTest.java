@@ -7,7 +7,6 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClientImpl;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
@@ -97,7 +96,7 @@ class FProxyFetchInProgressTest {
     Bucket bucket = new ArrayBucket();
     FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), bucket);
 
-    progress.onSuccess(result, null);
+    progress.onSuccess(result);
 
     assertFalse(progress.notFinishedOrFatallyFinished());
     assertTrue(progress.hasData());
@@ -126,14 +125,13 @@ class FProxyFetchInProgressTest {
   }
 
   private static FProxyFetchInProgress newProgress(FetchContext context) {
-    ClientContext clientContext = Mockito.mock(ClientContext.class);
     FProxyFetchTracker tracker = Mockito.mock(FProxyFetchTracker.class);
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     FreenetURI uri = new FreenetURI("KSK", "doc");
 
     FProxyFetchCriteria criteria = new FProxyFetchCriteria(uri, 1024L, context);
     return new FProxyFetchInProgress(
-        tracker, criteria, 1L, clientContext, requestClient, RefilterPolicy.ACCEPT_OLD);
+        tracker, criteria, 1L, requestClient, RefilterPolicy.ACCEPT_OLD);
   }
 
   private static FetchContext newFetchContext() {

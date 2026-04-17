@@ -27,6 +27,8 @@ network/crypta/node/RequestClient.class
 network/crypta/node/RequestClient$*.class
 network/crypta/node/RequestClientBuilder.class
 network/crypta/node/RequestClientBuilder$*.class
+network/crypta/node/RequestPriorityClasses.class
+network/crypta/node/RequestPriorityClasses$*.class
 network/crypta/node/RequestCompletionListener.class
 network/crypta/node/RequestCompletionListener$*.class
 network/crypta/node/RequestTransferOptions.class

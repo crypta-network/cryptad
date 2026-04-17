@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.ToadletContext;
@@ -52,7 +52,7 @@ public class DismissAlertToadlet extends ContentToadlet {
    *
    * @param client High-level client associated with the node; must be non-null.
    */
-  public DismissAlertToadlet(HighLevelSimpleClient client) {
+  public DismissAlertToadlet(BrowseContentClient client) {
     super(client);
   }
 

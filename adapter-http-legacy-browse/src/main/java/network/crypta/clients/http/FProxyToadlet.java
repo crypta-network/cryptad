@@ -23,8 +23,6 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.FoundURICallback;
@@ -41,8 +39,7 @@ import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.node.RequestPriorityClasses;
 import network.crypta.runtime.spi.RandomnessPort;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
@@ -57,7 +54,8 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.http.HttpFetchSizeLimits;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.IOUtils;
+import network.crypta.support.io.LegacyFileSupport;
 import network.crypta.support.io.NoFreeBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,7 +126,6 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
   private static final String ABORT_TO_HOMEPAGE_KEY = "abortToHomepage";
   static byte[] random;
   final FProxyRuntimeSupport runtimeSupport;
-  final ClientContext context;
   final FProxyFetchTracker fetchTracker;
 
   /**
@@ -144,9 +141,7 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
    * @return legacy browse root toadlet
    */
   public static FProxyToadlet create(
-      HighLevelSimpleClient client,
-      FProxyRuntimeSupport runtimeSupport,
-      FProxyFetchTracker tracker) {
+      BrowseContentClient client, FProxyRuntimeSupport runtimeSupport, FProxyFetchTracker tracker) {
     return new FProxyToadlet(client, runtimeSupport, tracker);
   }
 
@@ -189,11 +184,11 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
   /**
    * Default scheduling priority applied to user-facing FProxy fetches.
    *
-   * <p>The value mirrors {@link RequestStarter#INTERACTIVE_PRIORITY_CLASS} so that progress pages,
-   * inline views, and interactive downloads are treated as latency-sensitive work relative to
-   * background tasks.
+   * <p>The value mirrors {@link RequestPriorityClasses#INTERACTIVE_PRIORITY_CLASS} so that progress
+   * pages, inline views, and interactive downloads are treated as latency-sensitive work relative
+   * to background tasks.
    */
-  public static final short PRIORITY = RequestStarter.INTERACTIVE_PRIORITY_CLASS;
+  public static final short PRIORITY = RequestPriorityClasses.INTERACTIVE_PRIORITY_CLASS;
 
   static {
     try {
@@ -274,14 +269,13 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
    * @param tracker shared fetch tracker coordinating progress reporting and reuse.
    */
   FProxyToadlet(
-      final HighLevelSimpleClient client,
+      final BrowseContentClient client,
       FProxyRuntimeSupport runtimeSupport,
       FProxyFetchTracker tracker) {
     super(client);
     client.setMaxLength(getMaxLengthNoProgress());
     client.setMaxIntermediateLength(getMaxLengthNoProgress());
     this.runtimeSupport = runtimeSupport;
-    this.context = runtimeSupport.clientContext();
     fetchTracker = tracker;
   }
 
@@ -739,27 +733,11 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
     }
 
     private void handleFeedRequest() throws ToadletContextClosedException, IOException {
-      UserAlertManager alertManager = concreteAlertManagerOrNull(ctx);
-      if (alertManager == null) {
-        LOG.warn(
-            "Cannot serve alert feed because {} exposed {} instead of UserAlertManager",
-            ToadletContext.class.getSimpleName(),
-            ctx.getAlertManager().getClass().getName());
-        ctx.sendReplyHeaders(503, "Service Unavailable", null, null, 0);
-        return;
-      }
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
-      String atom = alertManager.getAtom(schemeHostAndPort);
+      String atom = ctx.getAlertManager().getAtom(schemeHostAndPort);
       byte[] buf = atom.getBytes(StandardCharsets.UTF_8);
       ctx.sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", buf.length);
       ctx.writeData(buf, 0, buf.length);
-    }
-
-    private UserAlertManager concreteAlertManagerOrNull(ToadletContext context) {
-      if (context.getAlertManager() instanceof UserAlertManager manager) {
-        return manager;
-      }
-      return null;
     }
 
     private boolean validateRangeHeader() throws ToadletContextClosedException, IOException {
@@ -1309,9 +1287,9 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
         try (InputStream is = data.getInputStream();
             OutputStream os = tmpRange.getOutputStream()) {
           if (range[0] > 0) {
-            FileUtil.skipFully(is, range[0]);
+            IOUtils.skipFully(is, range[0]);
           }
-          FileUtil.copy(is, os, range[1] - range[0] + 1);
+          LegacyFileSupport.copy(is, os, range[1] - range[0] + 1);
         }
         retHdr.put("Content-Range", "bytes " + range[0] + "-" + range[1] + "/" + size);
         retHdr.put(HEADER_X_CONTENT_TYPE_OPTIONS, NOSNIFF);
@@ -1670,7 +1648,7 @@ public final class FProxyToadlet extends ContentToadlet implements RequestClient
         return result.getFetchCount() > 1
             && !result.hasWaited()
             && key.isUSK()
-            && context.uskManager.lookupKnownGood(USK.create(key)) > key.getSuggestedEdition();
+            && runtimeSupport.lookupKnownGoodEdition(USK.create(key)) > key.getSuggestedEdition();
       } catch (MalformedURLException e) {
         LOG.warn("Unable to create USK for {}", key, e);
         return false;

@@ -11,19 +11,18 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import network.crypta.client.async.USKCallback;
-import network.crypta.client.async.USKFoundEdition;
 import network.crypta.clients.http.BookmarkManagerHandle;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
-import network.crypta.node.RequestStarter;
+import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.runtime.alerts.UserAlertManager;
+import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.http.HttpFetchSizeLimits;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.AtomicFileMoves;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +67,7 @@ public class BookmarkManager implements BookmarkManagerHandle {
   public static final SimpleFieldSet DEFAULT_BOOKMARKS;
 
   private final BookmarkRuntimeSupport runtime;
-  private final UserAlertManager alerts;
+  private final UserAlertSurface alerts;
   private final USKUpdatedCallback uskCB = new USKUpdatedCallback();
 
   /**
@@ -129,7 +128,7 @@ public class BookmarkManager implements BookmarkManagerHandle {
    * @param publicGateway whether to initialize a secondary default category for gateway-mode hosts
    */
   public BookmarkManager(
-      BookmarkRuntimeSupport runtime, UserAlertManager alerts, boolean publicGateway) {
+      BookmarkRuntimeSupport runtime, UserAlertSurface alerts, boolean publicGateway) {
     putPaths("/", MAIN_CATEGORY);
     this.runtime = runtime;
     this.alerts = alerts;
@@ -167,7 +166,7 @@ public class BookmarkManager implements BookmarkManagerHandle {
         } else {
           LOG.info(
               "We couldn't find the backup either! - {}",
-              FileUtil.getCanonicalFile(backupBookmarksFile));
+              LegacyFileSupport.getCanonicalFile(backupBookmarksFile));
           // restore the default bookmark set
           readBookmarks(MAIN_CATEGORY, DEFAULT_BOOKMARKS);
         }
@@ -213,10 +212,10 @@ public class BookmarkManager implements BookmarkManagerHandle {
     innerReadBookmarks("/", bc, DEFAULT_BOOKMARKS);
   }
 
-  private class USKUpdatedCallback implements USKCallback {
+  private class USKUpdatedCallback implements BookmarkRuntimeSupport.BookmarkUpdateCallback {
 
     @Override
-    public void onFoundEdition(USKFoundEdition foundEdition) {
+    public void onFoundEdition(BookmarkRuntimeSupport.BookmarkEditionUpdate foundEdition) {
       if (!foundEdition.newKnownGood()) {
         FreenetURI uri = foundEdition.key().copy(foundEdition.edition()).getURI();
         runtime.prefetchUpdatedEdition(uri, HttpFetchSizeLimits.getMaxLengthWithProgress());
@@ -651,7 +650,7 @@ public class BookmarkManager implements BookmarkManagerHandle {
       try (FileOutputStream fos = new FileOutputStream(backupBookmarksFile)) {
         sfs.writeToBigBuffer(fos);
       }
-      if (!FileUtil.moveTo(backupBookmarksFile, bookmarksFile))
+      if (!AtomicFileMoves.moveTo(backupBookmarksFile, bookmarksFile))
         LOG.error("Unable to rename {} to {}", backupBookmarksFile, bookmarksFile);
     } catch (IOException ioe) {
       LOG.error("An error has occurred saving the bookmark file :{}", ioe.getMessage(), ioe);
@@ -666,8 +665,8 @@ public class BookmarkManager implements BookmarkManagerHandle {
     innerReadBookmarks("", category, sfs);
   }
 
-  static final short PRIORITY = RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS;
-  static final short PRIORITY_PROGRESS = RequestStarter.UPDATE_PRIORITY_CLASS;
+  static final short PRIORITY = RequestPriorityClasses.BULK_SPLITFILE_PRIORITY_CLASS;
+  static final short PRIORITY_PROGRESS = RequestPriorityClasses.UPDATE_PRIORITY_CLASS;
 
   private void subscribeToUSK(BookmarkItem item) {
     if (!"USK".equals(item.getKeyType())) return;

@@ -25,6 +25,7 @@ network/crypta/support/ByteArrayWrapper*
 network/crypta/support/ByteBufferInputStream*
 network/crypta/support/Fields*
 network/crypta/support/HTMLEncoder*
+network/crypta/support/HTMLDecoder*
 network/crypta/support/HTMLEntities*
 network/crypta/support/HTMLNode*
 network/crypta/support/HexUtil*

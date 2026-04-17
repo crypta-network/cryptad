@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContainer;
@@ -49,7 +49,7 @@ class PushNotificationToadletTest {
   void handleMethodGET_whenUpdateEventPresent_writesSuccessPayloadFromEvent(
       String requestIdParam, String eventRequestId, String elementId)
       throws ToadletContextClosedException, IOException, RedirectException {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     CapturingPushNotificationToadlet toadlet = new CapturingPushNotificationToadlet(client);
 
     HTTPRequest request = mock(HTTPRequest.class);
@@ -93,7 +93,7 @@ class PushNotificationToadletTest {
 
   @Test
   void handleMethodGET_whenWriteHtmlReplyThrows_propagatesIOException() {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     PushNotificationToadlet toadlet = new ThrowingPushNotificationToadlet(client);
 
     HTTPRequest request = mock(HTTPRequest.class);
@@ -124,7 +124,7 @@ class PushNotificationToadletTest {
   @Test
   void handleMethodGET_whenUpdateEventMissing_writesFailurePayload()
       throws ToadletContextClosedException, IOException, RedirectException {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     CapturingPushNotificationToadlet toadlet = new CapturingPushNotificationToadlet(client);
 
     HTTPRequest request = mock(HTTPRequest.class);
@@ -155,7 +155,7 @@ class PushNotificationToadletTest {
   @Test
   void handleMethodGET_whenRequestIdMissing_passesNullToPushManagerAndWritesFailure()
       throws ToadletContextClosedException, IOException, RedirectException {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     CapturingPushNotificationToadlet toadlet = new CapturingPushNotificationToadlet(client);
 
     HTTPRequest request = mock(HTTPRequest.class);
@@ -183,7 +183,7 @@ class PushNotificationToadletTest {
 
   @Test
   void handleMethodGET_whenContainerIsNotSimpleToadletServer_expectClassCastException() {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     PushNotificationToadlet toadlet = new PushNotificationToadlet(client);
 
     HTTPRequest request = mock(HTTPRequest.class);
@@ -204,8 +204,7 @@ class PushNotificationToadletTest {
 
   @Test
   void path_returnsNotificationPath() {
-    PushNotificationToadlet toadlet =
-        new PushNotificationToadlet(mock(HighLevelSimpleClient.class));
+    PushNotificationToadlet toadlet = new PushNotificationToadlet(mock(BrowseContentClient.class));
 
     String result = toadlet.path();
 
@@ -219,7 +218,7 @@ class PushNotificationToadletTest {
     private String lastDescription;
     private String lastReply;
 
-    private CapturingPushNotificationToadlet(HighLevelSimpleClient client) {
+    private CapturingPushNotificationToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -234,7 +233,7 @@ class PushNotificationToadletTest {
   }
 
   private static final class ThrowingPushNotificationToadlet extends PushNotificationToadlet {
-    private ThrowingPushNotificationToadlet(HighLevelSimpleClient client) {
+    private ThrowingPushNotificationToadlet(BrowseContentClient client) {
       super(client);
     }
 

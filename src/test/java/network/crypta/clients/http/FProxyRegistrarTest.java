@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
 import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
 import network.crypta.clients.http.ajaxpush.PushDataToadlet;
@@ -68,7 +67,7 @@ class FProxyRegistrarTest {
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private RuntimePorts runtimePorts;
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private AppHost appHost;
   @Mock private Toadlet browseRoot;
   @Mock private QueueCompletionPort queueCompletionPort;

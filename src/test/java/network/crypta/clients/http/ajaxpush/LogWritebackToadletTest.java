@@ -4,7 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.URLDecoder;
@@ -29,7 +29,7 @@ class LogWritebackToadletTest {
 
   private static final String HELLO_ENCODED = "hello%20world";
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
 
   @Mock private HTTPRequest request;
 
@@ -174,7 +174,7 @@ class LogWritebackToadletTest {
     private String capturedDescription;
     private String capturedReply;
 
-    private CapturingLogWritebackToadlet(HighLevelSimpleClient client) {
+    private CapturingLogWritebackToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -191,8 +191,7 @@ class LogWritebackToadletTest {
   private static final class ThrowingLogWritebackToadlet extends LogWritebackToadlet {
     private final IOException exceptionToThrow;
 
-    private ThrowingLogWritebackToadlet(
-        HighLevelSimpleClient client, IOException exceptionToThrow) {
+    private ThrowingLogWritebackToadlet(BrowseContentClient client, IOException exceptionToThrow) {
       super(client);
       this.exceptionToThrow = exceptionToThrow;
     }

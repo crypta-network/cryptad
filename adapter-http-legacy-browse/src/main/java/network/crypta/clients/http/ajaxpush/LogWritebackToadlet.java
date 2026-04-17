@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.Toadlet;
@@ -52,7 +52,7 @@ public class LogWritebackToadlet extends ContentToadlet {
    * @param client non-null client helper retained by the base {@link ContentToadlet}; unused by
    *     this implementation but required for consistent wiring and future compatibility
    */
-  public LogWritebackToadlet(HighLevelSimpleClient client) {
+  public LogWritebackToadlet(BrowseContentClient client) {
     super(client);
   }
 

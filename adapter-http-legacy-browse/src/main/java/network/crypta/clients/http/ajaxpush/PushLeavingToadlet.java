@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -50,7 +50,7 @@ public class PushLeavingToadlet extends ContentToadlet {
    * @param client the node client backing this toadlet, passed to the superclass for shared
    *     services and request handling support
    */
-  public PushLeavingToadlet(HighLevelSimpleClient client) {
+  public PushLeavingToadlet(BrowseContentClient client) {
     super(client);
   }
 

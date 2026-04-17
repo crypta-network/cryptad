@@ -1,14 +1,27 @@
 package network.crypta.clients.http.bridge;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Objects;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
+import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientGetCallback;
+import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.PersistenceDisabledException;
+import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyRuntimeSupport;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.config.SubConfig;
+import network.crypta.keys.FreenetURI;
+import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestClient;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.support.api.Bucket;
 
 /**
  * Core-backed implementation of {@link FProxyRuntimeSupport}.
@@ -36,12 +49,6 @@ record CoreFProxyRuntimeSupport(NodeClientCore core) implements FProxyRuntimeSup
    */
   CoreFProxyRuntimeSupport(NodeClientCore core) {
     this.core = Objects.requireNonNull(core);
-  }
-
-  /** {@inheritDoc} */
-  @Override
-  public ClientContext clientContext() {
-    return core.getClientContext();
   }
 
   /** {@inheritDoc} */
@@ -94,6 +101,71 @@ record CoreFProxyRuntimeSupport(NodeClientCore core) implements FProxyRuntimeSup
     return core.getNode().getConfig().get("fproxy");
   }
 
+  /** {@inheritDoc} */
+  @Override
+  public FetchHandle startFetch(
+      FreenetURI uri,
+      FetchContext fetchContext,
+      short priorityClass,
+      RequestClient requestClient,
+      FetchCallback callback)
+      throws FetchException {
+    Objects.requireNonNull(uri, "uri");
+    Objects.requireNonNull(fetchContext, "fetchContext");
+    Objects.requireNonNull(requestClient, "requestClient");
+    Objects.requireNonNull(callback, "callback");
+    ClientContext clientContext = core.getClientContext();
+    RuntimeFetchCallback runtimeCallback = new RuntimeFetchCallback(callback, requestClient);
+    ClientGetter getter =
+        new ClientGetter(runtimeCallback, uri, fetchContext, priorityClass, null, null, null);
+    try {
+      clientContext.start(getter);
+    } catch (PersistenceDisabledException e) {
+      throw new FetchException(FetchException.FetchExceptionMode.INTERNAL_ERROR, e);
+    }
+    return () -> getter.cancel(clientContext);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public CacheFetchResult lookupCachedResult(FreenetURI uri, boolean allowUnfilteredReuse) {
+    ClientContext clientContext = core.getClientContext();
+    if (clientContext.getDownloadCache() == null) {
+      return null;
+    }
+    return clientContext.getDownloadCache().lookupInstant(uri, allowUnfilteredReuse, false, null);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public Bucket createTempBucket(long maxSize) throws IOException {
+    return core.getTempBucketFactory().makeBucket(maxSize);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public LinkFilterExceptionProvider linkFilterExceptionProvider() {
+    return core.getClientContext().linkFilterExceptionProvider;
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public long lookupKnownGoodEdition(USK usk) {
+    return core.getClientContext().uskManager.lookupKnownGood(usk);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void queueTimedJob(Runnable task, long delayMillis) {
+    core.getClientContext().ticker.queueTimedJob(task, delayMillis);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public int nextWeakRandomInt() {
+    return core.getClientContext().fastWeakRandomSource.nextInt();
+  }
+
   /**
    * Maps the node's physical-threat enum into the local HTTP-facing enum.
    *
@@ -130,5 +202,28 @@ record CoreFProxyRuntimeSupport(NodeClientCore core) implements FProxyRuntimeSup
       case HIGH -> FProxyRuntimeSupport.NetworkThreatLevel.HIGH;
       case MAXIMUM -> FProxyRuntimeSupport.NetworkThreatLevel.MAXIMUM;
     };
+  }
+
+  private record RuntimeFetchCallback(FetchCallback delegate, RequestClient requestClient)
+      implements ClientGetCallback {
+    @Override
+    public void onSuccess(FetchResult result, ClientGetter state) {
+      delegate.onSuccess(result);
+    }
+
+    @Override
+    public void onFailure(FetchException e) {
+      delegate.onFailure(e);
+    }
+
+    @Override
+    public void onResume(ClientContext context) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public RequestClient getRequestClient() {
+      return requestClient;
+    }
   }
 }

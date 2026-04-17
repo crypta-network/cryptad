@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
@@ -45,7 +45,7 @@ class PushTesterToadletTest {
   private static final int ELEMENT_MAX_STATUS = 100;
   private static final String GENERATED_HTML = "<html>generated</html>";
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
   @Mock private PageMaker pageMaker;
@@ -72,7 +72,7 @@ class PushTesterToadletTest {
     try (MockedConstruction<TesterElement> mockedConstruction =
         mockConstruction(
             TesterElement.class,
-            (mock, context) -> constructedArguments.add(List.copyOf(context.arguments())))) {
+            (_, context) -> constructedArguments.add(List.copyOf(context.arguments())))) {
       // Act
       toadlet.handleMethodGET(uri, request, ctx);
 
@@ -145,7 +145,7 @@ class PushTesterToadletTest {
     private String lastDescription;
     private String lastReply;
 
-    private CapturingPushTesterToadlet(HighLevelSimpleClient client) {
+    private CapturingPushTesterToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -160,7 +160,7 @@ class PushTesterToadletTest {
   }
 
   private static final class FailingWriteHtmlReplyPushTesterToadlet extends PushTesterToadlet {
-    private FailingWriteHtmlReplyPushTesterToadlet(HighLevelSimpleClient client) {
+    private FailingWriteHtmlReplyPushTesterToadlet(BrowseContentClient client) {
       super(client);
     }
 

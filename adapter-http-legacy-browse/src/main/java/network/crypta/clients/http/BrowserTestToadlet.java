@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 
@@ -35,7 +34,7 @@ import network.crypta.support.api.HTTPRequest;
  */
 public class BrowserTestToadlet extends ContentToadlet {
 
-  BrowserTestToadlet(HighLevelSimpleClient client) {
+  BrowserTestToadlet(BrowseContentClient client) {
     super(client);
   }
 

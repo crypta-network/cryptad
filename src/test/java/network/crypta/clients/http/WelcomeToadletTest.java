@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.runtime.alerts.AbstractUserAlert;
@@ -53,7 +52,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class WelcomeToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
 
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
@@ -138,7 +137,7 @@ class WelcomeToadletTest {
   void constructor_whenRuntimePortsProvided_noLongerNeedsNodeDependency() {
     assertEquals(1, WelcomeToadlet.class.getDeclaredConstructors().length);
     assertArrayEquals(
-        new Class<?>[] {HighLevelSimpleClient.class, WelcomeToadletRuntimePorts.class},
+        new Class<?>[] {BrowseContentClient.class, WelcomeToadletRuntimePorts.class},
         WelcomeToadlet.class.getDeclaredConstructors()[0].getParameterTypes());
   }
 

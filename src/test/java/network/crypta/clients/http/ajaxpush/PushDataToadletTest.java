@@ -5,7 +5,7 @@ import ch.qos.logback.classic.Logger;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
@@ -39,7 +39,7 @@ class PushDataToadletTest {
   private static final String UPDATER_REPLACER = "ReplacerUpdater";
   private static final String CHILDREN_PAYLOAD = "<div>payload</div>";
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
 
   @Mock private HTTPRequest request;
 
@@ -229,7 +229,7 @@ class PushDataToadletTest {
     private String capturedDescription;
     private String capturedReply;
 
-    private CapturingPushDataToadlet(HighLevelSimpleClient client) {
+    private CapturingPushDataToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -246,7 +246,7 @@ class PushDataToadletTest {
   private static final class ThrowingPushDataToadlet extends PushDataToadlet {
     private final IOException exceptionToThrow;
 
-    private ThrowingPushDataToadlet(HighLevelSimpleClient client, IOException exceptionToThrow) {
+    private ThrowingPushDataToadlet(BrowseContentClient client, IOException exceptionToThrow) {
       super(client);
       this.exceptionToThrow = exceptionToThrow;
     }

@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -38,7 +37,7 @@ public class InsertFreesiteToadlet extends ContentToadlet {
    * @param client non-null helper used by the base {@link Toadlet}; retained for parity with other
    *     toadlets even though this class performs only static rendering
    */
-  protected InsertFreesiteToadlet(HighLevelSimpleClient client) {
+  protected InsertFreesiteToadlet(BrowseContentClient client) {
     super(client);
   }
 

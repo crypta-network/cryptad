@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
 import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -25,14 +24,14 @@ public final class LegacyFProxyBrowseRouteRegistrar implements LegacyHttpBrowseR
   private static final LegacyFProxyAjaxPushRouteRegistrar AJAX_PUSH_ROUTE_REGISTRAR =
       new LegacyFProxyAjaxPushRouteRegistrar();
 
-  private final HighLevelSimpleClient client;
+  private final BrowseContentClient client;
 
   /**
    * Creates a browse-route registrar bound to the shared interactive client.
    *
    * @param client shared interactive client used by browse-owned HTTP toadlets
    */
-  public LegacyFProxyBrowseRouteRegistrar(HighLevelSimpleClient client) {
+  public LegacyFProxyBrowseRouteRegistrar(BrowseContentClient client) {
     this.client = client;
   }
 

@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.stream.IntStream;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
 import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
 import network.crypta.clients.http.ajaxpush.PushDataToadlet;
@@ -38,7 +37,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class LegacyFProxyBrowseRouteRegistrarTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private RuntimePorts runtimePorts;
   @Mock private WelcomePagePort welcomePagePort;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;

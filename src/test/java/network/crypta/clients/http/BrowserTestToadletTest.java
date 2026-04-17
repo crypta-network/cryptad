@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import java.util.Arrays;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
@@ -32,7 +31,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class BrowserTestToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
 
   @Mock private HTTPRequest request;
 

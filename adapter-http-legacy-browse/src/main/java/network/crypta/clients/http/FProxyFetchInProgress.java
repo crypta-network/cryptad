@@ -11,14 +11,9 @@ import java.util.List;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchContext;
-import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.CacheFetchResult;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetCallback;
-import network.crypta.client.async.ClientGetter;
-import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.events.ClientEvent;
 import network.crypta.client.events.ClientEventDispatchContext;
 import network.crypta.client.events.ClientEventListener;
@@ -43,12 +38,12 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 /**
  * Tracks a single FProxy browser fetch from creation until completion or cancellation.
  *
- * <p>This holder coordinates the shared state between the asynchronous {@link ClientGetter} running
- * inside the client layer and the lightweight waiter objects used by the HTTP toadlet. It owns the
- * request lifecycle, forwards network and splitfile events to listeners, and exposes progress
- * snapshots that are rendered into FProxy status pages. Typical callers get a waiter via {@link
- * #getWaiter()}, start the fetch with {@link #start(ClientContext)}, and poll {@link
- * #innerGetResult(boolean)} from the waiter thread until either data or an error arrives.
+ * <p>This holder coordinates the shared state between the asynchronous runtime-backed fetch handle
+ * and the lightweight waiter objects used by the HTTP toadlet. It owns the request lifecycle,
+ * forwards network and splitfile events to listeners, and exposes progress snapshots that are
+ * rendered into FProxy status pages. Typical callers get a waiter via {@link #getWaiter()}, start
+ * the fetch with {@link #start()}, and poll {@link #innerGetResult(boolean)} from the waiter thread
+ * until either data or an error arrives.
  *
  * <p>The instance is stateful but confines mutation to synchronized blocks so multiple browser
  * requests can watch the same download safely. After creation the object stays valid for roughly
@@ -67,7 +62,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  *
  * <p>LOCKING: The lock on this object is always taken last.
  */
-public class FProxyFetchInProgress implements ClientEventListener, ClientGetCallback {
+public class FProxyFetchInProgress
+    implements ClientEventListener, FProxyRuntimeSupport.FetchCallback {
   private static final Logger LOG = LoggerFactory.getLogger(FProxyFetchInProgress.class);
 
   private final RefilterPolicy refilterPolicy;
@@ -88,8 +84,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    */
   public final long maxSize;
 
-  /** Fetcher */
-  private final ClientGetter getter;
+  /** Runtime-backed fetch handle, populated only when a live fetch is started. */
+  private FProxyRuntimeSupport.FetchHandle fetchHandle;
 
   /**
    * Any request that is waiting for a progress screen or data. We may want to wake requests
@@ -170,20 +166,18 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   private final RequestClient rc;
 
   private final long identifier;
-  private final ClientContext initialContext;
+  private final FetchContext runtimeFetchContext;
 
   /**
    * Constructs a new in-progress fetch wrapper bound to a single URI and tracker entry.
    *
    * <p>The constructor copies key elements from the supplied {@link FetchContext}, wires up event
-   * listeners, and prepares a {@link ClientGetter} with the configured filtering preference. It
-   * does not start network activity; callers must invoke {@link #start(ClientContext)} after adding
-   * any waiters or listeners.
+   * listeners, and prepares the copied fetch context used for runtime startup. It does not start
+   * network activity; callers must invoke {@link #start()} after adding any waiters or listeners.
    *
    * @param tracker the owning tracker that manages cancellation and lifecycle for this fetch
    * @param criteria immutable request criteria containing URI, size limit, and fetch context
    * @param identifier monotonically increasing identifier used for UI correlation and logs
-   * @param context initial client context providing caches and factories for the fetch
    * @param rc request client identity used for network scheduling and throttling
    * @param refilter policy describing how cached filtered data should be reused or refreshed
    */
@@ -191,11 +185,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       FProxyFetchTracker tracker,
       FProxyFetchCriteria criteria,
       long identifier,
-      ClientContext context,
       RequestClient rc,
       RefilterPolicy refilter) {
     this.identifier = identifier;
-    this.initialContext = context;
     this.refilterPolicy = refilter;
     this.tracker = tracker;
     this.uri = criteria.key();
@@ -207,9 +199,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     alteredFctx.setMaxOutputLength(maxSize);
     fctx.setMaxTempLength(maxSize);
     alteredFctx.getEventProducer().addEventListener(this);
+    this.runtimeFetchContext = alteredFctx;
     waiters = new ArrayList<>();
     results = new ArrayList<>();
-    getter = new ClientGetter(this, uri, alteredFctx, FProxyToadlet.PRIORITY, null, null, null);
   }
 
   /**
@@ -231,10 +223,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   /**
    * Returns the tracker that owns this fetch instance for lifecycle management and cancellation.
    *
-   * <p>The tracker mediates deduplication across concurrent browser requests, queues cancellation
-   * when idle, and exposes context needed for {@link ClientGetter#cancel(ClientContext)}. Keeping a
-   * reference allows callers to navigate back to the controlling structure without holding
-   * additional state.
+   * <p>The tracker mediates deduplication across concurrent browser requests and queues
+   * cancellation when idle. Keeping a reference allows callers to navigate back to the controlling
+   * structure without holding additional state.
    *
    * @return tracker coordinating cancel queues and fetch deduplication for this object
    */
@@ -285,27 +276,25 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   /**
    * Begins the fetch by consulting caches and, if necessary, scheduling network retrieval.
    *
-   * <p>The method is idempotent for a given instance: it will only trigger the underlying {@link
-   * ClientGetter} once, and later calls simply reflect the first result. Cache hits may immediately
-   * complete the fetch and notify listeners. Checked exceptions indicate startup failures such as
-   * malformed URIs or context misconfiguration and leave the instance marked as failed.
+   * <p>The method is idempotent for a given instance: it will only trigger the underlying
+   * runtime-backed fetch once, and later calls simply reflect the first result. Cache hits may
+   * immediately complete the fetch and notify listeners. Checked exceptions indicate startup
+   * failures such as malformed URIs or runtime misconfiguration and leave the instance marked as
+   * failed.
    *
-   * @param context client context supplying caches, temp bucket factories, and scheduler access
    * @throws FetchException if initial validation or network scheduling fails before fetching starts
    */
-  public void start(ClientContext context) throws FetchException {
+  public void start() throws FetchException {
     try {
-      if (!checkCache(context)) context.start(getter);
+      if (!checkCache()) {
+        fetchHandle =
+            tracker
+                .runtimeSupport()
+                .startFetch(uri, runtimeFetchContext, FProxyToadlet.PRIORITY, rc, this);
+      }
     } catch (FetchException e) {
       synchronized (this) {
         this.failed = e;
-        this.finished = true;
-      }
-    } catch (PersistenceDisabledException e) {
-      // Impossible
-      LOG.error("Failed to start: {}", e.toString());
-      synchronized (this) {
-        this.failed = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
         this.finished = true;
       }
     }
@@ -316,12 +305,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    *
    * @return True if it was found, and we don't need to start the request.
    */
-  private boolean checkCache(ClientContext context) {
+  private boolean checkCache() {
     // Fproxy uses lookupInstant() with mustCopy = false. I.e., it can reuse stuff unsafely. If the
     // user frees, it's their fault.
-    if (bogusUSK(context)) return false;
+    if (bogusUSK()) return false;
 
-    CacheFetchResult result = lookupCachedResult(context);
+    CacheFetchResult result = lookupCachedResult();
     if (result == null) return false;
 
     if (tryUseUnfilteredResult(result)) {
@@ -334,18 +323,15 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
     if (result.alreadyFiltered && refilterPolicy == RefilterPolicy.ACCEPT_OLD) {
       tracker.removeFetcher(this);
-      onSuccess(result, null);
+      onSuccess(result);
       return true;
     }
 
-    return processCachedResult(context, result);
+    return processCachedResult(result);
   }
 
-  private CacheFetchResult lookupCachedResult(ClientContext context) {
-    if (context.getDownloadCache() == null) {
-      return null;
-    }
-    return context.getDownloadCache().lookupInstant(uri, !fctx.getFilterData(), false, null);
+  private CacheFetchResult lookupCachedResult() {
+    return tracker.runtimeSupport().lookupCachedResult(uri, !fctx.getFilterData());
   }
 
   private boolean tryUseUnfilteredResult(CacheFetchResult result) {
@@ -357,12 +343,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     String overrideMime = fctx.getOverrideMIME();
     if (overrideMime == null || overrideMime.equals(cachedMime)) {
       tracker.removeFetcher(this);
-      onSuccess(result, null);
+      onSuccess(result);
       return true;
     }
 
     tracker.removeFetcher(this);
-    onSuccess(FetchResult.create(new ClientMetadata(overrideMime), result.asBucket()), null);
+    onSuccess(FetchResult.create(new ClientMetadata(overrideMime), result.asBucket()));
     return true;
   }
 
@@ -373,7 +359,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     return shouldAcceptCachedFilteredData(fctx, result);
   }
 
-  private boolean processCachedResult(ClientContext context, CacheFetchResult result) {
+  private boolean processCachedResult(CacheFetchResult result) {
     try (Bucket cachedData = result.asBucket()) {
       String cachedMimeType = result.getMimeType();
       if (cachedMimeType == null || cachedMimeType.isEmpty()) {
@@ -396,15 +382,15 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       }
       if (type.safeToRead) {
         tracker.removeFetcher(this);
-        onSuccess(FetchResult.create(new ClientMetadata(strippedMimeType), cachedData), null);
+        onSuccess(FetchResult.create(new ClientMetadata(strippedMimeType), cachedData));
         return true;
       }
-      return filterCachedData(context, fullMimeType, cachedData);
+      return filterCachedData(fullMimeType, cachedData);
     }
   }
 
-  private boolean filterCachedData(ClientContext context, String fullMimeType, Bucket cachedData) {
-    try (Bucket output = context.tempBucketFactory.makeBucket(-1);
+  private boolean filterCachedData(String fullMimeType, Bucket cachedData) {
+    try (Bucket output = tracker.runtimeSupport().createTempBucket(-1);
         InputStream is = cachedData.getInputStream();
         OutputStream os = output.getOutputStream()) {
       ContentFilterRequest request =
@@ -412,11 +398,11 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
               is, os, fullMimeType, fctx.getCharset(), fctx.getSchemeHostAndPort(), null);
       ContentFilterCallbacks callbacks =
           new ContentFilterCallbacks(
-              uri.toURI("/"), null, null, context.linkFilterExceptionProvider);
+              uri.toURI("/"), null, null, tracker.runtimeSupport().linkFilterExceptionProvider());
       ContentFilter.filter(request, callbacks);
       // Since we are not re-using the data bucket, we can happily stay in the
       // FProxyFetchTracker.
-      this.onSuccess(FetchResult.create(new ClientMetadata(fullMimeType), output), null);
+      this.onSuccess(FetchResult.create(new ClientMetadata(fullMimeType), output));
       return true;
     } catch (IOException _) {
       LOG.info("Failed filtering coalesced data in fproxy");
@@ -433,7 +419,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    *
    * @return True if we can't use the download queue, false if we can.
    */
-  private boolean bogusUSK(ClientContext context) {
+  private boolean bogusUSK() {
     if (!uri.isUSK()) return false;
     long edition = uri.getSuggestedEdition();
     if (edition < 0) return true; // Need to do the fetch.
@@ -443,7 +429,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     } catch (MalformedURLException _) {
       return false; // Will fail later.
     }
-    long ret = context.uskManager.lookupKnownGood(usk);
+    long ret = tracker.runtimeSupport().lookupKnownGoodEdition(usk);
     if (ret == -1) return false;
     return ret > edition;
   }
@@ -537,7 +523,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   @Override
-  public void onSuccess(FetchResult result, ClientGetter state) {
+  public void onSuccess(FetchResult result) {
     Bucket bucket = result.asBucket();
     boolean shouldFree = false;
     synchronized (this) {
@@ -558,10 +544,10 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   /**
    * Indicates whether the fetch has produced data that can be returned to callers.
    *
-   * <p>The flag only flips when {@link #onSuccess(FetchResult, ClientGetter)} stores the bucket and
-   * remains stable thereafter. It does not imply listeners have been notified yet, but it
-   * guarantees that {@link #innerGetResult(boolean)} will produce a {@link FProxyFetchResult}
-   * carrying the final bucket rather than progress info.
+   * <p>The flag only flips when {@link #onSuccess(FetchResult)} stores the bucket and remains
+   * stable thereafter. It does not imply listeners have been notified yet, but it guarantees that
+   * {@link #innerGetResult(boolean)} will produce a {@link FProxyFetchResult} carrying the final
+   * bucket rather than progress info.
    *
    * @return {@code true} when the fetch succeeded and stored a non-null data bucket
    */
@@ -638,7 +624,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   public void finishCancel() {
     if (LOG.isDebugEnabled()) LOG.debug("Finishing cancel for {} : {} : {}", this, uri, maxSize);
     try {
-      getter.cancel(tracker.context);
+      if (fetchHandle != null) {
+        fetchHandle.cancel();
+      }
     } catch (Exception e) {
       // Ensure we get to the next bit
       LOG.error("Failed to cancel: {}", e, e);
@@ -840,22 +828,6 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   /**
-   * Unsupported resume hook because FProxy fetchers are intentionally non-persistent.
-   *
-   * <p>Resume callbacks are part of the {@link ClientGetCallback} contract for persistent requests.
-   * Because FProxy fetches are transient and tied to browser interactions, persistence is disabled
-   * and any attempt to resume would indicate a misuse. The exception keeps this behavior explicit
-   * for maintainers.
-   *
-   * @param context unused context supplied by the persistence mechanism
-   * @throws UnsupportedOperationException always, to signal the lifecycle limitation
-   */
-  @Override
-  public void onResume(ClientContext context) {
-    throw new UnsupportedOperationException(); // Not persistent.
-  }
-
-  /**
    * Exposes the {@link RequestClient} identity used for quota enforcement and statistics.
    *
    * <p>The request client anchors the fetch within node-level accounting such as bandwidth
@@ -864,7 +836,6 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    *
    * @return request client associated with this fetch; never null after construction
    */
-  @Override
   public RequestClient getRequestClient() {
     return rc;
   }
@@ -880,13 +851,6 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    */
   @Override
   public String toString() {
-    return "FProxyFetchInProgress{"
-        + "identifier="
-        + identifier
-        + ", uri="
-        + uri
-        + ", context="
-        + initialContext
-        + '}';
+    return "FProxyFetchInProgress{" + "identifier=" + identifier + ", uri=" + uri + '}';
   }
 }

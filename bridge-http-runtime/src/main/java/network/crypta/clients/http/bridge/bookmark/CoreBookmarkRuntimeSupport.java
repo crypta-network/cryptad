@@ -1,7 +1,9 @@
 package network.crypta.clients.http.bridge.bookmark;
 
 import java.io.File;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import network.crypta.client.async.USKCallback;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bookmark.BookmarkRuntimeSupport;
@@ -10,7 +12,7 @@ import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
+import network.crypta.node.RequestPriorityClasses;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
@@ -43,6 +45,8 @@ public final class CoreBookmarkRuntimeSupport implements BookmarkRuntimeSupport 
   private static final long PREFETCH_TIMEOUT_MILLIS = MINUTES.toMillis(60);
 
   private final NodeClientCore core;
+  private final Map<BookmarkUpdateCallback, USKCallback> callbackAdapters =
+      new ConcurrentHashMap<>();
 
   /**
    * Creates runtime support backed by the supplied node core.
@@ -74,26 +78,60 @@ public final class CoreBookmarkRuntimeSupport implements BookmarkRuntimeSupport 
   /** {@inheritDoc} */
   @Override
   public void prefetchUpdatedEdition(FreenetURI uri, long maxSize) {
-    core.makeClient(RequestStarter.UPDATE_PRIORITY_CLASS, false, false)
+    core.makeClient(RequestPriorityClasses.UPDATE_PRIORITY_CLASS, false, false)
         .prefetch(
-            uri, PREFETCH_TIMEOUT_MILLIS, maxSize, null, RequestStarter.UPDATE_PRIORITY_CLASS);
+            uri,
+            PREFETCH_TIMEOUT_MILLIS,
+            maxSize,
+            null,
+            RequestPriorityClasses.UPDATE_PRIORITY_CLASS);
   }
 
   /** {@inheritDoc} */
   @Override
-  public void subscribeToUsk(USK usk, USKCallback callback) {
-    core.getUskManager().subscribe(usk, callback, true, BOOKMARK_REQUEST_CLIENT);
+  public void subscribeToUsk(USK usk, BookmarkUpdateCallback callback) {
+    core.getUskManager()
+        .subscribe(
+            usk,
+            callbackAdapters.computeIfAbsent(callback, CoreBookmarkRuntimeSupport::adaptCallback),
+            true,
+            BOOKMARK_REQUEST_CLIENT);
   }
 
   /** {@inheritDoc} */
   @Override
-  public void unsubscribeFromUsk(USK usk, USKCallback callback) {
-    core.getUskManager().unsubscribe(usk, callback);
+  public void unsubscribeFromUsk(USK usk, BookmarkUpdateCallback callback) {
+    USKCallback runtimeCallback = callbackAdapters.get(callback);
+    if (runtimeCallback == null) {
+      return;
+    }
+    core.getUskManager().unsubscribe(usk, runtimeCallback);
   }
 
   /** {@inheritDoc} */
   @Override
   public void queueLazyStore(Runnable job, long delayMillis) {
     core.getNode().network().ticker().queueTimedJob(job, delayMillis);
+  }
+
+  private static USKCallback adaptCallback(BookmarkUpdateCallback callback) {
+    return new USKCallback() {
+      @Override
+      public void onFoundEdition(network.crypta.client.async.USKFoundEdition foundEdition) {
+        callback.onFoundEdition(
+            new BookmarkEditionUpdate(
+                foundEdition.key(), foundEdition.edition(), foundEdition.newKnownGood()));
+      }
+
+      @Override
+      public short getPollingPriorityNormal() {
+        return callback.getPollingPriorityNormal();
+      }
+
+      @Override
+      public short getPollingPriorityProgress() {
+        return callback.getPollingPriorityProgress();
+      }
+    };
   }
 }

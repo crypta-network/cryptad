@@ -9,7 +9,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilterCallbacks;
@@ -24,7 +23,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.LegacyFileSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,7 +95,7 @@ public class ContentFilterToadlet extends ContentToadlet implements LinkEnabledC
    * @param client HTTP client utility used for link-aware rendering and helper operations; must not
    *     be {@code null}.
    */
-  public ContentFilterToadlet(HighLevelSimpleClient client) {
+  public ContentFilterToadlet(BrowseContentClient client) {
     super(client);
   }
 
@@ -448,7 +447,9 @@ public class ContentFilterToadlet extends ContentToadlet implements LinkEnabledC
     } else {
       filteredFilename = originalFilename + ".filtered";
     }
-    filteredFilename = FileUtil.sanitize(filteredFilename, mimeType);
+    filteredFilename =
+        DefaultMIMETypes.forceExtension(
+            LegacyFileSupport.sanitizeFileNameWithExtras(filteredFilename, ""), mimeType);
     return filteredFilename;
   }
 

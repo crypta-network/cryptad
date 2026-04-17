@@ -37,33 +37,38 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
    * Priority classes
    */
   /** Anything more important than FProxy */
-  public static final short MAXIMUM_PRIORITY_CLASS = 0;
+  public static final short MAXIMUM_PRIORITY_CLASS = RequestPriorityClasses.MAXIMUM_PRIORITY_CLASS;
 
   /** FProxy etc */
-  public static final short INTERACTIVE_PRIORITY_CLASS = 1;
+  public static final short INTERACTIVE_PRIORITY_CLASS =
+      RequestPriorityClasses.INTERACTIVE_PRIORITY_CLASS;
 
   /** FProxy splitfile fetches */
-  public static final short IMMEDIATE_SPLITFILE_PRIORITY_CLASS = 2;
+  public static final short IMMEDIATE_SPLITFILE_PRIORITY_CLASS =
+      RequestPriorityClasses.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
 
   /** USK updates etc */
-  public static final short UPDATE_PRIORITY_CLASS = 3;
+  public static final short UPDATE_PRIORITY_CLASS = RequestPriorityClasses.UPDATE_PRIORITY_CLASS;
 
   /** Bulk splitfile fetches */
-  public static final short BULK_SPLITFILE_PRIORITY_CLASS = 4;
+  public static final short BULK_SPLITFILE_PRIORITY_CLASS =
+      RequestPriorityClasses.BULK_SPLITFILE_PRIORITY_CLASS;
 
   /** Prefetch */
-  public static final short PREFETCH_PRIORITY_CLASS = 5;
+  public static final short PREFETCH_PRIORITY_CLASS =
+      RequestPriorityClasses.PREFETCH_PRIORITY_CLASS;
 
   /** Anything less important than prefetch (redundant??) */
-  public static final short PAUSED_PRIORITY_CLASS = 6;
+  public static final short PAUSED_PRIORITY_CLASS = RequestPriorityClasses.PAUSED_PRIORITY_CLASS;
 
   public static final short NUMBER_OF_PRIORITY_CLASSES =
-      PAUSED_PRIORITY_CLASS - MAXIMUM_PRIORITY_CLASS + 1; // include 0 and max !!
+      RequestPriorityClasses.NUMBER_OF_PRIORITY_CLASSES;
 
-  public static final short MINIMUM_FETCHABLE_PRIORITY_CLASS = PREFETCH_PRIORITY_CLASS;
+  public static final short MINIMUM_FETCHABLE_PRIORITY_CLASS =
+      RequestPriorityClasses.MINIMUM_FETCHABLE_PRIORITY_CLASS;
 
   public static boolean isValidPriorityClass(int prio) {
-    return !((prio < MAXIMUM_PRIORITY_CLASS) || (prio > PAUSED_PRIORITY_CLASS));
+    return RequestPriorityClasses.isValidPriorityClass(prio);
   }
 
   final BaseRequestThrottle throttle;

@@ -12,7 +12,6 @@ import java.net.URI;
 import java.text.ParseException;
 import java.time.Instant;
 import javax.imageio.ImageIO;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
@@ -79,16 +78,17 @@ public class ImageCreatorToadlet extends ContentToadlet {
   /**
    * Builds a new image creator toadlet bound to the provided high-level client utilities.
    *
-   * <p>The supplied {@link HighLevelSimpleClient} must remain valid for the lifetime of this
-   * toadlet because it underpins the inherited {@link Toadlet} behaviors such as bucket allocation
-   * and response writing. Instances created through this constructor are stateless; multiple
-   * toadlets may coexist and serve concurrent requests as long as the client manages shared
-   * resources safely. Callers typically register the instance with the toadlet server immediately
-   * after construction, so HTTP requests under the configured path are dispatched here.
+   * <p>The supplied {@link BrowseContentClient} must remain valid for the lifetime of this toadlet
+   * because it underpins the inherited {@link Toadlet} behaviors such as bucket allocation and
+   * response writing. Instances created through this constructor are stateless; multiple toadlets
+   * may coexist and serve concurrent requests as long as the client manages shared resources
+   * safely. Callers typically register the instance with the toadlet server immediately after
+   * construction, so HTTP requests under the configured path are dispatched here.
    *
-   * @param client non-null high-level client used for bucket creation and other inherited helpers
+   * @param client non-null browse-side content client used for bucket creation and other inherited
+   *     helpers
    */
-  protected ImageCreatorToadlet(HighLevelSimpleClient client) {
+  protected ImageCreatorToadlet(BrowseContentClient client) {
     super(client);
   }
 

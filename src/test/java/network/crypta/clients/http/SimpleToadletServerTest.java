@@ -314,14 +314,13 @@ class SimpleToadletServerTest {
     RuntimePorts runtimePorts = mock(RuntimePorts.class);
     RandomnessPort randomnessPort = mock(RandomnessPort.class);
     BookmarkManager bookmarkManager = mock(BookmarkManager.class);
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     AppHost appHost = mock(AppHost.class);
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar =
         mock(LegacyHttpBrowseRouteRegistrar.class);
     Config config = new Config();
     FProxyRuntimeSupport fproxyRuntimeSupport = mock(FProxyRuntimeSupport.class);
     FProxyFetchTracker fetchTracker = mock(FProxyFetchTracker.class);
-    ClientContext clientContext = mock(ClientContext.class);
     PushDataManagerHandle pushDataManagerHandle = mock(PushDataManagerHandle.class);
     Ticker ticker = mock(Ticker.class);
     when(runtimeSupport.runtimePorts()).thenReturn(runtimePorts);
@@ -332,7 +331,6 @@ class SimpleToadletServerTest {
     when(runtimeSupport.insertCompatibilityModes())
         .thenReturn(new InsertCompatibilityModes(List.of("COMPAT_DEFAULT"), "COMPAT_DEFAULT"));
     when(runtimeSupport.createPushDataManagerHandle(ticker)).thenReturn(pushDataManagerHandle);
-    when(fproxyRuntimeSupport.clientContext()).thenReturn(clientContext);
     server.setRuntimeSupport(runtimeSupport);
     server.setRouteRegistrar(routeRegistrar);
 

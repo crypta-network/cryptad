@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.PushDataToadlet;
 import network.crypta.clients.http.ajaxpush.PushFailoverToadlet;
 import network.crypta.clients.http.ajaxpush.PushKeepaliveToadlet;
@@ -22,7 +21,7 @@ class LegacyFProxyAjaxPushRouteRegistrarTest {
 
   @Test
   void registerRoutes_whenInvoked_registersAjaxPushRoutesInHistoricalOrder() {
-    HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
+    BrowseContentClient client = mock(BrowseContentClient.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
 
     new LegacyFProxyAjaxPushRouteRegistrar().registerRoutes(client, server);

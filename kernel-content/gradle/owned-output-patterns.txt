@@ -19,6 +19,10 @@ network/crypta/client/FailureCodeTracker.class
 network/crypta/client/FailureCodeTracker$*.class
 network/crypta/client/FetchException.class
 network/crypta/client/FetchException$*.class
+network/crypta/client/FetchContext.class
+network/crypta/client/FetchContext$*.class
+network/crypta/client/FetchContextOptions.class
+network/crypta/client/FetchContextOptions$*.class
 network/crypta/client/FetchResult.class
 network/crypta/client/FetchResult$*.class
 network/crypta/client/InsertBlock.class
@@ -86,6 +90,7 @@ network/crypta/client/events/ClientEventCompatibility.class
 network/crypta/client/events/ClientEventCompatibility$*.class
 network/crypta/client/filter/CharsetExtractor.class
 network/crypta/client/filter/CharsetExtractor$*.class
+network/crypta/client/filter/**
 network/crypta/client/filter/CodecPacket.class
 network/crypta/client/filter/CodecPacket$*.class
 network/crypta/client/filter/CodecPacketFilter.class

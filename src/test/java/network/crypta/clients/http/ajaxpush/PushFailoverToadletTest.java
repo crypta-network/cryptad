@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContainer;
@@ -36,7 +36,7 @@ class PushFailoverToadletTest {
     private String lastDesc;
     private String lastReply;
 
-    private CapturingPushFailoverToadlet(HighLevelSimpleClient client) {
+    private CapturingPushFailoverToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -53,7 +53,7 @@ class PushFailoverToadletTest {
       throws ToadletContextClosedException, IOException, RedirectException {
     // Arrange
     CapturingPushFailoverToadlet toadlet =
-        new CapturingPushFailoverToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushFailoverToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -82,7 +82,7 @@ class PushFailoverToadletTest {
       throws ToadletContextClosedException, IOException, RedirectException {
     // Arrange
     CapturingPushFailoverToadlet toadlet =
-        new CapturingPushFailoverToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushFailoverToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -109,7 +109,7 @@ class PushFailoverToadletTest {
       throws ToadletContextClosedException, IOException, RedirectException {
     // Arrange
     CapturingPushFailoverToadlet toadlet =
-        new CapturingPushFailoverToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushFailoverToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -133,7 +133,7 @@ class PushFailoverToadletTest {
   void handleMethodGET_whenContainerNotSimpleToadletServer_throwsClassCastException() {
     // Arrange
     CapturingPushFailoverToadlet toadlet =
-        new CapturingPushFailoverToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushFailoverToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     ToadletContainer wrongContainer = mock(ToadletContainer.class);
@@ -152,7 +152,7 @@ class PushFailoverToadletTest {
   @Test
   void path_whenCalled_returnsUpdaterFailoverPath() {
     // Arrange
-    PushFailoverToadlet toadlet = new PushFailoverToadlet(mock(HighLevelSimpleClient.class));
+    PushFailoverToadlet toadlet = new PushFailoverToadlet(mock(BrowseContentClient.class));
 
     // Act
     String path = toadlet.path();
