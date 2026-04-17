@@ -443,24 +443,23 @@ public final class PlatformApiRouter {
   }
 
   /**
-   * Routes either the shell-friendly roster view, the add-peer endpoint, or one raw peer resource.
+   * Routes either the shell-friendly summary view, the add-peer endpoint, or one raw peer resource.
    *
    * @param resource second path segment beneath {@code /peers}
    * @param request full request metadata, including query parameters
    * @return JSON response for the selected peer endpoint
    */
   private PlatformApiResponse routePeerResource(String resource, PlatformApiRequest request) {
-    if ("roster".equals(resource)) {
+    if ("summary".equals(resource)) {
       if (!"GET".equals(request.method())) {
         return methodNotAllowed("GET", GET_ONLY_MESSAGE);
       }
       return PlatformApiResponse.ok(peersApiHandler.roster());
     }
     if ("add".equals(resource)) {
-      if (!"POST".equals(request.method())) {
-        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      if ("POST".equals(request.method())) {
+        return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));
       }
-      return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));
     }
     if (!"GET".equals(request.method())) {
       return methodNotAllowed("GET", GET_ONLY_MESSAGE);

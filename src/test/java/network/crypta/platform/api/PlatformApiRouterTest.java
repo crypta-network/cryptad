@@ -244,7 +244,7 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenPeerRosterRequested_expectStructuredRosterJson() {
+  void route_whenPeerSummaryRequested_expectStructuredRosterJson() {
     LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
     directValues.put("identity", "peer-1");
     directValues.put("myName", "Alice");
@@ -267,7 +267,7 @@ class PlatformApiRouterTest {
             List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", false)));
 
     PlatformApiResponse response =
-        router.route(request("GET", List.of("peers", "roster"), Map.of()));
+        router.route(request("GET", List.of("peers", "summary"), Map.of()));
 
     verify(peerPort).list(true, true);
     verify(darknetConnectionsPort).listPeers();
@@ -283,7 +283,7 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenPeerRosterStatusIsRoutingDisabled_expectEffectiveRoutingDisabledJson() {
+  void route_whenPeerSummaryStatusIsRoutingDisabled_expectEffectiveRoutingDisabledJson() {
     LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
     directValues.put("identity", "peer-1");
     directValues.put("myName", "Alice");
@@ -300,10 +300,23 @@ class PlatformApiRouterTest {
             List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", true)));
 
     PlatformApiResponse response =
-        router.route(request("GET", List.of("peers", "roster"), Map.of()));
+        router.route(request("GET", List.of("peers", "summary"), Map.of()));
 
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"routingEnabled\":false"));
+  }
+
+  @Test
+  void route_whenPeerNamedRosterRequested_expectRawPeerLookupStillUsed() throws Exception {
+    when(peerPort.get("roster", false, false))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "roster"), Map.of())));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("peers", "roster"), Map.of()));
+
+    verify(peerPort).get("roster", false, false);
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"roster\""));
   }
 
   @Test
@@ -464,16 +477,15 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenPeerAddGetRequested_expectMethodNotAllowedWithAllowPost() {
+  void route_whenPeerNamedAddRequested_expectRawPeerLookupStillUsed() throws Exception {
+    when(peerPort.get("add", false, false))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "add"), Map.of())));
+
     PlatformApiResponse response = router.route(request("GET", List.of("peers", "add"), Map.of()));
 
-    assertEquals(405, response.statusCode());
-    assertEquals("Method Not Allowed", response.reasonPhrase());
-    assertEquals(Map.of("Allow", "POST"), response.headers());
-    assertEquals(
-        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
-            + " requests only.\"}}",
-        response.body());
+    verify(peerPort).get("add", false, false);
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"add\""));
   }
 
   @Test
