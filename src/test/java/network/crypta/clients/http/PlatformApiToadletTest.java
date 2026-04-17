@@ -300,6 +300,93 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenPeerAddRequested_routesDecodedAddRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames())
+        .thenReturn(List.of("referenceText", "trust", "visibility", "privateNoteText"));
+    when(request.getMultipleParam("referenceText"))
+        .thenReturn(
+            new String[] {
+"""
+identity=peer-123
+lastGoodVersion=1
+myName=Alice
+physical.udp=127.0.0.1:9481
+End
+"""
+            });
+    when(request.getMultipleParam("trust")).thenReturn(new String[] {"NORMAL"});
+    when(request.getMultipleParam("visibility")).thenReturn(new String[] {"YES"});
+    when(request.getMultipleParam("privateNoteText")).thenReturn(new String[] {"friend note"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/peers/add"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("peers", "add"),
+                Map.of(
+                    "referenceText",
+                        List.of(
+                            """
+                            identity=peer-123
+                            lastGoodVersion=1
+                            myName=Alice
+                            physical.udp=127.0.0.1:9481
+                            End
+                            """),
+                    "trust", List.of("NORMAL"),
+                    "visibility", List.of("YES"),
+                    "privateNoteText", List.of("friend note"))));
+  }
+
+  @Test
+  void handleMethodPOST_whenPeerSettingsRequested_routesDecodedMutationRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of("trust", "visibility"));
+    when(request.getMultipleParam("trust")).thenReturn(new String[] {"HIGH"});
+    when(request.getMultipleParam("visibility")).thenReturn(new String[] {"NAME_ONLY"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/peers/peer%2F123/settings"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("peers", "peer/123", "settings"),
+                Map.of("trust", List.of("HIGH"), "visibility", List.of("NAME_ONLY"))));
+  }
+
+  @Test
+  void handleMethodPOST_whenPeerNoteUsesFormPart_routesDecodedMutationRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getRawData()).thenReturn(requestBody);
+    when(request.getParts()).thenReturn(new String[] {"noteText"});
+    when(request.getPartAsStringFailsafe("noteText", QueueToadlet.MAX_KEY_LENGTH))
+        .thenReturn("updated note");
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/peers/peer-123/note"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("peers", "peer-123", "note"),
+                Map.of("noteText", List.of("updated note"))));
+    verify(request).getPartAsStringFailsafe("noteText", QueueToadlet.MAX_KEY_LENGTH);
+  }
+
+  @Test
   void handleMethodPOST_whenQueueMutationPasswordMissing_expectJson403WithoutRouting()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
@@ -307,6 +394,26 @@ class PlatformApiToadletTest {
 
     toadlet.handleMethodPOST(
         URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals("Forbidden", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
+        bodyWrite.bodyText());
+  }
+
+  @Test
+  void handleMethodPOST_whenPeerMutationPasswordMissing_expectJson403WithoutRouting()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/peers/peer-123/remove"), request, ctx);
 
     verifyNoInteractions(router);
     ReplyHeadersCapture replyHeaders = captureReplyHeaders();

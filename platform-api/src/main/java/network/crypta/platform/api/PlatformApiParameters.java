@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Shared query-parameter parsing helpers for Platform API endpoints.
@@ -14,6 +15,8 @@ import java.util.Set;
  * request is malformed.
  */
 public final class PlatformApiParameters {
+  private static final String MISSING_REQUIRED_QUERY_PARAMETER_PREFIX =
+      "Missing required query parameter '";
   private static final String QUERY_PARAMETER_PREFIX = "Query parameter '";
 
   /** Prevents instantiation of this static helper type. */
@@ -43,6 +46,28 @@ public final class PlatformApiParameters {
   }
 
   /**
+   * Reads one optional boolean query parameter.
+   *
+   * @param queryParameters decoded query parameter map
+   * @param name parameter name to read
+   * @return parsed boolean value, or {@code null} when the parameter is absent
+   */
+  public static @Nullable Boolean readOptionalBoolean(
+      Map<String, List<String>> queryParameters, String name) {
+    String raw = readSingle(queryParameters, name);
+    if (raw == null) {
+      return null;
+    }
+    if ("true".equalsIgnoreCase(raw)) {
+      return Boolean.TRUE;
+    }
+    if ("false".equalsIgnoreCase(raw)) {
+      return Boolean.FALSE;
+    }
+    throw invalidQuery(queryParameter(name) + " must be either 'true' or 'false'.");
+  }
+
+  /**
    * Reads one required string query parameter.
    *
    * @param queryParameters decoded query parameter map
@@ -52,9 +77,39 @@ public final class PlatformApiParameters {
   public static String requireString(Map<String, List<String>> queryParameters, String name) {
     String raw = readSingle(queryParameters, name);
     if (raw == null || raw.isBlank()) {
-      throw invalidQuery("Missing required query parameter '" + name + "'.");
+      throw invalidQuery(missingRequiredQueryParameter(name));
     }
     return raw;
+  }
+
+  /**
+   * Reads one required string query parameter while allowing an empty supplied value.
+   *
+   * <p>This variant is useful for mutation fields such as notes where the caller may explicitly
+   * clear the stored value by submitting an empty string.
+   *
+   * @param queryParameters decoded query parameter map
+   * @param name parameter name to read
+   * @return supplied value, which may be empty
+   */
+  public static String requirePresentString(
+      Map<String, List<String>> queryParameters, String name) {
+    String raw = readSingle(queryParameters, name);
+    if (raw == null) {
+      throw invalidQuery(missingRequiredQueryParameter(name));
+    }
+    return raw;
+  }
+
+  /**
+   * Reads one optional string query parameter.
+   *
+   * @param queryParameters decoded query parameter map
+   * @param name parameter name to read
+   * @return supplied value, or {@code null} when the parameter is absent
+   */
+  public static String readOptionalString(Map<String, List<String>> queryParameters, String name) {
+    return readSingle(queryParameters, name);
   }
 
   /**
@@ -70,7 +125,28 @@ public final class PlatformApiParameters {
       Map<String, List<String>> queryParameters, String name, Class<E> enumType) {
     String raw = readSingle(queryParameters, name);
     if (raw == null || raw.isBlank()) {
-      throw invalidQuery("Missing required query parameter '" + name + "'.");
+      throw invalidQuery(missingRequiredQueryParameter(name));
+    }
+    return parseEnum(name, raw, enumType);
+  }
+
+  /**
+   * Reads one optional enum query parameter using the enum's exact {@link Enum#name()} values.
+   *
+   * @param queryParameters decoded query parameter map
+   * @param name parameter name to read
+   * @param enumType target enum type
+   * @return parsed enum value, or {@code null} when the parameter is absent
+   * @param <E> enum type
+   */
+  public static <E extends Enum<E>> E readOptionalEnum(
+      Map<String, List<String>> queryParameters, String name, Class<E> enumType) {
+    String raw = readSingle(queryParameters, name);
+    if (raw == null) {
+      return null;
+    }
+    if (raw.isBlank()) {
+      throw invalidQuery(queryParameter(name) + " must not be empty.");
     }
     return parseEnum(name, raw, enumType);
   }
@@ -167,6 +243,10 @@ public final class PlatformApiParameters {
 
   private static String queryParameter(String name) {
     return QUERY_PARAMETER_PREFIX + name + "'";
+  }
+
+  private static String missingRequiredQueryParameter(String name) {
+    return MISSING_REQUIRED_QUERY_PARAMETER_PREFIX + name + "'.";
   }
 
   /**

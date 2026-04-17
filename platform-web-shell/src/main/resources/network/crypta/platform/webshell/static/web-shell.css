@@ -154,6 +154,10 @@ a {
   gap: 18px;
 }
 
+.panel-span-2 {
+  grid-column: span 2;
+}
+
 .panel {
   display: grid;
   gap: 18px;
@@ -312,7 +316,8 @@ a {
   color: var(--shell-muted);
 }
 
-.queue-status {
+.queue-status,
+.peer-status {
   min-height: 24px;
 }
 
@@ -334,7 +339,8 @@ a {
   background: rgba(255, 143, 143, 0.12);
 }
 
-.queue-create-form {
+.queue-create-form,
+.peer-create-form {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(140px, auto) auto;
   gap: 14px;
@@ -346,7 +352,9 @@ a {
 }
 
 .queue-create-copy,
-.queue-create-description {
+.queue-create-description,
+.peer-add-copy,
+.peer-add-description {
   margin: 0;
 }
 
@@ -362,6 +370,8 @@ a {
 }
 
 .queue-field input,
+.queue-field textarea,
+.queue-field select,
 .queue-key-text,
 .queue-html input[type="text"],
 .queue-html textarea,
@@ -374,6 +384,19 @@ a {
   background: rgba(4, 8, 16, 0.48);
   color: var(--shell-text);
   font: inherit;
+}
+
+.queue-field textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.peer-create-form {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(140px, auto) minmax(140px, auto) auto;
+}
+
+.peer-reference-field {
+  grid-column: 1 / span 2;
 }
 
 .queue-key-export {
@@ -468,6 +491,72 @@ a {
   accent-color: var(--shell-accent);
 }
 
+.peer-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.peer-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.peer-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.peer-card-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.peer-card-title,
+.peer-form-title {
+  margin: 0;
+}
+
+.peer-card-subtitle {
+  margin: 0;
+  color: var(--shell-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.peer-card-pills,
+.peer-card-links,
+.peer-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.peer-inline-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.peer-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.peer-form-title {
+  color: var(--shell-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .peer-table {
   width: 100%;
   border-collapse: collapse;
@@ -516,12 +605,18 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .panel-span-2 {
+    grid-column: auto;
+  }
+
   .hero,
   .panel {
     border-radius: 22px;
   }
 
-  .queue-create-form {
+  .queue-create-form,
+  .peer-create-form,
+  .peer-form-grid {
     grid-template-columns: 1fr;
   }
 }
