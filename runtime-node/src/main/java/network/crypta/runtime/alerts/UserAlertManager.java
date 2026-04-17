@@ -172,6 +172,7 @@ public class UserAlertManager implements UserAlertSurface, Comparator<UserAlert>
    *
    * @param alert the alert to remove from the active alert set, or {@code null}
    */
+  @Override
   public void unregister(UserAlert alert) {
     if (alert == null) return;
     if (alert instanceof UserEvent event) unregister(event.getEventType());
@@ -610,6 +611,7 @@ public class UserAlertManager implements UserAlertSurface, Comparator<UserAlert>
    * @param startURI the base URI used to construct alert and feed links
    * @return a serialized Atom feed containing the current alert snapshot
    */
+  @Override
   public String getAtom(String startURI) {
     String messagesURI = startURI + ALERTS_PATH;
     String feedURI = startURI + "/feed/";

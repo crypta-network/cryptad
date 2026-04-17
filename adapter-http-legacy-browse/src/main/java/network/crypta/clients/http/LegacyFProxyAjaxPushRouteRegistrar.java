@@ -1,6 +1,5 @@
 package network.crypta.clients.http;
 
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.ajaxpush.PushDataToadlet;
 import network.crypta.clients.http.ajaxpush.PushFailoverToadlet;
 import network.crypta.clients.http.ajaxpush.PushKeepaliveToadlet;
@@ -47,7 +46,7 @@ final class LegacyFProxyAjaxPushRouteRegistrar {
    *     startup
    * @param server legacy HTTP shell that receives the registered push routes in their fixed order
    */
-  void registerRoutes(HighLevelSimpleClient client, SimpleToadletServer server) {
+  void registerRoutes(BrowseContentClient client, SimpleToadletServer server) {
     PushDataToadlet pushDataToadlet = new PushDataToadlet(client);
     server.register(
         pushDataToadlet, ToadletRegistration.basic(null, pushDataToadlet.path(), true, false));

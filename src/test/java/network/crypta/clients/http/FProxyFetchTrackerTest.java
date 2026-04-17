@@ -5,11 +5,9 @@ import java.util.Random;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.MultiValueTable;
-import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -33,10 +31,10 @@ class FProxyFetchTrackerTest {
 
   @Test
   void getFetchInProgress_whenMatchingSizeAndActive_returnsFetcher() throws Exception {
-    ClientContext context = mock(ClientContext.class);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FreenetURI key = mock(FreenetURI.class);
     FProxyFetchInProgress fetch = mock(FProxyFetchInProgress.class);
@@ -55,10 +53,10 @@ class FProxyFetchTrackerTest {
 
   @Test
   void getFetchInProgress_whenHasData_returnsFetcher() throws Exception {
-    ClientContext context = mock(ClientContext.class);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FreenetURI key = mock(FreenetURI.class);
     FProxyFetchInProgress fetch = mock(FProxyFetchInProgress.class);
@@ -76,10 +74,10 @@ class FProxyFetchTrackerTest {
 
   @Test
   void getFetchInProgress_whenContextDiffers_returnsNull() throws Exception {
-    ClientContext context = mock(ClientContext.class);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext trackerContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, trackerContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(trackerContext, runtimeSupport, rc);
 
     FreenetURI key = mock(FreenetURI.class);
     FetchContext requestedContext = mock(FetchContext.class);
@@ -99,10 +97,10 @@ class FProxyFetchTrackerTest {
 
   @Test
   void makeFetcher_whenExistingFetcherPresent_reusesExistingWaiter() throws Exception {
-    ClientContext context = mock(ClientContext.class);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FreenetURI key = mock(FreenetURI.class);
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
@@ -120,17 +118,15 @@ class FProxyFetchTrackerTest {
             new FProxyFetchCriteria(key, 1024L, fetchContext), RefilterPolicy.RE_FETCH);
 
     assertSame(waiter, result);
-    verify(fetch, never()).start(context);
+    verify(fetch, never()).start();
   }
 
   @Test
   void makeFetcher_whenStartThrows_removesFetcherAndPropagates() throws Exception {
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = mock(ClientContext.class);
-    setFinalField(context, "ticker", ticker);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FreenetURI key = mock(FreenetURI.class);
     FetchException failure = new FetchException(FetchExceptionMode.INTERNAL_ERROR, "boom");
@@ -140,7 +136,7 @@ class FProxyFetchTrackerTest {
             FProxyFetchInProgress.class,
             (mock, _) -> {
               when(mock.getWaiter()).thenReturn(mock(FProxyFetchWaiter.class));
-              doThrow(failure).when(mock).start(context);
+              doThrow(failure).when(mock).start();
               setFinalField(mock, "uri", key);
             })) {
 
@@ -158,19 +154,17 @@ class FProxyFetchTrackerTest {
 
   @Test
   void queueCancel_whenAlreadyQueued_setsRequeueWithoutRequeuing() throws Exception {
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = mock(ClientContext.class);
-    setFinalField(context, "ticker", ticker);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FProxyFetchInProgress fetch = mock(FProxyFetchInProgress.class);
 
     tracker.queueCancel(fetch);
     tracker.queueCancel(fetch);
 
-    verify(ticker, times(1)).queueTimedJob(tracker, FProxyFetchInProgress.LIFETIME);
+    verify(runtimeSupport, times(1)).queueTimedJob(tracker, FProxyFetchInProgress.LIFETIME);
     Field requeueField = findField(FProxyFetchTracker.class, "requeue");
     requeueField.setAccessible(true);
     assertTrue((Boolean) requeueField.get(tracker));
@@ -178,12 +172,10 @@ class FProxyFetchTrackerTest {
 
   @Test
   void run_whenRequeueFlagSet_cancelsEligibleAndRequeues() throws Exception {
-    Ticker ticker = mock(Ticker.class);
-    ClientContext context = mock(ClientContext.class);
-    setFinalField(context, "ticker", ticker);
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     FreenetURI key1 = mock(FreenetURI.class);
     FreenetURI key2 = mock(FreenetURI.class);
@@ -209,19 +201,18 @@ class FProxyFetchTrackerTest {
     verify(cancellable, times(1)).finishCancel();
     assertNull(tracker.getFetchInProgress(new FProxyFetchCriteria(key1, 0L, null)));
     assertSame(persistent, tracker.getFetchInProgress(new FProxyFetchCriteria(key2, 0L, null)));
-    verify(ticker, times(2)).queueTimedJob(tracker, FProxyFetchInProgress.LIFETIME);
+    verify(runtimeSupport, times(2)).queueTimedJob(tracker, FProxyFetchInProgress.LIFETIME);
   }
 
   @Test
-  void makeRandomElementID_returnsValueFromFastWeakRandom() throws Exception {
-    Random fastRandom = new Random(1234L);
-    ClientContext context = mock(ClientContext.class);
-    setFinalField(context, "fastWeakRandomSource", fastRandom);
+  void makeRandomElementID_returnsValueFromFastWeakRandom() {
+    FProxyRuntimeSupport runtimeSupport = mock(FProxyRuntimeSupport.class);
     FetchContext fetchContext = mock(FetchContext.class);
     RequestClient rc = mock(RequestClient.class);
-    FProxyFetchTracker tracker = new FProxyFetchTracker(context, fetchContext, rc);
+    FProxyFetchTracker tracker = new FProxyFetchTracker(fetchContext, runtimeSupport, rc);
 
     int expected = new Random(1234L).nextInt();
+    when(runtimeSupport.nextWeakRandomInt()).thenReturn(expected);
 
     int actual = tracker.makeRandomElementID();
 

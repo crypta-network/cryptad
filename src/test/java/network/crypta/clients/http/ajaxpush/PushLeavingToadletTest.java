@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContainer;
@@ -38,7 +38,7 @@ class PushLeavingToadletTest {
     private String lastDesc;
     private String lastReply;
 
-    private CapturingPushLeavingToadlet(HighLevelSimpleClient client) {
+    private CapturingPushLeavingToadlet(BrowseContentClient client) {
       super(client);
     }
 
@@ -56,7 +56,7 @@ class PushLeavingToadletTest {
       throws ToadletContextClosedException, IOException, RedirectException {
     // Arrange
     CapturingPushLeavingToadlet toadlet =
-        new CapturingPushLeavingToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushLeavingToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -83,7 +83,7 @@ class PushLeavingToadletTest {
       throws ToadletContextClosedException, IOException, RedirectException {
     // Arrange
     CapturingPushLeavingToadlet toadlet =
-        new CapturingPushLeavingToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushLeavingToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -106,7 +106,7 @@ class PushLeavingToadletTest {
   void handleMethodGET_whenContainerNotSimpleToadletServer_throwsClassCastException() {
     // Arrange
     CapturingPushLeavingToadlet toadlet =
-        new CapturingPushLeavingToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushLeavingToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     ToadletContainer wrongContainer = mock(ToadletContainer.class);
@@ -125,7 +125,7 @@ class PushLeavingToadletTest {
   void handleMethodGET_whenLeavingThrowsRuntimeException_propagatesAndDoesNotWriteReply() {
     // Arrange
     CapturingPushLeavingToadlet toadlet =
-        new CapturingPushLeavingToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushLeavingToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
     SimpleToadletServer server = mock(SimpleToadletServer.class);
@@ -149,7 +149,7 @@ class PushLeavingToadletTest {
   void handleMethodGET_whenGetParamThrowsRuntimeException_propagatesAndDoesNotTouchContext() {
     // Arrange
     CapturingPushLeavingToadlet toadlet =
-        new CapturingPushLeavingToadlet(mock(HighLevelSimpleClient.class));
+        new CapturingPushLeavingToadlet(mock(BrowseContentClient.class));
     HTTPRequest request = mock(HTTPRequest.class);
     ToadletContext context = mock(ToadletContext.class);
 
@@ -167,7 +167,7 @@ class PushLeavingToadletTest {
   @Test
   void path_whenCalled_returnsUpdaterLeavingPath() {
     // Arrange
-    PushLeavingToadlet toadlet = new PushLeavingToadlet(mock(HighLevelSimpleClient.class));
+    PushLeavingToadlet toadlet = new PushLeavingToadlet(mock(BrowseContentClient.class));
 
     // Act
     String path = toadlet.path();

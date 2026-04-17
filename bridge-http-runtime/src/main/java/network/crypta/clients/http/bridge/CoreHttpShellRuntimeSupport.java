@@ -4,10 +4,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.FProxyFetchTracker;
-import network.crypta.clients.http.FProxyRuntimeSupport;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.HttpShellBrowseBootstrap;
 import network.crypta.clients.http.HttpShellRuntimeSupport;
@@ -21,7 +20,7 @@ import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.Config;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.node.RequestStarter;
+import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
@@ -168,18 +167,18 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
     BookmarkManager bookmarkManager =
         new BookmarkManager(
             new CoreBookmarkRuntimeSupport(core), core.getAlerts(), publicGatewayMode);
-    HighLevelSimpleClient client =
-        core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
+    BrowseContentClient client =
+        new CoreBrowseContentClient(
+            core.makeClient(RequestPriorityClasses.INTERACTIVE_PRIORITY_CLASS, true, true));
     FProxyFetchTracker fetchTracker =
         new FProxyFetchTracker(
-            core.getClientContext(),
             client.getFetchContext(),
+            new CoreFProxyRuntimeSupport(core),
             new RequestClientBuilder().realTime().build());
-    FProxyRuntimeSupport fproxyRuntimeSupport = new CoreFProxyRuntimeSupport(core);
     return HttpShellBrowseBootstrap.create(
         bookmarkManager,
         appHost,
-        FProxyToadlet.create(client, fproxyRuntimeSupport, fetchTracker),
+        FProxyToadlet.create(client, new CoreFProxyRuntimeSupport(core), fetchTracker),
         new LegacyFProxyBrowseRouteRegistrar(client),
         CoreHttpShellRuntimeSupport::initializeFProxySharedState);
   }

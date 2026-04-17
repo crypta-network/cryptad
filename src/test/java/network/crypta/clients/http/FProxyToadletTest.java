@@ -3,8 +3,6 @@ package network.crypta.clients.http;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.async.ClientContext;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.runtime.alerts.UserAlertManager;
@@ -23,14 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,37 +31,29 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FProxyToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
 
   @Mock private FProxyRuntimeSupport runtimeSupport;
 
   @Mock private FProxyFetchTracker fetchTracker;
 
-  @Mock private ClientContext clientContext;
-
   @Mock private ToadletContainer container;
 
   @Test
   void constructor_setsMaxLengthsOnClient() {
-    when(runtimeSupport.clientContext()).thenReturn(clientContext);
-
     new FProxyToadlet(client, runtimeSupport, fetchTracker);
 
     verify(client).setMaxLength(FProxyToadlet.getMaxLengthNoProgress());
     verify(client).setMaxIntermediateLength(FProxyToadlet.getMaxLengthNoProgress());
-    verify(runtimeSupport).clientContext();
   }
 
   @Test
   void create_whenInvoked_returnsConfiguredToadlet() {
-    when(runtimeSupport.clientContext()).thenReturn(clientContext);
-
     FProxyToadlet toadlet = FProxyToadlet.create(client, runtimeSupport, fetchTracker);
 
     assertEquals("/", toadlet.path());
     verify(client).setMaxLength(FProxyToadlet.getMaxLengthNoProgress());
     verify(client).setMaxIntermediateLength(FProxyToadlet.getMaxLengthNoProgress());
-    verify(runtimeSupport).clientContext();
   }
 
   @Test
@@ -152,24 +137,39 @@ class FProxyToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenFeedPathRequestedWithoutConcreteAlertManager_returnsServiceUnavailable()
+  void handleMethodGET_whenFeedPathRequestedWithDetachedAlertSurface_usesSurfaceAtom()
       throws Exception {
     FProxyToadlet toadlet = newFProxy();
     ToadletContext ctx = mock(ToadletContext.class);
     HTTPRequest request = mock(HTTPRequest.class);
     UserAlertSurface alertSurface = mock(UserAlertSurface.class);
+    SubConfig fProxyConfig = mock(SubConfig.class);
+    @SuppressWarnings("rawtypes")
+    Option portOption = mock(Option.class);
+    @SuppressWarnings("rawtypes")
+    Option bindToOption = mock(Option.class);
+    String atom = "<feed-detached/>";
+    byte[] atomBytes = atom.getBytes(StandardCharsets.UTF_8);
 
     toadlet.container = container;
     when(container.publicGatewayMode()).thenReturn(false);
+    when(runtimeSupport.fproxyConfig()).thenReturn(fProxyConfig);
+    doReturn(portOption).when(fProxyConfig).getOption("port");
+    doReturn(bindToOption).when(fProxyConfig).getOption("bindTo");
+    when(portOption.getValueString()).thenReturn("8888");
+    when(bindToOption.getValueString()).thenReturn("example.test");
     when(ctx.getHeaders()).thenReturn(new MultiValueTable<>());
     when(ctx.getAlertManager()).thenReturn(alertSurface);
+    when(ctx.getUri()).thenReturn(URI.create("http://example.test/feed"));
+    when(alertSurface.getAtom("http://example.test")).thenReturn(atom);
 
     toadlet.handleMethodGET(URI.create("http://example.test/feed"), request, ctx);
 
-    verify(ctx).sendReplyHeaders(503, "Service Unavailable", null, null, 0);
-    verify(ctx, never())
-        .sendReplyHeadersFProxy(anyInt(), anyString(), any(), anyString(), anyLong());
-    verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
+    verify(alertSurface).getAtom("http://example.test");
+    verify(ctx).sendReplyHeadersFProxy(200, "OK", null, "application/atom+xml", atomBytes.length);
+    ArgumentCaptor<byte[]> dataCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(ctx).writeData(dataCaptor.capture(), eq(0), eq(atomBytes.length));
+    assertArrayEquals(atomBytes, dataCaptor.getValue());
   }
 
   @Test
@@ -206,7 +206,6 @@ class FProxyToadletTest {
   }
 
   private FProxyToadlet newFProxy() {
-    when(runtimeSupport.clientContext()).thenReturn(clientContext);
     return new FProxyToadlet(client, runtimeSupport, fetchTracker);
   }
 

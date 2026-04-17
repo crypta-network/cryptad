@@ -1,8 +1,17 @@
 package network.crypta.clients.http;
 
 import java.io.File;
-import network.crypta.client.async.ClientContext;
+import java.io.IOException;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
+import network.crypta.client.async.CacheFetchResult;
+import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.SubConfig;
+import network.crypta.keys.FreenetURI;
+import network.crypta.keys.USK;
+import network.crypta.node.RequestClient;
+import network.crypta.support.api.Bucket;
 
 /**
  * Supplies the runtime-facing services that {@link FProxyToadlet} needs from the live daemon.
@@ -10,7 +19,7 @@ import network.crypta.config.SubConfig;
  * <p>This interface is public only so runtime-owned HTTP bootstrap adapters can implement it from
  * outside {@code network.crypta.clients.http}. It is not a new platform API. The seam keeps the
  * HTTP-side FProxy code coupled to a narrow contract instead of the full node core. The surface is
- * intentionally small: it exposes only the client context, threat-level state, download-policy
+ * intentionally small: it exposes only the fetch/cache helpers, threat-level state, download-policy
  * checks, background execution, and the FProxy sub-configuration needed to preserve current
  * behavior. Code in {@code clients/http} can depend on this seam without pulling in broader node
  * assembly concerns.
@@ -22,16 +31,71 @@ import network.crypta.config.SubConfig;
 public interface FProxyRuntimeSupport {
 
   /**
-   * Returns the client context used to schedule and track FProxy fetch operations.
+   * Starts a legacy FProxy fetch against the runtime fetch engine.
    *
-   * <p>The returned context is the same one that would previously have been read from the live
-   * daemon core. {@link FProxyToadlet} caches this reference at construction time so later request
-   * handling can create fetchers and callbacks without needing additional access to the core
-   * object.
-   *
-   * @return the active client context backing HTTP-side fetch work.
+   * @param uri target content URI
+   * @param fetchContext mutable fetch context describing the request
+   * @param priorityClass scheduling priority for the runtime fetch
+   * @param requestClient request identity used for scheduling and accounting
+   * @param callback callback that observes terminal fetch outcomes
+   * @return handle that can cancel the in-flight fetch
+   * @throws FetchException if the fetch cannot be started
    */
-  ClientContext clientContext();
+  FetchHandle startFetch(
+      FreenetURI uri,
+      FetchContext fetchContext,
+      short priorityClass,
+      RequestClient requestClient,
+      FetchCallback callback)
+      throws FetchException;
+
+  /**
+   * Looks up an existing cached fetch result for the given URI.
+   *
+   * @param uri target content URI
+   * @param allowUnfilteredReuse whether an unfiltered cache hit may be reused directly
+   * @return cached fetch result or {@code null} if none is available
+   */
+  CacheFetchResult lookupCachedResult(FreenetURI uri, boolean allowUnfilteredReuse);
+
+  /**
+   * Creates a temporary bucket for intermediate filtering work.
+   *
+   * @param maxSize requested maximum bucket size, or {@code -1} for implementation default
+   * @return fresh temporary bucket
+   * @throws IOException if the runtime cannot allocate the temporary bucket
+   */
+  Bucket createTempBucket(long maxSize) throws IOException;
+
+  /**
+   * Exposes the runtime link-filter exception provider used by HTML filtering.
+   *
+   * @return current link-filter exception provider
+   */
+  LinkFilterExceptionProvider linkFilterExceptionProvider();
+
+  /**
+   * Returns the latest known-good edition for the given USK.
+   *
+   * @param usk key to query
+   * @return latest known-good edition, or {@code -1} when unknown
+   */
+  long lookupKnownGoodEdition(USK usk);
+
+  /**
+   * Queues a timed job on the runtime ticker.
+   *
+   * @param task job to schedule
+   * @param delayMillis delay before execution, in milliseconds
+   */
+  void queueTimedJob(Runnable task, long delayMillis);
+
+  /**
+   * Returns a pseudo-random identifier from the runtime fast weak random source.
+   *
+   * @return best-effort process-local random integer
+   */
+  int nextWeakRandomInt();
 
   /**
    * Returns the current physical-threat policy that should govern local download behavior.
@@ -145,5 +209,28 @@ public interface FProxyRuntimeSupport {
     HIGH,
     /** Remote network observation or interference is treated as maximally hostile. */
     MAXIMUM
+  }
+
+  /** Terminal callback for runtime-backed FProxy fetches. */
+  interface FetchCallback {
+    /**
+     * Called when the fetch completes successfully.
+     *
+     * @param result completed fetch result
+     */
+    void onSuccess(FetchResult result);
+
+    /**
+     * Called when the fetch fails.
+     *
+     * @param failure terminal fetch failure
+     */
+    void onFailure(FetchException failure);
+  }
+
+  /** Handle for a runtime-backed in-flight FProxy fetch. */
+  interface FetchHandle {
+    /** Cancels the associated in-flight fetch. */
+    void cancel();
   }
 }

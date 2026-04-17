@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
@@ -43,7 +42,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExternalLinkToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private SimpleToadletServer toadletContainer;
   @Mock private ToadletContext context;
   @Mock private PageMaker pageMaker;

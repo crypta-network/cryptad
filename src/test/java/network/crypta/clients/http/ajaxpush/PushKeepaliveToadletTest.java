@@ -3,7 +3,7 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import java.util.stream.Stream;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContainer;
@@ -34,7 +34,7 @@ class PushKeepaliveToadletTest {
   private static final String PARAM_REQUEST_ID = "requestId";
   private static final String REQUEST_ID = "req-1";
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private HTTPRequest request;
   @Mock private ToadletContext context;
   @Mock private SimpleToadletServer server;
@@ -171,7 +171,7 @@ class PushKeepaliveToadletTest {
     private String lastBody;
     private ToadletContext lastContext;
 
-    private CapturingPushKeepaliveToadlet(HighLevelSimpleClient client) {
+    private CapturingPushKeepaliveToadlet(BrowseContentClient client) {
       super(client);
     }
 

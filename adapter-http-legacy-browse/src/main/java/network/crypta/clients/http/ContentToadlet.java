@@ -4,8 +4,6 @@ import java.util.Objects;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
-import network.crypta.client.FetchWaiter;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertUriChecks;
@@ -29,16 +27,16 @@ import network.crypta.node.RequestClient;
  * narrower seam is available.
  *
  * <ul>
- *   <li>Owns the shared {@link HighLevelSimpleClient} for browse-only toadlets.
+ *   <li>Owns the shared browse-content client for browse-only toadlets.
  *   <li>Preserves the legacy-blocking fetch and insert helper shape.
  *   <li>Keeps runtime-node content-client contracts out of admin-owned shell classes.
  * </ul>
  *
  * @see Toadlet
- * @see HighLevelSimpleClient
+ * @see BrowseContentClient
  */
 public abstract class ContentToadlet extends Toadlet {
-  final HighLevelSimpleClient client;
+  final BrowseContentClient client;
 
   /**
    * Creates a browse-owned toadlet bound to the shared high-level client.
@@ -52,7 +50,7 @@ public abstract class ContentToadlet extends Toadlet {
    *     fetches, and inserts
    * @throws NullPointerException if {@code client} is {@code null}
    */
-  protected ContentToadlet(HighLevelSimpleClient client) {
+  protected ContentToadlet(BrowseContentClient client) {
     this.client = Objects.requireNonNull(client, "client");
   }
 
@@ -61,7 +59,7 @@ public abstract class ContentToadlet extends Toadlet {
    *
    * <p>The helper preserves the historical legacy HTTP behavior: if {@code maxSize} is positive, it
    * applies that value to both output and temporary-length limits on the supplied fetch context,
-   * starts an asynchronous fetch, then blocks on a {@link FetchWaiter} until completion. The
+   * then performs the fetch synchronously through the shared browse-side client. The
    * caller-provided {@link RequestClient} is reused for request attribution and scheduler grouping.
    *
    * @param uri content URI to fetch for the current request
@@ -78,9 +76,7 @@ public abstract class ContentToadlet extends Toadlet {
       fctx.setMaxOutputLength(maxSize);
       fctx.setMaxTempLength(maxSize);
     }
-    FetchWaiter fw = new FetchWaiter(clientContext);
-    client.fetch(uri, fw, fctx);
-    return fw.waitForCompletion();
+    return client.fetch(uri, clientContext, fctx);
   }
 
   /**
@@ -129,7 +125,7 @@ public abstract class ContentToadlet extends Toadlet {
    * @return shared browse-side high-level client backing this toadlet
    */
   @SuppressWarnings("unused")
-  protected HighLevelSimpleClient getClientImpl() {
+  protected BrowseContentClient getClientImpl() {
     return client;
   }
 }

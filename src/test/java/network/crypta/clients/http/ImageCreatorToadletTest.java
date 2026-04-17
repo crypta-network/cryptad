@@ -54,7 +54,7 @@ class ImageCreatorToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new ImageCreatorToadlet(mock(network.crypta.client.HighLevelSimpleClient.class));
+    toadlet = new ImageCreatorToadlet(mock(BrowseContentClient.class));
   }
 
   @Test
@@ -263,7 +263,7 @@ class ImageCreatorToadletTest {
     boolean htmlReplyCalled = false;
 
     ShortCircuitToadlet() {
-      super(mock(network.crypta.client.HighLevelSimpleClient.class));
+      super(mock(BrowseContentClient.class));
     }
 
     @Override

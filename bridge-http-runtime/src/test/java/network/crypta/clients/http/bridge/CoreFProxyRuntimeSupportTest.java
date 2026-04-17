@@ -1,31 +1,53 @@
 package network.crypta.clients.http.bridge;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
+import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientGetCallback;
+import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.DownloadCache;
+import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.http.FProxyRuntimeSupport;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.RequestClient;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.services.NodeServicesSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.api.RandomAccessBucket;
+import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.MockedConstruction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -50,7 +72,6 @@ class CoreFProxyRuntimeSupportTest {
     when(context.core().allowDownloadTo(downloadTarget)).thenReturn(false);
     when(context.core().getAllowedDownloadDirs()).thenReturn(allowedDirs);
 
-    assertSame(clientContext, context.runtimeSupport().clientContext());
     assertSame(downloadsDir, context.runtimeSupport().downloadsDir());
     assertSame(allowedDirs, context.runtimeSupport().allowedDownloadDirs());
     assertTrue(context.runtimeSupport().isDownloadDisabled());
@@ -61,6 +82,143 @@ class CoreFProxyRuntimeSupportTest {
     context.runtimeSupport().executeBackground(task);
 
     verify(context.executor()).execute(task);
+  }
+
+  @Test
+  void createTempBucket_whenFactoryAllocatesBucket_returnsSameBucket() throws IOException {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
+    RandomAccessBucket bucket = mock(RandomAccessBucket.class);
+    when(context.core().getTempBucketFactory()).thenReturn(tempBucketFactory);
+    when(tempBucketFactory.makeBucket(4096L)).thenReturn(bucket);
+
+    var actualBucket = context.runtimeSupport().createTempBucket(4096L);
+
+    assertSame(bucket, actualBucket);
+  }
+
+  @Test
+  void createTempBucket_whenFactoryThrowsIOException_propagatesIOException() throws IOException {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
+    IOException failure = new IOException("disk full");
+    when(context.core().getTempBucketFactory()).thenReturn(tempBucketFactory);
+    when(tempBucketFactory.makeBucket(-1L)).thenThrow(failure);
+
+    //noinspection resource
+    IOException thrown =
+        assertThrows(IOException.class, () -> context.runtimeSupport().createTempBucket(-1L));
+
+    assertSame(failure, thrown);
+  }
+
+  @Test
+  void lookupCachedResult_whenDownloadCacheMissing_returnsNull() {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    ClientContext clientContext = mock(ClientContext.class);
+    FreenetURI uri = mock(FreenetURI.class);
+    when(context.core().getClientContext()).thenReturn(clientContext);
+    when(clientContext.getDownloadCache()).thenReturn(null);
+
+    var result = context.runtimeSupport().lookupCachedResult(uri, true);
+
+    assertNull(result);
+  }
+
+  @Test
+  void lookupCachedResult_whenDownloadCachePresent_delegatesLookupParameters() {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    ClientContext clientContext = mock(ClientContext.class);
+    DownloadCache downloadCache = mock(DownloadCache.class);
+    CacheFetchResult cacheFetchResult = mock(CacheFetchResult.class);
+    FreenetURI uri = mock(FreenetURI.class);
+    when(context.core().getClientContext()).thenReturn(clientContext);
+    when(clientContext.getDownloadCache()).thenReturn(downloadCache);
+    when(downloadCache.lookupInstant(uri, false, false, null)).thenReturn(cacheFetchResult);
+
+    var result = context.runtimeSupport().lookupCachedResult(uri, false);
+
+    assertSame(cacheFetchResult, result);
+  }
+
+  @Test
+  void startFetch_whenStarted_returnsCancelableHandleAndForwardsCallback() throws Exception {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    ClientContext clientContext = mock(ClientContext.class);
+    FreenetURI uri = mock(FreenetURI.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    RequestClient requestClient = mock(RequestClient.class);
+    FProxyRuntimeSupport.FetchCallback callback = mock(FProxyRuntimeSupport.FetchCallback.class);
+    FetchResult fetchResult = mock(FetchResult.class);
+    FetchException failure = new FetchException(FetchException.FetchExceptionMode.DATA_NOT_FOUND);
+    when(context.core().getClientContext()).thenReturn(clientContext);
+
+    AtomicReference<List<?>> constructorArguments = new AtomicReference<>();
+    try (MockedConstruction<ClientGetter> getters =
+        mockConstruction(
+            ClientGetter.class,
+            (_, construction) ->
+                constructorArguments.set(new ArrayList<>(construction.arguments())))) {
+      FProxyRuntimeSupport.FetchHandle handle =
+          context
+              .runtimeSupport()
+              .startFetch(uri, fetchContext, (short) 7, requestClient, callback);
+
+      ClientGetter getter = getters.constructed().getFirst();
+      verify(clientContext).start(getter);
+
+      ClientGetCallback runtimeCallback = (ClientGetCallback) constructorArguments.get().getFirst();
+      assertSame(requestClient, runtimeCallback.getRequestClient());
+
+      runtimeCallback.onSuccess(fetchResult, getter);
+      runtimeCallback.onFailure(failure);
+
+      verify(callback).onSuccess(fetchResult);
+      verify(callback).onFailure(failure);
+
+      handle.cancel();
+
+      verify(getter).cancel(clientContext);
+    }
+
+    assertSame(uri, constructorArguments.get().get(1));
+    assertSame(fetchContext, constructorArguments.get().get(2));
+    assertEquals((short) 7, constructorArguments.get().get(3));
+  }
+
+  @Test
+  void startFetch_whenPersistenceDisabled_throwsInternalErrorFetchException() {
+    RuntimeContext context =
+        newRuntimeContext(NETWORK_THREAT_LEVEL.NORMAL, PHYSICAL_THREAT_LEVEL.NORMAL);
+    ClientContext clientContext = mock(ClientContext.class);
+    FreenetURI uri = mock(FreenetURI.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    RequestClient requestClient = mock(RequestClient.class);
+    FProxyRuntimeSupport.FetchCallback callback = mock(FProxyRuntimeSupport.FetchCallback.class);
+    when(context.core().getClientContext()).thenReturn(clientContext);
+
+    try (var _ =
+        mockConstruction(
+            ClientGetter.class,
+            (getter, _) ->
+                doThrow(new PersistenceDisabledException()).when(clientContext).start(getter))) {
+      FetchException thrown =
+          assertThrows(
+              FetchException.class,
+              () ->
+                  context
+                      .runtimeSupport()
+                      .startFetch(uri, fetchContext, (short) 1, requestClient, callback));
+
+      assertEquals(FetchException.FetchExceptionMode.INTERNAL_ERROR, thrown.getMode());
+      assertInstanceOf(PersistenceDisabledException.class, thrown.getCause());
+      verifyNoInteractions(callback);
+    }
   }
 
   @ParameterizedTest

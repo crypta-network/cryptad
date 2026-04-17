@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
@@ -32,7 +31,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class InsertFreesiteToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
   @Mock private UserAlertManager alertManager;

@@ -1,7 +1,7 @@
 package network.crypta.clients.http.ajaxpush;
 
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.api.HTTPRequest;
@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SuppressWarnings("java:S100")
 class DismissAlertToadletTest {
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private HTTPRequest request;
   @Mock private ToadletContext context;
 
@@ -83,7 +83,7 @@ class DismissAlertToadletTest {
     private String capturedDescription;
     private String capturedReply;
 
-    private CapturingDismissAlertToadlet(HighLevelSimpleClient client) {
+    private CapturingDismissAlertToadlet(BrowseContentClient client) {
       super(client);
     }
 

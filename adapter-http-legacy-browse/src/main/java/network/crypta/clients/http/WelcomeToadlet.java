@@ -10,7 +10,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
@@ -30,7 +29,6 @@ import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -97,7 +95,7 @@ public class WelcomeToadlet extends ContentToadlet {
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
-  WelcomeToadlet(HighLevelSimpleClient client, WelcomeToadletRuntimePorts runtimePorts) {
+  WelcomeToadlet(BrowseContentClient client, WelcomeToadletRuntimePorts runtimePorts) {
     super(client);
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
     alertsPath = new UserAlertsToadlet().path();
@@ -1130,10 +1128,11 @@ public class WelcomeToadlet extends ContentToadlet {
    * present and readable.
    *
    * <p>The method reads up to 2,000 lines (respecting the byte cap in {@link
-   * FileUtil#getLogTailReader}) and streams them into an infobox labeled “Current status”. It is
-   * safe to call even when the file is absent or unreadable; failures are logged at DEBUG, and the
-   * page continues rendering without interruption. No locks are taken beyond standard file reads,
-   * and the caller retains ownership of the provided {@link HTMLNode}.
+   * network.crypta.support.io.LegacyFileSupport#getLogTailReader(java.io.File, long)}) and streams
+   * them into an infobox labeled “Current status”. It is safe to call even when the file is absent
+   * or unreadable; failures are logged at DEBUG, and the page continues rendering without
+   * interruption. No locks are taken beyond standard file reads, and the caller retains ownership
+   * of the provided {@link HTMLNode}.
    *
    * @param ctx toadlet context used to create localized infobox markup
    * @param contentNode the page node that receives the log output if available

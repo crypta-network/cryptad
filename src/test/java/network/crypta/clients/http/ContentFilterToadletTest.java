@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilterCallbacks;
@@ -60,7 +59,7 @@ class ContentFilterToadletTest {
       "network.crypta.clients.http.ContentFilterToadlet.loopbackUri";
   private static final URI DEFAULT_FILTER_URI = URI.create("http://127.0.0.1:8888/");
 
-  private HighLevelSimpleClient client;
+  private BrowseContentClient client;
   private SimpleToadletServer container;
   private ToadletContext ctx;
   private BucketFactory bucketFactory;
@@ -73,7 +72,7 @@ class ContentFilterToadletTest {
 
   @BeforeEach
   void setUp() {
-    client = mock(HighLevelSimpleClient.class);
+    client = mock(BrowseContentClient.class);
     container = mock(SimpleToadletServer.class);
     ctx = mock(ToadletContext.class);
     bucketFactory = mock(BucketFactory.class);

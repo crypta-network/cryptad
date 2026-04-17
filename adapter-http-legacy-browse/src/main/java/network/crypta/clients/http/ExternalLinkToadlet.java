@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
@@ -54,7 +53,7 @@ public class ExternalLinkToadlet extends ContentToadlet {
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
 
-  ExternalLinkToadlet(HighLevelSimpleClient client) {
+  ExternalLinkToadlet(BrowseContentClient client) {
     super(client);
   }
 

@@ -37,6 +37,7 @@ class KernelRoutingBoundaryTest {
           "RecentlyFailedReturn",
           "RequestClient",
           "RequestClientBuilder",
+          "RequestPriorityClasses",
           "RequestCompletionListener",
           "RequestTransferOptions",
           "SecurityLevelListener",

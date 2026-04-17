@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -44,14 +44,14 @@ public class PushKeepaliveToadlet extends ContentToadlet {
   /**
    * Creates a keepalive endpoint bound to the given client context.
    *
-   * <p>The {@code HighLevelSimpleClient} is passed through to the {@link ContentToadlet} base class
+   * <p>The {@link BrowseContentClient} is passed through to the {@link ContentToadlet} base class
    * and is used by shared toadlet infrastructure (for example, reply helpers and common request
    * wiring). This toadlet itself does not retain an additional mutable state beyond what the
    * superclass maintains.
    *
    * @param client client context used by the {@link ContentToadlet} superclass; must be non-null
    */
-  public PushKeepaliveToadlet(HighLevelSimpleClient client) {
+  public PushKeepaliveToadlet(BrowseContentClient client) {
     super(client);
   }
 

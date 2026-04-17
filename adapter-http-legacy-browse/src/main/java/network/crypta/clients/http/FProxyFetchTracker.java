@@ -3,7 +3,6 @@ package network.crypta.clients.http;
 import java.util.List;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
-import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.MultiValueTable;
@@ -17,7 +16,8 @@ import org.slf4j.LoggerFactory;
  * share results when multiple requests target the same key and constraints. It coordinates creation
  * of new fetchers, hands back {@link FProxyFetchWaiter} handles, and schedules time-based cleanup
  * of stale work. Internally the registry is guarded by the {@code fetchers} monitor while lifecycle
- * state changes rely on {@link ClientContext#ticker} to avoid blocking the calling thread.
+ * state changes rely on the detached {@link FProxyRuntimeSupport} ticker access to avoid blocking
+ * the calling thread.
  *
  * <p>Typical call flow: a servlet asks for a fetcher via {@link #makeFetcher(FProxyFetchCriteria,
  * RefilterPolicy)}, gets a waiter, and later the tracker culls abandoned instances through {@link
@@ -37,7 +37,7 @@ public class FProxyFetchTracker implements Runnable {
 
   private final MultiValueTable<FreenetURI, FProxyFetchInProgress> fetchers =
       new MultiValueTable<>();
-  final ClientContext context;
+  private final FProxyRuntimeSupport runtimeSupport;
   private long fetchIdentifiers;
   private final FetchContext fctx;
   private final RequestClient rc;
@@ -48,21 +48,22 @@ public class FProxyFetchTracker implements Runnable {
    * Creates a tracker bound to the given asynchronous client context and default fetch settings.
    *
    * <p>The constructor wires together the runtime services needed by each fetcher: the {@link
-   * ClientContext} supplies schedulers, timers, and random sources; the baseline {@link
-   * FetchContext} seeds new fetches when callers do not supply overrides; and the {@link
+   * FProxyRuntimeSupport} supplies runtime fetch helpers, timers, and random sources; the baseline
+   * {@link FetchContext} seeds new fetches when callers do not supply overrides; and the {@link
    * RequestClient} links requests to the owning client identity. Callers typically create a single
    * tracker per HTTP handler or node instance and reuse it for all inbound requests to maximize
    * fetch deduplication and to centralize lifecycle management.
    *
-   * @param context underlying client runtime that provides scheduling and random utilities; must
-   *     not be {@code null}.
+   * @param runtimeSupport detached runtime support that provides fetch helpers, scheduling, and
+   *     random utilities; must not be {@code null}
    * @param fctx baseline {@link FetchContext} applied when callers do not override it; reused for
    *     deduplication.
    * @param rc request client used by new {@link FProxyFetchInProgress} instances to submit network
    *     fetches.
    */
-  public FProxyFetchTracker(ClientContext context, FetchContext fctx, RequestClient rc) {
-    this.context = context;
+  public FProxyFetchTracker(
+      FetchContext fctx, FProxyRuntimeSupport runtimeSupport, RequestClient rc) {
+    this.runtimeSupport = runtimeSupport;
     this.fctx = fctx;
     this.rc = rc;
   }
@@ -99,11 +100,11 @@ public class FProxyFetchTracker implements Runnable {
       }
       progress =
           new FProxyFetchInProgress(
-              this, effectiveCriteria, fetchIdentifiers++, context, rc, refilterPolicy);
+              this, effectiveCriteria, fetchIdentifiers++, rc, refilterPolicy);
       fetchers.put(effectiveCriteria.key(), progress);
     }
     try {
-      progress.start(context);
+      progress.start();
     } catch (FetchException e) {
       synchronized (fetchers) {
         fetchers.removeElement(effectiveCriteria.key(), progress);
@@ -218,7 +219,7 @@ public class FProxyFetchTracker implements Runnable {
    *
    * <p>When invoked, the tracker either enqueues a cleanup job or marks that a previously queued
    * job should run again, preventing unbounded queuing. The actual removal and cancellation occur
-   * in {@link #run()}, which is executed by {@link ClientContext#ticker} after the configured
+   * in {@link #run()}, which is executed by the detached runtime ticker after the configured
    * lifetime delay.
    *
    * @param progress fetch instance to cancel when it becomes eligible; ignored when {@code null}.
@@ -235,7 +236,7 @@ public class FProxyFetchTracker implements Runnable {
       }
       queuedJob = true;
     }
-    context.ticker.queueTimedJob(this, FProxyFetchInProgress.LIFETIME);
+    runtimeSupport.queueTimedJob(this, FProxyFetchInProgress.LIFETIME);
   }
 
   /**
@@ -252,7 +253,7 @@ public class FProxyFetchTracker implements Runnable {
     FetcherCleanupResult cleanupResult = collectAndRemoveCancellableFetchers();
     cancelFetchers(cleanupResult.toRemove());
     if (cleanupResult.needRequeue()) {
-      context.ticker.queueTimedJob(this, FProxyFetchInProgress.LIFETIME);
+      runtimeSupport.queueTimedJob(this, FProxyFetchInProgress.LIFETIME);
     }
   }
 
@@ -291,13 +292,17 @@ public class FProxyFetchTracker implements Runnable {
   /**
    * Generates a random element identifier suitable for tagging fetch-related objects.
    *
-   * <p>The value is produced by {@link ClientContext#fastWeakRandom()}, which favors speed over
+   * <p>The value is produced by the runtime fast weak random source, which favors speed over
    * cryptographic strength. Callers should treat the result as best-effort unique within the
    * current process and avoid persisting it where strong randomness is required.
    *
    * @return a pseudo-random 32-bit integer drawn from the fast weak random source.
    */
   public int makeRandomElementID() {
-    return context.fastWeakRandomSource.nextInt();
+    return runtimeSupport.nextWeakRandomInt();
+  }
+
+  FProxyRuntimeSupport runtimeSupport() {
+    return runtimeSupport;
   }
 }

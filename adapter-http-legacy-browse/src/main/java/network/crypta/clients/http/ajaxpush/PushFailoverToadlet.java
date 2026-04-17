@@ -2,7 +2,7 @@ package network.crypta.clients.http.ajaxpush;
 
 import java.io.IOException;
 import java.net.URI;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.RedirectException;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -56,7 +56,7 @@ public class PushFailoverToadlet extends ContentToadlet {
    *
    * @param client Non-null client helper provided by the node for toadlet operations.
    */
-  public PushFailoverToadlet(HighLevelSimpleClient client) {
+  public PushFailoverToadlet(BrowseContentClient client) {
     super(client);
   }
 

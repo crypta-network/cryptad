@@ -4,7 +4,6 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.bookmark.Bookmark;
 import network.crypta.clients.http.bookmark.BookmarkCategory;
 import network.crypta.clients.http.bookmark.BookmarkItem;
@@ -49,7 +48,7 @@ class BookmarkEditorToadletTest {
 
   private static final URI DUMMY_URI = URI.create("http://localhost/bookmarkEditor/");
 
-  @Mock private HighLevelSimpleClient client;
+  @Mock private BrowseContentClient client;
   @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private DarknetMessagingPort darknetMessagingPort;
 

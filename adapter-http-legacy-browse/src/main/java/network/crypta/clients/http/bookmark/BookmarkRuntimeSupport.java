@@ -1,7 +1,6 @@
 package network.crypta.clients.http.bookmark;
 
 import java.io.File;
-import network.crypta.client.async.USKCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 
@@ -24,8 +23,6 @@ import network.crypta.keys.USK;
  *   <li>Trigger best-effort prefetch work for newly discovered editions.
  *   <li>Queue delayed background jobs without exposing ticker details.
  * </ul>
- *
- * @see network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport
  */
 public interface BookmarkRuntimeSupport {
 
@@ -68,27 +65,27 @@ public interface BookmarkRuntimeSupport {
    * Subscribes to updates for a bookmark USK.
    *
    * <p>Callers typically subscribe when a bookmark is loaded or added, then later pair that
-   * subscription with {@link #unsubscribeFromUsk(USK, USKCallback)} when the bookmark is removed or
-   * the manager shuts down. The runtime implementation owns request-client details and any
-   * underlying subscription bookkeeping that the bookmark package should not see directly.
+   * subscription with {@link #unsubscribeFromUsk(USK, BookmarkUpdateCallback)} when the bookmark is
+   * removed or the manager shuts down. The runtime implementation owns request-client details and
+   * any underlying subscription bookkeeping that the bookmark package should not see directly.
    *
    * @param usk the updatable key to monitor for newer bookmark editions
    * @param callback the callback that receives edition notifications from the runtime
    */
-  void subscribeToUsk(USK usk, USKCallback callback);
+  void subscribeToUsk(USK usk, BookmarkUpdateCallback callback);
 
   /**
    * Removes a USK subscription previously created through this runtime support.
    *
    * <p>Callers should pass the same USK and callback pair that was previously given to {@link
-   * #subscribeToUsk(USK, USKCallback)}. Implementations are responsible for translating that pair
-   * into the underlying runtime's unsubscribing behavior and for releasing any associated resources
-   * or tracking state owned by the runtime.
+   * #subscribeToUsk(USK, BookmarkUpdateCallback)}. Implementations are responsible for translating
+   * that pair into the underlying runtime's unsubscribing behavior and for releasing any associated
+   * resources or tracking state owned by the runtime.
    *
    * @param usk the updatable key that should no longer be monitored for updates
    * @param callback the callback instance that should be detached from update delivery
    */
-  void unsubscribeFromUsk(USK usk, USKCallback callback);
+  void unsubscribeFromUsk(USK usk, BookmarkUpdateCallback callback);
 
   /**
    * Queues a delayed bookmark persistence job.
@@ -102,4 +99,40 @@ public interface BookmarkRuntimeSupport {
    * @param delayMillis the scheduling delay, in milliseconds, before the job may run
    */
   void queueLazyStore(Runnable job, long delayMillis);
+
+  /**
+   * Bookmark-local USK update callback that keeps the browse leaf detached from runtime callback
+   * types.
+   */
+  interface BookmarkUpdateCallback {
+    /**
+     * Called when bookmark polling discovers or advances an edition.
+     *
+     * @param foundEdition discovered bookmark edition snapshot
+     */
+    void onFoundEdition(BookmarkEditionUpdate foundEdition);
+
+    /**
+     * Returns the steady-state polling priority for this subscription.
+     *
+     * @return scheduler priority constant for background polling
+     */
+    short getPollingPriorityNormal();
+
+    /**
+     * Returns the boosted polling priority used during startup or after progress.
+     *
+     * @return scheduler priority constant for progress polling
+     */
+    short getPollingPriorityProgress();
+  }
+
+  /**
+   * Immutable bookmark-local view of a discovered USK edition.
+   *
+   * @param key bookmark USK whose edition was discovered
+   * @param edition discovered edition number
+   * @param newKnownGood whether the discovered edition advanced the known-good marker
+   */
+  record BookmarkEditionUpdate(USK key, long edition, boolean newKnownGood) {}
 }

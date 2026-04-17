@@ -39,6 +39,16 @@ public interface UserAlertSurface {
   void register(UserAlert alert);
 
   /**
+   * Unregisters an alert from the active surface.
+   *
+   * <p>This is the direct removal counterpart to {@link #register(UserAlert)} and is used by
+   * callers that need to withdraw alerts without routing through a user dismissal flow.
+   *
+   * @param alert alert instance to remove from the active surface
+   */
+  void unregister(UserAlert alert);
+
+  /**
    * Dismisses an alert identified by its hash code when that alert allows user dismissal.
    *
    * <p>This method mirrors the legacy HTTP behavior, where dismissal requests travel through form
@@ -97,4 +107,12 @@ public interface UserAlertSurface {
    *     summary rendering is suppressed
    */
   HTMLNode createSummary(boolean oneLine);
+
+  /**
+   * Renders the current alert set as an Atom feed payload.
+   *
+   * @param startUri absolute scheme/host/port prefix used when building feed links
+   * @return Atom feed document as UTF-8 text
+   */
+  String getAtom(String startUri);
 }

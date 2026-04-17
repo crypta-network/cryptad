@@ -3,7 +3,7 @@ package network.crypta.clients.http.ajaxpush;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.ContentToadlet;
 import network.crypta.clients.http.PushUpdateEvent;
 import network.crypta.clients.http.RedirectException;
@@ -55,7 +55,7 @@ public class PushNotificationToadlet extends ContentToadlet {
    * @param client client context used by the toadlet framework; must be non-null for normal
    *     operation
    */
-  public PushNotificationToadlet(HighLevelSimpleClient client) {
+  public PushNotificationToadlet(BrowseContentClient client) {
     super(client);
   }
 

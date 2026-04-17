@@ -71,6 +71,8 @@ class KernelContentBoundaryTest {
   private static final List<String> MOVED_CLIENT_FAILURE_TYPES =
       List.of(
           "FailureCodeTracker.java",
+          "FetchContext.java",
+          "FetchContextOptions.java",
           "FetchException.java",
           "InsertException.java",
           "MetadataResolutionTarget.java",
@@ -86,7 +88,13 @@ class KernelContentBoundaryTest {
           "ClientEventDispatchContext.java",
           "ClientEventPersistentTask.java");
   private static final List<String> MOVED_FILTER_FAILURE_TYPES =
-      List.of("DataFilterException.java", "UnsafeContentTypeException.java");
+      List.of(
+          "ContentFilter.java",
+          "DataFilterException.java",
+          "HTMLFilter.java",
+          "TagReplacerCallback.java",
+          "UnknownContentTypeException.java",
+          "UnsafeContentTypeException.java");
   private static final List<String> MOVED_ASYNC_UTILITY_TYPES =
       List.of(
           "BinaryBlob.java",
