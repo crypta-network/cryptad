@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
@@ -42,6 +43,9 @@ public final class PlatformApiToadlet extends Toadlet {
 
   /** JSON media type advertised for every Platform API response emitted through the bridge. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
+
+  /** Legacy maximum accepted size for one URL-encoded request body. */
+  private static final long MAX_URL_ENCODED_BODY_LENGTH = 1024L * 1024L;
 
   private static final String URL_ENCODED_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
@@ -273,6 +277,8 @@ public final class PlatformApiToadlet extends Toadlet {
       response =
           PlatformApiResponse.error(
               400, "invalid_path", "Request path contains malformed percent-encoding.");
+    } catch (PlatformApiException e) {
+      response = PlatformApiResponse.error(e.statusCode(), e.errorCode(), e.getMessage());
     } catch (RuntimeException e) {
       LOG.error("Platform API request failed for path {}", requestPath(uri), e);
       response =
@@ -443,6 +449,10 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static void mergeUrlEncodedBodyParameters(
       Bucket rawData, Map<String, List<String>> queryParameters) {
+    if (rawData.size() > MAX_URL_ENCODED_BODY_LENGTH) {
+      throw new PlatformApiException(
+          400, "invalid_request_body", "URL-encoded request body exceeds the 1048576 byte limit.");
+    }
     Map<String, List<String>> bodyParameters;
     try (var input = rawData.getInputStream()) {
       if (input == null) {

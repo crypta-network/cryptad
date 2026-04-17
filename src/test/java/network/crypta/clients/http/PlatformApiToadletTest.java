@@ -243,6 +243,32 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenUrlEncodedBodyExceedsLegacyLimit_expectJson400WithoutRouting()
+      throws Exception {
+    byte[] oversizedBody = new byte[1024 * 1024 + 1];
+    Arrays.fill(oversizedBody, (byte) 'a');
+
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getHeader("content-type")).thenReturn("application/x-www-form-urlencoded");
+    when(request.getRawData()).thenReturn(new SimpleReadOnlyArrayBucket(oversizedBody));
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/api/v1/queue/downloads"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(400, replyHeaders.statusCode());
+    assertEquals("Bad Request", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_request_body\",\"message\":\"URL-encoded request body"
+            + " exceeds the 1048576 byte limit.\"}}",
+        bodyWrite.bodyText());
+  }
+
+  @Test
   void handleMethodPOST_whenQueueDownloadUsesFormParts_routesDecodedCreationRequest()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
