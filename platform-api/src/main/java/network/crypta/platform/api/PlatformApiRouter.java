@@ -430,32 +430,34 @@ public final class PlatformApiRouter {
   }
 
   /**
-   * Routes the raw peer collection export at {@code /peers}.
+   * Routes either the raw peer collection export or the shell summary view at {@code /peers}.
    *
    * @param request full request metadata, including query parameters
-   * @return JSON response containing the raw peer export list
+   * @return JSON response containing the requested peer collection view
    */
   private PlatformApiResponse routePeersRoot(PlatformApiRequest request) {
     if (!"GET".equals(request.method())) {
       return methodNotAllowed("GET", GET_ONLY_MESSAGE);
     }
+    String view = PlatformApiParameters.readOptionalString(request.queryParameters(), "view");
+    if (view != null) {
+      if ("summary".equals(view)) {
+        return PlatformApiResponse.ok(peersApiHandler.roster());
+      }
+      throw new PlatformApiException(
+          400, "invalid_query_parameter", "Query parameter 'view' must be 'summary'.");
+    }
     return PlatformApiResponse.ok(peersApiHandler.list(request.queryParameters()));
   }
 
   /**
-   * Routes either the shell-friendly summary view, the add-peer endpoint, or one raw peer resource.
+   * Routes either the add-peer endpoint or one raw peer resource.
    *
    * @param resource second path segment beneath {@code /peers}
    * @param request full request metadata, including query parameters
    * @return JSON response for the selected peer endpoint
    */
   private PlatformApiResponse routePeerResource(String resource, PlatformApiRequest request) {
-    if ("summary".equals(resource)) {
-      if (!"GET".equals(request.method())) {
-        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(peersApiHandler.roster());
-    }
     if ("add".equals(resource)) {
       if ("POST".equals(request.method())) {
         return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));

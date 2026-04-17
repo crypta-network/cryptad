@@ -774,7 +774,7 @@
     sections.peers.append(text("p", "loading", "Loading peer roster..."));
 
     try {
-      const roster = await loadJson(apiUrl("peers/summary"));
+      const roster = await loadJson(apiUrl("peers?view=summary"));
       if (loadGeneration !== peerLoadGeneration) {
         return;
       }

@@ -244,7 +244,7 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenPeerSummaryRequested_expectStructuredRosterJson() {
+  void route_whenPeerSummaryViewRequested_expectStructuredRosterJson() {
     LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
     directValues.put("identity", "peer-1");
     directValues.put("myName", "Alice");
@@ -267,7 +267,7 @@ class PlatformApiRouterTest {
             List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", false)));
 
     PlatformApiResponse response =
-        router.route(request("GET", List.of("peers", "summary"), Map.of()));
+        router.route(request("GET", List.of("peers"), Map.of("view", List.of("summary"))));
 
     verify(peerPort).list(true, true);
     verify(darknetConnectionsPort).listPeers();
@@ -283,7 +283,7 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenPeerSummaryStatusIsRoutingDisabled_expectEffectiveRoutingDisabledJson() {
+  void route_whenPeerSummaryViewStatusIsRoutingDisabled_expectEffectiveRoutingDisabledJson() {
     LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
     directValues.put("identity", "peer-1");
     directValues.put("myName", "Alice");
@@ -300,10 +300,23 @@ class PlatformApiRouterTest {
             List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", true)));
 
     PlatformApiResponse response =
-        router.route(request("GET", List.of("peers", "summary"), Map.of()));
+        router.route(request("GET", List.of("peers"), Map.of("view", List.of("summary"))));
 
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"routingEnabled\":false"));
+  }
+
+  @Test
+  void route_whenPeerNamedSummaryRequested_expectRawPeerLookupStillUsed() throws Exception {
+    when(peerPort.get("summary", false, false))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "summary"), Map.of())));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("peers", "summary"), Map.of()));
+
+    verify(peerPort).get("summary", false, false);
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"summary\""));
   }
 
   @Test

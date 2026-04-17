@@ -171,7 +171,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("async function submitPeerCreate(event)"));
     assertTrue(script.contains("async function submitPeerMutation(form, action)"));
     assertTrue(script.contains("async function loadPeersSection()"));
-    assertTrue(script.contains("loadJson(apiUrl(\"peers/summary\"))"));
+    assertTrue(script.contains("loadJson(apiUrl(\"peers?view=summary\"))"));
     assertTrue(script.contains("peerControls.createForm.hidden = !formPassword;"));
     assertTrue(script.contains("form.dataset.peerRequiresForceRemoval"));
     assertTrue(script.contains("forceRemoval"));
