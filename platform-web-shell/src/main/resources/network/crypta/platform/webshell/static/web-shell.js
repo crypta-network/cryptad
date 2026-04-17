@@ -585,6 +585,61 @@
     return formPassword;
   }
 
+  function renderQueueHtmlFragment(html, className) {
+    const container = document.createElement("div");
+    container.className = className;
+    if (typeof html !== "string" || html.length === 0) {
+      return container;
+    }
+
+    const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+    sanitizeQueueNode(parsedDocument.body);
+    container.replaceChildren(...Array.from(parsedDocument.body.childNodes));
+    return container;
+  }
+
+  function sanitizeQueueNode(root) {
+    root
+      .querySelectorAll("script, style, template, iframe, frame, frameset, object, embed, link, meta, base")
+      .forEach((node) => {
+        node.remove();
+      });
+
+    root.querySelectorAll("*").forEach((element) => {
+      Array.from(element.attributes).forEach((attribute) => {
+        const attributeName = attribute.name.toLowerCase();
+        if (attributeName.startsWith("on") || attributeName === "style" || attributeName === "srcdoc") {
+          element.removeAttribute(attribute.name);
+          return;
+        }
+        if (
+          (attributeName === "href" ||
+            attributeName === "src" ||
+            attributeName === "action" ||
+            attributeName === "formaction") &&
+          !isSafeQueueUrl(attribute.value)
+        ) {
+          element.removeAttribute(attribute.name);
+        }
+      });
+    });
+  }
+
+  function isSafeQueueUrl(rawValue) {
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (value.length === 0 || value.startsWith("//")) {
+      return value.length === 0;
+    }
+    try {
+      const url = new URL(value, window.location.href);
+      return (
+        (url.protocol === "http:" || url.protocol === "https:") && url.origin === window.location.origin
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
   function renderQueue(snapshot, countSnapshot, keysPayload) {
     clear(sections.queue);
     clear(sections.queueCount);
@@ -593,9 +648,10 @@
     updateQueueToolbar();
 
     if (countSnapshot && typeof countSnapshot.contentHtml === "string" && countSnapshot.contentHtml) {
-      const countNode = document.createElement("div");
-      countNode.className = "queue-html queue-count-html";
-      countNode.innerHTML = countSnapshot.contentHtml;
+      const countNode = renderQueueHtmlFragment(
+        countSnapshot.contentHtml,
+        "queue-html queue-count-html",
+      );
       rewriteQueueRelativeLinks(countNode);
       injectFormPassword(countNode);
       if (!formPassword) {
@@ -605,9 +661,7 @@
     }
 
     if (snapshot && typeof snapshot.contentHtml === "string") {
-      const contentNode = document.createElement("div");
-      contentNode.className = "queue-html";
-      contentNode.innerHTML = snapshot.contentHtml;
+      const contentNode = renderQueueHtmlFragment(snapshot.contentHtml, "queue-html");
       rewriteQueueRelativeLinks(contentNode);
       injectFormPassword(contentNode);
       if (!formPassword) {

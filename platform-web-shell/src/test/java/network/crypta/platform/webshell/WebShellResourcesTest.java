@@ -39,6 +39,9 @@ class WebShellResourcesTest {
 
   private static void assertQueueMutationMarkersPresent(String script) {
     assertTrue(script.contains("function queuePriorityFieldName(submitterName)"));
+    assertTrue(script.contains("function renderQueueHtmlFragment(html, className)"));
+    assertTrue(script.contains("function sanitizeQueueNode(root)"));
+    assertTrue(script.contains("function isSafeQueueUrl(rawValue)"));
     assertTrue(script.contains("case \"change_priority_top\":"));
     assertTrue(script.contains("case \"change_priority_bottom\":"));
     assertTrue(script.contains("let queueLoadGeneration = 0;"));
@@ -120,8 +123,16 @@ class WebShellResourcesTest {
 
   private static void assertReadOnlyQueueHandling(String script) {
     int stripReadOnlyFormsIndex = script.indexOf("function stripReadOnlyQueueForms(root)");
+    int renderQueueHtmlFragmentIndex =
+        script.indexOf("function renderQueueHtmlFragment(html, className)");
     int countReadOnlyStripIndex = script.indexOf("stripReadOnlyQueueForms(countNode);");
     int contentReadOnlyStripIndex = script.indexOf("stripReadOnlyQueueForms(contentNode);");
+    int countRenderIndex =
+        script.indexOf("const countNode = renderQueueHtmlFragment(", renderQueueHtmlFragmentIndex);
+    int contentRenderIndex =
+        script.indexOf(
+            "const contentNode = renderQueueHtmlFragment(snapshot.contentHtml, \"queue-html\");",
+            renderQueueHtmlFragmentIndex);
     int buildMutationFormDataIndex =
         script.indexOf("function buildQueueMutationFormData(form, submitter, path)");
     int filteredMutationFormDataIndex =
@@ -131,6 +142,9 @@ class WebShellResourcesTest {
         script.indexOf("const currentFormPassword = await refreshFormPassword();");
 
     assertTrue(stripReadOnlyFormsIndex >= 0);
+    assertTrue(renderQueueHtmlFragmentIndex > stripReadOnlyFormsIndex);
+    assertTrue(countRenderIndex > renderQueueHtmlFragmentIndex);
+    assertTrue(contentRenderIndex > countRenderIndex);
     assertTrue(countReadOnlyStripIndex > stripReadOnlyFormsIndex);
     assertTrue(contentReadOnlyStripIndex > stripReadOnlyFormsIndex);
     assertTrue(buildMutationFormDataIndex >= 0);
