@@ -55,6 +55,7 @@ class WebShellToadletTest {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     when(ctx.getContainer()).thenReturn(container);
     when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn("secret-form-password");
 
     toadlet.handleMethodGET(URI.create("http://localhost/app/node/"), request, ctx);
 
@@ -67,6 +68,26 @@ class WebShellToadletTest {
     assertTrue(bodyWrite.bodyText().contains(WebShellPaths.BOOTSTRAP_ELEMENT_ID));
     assertTrue(bodyWrite.bodyText().contains("\"shellRoot\":\"/app/node/\""));
     assertTrue(bodyWrite.bodyText().contains("\"platformApiRoot\":\"/api/v1/\""));
+    assertTrue(bodyWrite.bodyText().contains("\"formPassword\":\"secret-form-password\""));
+  }
+
+  @Test
+  void handleMethodGET_whenFormPasswordBlank_expectRenderedHtmlBootstrapWithoutMutationToken()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.getContainer()).thenReturn(container);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn("");
+
+    toadlet.handleMethodGET(URI.create("http://localhost/app/node/"), request, ctx);
+
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(200, replyHeaders.statusCode());
+    assertEquals("OK", replyHeaders.reasonPhrase());
+    assertEquals("text/html; charset=UTF-8", replyHeaders.mimeType());
+
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertTrue(bodyWrite.bodyText().contains("\"formPassword\":null"));
   }
 
   @Test

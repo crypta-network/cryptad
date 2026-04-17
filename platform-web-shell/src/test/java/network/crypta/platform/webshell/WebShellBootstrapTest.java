@@ -7,6 +7,7 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,6 +25,7 @@ class WebShellBootstrapTest {
     assertEquals(WebShellPaths.SHELL_ROOT, bootstrap.shellRoot());
     assertEquals(WebShellPaths.ASSET_ROOT, bootstrap.assetRoot());
     assertEquals(WebShellBootstrap.DEFAULT_PLATFORM_API_ROOT, bootstrap.platformApiRoot());
+    assertNull(bootstrap.formPassword());
     assertEquals(WebShellBootstrap.DEFAULT_LEGACY_ROOT, bootstrap.legacyRoot());
     assertEquals(legacyLinks, bootstrap.legacyLinks());
   }
@@ -33,22 +35,34 @@ class WebShellBootstrapTest {
     WebShellBootstrap bootstrap =
         new WebShellBootstrap(
             "A \"shell\" <node> & more",
-            "Read-only shell",
+            "Queue-aware shell",
             "/app/node/",
             "/app/node/static/",
             "/api/v1/",
+            "secret<token>",
             "/",
             List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends & Allies")));
 
     assertEquals(
         "{\"shellTitle\":\"A \\\"shell\\\" \\u003cnode\\u003e \\u0026 more\","
-            + "\"shellDescription\":\"Read-only shell\","
+            + "\"shellDescription\":\"Queue-aware shell\","
             + "\"shellRoot\":\"/app/node/\","
             + "\"assetRoot\":\"/app/node/static/\","
             + "\"platformApiRoot\":\"/api/v1/\","
+            + "\"formPassword\":\"secret\\u003ctoken\\u003e\","
             + "\"legacyRoot\":\"/\","
             + "\"legacyLinks\":[{\"path\":\"/friends/\",\"label\":\"Friends \\u0026 Allies\"}]}",
         WebShellBootstrapJson.serialize(bootstrap));
+  }
+
+  @Test
+  void withFormPassword_whenBlank_expectMutationTokenCleared() {
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(
+                List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")))
+            .withFormPassword("");
+
+    assertNull(bootstrap.formPassword());
   }
 
   @Test

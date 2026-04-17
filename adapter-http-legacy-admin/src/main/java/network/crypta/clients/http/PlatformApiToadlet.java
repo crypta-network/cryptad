@@ -17,6 +17,7 @@ import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
+import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,10 +43,12 @@ public final class PlatformApiToadlet extends Toadlet {
   /** JSON media type advertised for every Platform API response emitted through the bridge. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
+  private static final String URL_ENCODED_CONTENT_TYPE = "application/x-www-form-urlencoded";
+
   private static final String DELETE_METHOD = "DELETE";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
-  private static final String STAGED_DIR_PARAMETER = "stagedDir";
-  private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = 4096;
+  private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
+  private static final String QUEUE_SEGMENT = "queue";
 
   /**
    * Transport-neutral router that owns endpoint selection, validation, and JSON payload creation.
@@ -303,7 +306,7 @@ public final class PlatformApiToadlet extends Toadlet {
     }
 
     if (pathSegments.isEmpty() || !"apps".equals(pathSegments.getFirst())) {
-      return false;
+      return requiresQueueFormPassword(method, pathSegments);
     }
     if (DELETE_METHOD.equals(method)) {
       return pathSegments.size() == 2;
@@ -315,6 +318,34 @@ public final class PlatformApiToadlet extends Toadlet {
         && ("start".equals(pathSegments.get(2))
             || "stop".equals(pathSegments.get(2))
             || "update".equals(pathSegments.get(2)));
+  }
+
+  /**
+   * Returns whether the current request targets one of the mutating queue routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresQueueFormPassword(String method, List<String> pathSegments) {
+    if (!"POST".equals(method)
+        || pathSegments.isEmpty()
+        || !QUEUE_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if (pathSegments.size() == 2 && "downloads".equals(pathSegments.get(1))) {
+      return true;
+    }
+    if (pathSegments.size() != 3) {
+      return false;
+    }
+    if ("requests".equals(pathSegments.get(1))) {
+      return "remove".equals(pathSegments.get(2))
+          || "restart".equals(pathSegments.get(2))
+          || "priority".equals(pathSegments.get(2));
+    }
+    return "cleanup".equals(pathSegments.get(1))
+        && ("uploads".equals(pathSegments.get(2)) || "downloads".equals(pathSegments.get(2)));
   }
 
   /**
@@ -351,9 +382,11 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>Query parameters preserve encounter order and repeated values so the router can apply its
    * own validation without depending on the legacy HTTP request type. The bridge excludes the
-   * legacy admin {@code formPassword} from that map. It also lifts the small set of scalar form
-   * fields currently needed by Platform API v1 into the same map. The transport-neutral request
-   * model intentionally does not define a separate body contract yet.
+   * legacy admin {@code formPassword} from that map. It also lifts scalar form fields from request
+   * parts into the same map so the transport-neutral router can handle urlencoded and multipart
+   * admin submissions without learning legacy HTTP request details. Uploaded-file bodies stay out
+   * of that map because Platform API v1 still treats file transfer payloads as adapter-local
+   * concerns.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -371,29 +404,79 @@ public final class PlatformApiToadlet extends Toadlet {
       }
       queryParameters.put(parameterName, List.of(request.getMultipleParam(parameterName)));
     }
-    copyStagedDirPartIfPresent(request, queryParameters);
+    copyBodyParametersIfPresent(request, queryParameters);
     return new PlatformApiRequest(method, relativeApiPath(requestPath(uri)), queryParameters);
   }
 
   /**
-   * Copies the staged-directory form part into the query-like parameter map when present.
+   * Copies body-backed form values into the query-like parameter map when present.
    *
    * <p>This keeps the bridge compatible with legacy-authenticated form submissions while preserving
-   * the transport-neutral request model expected by the Platform API router.
+   * the transport-neutral request model expected by the Platform API router. Existing query-string
+   * values win when the same name appears in both places. Urlencoded bodies are reparsed from the
+   * raw payload so repeated values survive intact; multipart uploads continue to use scalar parts,
+   * with uploaded-file bodies skipped because the Platform API request model is still text-only in
+   * this phase.
    *
    * @param request decoded legacy HTTP request wrapper
    * @param queryParameters query-like parameter map being assembled for the router
    */
-  private static void copyStagedDirPartIfPresent(
+  private static void copyBodyParametersIfPresent(
       HTTPRequest request, Map<String, List<String>> queryParameters) {
-    if (queryParameters.containsKey(STAGED_DIR_PARAMETER)
-        || !request.isPartSet(STAGED_DIR_PARAMETER)) {
+    Bucket rawData = request.getRawData();
+    if (rawData == null) {
       return;
     }
-    String value =
-        request.getPartAsStringFailsafe(STAGED_DIR_PARAMETER, MAX_PLATFORM_API_FORM_FIELD_LENGTH);
-    if (!value.isEmpty()) {
-      queryParameters.put(STAGED_DIR_PARAMETER, List.of(value));
+    if (isUrlEncodedBodyRequest(request)) {
+      mergeUrlEncodedBodyParameters(rawData, queryParameters);
+      return;
+    }
+    copyScalarFormPartsIfPresent(request, queryParameters);
+  }
+
+  private static boolean isUrlEncodedBodyRequest(HTTPRequest request) {
+    String contentType = request.getHeader("content-type");
+    return contentType != null
+        && contentType.regionMatches(
+            true, 0, URL_ENCODED_CONTENT_TYPE, 0, URL_ENCODED_CONTENT_TYPE.length());
+  }
+
+  private static void mergeUrlEncodedBodyParameters(
+      Bucket rawData, Map<String, List<String>> queryParameters) {
+    Map<String, List<String>> bodyParameters;
+    try (var input = rawData.getInputStream()) {
+      if (input == null) {
+        return;
+      }
+      String body = new String(input.readAllBytes(), StandardCharsets.US_ASCII);
+      bodyParameters = HTTPRequestImpl.parseUriParameters(body, true);
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to read Platform API form body.", e);
+    }
+    for (Map.Entry<String, List<String>> entry : bodyParameters.entrySet()) {
+      if (FORM_PASSWORD_PARAMETER.equals(entry.getKey())
+          || queryParameters.containsKey(entry.getKey())) {
+        continue;
+      }
+      queryParameters.put(entry.getKey(), List.copyOf(entry.getValue()));
+    }
+  }
+
+  private static void copyScalarFormPartsIfPresent(
+      HTTPRequest request, Map<String, List<String>> queryParameters) {
+    String[] partNames = request.getParts();
+    if (partNames == null) {
+      return;
+    }
+    for (String partName : partNames) {
+      if (FORM_PASSWORD_PARAMETER.equals(partName)
+          || queryParameters.containsKey(partName)
+          || request.getUploadedFile(partName) != null) {
+        continue;
+      }
+      queryParameters.put(
+          partName,
+          List.of(request.getPartAsStringFailsafe(partName, MAX_PLATFORM_API_FORM_FIELD_LENGTH)));
     }
   }
 
