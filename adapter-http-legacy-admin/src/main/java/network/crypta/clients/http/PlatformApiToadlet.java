@@ -52,6 +52,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String DELETE_METHOD = "DELETE";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
+  private static final String PEERS_SEGMENT = "peers";
   private static final String QUEUE_SEGMENT = "queue";
 
   /**
@@ -292,8 +293,8 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>The legacy shell only auto-checks form passwords for POST before dispatch. The Platform API
    * bridge keeps full-access checks ahead of password checks and applies the same legacy password
-   * guard to DELETE so mutating app-management routes stay protected without changing their public
-   * route shape.
+   * guard to every currently supported Platform API mutation family. DELETE remains relevant only
+   * for installed-app removal, while queue and peer mutations currently use POST.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -311,19 +312,25 @@ public final class PlatformApiToadlet extends Toadlet {
       return false;
     }
 
-    if (pathSegments.isEmpty() || !"apps".equals(pathSegments.getFirst())) {
-      return requiresQueueFormPassword(method, pathSegments);
+    if (pathSegments.isEmpty()) {
+      return false;
     }
-    if (DELETE_METHOD.equals(method)) {
-      return pathSegments.size() == 2;
+    if ("apps".equals(pathSegments.getFirst())) {
+      if (DELETE_METHOD.equals(method)) {
+        return pathSegments.size() == 2;
+      }
+      if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
+        return true;
+      }
+      return pathSegments.size() == 3
+          && ("start".equals(pathSegments.get(2))
+              || "stop".equals(pathSegments.get(2))
+              || "update".equals(pathSegments.get(2)));
     }
-    if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
+    if (requiresQueueFormPassword(method, pathSegments)) {
       return true;
     }
-    return pathSegments.size() == 3
-        && ("start".equals(pathSegments.get(2))
-            || "stop".equals(pathSegments.get(2))
-            || "update".equals(pathSegments.get(2)));
+    return requiresPeersFormPassword(method, pathSegments);
   }
 
   /**
@@ -355,11 +362,32 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
+   * Returns whether the current request targets one of the mutating peer routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresPeersFormPassword(String method, List<String> pathSegments) {
+    if (!"POST".equals(method)
+        || pathSegments.isEmpty()
+        || !PEERS_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if (pathSegments.size() == 2) {
+      return "add".equals(pathSegments.get(1));
+    }
+    return pathSegments.size() == 3
+        && ("settings".equals(pathSegments.get(2))
+            || "note".equals(pathSegments.get(2))
+            || "remove".equals(pathSegments.get(2)));
+  }
+
+  /**
    * Enforces the legacy form-password requirement for mutating requests.
    *
-   * <p>App-management mutations keep the legacy body-carried form password requirement, but the
-   * bridge handles failures itself so callers always receive structured JSON {@code 403} responses
-   * instead of legacy redirects.
+   * <p>The bridge handles failures itself so callers always receive structured JSON {@code 403}
+   * responses instead of legacy redirects.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell

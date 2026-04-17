@@ -12,8 +12,12 @@ class WebShellResourcesTest {
     String html = WebShellResources.readText(WebShellPaths.INDEX_RESOURCE_PATH);
 
     assertTrue(html.contains("Web Shell v1"));
+    assertTrue(html.contains("Peer control plane"));
     assertTrue(html.contains("Queue control plane"));
     assertTrue(html.contains("__BOOTSTRAP_JSON__"));
+    assertTrue(html.contains("peer-create-form\" hidden"));
+    assertTrue(html.contains("name=\"referenceText\""));
+    assertTrue(html.contains("id=\"peers-status\""));
     assertTrue(html.contains("name=\"filterData\" type=\"checkbox\" checked"));
     assertTrue(html.contains("queue-create-form\" hidden"));
   }
@@ -28,6 +32,9 @@ class WebShellResourcesTest {
     assertQueueLoadSequencing(script);
     assertQueueLinkRewriting(script);
     assertReadOnlyQueueHandling(script);
+    assertPeerMutationMarkersPresent(script);
+    assertPeerMutationSubmissionOrder(script);
+    assertPeerLoadSequencing(script);
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
@@ -37,7 +44,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("let queueLoadGeneration = 0;"));
     assertTrue(script.contains("let formPassword ="));
     assertTrue(
-        script.contains("throw new Error(\"Queue mutations unavailable in read-only mode.\");"));
+        script.contains(
+            "throw new Error(unavailableMessage || \"Queue mutations unavailable in read-only"
+                + " mode.\");"));
     assertTrue(
         script.contains(
             "queueControls.createForm.hidden = queueState.page !== \"downloads\" ||"
@@ -128,5 +137,57 @@ class WebShellResourcesTest {
     assertTrue(filteredMutationFormDataIndex > buildMutationFormDataIndex);
     assertTrue(refreshFormPasswordIndex >= 0);
     assertTrue(postRefreshIndex > refreshFormPasswordIndex);
+  }
+
+  private static void assertPeerMutationMarkersPresent(String script) {
+    assertTrue(script.contains("let peerLoadGeneration = 0;"));
+    assertTrue(script.contains("function updatePeerToolbar()"));
+    assertTrue(script.contains("async function submitPeerCreate(event)"));
+    assertTrue(script.contains("async function submitPeerMutation(form, action)"));
+    assertTrue(script.contains("async function loadPeersSection()"));
+    assertTrue(script.contains("loadJson(apiUrl(\"peers/roster\"))"));
+    assertTrue(script.contains("peerControls.createForm.hidden = !formPassword;"));
+    assertTrue(script.contains("form.dataset.peerRequiresForceRemoval"));
+    assertTrue(script.contains("forceRemoval"));
+    assertTrue(script.contains("Peer mutations unavailable in read-only mode."));
+  }
+
+  private static void assertPeerMutationSubmissionOrder(String script) {
+    int bindPeersIndex = script.indexOf("function bindPeerInteractions()");
+    int actionLookupIndex =
+        script.indexOf("const action = form.dataset.peerAction;", bindPeersIndex);
+    int preventDefaultIndex = script.indexOf("event.preventDefault();", actionLookupIndex);
+    int requiresForceRemovalIndex =
+        script.indexOf(
+            "const requiresForceRemoval = form.dataset.peerRequiresForceRemoval === \"true\";",
+            bindPeersIndex);
+    int confirmIndex = script.indexOf("window.confirm(confirmMessage)", bindPeersIndex);
+    int mutationIndex = script.indexOf("await submitPeerMutation(form, action);", bindPeersIndex);
+
+    assertTrue(bindPeersIndex >= 0);
+    assertTrue(actionLookupIndex > bindPeersIndex);
+    assertTrue(preventDefaultIndex > actionLookupIndex);
+    assertTrue(requiresForceRemovalIndex > preventDefaultIndex);
+    assertTrue(confirmIndex > requiresForceRemovalIndex);
+    assertTrue(mutationIndex > confirmIndex);
+  }
+
+  private static void assertPeerLoadSequencing(String script) {
+    int loadPeersIndex = script.indexOf("const loadGeneration = ++peerLoadGeneration;");
+    int successGuardIndex =
+        script.indexOf("if (loadGeneration !== peerLoadGeneration) {", loadPeersIndex);
+    int renderPeersIndex = script.indexOf("renderPeers(roster);", loadPeersIndex);
+    int errorGuardIndex =
+        script.indexOf("if (loadGeneration !== peerLoadGeneration) {", successGuardIndex + 1);
+    int renderErrorIndex =
+        script.indexOf("renderError(sections.peers, \"peers\", error);", loadPeersIndex);
+    int loadPeersCatchIndex = script.indexOf("loadPeersSection().catch((error) => {");
+
+    assertTrue(loadPeersIndex >= 0);
+    assertTrue(successGuardIndex > loadPeersIndex);
+    assertTrue(renderPeersIndex > successGuardIndex);
+    assertTrue(errorGuardIndex > renderPeersIndex);
+    assertTrue(renderErrorIndex > errorGuardIndex);
+    assertTrue(loadPeersCatchIndex > renderErrorIndex);
   }
 }

@@ -72,7 +72,7 @@ public final class PlatformApiRouter {
   public PlatformApiRouter(RuntimePorts runtimePorts, AppHost appHost) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
-    peersApiHandler = new PeersApiHandler(runtimePorts.peer());
+    peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
     connectivityApiHandler = new ConnectivityApiHandler(runtimePorts.connectivity());
     securityLevelsApiHandler = new SecurityLevelsApiHandler(runtimePorts.securityLevels());
@@ -126,6 +126,9 @@ public final class PlatformApiRouter {
     if ("queue".equals(firstSegment)) {
       return routeQueueRequest(segments, request);
     }
+    if ("peers".equals(firstSegment)) {
+      return routePeersRequest(segments, request);
+    }
 
     if (!"GET".equals(request.method())) {
       return PlatformApiResponse.error(
@@ -134,9 +137,6 @@ public final class PlatformApiRouter {
 
     if ("node".equals(firstSegment)) {
       return routeNodeRequest(segments, request);
-    }
-    if ("peers".equals(firstSegment)) {
-      return routePeersRequest(segments, request);
     }
     if ("config".equals(firstSegment) && segments.size() == 1) {
       return PlatformApiResponse.ok(configApiHandler.exportConfig(request.queryParameters()));
@@ -421,14 +421,77 @@ public final class PlatformApiRouter {
    * @throws PlatformApiException if the path does not identify a supported peers endpoint
    */
   private PlatformApiResponse routePeersRequest(List<String> segments, PlatformApiRequest request) {
-    if (segments.size() == 1) {
-      return PlatformApiResponse.ok(peersApiHandler.list(request.queryParameters()));
+    return switch (segments.size()) {
+      case 1 -> routePeersRoot(request);
+      case 2 -> routePeerResource(segments.get(1), request);
+      case 3 -> routePeerAction(segments.get(1), segments.get(2), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  /**
+   * Routes the raw peer collection export at {@code /peers}.
+   *
+   * @param request full request metadata, including query parameters
+   * @return JSON response containing the raw peer export list
+   */
+  private PlatformApiResponse routePeersRoot(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
     }
-    if (segments.size() == 2) {
-      return PlatformApiResponse.ok(
-          peersApiHandler.get(segments.get(1), request.queryParameters()));
+    return PlatformApiResponse.ok(peersApiHandler.list(request.queryParameters()));
+  }
+
+  /**
+   * Routes either the shell-friendly roster view, the add-peer endpoint, or one raw peer resource.
+   *
+   * @param resource second path segment beneath {@code /peers}
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected peer endpoint
+   */
+  private PlatformApiResponse routePeerResource(String resource, PlatformApiRequest request) {
+    if ("roster".equals(resource)) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(peersApiHandler.roster());
     }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    if ("add".equals(resource)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));
+    }
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(peersApiHandler.get(resource, request.queryParameters()));
+  }
+
+  /**
+   * Routes peer mutations beneath {@code /peers/{peerIdentity}/...}.
+   *
+   * @param peerIdentity exact peer identity segment
+   * @param action peer action segment
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected peer mutation
+   */
+  private PlatformApiResponse routePeerAction(
+      String peerIdentity, String action, PlatformApiRequest request) {
+    if (!"POST".equals(request.method())) {
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    return switch (action) {
+      case "settings" ->
+          PlatformApiResponse.ok(
+              peersApiHandler.updateSettings(peerIdentity, request.queryParameters()));
+      case "note" ->
+          PlatformApiResponse.ok(
+              peersApiHandler.updateNote(peerIdentity, request.queryParameters()));
+      case "remove" ->
+          PlatformApiResponse.ok(peersApiHandler.remove(peerIdentity, request.queryParameters()));
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
   }
 
   /**

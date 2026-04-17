@@ -29,14 +29,20 @@ import network.crypta.runtime.spi.ConnectivitySnapshot;
 import network.crypta.runtime.spi.ConnectivitySocketSnapshot;
 import network.crypta.runtime.spi.ConnectivityTrafficEntrySnapshot;
 import network.crypta.runtime.spi.ConnectivityTrafficInitiator;
+import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
+import network.crypta.runtime.spi.DarknetConnectionsPort;
+import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.runtime.spi.NodeInfoPort;
 import network.crypta.runtime.spi.NodeReferenceSnapshot;
 import network.crypta.runtime.spi.NodeReferenceView;
+import network.crypta.runtime.spi.PeerAddRejectedException;
 import network.crypta.runtime.spi.PeerFieldSet;
 import network.crypta.runtime.spi.PeerPort;
 import network.crypta.runtime.spi.PeerSnapshot;
+import network.crypta.runtime.spi.PeerTrust;
+import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRequest;
@@ -45,6 +51,7 @@ import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.QueueSupportPort;
+import network.crypta.runtime.spi.RemovedPeerSnapshot;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.SecurityLevelsPort;
 import network.crypta.runtime.spi.SecurityLevelsSnapshot;
@@ -55,11 +62,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -80,6 +90,7 @@ class PlatformApiRouterTest {
   @Mock private RuntimePorts runtimePorts;
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private PeerPort peerPort;
+  @Mock private DarknetConnectionsPort darknetConnectionsPort;
   @Mock private ConfigPort configPort;
   @Mock private ConnectivityPort connectivityPort;
   @Mock private SecurityLevelsPort securityLevelsPort;
@@ -98,6 +109,7 @@ class PlatformApiRouterTest {
   void setUp() {
     when(runtimePorts.nodeInfo()).thenReturn(nodeInfoPort);
     when(runtimePorts.peer()).thenReturn(peerPort);
+    when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
     when(runtimePorts.config()).thenReturn(configPort);
     when(runtimePorts.connectivity()).thenReturn(connectivityPort);
     when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
@@ -229,6 +241,327 @@ class PlatformApiRouterTest {
     assertEquals(
         "{\"nodeIdentifier\":\"peer-2\",\"status\":\"backed-off\",\"physical\":{\"address\":\"127.0.0.1\"}}",
         response.body());
+  }
+
+  @Test
+  void route_whenPeerRosterRequested_expectStructuredRosterJson() {
+    LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
+    directValues.put("identity", "peer-1");
+    directValues.put("myName", "Alice");
+    directValues.put("opennet", "false");
+    LinkedHashMap<String, PeerFieldSet> directSubsets = LinkedHashMap.newLinkedHashMap(2);
+    directSubsets.put(
+        "metadata",
+        new PeerFieldSet(
+            Map.of(
+                "trustLevel", "HIGH",
+                "ourVisibility", "NAME_ONLY",
+                "isDisabled", "true",
+                "disableRoutingHasBeenSetLocally", "true"),
+            Map.of()));
+    directSubsets.put("volatile", new PeerFieldSet(Map.of("status", "CONNECTED"), Map.of()));
+    when(peerPort.list(true, true))
+        .thenReturn(List.of(new PeerSnapshot(new PeerFieldSet(directValues, directSubsets))));
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(
+            List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", false)));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("peers", "roster"), Map.of()));
+
+    verify(peerPort).list(true, true);
+    verify(darknetConnectionsPort).listPeers();
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-1\""));
+    assertTrue(response.body().contains("\"displayName\":\"Alice\""));
+    assertTrue(response.body().contains("\"family\":\"darknet\""));
+    assertTrue(response.body().contains("\"trust\":\"HIGH\""));
+    assertTrue(response.body().contains("\"visibility\":\"NAME_ONLY\""));
+    assertTrue(response.body().contains("\"disabled\":true"));
+    assertTrue(response.body().contains("\"routingEnabled\":false"));
+    assertTrue(response.body().contains("\"privateNoteText\":\"trusted\""));
+  }
+
+  @Test
+  void route_whenPeerRosterStatusIsRoutingDisabled_expectEffectiveRoutingDisabledJson() {
+    LinkedHashMap<String, String> directValues = LinkedHashMap.newLinkedHashMap(3);
+    directValues.put("identity", "peer-1");
+    directValues.put("myName", "Alice");
+    directValues.put("opennet", "false");
+    LinkedHashMap<String, PeerFieldSet> directSubsets = LinkedHashMap.newLinkedHashMap(2);
+    directSubsets.put(
+        "metadata",
+        new PeerFieldSet(Map.of("trustLevel", "HIGH", "ourVisibility", "YES"), Map.of()));
+    directSubsets.put("volatile", new PeerFieldSet(Map.of("status", "ROUTING DISABLED"), Map.of()));
+    when(peerPort.list(true, true))
+        .thenReturn(List.of(new PeerSnapshot(new PeerFieldSet(directValues, directSubsets))));
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(
+            List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", true)));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("peers", "roster"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"routingEnabled\":false"));
+  }
+
+  @Test
+  void route_whenPeerAddRequested_expectCreatedPeerFromParsedReference()
+      throws PeerAddRejectedException {
+    when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "peer-added"), Map.of())));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "add"),
+                Map.of(
+                    "referenceText",
+                    List.of(
+                        """
+                        identity=peer-added
+                        lastGoodVersion=1
+                        myName=Alice
+                        physical.udp=127.0.0.1:9481
+                        End
+                        """),
+                    "trust",
+                    List.of("NORMAL"),
+                    "visibility",
+                    List.of("YES"))));
+
+    ArgumentCaptor<PeerFieldSet> referenceCaptor = ArgumentCaptor.forClass(PeerFieldSet.class);
+    verify(peerPort).add(referenceCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES));
+    PeerFieldSet reference = referenceCaptor.getValue();
+    assertEquals("peer-added", reference.directValues().get("identity"));
+    assertEquals("1", reference.directValues().get("lastGoodVersion"));
+    assertEquals("Alice", reference.directValues().get("myName"));
+    assertEquals(
+        "127.0.0.1:9481", reference.directSubsets().get("physical").directValues().get("udp"));
+    assertEquals(201, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-added\""));
+  }
+
+  @Test
+  void route_whenPeerAddNoteWriteFails_expectCreatedPeerResponseStillReturned() throws Exception {
+    when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "peer-added"), Map.of())));
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(List.of(new DarknetConnectionPeerSnapshot(7, "peer-added", "Alice", "", true)));
+    when(peerPort.writePrivateDarknetCommentByIdentity("peer-added", "trusted"))
+        .thenThrow(new UnknownPeerException("peer-added"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "add"),
+                Map.of(
+                    "referenceText",
+                    List.of(
+                        """
+                        identity=peer-added
+                        lastGoodVersion=1
+                        myName=Alice
+                        physical.udp=127.0.0.1:9481
+                        End
+                        """),
+                    "privateNoteText",
+                    List.of("trusted"))));
+
+    verify(peerPort).writePrivateDarknetCommentByIdentity("peer-added", "trusted");
+    assertEquals(201, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-added\""));
+  }
+
+  @Test
+  void route_whenPeerAddBlankNoteRequested_expectCreatedPeerWithoutPersistingEmptyNote()
+      throws Exception {
+    when(peerPort.add(any(PeerFieldSet.class), eq(PeerTrust.NORMAL), eq(PeerVisibility.YES)))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "peer-added"), Map.of())));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "add"),
+                Map.of(
+                    "referenceText",
+                    List.of(
+                        """
+                        identity=peer-added
+                        lastGoodVersion=1
+                        myName=Alice
+                        physical.udp=127.0.0.1:9481
+                        End
+                        """),
+                    "privateNoteText",
+                    List.of("   "))));
+
+    verify(peerPort, never()).writePrivateDarknetCommentByIdentity(any(), any());
+    assertEquals(201, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-added\""));
+  }
+
+  @Test
+  void route_whenOpennetPeerAddRequestsDarknetOnlyOptions_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "add"),
+                Map.of(
+                    "referenceText",
+                    List.of(
+                        """
+                        identity=peer-added
+                        opennet=true
+                        lastGoodVersion=1
+                        physical.udp=127.0.0.1:9481
+                        End
+                        """),
+                    "trust",
+                    List.of("HIGH"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"invalid_query_parameter\""));
+    assertTrue(response.body().contains("Opennet peer references do not support"));
+    verifyNoInteractions(peerPort);
+  }
+
+  @Test
+  void route_whenPeerSettingsRequested_expectExactIdentityMutation() throws Exception {
+    when(peerPort.updateDarknetPeerByIdentity(eq("peer-1"), any(DarknetPeerSettingsUpdate.class)))
+        .thenReturn(new PeerSnapshot(new PeerFieldSet(Map.of("identity", "peer-1"), Map.of())));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "peer-1", "settings"),
+                Map.of(
+                    "disabled",
+                    List.of("true"),
+                    "routingEnabled",
+                    List.of("false"),
+                    "trust",
+                    List.of("LOW"),
+                    "visibility",
+                    List.of("NO"))));
+
+    ArgumentCaptor<DarknetPeerSettingsUpdate> updateCaptor =
+        ArgumentCaptor.forClass(DarknetPeerSettingsUpdate.class);
+    verify(peerPort).updateDarknetPeerByIdentity(eq("peer-1"), updateCaptor.capture());
+    DarknetPeerSettingsUpdate update = updateCaptor.getValue();
+    assertEquals(Boolean.TRUE, update.disabled());
+    assertEquals(Boolean.FALSE, update.routingEnabled());
+    assertEquals(PeerTrust.LOW, update.trust());
+    assertEquals(PeerVisibility.NO, update.visibility());
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-1\""));
+  }
+
+  @Test
+  void route_whenPeerAddGetRequested_expectMethodNotAllowedWithAllowPost() {
+    PlatformApiResponse response = router.route(request("GET", List.of("peers", "add"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals("Method Not Allowed", response.reasonPhrase());
+    assertEquals(Map.of("Allow", "POST"), response.headers());
+    assertEquals(
+        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
+            + " requests only.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPeerNoteRequested_expectExactIdentityNoteWrite() throws Exception {
+    when(peerPort.writePrivateDarknetCommentByIdentity("peer-1", "updated note"))
+        .thenReturn("updated note");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "peer-1", "note"),
+                Map.of("noteText", List.of("updated note"))));
+
+    verify(peerPort).writePrivateDarknetCommentByIdentity("peer-1", "updated note");
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"noteText\":\"updated note\""));
+  }
+
+  @Test
+  void route_whenPeerRemoveRequested_expectExactIdentityRemoval() throws Exception {
+    when(peerPort.removeByIdentity("peer-1"))
+        .thenReturn(new RemovedPeerSnapshot("peer-1", "peer-1"));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("peers", "peer-1", "remove"), Map.of()));
+
+    verify(peerPort).removeByIdentity("peer-1");
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-1\""));
+  }
+
+  @Test
+  void route_whenProtectedPeerRemoveRequestedWithoutForce_expectConflictJson() {
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(
+            List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", false)));
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("peers", "peer-1", "remove"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"force_removal_required\""));
+    verifyNoInteractions(peerPort);
+  }
+
+  @Test
+  void route_whenProtectedPeerRemoveRequestedWithForce_expectExactIdentityRemoval()
+      throws Exception {
+    when(darknetConnectionsPort.listPeers())
+        .thenReturn(
+            List.of(new DarknetConnectionPeerSnapshot(7, "peer-1", "Alice", "trusted", false)));
+    when(peerPort.removeByIdentity("peer-1"))
+        .thenReturn(new RemovedPeerSnapshot("peer-1", "peer-1"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "peer-1", "remove"),
+                Map.of("forceRemoval", List.of("true"))));
+
+    verify(peerPort).removeByIdentity("peer-1");
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":\"peer-1\""));
+  }
+
+  @Test
+  void route_whenPeerSettingsRequestedWithoutChanges_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("peers", "peer-1", "settings"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    verifyNoInteractions(peerPort);
+  }
+
+  @Test
+  void route_whenPeerSettingsBooleanInvalid_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("peers", "peer-1", "settings"),
+                Map.of("disabled", List.of("sometimes"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"invalid_query_parameter\""));
+    verifyNoInteractions(peerPort);
   }
 
   @Test

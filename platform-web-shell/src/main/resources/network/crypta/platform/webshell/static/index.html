@@ -55,13 +55,66 @@
           </div>
         </article>
 
-        <article class="panel" id="peers-panel">
+        <article class="panel panel-span-2" id="peers-panel">
           <div class="panel-header">
             <p class="panel-kicker">Peers</p>
-            <h2>Read-only roster</h2>
+            <h2>Peer control plane</h2>
           </div>
+          <p class="panel-description">
+            Detached roster data stays native to the shell, including add-peer, trust and
+            visibility updates, private notes, and peer removal.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="peers-refresh-button" type="button">
+              Refresh peers
+            </button>
+          </div>
+          <div class="queue-status" id="peers-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="peers-readonly-hint">
+            Peer mutations are unavailable in read-only mode.
+          </p>
+          <form class="peer-create-form" hidden id="peer-create-form">
+            <div class="queue-create-copy">
+              <p class="panel-kicker">Add peer</p>
+              <p class="queue-create-description">
+                Paste a full peer reference to add a peer through the Platform API bridge.
+              </p>
+            </div>
+            <label class="queue-field peer-reference-field" for="peer-reference-text">
+              <span>Reference text</span>
+              <textarea
+                id="peer-reference-text"
+                name="referenceText"
+                rows="6"
+                spellcheck="false"
+              ></textarea>
+            </label>
+            <label class="queue-field" for="peer-trust">
+              <span>Trust</span>
+              <select id="peer-trust" name="trust">
+                <option value="HIGH">High</option>
+                <option value="NORMAL" selected>Normal</option>
+                <option value="LOW">Low</option>
+              </select>
+            </label>
+            <label class="queue-field" for="peer-visibility">
+              <span>Visibility</span>
+              <select id="peer-visibility" name="visibility">
+                <option value="YES" selected>Yes</option>
+                <option value="NAME_ONLY">Name only</option>
+                <option value="NO">No</option>
+              </select>
+            </label>
+            <label class="queue-field" for="peer-private-note">
+              <span>Private note</span>
+              <textarea id="peer-private-note" name="privateNoteText" rows="3"></textarea>
+            </label>
+            <button class="button button-primary" id="peer-create-submit" type="submit">
+              Add peer
+            </button>
+          </form>
           <div class="panel-body" id="peers-body">
-            <p class="loading">Loading peer snapshot...</p>
+            <p class="loading">Loading peer roster...</p>
           </div>
         </article>
       </section>
