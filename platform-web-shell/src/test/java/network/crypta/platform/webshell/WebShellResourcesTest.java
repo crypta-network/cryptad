@@ -38,6 +38,15 @@ class WebShellResourcesTest {
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
+    assertTrue(
+        script.contains(
+            "const apiRoot = normalizeLocalRootPath(bootstrap.platformApiRoot, \"/api/v1/\");"));
+    assertTrue(
+        script.contains(
+            "const shellRoot = normalizeLocalRootPath(bootstrap.shellRoot, \"/app/node/\");"));
+    assertTrue(script.contains("const apiRootUrl = new URL(apiRoot, window.location.origin);"));
+    assertTrue(script.contains("const shellRootUrl = new URL(shellRoot, window.location.origin);"));
+    assertTrue(script.contains("function normalizeLocalRootPath(value, fallback)"));
     assertTrue(script.contains("function queuePriorityFieldName(submitterName)"));
     assertTrue(script.contains("function renderQueueHtmlFragment(html, className)"));
     assertTrue(script.contains("function sanitizeQueueNode(root)"));
@@ -138,6 +147,8 @@ class WebShellResourcesTest {
     int filteredMutationFormDataIndex =
         script.indexOf("const formData = buildQueueMutationFormData(form, submitter, path);");
     int refreshFormPasswordIndex = script.indexOf("async function refreshFormPassword()");
+    int normalizedShellRootFetchIndex =
+        script.indexOf("const response = await fetch(shellRootUrl.toString(), {");
     int postRefreshIndex =
         script.indexOf("const currentFormPassword = await refreshFormPassword();");
 
@@ -150,6 +161,7 @@ class WebShellResourcesTest {
     assertTrue(buildMutationFormDataIndex >= 0);
     assertTrue(filteredMutationFormDataIndex > buildMutationFormDataIndex);
     assertTrue(refreshFormPasswordIndex >= 0);
+    assertTrue(normalizedShellRootFetchIndex > refreshFormPasswordIndex);
     assertTrue(postRefreshIndex > refreshFormPasswordIndex);
   }
 

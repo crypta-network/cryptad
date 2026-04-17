@@ -6,8 +6,10 @@
     ? JSON.parse(bootstrapElement.textContent || "{}")
     : {};
 
-  const apiRoot = typeof bootstrap.platformApiRoot === "string" ? bootstrap.platformApiRoot : "/api/v1/";
-  const shellRoot = typeof bootstrap.shellRoot === "string" ? bootstrap.shellRoot : "/app/node/";
+  const apiRoot = normalizeLocalRootPath(bootstrap.platformApiRoot, "/api/v1/");
+  const shellRoot = normalizeLocalRootPath(bootstrap.shellRoot, "/app/node/");
+  const apiRootUrl = new URL(apiRoot, window.location.origin);
+  const shellRootUrl = new URL(shellRoot, window.location.origin);
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const directDownloadOperation = "create_direct_download";
@@ -53,7 +55,22 @@
   };
 
   function apiUrl(path) {
-    return apiRoot + path;
+    return new URL(path, apiRootUrl).toString();
+  }
+
+  function normalizeLocalRootPath(value, fallback) {
+    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+      return fallback;
+    }
+    try {
+      const url = new URL(value, window.location.origin);
+      if (url.origin !== window.location.origin || url.search !== "" || url.hash !== "") {
+        return fallback;
+      }
+      return url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+    } catch (error) {
+      return fallback;
+    }
   }
 
   function clear(node) {
@@ -567,7 +584,7 @@
   }
 
   async function refreshFormPassword() {
-    const response = await fetch(shellRoot, {
+    const response = await fetch(shellRootUrl.toString(), {
       headers: { Accept: "text/html" },
       cache: "no-store",
     });
