@@ -184,6 +184,19 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void isUiDownloadAvailable_whenUpdatesPathIsBlockedByFile_expectFalse() throws Exception {
+    File nodeDir = Files.createTempDirectory("cryptad-core-updater").toFile();
+    File updatesFile = new File(nodeDir, "updates");
+    assertTrue(updatesFile.createNewFile());
+
+    CoreUpdater updater = createCoreUpdater(nodeDir);
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+
+    assertFalse(updater.isUiDownloadAvailable());
+  }
+
+  @Test
   void isUiDownloadAvailable_whenSelectedPackageIsStoreBacked_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);

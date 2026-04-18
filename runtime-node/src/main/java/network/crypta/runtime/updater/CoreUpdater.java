@@ -252,14 +252,17 @@ public class CoreUpdater extends NodeUpdater {
     if (versionDir.exists()) {
       return versionDir.isDirectory() && versionDir.canWrite();
     }
+    return canPrepareAncestorDirectory(versionDir.getParentFile());
+  }
 
-    File updatesRoot = getUpdatesRoot();
-    if (updatesRoot.exists()) {
-      return updatesRoot.isDirectory() && updatesRoot.canWrite();
+  private static boolean canPrepareAncestorDirectory(File directory) {
+    if (directory == null) {
+      return false;
     }
-
-    File nodeDir = manager.getNode().nodeDir().dir();
-    return nodeDir.exists() && nodeDir.isDirectory() && nodeDir.canWrite();
+    if (directory.exists()) {
+      return directory.isDirectory() && directory.canWrite();
+    }
+    return canPrepareAncestorDirectory(directory.getParentFile());
   }
 
   @Override
