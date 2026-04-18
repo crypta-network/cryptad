@@ -199,21 +199,25 @@ public final class SecurityLevelsApiHandler {
     }
     boolean anyTruthy = false;
     for (String raw : values) {
-      if (raw == null
-          || raw.isBlank()
-          || "true".equalsIgnoreCase(raw)
-          || "on".equalsIgnoreCase(raw)
-          || PARAMETER_CONFIRMED.equals(raw)) {
+      if (raw == null || isConfirmedCheckboxValue(raw)) {
         anyTruthy = true;
-      } else if (!"false".equalsIgnoreCase(raw) && !"off".equalsIgnoreCase(raw)) {
+      } else if (!"false".equalsIgnoreCase(raw)) {
         throw new PlatformApiException(
             400,
             "invalid_query_parameter",
             "Query parameter '"
                 + PARAMETER_CONFIRMED
-                + "' must be a checkbox value or one of 'true', 'false', 'on', or 'off'.");
+                + "' must be a legacy checkbox value or one of 'true' or 'false'.");
       }
     }
     return anyTruthy;
+  }
+
+  private static boolean isConfirmedCheckboxValue(String raw) {
+    return raw.isBlank()
+        || "true".equalsIgnoreCase(raw)
+        || "on".equalsIgnoreCase(raw)
+        || "off".equalsIgnoreCase(raw)
+        || PARAMETER_CONFIRMED.equals(raw);
   }
 }

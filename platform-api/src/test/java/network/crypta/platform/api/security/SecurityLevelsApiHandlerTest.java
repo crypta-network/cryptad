@@ -112,6 +112,25 @@ class SecurityLevelsApiHandlerTest {
   }
 
   @Test
+  void
+      setNetworkThreatLevel_whenConfirmationPostedAsLegacyCheckboxValue_expectMutationAndPersist() {
+    RecordingSecurityLevelsPort securityLevelsPort = new RecordingSecurityLevelsPort();
+    securityLevelsPort.networkWarningHtml = "<p>Needs confirmation</p>";
+    RecordingConfigPort configPort = new RecordingConfigPort();
+    SecurityLevelsApiHandler handler =
+        new SecurityLevelsApiHandler(
+            securityLevelsPort, configPort, new RecordingFirstTimeWizardPort());
+
+    Map<String, Object> response =
+        handler.setNetworkThreatLevel(
+            Map.of("newLevel", List.of("LOW"), "confirmed", List.of("off")));
+
+    assertEquals(SecurityNetworkThreatLevel.LOW, securityLevelsPort.lastNetworkThreatLevel);
+    assertEquals(1, configPort.persistCalls);
+    assertEquals("LOW", response.get("networkThreatLevel"));
+  }
+
+  @Test
   void setPhysicalThreatLevel_whenValidLevelProvided_expectMutationAndPersist() {
     RecordingSecurityLevelsPort securityLevelsPort = new RecordingSecurityLevelsPort();
     RecordingConfigPort configPort = new RecordingConfigPort();
