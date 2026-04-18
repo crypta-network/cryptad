@@ -52,8 +52,12 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String DELETE_METHOD = "DELETE";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
+  private static final String CONFIG_SEGMENT = "config";
   private static final String PEERS_SEGMENT = "peers";
   private static final String QUEUE_SEGMENT = "queue";
+  private static final String SECURITY_LEVELS_SEGMENT = "security-levels";
+  private static final String UPDATES_SEGMENT = "updates";
+  private static final String WIZARD_SEGMENT = "wizard";
 
   /**
    * Transport-neutral router that owns endpoint selection, validation, and JSON payload creation.
@@ -294,43 +298,87 @@ public final class PlatformApiToadlet extends Toadlet {
    * <p>The legacy shell only auto-checks form passwords for POST before dispatch. The Platform API
    * bridge keeps full-access checks ahead of password checks and applies the same legacy password
    * guard to every currently supported Platform API mutation family. DELETE remains relevant only
-   * for installed-app removal, while queue and peer mutations currently use POST.
+   * for installed-app removal, while the current config, security-levels, updater, wizard, queue,
+   * peer, and app actions use POST.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
    * @return {@code true} when the request must present the legacy form password
    */
   private static boolean requiresFormPassword(String method, URI uri) {
-    if (!"POST".equals(method) && !DELETE_METHOD.equals(method)) {
+    if (!requiresFormPasswordEligibleMethod(method)) {
       return false;
     }
 
-    List<String> pathSegments;
-    try {
-      pathSegments = relativeApiPath(requestPath(uri));
-    } catch (URLEncodedFormatException _) {
-      return false;
-    }
-
+    List<String> pathSegments = decodeRelativeApiPath(uri);
     if (pathSegments.isEmpty()) {
       return false;
     }
     if ("apps".equals(pathSegments.getFirst())) {
-      if (DELETE_METHOD.equals(method)) {
-        return pathSegments.size() == 2;
-      }
-      if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
-        return true;
-      }
-      return pathSegments.size() == 3
-          && ("start".equals(pathSegments.get(2))
-              || "stop".equals(pathSegments.get(2))
-              || "update".equals(pathSegments.get(2)));
+      return requiresAppsFormPassword(method, pathSegments);
     }
-    if (requiresQueueFormPassword(method, pathSegments)) {
+    return requiresNonAppFormPassword(method, pathSegments);
+  }
+
+  /**
+   * Returns whether the current request method participates in the legacy form-password guard.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @return {@code true} when the bridge should inspect the request path for a mutating route
+   */
+  private static boolean requiresFormPasswordEligibleMethod(String method) {
+    return "POST".equals(method) || DELETE_METHOD.equals(method);
+  }
+
+  /**
+   * Decodes one relative API path while treating malformed percent-encoding as a non-matching
+   * mutation route.
+   *
+   * @param uri request target supplied by the legacy HTTP shell
+   * @return decoded relative API path, or an empty list when decoding fails
+   */
+  private static List<String> decodeRelativeApiPath(URI uri) {
+    try {
+      return relativeApiPath(requestPath(uri));
+    } catch (URLEncodedFormatException _) {
+      return List.of();
+    }
+  }
+
+  /**
+   * Returns whether the current request targets one of the mutating app-management routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresAppsFormPassword(String method, List<String> pathSegments) {
+    if (DELETE_METHOD.equals(method)) {
+      return pathSegments.size() == 2;
+    }
+    if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
       return true;
     }
-    return requiresPeersFormPassword(method, pathSegments);
+    return pathSegments.size() == 3
+        && ("start".equals(pathSegments.get(2))
+            || "stop".equals(pathSegments.get(2))
+            || "update".equals(pathSegments.get(2)));
+  }
+
+  /**
+   * Returns whether the current request targets one of the non-app mutating Platform API routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresNonAppFormPassword(String method, List<String> pathSegments) {
+    return requiresQueueFormPassword(method, pathSegments)
+        || requiresPeersFormPassword(method, pathSegments)
+        || requiresConfigFormPassword(method, pathSegments)
+        || requiresSecurityLevelsFormPassword(method, pathSegments)
+        || requiresUpdatesFormPassword(method, pathSegments)
+        || requiresWizardFormPassword(method, pathSegments);
   }
 
   /**
@@ -381,6 +429,65 @@ public final class PlatformApiToadlet extends Toadlet {
         && ("settings".equals(pathSegments.get(2))
             || "note".equals(pathSegments.get(2))
             || "remove".equals(pathSegments.get(2)));
+  }
+
+  /**
+   * Returns whether the current request targets one of the mutating config routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresConfigFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 2
+        && CONFIG_SEGMENT.equals(pathSegments.getFirst())
+        && ("overrides".equals(pathSegments.get(1)) || "persist".equals(pathSegments.get(1)));
+  }
+
+  /**
+   * Returns whether the current request targets one of the mutating security-level routes.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresSecurityLevelsFormPassword(
+      String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 2
+        && SECURITY_LEVELS_SEGMENT.equals(pathSegments.getFirst())
+        && ("network".equals(pathSegments.get(1)) || "physical".equals(pathSegments.get(1)));
+  }
+
+  /**
+   * Returns whether the current request targets the mutating updater download route.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresUpdatesFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 3
+        && UPDATES_SEGMENT.equals(pathSegments.getFirst())
+        && "core".equals(pathSegments.get(1))
+        && "download".equals(pathSegments.get(2));
+  }
+
+  /**
+   * Returns whether the current request targets the mutating first-time-wizard route.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresWizardFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 3
+        && WIZARD_SEGMENT.equals(pathSegments.getFirst())
+        && "first-time".equals(pathSegments.get(1))
+        && "apply".equals(pathSegments.get(2));
   }
 
   /**

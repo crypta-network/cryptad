@@ -351,6 +351,27 @@ a {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.control-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.control-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.control-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .queue-create-copy,
 .queue-create-description,
 .peer-add-copy,
@@ -402,6 +423,32 @@ a {
 .queue-key-export {
   display: grid;
   gap: 10px;
+}
+
+.json-details {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.json-details summary {
+  cursor: pointer;
+  color: var(--shell-accent);
+  font-weight: 700;
+}
+
+.json-code {
+  margin: 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(4, 8, 16, 0.48);
+  color: var(--shell-text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9rem;
+  overflow: auto;
 }
 
 .queue-key-text {
@@ -616,7 +663,8 @@ a {
 
   .queue-create-form,
   .peer-create-form,
-  .peer-form-grid {
+  .peer-form-grid,
+  .control-form-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -34,6 +34,18 @@ public interface CoreUpdateActionPort {
   boolean isCoreUpdaterAvailable();
 
   /**
+   * Returns whether a selectable core update is currently available for UI-triggered download.
+   *
+   * <p>This is narrower than {@link #isCoreUpdaterAvailable()}: the updater service may be wired
+   * and ready while no newer package currently matches the running platform or release gate.
+   * Callers use this to decide whether a download action should be offered for the current request.
+   *
+   * @return {@code true} when the updater currently has a newer selectable core package; {@code
+   *     false} when no UI-downloadable package is presently available
+   */
+  boolean isCoreDownloadAvailable();
+
+  /**
    * Starts the current core-package download from the updater UI.
    *
    * <p>Implementations preserve the daemon-side selection and in-progress checks used by the legacy
@@ -42,7 +54,7 @@ public interface CoreUpdateActionPort {
    * separate calls. The method remains a trigger rather than a completion signal; follow-up status,
    * redirects, or operator-visible errors still come from the HTTP layer and the updater itself.
    */
-  void startCoreDownloadFromUi();
+  boolean startCoreDownloadFromUi();
 
   /**
    * Resolves one raw installer path to a canonical downloaded-installer path when it stays within

@@ -12,6 +12,12 @@
   const shellRootUrl = new URL(shellRoot, window.location.origin);
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
+  const shellState = {
+    configSnapshot: null,
+    securitySnapshot: null,
+    updatesSnapshot: null,
+    wizardSnapshot: null,
+  };
   const directDownloadOperation = "create_direct_download";
   const queueState = {
     page: "downloads",
@@ -22,12 +28,27 @@
   };
   let peerLoadGeneration = 0;
   let queueLoadGeneration = 0;
+  let securityLoadGeneration = 0;
+  let updatesLoadGeneration = 0;
+  let configLoadGeneration = 0;
+  let wizardLoadGeneration = 0;
   const nativeQueueSubmitBypass = new WeakSet();
 
   const sections = {
     overview: document.getElementById("overview-body"),
     connectivity: document.getElementById("connectivity-body"),
     security: document.getElementById("security-body"),
+    securityStatus: document.getElementById("security-status"),
+    securityReadonlyHint: document.getElementById("security-readonly-hint"),
+    updates: document.getElementById("updates-body"),
+    updatesStatus: document.getElementById("updates-status"),
+    updatesReadonlyHint: document.getElementById("updates-readonly-hint"),
+    config: document.getElementById("config-body"),
+    configStatus: document.getElementById("config-status"),
+    configReadonlyHint: document.getElementById("config-readonly-hint"),
+    wizard: document.getElementById("wizard-body"),
+    wizardStatus: document.getElementById("wizard-status"),
+    wizardReadonlyHint: document.getElementById("wizard-readonly-hint"),
     peers: document.getElementById("peers-body"),
     peersStatus: document.getElementById("peers-status"),
     peersReadonlyHint: document.getElementById("peers-readonly-hint"),
@@ -43,6 +64,42 @@
     createReference: document.getElementById("peer-reference-text"),
     createSubmit: document.getElementById("peer-create-submit"),
   };
+  const securityControls = {
+    form: document.getElementById("security-form"),
+    networkLevel: document.getElementById("security-network-level"),
+    physicalLevel: document.getElementById("security-physical-level"),
+  };
+  const updatesControls = {
+    refreshButton: document.getElementById("updates-refresh-button"),
+    downloadButton: document.getElementById("updates-download-button"),
+  };
+  const configControls = {
+    form: document.getElementById("config-form"),
+    refreshButton: document.getElementById("config-refresh-button"),
+    persistButton: document.getElementById("config-persist-button"),
+    updaterEnabled: document.getElementById("config-updater-enabled"),
+    updaterAutoupdate: document.getElementById("config-updater-autoupdate"),
+    inputBandwidthLimit: document.getElementById("config-input-bandwidth-limit"),
+    outputBandwidthLimit: document.getElementById("config-output-bandwidth-limit"),
+  };
+  const wizardControls = {
+    form: document.getElementById("wizard-form"),
+    refreshButton: document.getElementById("wizard-refresh-button"),
+    knowSomeone: document.getElementById("wizard-know-someone"),
+    connectToStrangers: document.getElementById("wizard-connect-to-strangers"),
+    editBandwidth: document.getElementById("wizard-edit-bandwidth"),
+    haveMonthlyLimit: document.getElementById("wizard-have-monthly-limit"),
+    setPassword: document.getElementById("wizard-set-password"),
+    downloadLimit: document.getElementById("wizard-download-limit"),
+    uploadLimit: document.getElementById("wizard-upload-limit"),
+    monthlyLimit: document.getElementById("wizard-monthly-limit"),
+    storageLimit: document.getElementById("wizard-storage-limit"),
+    password: document.getElementById("wizard-password"),
+    confirmPassword: document.getElementById("wizard-confirm-password"),
+    rateFields: document.getElementById("wizard-rate-fields"),
+    monthlyLimitField: document.getElementById("wizard-monthly-limit-field"),
+    passwordFields: document.getElementById("wizard-password-fields"),
+  };
   const queueControls = {
     downloadsButton: document.getElementById("queue-downloads-button"),
     uploadsButton: document.getElementById("queue-uploads-button"),
@@ -56,6 +113,17 @@
 
   function apiUrl(path) {
     return new URL(path, apiRootUrl).toString();
+  }
+
+  function apiUrlWithQuery(path, query) {
+    const url = new URL(path, apiRootUrl);
+    for (const [key, value] of Object.entries(query || {})) {
+      if (value == null || value === "") {
+        continue;
+      }
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
   }
 
   function normalizeLocalRootPath(value, fallback) {
@@ -91,21 +159,35 @@
   }
 
   function setStatus(message, tone) {
-    clear(sections.queueStatus);
-    if (!message) {
-      return;
-    }
-    sections.queueStatus.append(text("p", tone ? `status-message ${tone}` : "status-message", message));
+    setSectionStatus(sections.queueStatus, message, tone);
   }
 
   function setPeerStatus(message, tone) {
-    clear(sections.peersStatus);
+    setSectionStatus(sections.peersStatus, message, tone);
+  }
+
+  function setSectionStatus(container, message, tone) {
+    clear(container);
     if (!message) {
       return;
     }
-    sections.peersStatus.append(
-      text("p", tone ? `status-message ${tone}` : "status-message", message),
-    );
+    container.append(text("p", tone ? `status-message ${tone}` : "status-message", message));
+  }
+
+  function setSecurityStatus(message, tone) {
+    setSectionStatus(sections.securityStatus, message, tone);
+  }
+
+  function setUpdatesStatus(message, tone) {
+    setSectionStatus(sections.updatesStatus, message, tone);
+  }
+
+  function setConfigStatus(message, tone) {
+    setSectionStatus(sections.configStatus, message, tone);
+  }
+
+  function setWizardStatus(message, tone) {
+    setSectionStatus(sections.wizardStatus, message, tone);
   }
 
   function definitionList(entries) {
@@ -145,6 +227,15 @@
       .slice(0, 4)
       .map(([key, entryValue]) => `${key}: ${scalar(entryValue)}`)
       .join(" • ");
+  }
+
+  function htmlToText(html) {
+    if (typeof html !== "string" || !html) {
+      return "";
+    }
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    return (container.textContent || "").replace(/\s+/g, " ").trim();
   }
 
   function formatJson(value) {
@@ -239,6 +330,8 @@
   }
 
   function renderSecurity(data) {
+    shellState.securitySnapshot = data;
+    updateSecurityToolbar();
     clear(sections.security);
     sections.security.append(
       summaryCard("Threat levels", [
@@ -249,6 +342,237 @@
         ["Password file path", data.masterPasswordFilePath || "Unavailable"],
       ]),
     );
+    if (securityControls.networkLevel) {
+      securityControls.networkLevel.value = data.networkThreatLevel || "NORMAL";
+    }
+    if (securityControls.physicalLevel) {
+      securityControls.physicalLevel.value = data.physicalThreatLevel || "NORMAL";
+    }
+  }
+
+  function renderUpdates(data) {
+    shellState.updatesSnapshot = data;
+    updateUpdatesToolbar();
+    clear(sections.updates);
+    sections.updates.append(
+      summaryCard("Core updater", [
+        ["Available", data.available ? "Yes" : "No"],
+        ["Download action", data.downloadAllowed ? "Ready" : "Unavailable"],
+      ], data.available ? "" : "is-warning"),
+    );
+  }
+
+  function getNestedValue(root, path) {
+    let current = root;
+    for (let index = 0; index < path.length; index += 1) {
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        return null;
+      }
+      const segment = path[index];
+      if (Object.prototype.hasOwnProperty.call(current, segment)) {
+        current = current[segment];
+        continue;
+      }
+      const remainingPath = path.slice(index).join(".");
+      if (Object.prototype.hasOwnProperty.call(current, remainingPath)) {
+        return current[remainingPath];
+      }
+      return null;
+    }
+    return current;
+  }
+
+  function configBoolean(value) {
+    return value === true || value === "true";
+  }
+
+  function renderConfig(data) {
+    shellState.configSnapshot = data;
+    updateConfigToolbar();
+    clear(sections.config);
+
+    const currentSection =
+      data && typeof data.CURRENT === "object" && !Array.isArray(data.CURRENT) ? data.CURRENT : {};
+    const updaterEnabled = getNestedValue(currentSection, ["node", "updater", "enabled"]);
+    const updaterAutoupdate = getNestedValue(currentSection, ["node", "updater", "autoupdate"]);
+    const inputBandwidthLimit = getNestedValue(currentSection, ["node", "inputBandwidthLimit"]);
+    const outputBandwidthLimit = getNestedValue(currentSection, ["node", "outputBandwidthLimit"]);
+
+    configControls.updaterEnabled.checked = configBoolean(updaterEnabled);
+    configControls.updaterAutoupdate.checked = configBoolean(updaterAutoupdate);
+    configControls.inputBandwidthLimit.value =
+      typeof inputBandwidthLimit === "string" ? inputBandwidthLimit : "";
+    configControls.outputBandwidthLimit.value =
+      typeof outputBandwidthLimit === "string" ? outputBandwidthLimit : "";
+
+    sections.config.append(
+      summaryCard("Current values", [
+        ["node.updater.enabled", scalar(updaterEnabled)],
+        ["node.updater.autoupdate", scalar(updaterAutoupdate)],
+        ["node.inputBandwidthLimit", scalar(inputBandwidthLimit)],
+        ["node.outputBandwidthLimit", scalar(outputBandwidthLimit)],
+      ]),
+    );
+
+    const rawDetails = document.createElement("details");
+    rawDetails.className = "json-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Raw current config JSON";
+    const rawPre = document.createElement("pre");
+    rawPre.className = "json-code";
+    rawPre.textContent = formatJson(data);
+    rawDetails.append(summary, rawPre);
+    sections.config.append(rawDetails);
+  }
+
+  function updateWizardFieldVisibility() {
+    const usingMonthlyLimit = wizardControls.haveMonthlyLimit.checked;
+    const knowsTrustedOperators = wizardControls.knowSomeone.checked;
+    const passwordAlreadySet =
+      !!(shellState.wizardSnapshot && shellState.wizardSnapshot.passwordAlreadySet);
+    const editingBandwidth = wizardControls.editBandwidth.checked;
+    const networkThreatEditable =
+      wizardCanEditCurrentNetworkThreatLevel(shellState.wizardSnapshot);
+    const physicalThreatEditable =
+      wizardCanEditCurrentPhysicalThreatLevel(shellState.wizardSnapshot);
+    wizardControls.knowSomeone.parentElement.hidden = !networkThreatEditable;
+    wizardControls.editBandwidth.parentElement.hidden = false;
+    wizardControls.haveMonthlyLimit.parentElement.hidden = !editingBandwidth;
+    wizardControls.rateFields.hidden = !editingBandwidth || usingMonthlyLimit;
+    wizardControls.monthlyLimitField.hidden = !editingBandwidth || !usingMonthlyLimit;
+    wizardControls.connectToStrangers.parentElement.hidden =
+      !networkThreatEditable || !knowsTrustedOperators;
+    if (!networkThreatEditable || !knowsTrustedOperators) {
+      wizardControls.connectToStrangers.checked = false;
+    }
+    wizardControls.setPassword.parentElement.hidden = passwordAlreadySet || !physicalThreatEditable;
+    wizardControls.passwordFields.hidden =
+      passwordAlreadySet || !physicalThreatEditable || !wizardControls.setPassword.checked;
+  }
+
+  function wizardBandwidthModeUnknown(data) {
+    return !!(
+      data &&
+      typeof data === "object" &&
+      data.currentBandwidthLimits &&
+      typeof data.currentBandwidthLimits === "object"
+    );
+  }
+
+  function wizardCanEditCurrentNetworkThreatLevel(data) {
+    return !!(
+      data &&
+      typeof data === "object" &&
+      (data.currentNetworkThreatLevel === "NORMAL" || data.currentNetworkThreatLevel === "HIGH")
+    );
+  }
+
+  function wizardCanEditCurrentPhysicalThreatLevel(data) {
+    return !!(
+      data &&
+      typeof data === "object" &&
+      (data.currentPhysicalThreatLevel === "NORMAL" || data.currentPhysicalThreatLevel === "HIGH")
+    );
+  }
+
+  function wizardSubmissionSupported(data) {
+    return !!(data && typeof data === "object");
+  }
+
+  function wizardUnsupportedMessage(data) {
+    if (!data || typeof data !== "object") {
+      return "Wizard controls stay unavailable until the current snapshot loads.";
+    }
+    return "";
+  }
+
+  function wizardBandwidthChoiceRequired(data) {
+    return false;
+  }
+
+  function wizardBandwidthChoiceMessage() {
+    return "Current bandwidth settings are already configured. Choose direct rates or monthly budget explicitly and enter the values you want before applying wizard changes.";
+  }
+
+  function renderWizard(data) {
+    shellState.wizardSnapshot = data;
+    updateWizardToolbar();
+    clear(sections.wizard);
+
+    const currentBandwidthLimits =
+      data.currentBandwidthLimits && typeof data.currentBandwidthLimits === "object"
+        ? data.currentBandwidthLimits
+        : null;
+    const detectedDownloadLimit = data.detectedDownloadLimitKiB || "";
+    const detectedUploadLimit = data.detectedUploadLimitKiB || "";
+    const configuredBandwidth = wizardBandwidthModeUnknown(data);
+    const networkThreatEditable = wizardCanEditCurrentNetworkThreatLevel(data);
+    const physicalThreatEditable = wizardCanEditCurrentPhysicalThreatLevel(data);
+    wizardControls.knowSomeone.checked =
+      networkThreatEditable && data.currentNetworkThreatLevel === "HIGH";
+    wizardControls.connectToStrangers.checked = false;
+    wizardControls.editBandwidth.checked = false;
+    wizardControls.haveMonthlyLimit.checked = false;
+    wizardControls.haveMonthlyLimit.indeterminate = false;
+    wizardControls.downloadLimit.value =
+      currentBandwidthLimits && Number.isFinite(currentBandwidthLimits.downloadBytes)
+        ? String(Math.round(currentBandwidthLimits.downloadBytes / 1024))
+        : detectedDownloadLimit || String(data.minBandwidthKiB || "");
+    wizardControls.uploadLimit.value =
+      currentBandwidthLimits && Number.isFinite(currentBandwidthLimits.uploadBytes)
+        ? String(Math.round(currentBandwidthLimits.uploadBytes / 1024))
+        : detectedUploadLimit || String(data.minBandwidthKiB || "");
+    wizardControls.monthlyLimit.value = data.minBandwidthMonthlyLimitGiB || "";
+    wizardControls.storageLimit.value = data.initialStorageLimitGiB || "";
+    wizardControls.setPassword.checked = false;
+    wizardControls.password.value = "";
+    wizardControls.confirmPassword.value = "";
+    updateWizardFieldVisibility();
+
+    const currentBandwidthSummary =
+      currentBandwidthLimits
+        ? `${scalar(currentBandwidthLimits.downloadBytes)} / ${scalar(currentBandwidthLimits.uploadBytes)}`
+        : "Unavailable";
+
+    sections.wizard.append(
+      summaryCard("Current defaults", [
+        ["Opennet enabled", scalar(data.opennetEnabled)],
+        ["Password already set", scalar(data.passwordAlreadySet)],
+        ["Current network threat", scalar(data.currentNetworkThreatLevel)],
+        ["Current physical threat", scalar(data.currentPhysicalThreatLevel)],
+        [
+          "Storage range",
+          `${scalar(data.minStorageLimitGiB)} GiB to ${scalar(data.maxStorageLimitGiB)} GiB`,
+        ],
+        ["Minimum bandwidth", `${scalar(data.minBandwidthKiB)} KiB/s`],
+        ["Detected bandwidth", `${scalar(detectedDownloadLimit)} / ${scalar(detectedUploadLimit)}`],
+        ["Current bandwidth row", currentBandwidthSummary],
+      ]),
+    );
+    const unsupportedMessage = wizardUnsupportedMessage(data);
+    if (unsupportedMessage) {
+      setWizardStatus(unsupportedMessage, "is-error");
+    } else if (wizardBandwidthChoiceRequired(data)) {
+      setWizardStatus(wizardBandwidthChoiceMessage(), "is-error");
+    } else {
+      const notes = [];
+      if (!networkThreatEditable) {
+        notes.push(
+          "Current LOW/MAXIMUM network threat level will be preserved; use the security controls to change it.",
+        );
+      }
+      if (!physicalThreatEditable) {
+        notes.push(
+          "Current LOW/MAXIMUM physical threat level will be preserved; use the security controls to change it.",
+        );
+      }
+      notes.push(
+        configuredBandwidth
+          ? "Current bandwidth settings will be preserved unless you enable bandwidth editing."
+          : "Default bandwidth settings will be preserved unless you enable bandwidth editing.",
+      );
+      setWizardStatus(notes.join(" "));
+    }
   }
 
   function updatePeerToolbar() {
@@ -256,6 +580,39 @@
     if (sections.peersReadonlyHint) {
       sections.peersReadonlyHint.hidden = !!formPassword;
     }
+  }
+
+  function updateSecurityToolbar() {
+    securityControls.form.hidden = !formPassword || !shellState.securitySnapshot;
+    if (sections.securityReadonlyHint) {
+      sections.securityReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updateUpdatesToolbar() {
+    const available =
+      !!(shellState.updatesSnapshot && shellState.updatesSnapshot.downloadAllowed);
+    updatesControls.downloadButton.hidden = !formPassword;
+    updatesControls.downloadButton.disabled = !available;
+    if (sections.updatesReadonlyHint) {
+      sections.updatesReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updateConfigToolbar() {
+    configControls.form.hidden = !formPassword || !shellState.configSnapshot;
+    if (sections.configReadonlyHint) {
+      sections.configReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updateWizardToolbar() {
+    wizardControls.form.hidden =
+      !formPassword || !shellState.wizardSnapshot || !wizardSubmissionSupported(shellState.wizardSnapshot);
+    if (sections.wizardReadonlyHint) {
+      sections.wizardReadonlyHint.hidden = !!formPassword;
+    }
+    updateWizardFieldVisibility();
   }
 
   function familyLabel(peer) {
@@ -599,6 +956,10 @@
     }
     const nextBootstrap = JSON.parse(nextBootstrapElement.textContent || "{}");
     formPassword = typeof nextBootstrap.formPassword === "string" ? nextBootstrap.formPassword : "";
+    updateSecurityToolbar();
+    updateUpdatesToolbar();
+    updateConfigToolbar();
+    updateWizardToolbar();
     return formPassword;
   }
 
@@ -761,6 +1122,90 @@
       throw new Error(extractApiError(data, response));
     }
     return data;
+  }
+
+  async function loadSecuritySection() {
+    const loadGeneration = ++securityLoadGeneration;
+    shellState.securitySnapshot = null;
+    clear(sections.security);
+    sections.security.append(text("p", "loading", "Loading security snapshot..."));
+    updateSecurityToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("security-levels"));
+      if (loadGeneration !== securityLoadGeneration) {
+        return;
+      }
+      renderSecurity(snapshot);
+    } catch (error) {
+      if (loadGeneration !== securityLoadGeneration) {
+        return;
+      }
+      renderError(sections.security, "security", error);
+    }
+  }
+
+  async function loadUpdatesSection() {
+    const loadGeneration = ++updatesLoadGeneration;
+    shellState.updatesSnapshot = null;
+    clear(sections.updates);
+    sections.updates.append(text("p", "loading", "Loading updater status..."));
+    updateUpdatesToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("updates/core"));
+      if (loadGeneration !== updatesLoadGeneration) {
+        return;
+      }
+      renderUpdates(snapshot);
+    } catch (error) {
+      if (loadGeneration !== updatesLoadGeneration) {
+        return;
+      }
+      renderError(sections.updates, "updates", error);
+    }
+  }
+
+  async function loadConfigSection() {
+    const loadGeneration = ++configLoadGeneration;
+    shellState.configSnapshot = null;
+    clear(sections.config);
+    sections.config.append(text("p", "loading", "Loading config snapshot..."));
+    updateConfigToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("config?sections=CURRENT"));
+      if (loadGeneration !== configLoadGeneration) {
+        return;
+      }
+      renderConfig(snapshot);
+    } catch (error) {
+      if (loadGeneration !== configLoadGeneration) {
+        return;
+      }
+      renderError(sections.config, "config", error);
+    }
+  }
+
+  async function loadWizardSection() {
+    const loadGeneration = ++wizardLoadGeneration;
+    shellState.wizardSnapshot = null;
+    clear(sections.wizard);
+    sections.wizard.append(text("p", "loading", "Loading wizard snapshot..."));
+    updateWizardToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("wizard/first-time"));
+      if (loadGeneration !== wizardLoadGeneration) {
+        return;
+      }
+      renderWizard(snapshot);
+    } catch (error) {
+      if (loadGeneration !== wizardLoadGeneration) {
+        return;
+      }
+      renderError(sections.wizard, "wizard", error);
+    }
   }
 
   function peerPath(peerIdentity, action) {
@@ -960,6 +1405,261 @@
     }
   }
 
+  async function submitSecurityForm(event) {
+    event.preventDefault();
+    const currentSnapshot = shellState.securitySnapshot;
+    if (!currentSnapshot) {
+      setSecurityStatus("Security controls stay unavailable until the current snapshot loads.", "is-error");
+      return;
+    }
+    const requestedNetwork = securityControls.networkLevel.value;
+    const requestedPhysical = securityControls.physicalLevel.value;
+    const networkChanged = requestedNetwork !== currentSnapshot.networkThreatLevel;
+    const physicalChanged = requestedPhysical !== currentSnapshot.physicalThreatLevel;
+
+    if (!networkChanged && !physicalChanged) {
+      setSecurityStatus("No threat-level changes to apply.");
+      return;
+    }
+
+    if (networkChanged && physicalChanged) {
+      setSecurityStatus(
+        "Save one threat-level change at a time so warnings and failures cannot partially apply a combined update.",
+        "is-error",
+      );
+      return;
+    }
+
+    if (
+      physicalChanged &&
+      (requestedPhysical === "HIGH" ||
+        (currentSnapshot.physicalThreatLevel === "HIGH" &&
+          (requestedPhysical === "LOW" || requestedPhysical === "NORMAL")))
+    ) {
+      setSecurityStatus(
+        "Changing to or from physical HIGH still requires the legacy security page because it updates master-password state.",
+        "is-error",
+      );
+      return;
+    }
+    if (
+      physicalChanged &&
+      requestedPhysical === "MAXIMUM" &&
+      currentSnapshot.hasDatabase &&
+      !window.confirm(
+        "Changing the physical threat level to MAXIMUM can delete queued work. Continue?",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      if (networkChanged) {
+        const warning = await loadJson(
+          apiUrlWithQuery("security-levels/network-warning", { newLevel: requestedNetwork }),
+        );
+        const networkFormData = new FormData();
+        networkFormData.set("newLevel", requestedNetwork);
+        if (warning.confirmationRequired) {
+          const warningText =
+            htmlToText(warning.warningHtml) ||
+            `Change the network threat level to ${requestedNetwork}?`;
+          if (!window.confirm(warningText)) {
+            return;
+          }
+          networkFormData.set("confirmed", "true");
+        } else if (!window.confirm(`Change the network threat level to ${requestedNetwork}?`)) {
+          return;
+        }
+        await postForm(
+          "security-levels/network",
+          networkFormData,
+          "Security mutations unavailable in read-only mode.",
+        );
+      }
+      if (physicalChanged) {
+        const physicalFormData = new FormData();
+        physicalFormData.set("newLevel", requestedPhysical);
+        if (requestedPhysical === "MAXIMUM" && currentSnapshot.hasDatabase) {
+          physicalFormData.set("confirmed", "true");
+        }
+        await postForm(
+          "security-levels/physical",
+          physicalFormData,
+          "Security mutations unavailable in read-only mode.",
+        );
+      }
+      setSecurityStatus("Security levels updated.", "is-success");
+      shellState.wizardSnapshot = null;
+      updateWizardToolbar();
+      await Promise.all([loadSecuritySection(), loadWizardSection()]);
+    } catch (error) {
+      setSecurityStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function buildConfigFormData() {
+    const formData = new FormData();
+    formData.set("node.updater.enabled", String(configControls.updaterEnabled.checked));
+    formData.set("node.updater.autoupdate", String(configControls.updaterAutoupdate.checked));
+    if (configControls.inputBandwidthLimit.value.trim()) {
+      formData.set("node.inputBandwidthLimit", configControls.inputBandwidthLimit.value.trim());
+    }
+    if (configControls.outputBandwidthLimit.value.trim()) {
+      formData.set("node.outputBandwidthLimit", configControls.outputBandwidthLimit.value.trim());
+    }
+    return formData;
+  }
+
+  async function submitConfigForm(event) {
+    event.preventDefault();
+    if (!shellState.configSnapshot) {
+      setConfigStatus("Config controls stay unavailable until the current snapshot loads.", "is-error");
+      return;
+    }
+    const formData = buildConfigFormData();
+
+    try {
+      await postForm("config/overrides", formData, "Config mutations unavailable in read-only mode.");
+      await postForm("config/persist", new FormData(), "Config mutations unavailable in read-only mode.");
+      setConfigStatus("Config overrides applied and persisted.", "is-success");
+      shellState.updatesSnapshot = null;
+      shellState.wizardSnapshot = null;
+      updateUpdatesToolbar();
+      updateWizardToolbar();
+      await Promise.all([loadConfigSection(), loadUpdatesSection(), loadWizardSection()]);
+    } catch (error) {
+      setConfigStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function persistCurrentConfig() {
+    if (!shellState.configSnapshot) {
+      setConfigStatus("Config controls stay unavailable until the current snapshot loads.", "is-error");
+      return;
+    }
+    try {
+      await postForm("config/persist", new FormData(), "Config mutations unavailable in read-only mode.");
+      setConfigStatus("Current config persisted.", "is-success");
+      await loadConfigSection();
+    } catch (error) {
+      setConfigStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function triggerCoreDownload() {
+    if (!shellState.updatesSnapshot) {
+      setUpdatesStatus("Updater actions stay unavailable until the current status loads.", "is-error");
+      return;
+    }
+    if (!shellState.updatesSnapshot.downloadAllowed) {
+      setUpdatesStatus("No downloadable core update is currently available.", "is-error");
+      return;
+    }
+    try {
+      await postForm("updates/core/download", new FormData(), "Updater actions unavailable in read-only mode.");
+      setUpdatesStatus("Core download triggered.", "is-success");
+      await loadUpdatesSection();
+    } catch (error) {
+      setUpdatesStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function buildWizardFormData() {
+    const formData = new FormData();
+    const preserveBandwidthSettings = !wizardControls.editBandwidth.checked;
+    const preserveCurrentNetworkThreatLevel =
+      !wizardCanEditCurrentNetworkThreatLevel(shellState.wizardSnapshot);
+    const preserveCurrentPhysicalThreatLevel =
+      !wizardCanEditCurrentPhysicalThreatLevel(shellState.wizardSnapshot);
+    if (wizardControls.knowSomeone.checked) {
+      formData.set("knowSomeone", "on");
+    }
+    if (wizardControls.connectToStrangers.checked) {
+      formData.set("connectToStrangers", "on");
+    }
+    if (preserveBandwidthSettings) {
+      formData.set("preserveBandwidthSettings", "on");
+    } else if (wizardControls.haveMonthlyLimit.checked) {
+      formData.set("haveMonthlyLimit", "on");
+    }
+    if (preserveCurrentNetworkThreatLevel) {
+      formData.set("preserveCurrentNetworkThreatLevel", "on");
+    }
+    if (preserveCurrentPhysicalThreatLevel) {
+      formData.set("preserveCurrentPhysicalThreatLevel", "on");
+    }
+    if (wizardControls.setPassword.checked) {
+      formData.set("setPassword", "on");
+    }
+    if (!preserveBandwidthSettings) {
+      formData.set(
+        "downloadLimitKiB",
+        wizardControls.haveMonthlyLimit.checked ? "" : wizardControls.downloadLimit.value.trim(),
+      );
+      formData.set(
+        "uploadLimitKiB",
+        wizardControls.haveMonthlyLimit.checked ? "" : wizardControls.uploadLimit.value.trim(),
+      );
+      formData.set(
+        "bandwidthMonthlyLimitGiB",
+        wizardControls.haveMonthlyLimit.checked ? wizardControls.monthlyLimit.value.trim() : "",
+      );
+    }
+    formData.set("storageLimitGiB", wizardControls.storageLimit.value.trim());
+    formData.set("password", wizardControls.setPassword.checked ? wizardControls.password.value : "");
+    return formData;
+  }
+
+  function clearWizardBandwidthChoiceRequirement() {
+    if (wizardControls.haveMonthlyLimit.indeterminate) {
+      wizardControls.haveMonthlyLimit.indeterminate = false;
+    }
+  }
+
+  async function submitWizardForm(event) {
+    event.preventDefault();
+    if (!shellState.wizardSnapshot) {
+      setWizardStatus("Wizard controls stay unavailable until the current snapshot loads.", "is-error");
+      return;
+    }
+    if (!wizardSubmissionSupported(shellState.wizardSnapshot)) {
+      setWizardStatus(wizardUnsupportedMessage(shellState.wizardSnapshot), "is-error");
+      return;
+    }
+    if (wizardBandwidthChoiceRequired(shellState.wizardSnapshot) && wizardControls.haveMonthlyLimit.indeterminate) {
+      setWizardStatus(wizardBandwidthChoiceMessage(), "is-error");
+      return;
+    }
+    const passwordAlreadySet = !!shellState.wizardSnapshot.passwordAlreadySet;
+    if (
+      !passwordAlreadySet &&
+      wizardControls.setPassword.checked &&
+      wizardControls.password.value !== wizardControls.confirmPassword.value
+    ) {
+      setWizardStatus("Password confirmation does not match.", "is-error");
+      return;
+    }
+
+    try {
+      await postForm(
+        "wizard/first-time/apply",
+        buildWizardFormData(),
+        "Wizard submission unavailable in read-only mode.",
+      );
+      setWizardStatus("Wizard settings applied.", "is-success");
+      await Promise.all([
+        loadShellData(),
+        loadSecuritySection(),
+        loadUpdatesSection(),
+        loadConfigSection(),
+        loadWizardSection(),
+      ]);
+    } catch (error) {
+      setWizardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
   function submitLegacyQueueForm(form, submitter) {
     if (
       typeof form.requestSubmit === "function" &&
@@ -1108,6 +1808,49 @@
     });
   }
 
+  function bindSecurityInteractions() {
+    securityControls.form.addEventListener("submit", submitSecurityForm);
+  }
+
+  function bindUpdatesInteractions() {
+    updatesControls.refreshButton.addEventListener("click", () => {
+      setUpdatesStatus("Refreshing updater state.");
+      loadUpdatesSection();
+    });
+    updatesControls.downloadButton.addEventListener("click", () => {
+      triggerCoreDownload();
+    });
+  }
+
+  function bindConfigInteractions() {
+    configControls.refreshButton.addEventListener("click", () => {
+      setConfigStatus("Refreshing config snapshot.");
+      loadConfigSection();
+    });
+    configControls.form.addEventListener("submit", submitConfigForm);
+    configControls.persistButton.addEventListener("click", () => {
+      persistCurrentConfig();
+    });
+  }
+
+  function bindWizardInteractions() {
+    wizardControls.refreshButton.addEventListener("click", () => {
+      setWizardStatus("Refreshing wizard snapshot.");
+      loadWizardSection();
+    });
+    wizardControls.knowSomeone.addEventListener("change", updateWizardFieldVisibility);
+    wizardControls.editBandwidth.addEventListener("change", updateWizardFieldVisibility);
+    wizardControls.haveMonthlyLimit.addEventListener("change", () => {
+      clearWizardBandwidthChoiceRequirement();
+      updateWizardFieldVisibility();
+    });
+    wizardControls.downloadLimit.addEventListener("input", clearWizardBandwidthChoiceRequirement);
+    wizardControls.uploadLimit.addEventListener("input", clearWizardBandwidthChoiceRequirement);
+    wizardControls.monthlyLimit.addEventListener("input", clearWizardBandwidthChoiceRequirement);
+    wizardControls.setPassword.addEventListener("change", updateWizardFieldVisibility);
+    wizardControls.form.addEventListener("submit", submitWizardForm);
+  }
+
   async function loadShellData() {
     const requests = [
       loadJson(apiUrl("node/greeting"))
@@ -1116,9 +1859,6 @@
       loadJson(apiUrl("connectivity"))
         .then((data) => ({ section: "connectivity", data }))
         .catch((error) => ({ section: "connectivity", error })),
-      loadJson(apiUrl("security-levels"))
-        .then((data) => ({ section: "security", data }))
-        .catch((error) => ({ section: "security", error })),
     ];
 
     const results = await Promise.all(requests);
@@ -1131,19 +1871,37 @@
         renderOverview(result.data);
       } else if (result.section === "connectivity") {
         renderConnectivity(result.data);
-      } else if (result.section === "security") {
-        renderSecurity(result.data);
       }
     }
   }
 
   renderLegacyLinks();
+  bindSecurityInteractions();
+  bindUpdatesInteractions();
+  bindConfigInteractions();
+  bindWizardInteractions();
   bindPeerInteractions();
   bindQueueInteractions();
+  updateSecurityToolbar();
+  updateUpdatesToolbar();
+  updateConfigToolbar();
+  updateWizardToolbar();
   updatePeerToolbar();
   updateQueueToolbar();
   loadShellData().catch((error) => {
     renderError(sections.overview, "Shell", error);
+  });
+  loadSecuritySection().catch((error) => {
+    renderError(sections.security, "security", error);
+  });
+  loadUpdatesSection().catch((error) => {
+    renderError(sections.updates, "updates", error);
+  });
+  loadConfigSection().catch((error) => {
+    renderError(sections.config, "config", error);
+  });
+  loadWizardSection().catch((error) => {
+    renderError(sections.wizard, "wizard", error);
   });
   loadPeersSection().catch((error) => {
     renderError(sections.peers, "peers", error);

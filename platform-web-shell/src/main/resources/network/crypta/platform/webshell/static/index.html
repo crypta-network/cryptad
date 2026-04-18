@@ -15,8 +15,8 @@
         <p class="eyebrow">Cryptad node management</p>
         <h1>Web Shell v1</h1>
         <p class="lede">
-          Snapshot views, queue control, and selective legacy deep links powered by Platform API
-          v1.
+          Snapshot views, config changes, updater triggers, first-run controls, queue actions, and
+          selective legacy deep links powered by Platform API v1.
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
@@ -50,8 +50,202 @@
             <p class="panel-kicker">Security</p>
             <h2>Threat levels</h2>
           </div>
+          <p class="panel-description">
+            Review and adjust the node threat levels from the shell. Legacy warning-heavy and
+            password-management flows remain available through the legacy page when needed.
+          </p>
+          <div class="queue-status" id="security-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="security-readonly-hint">
+            Security mutations are unavailable in read-only mode.
+          </p>
+          <form class="control-form" hidden id="security-form">
+            <div class="control-form-grid">
+              <label class="queue-field" for="security-network-level">
+                <span>Network threat level</span>
+                <select id="security-network-level">
+                  <option value="LOW">Low</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="HIGH">High</option>
+                  <option value="MAXIMUM">Maximum</option>
+                </select>
+              </label>
+              <label class="queue-field" for="security-physical-level">
+                <span>Physical threat level</span>
+                <select id="security-physical-level">
+                  <option value="LOW">Low</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="HIGH">High</option>
+                  <option value="MAXIMUM">Maximum</option>
+                </select>
+              </label>
+            </div>
+            <div class="control-form-actions">
+              <button class="button button-primary" id="security-save-button" type="submit">
+                Save threat levels
+              </button>
+            </div>
+          </form>
           <div class="panel-body" id="security-body">
             <p class="loading">Loading security snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="updates-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Updates</p>
+            <h2>Core updater</h2>
+          </div>
+          <p class="panel-description">
+            Check whether the package-based core updater is available and trigger the current core
+            download from the shell.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="updates-refresh-button" type="button">
+              Refresh updater
+            </button>
+            <button class="button button-primary" id="updates-download-button" type="button">
+              Trigger download
+            </button>
+          </div>
+          <div class="queue-status" id="updates-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="updates-readonly-hint">
+            Updater actions are unavailable in read-only mode.
+          </p>
+          <div class="panel-body" id="updates-body">
+            <p class="loading">Loading updater status...</p>
+          </div>
+        </article>
+
+        <article class="panel panel-span-2" id="config-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Config</p>
+            <h2>Operator subset</h2>
+          </div>
+          <p class="panel-description">
+            Edit a constrained shell-native config subset and persist the result without dropping
+            back to the legacy config page.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="config-refresh-button" type="button">
+              Refresh config
+            </button>
+          </div>
+          <div class="queue-status" id="config-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="config-readonly-hint">
+            Config mutations are unavailable in read-only mode.
+          </p>
+          <form class="control-form" hidden id="config-form">
+            <div class="control-form-grid">
+              <label class="checkbox-inline" for="config-updater-enabled">
+                <input id="config-updater-enabled" type="checkbox">
+                <span>Enable core updater</span>
+              </label>
+              <label class="checkbox-inline" for="config-updater-autoupdate">
+                <input id="config-updater-autoupdate" type="checkbox">
+                <span>Enable auto-update</span>
+              </label>
+              <label class="queue-field" for="config-input-bandwidth-limit">
+                <span>Input bandwidth limit</span>
+                <input id="config-input-bandwidth-limit" type="text" autocomplete="off">
+              </label>
+              <label class="queue-field" for="config-output-bandwidth-limit">
+                <span>Output bandwidth limit</span>
+                <input id="config-output-bandwidth-limit" type="text" autocomplete="off">
+              </label>
+            </div>
+            <div class="control-form-actions">
+              <button class="button button-primary" id="config-save-button" type="submit">
+                Apply and persist
+              </button>
+              <button class="button button-secondary" id="config-persist-button" type="button">
+                Persist current config
+              </button>
+            </div>
+          </form>
+          <div class="panel-body" id="config-body">
+            <p class="loading">Loading config snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel panel-span-2" id="wizard-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Wizard</p>
+            <h2>First-time setup</h2>
+          </div>
+          <p class="panel-description">
+            Apply the detached first-time-wizard submission from the shell for routine onboarding
+            and operator reset scenarios.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="wizard-refresh-button" type="button">
+              Refresh wizard state
+            </button>
+          </div>
+          <div class="queue-status" id="wizard-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="wizard-readonly-hint">
+            Wizard submission is unavailable in read-only mode.
+          </p>
+          <form class="control-form" hidden id="wizard-form">
+            <div class="control-form-grid">
+              <label class="checkbox-inline" for="wizard-know-someone">
+                <input id="wizard-know-someone" type="checkbox">
+                <span>I know existing trusted operators</span>
+              </label>
+              <label class="checkbox-inline" for="wizard-connect-to-strangers">
+                <input id="wizard-connect-to-strangers" type="checkbox">
+                <span>Connect to strangers</span>
+              </label>
+              <label class="checkbox-inline" for="wizard-edit-bandwidth" hidden>
+                <input id="wizard-edit-bandwidth" type="checkbox">
+                <span>Change bandwidth settings</span>
+              </label>
+              <label class="checkbox-inline" for="wizard-have-monthly-limit">
+                <input id="wizard-have-monthly-limit" type="checkbox">
+                <span>Use a monthly transfer limit</span>
+              </label>
+              <label class="checkbox-inline" for="wizard-set-password">
+                <input id="wizard-set-password" type="checkbox">
+                <span>Set startup password</span>
+              </label>
+            </div>
+            <div class="control-form-grid" id="wizard-rate-fields">
+              <label class="queue-field" for="wizard-download-limit">
+                <span>Download limit (KiB/s)</span>
+                <input id="wizard-download-limit" type="text" autocomplete="off">
+              </label>
+              <label class="queue-field" for="wizard-upload-limit">
+                <span>Upload limit (KiB/s)</span>
+                <input id="wizard-upload-limit" type="text" autocomplete="off">
+              </label>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="wizard-monthly-limit" id="wizard-monthly-limit-field">
+                <span>Monthly limit (GiB)</span>
+                <input id="wizard-monthly-limit" type="text" autocomplete="off">
+              </label>
+              <label class="queue-field" for="wizard-storage-limit">
+                <span>Storage limit (GiB)</span>
+                <input id="wizard-storage-limit" type="text" autocomplete="off">
+              </label>
+            </div>
+            <div class="control-form-grid" id="wizard-password-fields">
+              <label class="queue-field" for="wizard-password">
+                <span>Password</span>
+                <input id="wizard-password" type="password" autocomplete="new-password">
+              </label>
+              <label class="queue-field" for="wizard-confirm-password">
+                <span>Confirm password</span>
+                <input id="wizard-confirm-password" type="password" autocomplete="new-password">
+              </label>
+            </div>
+            <div class="control-form-actions">
+              <button class="button button-primary" id="wizard-apply-button" type="submit">
+                Apply wizard settings
+              </button>
+            </div>
+          </form>
+          <div class="panel-body" id="wizard-body">
+            <p class="loading">Loading wizard snapshot...</p>
           </div>
         </article>
 

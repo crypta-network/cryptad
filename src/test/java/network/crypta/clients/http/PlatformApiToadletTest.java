@@ -16,6 +16,8 @@ import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -426,6 +428,25 @@ End
         bodyWrite.bodyText());
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "http://localhost/api/v1/config/overrides",
+        "http://localhost/api/v1/security-levels/network",
+        "http://localhost/api/v1/updates/core/download",
+        "http://localhost/api/v1/wizard/first-time/apply",
+      })
+  void handleMethodPOST_whenProtectedMutationPasswordMissing_expectJson403WithoutRouting(
+      String requestUri) throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(URI.create(requestUri), request, ctx);
+
+    verifyNoInteractions(router);
+    assertForbiddenBody();
+  }
+
   @Test
   void handleMethodPOST_whenNonAppsRoute_expectRouterJson405WithoutPasswordCheck()
       throws Exception {
@@ -661,6 +682,17 @@ End
 
     return new BodyWriteCapture(
         new String(body.getValue(), StandardCharsets.UTF_8), offset.getValue(), length.getValue());
+  }
+
+  private void assertForbiddenBody() throws Exception {
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals("Forbidden", replyHeaders.reasonPhrase());
+    assertEquals("application/json; charset=UTF-8", replyHeaders.mimeType());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
+        bodyWrite.bodyText());
   }
 
   private record ReplyHeadersCapture(

@@ -50,12 +50,45 @@ class LegacyCoreUpdateActionPortTest {
   }
 
   @Test
+  void isCoreDownloadAvailable_whenSelectableUpdatePresent_expectTrue() {
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.isUiDownloadAvailable()).thenReturn(true);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertTrue(port.isCoreDownloadAvailable());
+  }
+
+  @Test
+  void isCoreDownloadAvailable_whenSelectableUpdateMissing_expectFalse() {
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.isUiDownloadAvailable()).thenReturn(false);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertFalse(port.isCoreDownloadAvailable());
+  }
+
+  @Test
+  void isCoreDownloadAvailable_whenUpdaterMissing_expectFalse() {
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(null);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertFalse(port.isCoreDownloadAvailable());
+  }
+
+  @Test
   void startCoreDownloadFromUi_whenUpdaterPresent_expectDelegatesToCoreUpdater() {
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
     when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.startDownloadFromUI()).thenReturn(true);
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
-    port.startCoreDownloadFromUi();
+    assertTrue(port.startCoreDownloadFromUi());
 
     verify(coreUpdater).startDownloadFromUI();
   }

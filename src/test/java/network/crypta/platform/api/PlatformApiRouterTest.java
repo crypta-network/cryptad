@@ -29,9 +29,14 @@ import network.crypta.runtime.spi.ConnectivitySnapshot;
 import network.crypta.runtime.spi.ConnectivitySocketSnapshot;
 import network.crypta.runtime.spi.ConnectivityTrafficEntrySnapshot;
 import network.crypta.runtime.spi.ConnectivityTrafficInitiator;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
+import network.crypta.runtime.spi.FirstTimeWizardPort;
+import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
+import network.crypta.runtime.spi.FirstTimeWizardSubmission;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -79,6 +84,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class PlatformApiRouterTest {
+  private static final String CANONICAL_UPDATE_URI =
+      "uQnFwn0aEFSAZihnSDduEHUd3GUmGg68ATn5R95MKJo,"
+          + "mcNiZqosfZ1F~PkZY8v1TuDKsY6noda-hGRXvu7uUFc,AQACAAE";
+  private static final String FULL_UPDATE_URI = "USK@" + CANONICAL_UPDATE_URI + "/info/1234";
+
   private static final Instant STARTED_AT = Instant.parse("2024-01-02T03:04:05Z");
   private static final String APP_ID = "alpha";
   private static final String INSTALL_ROUTE_APP_ID = "install";
@@ -94,6 +104,8 @@ class PlatformApiRouterTest {
   @Mock private ConfigPort configPort;
   @Mock private ConnectivityPort connectivityPort;
   @Mock private SecurityLevelsPort securityLevelsPort;
+  @Mock private CoreUpdateActionPort coreUpdateActionPort;
+  @Mock private FirstTimeWizardPort firstTimeWizardPort;
   @Mock private QueuePagePort queuePagePort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private QueueDownloadPort queueDownloadPort;
@@ -113,6 +125,8 @@ class PlatformApiRouterTest {
     when(runtimePorts.config()).thenReturn(configPort);
     when(runtimePorts.connectivity()).thenReturn(connectivityPort);
     when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
+    when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
+    when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
     when(runtimePorts.queuePage()).thenReturn(queuePagePort);
     when(runtimePorts.queueMutation()).thenReturn(queueMutationPort);
     when(runtimePorts.queueDownload()).thenReturn(queueDownloadPort);
@@ -698,6 +712,759 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenConfigOverridesRequested_expectMutationSummary() {
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
+        .thenReturn(
+            verificationConfigSnapshot(
+                Map.of("updater.enabled", "true", "updater.autoupdate", "false"),
+                Map.of("updater.enabled", "boolean", "updater.autoupdate", "boolean")),
+            verificationConfigSnapshot(
+                Map.of("updater.enabled", "false", "updater.autoupdate", "true"),
+                Map.of("updater.enabled", "boolean", "updater.autoupdate", "boolean")));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("config", "overrides"),
+                orderedStringParameters(
+                    Map.entry("node.updater.enabled", List.of("false")),
+                    Map.entry("node.updater.autoupdate", List.of("true")))));
+
+    verify(configPort)
+        .applyOverrides(Map.of("node.updater.enabled", "false", "node.updater.autoupdate", "true"));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_overrides\",\"overrideCount\":2}", response.body());
+  }
+
+  @Test
+  void route_whenConfigOverridesRejected_expectJson400WithoutPersisting() {
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
+        .thenReturn(
+            verificationConfigSnapshot(
+                Map.of("updater.enabled", "true", "updater.autoupdate", "false"),
+                Map.of("updater.enabled", "boolean", "updater.autoupdate", "boolean")),
+            verificationConfigSnapshot(
+                Map.of("updater.enabled", "false", "updater.autoupdate", "false"),
+                Map.of("updater.enabled", "boolean", "updater.autoupdate", "boolean")));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("config", "overrides"),
+                orderedStringParameters(
+                    Map.entry("node.updater.enabled", List.of("false")),
+                    Map.entry("node.updater.autoupdate", List.of("true")))));
+
+    verify(configPort)
+        .applyOverrides(Map.of("node.updater.enabled", "false", "node.updater.autoupdate", "true"));
+    verify(configPort).applyOverrides(Map.of("node.updater.enabled", "true"));
+    verify(configPort, never()).persist();
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"config_override_rejected\",\"message\":\"Rejected config"
+            + " overrides: node.updater.autoupdate\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenStringArrayConfigOverrideUsesDecodedValue_expectAccepted() {
+    String canonicalValue = network.crypta.support.URLEncoder.encode("/home/alice/My Files", false);
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
+        .thenReturn(
+            verificationConfigSnapshot(
+                Map.of("downloadAllowedDirs", ""), Map.of("downloadAllowedDirs", "stringArray")),
+            verificationConfigSnapshot(
+                Map.of("downloadAllowedDirs", canonicalValue),
+                Map.of("downloadAllowedDirs", "stringArray")));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("config", "overrides"),
+                orderedStringParameters(
+                    Map.entry("node.downloadAllowedDirs", List.of("/home/alice/My Files")))));
+
+    verify(configPort).applyOverrides(Map.of("node.downloadAllowedDirs", "/home/alice/My Files"));
+    verify(configPort, never()).applyOverrides(Map.of("node.downloadAllowedDirs", ""));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_overrides\",\"overrideCount\":1}", response.body());
+  }
+
+  @Test
+  void route_whenStringConfigOverrideIsNormalized_expectAccepted() {
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
+        .thenReturn(
+            verificationConfigSnapshot(
+                Map.of("updater.URI", "USK@old-key"), Map.of("updater.URI", "string")),
+            verificationConfigSnapshot(
+                Map.of("updater.URI", CANONICAL_UPDATE_URI), Map.of("updater.URI", "string")));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("config", "overrides"),
+                orderedStringParameters(Map.entry("node.updater.URI", List.of(FULL_UPDATE_URI)))));
+
+    verify(configPort).applyOverrides(Map.of("node.updater.URI", FULL_UPDATE_URI));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_overrides\",\"overrideCount\":1}", response.body());
+  }
+
+  @Test
+  void route_whenNormalizedStringConfigOverrideIsIdempotent_expectAccepted() {
+    when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
+        .thenReturn(
+            verificationConfigSnapshot(
+                Map.of("updater.URI", CANONICAL_UPDATE_URI), Map.of("updater.URI", "string")),
+            verificationConfigSnapshot(
+                Map.of("updater.URI", CANONICAL_UPDATE_URI), Map.of("updater.URI", "string")));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("config", "overrides"),
+                orderedStringParameters(Map.entry("node.updater.URI", List.of(FULL_UPDATE_URI)))));
+
+    verify(configPort).applyOverrides(Map.of("node.updater.URI", FULL_UPDATE_URI));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_overrides\",\"overrideCount\":1}", response.body());
+  }
+
+  @Test
+  void route_whenConfigPersistRequested_expectMutationSummary() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("config", "persist"), Map.of()));
+
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"persist\"}", response.body());
+  }
+
+  @Test
+  void route_whenNetworkThreatLevelMutationRequested_expectPersistedSummary() {
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "network"),
+                Map.of("newLevel", List.of("HIGH"))));
+
+    verify(securityLevelsPort).setNetworkThreatLevel(SecurityNetworkThreatLevel.HIGH);
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_network_threat_level\",\"networkThreatLevel\":\"HIGH\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenNetworkThreatLevelWarningRequested_expectWarningJson() {
+    when(securityLevelsPort.networkThreatLevelConfirmWarningHtml(
+            SecurityNetworkThreatLevel.LOW, "confirmed"))
+        .thenReturn("<p>Needs confirmation</p>");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "GET",
+                List.of("security-levels", "network-warning"),
+                Map.of("newLevel", List.of("LOW"))));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"newLevel\":\"LOW\",\"confirmationRequired\":true,\"warningHtml\":\"<p>Needs"
+            + " confirmation</p>\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenNetworkThreatLevelMutationRequiresConfirmation_expectConflictJson() {
+    when(securityLevelsPort.networkThreatLevelConfirmWarningHtml(
+            SecurityNetworkThreatLevel.LOW, "confirmed"))
+        .thenReturn("<p>Needs confirmation</p>");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST", List.of("security-levels", "network"), Map.of("newLevel", List.of("LOW"))));
+
+    verify(securityLevelsPort, never()).setNetworkThreatLevel(any());
+    verify(configPort, never()).persist();
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"network_threat_level_confirmation_required\",\"message\":\"This"
+            + " network threat-level change requires server-side confirmation. Retry after"
+            + " acknowledging the warning in the Web Shell or use the legacy security page.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenNetworkThreatLevelMutationConfirmedViaCheckbox_expectPersistedSummary() {
+    when(securityLevelsPort.networkThreatLevelConfirmWarningHtml(
+            SecurityNetworkThreatLevel.LOW, "confirmed"))
+        .thenReturn("<p>Needs confirmation</p>");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "network"),
+                Map.of("newLevel", List.of("LOW"), "confirmed", List.of("on"))));
+
+    verify(securityLevelsPort).setNetworkThreatLevel(SecurityNetworkThreatLevel.LOW);
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_network_threat_level\",\"networkThreatLevel\":\"LOW\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPhysicalThreatLevelMutationRequested_expectPersistedSummary() throws IOException {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("MAXIMUM"))));
+
+    verify(securityLevelsPort).deleteMasterPasswordFile();
+    verify(securityLevelsPort).setPhysicalThreatLevel(SecurityPhysicalThreatLevel.MAXIMUM);
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_physical_threat_level\",\"physicalThreatLevel\":\"MAXIMUM\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPhysicalMaximumMutationNeedsConfirmation_expectConflictJson() throws IOException {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                true,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("MAXIMUM"))));
+
+    verify(securityLevelsPort, never()).deleteMasterPasswordFile();
+    verify(securityLevelsPort, never()).setPhysicalThreatLevel(any());
+    verify(configPort, never()).persist();
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"physical_threat_level_confirmation_required\",\"message\":\"Changing"
+            + " the physical threat level to MAXIMUM can delete queued work. Retry after"
+            + " acknowledging the confirmation.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPhysicalMaximumMutationConfirmed_expectPersistedSummary() throws IOException {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                true,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("MAXIMUM"), "confirmed", List.of("true"))));
+
+    verify(securityLevelsPort).deleteMasterPasswordFile();
+    verify(securityLevelsPort).setPhysicalThreatLevel(SecurityPhysicalThreatLevel.MAXIMUM);
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_physical_threat_level\",\"physicalThreatLevel\":\"MAXIMUM\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPhysicalThreatLevelMutationNeedsPasswordFlow_expectConflictJson() {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("HIGH"))));
+
+    verify(securityLevelsPort, never()).setPhysicalThreatLevel(any());
+    verify(configPort, never()).persist();
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"physical_threat_level_password_required\",\"message\":\"Changing"
+            + " to or from physical HIGH still requires the legacy password flow. Use the legacy"
+            + " security page for this transition.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenPhysicalMaximumMutationFromHigh_expectPersistedSummary() throws IOException {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.HIGH,
+                true,
+                true,
+                "/master.keys"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("MAXIMUM"), "confirmed", List.of("true"))));
+
+    verify(securityLevelsPort).deleteMasterPasswordFile();
+    verify(securityLevelsPort).setPhysicalThreatLevel(SecurityPhysicalThreatLevel.MAXIMUM);
+    verify(configPort).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_physical_threat_level\",\"physicalThreatLevel\":\"MAXIMUM\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenLeavingPhysicalMaximum_expectWizardPhysicalSetter() {
+    when(securityLevelsPort.snapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.MAXIMUM,
+                true,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("security-levels", "physical"),
+                Map.of("newLevel", List.of("NORMAL"))));
+
+    verify(firstTimeWizardPort).setPhysicalThreatLevel(SecurityPhysicalThreatLevel.NORMAL);
+    verify(securityLevelsPort, never()).setPhysicalThreatLevel(any());
+    verify(configPort, never()).persist();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"set_physical_threat_level\",\"physicalThreatLevel\":\"NORMAL\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenCoreUpdatesRequested_expectAvailabilityJson() {
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.isCoreDownloadAvailable()).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("updates", "core"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"available\":true,\"downloadAllowed\":true}", response.body());
+  }
+
+  @Test
+  void route_whenCoreUpdateDownloadRequested_expectTriggeredSummary() {
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.isCoreDownloadAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.startCoreDownloadFromUi()).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("updates", "core", "download"), Map.of()));
+
+    verify(coreUpdateActionPort).startCoreDownloadFromUi();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"operation\":\"start_core_download\",\"downloadTriggered\":true}", response.body());
+  }
+
+  @Test
+  void route_whenCoreUpdateDownloadRequestedWhileUnavailable_expectConflictJson() {
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(false);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("updates", "core", "download"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"updater_unavailable\",\"message\":\"Core updater is not currently"
+            + " available.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenCoreUpdateDownloadRequestedWithoutSelectablePackage_expectConflictJson() {
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.isCoreDownloadAvailable()).thenReturn(false);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("updates", "core", "download"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"core_update_unavailable\",\"message\":\"No selectable core update"
+            + " is currently available.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenCoreUpdateDownloadDoesNotStart_expectConflictJson() {
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.isCoreDownloadAvailable()).thenReturn(true);
+    when(coreUpdateActionPort.startCoreDownloadFromUi()).thenReturn(false);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("updates", "core", "download"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"core_download_not_started\",\"message\":\"The core download could"
+            + " not be started. Refresh updater state and retry.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenFirstTimeWizardRequested_expectSnapshotJson() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                true,
+                "2.50",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                12884901888L,
+                10L,
+                976562L,
+                "49.44",
+                "2048",
+                "1024",
+                new FirstTimeWizardCurrentBandwidthLimits(4096L, 1024L),
+                -1L));
+    when(firstTimeWizardPort.isOpennetEnabled()).thenReturn(true);
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.HIGH,
+                SecurityPhysicalThreatLevel.HIGH,
+                false,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("wizard", "first-time"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"passwordAlreadySet\":true,\"opennetEnabled\":true,\"currentNetworkThreatLevel\":\"HIGH\",\"currentPhysicalThreatLevel\":\"HIGH\",\"initialStorageLimitGiB\":\"2.50\",\"minStorageLimitGiB\":\"1.25\",\"minStorageLimitBytes\":1342177280,\"maxStorageLimitGiB\":\"10.00\",\"maxStorageLimitBytes\":10737418240,\"legacyMaxStorageLimitBytes\":12884901888,\"minBandwidthKiB\":10,\"maxUploadLimitKiB\":976562,\"minBandwidthMonthlyLimitGiB\":\"49.44\",\"detectedDownloadLimitKiB\":\"2048\",\"detectedUploadLimitKiB\":\"1024\",\"currentBandwidthLimits\":{\"downloadBytes\":4096,\"uploadBytes\":1024},\"autodetectedStorageLimitBytes\":-1}",
+        response.body());
+  }
+
+  @Test
+  void route_whenFirstTimeWizardApplyRequested_expectSubmissionSummary() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                -1L));
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("knowSomeone", List.of("on")),
+                    Map.entry("downloadLimitKiB", List.of("20000")),
+                    Map.entry("uploadLimitKiB", List.of("10000")),
+                    Map.entry("storageLimitGiB", List.of("2")),
+                    Map.entry("setPassword", List.of("on")),
+                    Map.entry("password", List.of("secret")))));
+
+    verify(firstTimeWizardPort)
+        .applySubmission(
+            new FirstTimeWizardSubmission(
+                true, false, false, "20000", "10000", "", "2", true, "secret"));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_submission\",\"wizardApplied\":true}", response.body());
+  }
+
+  @Test
+  void route_whenFirstTimeWizardApplyRequestedWithPreserveBandwidth_expectSubmissionSummary() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                new FirstTimeWizardCurrentBandwidthLimits(4096L, 1024L),
+                -1L));
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("preserveBandwidthSettings", List.of("on")),
+                    Map.entry("storageLimitGiB", List.of("2")),
+                    Map.entry("setPassword", List.of("on")),
+                    Map.entry("password", List.of("secret")))));
+
+    verify(firstTimeWizardPort)
+        .applySubmission(
+            new FirstTimeWizardSubmission(
+                false, false, false, true, "", "", "", "2", true, "secret"));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_submission\",\"wizardApplied\":true}", response.body());
+  }
+
+  @Test
+  void
+      route_whenFirstTimeWizardApplyRequestedWithPreserveBandwidthAndNoCurrentBandwidthRow_expectSubmissionSummary() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                -1L));
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.NORMAL,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("preserveBandwidthSettings", List.of("on")),
+                    Map.entry("storageLimitGiB", List.of("2")))));
+
+    verify(firstTimeWizardPort)
+        .applySubmission(
+            new FirstTimeWizardSubmission(false, false, false, true, "", "", "", "2", false, ""));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_submission\",\"wizardApplied\":true}", response.body());
+  }
+
+  @Test
+  void
+      route_whenFirstTimeWizardApplyRequestedFromLowOrMaximumCurrentSecurityWithoutPreserveFlags_expectConflictJson() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                -1L));
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.MAXIMUM,
+                SecurityPhysicalThreatLevel.NORMAL,
+                false,
+                false,
+                ""));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("downloadLimitKiB", List.of("20000")),
+                    Map.entry("uploadLimitKiB", List.of("10000")),
+                    Map.entry("storageLimitGiB", List.of("2")))));
+
+    verify(firstTimeWizardPort, never()).applySubmission(any());
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"wizard_current_security_unsupported\",\"message\":\"Current LOW"
+            + " or MAXIMUM network threat levels cannot be represented by the wizard controls."
+            + " Retry with preserveCurrentNetworkThreatLevel=true or use the dedicated security"
+            + " controls.\"}}",
+        response.body());
+  }
+
+  @Test
+  void
+      route_whenFirstTimeWizardApplyRequestedFromLowOrMaximumCurrentSecurityWithPreserveFlags_expectSubmissionSummary() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                false,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                -1L));
+    when(firstTimeWizardPort.securitySnapshot())
+        .thenReturn(
+            new SecurityLevelsSnapshot(
+                SecurityNetworkThreatLevel.MAXIMUM,
+                SecurityPhysicalThreatLevel.LOW,
+                false,
+                false,
+                ""));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("preserveCurrentNetworkThreatLevel", List.of("on")),
+                    Map.entry("preserveCurrentPhysicalThreatLevel", List.of("on")),
+                    Map.entry("downloadLimitKiB", List.of("20000")),
+                    Map.entry("uploadLimitKiB", List.of("10000")),
+                    Map.entry("storageLimitGiB", List.of("2")))));
+
+    verify(firstTimeWizardPort)
+        .applySubmission(
+            new FirstTimeWizardSubmission(
+                false, false, false, false, true, true, "20000", "10000", "", "2", false, ""));
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"apply_submission\",\"wizardApplied\":true}", response.body());
+  }
+
+  @Test
+  void route_whenFirstTimeWizardPasswordRequestedAfterPasswordAlreadySet_expectConflictJson() {
+    when(firstTimeWizardPort.snapshot())
+        .thenReturn(
+            new FirstTimeWizardSnapshot(
+                true,
+                "2.00",
+                "1.25",
+                1342177280L,
+                "10.00",
+                10737418240L,
+                10L,
+                976562L,
+                "49.44",
+                "",
+                "",
+                -1L));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("wizard", "first-time", "apply"),
+                orderedStringParameters(
+                    Map.entry("downloadLimitKiB", List.of("20000")),
+                    Map.entry("uploadLimitKiB", List.of("10000")),
+                    Map.entry("storageLimitGiB", List.of("2")),
+                    Map.entry("setPassword", List.of("on")),
+                    Map.entry("password", List.of("secret")))));
+
+    verify(firstTimeWizardPort, never()).applySubmission(any());
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"wizard_password_already_set\",\"message\":\"A startup password is"
+            + " already set. Use the dedicated security/password flow instead of the first-time"
+            + " wizard submission.\"}}",
+        response.body());
+  }
+
+  @Test
   void route_whenPeerMissing_expectJson404() throws UnknownPeerException {
     when(peerPort.get("peer-1", true, false)).thenThrow(new UnknownPeerException("peer-1"));
 
@@ -727,6 +1494,16 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         "{\"CURRENT\":{\"enabled\":\"true\",\"node\":{\"name\":\"alpha\"}}}", response.body());
+  }
+
+  private static ConfigSnapshot verificationConfigSnapshot(
+      Map<String, String> nodeValues, Map<String, String> dataTypes) {
+    return new ConfigSnapshot(
+        Map.of(
+            ConfigSection.CURRENT,
+            new ConfigFieldSet(Map.of(), Map.of("node", new ConfigFieldSet(nodeValues, Map.of()))),
+            ConfigSection.DATA_TYPES,
+            new ConfigFieldSet(Map.of(), Map.of("node", new ConfigFieldSet(dataTypes, Map.of())))));
   }
 
   @Test

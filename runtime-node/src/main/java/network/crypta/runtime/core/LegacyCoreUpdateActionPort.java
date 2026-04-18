@@ -48,8 +48,13 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   }
 
   @Override
-  public void startCoreDownloadFromUi() {
-    getCoreUpdater().ifPresent(CoreUpdater::startDownloadFromUI);
+  public boolean isCoreDownloadAvailable() {
+    return getCoreUpdater().map(CoreUpdater::isUiDownloadAvailable).orElse(false);
+  }
+
+  @Override
+  public boolean startCoreDownloadFromUi() {
+    return getCoreUpdater().map(CoreUpdater::startDownloadFromUI).orElse(false);
   }
 
   @Override
