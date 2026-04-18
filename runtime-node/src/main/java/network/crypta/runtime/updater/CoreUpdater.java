@@ -209,6 +209,59 @@ public class CoreUpdater extends NodeUpdater {
     return isNewerThanCurrentBuild(latestVersionBuild.get());
   }
 
+  /**
+   * Returns whether the current UI download action can fetch a selected package payload.
+   *
+   * <p>This is intentionally different from {@link #canUpdateNow()}. Release gating only advertises
+   * integer build labels as an available update, but the manual download action may still fetch a
+   * CHK-backed package selected from a valid descriptor whose human-facing version label is not an
+   * integer build number. The UI download button should therefore be enabled whenever the selected
+   * package has a CHK payload that this updater can actually download.
+   *
+   * @return {@code true} when the current selected package is directly downloadable
+   */
+  public boolean isUiDownloadAvailable() {
+    PackageSpec spec = selectedSpec.get();
+    if (!canPrepareUiDownload(spec)) {
+      return false;
+    }
+
+    PackageFetcher matchingFetcher = fetcherMatchesSelection();
+    if (matchingFetcher != null) {
+      return !matchingFetcher.isInProgress() && !matchingFetcher.isSuccess();
+    }
+
+    PackageFetcher inFlight = fetcher.get();
+    return inFlight == null || !inFlight.isInProgress();
+  }
+
+  private boolean canPrepareUiDownload(PackageSpec spec) {
+    if (spec == null || spec.chk() == null || selectedKey == null) {
+      return false;
+    }
+    try {
+      new FreenetURI(spec.chk());
+      return canPrepareDownloadTargetPath();
+    } catch (MalformedURLException _) {
+      return false;
+    }
+  }
+
+  private boolean canPrepareDownloadTargetPath() {
+    File versionDir = updatesDir();
+    if (versionDir.exists()) {
+      return versionDir.isDirectory() && versionDir.canWrite();
+    }
+
+    File updatesRoot = getUpdatesRoot();
+    if (updatesRoot.exists()) {
+      return updatesRoot.isDirectory() && updatesRoot.canWrite();
+    }
+
+    File nodeDir = manager.getNode().nodeDir().dir();
+    return nodeDir.exists() && nodeDir.isDirectory() && nodeDir.canWrite();
+  }
+
   @Override
   public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
     resetDescriptorStateForUriChange();
@@ -413,11 +466,11 @@ public class CoreUpdater extends NodeUpdater {
     return f != null && !f.hasFailed();
   }
 
-  private void tryStartDownload() {
+  private boolean tryStartDownload() {
     PackageSpec spec = selectedSpec.get();
     File target = downloadTarget();
     if (spec == null || target == null || spec.chk() == null) {
-      return;
+      return false;
     }
     String chk = spec.chk();
     FreenetURI uri;
@@ -425,7 +478,7 @@ public class CoreUpdater extends NodeUpdater {
       uri = new FreenetURI(chk);
     } catch (MalformedURLException e) {
       logError("Invalid CHK URI for selected package: " + chk, e);
-      return;
+      return false;
     }
     PackageFetcher f = new PackageFetcher(target, uri, chk);
     fetcher.set(f);
@@ -436,27 +489,27 @@ public class CoreUpdater extends NodeUpdater {
             + target.getAbsolutePath()
             + ", chk="
             + chk);
-    f.start();
+    return f.start();
   }
 
   /** Start downloading the currently selected package if not already in progress. */
-  public void startDownloadFromUI() {
+  public boolean startDownloadFromUI() {
     if (selectedSpec.get() == null) {
-      return;
+      return false;
     }
     PackageFetcher matchingFetcher = fetcherMatchesSelection();
     if (matchingFetcher != null) {
       if (matchingFetcher.isInProgress() || matchingFetcher.isSuccess()) {
-        return;
+        return false;
       }
     } else {
       PackageFetcher inFlight = fetcher.get();
       if (inFlight != null && inFlight.isInProgress()) {
         logInfo("Skipping download start: another package download is still running");
-        return;
+        return false;
       }
     }
-    tryStartDownload();
+    return tryStartDownload();
   }
 
   /**
@@ -758,7 +811,7 @@ public class CoreUpdater extends NodeUpdater {
       this.chkString = chkString;
     }
 
-    void start() {
+    boolean start() {
       var ctx =
           manager
               .getNode()
@@ -777,6 +830,7 @@ public class CoreUpdater extends NodeUpdater {
         manager.getNode().services().clientCore().getClientContext().start(createdGetter);
         CoreUpdater.this.logInfo(
             "download started (listener attached): target=" + outFile.getAbsolutePath());
+        return true;
       } catch (FetchException e) {
         markStartFailure(
             e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), safeIsFatal(e));
@@ -785,6 +839,7 @@ public class CoreUpdater extends NodeUpdater {
             "Failed to start package download: "
                 + (errorMsg != null ? errorMsg : e.getClass().getSimpleName()),
             e);
+        return false;
       } catch (Exception e) {
         markStartFailure(
             e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), false);
@@ -793,6 +848,7 @@ public class CoreUpdater extends NodeUpdater {
             "Error starting package download: "
                 + (errorMsg != null ? errorMsg : e.getClass().getSimpleName()),
             e);
+        return false;
       }
     }
 

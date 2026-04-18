@@ -37,8 +37,8 @@ import java.util.Objects;
  *     string when automatic detection is unavailable
  * @param detectedUploadLimitKiB recommended direct upload limit in KiB/s text or an empty string
  *     when automatic detection is unavailable
- * @param currentBandwidthLimits detached effective bandwidth row for the legacy rate page, or
- *     {@code null} when the page should omit the current-settings row
+ * @param currentBandwidthLimits detached effective bandwidth row for the legacy rate page and
+ *     shell-side preserve logic, or {@code null} when no current-settings row is needed
  * @param autodetectedStorageLimitBytes autodetected datastore suggestion in exact bytes, or {@code
  *     -1} when the legacy datastore page should fall back to its fixed-size defaults
  */

@@ -10,6 +10,8 @@ import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
 import network.crypta.platform.api.queue.QueueApiHandler;
 import network.crypta.platform.api.security.SecurityLevelsApiHandler;
+import network.crypta.platform.api.updates.UpdatesApiHandler;
+import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -46,6 +48,12 @@ public final class PlatformApiRouter {
   /** Handler for the {@code /security-levels} endpoint. */
   private final SecurityLevelsApiHandler securityLevelsApiHandler;
 
+  /** Handler for the {@code /updates/core} endpoint family. */
+  private final UpdatesApiHandler updatesApiHandler;
+
+  /** Handler for the {@code /wizard/first-time} endpoint family. */
+  private final FirstTimeWizardApiHandler firstTimeWizardApiHandler;
+
   /** Handler for the {@code /queue/...} endpoint family. */
   private final QueueApiHandler queueApiHandler;
 
@@ -75,7 +83,11 @@ public final class PlatformApiRouter {
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
     connectivityApiHandler = new ConnectivityApiHandler(runtimePorts.connectivity());
-    securityLevelsApiHandler = new SecurityLevelsApiHandler(runtimePorts.securityLevels());
+    securityLevelsApiHandler =
+        new SecurityLevelsApiHandler(
+            runtimePorts.securityLevels(), runtimePorts.config(), runtimePorts.firstTimeWizard());
+    updatesApiHandler = new UpdatesApiHandler(runtimePorts.coreUpdateAction());
+    firstTimeWizardApiHandler = new FirstTimeWizardApiHandler(runtimePorts.firstTimeWizard());
     queueApiHandler =
         new QueueApiHandler(
             runtimePorts.queuePage(),
@@ -129,6 +141,18 @@ public final class PlatformApiRouter {
     if ("peers".equals(firstSegment)) {
       return routePeersRequest(segments, request);
     }
+    if ("config".equals(firstSegment)) {
+      return routeConfigRequest(segments, request);
+    }
+    if ("security-levels".equals(firstSegment)) {
+      return routeSecurityLevelsRequest(segments, request);
+    }
+    if ("updates".equals(firstSegment)) {
+      return routeUpdatesRequest(segments, request);
+    }
+    if ("wizard".equals(firstSegment)) {
+      return routeWizardRequest(segments, request);
+    }
 
     if (!"GET".equals(request.method())) {
       return PlatformApiResponse.error(
@@ -138,16 +162,149 @@ public final class PlatformApiRouter {
     if ("node".equals(firstSegment)) {
       return routeNodeRequest(segments, request);
     }
-    if ("config".equals(firstSegment) && segments.size() == 1) {
-      return PlatformApiResponse.ok(configApiHandler.exportConfig(request.queryParameters()));
-    }
     if ("connectivity".equals(firstSegment) && segments.size() == 1) {
       return PlatformApiResponse.ok(connectivityApiHandler.snapshot(request.queryParameters()));
     }
-    if ("security-levels".equals(firstSegment) && segments.size() == 1) {
-      return PlatformApiResponse.ok(securityLevelsApiHandler.snapshot());
-    }
 
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /config} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected configuration endpoint
+   */
+  private PlatformApiResponse routeConfigRequest(
+      List<String> segments, PlatformApiRequest request) {
+    return switch (segments.size()) {
+      case 1 -> routeConfigRoot(request);
+      case 2 -> routeConfigAction(segments.get(1), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeConfigRoot(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(configApiHandler.exportConfig(request.queryParameters()));
+  }
+
+  private PlatformApiResponse routeConfigAction(String action, PlatformApiRequest request) {
+    if ("overrides".equals(action)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(configApiHandler.applyOverrides(request.queryParameters()));
+    }
+    if ("persist".equals(action)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(configApiHandler.persist());
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /security-levels} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected security-levels endpoint
+   */
+  private PlatformApiResponse routeSecurityLevelsRequest(
+      List<String> segments, PlatformApiRequest request) {
+    return switch (segments.size()) {
+      case 1 -> routeSecurityLevelsRoot(request);
+      case 2 -> routeSecurityLevelsAction(segments.get(1), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeSecurityLevelsRoot(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(securityLevelsApiHandler.snapshot());
+  }
+
+  private PlatformApiResponse routeSecurityLevelsAction(String action, PlatformApiRequest request) {
+    if ("network-warning".equals(action)) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          securityLevelsApiHandler.networkThreatLevelWarning(request.queryParameters()));
+    }
+    if ("network".equals(action)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          securityLevelsApiHandler.setNetworkThreatLevel(request.queryParameters()));
+    }
+    if ("physical".equals(action)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          securityLevelsApiHandler.setPhysicalThreatLevel(request.queryParameters()));
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /updates} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected update endpoint
+   */
+  private PlatformApiResponse routeUpdatesRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (segments.size() == 2 && "core".equals(segments.get(1))) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(updatesApiHandler.coreSnapshot());
+    }
+    if (segments.size() == 3
+        && "core".equals(segments.get(1))
+        && "download".equals(segments.get(2))) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(updatesApiHandler.startCoreDownload());
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /wizard} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected wizard endpoint
+   */
+  private PlatformApiResponse routeWizardRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (segments.size() == 2 && "first-time".equals(segments.get(1))) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(firstTimeWizardApiHandler.snapshot());
+    }
+    if (segments.size() == 3
+        && "first-time".equals(segments.get(1))
+        && "apply".equals(segments.get(2))) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(firstTimeWizardApiHandler.apply(request.queryParameters()));
+    }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 
@@ -458,11 +615,10 @@ public final class PlatformApiRouter {
    * @return JSON response for the selected peer endpoint
    */
   private PlatformApiResponse routePeerResource(String resource, PlatformApiRequest request) {
-    if ("add".equals(resource)) {
-      if ("POST".equals(request.method())) {
-        return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));
-      }
+    if ("add".equals(resource) && "POST".equals(request.method())) {
+      return PlatformApiResponse.created(peersApiHandler.add(request.queryParameters()));
     }
+
     if (!"GET".equals(request.method())) {
       return methodNotAllowed("GET", GET_ONLY_MESSAGE);
     }

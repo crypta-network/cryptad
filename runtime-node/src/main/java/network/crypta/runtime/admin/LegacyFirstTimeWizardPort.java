@@ -71,6 +71,9 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   /** Shared message text for unexpected legacy failures that are logged and kept daemon-local. */
   private static final String UNEXPECTED_ERROR_MESSAGE = "Should not happen, please report! {}";
 
+  /** Legacy node-config key for the direct download bandwidth limit. */
+  private static final String INPUT_BANDWIDTH_LIMIT = "inputBandwidthLimit";
+
   /** Live node backing the wizard's security, network, storage, and config reads. */
   private final Node node;
 
@@ -207,12 +210,14 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   public void applySubmission(FirstTimeWizardSubmission submission) {
     Objects.requireNonNull(submission, "submission");
 
-    node.services()
-        .securityLevels()
-        .setThreatLevel(
-            submission.knowSomeone() && !submission.connectToStrangers()
-                ? NETWORK_THREAT_LEVEL.HIGH
-                : NETWORK_THREAT_LEVEL.NORMAL);
+    if (!submission.preserveCurrentNetworkThreatLevel()) {
+      node.services()
+          .securityLevels()
+          .setThreatLevel(
+              submission.knowSomeone() && !submission.connectToStrangers()
+                  ? NETWORK_THREAT_LEVEL.HIGH
+                  : NETWORK_THREAT_LEVEL.NORMAL);
+    }
 
     Config config = node.getConfig();
     applyBandwidth(config, submission);
@@ -303,15 +308,19 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
   /**
    * Returns the legacy rate-page current-bandwidth row when the node is not using defaults.
    *
-   * <p>The old multipage wizard showed a detached "current settings" row only when the upload limit
-   * had been explicitly configured. That behavior is preserved here so the HTTP layer can render
-   * the row without directly consulting live daemon config or network state.
+   * <p>The legacy wizard originally surfaced the row only when the upload limit had been explicitly
+   * configured. The shell-native wizard preserve path also needs to protect nodes where only the
+   * download limit was customized, so the detached row is now exposed whenever either direct
+   * bandwidth limit differs from its default.
    *
    * @param config live daemon config used to determine whether the current-bandwidth row is needed
    * @return detached current-bandwidth row, or {@code null} when the legacy page should omit it
    */
   private FirstTimeWizardCurrentBandwidthLimits currentBandwidthLimits(Config config) {
-    if (config.get("node").getOption(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT).isDefault()) {
+    boolean outputLimitIsDefault =
+        config.get("node").getOption(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT).isDefault();
+    boolean inputLimitIsDefault = config.get("node").getOption(INPUT_BANDWIDTH_LIMIT).isDefault();
+    if (outputLimitIsDefault && inputLimitIsDefault) {
       return null;
     }
 
@@ -331,9 +340,12 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    *     the HTTP layer
    */
   private void applyBandwidth(Config config, FirstTimeWizardSubmission submission) {
+    if (submission.preserveBandwidthSettings()) {
+      return;
+    }
     try {
       if (!submission.haveMonthlyLimit()) {
-        config.get("node").set("inputBandwidthLimit", submission.downloadLimitKiB() + "KiB");
+        config.get("node").set(INPUT_BANDWIDTH_LIMIT, submission.downloadLimitKiB() + "KiB");
         config
             .get("node")
             .set(
@@ -346,7 +358,7 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
           BandwidthLimit.fromMonthlyBudget(
               Fields.parseLong(submission.bandwidthMonthlyLimitGiB() + "GiB"),
               Node.getMinimumBandwidth());
-      config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes()));
+      config.get("node").set(INPUT_BANDWIDTH_LIMIT, Long.toString(bandwidth.downBytes()));
       config
           .get("node")
           .set(LegacyWelcomeActionPort.OUTPUT_BANDWIDTH_LIMIT, Long.toString(bandwidth.upBytes()));
@@ -379,7 +391,7 @@ final class LegacyFirstTimeWizardPort implements FirstTimeWizardPort {
    * @param submission detached wizard submission containing the password-related choices
    */
   private void applyPasswordIfRequired(FirstTimeWizardSubmission submission) {
-    if (passwordAlreadySet()) {
+    if (submission.preserveCurrentPhysicalThreatLevel() || passwordAlreadySet()) {
       return;
     }
 

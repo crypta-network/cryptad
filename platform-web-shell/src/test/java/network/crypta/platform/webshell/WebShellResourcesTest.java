@@ -14,12 +14,19 @@ class WebShellResourcesTest {
     assertTrue(html.contains("Web Shell v1"));
     assertTrue(html.contains("Peer control plane"));
     assertTrue(html.contains("Queue control plane"));
+    assertTrue(html.contains("Core updater"));
+    assertTrue(html.contains("Operator subset"));
+    assertTrue(html.contains("First-time setup"));
     assertTrue(html.contains("__BOOTSTRAP_JSON__"));
     assertTrue(html.contains("peer-create-form\" hidden"));
     assertTrue(html.contains("name=\"referenceText\""));
     assertTrue(html.contains("id=\"peers-status\""));
     assertTrue(html.contains("name=\"filterData\" type=\"checkbox\" checked"));
     assertTrue(html.contains("queue-create-form\" hidden"));
+    assertTrue(html.contains("id=\"security-form\""));
+    assertTrue(html.contains("id=\"updates-body\""));
+    assertTrue(html.contains("id=\"config-form\""));
+    assertTrue(html.contains("id=\"wizard-form\""));
   }
 
   @Test
@@ -35,6 +42,7 @@ class WebShellResourcesTest {
     assertPeerMutationMarkersPresent(script);
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
+    assertPlatformControlPlaneMarkersPresent(script);
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
@@ -54,6 +62,10 @@ class WebShellResourcesTest {
     assertTrue(script.contains("case \"change_priority_top\":"));
     assertTrue(script.contains("case \"change_priority_bottom\":"));
     assertTrue(script.contains("let queueLoadGeneration = 0;"));
+    assertTrue(script.contains("let securityLoadGeneration = 0;"));
+    assertTrue(script.contains("let updatesLoadGeneration = 0;"));
+    assertTrue(script.contains("let configLoadGeneration = 0;"));
+    assertTrue(script.contains("let wizardLoadGeneration = 0;"));
     assertTrue(script.contains("let formPassword ="));
     assertTrue(
         script.contains(
@@ -215,5 +227,126 @@ class WebShellResourcesTest {
     assertTrue(errorGuardIndex > renderPeersIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(loadPeersCatchIndex > renderErrorIndex);
+  }
+
+  private static void assertPlatformControlPlaneMarkersPresent(String script) {
+    assertTrue(script.contains("const shellState = {"));
+    assertTrue(script.contains("function apiUrlWithQuery(path, query)"));
+    assertTrue(script.contains("function htmlToText(html)"));
+    assertTrue(script.contains("async function loadSecuritySection()"));
+    assertTrue(script.contains("async function loadUpdatesSection()"));
+    assertTrue(script.contains("async function loadConfigSection()"));
+    assertTrue(script.contains("async function loadWizardSection()"));
+    assertTrue(script.contains("async function submitSecurityForm(event)"));
+    assertTrue(script.contains("async function submitConfigForm(event)"));
+    assertTrue(script.contains("async function triggerCoreDownload()"));
+    assertTrue(script.contains("async function submitWizardForm(event)"));
+    assertTrue(script.contains("function wizardSubmissionSupported(data)"));
+    assertTrue(script.contains("function wizardBandwidthModeUnknown(data)"));
+    assertTrue(script.contains("function wizardCanEditCurrentNetworkThreatLevel(data)"));
+    assertTrue(script.contains("function wizardCanEditCurrentPhysicalThreatLevel(data)"));
+    assertTrue(script.contains("function wizardBandwidthChoiceRequired(data)"));
+    assertTrue(
+        script.contains("function wizardBandwidthChoiceRequired(data) {\n    return false;\n  }"));
+    assertTrue(script.contains("function wizardBandwidthChoiceMessage()"));
+    assertTrue(script.contains("function clearWizardBandwidthChoiceRequirement()"));
+    assertTrue(script.contains("function wizardUnsupportedMessage(data)"));
+    assertTrue(script.contains("apiUrlWithQuery(\"security-levels/network-warning\""));
+    assertTrue(script.contains("loadJson(apiUrl(\"updates/core\"))"));
+    assertTrue(script.contains("loadJson(apiUrl(\"config?sections=CURRENT\"))"));
+    assertTrue(script.contains("loadJson(apiUrl(\"wizard/first-time\"))"));
+    assertTrue(
+        script.contains(
+            "securityControls.form.hidden = !formPassword || !shellState.securitySnapshot;"));
+    assertTrue(
+        script.contains(
+            "configControls.form.hidden = !formPassword || !shellState.configSnapshot;"));
+    assertTrue(
+        script.contains(
+            "wizardControls.form.hidden =\n"
+                + "      !formPassword || !shellState.wizardSnapshot ||"
+                + " !wizardSubmissionSupported(shellState.wizardSnapshot);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.knowSomeone.parentElement.hidden = !networkThreatEditable;"));
+    assertTrue(
+        script.contains(
+            "wizardControls.connectToStrangers.parentElement.hidden =\n"
+                + "      !networkThreatEditable || !knowsTrustedOperators;"));
+    assertTrue(script.contains("wizardControls.editBandwidth.parentElement.hidden = false;"));
+    assertTrue(script.contains("wizardControls.connectToStrangers.checked = false;"));
+    assertTrue(script.contains("wizardControls.editBandwidth.checked = false;"));
+    assertTrue(
+        script.contains(
+            "wizardControls.knowSomeone.checked =\n"
+                + "      networkThreatEditable && data.currentNetworkThreatLevel === \"HIGH\";"));
+    assertTrue(script.contains("wizardControls.haveMonthlyLimit.indeterminate = false;"));
+    assertTrue(script.contains("currentNetworkThreatLevel"));
+    assertTrue(script.contains("currentPhysicalThreatLevel"));
+    assertTrue(
+        script.contains(
+            "Current LOW/MAXIMUM network threat level will be preserved; use the security controls"
+                + " to change it."));
+    assertTrue(
+        script.contains(
+            "Current LOW/MAXIMUM physical threat level will be preserved; use the security controls"
+                + " to change it."));
+    assertTrue(
+        script.contains(
+            "Current bandwidth settings will be preserved unless you enable bandwidth editing."));
+    assertTrue(
+        script.contains(
+            "Default bandwidth settings will be preserved unless you enable bandwidth editing."));
+    assertTrue(script.contains("can delete queued work. Continue?"));
+    assertTrue(
+        script.contains(
+            "Save one threat-level change at a time so warnings and failures cannot partially apply"
+                + " a combined update."));
+    assertTrue(script.contains("shellState.securitySnapshot = null;"));
+    assertTrue(script.contains("shellState.configSnapshot = null;"));
+    assertTrue(script.contains("shellState.updatesSnapshot = null;"));
+    assertTrue(script.contains("shellState.wizardSnapshot = null;"));
+    assertTrue(script.contains("const loadGeneration = ++securityLoadGeneration;"));
+    assertTrue(script.contains("const loadGeneration = ++updatesLoadGeneration;"));
+    assertTrue(script.contains("const loadGeneration = ++configLoadGeneration;"));
+    assertTrue(script.contains("const loadGeneration = ++wizardLoadGeneration;"));
+    assertTrue(script.contains("if (loadGeneration !== securityLoadGeneration) {"));
+    assertTrue(script.contains("if (loadGeneration !== updatesLoadGeneration) {"));
+    assertTrue(script.contains("if (loadGeneration !== configLoadGeneration) {"));
+    assertTrue(script.contains("if (loadGeneration !== wizardLoadGeneration) {"));
+    assertTrue(script.contains("await Promise.all([loadSecuritySection(), loadWizardSection()]);"));
+    assertTrue(
+        script.contains(
+            "await Promise.all([loadConfigSection(), loadUpdatesSection(),"
+                + " loadWizardSection()]);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.knowSomeone.addEventListener(\"change\","
+                + " updateWizardFieldVisibility);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.editBandwidth.addEventListener(\"change\","
+                + " updateWizardFieldVisibility);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.downloadLimit.addEventListener(\"input\","
+                + " clearWizardBandwidthChoiceRequirement);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.uploadLimit.addEventListener(\"input\","
+                + " clearWizardBandwidthChoiceRequirement);"));
+    assertTrue(
+        script.contains(
+            "wizardControls.monthlyLimit.addEventListener(\"input\","
+                + " clearWizardBandwidthChoiceRequirement);"));
+    assertTrue(script.contains("await postForm(\"config/overrides\", formData"));
+    assertTrue(script.contains("await postForm(\"updates/core/download\", new FormData()"));
+    assertTrue(
+        script.contains(
+            "const preserveBandwidthSettings = !wizardControls.editBandwidth.checked;"));
+    assertTrue(script.contains("formData.set(\"preserveBandwidthSettings\", \"on\");"));
+    assertTrue(script.contains("formData.set(\"preserveCurrentNetworkThreatLevel\", \"on\");"));
+    assertTrue(script.contains("formData.set(\"preserveCurrentPhysicalThreatLevel\", \"on\");"));
+    assertTrue(script.contains("await postForm("));
   }
 }
