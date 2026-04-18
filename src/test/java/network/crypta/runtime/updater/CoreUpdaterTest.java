@@ -174,6 +174,7 @@ class CoreUpdaterTest {
           versionDir.canWrite(), "Test environment cannot simulate a non-writable directory.");
 
       CoreUpdater updater = createCoreUpdater(nodeDir);
+      setField(updater, "latestInfo", new CoreInfo("1200", null, Map.of(), null, null));
       setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
       setSelectedKey(updater);
 
