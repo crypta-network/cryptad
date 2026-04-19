@@ -327,6 +327,23 @@ a {
   min-height: 24px;
 }
 
+.publisher-forms {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
+.publisher-form {
+  height: 100%;
+}
+
+.publisher-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .status-message {
   margin: 0;
   padding: 10px 14px;

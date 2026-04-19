@@ -22,6 +22,7 @@
     wizardSnapshot: null,
   };
   const directDownloadOperation = "create_direct_download";
+  const publisherDefaultCompatibilityMode = "COMPAT_CURRENT";
   const queueState = {
     page: "downloads",
     advancedMode: false,
@@ -49,6 +50,9 @@
     apps: document.getElementById("apps-body"),
     appsStatus: document.getElementById("apps-status"),
     appsReadonlyHint: document.getElementById("apps-readonly-hint"),
+    publisher: document.getElementById("publisher-body"),
+    publisherStatus: document.getElementById("publisher-status"),
+    publisherReadonlyHint: document.getElementById("publisher-readonly-hint"),
     diagnostics: document.getElementById("diagnostics-body"),
     diagnosticsStatus: document.getElementById("diagnostics-status"),
     security: document.getElementById("security-body"),
@@ -83,6 +87,11 @@
   };
   const appsControls = {
     refreshButton: document.getElementById("apps-refresh-button"),
+  };
+  const publisherControls = {
+    fileForm: document.getElementById("publisher-file-form"),
+    directoryForm: document.getElementById("publisher-directory-form"),
+    queueLink: document.querySelector('#publisher .queue-toolbar a[href="#queue"]'),
   };
   const diagnosticsControls = {
     refreshButton: document.getElementById("diagnostics-refresh-button"),
@@ -195,6 +204,10 @@
 
   function setAppsStatus(message, tone) {
     setSectionStatus(sections.appsStatus, message, tone);
+  }
+
+  function setPublisherStatus(message, tone) {
+    setSectionStatus(sections.publisherStatus, message, tone);
   }
 
   function setDiagnosticsStatus(message, tone) {
@@ -647,6 +660,206 @@
     );
   }
 
+  function publisherSourceType(form) {
+    return form instanceof HTMLFormElement && form.dataset.publisherSourceType === "directory"
+      ? "directory"
+      : "file";
+  }
+
+  function publisherLabel(sourceType) {
+    return sourceType === "directory" ? "directory" : "file";
+  }
+
+  function publisherMutationPath(sourceType) {
+    return sourceType === "directory" ? "queue/inserts/directory" : "queue/inserts/file";
+  }
+
+  function generatePublisherIdentifier(sourceType) {
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+    const randomToken = Math.random().toString(36).slice(2, 8);
+    return `publisher-${publisherLabel(sourceType)}-${timestamp}-${randomToken}`;
+  }
+
+  function trimPublisherValue(form, fieldName) {
+    const field = form.querySelector(`[name="${fieldName}"]`);
+    return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
+      ? field.value.trim()
+      : "";
+  }
+
+  function initializePublisherForm(form) {
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    const identifierField = form.querySelector('input[name="identifier"]');
+    if (identifierField instanceof HTMLInputElement && identifierField.value.trim() === "") {
+      identifierField.value = generatePublisherIdentifier(publisherSourceType(form));
+    }
+    const compatibilityField = form.querySelector('input[name="compatibilityMode"]');
+    if (
+      compatibilityField instanceof HTMLInputElement &&
+      compatibilityField.value.trim() === ""
+    ) {
+      compatibilityField.value = publisherDefaultCompatibilityMode;
+    }
+  }
+
+  function resetPublisherForm(form) {
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    form.reset();
+    initializePublisherForm(form);
+  }
+
+  function buildPublisherFormData(form) {
+    const sourceType = publisherSourceType(form);
+    const formData = new FormData();
+    const sourcePath = trimPublisherValue(form, "sourcePath");
+    const insertUri = trimPublisherValue(form, "insertUri");
+    let identifier = trimPublisherValue(form, "identifier");
+    if (!identifier) {
+      identifier = generatePublisherIdentifier(sourceType);
+      const identifierField = form.querySelector('input[name="identifier"]');
+      if (identifierField instanceof HTMLInputElement) {
+        identifierField.value = identifier;
+      }
+    }
+    const compatibilityMode =
+      trimPublisherValue(form, "compatibilityMode") || publisherDefaultCompatibilityMode;
+
+    formData.set("sourcePath", sourcePath);
+    formData.set("insertUri", insertUri);
+    formData.set("identifier", identifier);
+    formData.set("compatibilityMode", compatibilityMode);
+
+    const compressField = form.querySelector('input[name="compress"]');
+    if (compressField instanceof HTMLInputElement && compressField.checked) {
+      formData.set("compress", "on");
+    }
+
+    const contentType = trimPublisherValue(form, "contentType");
+    if (contentType) {
+      formData.set("contentType", contentType);
+    }
+
+    const targetFilename = trimPublisherValue(form, "targetFilename");
+    if (targetFilename) {
+      formData.set("targetFilename", targetFilename);
+    }
+
+    return formData;
+  }
+
+  function renderPublisherResult(data, sourceType) {
+    clear(sections.publisher);
+
+    const resolvedSourceType =
+      typeof data.sourceType === "string" && data.sourceType ? data.sourceType : publisherLabel(sourceType);
+    const insertAccepted = publisherInsertAccepted(data);
+    const summaryEntries = [
+      ["Operation", data.operation || `create_local_${resolvedSourceType}_insert`],
+      ["Source type", resolvedSourceType],
+      ["Source path", data.sourcePath || "Unavailable"],
+      ["Insert URI", data.insertUri || "Unavailable"],
+      ["Identifier", data.identifier || "Unavailable"],
+      ["Outcome", data.outcome || "Unknown"],
+    ];
+    sections.publisher.append(
+      summaryCard("Publisher result", summaryEntries, insertAccepted ? "is-success" : "is-warning"),
+    );
+
+    if (insertAccepted) {
+      const actions = document.createElement("div");
+      actions.className = "publisher-result-actions";
+      const queueLink = document.createElement("a");
+      queueLink.className = "button button-secondary";
+      queueLink.href = "#queue";
+      queueLink.textContent = "Open upload queue";
+      queueLink.addEventListener("click", () => {
+        showUploadQueueFromPublisher().catch((error) => {
+          setStatus(error instanceof Error ? error.message : String(error), "is-error");
+        });
+      });
+      actions.append(queueLink);
+      sections.publisher.append(actions);
+    }
+
+    const extraFields = topLevelFieldEntries(data, [
+      "operation",
+      "sourceType",
+      "sourcePath",
+      "insertUri",
+      "identifier",
+      "outcome",
+    ]);
+    if (extraFields.length) {
+      sections.publisher.append(definitionList(extraFields));
+    }
+  }
+
+  function publisherInsertAccepted(data) {
+    switch (publisherInsertOutcome(data)) {
+      case "STARTED":
+      case "IDENTIFIER_COLLISION":
+      case "METADATA_UNRESOLVED":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function publisherInsertOutcome(data) {
+    return typeof data?.outcome === "string" && data.outcome ? data.outcome : "Unknown";
+  }
+
+  async function showUploadQueueFromPublisher() {
+    queueState.page = "uploads";
+    queueState.sortBy = null;
+    queueState.reversed = false;
+    queueState.keysVisible = false;
+    setStatus("Refreshing upload queue.");
+    await loadQueueSection();
+  }
+
+  async function submitPublisherForm(event) {
+    event.preventDefault();
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    if (typeof form.reportValidity === "function" && !form.reportValidity()) {
+      return;
+    }
+
+    const sourceType = publisherSourceType(form);
+    const formData = buildPublisherFormData(form);
+
+    try {
+      const data = await postForm(
+        publisherMutationPath(sourceType),
+        formData,
+        "Publisher actions unavailable in read-only mode.",
+      );
+      renderPublisherResult(data, sourceType);
+      if (publisherInsertAccepted(data)) {
+        resetPublisherForm(form);
+        setPublisherStatus(
+          `Local ${publisherLabel(sourceType)} insert handled: ${publisherInsertOutcome(data)}.`,
+          "is-success",
+        );
+        await showUploadQueueFromPublisher();
+      } else {
+        setPublisherStatus(
+          `Local ${publisherLabel(sourceType)} insert did not start: ${publisherInsertOutcome(data)}.`,
+          "is-error",
+        );
+      }
+    } catch (error) {
+      setPublisherStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
   function appDisplayName(app) {
     return typeof app.name === "string" && app.name ? app.name : typeof app.appId === "string" ? app.appId : "App";
   }
@@ -1016,6 +1229,14 @@
   function updateAppsToolbar() {
     if (sections.appsReadonlyHint) {
       sections.appsReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updatePublisherToolbar() {
+    publisherControls.fileForm.hidden = !formPassword;
+    publisherControls.directoryForm.hidden = !formPassword;
+    if (sections.publisherReadonlyHint) {
+      sections.publisherReadonlyHint.hidden = !!formPassword;
     }
   }
 
@@ -1397,6 +1618,7 @@
     formPassword = typeof nextBootstrap.formPassword === "string" ? nextBootstrap.formPassword : "";
     updateSecurityToolbar();
     updateAppsToolbar();
+    updatePublisherToolbar();
     updateUpdatesToolbar();
     updateConfigToolbar();
     updateWizardToolbar();
@@ -2417,6 +2639,18 @@
     });
   }
 
+  function bindPublisherInteractions() {
+    publisherControls.fileForm.addEventListener("submit", submitPublisherForm);
+    publisherControls.directoryForm.addEventListener("submit", submitPublisherForm);
+    if (publisherControls.queueLink instanceof HTMLAnchorElement) {
+      publisherControls.queueLink.addEventListener("click", () => {
+        showUploadQueueFromPublisher().catch((error) => {
+          setStatus(error instanceof Error ? error.message : String(error), "is-error");
+        });
+      });
+    }
+  }
+
   function bindSecurityInteractions() {
     securityControls.form.addEventListener("submit", submitSecurityForm);
   }
@@ -2484,9 +2718,12 @@
     }
   }
 
+  initializePublisherForm(publisherControls.fileForm);
+  initializePublisherForm(publisherControls.directoryForm);
   renderLegacyLinks();
   bindAlertsInteractions();
   bindAppsInteractions();
+  bindPublisherInteractions();
   bindSecurityInteractions();
   bindUpdatesInteractions();
   bindConfigInteractions();
@@ -2496,6 +2733,7 @@
   bindQueueInteractions();
   updateAlertsToolbar();
   updateAppsToolbar();
+  updatePublisherToolbar();
   updateDiagnosticsToolbar();
   updateSecurityToolbar();
   updateUpdatesToolbar();

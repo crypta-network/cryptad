@@ -11,6 +11,7 @@ val mainSourceSet = sourceSets.named("main")
 dependencies {
   implementation(project(":foundation-crypto-keys"))
   implementation(project(":foundation-support"))
+  implementation(project(":kernel-content"))
 
   api(project(":runtime-spi"))
   api(project(":platform-apphost"))

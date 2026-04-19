@@ -422,6 +422,23 @@ End
         bodyWrite.bodyText());
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "http://localhost/api/v1/queue/inserts/file",
+        "http://localhost/api/v1/queue/inserts/directory",
+      })
+  void handleMethodPOST_whenQueueInsertPasswordMissing_expectJson403WithoutRouting(
+      String requestUri) throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(URI.create(requestUri), request, ctx);
+
+    verifyNoInteractions(router);
+    assertForbiddenBody();
+  }
+
   @Test
   void handleMethodPOST_whenPeerMutationPasswordMissing_expectJson403WithoutRouting()
       throws Exception {

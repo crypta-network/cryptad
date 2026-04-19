@@ -1,0 +1,9 @@
+manifest.version=1
+app.id=publisher
+app.name=Publisher
+app.version=${appVersion}
+app.exec=bin/publisher.sh
+app.ui.entry=/app/node/#publisher
+app.permissions=queue.read,queue.write,content.insert
+quota.data.bytes=0
+quota.cache.bytes=0

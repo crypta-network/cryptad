@@ -21,6 +21,7 @@
         <div class="hero-actions">
           <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
           <a class="button button-secondary" href="/api/v1/apps">Installed apps JSON</a>
+          <a class="button button-secondary" href="#publisher">Publisher</a>
           <a class="button button-secondary" href="/api/v1/alerts">Alerts JSON</a>
           <a class="button button-secondary" href="/api/v1/diagnostics">Diagnostics JSON</a>
           <a class="button button-secondary" href="/">Legacy root</a>
@@ -380,6 +381,202 @@
             <p class="loading">Loading peer roster...</p>
           </div>
         </article>
+      </section>
+
+      <section class="panel panel-wide" id="publisher">
+        <div class="panel-header">
+          <p class="panel-kicker">Publisher</p>
+          <h2>First-party publishing surface</h2>
+        </div>
+        <p class="panel-description">
+          Queue one persistent local file or local directory insert through the shell-native
+          Publisher surface. Installed apps can deep-link here with
+          <code>/app/node/#publisher</code>.
+        </p>
+        <div class="queue-toolbar">
+          <a class="button button-secondary" href="#queue">View upload queue</a>
+        </div>
+        <div class="queue-status" id="publisher-status" aria-live="polite"></div>
+        <p class="panel-description" hidden id="publisher-readonly-hint">
+          Publisher actions are unavailable in read-only mode.
+        </p>
+        <div class="publisher-forms">
+          <form
+            class="control-form publisher-form"
+            hidden
+            id="publisher-file-form"
+            data-publisher-source-type="file"
+          >
+            <div class="queue-create-copy">
+              <p class="panel-kicker">Local file</p>
+              <p class="queue-create-description">
+                Queue a persistent insert from one local file path.
+              </p>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="publisher-file-source-path">
+                <span>Source path</span>
+                <input
+                  id="publisher-file-source-path"
+                  name="sourcePath"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+              <label class="queue-field" for="publisher-file-insert-uri">
+                <span>Insert URI</span>
+                <input
+                  id="publisher-file-insert-uri"
+                  name="insertUri"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="publisher-file-identifier">
+                <span>Identifier</span>
+                <input
+                  id="publisher-file-identifier"
+                  name="identifier"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+              <label class="queue-field" for="publisher-file-compatibility-mode">
+                <span>Compatibility mode</span>
+                <input
+                  id="publisher-file-compatibility-mode"
+                  name="compatibilityMode"
+                  type="text"
+                  value="COMPAT_CURRENT"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="publisher-file-content-type">
+                <span>Content type</span>
+                <input
+                  id="publisher-file-content-type"
+                  name="contentType"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              </label>
+              <label class="queue-field" for="publisher-file-target-filename">
+                <span>Target filename</span>
+                <input
+                  id="publisher-file-target-filename"
+                  name="targetFilename"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              </label>
+            </div>
+            <label class="checkbox-inline" for="publisher-file-compress">
+              <input id="publisher-file-compress" name="compress" type="checkbox" checked>
+              <span>Compress</span>
+            </label>
+            <div class="control-form-actions">
+              <button class="button button-primary" id="publisher-file-submit" type="submit">
+                Publish local file
+              </button>
+            </div>
+          </form>
+
+          <form
+            class="control-form publisher-form"
+            hidden
+            id="publisher-directory-form"
+            data-publisher-source-type="directory"
+          >
+            <div class="queue-create-copy">
+              <p class="panel-kicker">Local directory</p>
+              <p class="queue-create-description">
+                Queue a persistent insert from one local directory tree.
+              </p>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="publisher-directory-source-path">
+                <span>Source path</span>
+                <input
+                  id="publisher-directory-source-path"
+                  name="sourcePath"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+              <label class="queue-field" for="publisher-directory-insert-uri">
+                <span>Insert URI</span>
+                <input
+                  id="publisher-directory-insert-uri"
+                  name="insertUri"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+            </div>
+            <div class="control-form-grid">
+              <label class="queue-field" for="publisher-directory-identifier">
+                <span>Identifier</span>
+                <input
+                  id="publisher-directory-identifier"
+                  name="identifier"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+              <label class="queue-field" for="publisher-directory-compatibility-mode">
+                <span>Compatibility mode</span>
+                <input
+                  id="publisher-directory-compatibility-mode"
+                  name="compatibilityMode"
+                  type="text"
+                  value="COMPAT_CURRENT"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+              </label>
+            </div>
+            <label class="checkbox-inline" for="publisher-directory-compress">
+              <input id="publisher-directory-compress" name="compress" type="checkbox" checked>
+              <span>Compress</span>
+            </label>
+            <div class="control-form-actions">
+              <button
+                class="button button-primary"
+                id="publisher-directory-submit"
+                type="submit"
+              >
+                Publish directory tree
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="panel-body" id="publisher-body">
+          <p class="empty-state">
+            Use the file or directory form to queue a persistent insert, then jump to the upload
+            queue to follow progress.
+          </p>
+        </div>
       </section>
 
       <section class="panel panel-wide" id="queue">

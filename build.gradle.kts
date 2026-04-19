@@ -504,6 +504,7 @@ tasks.register("stageFirstPartyApps") {
   group = "build"
   description = "Stages the repo-owned first-party AppHost bundles."
   dependsOn(":apps:queue-manager:stageApp")
+  dependsOn(":apps:publisher:stageApp")
 }
 
 // The default from build-logic (512m) is too small for the full test suite on Windows and can

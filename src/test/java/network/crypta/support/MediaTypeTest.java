@@ -26,6 +26,26 @@ class MediaTypeTest {
       MIME_TEXT_HTML + "; " + PARAM_CHARSET + "=" + CHARSET_UTF8;
 
   @Test
+  @DisplayName("guessMIMEType uses Cryptad registry for extensions missing from JDK tables")
+  void guessMIMEType_whenCryptadOnlyExtension_expectRegistryMime() {
+    // Arrange + Act
+    String mimeType = MediaType.guessMIMEType("image.avif");
+
+    // Assert
+    assertEquals("image/avif", mimeType);
+  }
+
+  @Test
+  @DisplayName("guessMIMEType falls back to Cryptad default binary type")
+  void guessMIMEType_whenUnknownExtension_expectDefaultMime() {
+    // Arrange + Act
+    String mimeType = MediaType.guessMIMEType("artifact.unknownext");
+
+    // Assert
+    assertEquals("application/octet-stream", mimeType);
+  }
+
+  @Test
   @DisplayName("parse constructor: simple type/subtype without parameters")
   void constructor_whenSimpleType_expectParsedCorrectly() throws Exception {
     // Arrange & Act

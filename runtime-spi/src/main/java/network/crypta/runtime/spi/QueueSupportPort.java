@@ -1,6 +1,7 @@
 package network.crypta.runtime.spi;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Exposes the remaining queue support hooks still needed by the HTTP layer.
@@ -14,10 +15,14 @@ import java.io.IOException;
  * <p>The port is not a general queue-management API. Queue reads, queue creation, completed-list
  * tracking, and existing-request mutations stay on their dedicated ports. Implementations may still
  * consult live daemon objects internally, but callers should only rely on the detached contract
- * defined here.
+ * defined here. The insert-compatibility accessors also make this port the queue-side policy source
+ * of truth for higher layers that need to validate local insert requests. That keeps the Platform
+ * API and the legacy HTTP queue flow aligned even when the runtime changes which concrete
+ * compatibility mode is considered the default or which historical modes remain accepted.
  *
  * <ul>
  *   <li>Availability gating for the queue backend.
+ *   <li>Insert compatibility-mode choices derived from the live runtime policy.
  *   <li>Point-in-time persistence support state for queue error pages.
  *   <li>Start and finish hooks for the legacy panic workflow.
  * </ul>
@@ -36,6 +41,41 @@ public interface QueueSupportPort {
    * @return {@code true} when the live queue backend is enabled
    */
   boolean isQueueBackendEnabled();
+
+  /**
+   * Returns the concrete insert compatibility-mode names currently accepted by the runtime.
+   *
+   * <p>The returned list preserves the runtime's chosen display and validation order after
+   * normalizing pseudo-modes such as {@code COMPAT_CURRENT}. Callers should treat the list as the
+   * source of truth for validating user-supplied insert compatibility-mode names rather than
+   * hard-coding historic mode constants in higher layers.
+   *
+   * <p>Callers are expected to render or validate against this ordered list as-is. In particular,
+   * callers should not sort it, infer that the latest known mode must be the default, or assume
+   * that pseudo-modes such as {@code COMPAT_CURRENT} will appear in the result. Implementations may
+   * intentionally pin the default to an older concrete mode while still advertising newer concrete
+   * modes for explicit opt-in use.
+   *
+   * @return ordered concrete compatibility-mode names accepted for new inserts
+   */
+  List<String> supportedInsertCompatibilityModes();
+
+  /**
+   * Returns the current concrete default insert compatibility-mode name.
+   *
+   * <p>This value is the runtime-resolved default that callers should use when a higher layer
+   * accepts pseudo-values such as {@code COMPAT_CURRENT} or {@code COMPAT_DEFAULT}. The returned
+   * name is always concrete and may intentionally differ from the latest known compatibility mode.
+   *
+   * <p>Callers should use this value for expansion only after they have accepted a pseudo-mode from
+   * user input or configuration. They should not substitute it for every incoming value, because a
+   * user may explicitly request one of the older concrete modes listed by {@link
+   * #supportedInsertCompatibilityModes()} and expect that exact mode to reach the queue insert
+   * adapter unchanged.
+   *
+   * @return current concrete default insert compatibility-mode name
+   */
+  String defaultInsertCompatibilityMode();
 
   /**
    * Returns the current detached persistence-support status for the queue pages.
