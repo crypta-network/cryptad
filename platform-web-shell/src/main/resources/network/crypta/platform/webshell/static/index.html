@@ -16,10 +16,12 @@
         <h1>Web Shell v1</h1>
         <p class="lede">
           Snapshot views, config changes, updater triggers, first-run controls, queue actions, and
-          selective legacy deep links powered by Platform API v1.
+          alerts and diagnostics snapshots powered by Platform API v1.
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
+          <a class="button button-secondary" href="/api/v1/alerts">Alerts JSON</a>
+          <a class="button button-secondary" href="/api/v1/diagnostics">Diagnostics JSON</a>
           <a class="button button-secondary" href="/">Legacy root</a>
         </div>
       </header>
@@ -42,6 +44,49 @@
           </div>
           <div class="panel-body" id="connectivity-body">
             <p class="loading">Loading connectivity snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="alerts-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Alerts</p>
+            <h2>Alert queue</h2>
+          </div>
+          <p class="panel-description">
+            Current alerts stay native to the shell, including dismiss actions for alerts that can
+            be cleared from Platform API v1.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="alerts-refresh-button" type="button">
+              Refresh alerts
+            </button>
+          </div>
+          <div class="queue-status" id="alerts-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="alerts-readonly-hint">
+            Alert dismissal is unavailable in read-only mode.
+          </p>
+          <div class="panel-body" id="alerts-body">
+            <p class="loading">Loading alerts snapshot...</p>
+          </div>
+        </article>
+
+        <article class="panel" id="diagnostics-panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Diagnostics</p>
+            <h2>Runtime diagnostics</h2>
+          </div>
+          <p class="panel-description">
+            Review the exported diagnostic sections and the plain-text export without leaving the
+            shell.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="diagnostics-refresh-button" type="button">
+              Refresh diagnostics
+            </button>
+          </div>
+          <div class="queue-status" id="diagnostics-status" aria-live="polite"></div>
+          <div class="panel-body" id="diagnostics-body">
+            <p class="empty-state">Use Refresh diagnostics to load the current diagnostics snapshot.</p>
           </div>
         </article>
 

@@ -102,6 +102,8 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.darknetConnectionsPort(), ports.darknetConnections()),
         () -> assertSame(snapshot.darknetMessagingPort(), ports.darknetMessaging()),
         () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()),
+        () -> assertSame(snapshot.alertFeedPort(), ports.alertFeed()),
+        () -> assertSame(snapshot.alertMutationPort(), ports.alertMutation()),
         () -> assertSame(snapshot.pageChromePort(), ports.pageChrome()),
         () -> assertSame(snapshot.coreUpdateActionPort(), ports.coreUpdateAction()));
   }
@@ -129,6 +131,11 @@ class LegacyRuntimePortsTest {
   void getters_whenRequested_expectInjectedBridgePortsAndLegacyAdapterTypes() {
     PortsSnapshot snapshot = capturePorts();
 
+    assertInjectedInfrastructureAdapterTypes(snapshot);
+    assertInjectedFeatureAdapterTypes(snapshot);
+  }
+
+  private void assertInjectedInfrastructureAdapterTypes(PortsSnapshot snapshot) {
     assertAll(
         () -> assertInstanceOf(LegacyConfigPort.class, snapshot.configPort()),
         () -> assertInstanceOf(LegacyConnectivityPort.class, snapshot.connectivityPort()),
@@ -154,9 +161,18 @@ class LegacyRuntimePortsTest {
                 snapshot.diagnosticPort()),
         () ->
             assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyAlertPort"),
+                snapshot.alertFeedPort()),
+        () -> assertSame(snapshot.alertFeedPort(), snapshot.alertMutationPort()),
+        () ->
+            assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyPageChromePort"),
                 snapshot.pageChromePort()),
-        () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()),
+        () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()));
+  }
+
+  private void assertInjectedFeatureAdapterTypes(PortsSnapshot snapshot) {
+    assertAll(
         () ->
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyQueueSupportPort"),
@@ -263,6 +279,8 @@ class LegacyRuntimePortsTest {
         ports.darknetConnections(),
         ports.darknetMessaging(),
         ports.diagnostic(),
+        ports.alertFeed(),
+        ports.alertMutation(),
         ports.pageChrome(),
         ports.coreUpdateAction(),
         ports.queueSupport(),
@@ -302,6 +320,8 @@ class LegacyRuntimePortsTest {
       Object darknetConnectionsPort,
       Object darknetMessagingPort,
       Object diagnosticPort,
+      Object alertFeedPort,
+      Object alertMutationPort,
       Object pageChromePort,
       Object coreUpdateActionPort,
       Object queueSupportPort,

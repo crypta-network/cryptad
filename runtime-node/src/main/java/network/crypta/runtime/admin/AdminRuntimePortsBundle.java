@@ -1,5 +1,7 @@
 package network.crypta.runtime.admin;
 
+import network.crypta.runtime.spi.AlertFeedPort;
+import network.crypta.runtime.spi.AlertMutationPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -38,6 +40,8 @@ import network.crypta.runtime.spi.WelcomePagePort;
  * @param darknetConnections adapter that resolves detached darknet friend actions against live
  *     peers
  * @param darknetMessaging adapter that sends detached darknet messages and file offers on demand
+ * @param alertFeed adapter that exposes detached alert snapshots for admin-facing pages
+ * @param alertMutation adapter that dismisses alerts by detached id
  * @param diagnostic adapter that exports detached diagnostic and report-oriented admin snapshots
  * @param pageChrome adapter that exposes shared page-shell status for admin toadlets and page maker
  * @param queueCompletion adapter that serves queue-completion exports and completion-oriented
@@ -58,6 +62,8 @@ public record AdminRuntimePortsBundle(
     ConnectionsSupportPort connectionsSupport,
     DarknetConnectionsPort darknetConnections,
     DarknetMessagingPort darknetMessaging,
+    AlertFeedPort alertFeed,
+    AlertMutationPort alertMutation,
     DiagnosticPort diagnostic,
     PageChromePort pageChrome,
     QueueCompletionPort queueCompletion,

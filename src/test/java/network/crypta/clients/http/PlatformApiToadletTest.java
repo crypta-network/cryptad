@@ -389,6 +389,20 @@ End
   }
 
   @Test
+  void handleMethodPOST_whenAlertDismissRequested_routesDecodedMutationRequest() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/alerts/-17/dismiss"), request, ctx);
+
+    verify(router)
+        .route(new PlatformApiRequest("POST", List.of("alerts", "-17", "dismiss"), Map.of()));
+  }
+
+  @Test
   void handleMethodPOST_whenQueueMutationPasswordMissing_expectJson403WithoutRouting()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
@@ -434,6 +448,7 @@ End
         "http://localhost/api/v1/config/overrides",
         "http://localhost/api/v1/security-levels/network",
         "http://localhost/api/v1/updates/core/download",
+        "http://localhost/api/v1/alerts/42/dismiss",
         "http://localhost/api/v1/wizard/first-time/apply",
       })
   void handleMethodPOST_whenProtectedMutationPasswordMissing_expectJson403WithoutRouting(

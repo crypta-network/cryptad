@@ -7,6 +7,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.runtime.admin.geoip.GeoIpCountryLookup;
 import network.crypta.runtime.admin.queue.QueueAdminBackend;
 import network.crypta.runtime.admin.queue.page.QueuePageBackend;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueInsertPort;
@@ -17,7 +18,11 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +43,7 @@ class AdminRuntimePortsFactoryTest {
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueInsertPort queueInsertPort;
   @Mock private GeoIpCountryLookup geoIpCountryLookup;
+  @Mock private UserAlertManager alertManager;
 
   @Test
   void create_whenBuildingBundle_usesRealtimeSizeCappedClientForPeerReferenceLoading() {
@@ -51,14 +57,39 @@ class AdminRuntimePortsFactoryTest {
             geoIpCountryLookup);
     when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true))
         .thenReturn(peerReferenceClient);
+    when(core.getAlerts()).thenReturn(alertManager);
 
     AdminRuntimePortsBundle bundle = AdminRuntimePortsFactory.create(node, core, bridgeInputs);
 
     assertNotNull(bundle.connectionsSupport());
+    assertInstanceOf(LegacyAlertPort.class, bundle.alertFeed());
+    assertSame(bundle.alertFeed(), bundle.alertMutation());
     verify(core).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
     verify(peerReferenceClient).setMaxLength(HttpFetchSizeLimits.getMaxLengthNoProgress());
     verify(peerReferenceClient)
         .setMaxIntermediateLength(HttpFetchSizeLimits.getMaxLengthNoProgress());
     verify(core, never()).makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, false);
+  }
+
+  @Test
+  void create_whenAlertManagerMissing_expectNullPointerException() {
+    AdminRuntimeBridgeInputs bridgeInputs =
+        new AdminRuntimeBridgeInputs(
+            queueAdminBackend,
+            queuePageBackend,
+            queueCompletionPort,
+            queueDownloadPort,
+            queueInsertPort,
+            geoIpCountryLookup);
+    when(core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true))
+        .thenReturn(peerReferenceClient);
+    when(core.getAlerts()).thenReturn(null);
+
+    NullPointerException error =
+        assertThrows(
+            NullPointerException.class,
+            () -> AdminRuntimePortsFactory.create(node, core, bridgeInputs));
+
+    assertEquals("alerts", error.getMessage());
   }
 }

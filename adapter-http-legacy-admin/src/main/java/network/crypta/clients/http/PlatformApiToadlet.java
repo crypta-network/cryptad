@@ -50,6 +50,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String URL_ENCODED_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
   private static final String DELETE_METHOD = "DELETE";
+  private static final String ALERTS_SEGMENT = "alerts";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
@@ -378,6 +379,7 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresConfigFormPassword(method, pathSegments)
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
+        || requiresAlertsFormPassword(method, pathSegments)
         || requiresWizardFormPassword(method, pathSegments);
   }
 
@@ -473,6 +475,20 @@ public final class PlatformApiToadlet extends Toadlet {
         && UPDATES_SEGMENT.equals(pathSegments.getFirst())
         && "core".equals(pathSegments.get(1))
         && "download".equals(pathSegments.get(2));
+  }
+
+  /**
+   * Returns whether the current request targets the mutating alerts dismissal route.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresAlertsFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 3
+        && ALERTS_SEGMENT.equals(pathSegments.getFirst())
+        && "dismiss".equals(pathSegments.get(2));
   }
 
   /**
