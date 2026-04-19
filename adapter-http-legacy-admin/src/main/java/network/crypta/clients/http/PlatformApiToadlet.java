@@ -407,6 +407,9 @@ public final class PlatformApiToadlet extends Toadlet {
           || "restart".equals(pathSegments.get(2))
           || "priority".equals(pathSegments.get(2));
     }
+    if ("inserts".equals(pathSegments.get(1))) {
+      return "file".equals(pathSegments.get(2)) || "directory".equals(pathSegments.get(2));
+    }
     return "cleanup".equals(pathSegments.get(1))
         && ("uploads".equals(pathSegments.get(2)) || "downloads".equals(pathSegments.get(2)));
   }
