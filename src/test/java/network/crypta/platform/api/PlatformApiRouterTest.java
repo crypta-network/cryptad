@@ -16,6 +16,11 @@ import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.runtime.spi.AlertFeedPort;
+import network.crypta.runtime.spi.AlertListSnapshot;
+import network.crypta.runtime.spi.AlertMutationPort;
+import network.crypta.runtime.spi.AlertSeverity;
+import network.crypta.runtime.spi.AlertSnapshot;
 import network.crypta.runtime.spi.ConfigFieldSet;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConfigSection;
@@ -33,6 +38,9 @@ import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionPeerSnapshot;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetPeerSettingsUpdate;
+import network.crypta.runtime.spi.DiagnosticPort;
+import network.crypta.runtime.spi.DiagnosticReportSnapshot;
+import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
@@ -106,11 +114,14 @@ class PlatformApiRouterTest {
   @Mock private SecurityLevelsPort securityLevelsPort;
   @Mock private CoreUpdateActionPort coreUpdateActionPort;
   @Mock private FirstTimeWizardPort firstTimeWizardPort;
+  @Mock private DiagnosticPort diagnosticPort;
   @Mock private QueuePagePort queuePagePort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private QueueDownloadPort queueDownloadPort;
   @Mock private QueueSupportPort queueSupportPort;
   @Mock private QueueCompletionPort queueCompletionPort;
+  @Mock private AlertFeedPort alertFeedPort;
+  @Mock private AlertMutationPort alertMutationPort;
   @Mock private AppHost appHost;
 
   @TempDir private Path tempDir;
@@ -127,11 +138,14 @@ class PlatformApiRouterTest {
     when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
     when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
     when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
+    when(runtimePorts.diagnostic()).thenReturn(diagnosticPort);
     when(runtimePorts.queuePage()).thenReturn(queuePagePort);
     when(runtimePorts.queueMutation()).thenReturn(queueMutationPort);
     when(runtimePorts.queueDownload()).thenReturn(queueDownloadPort);
     when(runtimePorts.queueSupport()).thenReturn(queueSupportPort);
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
+    when(runtimePorts.alertFeed()).thenReturn(alertFeedPort);
+    when(runtimePorts.alertMutation()).thenReturn(alertMutationPort);
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
@@ -160,6 +174,77 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         "{\"nodeName\":\"Crypta\",\"versionString\":\"1.0\",\"buildNumber\":7,\"revision\":\"abc123\",\"testnetEnabled\":true,\"compressionCodecs\":\"gzip\",\"nodeLanguage\":\"en\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAlertsRequested_expectStructuredAlertSnapshotJson() {
+    AlertListSnapshot snapshot = org.mockito.Mockito.mock(AlertListSnapshot.class);
+    AlertSnapshot alert = org.mockito.Mockito.mock(AlertSnapshot.class);
+    when(alert.id()).thenReturn(42);
+    when(alert.title()).thenReturn("Update available");
+    when(alert.shortText()).thenReturn("Updater");
+    when(alert.text()).thenReturn("A new core package is ready.");
+    when(alert.severity()).thenReturn(AlertSeverity.WARNING);
+    when(alert.dismissible()).thenReturn(true);
+    when(alert.dismissLabel()).thenReturn("Delete");
+    when(alert.eventNotification()).thenReturn(false);
+    when(alert.updatedTimeMillis()).thenReturn(123L);
+    when(snapshot.alerts()).thenReturn(List.of(alert));
+    when(alertFeedPort.snapshot()).thenReturn(snapshot);
+
+    PlatformApiResponse response = router.route(request("GET", List.of("alerts"), Map.of()));
+
+    verify(alertFeedPort).snapshot();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"alertCount\":1,\"dismissibleCount\":1,\"eventNotificationCount\":0,"
+            + "\"highestSeverity\":\"WARNING\",\"alerts\":[{\"id\":42,\"title\":\"Update"
+            + " available\",\"shortText\":\"Updater\",\"text\":\"A new core package is ready.\","
+            + "\"severity\":\"WARNING\",\"dismissible\":true,\"dismissLabel\":\"Delete\","
+            + "\"eventNotification\":false,\"updatedTimeMillis\":123}]}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAlertDismissRequested_expectMutationSummary() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("alerts", "-17", "dismiss"), Map.of()));
+
+    verify(alertMutationPort).dismiss(-17);
+    assertEquals(200, response.statusCode());
+    assertEquals("{\"operation\":\"dismiss\",\"alertId\":-17}", response.body());
+  }
+
+  @Test
+  void route_whenAlertDismissAlertIdMalformed_expectBadRequestJson() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("alerts", "not-a-number", "dismiss"), Map.of()));
+
+    verifyNoInteractions(alertMutationPort);
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_path_parameter\",\"message\":\"Alert route parameter"
+            + " 'alertId' must be a valid integer.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenDiagnosticsRequested_expectStructuredDiagnosticsJson() {
+    when(diagnosticPort.snapshot())
+        .thenReturn(
+            new DiagnosticReportSnapshot(
+                List.of(
+                    new DiagnosticSectionSnapshot(
+                        "System Information:", List.of("alpha", "", "beta")))));
+
+    PlatformApiResponse response = router.route(request("GET", List.of("diagnostics"), Map.of()));
+
+    verify(diagnosticPort).snapshot();
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"sectionCount\":1,\"sections\":[{\"title\":\"System Information:\",\"lines\":[\"alpha\","
+            + "\"\",\"beta\"]}],\"plainTextExport\":\"System Information:\\nalpha\\n\\nbeta\\n\"}",
         response.body());
   }
 

@@ -102,6 +102,8 @@ class LegacyRuntimePortsTest {
         () -> assertSame(snapshot.darknetConnectionsPort(), ports.darknetConnections()),
         () -> assertSame(snapshot.darknetMessagingPort(), ports.darknetMessaging()),
         () -> assertSame(snapshot.diagnosticPort(), ports.diagnostic()),
+        () -> assertSame(snapshot.alertFeedPort(), ports.alertFeed()),
+        () -> assertSame(snapshot.alertMutationPort(), ports.alertMutation()),
         () -> assertSame(snapshot.pageChromePort(), ports.pageChrome()),
         () -> assertSame(snapshot.coreUpdateActionPort(), ports.coreUpdateAction()));
   }
@@ -152,6 +154,11 @@ class LegacyRuntimePortsTest {
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyDiagnosticPort"),
                 snapshot.diagnosticPort()),
+        () ->
+            assertInstanceOf(
+                loadClass("network.crypta.runtime.admin.LegacyAlertPort"),
+                snapshot.alertFeedPort()),
+        () -> assertSame(snapshot.alertFeedPort(), snapshot.alertMutationPort()),
         () ->
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyPageChromePort"),
@@ -263,6 +270,8 @@ class LegacyRuntimePortsTest {
         ports.darknetConnections(),
         ports.darknetMessaging(),
         ports.diagnostic(),
+        ports.alertFeed(),
+        ports.alertMutation(),
         ports.pageChrome(),
         ports.coreUpdateAction(),
         ports.queueSupport(),
@@ -302,6 +311,8 @@ class LegacyRuntimePortsTest {
       Object darknetConnectionsPort,
       Object darknetMessagingPort,
       Object diagnosticPort,
+      Object alertFeedPort,
+      Object alertMutationPort,
       Object pageChromePort,
       Object coreUpdateActionPort,
       Object queueSupportPort,

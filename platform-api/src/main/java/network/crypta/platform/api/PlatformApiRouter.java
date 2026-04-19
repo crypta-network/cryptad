@@ -3,9 +3,11 @@ package network.crypta.platform.api;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import network.crypta.platform.api.alerts.AlertsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
+import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
 import network.crypta.platform.api.queue.QueueApiHandler;
@@ -57,6 +59,12 @@ public final class PlatformApiRouter {
   /** Handler for the {@code /queue/...} endpoint family. */
   private final QueueApiHandler queueApiHandler;
 
+  /** Handler for the {@code /alerts/...} endpoint family. */
+  private final AlertsApiHandler alertsApiHandler;
+
+  /** Handler for the {@code /diagnostics} endpoint family. */
+  private final DiagnosticsApiHandler diagnosticsApiHandler;
+
   /** Handler for the {@code /apps/...} endpoint family, when AppHost support is available. */
   private final AppsApiHandler appsApiHandler;
 
@@ -95,6 +103,8 @@ public final class PlatformApiRouter {
             runtimePorts.queueDownload(),
             runtimePorts.queueSupport(),
             runtimePorts.queueCompletion());
+    alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
+    diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic());
     appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost);
   }
 
@@ -153,6 +163,9 @@ public final class PlatformApiRouter {
     if ("wizard".equals(firstSegment)) {
       return routeWizardRequest(segments, request);
     }
+    if ("alerts".equals(firstSegment)) {
+      return routeAlertsRequest(segments, request);
+    }
 
     if (!"GET".equals(request.method())) {
       return PlatformApiResponse.error(
@@ -165,7 +178,44 @@ public final class PlatformApiRouter {
     if ("connectivity".equals(firstSegment) && segments.size() == 1) {
       return PlatformApiResponse.ok(connectivityApiHandler.snapshot(request.queryParameters()));
     }
+    if ("diagnostics".equals(firstSegment) && segments.size() == 1) {
+      return PlatformApiResponse.ok(diagnosticsApiHandler.snapshot());
+    }
 
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /alerts} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected alert endpoint
+   */
+  private PlatformApiResponse routeAlertsRequest(
+      List<String> segments, PlatformApiRequest request) {
+    return switch (segments.size()) {
+      case 1 -> routeAlertsCollection(request);
+      case 3 -> routeAlertAction(segments.get(1), segments.get(2), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeAlertsCollection(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(alertsApiHandler.list());
+  }
+
+  private PlatformApiResponse routeAlertAction(
+      String alertIdSegment, String action, PlatformApiRequest request) {
+    if (!"POST".equals(request.method())) {
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    if ("dismiss".equals(action)) {
+      return PlatformApiResponse.ok(alertsApiHandler.dismiss(alertIdSegment));
+    }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 

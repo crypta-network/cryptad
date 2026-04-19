@@ -3,6 +3,7 @@ package network.crypta.platform.webshell;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -13,14 +14,23 @@ class WebShellResourcesTest {
 
     assertTrue(html.contains("Web Shell v1"));
     assertTrue(html.contains("Peer control plane"));
+    assertTrue(html.contains("Alert queue"));
+    assertTrue(html.contains("Runtime diagnostics"));
     assertTrue(html.contains("Queue control plane"));
     assertTrue(html.contains("Core updater"));
     assertTrue(html.contains("Operator subset"));
     assertTrue(html.contains("First-time setup"));
+    assertTrue(html.contains("Alerts JSON"));
+    assertTrue(html.contains("Diagnostics JSON"));
     assertTrue(html.contains("__BOOTSTRAP_JSON__"));
     assertTrue(html.contains("peer-create-form\" hidden"));
     assertTrue(html.contains("name=\"referenceText\""));
     assertTrue(html.contains("id=\"peers-status\""));
+    assertTrue(html.contains("id=\"alerts-panel\""));
+    assertTrue(html.contains("id=\"alerts-body\""));
+    assertTrue(html.contains("id=\"diagnostics-panel\""));
+    assertTrue(html.contains("id=\"diagnostics-body\""));
+    assertTrue(html.contains("Use Refresh diagnostics to load the current diagnostics snapshot."));
     assertTrue(html.contains("name=\"filterData\" type=\"checkbox\" checked"));
     assertTrue(html.contains("queue-create-form\" hidden"));
     assertTrue(html.contains("id=\"security-form\""));
@@ -42,7 +52,17 @@ class WebShellResourcesTest {
     assertPeerMutationMarkersPresent(script);
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
+    assertAlertsAndDiagnosticsMarkersPresent(script);
     assertPlatformControlPlaneMarkersPresent(script);
+  }
+
+  @Test
+  void readText_whenStylesheetResourceRequested_expectAlertTextPreservesNewlines() {
+    String stylesheet =
+        WebShellResources.readText(WebShellPaths.resourcePath(WebShellPaths.STYLESHEET_PATH));
+
+    assertTrue(stylesheet.contains(".alert-card-text {"));
+    assertTrue(stylesheet.contains("white-space: pre-wrap;"));
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
@@ -227,6 +247,38 @@ class WebShellResourcesTest {
     assertTrue(errorGuardIndex > renderPeersIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(loadPeersCatchIndex > renderErrorIndex);
+  }
+
+  private static void assertAlertsAndDiagnosticsMarkersPresent(String script) {
+    assertTrue(script.contains("alertsSnapshot"));
+    assertTrue(script.contains("diagnosticsSnapshot"));
+    assertTrue(script.contains("let alertsLoadGeneration = 0;"));
+    assertTrue(script.contains("let diagnosticsLoadGeneration = 0;"));
+    assertTrue(script.contains("const alertsControls = {"));
+    assertTrue(script.contains("const diagnosticsControls = {"));
+    assertTrue(script.contains("function updateAlertsToolbar()"));
+    assertTrue(script.contains("function updateDiagnosticsToolbar()"));
+    assertTrue(script.contains("function renderAlerts(data)"));
+    assertTrue(script.contains("function renderDiagnostics(data)"));
+    assertTrue(script.contains("function renderAlertCard(alert, index)"));
+    assertTrue(script.contains("function renderDiagnosticsSection(section, index)"));
+    assertTrue(script.contains("function alertDismissPath(alertId)"));
+    assertTrue(script.contains("loadJson(apiUrl(\"alerts\"))"));
+    assertTrue(script.contains("loadJson(apiUrl(\"diagnostics\"))"));
+    assertTrue(script.contains("alertDismissPath(alertId),"));
+    assertTrue(script.contains("plainTextExport"));
+    assertTrue(script.contains("alert-dismiss-form"));
+    assertTrue(script.contains("diagnostics-section-list"));
+    assertTrue(
+        script.contains(
+            "...topLevelFieldEntries(data, [\"sections\", \"plainTextExport\", \"export\","
+                + " \"textExport\"])"));
+    assertTrue(
+        script.contains("form.dataset.alertId = alert.id == null ? \"\" : String(alert.id);"));
+    assertTrue(script.contains("const alertId = form.dataset.alertId ?? \"\";"));
+    assertTrue(script.contains("if (form.dataset.alertId == null) {"));
+    assertTrue(script.contains("typeof alert.dismissLabel === \"string\" && alert.dismissLabel"));
+    assertFalse(script.contains("loadDiagnosticsSection().catch((error) => {"));
   }
 
   private static void assertPlatformControlPlaneMarkersPresent(String script) {

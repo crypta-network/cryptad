@@ -9,6 +9,8 @@ import network.crypta.runtime.admin.AdminRuntimeBridgeInputs;
 import network.crypta.runtime.admin.AdminRuntimePortsBundle;
 import network.crypta.runtime.admin.AdminRuntimePortsFactory;
 import network.crypta.runtime.bootstrap.NodeStarter;
+import network.crypta.runtime.spi.AlertFeedPort;
+import network.crypta.runtime.spi.AlertMutationPort;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
@@ -67,6 +69,8 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final DarknetConnectionsPort darknetConnectionsPort;
   private final DarknetMessagingPort darknetMessagingPort;
   private final DiagnosticPort diagnosticPort;
+  private final AlertFeedPort alertFeedPort;
+  private final AlertMutationPort alertMutationPort;
   private final PageChromePort pageChromePort;
   private final CoreUpdateActionPort coreUpdateActionPort;
   private final QueueCompletionPort queueCompletionPort;
@@ -189,6 +193,8 @@ public final class LegacyRuntimePorts implements RuntimePorts {
     this.darknetConnectionsPort = adminRuntimePorts.darknetConnections();
     this.darknetMessagingPort = adminRuntimePorts.darknetMessaging();
     this.diagnosticPort = adminRuntimePorts.diagnostic();
+    this.alertFeedPort = adminRuntimePorts.alertFeed();
+    this.alertMutationPort = adminRuntimePorts.alertMutation();
     this.pageChromePort = adminRuntimePorts.pageChrome();
     this.queueCompletionPort = adminRuntimePorts.queueCompletion();
     this.queuePagePort = adminRuntimePorts.queuePage();
@@ -324,6 +330,27 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public DiagnosticPort diagnostic() {
     return diagnosticPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port delegates to the runtime-node alert manager and exposes detached alert
+   * snapshots.
+   */
+  @Override
+  public AlertFeedPort alertFeed() {
+    return alertFeedPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port delegates dismissals to the runtime-node alert manager.
+   */
+  @Override
+  public AlertMutationPort alertMutation() {
+    return alertMutationPort;
   }
 
   /**

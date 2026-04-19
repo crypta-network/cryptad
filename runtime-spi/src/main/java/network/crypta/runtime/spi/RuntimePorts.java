@@ -25,6 +25,8 @@ package network.crypta.runtime.spi;
  * @see DarknetConnectionsPort
  * @see DarknetMessagingPort
  * @see DiagnosticPort
+ * @see AlertFeedPort
+ * @see AlertMutationPort
  * @see CoreUpdateActionPort
  * @see QueueCompletionPort
  * @see QueuePagePort
@@ -175,6 +177,28 @@ public interface RuntimePorts {
    * @return diagnostic-report runtime port for read-only report snapshots
    */
   DiagnosticPort diagnostic();
+
+  /**
+   * Returns the detached alert feed capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers request one detached alert-list snapshot containing the current
+   * visible alerts without depending on daemon alert classes. The HTTP layer remains responsible
+   * for request parsing, markup, and any request-context-only rendering concerns.
+   *
+   * @return alert-feed runtime port for detached alert list snapshots
+   */
+  AlertFeedPort alertFeed();
+
+  /**
+   * Returns the detached alert mutation capability exposed to admin-facing HTTP code.
+   *
+   * <p>This port lets higher layers dismiss one alert by its detached identifier while keeping the
+   * underlying alert manager inside the daemon root module. The HTTP layer remains responsible for
+   * request parsing and redirect behavior.
+   *
+   * @return alert-mutation runtime port for dismiss actions
+   */
+  AlertMutationPort alertMutation();
 
   /**
    * Returns the shared admin page-chrome capability exposed to HTTP shell rendering code.

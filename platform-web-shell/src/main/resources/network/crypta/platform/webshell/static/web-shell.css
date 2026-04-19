@@ -425,6 +425,71 @@ a {
   gap: 10px;
 }
 
+.alert-card-list,
+.diagnostics-section-list {
+  display: grid;
+  gap: 14px;
+}
+
+.alert-card,
+.diagnostics-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.alert-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.alert-card-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.alert-card-title,
+.diagnostics-section-title {
+  margin: 0;
+}
+
+.alert-card-subtitle,
+.alert-card-text {
+  margin: 0;
+  color: var(--shell-muted);
+  overflow-wrap: anywhere;
+}
+
+.alert-card-text {
+  white-space: pre-wrap;
+}
+
+.alert-card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.alert-dismiss-form {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.diagnostics-lines,
+.diagnostics-export {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .json-details {
   display: grid;
   gap: 10px;

@@ -1,9 +1,11 @@
 package network.crypta.runtime.admin;
 
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.http.HttpFetchSizeLimits;
 
 /**
@@ -45,11 +47,15 @@ public final class AdminRuntimePortsFactory {
         core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, true);
     peerReferenceClient.setMaxLength(maxLengthNoProgress);
     peerReferenceClient.setMaxIntermediateLength(maxLengthNoProgress);
+    UserAlertManager alertManager = Objects.requireNonNull(core.getAlerts(), "alerts");
+    LegacyAlertPort alertPort = new LegacyAlertPort(alertManager);
     return new AdminRuntimePortsBundle(
         new LegacyConnectionsPagePort(node, bridgeInputs.geoIpCountryLookup()),
         new LegacyConnectionsSupportPort(node, peerReferenceClient),
         new LegacyDarknetConnectionsPort(node),
         new LegacyDarknetMessagingPort(node),
+        alertPort,
+        alertPort,
         new LegacyDiagnosticPort(node, core, bridgeInputs.queueAdminBackend()),
         new LegacyPageChromePort(node),
         bridgeInputs.queueCompletionPort(),

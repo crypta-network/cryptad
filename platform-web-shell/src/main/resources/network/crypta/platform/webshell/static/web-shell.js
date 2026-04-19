@@ -13,7 +13,9 @@
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const shellState = {
+    alertsSnapshot: null,
     configSnapshot: null,
+    diagnosticsSnapshot: null,
     securitySnapshot: null,
     updatesSnapshot: null,
     wizardSnapshot: null,
@@ -28,6 +30,8 @@
   };
   let peerLoadGeneration = 0;
   let queueLoadGeneration = 0;
+  let alertsLoadGeneration = 0;
+  let diagnosticsLoadGeneration = 0;
   let securityLoadGeneration = 0;
   let updatesLoadGeneration = 0;
   let configLoadGeneration = 0;
@@ -37,6 +41,11 @@
   const sections = {
     overview: document.getElementById("overview-body"),
     connectivity: document.getElementById("connectivity-body"),
+    alerts: document.getElementById("alerts-body"),
+    alertsStatus: document.getElementById("alerts-status"),
+    alertsReadonlyHint: document.getElementById("alerts-readonly-hint"),
+    diagnostics: document.getElementById("diagnostics-body"),
+    diagnosticsStatus: document.getElementById("diagnostics-status"),
     security: document.getElementById("security-body"),
     securityStatus: document.getElementById("security-status"),
     securityReadonlyHint: document.getElementById("security-readonly-hint"),
@@ -63,6 +72,12 @@
     createForm: document.getElementById("peer-create-form"),
     createReference: document.getElementById("peer-reference-text"),
     createSubmit: document.getElementById("peer-create-submit"),
+  };
+  const alertsControls = {
+    refreshButton: document.getElementById("alerts-refresh-button"),
+  };
+  const diagnosticsControls = {
+    refreshButton: document.getElementById("diagnostics-refresh-button"),
   };
   const securityControls = {
     form: document.getElementById("security-form"),
@@ -166,6 +181,14 @@
     setSectionStatus(sections.peersStatus, message, tone);
   }
 
+  function setAlertsStatus(message, tone) {
+    setSectionStatus(sections.alertsStatus, message, tone);
+  }
+
+  function setDiagnosticsStatus(message, tone) {
+    setSectionStatus(sections.diagnosticsStatus, message, tone);
+  }
+
   function setSectionStatus(container, message, tone) {
     clear(container);
     if (!message) {
@@ -252,6 +275,37 @@
     return card;
   }
 
+  function topLevelFieldEntries(data, excludedKeys) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return [];
+    }
+    const excluded = new Set(Array.isArray(excludedKeys) ? excludedKeys : []);
+    return Object.entries(data)
+      .filter(([key]) => !excluded.has(key))
+      .map(([key, value]) => [key, scalar(value)]);
+  }
+
+  function formatTimestampMillis(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleString();
+      }
+    }
+    return scalar(value);
+  }
+
+  function severityTone(severity) {
+    const normalized = typeof severity === "string" ? severity.toLowerCase() : "";
+    if (normalized.includes("critical") || normalized.includes("error") || normalized.includes("high")) {
+      return "is-error";
+    }
+    if (normalized.includes("warn") || normalized.includes("medium") || normalized.includes("moderate")) {
+      return "is-warning";
+    }
+    return "";
+  }
+
   function renderLegacyLinks() {
     clear(sections.legacy);
     for (const link of legacyLinks) {
@@ -327,6 +381,184 @@
         ], "is-warning"),
       );
     }
+  }
+
+  function alertDismissPath(alertId) {
+    return `alerts/${encodeURIComponent(alertId)}/dismiss`;
+  }
+
+  function renderAlertCard(alert, index) {
+    const card = document.createElement("section");
+    card.className = "alert-card";
+    const title = typeof alert.title === "string" && alert.title ? alert.title : `Alert ${index + 1}`;
+    const shortText =
+      typeof alert.shortText === "string" && alert.shortText
+        ? alert.shortText
+        : "No short text provided.";
+    const textBody = typeof alert.text === "string" && alert.text ? alert.text : "";
+
+    const header = document.createElement("div");
+    header.className = "alert-card-header";
+
+    const heading = document.createElement("div");
+    heading.className = "alert-card-heading";
+    heading.append(text("h3", "alert-card-title", title), text("p", "alert-card-subtitle", shortText));
+
+    const pills = document.createElement("div");
+    pills.className = "alert-card-pills";
+    if (alert.severity) {
+      pills.append(createPill(String(alert.severity), severityTone(alert.severity)));
+    }
+    if (alert.eventNotification) {
+      pills.append(createPill("Event notification", "is-warning"));
+    }
+    if (alert.dismissible === false) {
+      pills.append(createPill("Not dismissible", "is-warning"));
+    }
+
+    header.append(heading, pills);
+    card.append(header);
+
+    if (textBody) {
+      card.append(text("p", "alert-card-text", textBody));
+    }
+
+    card.append(
+      definitionList([
+        ["ID", scalar(alert.id)],
+        ["Updated", formatTimestampMillis(alert.updatedTimeMillis)],
+      ]),
+    );
+
+    const extraFields = topLevelFieldEntries(alert, [
+      "id",
+      "title",
+      "shortText",
+      "text",
+      "severity",
+      "dismissible",
+      "dismissLabel",
+      "eventNotification",
+      "updatedTimeMillis",
+    ]);
+    if (extraFields.length) {
+      card.append(definitionList(extraFields));
+    }
+
+    if (alert.dismissible !== false && formPassword) {
+      const form = document.createElement("form");
+      form.className = "alert-dismiss-form";
+      form.dataset.alertId = alert.id == null ? "" : String(alert.id);
+
+      const submit = document.createElement("button");
+      submit.className = "button button-secondary";
+      submit.type = "submit";
+      submit.textContent =
+        typeof alert.dismissLabel === "string" && alert.dismissLabel
+          ? alert.dismissLabel
+          : "Dismiss alert";
+      form.append(submit);
+      card.append(form);
+    }
+
+    return card;
+  }
+
+  function renderAlerts(data) {
+    shellState.alertsSnapshot = data;
+    updateAlertsToolbar();
+    clear(sections.alerts);
+
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+    const summaryEntries = [["Alerts", `${alerts.length}`], ...topLevelFieldEntries(data, ["alerts"])];
+    sections.alerts.append(summaryCard("Alerts summary", summaryEntries, alerts.length ? "" : "is-warning"));
+
+    if (!alerts.length) {
+      sections.alerts.append(text("p", "empty-state", "No alerts were returned."));
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "alert-card-list";
+    alerts.forEach((alert, index) => {
+      list.append(renderAlertCard(alert && typeof alert === "object" ? alert : {}, index));
+    });
+    sections.alerts.append(list);
+  }
+
+  function renderDiagnosticsSection(section, index) {
+    const card = document.createElement("section");
+    card.className = "diagnostics-section";
+    const title =
+      typeof section.title === "string" && section.title ? section.title : `Section ${index + 1}`;
+
+    card.append(text("h3", "diagnostics-section-title", title));
+
+    const lines = Array.isArray(section.lines) ? section.lines : [];
+    if (!lines.length) {
+      card.append(text("p", "empty-state", "No diagnostic lines were exported."));
+    } else {
+      const pre = document.createElement("pre");
+      pre.className = "diagnostics-lines";
+      pre.textContent = lines
+        .map((line) => (typeof line === "string" ? line : formatJson(line)))
+        .join("\n");
+      card.append(pre);
+    }
+
+    const extraFields = topLevelFieldEntries(section, ["title", "lines"]);
+    if (extraFields.length) {
+      card.append(definitionList(extraFields));
+    }
+
+    return card;
+  }
+
+  function renderDiagnostics(data) {
+    shellState.diagnosticsSnapshot = data;
+    updateDiagnosticsToolbar();
+    clear(sections.diagnostics);
+
+    const sectionsList = Array.isArray(data.sections) ? data.sections : [];
+    const summaryEntries = [
+      ["Sections", `${sectionsList.length}`],
+      ...topLevelFieldEntries(data, ["sections", "plainTextExport", "export", "textExport"]),
+    ];
+    sections.diagnostics.append(
+      summaryCard("Diagnostics summary", summaryEntries, sectionsList.length ? "" : "is-warning"),
+    );
+
+    const exportText =
+      typeof data.plainTextExport === "string"
+        ? data.plainTextExport
+        : typeof data.export === "string"
+          ? data.export
+          : typeof data.textExport === "string"
+            ? data.textExport
+            : null;
+    if (exportText) {
+      const exportDetails = document.createElement("details");
+      exportDetails.className = "json-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "Plain-text export";
+      const pre = document.createElement("pre");
+      pre.className = "json-code diagnostics-export";
+      pre.textContent = exportText;
+      exportDetails.append(summary, pre);
+      sections.diagnostics.append(exportDetails);
+    }
+
+    if (!sectionsList.length) {
+      sections.diagnostics.append(text("p", "empty-state", "No diagnostic sections were returned."));
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "diagnostics-section-list";
+    sectionsList.forEach((section, index) => {
+      list.append(renderDiagnosticsSection(section && typeof section === "object" ? section : {}, index));
+    });
+    sections.diagnostics.append(list);
   }
 
   function renderSecurity(data) {
@@ -581,6 +813,14 @@
       sections.peersReadonlyHint.hidden = !!formPassword;
     }
   }
+
+  function updateAlertsToolbar() {
+    if (sections.alertsReadonlyHint) {
+      sections.alertsReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updateDiagnosticsToolbar() {}
 
   function updateSecurityToolbar() {
     securityControls.form.hidden = !formPassword || !shellState.securitySnapshot;
@@ -1232,6 +1472,68 @@
     }
   }
 
+  async function loadAlertsSection() {
+    const loadGeneration = ++alertsLoadGeneration;
+    shellState.alertsSnapshot = null;
+    clear(sections.alerts);
+    sections.alerts.append(text("p", "loading", "Loading alerts snapshot..."));
+    updateAlertsToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("alerts"));
+      if (loadGeneration !== alertsLoadGeneration) {
+        return;
+      }
+      renderAlerts(snapshot);
+    } catch (error) {
+      if (loadGeneration !== alertsLoadGeneration) {
+        return;
+      }
+      renderError(sections.alerts, "alerts", error);
+    }
+  }
+
+  async function loadDiagnosticsSection() {
+    const loadGeneration = ++diagnosticsLoadGeneration;
+    shellState.diagnosticsSnapshot = null;
+    clear(sections.diagnostics);
+    sections.diagnostics.append(text("p", "loading", "Loading diagnostics snapshot..."));
+    updateDiagnosticsToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("diagnostics"));
+      if (loadGeneration !== diagnosticsLoadGeneration) {
+        return;
+      }
+      renderDiagnostics(snapshot);
+    } catch (error) {
+      if (loadGeneration !== diagnosticsLoadGeneration) {
+        return;
+      }
+      renderError(sections.diagnostics, "diagnostics", error);
+    }
+  }
+
+  async function dismissAlert(form) {
+    const alertId = form.dataset.alertId ?? "";
+    if (alertId === "") {
+      setAlertsStatus("Alert dismissal unavailable without an alert ID.", "is-error");
+      return;
+    }
+
+    try {
+      await postForm(
+        alertDismissPath(alertId),
+        new FormData(),
+        "Alert dismissal unavailable in read-only mode.",
+      );
+      setAlertsStatus("Alert dismissed.", "is-success");
+      await loadAlertsSection();
+    } catch (error) {
+      setAlertsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
   function queueMutationPath(submitterName) {
     switch (submitterName) {
       case "remove_request":
@@ -1808,6 +2110,31 @@
     });
   }
 
+  function bindAlertsInteractions() {
+    alertsControls.refreshButton.addEventListener("click", () => {
+      setAlertsStatus("Refreshing alerts.");
+      loadAlertsSection();
+    });
+    sections.alerts.addEventListener("submit", async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (form.dataset.alertId == null) {
+        return;
+      }
+      event.preventDefault();
+      await dismissAlert(form);
+    });
+  }
+
+  function bindDiagnosticsInteractions() {
+    diagnosticsControls.refreshButton.addEventListener("click", () => {
+      setDiagnosticsStatus("Refreshing diagnostics.");
+      loadDiagnosticsSection();
+    });
+  }
+
   function bindSecurityInteractions() {
     securityControls.form.addEventListener("submit", submitSecurityForm);
   }
@@ -1876,12 +2203,16 @@
   }
 
   renderLegacyLinks();
+  bindAlertsInteractions();
   bindSecurityInteractions();
   bindUpdatesInteractions();
   bindConfigInteractions();
   bindWizardInteractions();
   bindPeerInteractions();
+  bindDiagnosticsInteractions();
   bindQueueInteractions();
+  updateAlertsToolbar();
+  updateDiagnosticsToolbar();
   updateSecurityToolbar();
   updateUpdatesToolbar();
   updateConfigToolbar();
@@ -1893,6 +2224,9 @@
   });
   loadSecuritySection().catch((error) => {
     renderError(sections.security, "security", error);
+  });
+  loadAlertsSection().catch((error) => {
+    renderError(sections.alerts, "alerts", error);
   });
   loadUpdatesSection().catch((error) => {
     renderError(sections.updates, "updates", error);
