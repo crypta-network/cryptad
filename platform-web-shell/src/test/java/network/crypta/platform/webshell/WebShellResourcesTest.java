@@ -12,31 +12,41 @@ class WebShellResourcesTest {
   void readText_whenIndexResourceRequested_expectShellMarkup() {
     String html = WebShellResources.readText(WebShellPaths.INDEX_RESOURCE_PATH);
 
-    assertTrue(html.contains("Web Shell v1"));
-    assertTrue(html.contains("Peer control plane"));
-    assertTrue(html.contains("Alert queue"));
-    assertTrue(html.contains("Runtime diagnostics"));
-    assertTrue(html.contains("Queue control plane"));
-    assertTrue(html.contains("Core updater"));
-    assertTrue(html.contains("Operator subset"));
-    assertTrue(html.contains("First-time setup"));
-    assertTrue(html.contains("Alerts JSON"));
-    assertTrue(html.contains("Diagnostics JSON"));
-    assertTrue(html.contains("__BOOTSTRAP_JSON__"));
-    assertTrue(html.contains("peer-create-form\" hidden"));
-    assertTrue(html.contains("name=\"referenceText\""));
-    assertTrue(html.contains("id=\"peers-status\""));
-    assertTrue(html.contains("id=\"alerts-panel\""));
-    assertTrue(html.contains("id=\"alerts-body\""));
-    assertTrue(html.contains("id=\"diagnostics-panel\""));
-    assertTrue(html.contains("id=\"diagnostics-body\""));
-    assertTrue(html.contains("Use Refresh diagnostics to load the current diagnostics snapshot."));
-    assertTrue(html.contains("name=\"filterData\" type=\"checkbox\" checked"));
-    assertTrue(html.contains("queue-create-form\" hidden"));
-    assertTrue(html.contains("id=\"security-form\""));
-    assertTrue(html.contains("id=\"updates-body\""));
-    assertTrue(html.contains("id=\"config-form\""));
-    assertTrue(html.contains("id=\"wizard-form\""));
+    assertContainsAll(
+        html,
+        "Web Shell v1",
+        "Peer control plane",
+        "Alert queue",
+        "Runtime diagnostics",
+        "Queue control plane",
+        "Core updater",
+        "Operator subset",
+        "First-time setup",
+        "Installed apps",
+        "Installed apps JSON",
+        "Alerts JSON",
+        "Diagnostics JSON",
+        "__BOOTSTRAP_JSON__",
+        "Use Refresh diagnostics to load the current diagnostics snapshot.");
+    assertContainsAll(
+        html,
+        "id=\"apps\"",
+        "id=\"apps-body\"",
+        "id=\"apps-status\"",
+        "peer-create-form\" hidden",
+        "name=\"referenceText\"",
+        "id=\"peers-status\"",
+        "id=\"alerts-panel\"",
+        "id=\"alerts-body\"",
+        "id=\"diagnostics-panel\"",
+        "id=\"diagnostics-body\"",
+        "name=\"filterData\" type=\"checkbox\" checked",
+        "queue-create-form\" hidden",
+        "id=\"queue\"",
+        "id=\"security-form\"",
+        "id=\"updates-body\"",
+        "id=\"config-form\"",
+        "id=\"wizard-form\"");
   }
 
   @Test
@@ -52,6 +62,9 @@ class WebShellResourcesTest {
     assertPeerMutationMarkersPresent(script);
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
+    assertAppsMarkersPresent(script);
+    assertAppsSubmissionOrder(script);
+    assertAppsLoadSequencing(script);
     assertAlertsAndDiagnosticsMarkersPresent(script);
     assertPlatformControlPlaneMarkersPresent(script);
   }
@@ -63,6 +76,16 @@ class WebShellResourcesTest {
 
     assertTrue(stylesheet.contains(".alert-card-text {"));
     assertTrue(stylesheet.contains("white-space: pre-wrap;"));
+    assertTrue(stylesheet.contains(".app-card-list {"));
+    assertTrue(stylesheet.contains(".app-card-actions {"));
+    assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
+  }
+
+  private static void assertContainsAll(String text, String... expectedFragments) {
+    for (String expectedFragment : expectedFragments) {
+      assertTrue(
+          text.contains(expectedFragment), () -> "Expected fragment missing: " + expectedFragment);
+    }
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
@@ -247,6 +270,64 @@ class WebShellResourcesTest {
     assertTrue(errorGuardIndex > renderPeersIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(loadPeersCatchIndex > renderErrorIndex);
+  }
+
+  private static void assertAppsMarkersPresent(String script) {
+    int appUiEntryHelperIndex = script.indexOf("function normalizeAppUiEntryHref(value)");
+    int legacyLinkHelperIndex = script.indexOf("function normalizeLegacyLinkPath(value)");
+    String appUiEntryHelper = script.substring(appUiEntryHelperIndex, legacyLinkHelperIndex);
+
+    assertTrue(script.contains("appsSnapshot: null"));
+    assertTrue(script.contains("let appsLoadGeneration = 0;"));
+    assertTrue(script.contains("apps: document.getElementById(\"apps-body\")"));
+    assertTrue(script.contains("appsStatus: document.getElementById(\"apps-status\")"));
+    assertTrue(
+        script.contains("appsReadonlyHint: document.getElementById(\"apps-readonly-hint\")"));
+    assertTrue(script.contains("const appsControls = {"));
+    assertTrue(script.contains("function normalizeAppUiEntryHref(value)"));
+    assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
+    assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
+    assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
+    assertTrue(script.contains("function renderAppCard(app)"));
+    assertTrue(script.contains("function renderApps(data)"));
+    assertTrue(script.contains("function appMutationPath(appId, action)"));
+    assertTrue(script.contains("async function loadAppsSection()"));
+    assertTrue(script.contains("async function deleteForm(path, formData, unavailableMessage)"));
+    assertTrue(script.contains("setAppsStatus(\"Refreshing installed apps.\");"));
+    assertTrue(script.contains("loadJson(apiUrl(\"apps\"))"));
+    assertTrue(script.contains("return `apps/${encodedAppId}/${action}`;"));
+    assertTrue(script.contains("return `apps/${encodedAppId}`;"));
+    assertTrue(script.contains("action === \"uninstall\""));
+    assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
+  }
+
+  private static void assertAppsSubmissionOrder(String script) {
+    int bindAppsIndex = script.indexOf("function bindAppsInteractions()");
+    int actionLookupIndex = script.indexOf("const action = form.dataset.appAction;", bindAppsIndex);
+    int preventDefaultIndex = script.indexOf("event.preventDefault();", actionLookupIndex);
+    int mutationIndex = script.indexOf("await submitAppMutation(form, action);", bindAppsIndex);
+
+    assertTrue(bindAppsIndex >= 0);
+    assertTrue(actionLookupIndex > bindAppsIndex);
+    assertTrue(preventDefaultIndex > actionLookupIndex);
+    assertTrue(mutationIndex > preventDefaultIndex);
+  }
+
+  private static void assertAppsLoadSequencing(String script) {
+    int loadAppsIndex = script.indexOf("const loadGeneration = ++appsLoadGeneration;");
+    int successGuardIndex =
+        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", loadAppsIndex);
+    int renderAppsIndex = script.indexOf("renderApps(snapshot);", loadAppsIndex);
+    int errorGuardIndex =
+        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", successGuardIndex + 1);
+    int renderErrorIndex =
+        script.indexOf("renderError(sections.apps, \"apps\", error);", loadAppsIndex);
+
+    assertTrue(loadAppsIndex >= 0);
+    assertTrue(successGuardIndex > loadAppsIndex);
+    assertTrue(renderAppsIndex > successGuardIndex);
+    assertTrue(errorGuardIndex > renderAppsIndex);
+    assertTrue(renderErrorIndex > errorGuardIndex);
   }
 
   private static void assertAlertsAndDiagnosticsMarkersPresent(String script) {

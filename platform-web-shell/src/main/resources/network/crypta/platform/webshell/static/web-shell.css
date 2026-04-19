@@ -167,6 +167,7 @@ a {
   background: var(--shell-panel);
   box-shadow: var(--shell-shadow);
   backdrop-filter: blur(14px);
+  scroll-margin-top: 24px;
 }
 
 .panel-wide {
@@ -235,6 +236,11 @@ a {
 .status-pill.is-warning::before {
   background: var(--shell-warm);
   box-shadow: 0 0 0 4px rgba(255, 209, 125, 0.18);
+}
+
+.status-pill.is-success::before {
+  background: var(--shell-accent-2);
+  box-shadow: 0 0 0 4px rgba(142, 240, 181, 0.16);
 }
 
 .status-pill.is-error::before {
@@ -481,6 +487,66 @@ a {
 .alert-dismiss-form {
   display: flex;
   justify-content: flex-start;
+}
+
+.app-card-list {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.app-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.app-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.app-card-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.app-card-title {
+  margin: 0;
+}
+
+.app-card-subtitle {
+  margin: 0;
+  color: var(--shell-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.app-card-pills,
+.app-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.app-card-actions {
+  align-items: center;
+}
+
+.app-action-form {
+  display: flex;
+}
+
+.app-ui-entry {
+  display: inline-flex;
+  align-items: center;
 }
 
 .diagnostics-lines,

@@ -16,10 +16,11 @@
         <h1>Web Shell v1</h1>
         <p class="lede">
           Snapshot views, config changes, updater triggers, first-run controls, queue actions, and
-          alerts and diagnostics snapshots powered by Platform API v1.
+          alerts, diagnostics, and installed-app lifecycle controls powered by Platform API v1.
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href="/api/v1/node/greeting">Node greeting JSON</a>
+          <a class="button button-secondary" href="/api/v1/apps">Installed apps JSON</a>
           <a class="button button-secondary" href="/api/v1/alerts">Alerts JSON</a>
           <a class="button button-secondary" href="/api/v1/diagnostics">Diagnostics JSON</a>
           <a class="button button-secondary" href="/">Legacy root</a>
@@ -87,6 +88,29 @@
           <div class="queue-status" id="diagnostics-status" aria-live="polite"></div>
           <div class="panel-body" id="diagnostics-body">
             <p class="empty-state">Use Refresh diagnostics to load the current diagnostics snapshot.</p>
+          </div>
+        </article>
+
+        <article class="panel panel-span-2" id="apps">
+          <div class="panel-header">
+            <p class="panel-kicker">Apps</p>
+            <h2>Installed apps</h2>
+          </div>
+          <p class="panel-description">
+            Review installed apps, see permissions and runtime status, open an app UI when one is
+            declared, and control start, stop, or uninstall actions from the shell.
+          </p>
+          <div class="queue-toolbar">
+            <button class="button button-secondary" id="apps-refresh-button" type="button">
+              Refresh apps
+            </button>
+          </div>
+          <div class="queue-status" id="apps-status" aria-live="polite"></div>
+          <p class="panel-description" hidden id="apps-readonly-hint">
+            App lifecycle actions are unavailable in read-only mode.
+          </p>
+          <div class="panel-body" id="apps-body">
+            <p class="loading">Loading installed apps...</p>
           </div>
         </article>
 
@@ -358,7 +382,7 @@
         </article>
       </section>
 
-      <section class="panel panel-wide" id="queue-panel">
+      <section class="panel panel-wide" id="queue">
         <div class="panel-header">
           <p class="panel-kicker">Queue</p>
           <h2>Queue control plane</h2>

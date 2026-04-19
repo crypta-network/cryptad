@@ -500,6 +500,12 @@ tasks.register("printVersion") {
   doLast { println(project.version.toString()) }
 }
 
+tasks.register("stageFirstPartyApps") {
+  group = "build"
+  description = "Stages the repo-owned first-party AppHost bundles."
+  dependsOn(":apps:queue-manager:stageApp")
+}
+
 // The default from build-logic (512m) is too small for the full test suite on Windows and can
 // trigger OOM in long-running integration tests.
 tasks.withType<Test>().configureEach { maxHeapSize = "2g" }
