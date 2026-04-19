@@ -24,6 +24,7 @@ dependencyResolutionManagement {
 rootProject.name = "cryptad"
 
 include(
+  ":apps:queue-manager",
   ":foundation-support",
   ":foundation-store",
   ":foundation-store-contracts",

@@ -15,6 +15,7 @@ import java.util.Map;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.MultiValueTable;
+import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,23 +50,13 @@ class ToadletContextImplTest {
   @BeforeEach
   void setUp() throws Exception {
     outputStream = new ByteArrayOutputStream();
-    Socket socket = new FakeSocket(outputStream, InetAddress.getLoopbackAddress());
 
     // Minimal stubbing used across tests
     org.mockito.Mockito.when(container.getFormPassword()).thenReturn("secret");
     org.mockito.Mockito.when(container.isFProxyJavascriptEnabled()).thenReturn(false);
     org.mockito.Mockito.when(container.isSSL()).thenReturn(false);
 
-    ToadletRequestServices services =
-        new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
-    context =
-        new ToadletContextImpl(
-            socket,
-            new MultiValueTable<>(),
-            bucketFactory,
-            services,
-            new URI("http://example.com/"),
-            1L);
+    context = newContext(new MultiValueTable<>());
   }
 
   @Test
@@ -113,6 +104,22 @@ class ToadletContextImplTest {
         .thenReturn("wrong");
 
     assertFalse(context.hasFormPassword(request));
+  }
+
+  @Test
+  void hasFormPassword_whenUrlEncodedRequestBodyContainsPassword_returnsTrue() throws Exception {
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
+    headers.put("content-type", "application/x-www-form-urlencoded; charset=UTF-8");
+    ToadletContextImpl requestContext = newContext(headers);
+    HTTPRequestImpl urlEncodedRequest =
+        new HTTPRequestImpl(
+            new URI("http://example.com/api/v1/apps/queue-manager/start"),
+            new SimpleReadOnlyArrayBucket(
+                "formPassword=secret".getBytes(StandardCharsets.US_ASCII)),
+            requestContext,
+            "POST");
+
+    assertTrue(requestContext.hasFormPassword(urlEncodedRequest));
   }
 
   @Test
@@ -299,6 +306,14 @@ class ToadletContextImplTest {
       end--;
     }
     return end == parts.length ? parts : java.util.Arrays.copyOf(parts, end);
+  }
+
+  private ToadletContextImpl newContext(MultiValueTable<String, String> headers) throws Exception {
+    Socket socket = new FakeSocket(outputStream, InetAddress.getLoopbackAddress());
+    ToadletRequestServices services =
+        new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
+    return new ToadletContextImpl(
+        socket, headers, bucketFactory, services, new URI("http://example.com/"), 1L);
   }
 
   private static class FakeSocket extends Socket {

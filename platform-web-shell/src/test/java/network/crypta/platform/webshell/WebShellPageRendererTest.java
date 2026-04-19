@@ -21,6 +21,8 @@ class WebShellPageRendererTest {
     assertTrue(html.contains(WebShellPaths.SCRIPT_PATH));
     assertTrue(html.contains(WebShellPaths.BOOTSTRAP_ELEMENT_ID));
     assertTrue(html.contains(WebShellBootstrap.DEFAULT_SHELL_TITLE));
+    assertTrue(html.contains("id=\"queue\""));
+    assertTrue(html.contains("id=\"apps\""));
     assertFalse(html.contains("__BOOTSTRAP_JSON__"));
   }
 }

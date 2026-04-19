@@ -14,6 +14,7 @@
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const shellState = {
     alertsSnapshot: null,
+    appsSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
     securitySnapshot: null,
@@ -31,6 +32,7 @@
   let peerLoadGeneration = 0;
   let queueLoadGeneration = 0;
   let alertsLoadGeneration = 0;
+  let appsLoadGeneration = 0;
   let diagnosticsLoadGeneration = 0;
   let securityLoadGeneration = 0;
   let updatesLoadGeneration = 0;
@@ -44,6 +46,9 @@
     alerts: document.getElementById("alerts-body"),
     alertsStatus: document.getElementById("alerts-status"),
     alertsReadonlyHint: document.getElementById("alerts-readonly-hint"),
+    apps: document.getElementById("apps-body"),
+    appsStatus: document.getElementById("apps-status"),
+    appsReadonlyHint: document.getElementById("apps-readonly-hint"),
     diagnostics: document.getElementById("diagnostics-body"),
     diagnosticsStatus: document.getElementById("diagnostics-status"),
     security: document.getElementById("security-body"),
@@ -75,6 +80,9 @@
   };
   const alertsControls = {
     refreshButton: document.getElementById("alerts-refresh-button"),
+  };
+  const appsControls = {
+    refreshButton: document.getElementById("apps-refresh-button"),
   };
   const diagnosticsControls = {
     refreshButton: document.getElementById("diagnostics-refresh-button"),
@@ -185,6 +193,10 @@
     setSectionStatus(sections.alertsStatus, message, tone);
   }
 
+  function setAppsStatus(message, tone) {
+    setSectionStatus(sections.appsStatus, message, tone);
+  }
+
   function setDiagnosticsStatus(message, tone) {
     setSectionStatus(sections.diagnosticsStatus, message, tone);
   }
@@ -221,7 +233,13 @@
       row.className = "kv-row";
 
       const labelNode = text("div", "kv-label", label);
-      const valueNode = text("div", "kv-value", value);
+      const valueNode = document.createElement("div");
+      valueNode.className = "kv-value";
+      if (value instanceof Node) {
+        valueNode.append(value);
+      } else {
+        valueNode.textContent = scalar(value);
+      }
 
       row.append(labelNode, valueNode);
       list.append(row);
@@ -295,6 +313,26 @@
     return scalar(value);
   }
 
+  function formatPermissions(value) {
+    if (!Array.isArray(value) || value.length === 0) {
+      return "None";
+    }
+    return value
+      .map((permission) => (typeof permission === "string" && permission ? permission : scalar(permission)))
+      .join(", ");
+  }
+
+  function formatIsoTimestamp(value) {
+    if (typeof value !== "string" || value.length === 0) {
+      return "Unavailable";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString();
+  }
+
   function severityTone(severity) {
     const normalized = typeof severity === "string" ? severity.toLowerCase() : "";
     if (normalized.includes("critical") || normalized.includes("error") || normalized.includes("high")) {
@@ -321,6 +359,21 @@
       anchor.textContent = link.label;
       item.append(anchor);
       sections.legacy.append(item);
+    }
+  }
+
+  function normalizeAppUiEntryHref(value) {
+    if (typeof value !== "string" || value.length === 0) {
+      return null;
+    }
+    try {
+      const url = new URL(value, shellRootUrl);
+      if (url.origin !== window.location.origin) {
+        return null;
+      }
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch (error) {
+      return null;
     }
   }
 
@@ -594,6 +647,146 @@
     );
   }
 
+  function appDisplayName(app) {
+    return typeof app.name === "string" && app.name ? app.name : typeof app.appId === "string" ? app.appId : "App";
+  }
+
+  function appMutationPath(appId, action) {
+    if (typeof appId !== "string" || appId.length === 0) {
+      return null;
+    }
+    const encodedAppId = encodeURIComponent(appId);
+    switch (action) {
+      case "start":
+      case "stop":
+        return `apps/${encodedAppId}/${action}`;
+      case "uninstall":
+        return `apps/${encodedAppId}`;
+      default:
+        return null;
+    }
+  }
+
+  function appUiEntryNode(app) {
+    const href = normalizeAppUiEntryHref(app.uiEntry);
+    if (!href) {
+      return null;
+    }
+    const container = document.createElement("span");
+    container.className = "app-ui-entry";
+    const link = document.createElement("a");
+    link.className = "button button-secondary";
+    link.href = href;
+    link.textContent = "Open UI";
+    container.append(link);
+    return container;
+  }
+
+  function buildAppActionForm(app, action, label) {
+    const appId = typeof app.appId === "string" ? app.appId : "";
+    const path = appMutationPath(appId, action);
+    if (!path) {
+      return null;
+    }
+
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.appId = appId;
+    form.dataset.appAction = action;
+    form.dataset.appName = appDisplayName(app);
+
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    form.append(submit);
+    return form;
+  }
+
+  function renderAppCard(app) {
+    const card = document.createElement("article");
+    card.className = "app-card";
+
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h3", "app-card-title", appDisplayName(app)),
+      text("p", "app-card-subtitle", typeof app.appId === "string" && app.appId ? app.appId : "Unavailable"),
+    );
+
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill("Installed"));
+    pills.append(createPill(app.running ? "Running" : "Stopped", app.running ? "is-success" : "is-warning"));
+    if (app.uiEntry) {
+      pills.append(createPill("UI entry"));
+    }
+    header.append(heading, pills);
+    card.append(header);
+
+    const uiEntryNode = appUiEntryNode(app);
+    const entries = [
+      ["App ID", typeof app.appId === "string" && app.appId ? app.appId : "Unavailable"],
+      ["Version", typeof app.version === "string" && app.version ? app.version : "Unavailable"],
+      ["Permissions", formatPermissions(app.permissions)],
+      ["UI entry", uiEntryNode || scalar(app.uiEntry)],
+      ["Running", app.running ? "Yes" : "No"],
+      ["PID", app.running ? scalar(app.pid) : "Unavailable"],
+      ["Started at", app.running ? formatIsoTimestamp(app.startedAt) : "Unavailable"],
+    ];
+    card.append(definitionList(entries));
+
+    const actions = document.createElement("div");
+    actions.className = "app-card-actions";
+    if (formPassword) {
+      const startForm = buildAppActionForm(app, app.running ? "stop" : "start", app.running ? "Stop" : "Start");
+      const uninstallForm = app.running
+        ? null
+        : buildAppActionForm(app, "uninstall", "Uninstall");
+      if (startForm) {
+        actions.append(startForm);
+      }
+      if (uninstallForm) {
+        actions.append(uninstallForm);
+      }
+    }
+    if (actions.childNodes.length) {
+      card.append(actions);
+    }
+
+    return card;
+  }
+
+  function renderApps(data) {
+    shellState.appsSnapshot = data;
+    updateAppsToolbar();
+    clear(sections.apps);
+
+    const apps = Array.isArray(data.apps) ? data.apps : [];
+    const runningApps = apps.filter((app) => app && typeof app === "object" && app.running).length;
+    const summaryEntries = [
+      ["Installed apps", `${apps.length}`],
+      ["Running apps", `${runningApps}`],
+      ["Scope", formPassword ? "Shell-native" : "Read-only"],
+      ...topLevelFieldEntries(data, ["apps"]),
+    ];
+    sections.apps.append(summaryCard("Apps summary", summaryEntries, apps.length ? "" : "is-warning"));
+
+    if (!apps.length) {
+      sections.apps.append(text("p", "empty-state", "No installed apps were returned."));
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    apps.forEach((app) => {
+      list.append(renderAppCard(app && typeof app === "object" ? app : {}));
+    });
+    sections.apps.append(list);
+  }
+
   function getNestedValue(root, path) {
     let current = root;
     for (let index = 0; index < path.length; index += 1) {
@@ -817,6 +1010,12 @@
   function updateAlertsToolbar() {
     if (sections.alertsReadonlyHint) {
       sections.alertsReadonlyHint.hidden = !!formPassword;
+    }
+  }
+
+  function updateAppsToolbar() {
+    if (sections.appsReadonlyHint) {
+      sections.appsReadonlyHint.hidden = !!formPassword;
     }
   }
 
@@ -1197,6 +1396,7 @@
     const nextBootstrap = JSON.parse(nextBootstrapElement.textContent || "{}");
     formPassword = typeof nextBootstrap.formPassword === "string" ? nextBootstrap.formPassword : "";
     updateSecurityToolbar();
+    updateAppsToolbar();
     updateUpdatesToolbar();
     updateConfigToolbar();
     updateWizardToolbar();
@@ -1335,6 +1535,15 @@
   }
 
   async function postForm(path, formData, unavailableMessage) {
+    return submitFormMutation("POST", path, formData, unavailableMessage);
+  }
+
+  // DELETE reuses the same formPassword body flow so uninstall stays behind the existing bridge auth.
+  async function deleteForm(path, formData, unavailableMessage) {
+    return submitFormMutation("DELETE", path, formData, unavailableMessage);
+  }
+
+  async function submitFormMutation(method, path, formData, unavailableMessage) {
     const currentFormPassword = await refreshFormPassword();
     if (!currentFormPassword) {
       throw new Error(unavailableMessage || "Queue mutations unavailable in read-only mode.");
@@ -1350,7 +1559,7 @@
     }
 
     const response = await fetch(apiUrl(path), {
-      method: "POST",
+      method,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -1514,6 +1723,27 @@
     }
   }
 
+  async function loadAppsSection() {
+    const loadGeneration = ++appsLoadGeneration;
+    shellState.appsSnapshot = null;
+    clear(sections.apps);
+    sections.apps.append(text("p", "loading", "Loading installed apps..."));
+    updateAppsToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("apps"));
+      if (loadGeneration !== appsLoadGeneration) {
+        return;
+      }
+      renderApps(snapshot);
+    } catch (error) {
+      if (loadGeneration !== appsLoadGeneration) {
+        return;
+      }
+      renderError(sections.apps, "apps", error);
+    }
+  }
+
   async function dismissAlert(form) {
     const alertId = form.dataset.alertId ?? "";
     if (alertId === "") {
@@ -1531,6 +1761,39 @@
       await loadAlertsSection();
     } catch (error) {
       setAlertsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitAppMutation(form, action) {
+    const appId = form.dataset.appId || "";
+    const path = appMutationPath(appId, action);
+    const appName = form.dataset.appName || appDisplayName({ appId });
+    if (!path) {
+      setAppsStatus("App lifecycle action unavailable for this app.", "is-error");
+      return;
+    }
+
+    const formData = new FormData(form);
+
+    try {
+      const data =
+        action === "uninstall"
+          ? await deleteForm(path, formData, "App lifecycle actions unavailable in read-only mode.")
+          : await postForm(path, formData, "App lifecycle actions unavailable in read-only mode.");
+      const operation = data.operation || action;
+      if (action === "uninstall") {
+        setAppsStatus(`${appName} uninstalled.`, "is-success");
+      } else if (action === "stop") {
+        setAppsStatus(`${appName} stopped.`, "is-success");
+      } else {
+        setAppsStatus(`${appName} started.`, "is-success");
+      }
+      if (operation && operation !== action) {
+        setAppsStatus(`App action completed: ${operation.replaceAll("_", " ")}.`, "is-success");
+      }
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
     }
   }
 
@@ -2135,6 +2398,25 @@
     });
   }
 
+  function bindAppsInteractions() {
+    appsControls.refreshButton.addEventListener("click", () => {
+      setAppsStatus("Refreshing installed apps.");
+      loadAppsSection();
+    });
+    sections.apps.addEventListener("submit", async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      const action = form.dataset.appAction;
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      await submitAppMutation(form, action);
+    });
+  }
+
   function bindSecurityInteractions() {
     securityControls.form.addEventListener("submit", submitSecurityForm);
   }
@@ -2204,6 +2486,7 @@
 
   renderLegacyLinks();
   bindAlertsInteractions();
+  bindAppsInteractions();
   bindSecurityInteractions();
   bindUpdatesInteractions();
   bindConfigInteractions();
@@ -2212,6 +2495,7 @@
   bindDiagnosticsInteractions();
   bindQueueInteractions();
   updateAlertsToolbar();
+  updateAppsToolbar();
   updateDiagnosticsToolbar();
   updateSecurityToolbar();
   updateUpdatesToolbar();
@@ -2227,6 +2511,9 @@
   });
   loadAlertsSection().catch((error) => {
     renderError(sections.alerts, "alerts", error);
+  });
+  loadAppsSection().catch((error) => {
+    renderError(sections.apps, "apps", error);
   });
   loadUpdatesSection().catch((error) => {
     renderError(sections.updates, "updates", error);
