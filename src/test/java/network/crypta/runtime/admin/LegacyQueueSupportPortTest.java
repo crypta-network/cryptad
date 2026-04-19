@@ -2,6 +2,7 @@ package network.crypta.runtime.admin;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
@@ -48,6 +49,24 @@ class LegacyQueueSupportPortTest {
 
     assertTrue(port.isQueueBackendEnabled());
     assertFalse(port.isQueueBackendEnabled());
+  }
+
+  @Test
+  void supportedInsertCompatibilityModes_whenQueried_returnsConcreteRuntimeModes() {
+    assertEquals(
+        List.of(
+            "COMPAT_1468",
+            "COMPAT_1250_EXACT",
+            "COMPAT_1250",
+            "COMPAT_1251",
+            "COMPAT_1255",
+            "COMPAT_1416"),
+        port.supportedInsertCompatibilityModes());
+  }
+
+  @Test
+  void defaultInsertCompatibilityMode_whenQueried_returnsConcreteRuntimeDefault() {
+    assertEquals("COMPAT_1468", port.defaultInsertCompatibilityMode());
   }
 
   @Test

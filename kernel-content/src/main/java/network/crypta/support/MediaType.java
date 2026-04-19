@@ -146,6 +146,30 @@ public final class MediaType {
     this.parameters.putAll(parameters);
   }
 
+  /**
+   * Guesses a MIME type from a filename using Cryptad's legacy MIME registry.
+   *
+   * <p>This wrapper preserves the queue/FCP behavior that prefers {@link DefaultMIMETypes} over the
+   * JDK's platform MIME tables. Unknown extensions therefore fall back to Cryptad's default binary
+   * MIME type instead of returning {@code null}. Callers should pass only the display name or
+   * basename that carries the extension they want inspected.
+   *
+   * <p>Use this helper when you need the same filename-to-MIME mapping that queue inserts, FCP
+   * uploads, and manifest construction already rely on. It is especially useful for extensions that
+   * Cryptad tracks in its own registry but the JDK platform tables do not know about yet, such as
+   * newer image formats. The method performs lookup only; it does not validate an explicit MIME
+   * string or parse any media-type parameters.
+   *
+   * @param filename candidate filename whose extension should be inspected; may be a path-like
+   *     string as long as the final segment contains the relevant extension and the caller accepts
+   *     the registry's path-style parsing rules
+   * @return inferred MIME type from Cryptad's registry, or the default binary MIME type when the
+   *     extension is not known
+   */
+  public static String guessMIMEType(String filename) {
+    return DefaultMIMETypes.guessMIMEType(filename, false);
+  }
+
   //
   // ACCESSORS
   //

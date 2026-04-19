@@ -23,6 +23,7 @@ class WebShellResourcesTest {
         "Operator subset",
         "First-time setup",
         "Installed apps",
+        "First-party publishing surface",
         "Installed apps JSON",
         "Alerts JSON",
         "Diagnostics JSON",
@@ -40,6 +41,16 @@ class WebShellResourcesTest {
         "id=\"alerts-body\"",
         "id=\"diagnostics-panel\"",
         "id=\"diagnostics-body\"",
+        "href=\"#publisher\"",
+        "id=\"publisher\"",
+        "id=\"publisher-status\"",
+        "id=\"publisher-body\"",
+        "id=\"publisher-file-form\"",
+        "data-publisher-source-type=\"file\"",
+        "id=\"publisher-directory-form\"",
+        "data-publisher-source-type=\"directory\"",
+        "id=\"publisher-file-submit\"",
+        "id=\"publisher-directory-submit\"",
         "name=\"filterData\" type=\"checkbox\" checked",
         "queue-create-form\" hidden",
         "id=\"queue\"",
@@ -65,6 +76,8 @@ class WebShellResourcesTest {
     assertAppsMarkersPresent(script);
     assertAppsSubmissionOrder(script);
     assertAppsLoadSequencing(script);
+    assertPublisherMarkersPresent(script);
+    assertPublisherSubmissionOrder(script);
     assertAlertsAndDiagnosticsMarkersPresent(script);
     assertPlatformControlPlaneMarkersPresent(script);
   }
@@ -78,6 +91,8 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains("white-space: pre-wrap;"));
     assertTrue(stylesheet.contains(".app-card-list {"));
     assertTrue(stylesheet.contains(".app-card-actions {"));
+    assertTrue(stylesheet.contains(".publisher-forms {"));
+    assertTrue(stylesheet.contains(".publisher-result-actions {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
   }
 
@@ -328,6 +343,82 @@ class WebShellResourcesTest {
     assertTrue(renderAppsIndex > successGuardIndex);
     assertTrue(errorGuardIndex > renderAppsIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
+  }
+
+  private static void assertPublisherMarkersPresent(String script) {
+    assertTrue(script.contains("const publisherDefaultCompatibilityMode = \"COMPAT_CURRENT\";"));
+    assertTrue(script.contains("publisher: document.getElementById(\"publisher-body\")"));
+    assertTrue(script.contains("publisherStatus: document.getElementById(\"publisher-status\")"));
+    assertTrue(
+        script.contains(
+            "publisherReadonlyHint: document.getElementById(\"publisher-readonly-hint\")"));
+    assertTrue(script.contains("const publisherControls = {"));
+    assertTrue(
+        script.contains(
+            "queueLink: document.querySelector('#publisher .queue-toolbar a[href=\"#queue\"]'),"));
+    assertTrue(script.contains("function updatePublisherToolbar()"));
+    assertTrue(script.contains("function publisherSourceType(form)"));
+    assertTrue(script.contains("function publisherMutationPath(sourceType)"));
+    assertTrue(script.contains("function generatePublisherIdentifier(sourceType)"));
+    assertTrue(script.contains("function initializePublisherForm(form)"));
+    assertTrue(script.contains("function resetPublisherForm(form)"));
+    assertTrue(script.contains("function buildPublisherFormData(form)"));
+    assertTrue(script.contains("function renderPublisherResult(data, sourceType)"));
+    assertTrue(script.contains("function publisherInsertAccepted(data)"));
+    assertTrue(script.contains("function publisherInsertOutcome(data)"));
+    assertTrue(script.contains("async function showUploadQueueFromPublisher()"));
+    assertTrue(script.contains("async function submitPublisherForm(event)"));
+    assertTrue(script.contains("Publisher actions unavailable in read-only mode."));
+    assertTrue(script.contains("setStatus(\"Refreshing upload queue.\");"));
+    assertTrue(script.contains("case \"IDENTIFIER_COLLISION\":"));
+    assertTrue(script.contains("case \"METADATA_UNRESOLVED\":"));
+    assertTrue(script.contains("insert handled:"));
+    assertTrue(script.contains("insert did not start:"));
+    assertTrue(script.contains("${publisherInsertOutcome(data)}."));
+    assertTrue(script.contains("initializePublisherForm(publisherControls.fileForm);"));
+    assertTrue(script.contains("initializePublisherForm(publisherControls.directoryForm);"));
+    assertTrue(script.contains("bindPublisherInteractions();"));
+    assertTrue(script.contains("updatePublisherToolbar();"));
+  }
+
+  private static void assertPublisherSubmissionOrder(String script) {
+    int submitPublisherIndex = script.indexOf("async function submitPublisherForm(event)");
+    int postFormIndex = script.indexOf("await postForm(", submitPublisherIndex);
+    int renderResultIndex =
+        script.indexOf("renderPublisherResult(data, sourceType);", submitPublisherIndex);
+    int startedGuardIndex =
+        script.indexOf("if (publisherInsertAccepted(data)) {", submitPublisherIndex);
+    int resetFormIndex = script.indexOf("resetPublisherForm(form);", submitPublisherIndex);
+    int successStatusIndex =
+        script.indexOf(
+            "setPublisherStatus(\n"
+                + "          `Local ${publisherLabel(sourceType)} insert handled:"
+                + " ${publisherInsertOutcome(data)}.`",
+            submitPublisherIndex);
+    int refreshQueueIndex =
+        script.indexOf("await showUploadQueueFromPublisher();", submitPublisherIndex);
+    int failureStatusIndex = script.indexOf("insert did not start:", submitPublisherIndex);
+    int bindPublisherIndex = script.indexOf("function bindPublisherInteractions()");
+    int fileSubmitIndex =
+        script.indexOf(
+            "publisherControls.fileForm.addEventListener(\"submit\", submitPublisherForm);",
+            bindPublisherIndex);
+    int directorySubmitIndex =
+        script.indexOf(
+            "publisherControls.directoryForm.addEventListener(\"submit\", submitPublisherForm);",
+            bindPublisherIndex);
+
+    assertTrue(submitPublisherIndex >= 0);
+    assertTrue(postFormIndex > submitPublisherIndex);
+    assertTrue(renderResultIndex > postFormIndex);
+    assertTrue(startedGuardIndex > renderResultIndex);
+    assertTrue(resetFormIndex > startedGuardIndex);
+    assertTrue(successStatusIndex > resetFormIndex);
+    assertTrue(refreshQueueIndex > successStatusIndex);
+    assertTrue(failureStatusIndex > refreshQueueIndex);
+    assertTrue(bindPublisherIndex >= 0);
+    assertTrue(fileSubmitIndex > bindPublisherIndex);
+    assertTrue(directorySubmitIndex > fileSubmitIndex);
   }
 
   private static void assertAlertsAndDiagnosticsMarkersPresent(String script) {

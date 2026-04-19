@@ -101,6 +101,7 @@ public final class PlatformApiRouter {
             runtimePorts.queuePage(),
             runtimePorts.queueMutation(),
             runtimePorts.queueDownload(),
+            runtimePorts.queueInsert(),
             runtimePorts.queueSupport(),
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
@@ -575,6 +576,18 @@ public final class PlatformApiRouter {
       String resource, String action, PlatformApiRequest request) {
     if (!"POST".equals(request.method())) {
       return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    if ("inserts".equals(resource)) {
+      return switch (action) {
+        case "file" ->
+            PlatformApiResponse.created(
+                queueApiHandler.createLocalFileInsert(request.queryParameters()));
+        case "directory" ->
+            PlatformApiResponse.created(
+                queueApiHandler.createLocalDirectoryInsert(request.queryParameters()));
+        default ->
+            throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+      };
     }
     if ("requests".equals(resource)) {
       return switch (action) {

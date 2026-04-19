@@ -59,6 +59,11 @@ import network.crypta.runtime.spi.PeerVisibility;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueInsertOptions;
+import network.crypta.runtime.spi.QueueInsertOutcome;
+import network.crypta.runtime.spi.QueueInsertPort;
+import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
+import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
@@ -118,6 +123,7 @@ class PlatformApiRouterTest {
   @Mock private QueuePagePort queuePagePort;
   @Mock private QueueMutationPort queueMutationPort;
   @Mock private QueueDownloadPort queueDownloadPort;
+  @Mock private QueueInsertPort queueInsertPort;
   @Mock private QueueSupportPort queueSupportPort;
   @Mock private QueueCompletionPort queueCompletionPort;
   @Mock private AlertFeedPort alertFeedPort;
@@ -142,11 +148,25 @@ class PlatformApiRouterTest {
     when(runtimePorts.queuePage()).thenReturn(queuePagePort);
     when(runtimePorts.queueMutation()).thenReturn(queueMutationPort);
     when(runtimePorts.queueDownload()).thenReturn(queueDownloadPort);
+    when(runtimePorts.queueInsert()).thenReturn(queueInsertPort);
     when(runtimePorts.queueSupport()).thenReturn(queueSupportPort);
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
     when(runtimePorts.alertFeed()).thenReturn(alertFeedPort);
     when(runtimePorts.alertMutation()).thenReturn(alertMutationPort);
     router = new PlatformApiRouter(runtimePorts, appHost);
+  }
+
+  private void stubQueueInsertCompatibilityModes() {
+    when(queueSupportPort.supportedInsertCompatibilityModes())
+        .thenReturn(
+            List.of(
+                "COMPAT_1468",
+                "COMPAT_1250_EXACT",
+                "COMPAT_1250",
+                "COMPAT_1251",
+                "COMPAT_1255",
+                "COMPAT_1416"));
+    when(queueSupportPort.defaultInsertCompatibilityMode()).thenReturn("COMPAT_1468");
   }
 
   @Test
@@ -1741,6 +1761,206 @@ class PlatformApiRouterTest {
                 Map.entry("filterData", true),
                 Map.entry("expectedMimeType", "text/plain"),
                 Map.entry("returnType", "direct"))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueLocalFileInsertRequested_expectCreatedJsonAndDetachedRequest()
+      throws Exception {
+    Path sourceFile = tempDir.resolve("publisher-file.txt");
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    stubQueueInsertCompatibilityModes();
+    when(queueInsertPort.enqueueLocalFileInsert(any())).thenReturn(QueueInsertOutcome.STARTED);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "inserts", "file"),
+                Map.of(
+                    "sourcePath", List.of(sourceFile.toString()),
+                    "insertUri", List.of("SSK@publisher-file"),
+                    "identifier", List.of("publisher-file-1"),
+                    "contentType", List.of("text/plain"),
+                    "targetFilename", List.of("publisher-file.txt"),
+                    "compatibilityMode", List.of("COMPAT_CURRENT"),
+                    "compress", List.of("on"))));
+
+    verify(queueInsertPort)
+        .enqueueLocalFileInsert(
+            new QueueLocalFileInsertRequest(
+                sourceFile.toFile(),
+                "SSK@publisher-file",
+                "publisher-file-1",
+                "text/plain",
+                new QueueInsertOptions(true, "COMPAT_1468", null),
+                "publisher-file.txt"));
+    assertEquals(201, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("operation", "create_local_file_insert"),
+                Map.entry("sourceType", "file"),
+                Map.entry("sourcePath", sourceFile.toString()),
+                Map.entry("insertUri", "SSK@publisher-file"),
+                Map.entry("identifier", "publisher-file-1"),
+                Map.entry("outcome", "STARTED"))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueLocalFileInsertRequestedWithoutContentType_expectCryptadGuessedMime()
+      throws Exception {
+    Path sourceFile = tempDir.resolve("image.avif");
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    stubQueueInsertCompatibilityModes();
+    when(queueInsertPort.enqueueLocalFileInsert(any())).thenReturn(QueueInsertOutcome.STARTED);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "inserts", "file"),
+                Map.of(
+                    "sourcePath", List.of(sourceFile.toString()),
+                    "insertUri", List.of("CHK@"),
+                    "identifier", List.of("publisher-file-2"),
+                    "compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    verify(queueInsertPort)
+        .enqueueLocalFileInsert(
+            new QueueLocalFileInsertRequest(
+                sourceFile.toFile(),
+                "CHK@",
+                "publisher-file-2",
+                "image/avif",
+                new QueueInsertOptions(false, "COMPAT_1468", null),
+                "image.avif"));
+    assertEquals(201, response.statusCode());
+  }
+
+  @Test
+  void
+      route_whenQueueLocalFileInsertRequestedWithDocnamedUriAndTargetFilename_expectTargetSuppressed()
+          throws Exception {
+    Path sourceFile = tempDir.resolve("publisher-file.txt");
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    stubQueueInsertCompatibilityModes();
+    when(queueInsertPort.enqueueLocalFileInsert(any())).thenReturn(QueueInsertOutcome.STARTED);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "inserts", "file"),
+                Map.of(
+                    "sourcePath", List.of(sourceFile.toString()),
+                    "insertUri", List.of("KSK@site-name"),
+                    "identifier", List.of("publisher-file-3"),
+                    "targetFilename", List.of("ignored-name.txt"),
+                    "compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    verify(queueInsertPort)
+        .enqueueLocalFileInsert(
+            new QueueLocalFileInsertRequest(
+                sourceFile.toFile(),
+                "KSK@site-name",
+                "publisher-file-3",
+                "text/plain",
+                new QueueInsertOptions(false, "COMPAT_1468", null),
+                null));
+    assertEquals(201, response.statusCode());
+  }
+
+  @Test
+  void route_whenQueueLocalFileInsertRequestedWithMalformedContentType_expectBadRequest()
+      throws Exception {
+    Path sourceFile = tempDir.resolve("publisher-file.txt");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "inserts", "file"),
+                Map.of(
+                    "sourcePath", List.of(sourceFile.toString()),
+                    "insertUri", List.of("CHK@"),
+                    "identifier", List.of("publisher-file-4"),
+                    "contentType", List.of("textplain"),
+                    "compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    verify(queueInsertPort, never()).enqueueLocalFileInsert(any());
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_query_parameter\",\"message\":\"Query parameter"
+            + " 'contentType' must be a plausible MIME type.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueLocalDirectoryInsertRequested_expectCreatedJsonAndDetachedRequest()
+      throws Exception {
+    Path sourceDirectory = tempDir.resolve("publisher-site");
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    stubQueueInsertCompatibilityModes();
+    when(queueInsertPort.enqueueLocalDirectoryInsert(any()))
+        .thenReturn(QueueInsertOutcome.IDENTIFIER_COLLISION);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("queue", "inserts", "directory"),
+                Map.of(
+                    "sourcePath", List.of(sourceDirectory.toString()),
+                    "insertUri", List.of("SSK@publisher-site"),
+                    "identifier", List.of("publisher-dir-1"),
+                    "compatibilityMode", List.of("COMPAT_1468"),
+                    "compress", List.of("false"))));
+
+    verify(queueInsertPort)
+        .enqueueLocalDirectoryInsert(
+            new QueueLocalDirectoryInsertRequest(
+                sourceDirectory.toFile(),
+                "SSK@publisher-site",
+                "publisher-dir-1",
+                new QueueInsertOptions(false, "COMPAT_1468", null)));
+    assertEquals(201, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            orderedJson(
+                Map.entry("operation", "create_local_directory_insert"),
+                Map.entry("sourceType", "directory"),
+                Map.entry("sourcePath", sourceDirectory.toString()),
+                Map.entry("insertUri", "SSK@publisher-site"),
+                Map.entry("identifier", "publisher-dir-1"),
+                Map.entry("outcome", "IDENTIFIER_COLLISION"))),
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueLocalFileInsertRequestedWithGet_expectMethodNotAllowed() {
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("queue", "inserts", "file"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals(Map.of("Allow", "POST"), response.headers());
+    assertEquals(
+        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
+            + " requests only.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenQueueLocalDirectoryInsertRequestedWithGet_expectMethodNotAllowed() {
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("queue", "inserts", "directory"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals(Map.of("Allow", "POST"), response.headers());
+    assertEquals(
+        "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Platform API v1 supports POST"
+            + " requests only.\"}}",
         response.body());
   }
 

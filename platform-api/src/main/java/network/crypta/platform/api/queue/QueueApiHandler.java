@@ -1,5 +1,6 @@
 package network.crypta.platform.api.queue;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
@@ -14,12 +15,20 @@ import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRejectedException;
 import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueInsertFailureReason;
+import network.crypta.runtime.spi.QueueInsertOptions;
+import network.crypta.runtime.spi.QueueInsertOutcome;
+import network.crypta.runtime.spi.QueueInsertPort;
+import network.crypta.runtime.spi.QueueInsertRejectedException;
+import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
+import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
 import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
+import network.crypta.support.MediaType;
 
 /**
  * Serves the Platform API v1 queue control-plane surface.
@@ -40,21 +49,36 @@ import network.crypta.runtime.spi.RequestQueueUnavailableException;
  */
 public final class QueueApiHandler {
   private static final String ALERT_SUMMARY_PLACEHOLDER = "<!--CRYPTA_ALERT_SUMMARY-->";
+  private static final String COMPATIBILITY_MODE_CURRENT = "COMPAT_CURRENT";
+  private static final String COMPATIBILITY_MODE_DEFAULT = "COMPAT_DEFAULT";
   private static final String FORM_PASSWORD_PLACEHOLDER = "<!--CRYPTA_QUEUE_FORM_PASSWORD-->";
   private static final String PANIC_BOX_PLACEHOLDER = "<!--CRYPTA_QUEUE_PANIC_BOX-->";
   private static final String FIELD_OPERATION = "operation";
   private static final String FIELD_IDENTIFIER_COUNT = "identifierCount";
   private static final String IDENTIFIER_PARAMETER_PREFIX = "identifier-";
+  private static final String PARAMETER_COMPATIBILITY_MODE = "compatibilityMode";
+  private static final String PARAMETER_COMPRESS = "compress";
+  private static final String PARAMETER_CONTENT_TYPE = "contentType";
   private static final String PARAMETER_DISABLE_FILTER_DATA = "disableFilterData";
   private static final String PARAMETER_FETCH_URI = "fetchUri";
   private static final String PARAMETER_FILTER_DATA = "filterData";
+  private static final String PARAMETER_IDENTIFIER = "identifier";
+  private static final String PARAMETER_INSERT_URI = "insertUri";
+  private static final String PARAMETER_OVERRIDE_SPLITFILE_CRYPTO_KEY =
+      "overrideSplitfileCryptoKey";
   private static final String PARAMETER_PAGE = "page";
   private static final String PARAMETER_PRIORITY = "priority";
+  private static final String PARAMETER_SOURCE_PATH = "sourcePath";
+  private static final String PARAMETER_TARGET_FILENAME = "targetFilename";
   private static final short MINIMUM_PRIORITY_CLASS = 0;
   private static final short MAXIMUM_PRIORITY_CLASS = 6;
+  private static final String OPERATION_LOCAL_DIRECTORY_INSERT = "create_local_directory_insert";
+  private static final String OPERATION_LOCAL_FILE_INSERT = "create_local_file_insert";
   private static final String QUERY_PARAMETER_PREFIX = "Query parameter '";
   private static final String QUEUE_PAGE_DOWNLOADS = "downloads";
   private static final String QUEUE_PAGE_UPLOADS = "uploads";
+  private static final String SOURCE_TYPE_DIRECTORY = "directory";
+  private static final String SOURCE_TYPE_FILE = "file";
 
   /** Detached queue snapshot read port. */
   private final QueuePagePort queuePagePort;
@@ -64,6 +88,9 @@ public final class QueueApiHandler {
 
   /** Detached download-creation port for new direct downloads. */
   private final QueueDownloadPort queueDownloadPort;
+
+  /** Detached insert-creation port for new local file and directory inserts. */
+  private final QueueInsertPort queueInsertPort;
 
   /** Detached queue support port used for availability checks. */
   private final QueueSupportPort queueSupportPort;
@@ -81,6 +108,7 @@ public final class QueueApiHandler {
    * @param queuePagePort detached queue snapshot read port used for queue pages and count views
    * @param queueMutationPort detached mutation port for already-existing queue requests
    * @param queueDownloadPort detached direct-download creation port for new download requests
+   * @param queueInsertPort detached insert-creation port for new local file and directory inserts
    * @param queueSupportPort detached queue support port used for backend availability checks
    * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
    * @throws NullPointerException if any required detached runtime port reference is {@code null}
@@ -89,11 +117,13 @@ public final class QueueApiHandler {
       QueuePagePort queuePagePort,
       QueueMutationPort queueMutationPort,
       QueueDownloadPort queueDownloadPort,
+      QueueInsertPort queueInsertPort,
       QueueSupportPort queueSupportPort,
       QueueCompletionPort queueCompletionPort) {
     this.queuePagePort = Objects.requireNonNull(queuePagePort, "queuePagePort");
     this.queueMutationPort = Objects.requireNonNull(queueMutationPort, "queueMutationPort");
     this.queueDownloadPort = Objects.requireNonNull(queueDownloadPort, "queueDownloadPort");
+    this.queueInsertPort = Objects.requireNonNull(queueInsertPort, "queueInsertPort");
     this.queueSupportPort = Objects.requireNonNull(queueSupportPort, "queueSupportPort");
     this.queueCompletionPort = Objects.requireNonNull(queueCompletionPort, "queueCompletionPort");
   }
@@ -362,6 +392,111 @@ public final class QueueApiHandler {
     return json;
   }
 
+  /**
+   * Queues one new persistent insert backed by a local file path.
+   *
+   * <p>The handler validates the small Platform API surface up front, keeps compatibility-mode and
+   * compression parsing inside the transport-neutral layer, and then delegates the actual access
+   * checks plus request creation to the detached runtime insert port.
+   *
+   * <p>Two legacy queue semantics are preserved here because they directly affect the retrieval URI
+   * users will see later. First, when the caller omits {@code contentType}, the handler infers one
+   * from the local file name using Cryptad's MIME registry rather than the host JVM's platform MIME
+   * tables. Second, when the insert URI already carries a doc name, the handler suppresses any
+   * explicit target filename so the insert does not become a one-file manifest wrapper rooted below
+   * an extra path segment. Compatibility-mode validation also comes from the runtime-facing queue
+   * support port, so {@code COMPAT_CURRENT} and {@code COMPAT_DEFAULT} expand to whatever concrete
+   * mode the live node currently treats as its queue insert default.
+   *
+   * @param queryParameters decoded request parameters for the current API call
+   * @return JSON-compatible creation summary describing the local-file insert request
+   * @throws PlatformApiException if required parameters are missing, malformed, rejected by the
+   *     runtime, or the queue backend is unavailable
+   */
+  public Map<String, Object> createLocalFileInsert(Map<String, List<String>> queryParameters) {
+    File sourceFile = requireSourcePath(queryParameters, false);
+    String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
+    FreenetURI parsedInsertUri = requireInsertUri(insertUri);
+    String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
+    String contentType = resolveContentType(queryParameters, sourceFile);
+    String targetFilename = resolveTargetFilename(queryParameters, sourceFile, parsedInsertUri);
+    QueueInsertOptions options = requireInsertOptions(queryParameters);
+    ensureQueueBackendEnabled();
+
+    QueueInsertOutcome outcome;
+    try {
+      outcome =
+          queueInsertPort.enqueueLocalFileInsert(
+              new QueueLocalFileInsertRequest(
+                  sourceFile, insertUri, identifier, contentType, options, targetFilename));
+    } catch (QueueInsertRejectedException e) {
+      throw queueInsertRejected(SOURCE_TYPE_FILE, e);
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    } catch (IOException _) {
+      throw new PlatformApiException(500, "internal_error", "Failed to enqueue local file insert.");
+    }
+
+    return insertCreationResult(
+        OPERATION_LOCAL_FILE_INSERT,
+        SOURCE_TYPE_FILE,
+        sourceFile.getPath(),
+        insertUri,
+        identifier,
+        outcome);
+  }
+
+  /**
+   * Queues one new persistent insert backed by a local directory path.
+   *
+   * <p>The Platform API deliberately keeps directory insert creation narrow for this phase: callers
+   * provide one local path plus the detached insert metadata, and the runtime insert port remains
+   * authoritative for directory traversal, file-count limits, and queue registration.
+   *
+   * <p>Directory inserts still share the queue insert compatibility policy with the legacy HTTP
+   * queue flow. The handler therefore validates the supplied compatibility mode against the live
+   * queue support port instead of freezing a historical list of accepted names inside the Platform
+   * API leaf. That keeps queue inserts, the Publisher surface, and the legacy queue forms aligned
+   * when the runtime changes which historical modes are still accepted or which concrete mode the
+   * node treats as its default.
+   *
+   * @param queryParameters decoded request parameters for the current API call
+   * @return JSON-compatible creation summary describing the local-directory insert request
+   * @throws PlatformApiException if required parameters are missing, malformed, rejected by the
+   *     runtime, or the queue backend is unavailable
+   */
+  public Map<String, Object> createLocalDirectoryInsert(Map<String, List<String>> queryParameters) {
+    File sourceDirectory = requireSourcePath(queryParameters, true);
+    String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
+    requireInsertUri(insertUri);
+    String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
+    QueueInsertOptions options = requireInsertOptions(queryParameters);
+    ensureQueueBackendEnabled();
+
+    QueueInsertOutcome outcome;
+    try {
+      outcome =
+          queueInsertPort.enqueueLocalDirectoryInsert(
+              new QueueLocalDirectoryInsertRequest(
+                  sourceDirectory, insertUri, identifier, options));
+    } catch (QueueInsertRejectedException e) {
+      throw queueInsertRejected(SOURCE_TYPE_DIRECTORY, e);
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          500, "internal_error", "Failed to enqueue local directory insert.");
+    }
+
+    return insertCreationResult(
+        OPERATION_LOCAL_DIRECTORY_INSERT,
+        SOURCE_TYPE_DIRECTORY,
+        sourceDirectory.getPath(),
+        insertUri,
+        identifier,
+        outcome);
+  }
+
   private void ensureQueueReadable(boolean uploads) {
     ensureQueueBackendEnabled();
     queueCompletionPort.ensureTrackingStarted(uploads);
@@ -437,9 +572,111 @@ public final class QueueApiHandler {
     return fetchUri;
   }
 
+  private static File requireSourcePath(
+      Map<String, List<String>> queryParameters, boolean expectDirectory) {
+    String sourcePath = PlatformApiParameters.requireString(queryParameters, PARAMETER_SOURCE_PATH);
+    File source = new File(sourcePath);
+    if (source.exists()) {
+      if (expectDirectory && !source.isDirectory()) {
+        throw invalidQuery(
+            queryParameter(PARAMETER_SOURCE_PATH)
+                + " must refer to a local directory for this endpoint.");
+      }
+      if (!expectDirectory && !source.isFile()) {
+        throw invalidQuery(
+            queryParameter(PARAMETER_SOURCE_PATH)
+                + " must refer to a local file for this endpoint.");
+      }
+    }
+    return source;
+  }
+
+  private static FreenetURI requireInsertUri(String insertUri) {
+    try {
+      return new FreenetURI(insertUri);
+    } catch (MalformedURLException _) {
+      throw invalidQuery(queryParameter(PARAMETER_INSERT_URI) + " must be a valid insert URI.");
+    }
+  }
+
+  private static String resolveTargetFilename(
+      Map<String, List<String>> queryParameters, File sourceFile, FreenetURI insertUri) {
+    if (insertUri.getDocName() != null) {
+      return null;
+    }
+    String explicitTargetFilename = optionalString(queryParameters, PARAMETER_TARGET_FILENAME);
+    if (explicitTargetFilename != null) {
+      return explicitTargetFilename;
+    }
+    return sourceFile.getName();
+  }
+
+  private static String resolveContentType(
+      Map<String, List<String>> queryParameters, File sourceFile) {
+    String contentType = optionalString(queryParameters, PARAMETER_CONTENT_TYPE);
+    if (contentType == null) {
+      contentType = guessContentType(sourceFile.getName());
+    }
+    validateContentType(contentType);
+    return contentType;
+  }
+
+  private static String guessContentType(String filename) {
+    return MediaType.guessMIMEType(filename);
+  }
+
+  private static void validateContentType(String contentType) {
+    try {
+      new MediaType(contentType);
+    } catch (MalformedURLException | NullPointerException _) {
+      throw invalidQuery(
+          queryParameter(PARAMETER_CONTENT_TYPE) + " must be a plausible MIME type.");
+    }
+  }
+
+  private QueueInsertOptions requireInsertOptions(Map<String, List<String>> queryParameters) {
+    rejectOverrideSplitfileCryptoKey(queryParameters);
+    return new QueueInsertOptions(
+        readCheckboxBoolean(queryParameters, PARAMETER_COMPRESS),
+        requireCompatibilityMode(queryParameters),
+        null);
+  }
+
+  private String requireCompatibilityMode(Map<String, List<String>> queryParameters) {
+    String compatibilityMode =
+        PlatformApiParameters.requireString(queryParameters, PARAMETER_COMPATIBILITY_MODE);
+    String defaultCompatibilityMode = queueSupportPort.defaultInsertCompatibilityMode();
+    List<String> supportedCompatibilityModes = queueSupportPort.supportedInsertCompatibilityModes();
+    if (COMPATIBILITY_MODE_CURRENT.equals(compatibilityMode)
+        || COMPATIBILITY_MODE_DEFAULT.equals(compatibilityMode)) {
+      return defaultCompatibilityMode;
+    }
+    if (supportedCompatibilityModes.contains(compatibilityMode)) {
+      return compatibilityMode;
+    }
+    throw invalidQuery(
+        queryParameter(PARAMETER_COMPATIBILITY_MODE)
+            + " must be one of '"
+            + COMPATIBILITY_MODE_CURRENT
+            + "', '"
+            + COMPATIBILITY_MODE_DEFAULT
+            + "', or one of the concrete modes: "
+            + String.join(", ", supportedCompatibilityModes)
+            + ".");
+  }
+
+  private static void rejectOverrideSplitfileCryptoKey(Map<String, List<String>> queryParameters) {
+    String overrideKey = optionalString(queryParameters, PARAMETER_OVERRIDE_SPLITFILE_CRYPTO_KEY);
+    if (overrideKey != null) {
+      throw invalidQuery(
+          queryParameter(PARAMETER_OVERRIDE_SPLITFILE_CRYPTO_KEY)
+              + " is not supported by this endpoint yet.");
+    }
+  }
+
   private static List<String> requireIdentifiers(Map<String, List<String>> queryParameters) {
     ArrayList<String> identifiers = new ArrayList<>();
-    List<String> repeatedIdentifiers = queryParameters.get("identifier");
+    List<String> repeatedIdentifiers = queryParameters.get(PARAMETER_IDENTIFIER);
     if (repeatedIdentifiers != null) {
       for (String identifier : repeatedIdentifiers) {
         addIdentifier(identifiers, identifier);
@@ -568,11 +805,47 @@ public final class QueueApiHandler {
     return QUERY_PARAMETER_PREFIX + name + "'";
   }
 
+  private static Map<String, Object> insertCreationResult(
+      String operation,
+      String sourceType,
+      String sourcePath,
+      String insertUri,
+      String identifier,
+      QueueInsertOutcome outcome) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    json.put(FIELD_OPERATION, operation);
+    json.put("sourceType", sourceType);
+    json.put(PARAMETER_SOURCE_PATH, sourcePath);
+    json.put(PARAMETER_INSERT_URI, insertUri);
+    json.put(PARAMETER_IDENTIFIER, identifier);
+    json.put("outcome", outcome.name());
+    return json;
+  }
+
   private static String stripRuntimePlaceholders(String contentHtmlTemplate) {
     return contentHtmlTemplate
         .replace(ALERT_SUMMARY_PLACEHOLDER, "")
         .replace(FORM_PASSWORD_PLACEHOLDER, "")
         .replace(PANIC_BOX_PLACEHOLDER, "");
+  }
+
+  private static PlatformApiException queueInsertRejected(
+      String sourceType, QueueInsertRejectedException rejection) {
+    QueueInsertFailureReason reason = rejection.reason();
+    String normalizedSourceType =
+        SOURCE_TYPE_DIRECTORY.equals(sourceType) ? SOURCE_TYPE_DIRECTORY : SOURCE_TYPE_FILE;
+    return new PlatformApiException(
+        400,
+        switch (reason) {
+          case ACCESS_DENIED -> "queue_insert_rejected_access_denied";
+          case SOURCE_NOT_FOUND -> "queue_insert_rejected_source_not_found";
+          case TOO_MANY_FILES -> "queue_insert_rejected_too_many_files";
+        },
+        "Local "
+            + normalizedSourceType
+            + " insert rejected by the queue backend: "
+            + reason.name()
+            + ".");
   }
 
   private static PlatformApiException queueUnavailable() {

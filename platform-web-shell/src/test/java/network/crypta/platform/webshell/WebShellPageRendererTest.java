@@ -23,6 +23,7 @@ class WebShellPageRendererTest {
     assertTrue(html.contains(WebShellBootstrap.DEFAULT_SHELL_TITLE));
     assertTrue(html.contains("id=\"queue\""));
     assertTrue(html.contains("id=\"apps\""));
+    assertTrue(html.contains("id=\"publisher\""));
     assertFalse(html.contains("__BOOTSTRAP_JSON__"));
   }
 }

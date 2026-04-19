@@ -1,5 +1,6 @@
 package network.crypta.platform.api.queue;
 
+import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,6 +8,13 @@ import network.crypta.platform.api.PlatformApiException;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRequest;
+import network.crypta.runtime.spi.QueueInsertFailureReason;
+import network.crypta.runtime.spi.QueueInsertOptions;
+import network.crypta.runtime.spi.QueueInsertOutcome;
+import network.crypta.runtime.spi.QueueInsertPort;
+import network.crypta.runtime.spi.QueueInsertRejectedException;
+import network.crypta.runtime.spi.QueueLocalDirectoryInsertRequest;
+import network.crypta.runtime.spi.QueueLocalFileInsertRequest;
 import network.crypta.runtime.spi.QueueMutationPort;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
@@ -35,6 +43,7 @@ class QueueApiHandlerTest {
             queuePagePort,
             new RecordingQueueMutationPort(),
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             queueCompletionPort);
 
@@ -66,6 +75,7 @@ class QueueApiHandlerTest {
             queuePagePort,
             new RecordingQueueMutationPort(),
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             queueCompletionPort);
     Map<String, List<String>> parameters = orderedParameters(Map.entry("page", List.of("uploads")));
@@ -89,6 +99,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -111,6 +122,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -135,6 +147,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -155,6 +168,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             new RecordingQueueMutationPort(),
             queueDownloadPort,
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -184,6 +198,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             new RecordingQueueMutationPort(),
             queueDownloadPort,
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -205,6 +220,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             new RecordingQueueMutationPort(),
             queueDownloadPort,
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
     Map<String, List<String>> parameters =
@@ -226,6 +242,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             new RecordingQueueMutationPort(),
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
     Map<String, List<String>> parameters =
@@ -248,6 +265,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
     Map<String, List<String>> parameters =
@@ -272,6 +290,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             new RecordingQueueMutationPort(),
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
     Map<String, List<String>> parameters =
@@ -294,6 +313,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -316,6 +336,7 @@ class QueueApiHandlerTest {
             new RecordingQueuePagePort(),
             queueMutationPort,
             new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
 
@@ -328,6 +349,376 @@ class QueueApiHandlerTest {
     assertEquals("restart", result.get("operation"));
     assertEquals(Boolean.TRUE, result.get("disableFilterData"));
     assertEquals(Boolean.TRUE, queueMutationPort.lastDisableFilterData);
+  }
+
+  @Test
+  void createLocalFileInsert_whenRequested_expectDetachedLocalFileInsertRequest() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    Map<String, Object> result =
+        handler.createLocalFileInsert(
+            orderedParameters(
+                Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+                Map.entry("insertUri", List.of("SSK@publisher-file")),
+                Map.entry("identifier", List.of("publisher-file-1")),
+                Map.entry("contentType", List.of("text/plain")),
+                Map.entry("targetFilename", List.of("file.txt")),
+                Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")),
+                Map.entry("compress", List.of("on"))));
+
+    assertEquals(
+        new QueueLocalFileInsertRequest(
+            new File("/tmp/publisher/file.txt"),
+            "SSK@publisher-file",
+            "publisher-file-1",
+            "text/plain",
+            new QueueInsertOptions(true, "COMPAT_1468", null),
+            "file.txt"),
+        queueInsertPort.lastLocalFileRequest);
+    assertEquals("create_local_file_insert", result.get("operation"));
+    assertEquals("file", result.get("sourceType"));
+    assertEquals("/tmp/publisher/file.txt", result.get("sourcePath"));
+    assertEquals("SSK@publisher-file", result.get("insertUri"));
+    assertEquals("publisher-file-1", result.get("identifier"));
+    assertEquals("STARTED", result.get("outcome"));
+  }
+
+  @Test
+  void createLocalFileInsert_whenTargetFilenameMissingAndInsertUriHasNoDocName_expectBasename() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    assertEquals("file.txt", queueInsertPort.lastLocalFileRequest.targetFilename());
+    assertEquals("COMPAT_1468", queueInsertPort.lastLocalFileRequest.compatibilityMode());
+  }
+
+  @Test
+  void createLocalFileInsert_whenContentTypeMissing_expectCryptadMimeInference() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/image.avif")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    assertEquals("image/avif", queueInsertPort.lastLocalFileRequest.contentType());
+  }
+
+  @Test
+  void createLocalFileInsert_whenTargetFilenameMissingAndInsertUriHasDocName_expectNoDefault() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("KSK@site-name")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    assertNull(queueInsertPort.lastLocalFileRequest.targetFilename());
+  }
+
+  @Test
+  void createLocalFileInsert_whenTargetFilenameProvidedAndInsertUriHasDocName_expectSuppressed() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("KSK@site-name")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("targetFilename", List.of("ignored-name.txt")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    assertNull(queueInsertPort.lastLocalFileRequest.targetFilename());
+  }
+
+  @Test
+  void createLocalDirectoryInsert_whenRequested_expectDetachedLocalDirectoryInsertRequest() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    queueInsertPort.nextOutcome = QueueInsertOutcome.IDENTIFIER_COLLISION;
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    Map<String, Object> result =
+        handler.createLocalDirectoryInsert(
+            orderedParameters(
+                Map.entry("sourcePath", List.of("/tmp/publisher/site")),
+                Map.entry("insertUri", List.of("SSK@publisher-site")),
+                Map.entry("identifier", List.of("publisher-dir-1")),
+                Map.entry("compatibilityMode", List.of("COMPAT_1468")),
+                Map.entry("compress", List.of("false"))));
+
+    assertEquals(
+        new QueueLocalDirectoryInsertRequest(
+            new File("/tmp/publisher/site"),
+            "SSK@publisher-site",
+            "publisher-dir-1",
+            new QueueInsertOptions(false, "COMPAT_1468", null)),
+        queueInsertPort.lastLocalDirectoryRequest);
+    assertEquals("create_local_directory_insert", result.get("operation"));
+    assertEquals("directory", result.get("sourceType"));
+    assertEquals("/tmp/publisher/site", result.get("sourcePath"));
+    assertEquals("SSK@publisher-site", result.get("insertUri"));
+    assertEquals("publisher-dir-1", result.get("identifier"));
+    assertEquals("IDENTIFIER_COLLISION", result.get("outcome"));
+  }
+
+  @Test
+  void createLocalFileInsert_whenSourcePathMissing_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("SSK@publisher-file")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Missing required query parameter 'sourcePath'.", error.getMessage());
+  }
+
+  @Test
+  void createLocalFileInsert_whenInsertUriMissing_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Missing required query parameter 'insertUri'.", error.getMessage());
+  }
+
+  @Test
+  void createLocalFileInsert_whenIdentifierMissing_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("SSK@publisher-file")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Missing required query parameter 'identifier'.", error.getMessage());
+  }
+
+  @Test
+  void createLocalFileInsert_whenContentTypeMalformed_expectBadRequest() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("contentType", List.of("textplain")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'contentType' must be a plausible MIME type.", error.getMessage());
+    assertNull(queueInsertPort.lastLocalFileRequest);
+  }
+
+  @Test
+  void createLocalFileInsert_whenCompatibilityModeCurrent_expectRuntimeDefault() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true, List.of("COMPAT_1255", "COMPAT_1416"), "COMPAT_1255"),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT"))));
+
+    assertEquals("COMPAT_1255", queueInsertPort.lastLocalFileRequest.compatibilityMode());
+  }
+
+  @Test
+  void createLocalFileInsert_whenCompatibilityModeSupportedByRuntime_expectPassedThrough() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true, List.of("COMPAT_1255", "COMPAT_1416"), "COMPAT_1255"),
+            new RecordingQueueCompletionPort());
+
+    handler.createLocalFileInsert(
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_1416"))));
+
+    assertEquals("COMPAT_1416", queueInsertPort.lastLocalFileRequest.compatibilityMode());
+  }
+
+  @Test
+  void createLocalFileInsert_whenCompatibilityModeUnsupported_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_TYPO")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'compatibilityMode' must be one of 'COMPAT_CURRENT',"
+            + " 'COMPAT_DEFAULT', or one of the concrete modes: COMPAT_1468,"
+            + " COMPAT_1250_EXACT, COMPAT_1250, COMPAT_1251, COMPAT_1255, COMPAT_1416.",
+        error.getMessage());
+  }
+
+  @Test
+  void createLocalFileInsert_whenRejected_expectDeterministicPlatformApiException() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    queueInsertPort.rejectedException =
+        new QueueInsertRejectedException(QueueInsertFailureReason.ACCESS_DENIED, "denied");
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("sourcePath", List.of("/tmp/publisher/file.txt")),
+            Map.entry("insertUri", List.of("SSK@publisher-file")),
+            Map.entry("identifier", List.of("publisher-file-1")),
+            Map.entry("compatibilityMode", List.of("COMPAT_CURRENT")));
+
+    PlatformApiException error =
+        assertThrows(PlatformApiException.class, () -> handler.createLocalFileInsert(parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("queue_insert_rejected_access_denied", error.errorCode());
+    assertEquals(
+        "Local file insert rejected by the queue backend: ACCESS_DENIED.", error.getMessage());
   }
 
   @SafeVarargs
@@ -412,17 +803,81 @@ class QueueApiHandlerTest {
     }
   }
 
+  private static final class RecordingQueueInsertPort implements QueueInsertPort {
+    private QueueLocalFileInsertRequest lastLocalFileRequest;
+    private QueueLocalDirectoryInsertRequest lastLocalDirectoryRequest;
+    private QueueInsertOutcome nextOutcome = QueueInsertOutcome.STARTED;
+    private QueueInsertRejectedException rejectedException;
+
+    @Override
+    public QueueInsertOutcome enqueueBrowserUploadInsert(
+        network.crypta.runtime.spi.QueueBrowserUploadInsertRequest request) {
+      throw new UnsupportedOperationException(
+          "Browser-upload inserts are not exercised by this test double.");
+    }
+
+    @Override
+    public QueueInsertOutcome enqueueLocalFileInsert(QueueLocalFileInsertRequest request)
+        throws QueueInsertRejectedException {
+      lastLocalFileRequest = request;
+      if (rejectedException != null) {
+        throw rejectedException;
+      }
+      return nextOutcome;
+    }
+
+    @Override
+    public QueueInsertOutcome enqueueLocalDirectoryInsert(QueueLocalDirectoryInsertRequest request)
+        throws QueueInsertRejectedException {
+      lastLocalDirectoryRequest = request;
+      if (rejectedException != null) {
+        throw rejectedException;
+      }
+      return nextOutcome;
+    }
+  }
+
   @SuppressWarnings("ClassCanBeRecord")
   private static final class FixedQueueSupportPort implements QueueSupportPort {
+    private static final List<String> DEFAULT_SUPPORTED_INSERT_COMPATIBILITY_MODES =
+        List.of(
+            "COMPAT_1468",
+            "COMPAT_1250_EXACT",
+            "COMPAT_1250",
+            "COMPAT_1251",
+            "COMPAT_1255",
+            "COMPAT_1416");
+
     private final boolean enabled;
+    private final List<String> supportedInsertCompatibilityModes;
+    private final String defaultInsertCompatibilityMode;
 
     private FixedQueueSupportPort(boolean enabled) {
+      this(enabled, DEFAULT_SUPPORTED_INSERT_COMPATIBILITY_MODES, "COMPAT_1468");
+    }
+
+    private FixedQueueSupportPort(
+        boolean enabled,
+        List<String> supportedInsertCompatibilityModes,
+        String defaultInsertCompatibilityMode) {
       this.enabled = enabled;
+      this.supportedInsertCompatibilityModes = List.copyOf(supportedInsertCompatibilityModes);
+      this.defaultInsertCompatibilityMode = defaultInsertCompatibilityMode;
     }
 
     @Override
     public boolean isQueueBackendEnabled() {
       return enabled;
+    }
+
+    @Override
+    public List<String> supportedInsertCompatibilityModes() {
+      return supportedInsertCompatibilityModes;
+    }
+
+    @Override
+    public String defaultInsertCompatibilityMode() {
+      return defaultInsertCompatibilityMode;
     }
 
     @Override
