@@ -131,6 +131,11 @@ class LegacyRuntimePortsTest {
   void getters_whenRequested_expectInjectedBridgePortsAndLegacyAdapterTypes() {
     PortsSnapshot snapshot = capturePorts();
 
+    assertInjectedInfrastructureAdapterTypes(snapshot);
+    assertInjectedFeatureAdapterTypes(snapshot);
+  }
+
+  private void assertInjectedInfrastructureAdapterTypes(PortsSnapshot snapshot) {
     assertAll(
         () -> assertInstanceOf(LegacyConfigPort.class, snapshot.configPort()),
         () -> assertInstanceOf(LegacyConnectivityPort.class, snapshot.connectivityPort()),
@@ -163,7 +168,11 @@ class LegacyRuntimePortsTest {
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyPageChromePort"),
                 snapshot.pageChromePort()),
-        () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()),
+        () -> assertInstanceOf(LegacyCoreUpdateActionPort.class, snapshot.coreUpdateActionPort()));
+  }
+
+  private void assertInjectedFeatureAdapterTypes(PortsSnapshot snapshot) {
+    assertAll(
         () ->
             assertInstanceOf(
                 loadClass("network.crypta.runtime.admin.LegacyQueueSupportPort"),
