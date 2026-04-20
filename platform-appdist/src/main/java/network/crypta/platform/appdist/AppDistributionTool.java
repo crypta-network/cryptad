@@ -1,8 +1,6 @@
 package network.crypta.platform.appdist;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.util.List;
@@ -79,7 +77,7 @@ public final class AppDistributionTool {
     Arguments args = Arguments.parse(arguments);
     Path bundleDir = AppDistributionSidecars.requireBundleRoot(args.requirePath(OPTION_BUNDLE_DIR));
     boolean allowUnsigned = args.has(OPTION_ALLOW_UNSIGNED);
-    if (allowUnsigned && bundleHasNoDistributionSidecars(bundleDir)) {
+    if (allowUnsigned && !AppDistributionSidecars.hasDistributionSidecar(bundleDir)) {
       validateBundleStructure(bundleDir);
       return;
     }
@@ -136,13 +134,6 @@ public final class AppDistributionTool {
           arguments.requireEnvironmentValue(arguments.require(OPTION_PRIVATE_KEY_ENV)));
     }
     return AppBundleSigner.loadPrivateKey(arguments.require(OPTION_PRIVATE_KEY_BASE64));
-  }
-
-  private static boolean bundleHasNoDistributionSidecars(Path bundleDir) {
-    return !Files.exists(
-            bundleDir.resolve(AppBundleDigest.DIGEST_FILE_NAME), LinkOption.NOFOLLOW_LINKS)
-        && !Files.exists(
-            bundleDir.resolve(AppBundleSignature.SIGNATURE_FILE_NAME), LinkOption.NOFOLLOW_LINKS);
   }
 
   private static void validateBundleStructure(Path bundleDir) throws IOException {

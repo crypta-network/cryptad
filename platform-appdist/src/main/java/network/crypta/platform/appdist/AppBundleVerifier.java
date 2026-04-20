@@ -1,8 +1,6 @@
 package network.crypta.platform.appdist;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.Signature;
@@ -165,11 +163,7 @@ public final class AppBundleVerifier {
    */
   public AppBundleVerification verify(Path bundleRoot) throws IOException {
     Path normalizedBundleRoot = AppDistributionSidecars.requireBundleRoot(bundleRoot);
-    Path digestSidecar = normalizedBundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME);
-    Path signatureSidecar = normalizedBundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME);
-    if (allowUnsigned
-        && !Files.exists(digestSidecar, LinkOption.NOFOLLOW_LINKS)
-        && !Files.exists(signatureSidecar, LinkOption.NOFOLLOW_LINKS)) {
+    if (allowUnsigned && !AppDistributionSidecars.hasDistributionSidecar(normalizedBundleRoot)) {
       return AppBundleVerification.unsigned();
     }
     AppBundleSignature signature = verify(normalizedBundleRoot, trustedKeys);

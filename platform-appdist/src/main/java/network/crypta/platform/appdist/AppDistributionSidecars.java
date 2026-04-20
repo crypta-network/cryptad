@@ -2,6 +2,7 @@ package network.crypta.platform.appdist;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -127,6 +128,31 @@ final class AppDistributionSidecars {
   static boolean isDistributionSidecar(String path) {
     return DISTRIBUTION_SIDECAR_NAMES.contains(
         Objects.requireNonNull(path, "path").toLowerCase(Locale.ROOT));
+  }
+
+  /**
+   * Returns whether the bundle root contains any reserved distribution sidecar name.
+   *
+   * <p>The comparison is intentionally case-insensitive even on case-sensitive filesystems. That
+   * mirrors the reserved-name checks used while digesting bundle contents and prevents development
+   * unsigned policy from treating case variants such as {@code CRYPTAD-APP.DIGESTS} as ordinary app
+   * payload files.
+   *
+   * @param bundleRoot bundle root directory to inspect
+   * @return {@code true} when any direct root entry uses a reserved sidecar name
+   * @throws IOException if the bundle root is unsafe or cannot be listed
+   */
+  static boolean hasDistributionSidecar(Path bundleRoot) throws IOException {
+    Path normalizedBundleRoot = requireBundleRoot(bundleRoot);
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(normalizedBundleRoot)) {
+      for (Path entry : entries) {
+        Path fileName = entry.getFileName();
+        if (fileName != null && isDistributionSidecar(fileName.toString())) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**

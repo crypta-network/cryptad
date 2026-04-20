@@ -53,6 +53,24 @@ class AppDistributionToolTest {
   }
 
   @Test
+  void verify_whenAllowUnsignedAndCaseVariantSidecarPresent_expectSignedPathFailure()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    Files.writeString(bundleRoot.resolve("CRYPTAD-APP.DIGESTS"), "stale-digest");
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppDistributionTool.main(
+                    new String[] {
+                      "verify", "--bundle-dir", bundleRoot.toString(), "--allow-unsigned"
+                    }));
+
+    assertEquals("missing signature sidecar", exception.getMessage());
+  }
+
+  @Test
   void verify_whenAllowUnsignedAndBundleContainsSymlink_expectFailure() throws Exception {
     Path bundleRoot = createBundle();
     Path symlink = bundleRoot.resolve("linked.txt");

@@ -182,6 +182,22 @@ class AppBundleVerifierTest {
   }
 
   @Test
+  void verify_whenUnsignedAllowedAndCaseVariantSidecarPresent_expectSignedPathFailure()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    Files.writeString(bundleRoot.resolve("CRYPTAD-APP.DIGESTS"), "stale-digest");
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleVerifier.allowUnsignedForDevelopmentOnly(TrustedAppKeys.empty())
+                    .verify(bundleRoot));
+
+    assertEquals("missing signature sidecar", exception.getMessage());
+  }
+
+  @Test
   void verify_whenDigestSidecarIsMissing_expectFailure() throws Exception {
     Path bundleRoot = createBundle();
     KeyPair keyPair = generateEd25519KeyPair();
