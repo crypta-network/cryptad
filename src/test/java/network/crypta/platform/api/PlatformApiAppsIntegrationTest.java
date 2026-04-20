@@ -3,13 +3,21 @@ package network.crypta.platform.api;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -28,6 +36,7 @@ class PlatformApiAppsIntegrationTest {
   private static final String APP_ID = "demo-app";
   private static final String APP_NAME = "Demo App";
   private static final String APP_VERSION = "1.2.3";
+  private static final String TRUSTED_KEY_ID = "local-dev";
   private static final String UI_ENTRY = "/";
 
   @TempDir private Path tempDir;
@@ -37,13 +46,10 @@ class PlatformApiAppsIntegrationTest {
 
   @BeforeEach
   void setUp() {
-    RuntimePorts runtimePorts = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
     appHostLayout =
         new AppHostLayout(
             tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"));
-    AppHost appHost =
-        new LocalProcessAppHost(appHostLayout, Duration.ofSeconds(2), new SecureRandom());
-    router = new PlatformApiRouter(runtimePorts, appHost);
+    router = createRouter(allowUnsignedHost());
   }
 
   @Test
@@ -195,9 +201,85 @@ class PlatformApiAppsIntegrationTest {
     assertTrue(repeatedStartResponse.body().contains("\"code\":\"app_conflict\""));
   }
 
+  @Test
+  void route_whenProductionPolicyReceivesUnsignedBundle_expectInvalidAppBundle() throws Exception {
+    PlatformApiRouter productionRouter =
+        createRouter(
+            new LocalProcessAppHost(appHostLayout, Duration.ofSeconds(2), new SecureRandom()));
+    Path stagedDir = stageApp();
+
+    PlatformApiResponse response =
+        productionRouter.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"Staged app bundle must pass"
+            + " trusted signature verification.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenProductionPolicyReceivesSignedBundle_expectInstallAndUpdateSuccess()
+      throws Exception {
+    KeyPair keyPair =
+        KeyPairGenerator.getInstance(AppBundleSignature.SIGNATURE_ALGORITHM).generateKeyPair();
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+            new TrustedAppKey(
+                TRUSTED_KEY_ID, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic()));
+    PlatformApiRouter productionRouter = createRouter(signedHost(trustedKeys));
+    Path stagedV1 = stageSignedApp("signed-v1", "1.0.0", keyPair);
+    Path stagedV2 = stageSignedApp("signed-v2", "9.9.9", keyPair);
+
+    PlatformApiResponse installResponse =
+        productionRouter.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedV1.toString()))));
+    assertEquals(201, installResponse.statusCode());
+    assertTrue(installResponse.body().contains("\"version\":\"1.0.0\""));
+
+    PlatformApiResponse updateResponse =
+        productionRouter.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "update"),
+                Map.of("stagedDir", List.of(stagedV2.toString()))));
+
+    assertEquals(200, updateResponse.statusCode());
+    assertTrue(updateResponse.body().contains("\"version\":\"9.9.9\""));
+  }
+
   private PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
+  }
+
+  private PlatformApiRouter createRouter(AppHost appHost) {
+    RuntimePorts runtimePorts = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
+    return new PlatformApiRouter(runtimePorts, appHost);
+  }
+
+  private AppHost allowUnsignedHost() {
+    return new LocalProcessAppHost(
+        appHostLayout,
+        Duration.ofSeconds(2),
+        new SecureRandom(),
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+  }
+
+  private AppHost signedHost(TrustedAppKeys trustedKeys) {
+    return new LocalProcessAppHost(
+        appHostLayout,
+        Duration.ofSeconds(2),
+        new SecureRandom(),
+        AppInstallVerificationPolicy.requireSigned(
+            copiedBundleDirectory -> AppBundleVerifier.verify(copiedBundleDirectory, trustedKeys)));
   }
 
   private Path stageApp() throws Exception {
@@ -229,6 +311,13 @@ class PlatformApiAppsIntegrationTest {
         """
             .formatted(APP_ID, APP_NAME, appVersion, scriptName, UI_ENTRY),
         StandardCharsets.UTF_8);
+    return stagedDir;
+  }
+
+  private Path stageSignedApp(String stagedDirectoryName, String appVersion, KeyPair keyPair)
+      throws Exception {
+    Path stagedDir = stageApp(stagedDirectoryName, appVersion);
+    AppBundleSigner.sign(stagedDir, TRUSTED_KEY_ID, keyPair.getPrivate());
     return stagedDir;
   }
 

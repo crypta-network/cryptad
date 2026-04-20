@@ -16,6 +16,7 @@ version = "3"
 
 val internalLeafProjects =
   listOf(
+    project(":platform-appdist"),
     project(":foundation-support"),
     project(":foundation-store"),
     project(":foundation-store-contracts"),
@@ -146,6 +147,7 @@ dependencies {
 
   // testImplementation
   testImplementation(project(":launcher-desktop"))
+  testImplementation(project(":platform-appdist"))
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
@@ -505,6 +507,21 @@ tasks.register("stageFirstPartyApps") {
   description = "Stages the repo-owned first-party AppHost bundles."
   dependsOn(":apps:queue-manager:stageApp")
   dependsOn(":apps:publisher:stageApp")
+}
+
+tasks.register("signFirstPartyApps") {
+  group = "build"
+  description = "Signs the repo-owned first-party AppHost bundles."
+  dependsOn(":apps:queue-manager:signApp")
+  dependsOn(":apps:publisher:signApp")
+}
+
+tasks.register("verifyFirstPartyApps") {
+  group = "verification"
+  description = "Verifies the signed repo-owned first-party AppHost bundles."
+  dependsOn(":apps:queue-manager:verifyApp")
+  dependsOn(":apps:publisher:verifyApp")
+  mustRunAfter("signFirstPartyApps")
 }
 
 // The default from build-logic (512m) is too small for the full test suite on Windows and can

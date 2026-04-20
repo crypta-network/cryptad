@@ -16,6 +16,8 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -29,11 +31,19 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -49,6 +59,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -56,6 +68,7 @@ class LocalProcessAppHostTest {
   private static final String SAMPLE_APP_ID = "sample-app";
   private static final String RUNNER_APP_ID = "runner-app";
   private static final String DUPLICATE_APP_ID = "duplicate-app";
+  private static final String TEST_KEY_ID = "test-ed25519";
   private static final String MIXED_CASE_APP_ID = "MixedCase-App";
   private static final String NORMALIZED_MIXED_CASE_APP_ID = "mixedcase-app";
   private static final String PYTHON_DAEMON_APP_ID = "python-daemon-app";
@@ -275,10 +288,70 @@ class LocalProcessAppHostTest {
   @TempDir private Path tempDir;
 
   @Test
+  void installFromDirectory_whenUsingProductionDefault_expectRejectsUnsignedBundle()
+      throws IOException {
+    AppHost host = new LocalProcessAppHost(layout());
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
+
+    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertEquals(List.of(), host.listInstalled());
+  }
+
+  @Test
+  void installFromDirectory_whenVerifierRejectsCopiedBundle_expectVerifierRunsBeforeManifestRead()
+      throws IOException {
+    AtomicReference<Path> verifiedBundle = new AtomicReference<>();
+    AppHost host =
+        requireSignedHost(
+            copiedBundleDirectory -> {
+              verifiedBundle.set(copiedBundleDirectory);
+              throw new AppBundleVerificationException(
+                  "signed app bundle verification is required");
+            });
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    Files.writeString(stagedApp.resolve(MANIFEST_FILE_NAME), "manifest.version=1\n");
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
+
+    Path copiedBundle = verifiedBundle.get();
+    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertNotNull(copiedBundle);
+    assertNotEquals(stagedApp.toAbsolutePath().normalize(), copiedBundle);
+    assertTrue(copiedBundle.startsWith(layout().installedAppsDir()));
+    assertTrue(copiedBundle.getFileName().toString().startsWith("app-install-"));
+  }
+
+  @SuppressWarnings("unused")
+  @Test
+  void installFromDirectory_whenVerifierThrowsManagedTreeIoFailure_expectRawIoFailure()
+      throws IOException {
+    IOException managedTreeFailure = new IOException("managed copied bundle became unreadable");
+    AppHost host =
+        requireSignedHost(
+            copiedBundleDirectory -> {
+              throw managedTreeFailure;
+            });
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+
+    IOException exception =
+        assertThrows(IOException.class, () -> host.installFromDirectory(stagedApp));
+
+    assertSame(managedTreeFailure, exception);
+  }
+
+  @Test
   void installFromDirectory_whenInstallingValidBundle_expectCopiedLayoutAndDescribe()
       throws IOException {
-    AppHost host = host();
-    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppHost host = signedHost(keyPair);
+    Path stagedApp = signBundle(stageInstalledApp(SAMPLE_APP_ID), keyPair);
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
 
@@ -298,7 +371,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void installFromDirectory_whenAppAlreadyInstalled_expectFailure() throws IOException {
-    AppHost host = host();
+    AppHost host = requireSignedHost(_ -> {});
     Path stagedApp = stageInstalledApp(DUPLICATE_APP_ID);
 
     host.installFromDirectory(stagedApp);
@@ -310,17 +383,20 @@ class LocalProcessAppHostTest {
   void
       updateFromDirectory_whenInstalledStoppedApp_expectManifestAndExecutableReplacedPreservingMutableDirs()
           throws IOException {
-    AppHost host = host();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppHost host = signedHost(keyPair);
     Path installedStage =
-        stageInstalledAppAt(
-            tempDir.resolve("stage-installed").resolve(SAMPLE_APP_ID),
-            SAMPLE_APP_ID,
-            APP_VERSION,
-            """
-            #!/bin/sh
-            printf 'old\\n'
-            """,
-            Map.of("bundle-only.txt", "old-bundle\n"));
+        signBundle(
+            stageInstalledAppAt(
+                tempDir.resolve("stage-installed").resolve(SAMPLE_APP_ID),
+                SAMPLE_APP_ID,
+                APP_VERSION,
+                """
+                #!/bin/sh
+                printf 'old\\n'
+                """,
+                Map.of("bundle-only.txt", "old-bundle\n")),
+            keyPair);
     InstalledAppSnapshot installation = host.installFromDirectory(installedStage);
     Path dataSentinel =
         Files.writeString(
@@ -338,15 +414,17 @@ class LocalProcessAppHostTest {
             "keep-run",
             StandardCharsets.UTF_8);
     Path updatedStage =
-        stageInstalledAppAt(
-            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
-            SAMPLE_APP_ID,
-            "3.0.0",
-            """
-            #!/bin/sh
-            printf 'new\\n'
-            """,
-            Map.of("new-bundle.txt", "new-bundle\n"));
+        signBundle(
+            stageInstalledAppAt(
+                tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+                SAMPLE_APP_ID,
+                "3.0.0",
+                """
+                #!/bin/sh
+                printf 'new\\n'
+                """,
+                Map.of("new-bundle.txt", "new-bundle\n")),
+            keyPair);
 
     InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
 
@@ -372,8 +450,73 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void installFromDirectory_whenSignedBundleIsTampered_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppHost host = signedHost(keyPair);
+    Path stagedApp = signBundle(stageInstalledApp(SAMPLE_APP_ID), keyPair);
+    Files.writeString(stagedApp.resolve(CONTENT_FILE_NAME), "tampered", StandardCharsets.UTF_8);
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
+
+    assertEquals("digest sidecar does not match bundle contents", exception.getMessage());
+  }
+
+  @Test
+  void
+      installFromDirectory_whenDevelopmentPolicyReceivesSignatureSidecars_expectVerificationFailure()
+          throws Exception {
+    AppHost host = allowUnsignedHost();
+    KeyPair keyPair = generateEd25519KeyPair();
+    Path stagedApp = signBundle(stageInstalledApp(SAMPLE_APP_ID), keyPair);
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
+
+    assertEquals("unknown trusted key id: " + TEST_KEY_ID, exception.getMessage());
+  }
+
+  @Test
+  void updateFromDirectory_whenVerifierRejectsCopiedBundle_expectVerifierRunsBeforeManifestRead()
+      throws IOException {
+    allowUnsignedHost().installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    AtomicReference<Path> verifiedBundle = new AtomicReference<>();
+    AppHost host =
+        requireSignedHost(
+            copiedBundleDirectory -> {
+              verifiedBundle.set(copiedBundleDirectory);
+              throw new AppBundleVerificationException(
+                  "signed app bundle verification is required");
+            });
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update-unsigned").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "3.0.0",
+            scriptContent(new AppEnv()),
+            Map.of());
+    Files.writeString(updatedStage.resolve(MANIFEST_FILE_NAME), "manifest.version=1\n");
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class,
+            () -> host.updateFromDirectory(SAMPLE_APP_ID, updatedStage));
+
+    Path copiedBundle = verifiedBundle.get();
+    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertNotNull(copiedBundle);
+    assertNotEquals(updatedStage.toAbsolutePath().normalize(), copiedBundle);
+    assertTrue(copiedBundle.startsWith(layout().installedAppsDir()));
+    assertTrue(copiedBundle.getFileName().toString().startsWith("app-install-"));
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
   void updateFromDirectory_whenInstalledManifestMissing_expectBundleRepaired() throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Files.delete(installation.paths().manifestFile());
     Path updatedStage =
@@ -400,7 +543,7 @@ class LocalProcessAppHostTest {
   @Test
   void updateFromDirectory_whenStagedManifestTargetsDifferentApp_expectFailure()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path mismatchedStage =
         stageInstalledAppAt(
@@ -421,7 +564,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void updateFromDirectory_whenAppNotInstalled_expectFailure() throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
 
     AppHostException exception =
@@ -434,7 +577,7 @@ class LocalProcessAppHostTest {
   @Test
   void updateFromDirectory_whenInstalledManifestUnreadable_expectReplacementRepairsBundle()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Files.delete(installation.paths().manifestFile());
     Path updatedStage =
@@ -461,7 +604,7 @@ class LocalProcessAppHostTest {
   void updateFromDirectory_whenBackupCleanupFails_expectSuccessfulReplacementAndReadableInstall()
       throws IOException {
     LocalProcessAppHost host =
-        host(
+        allowUnsignedHost(
             Duration.ofSeconds(1),
             new AppEnv(),
             _ -> {
@@ -493,7 +636,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void updateFromDirectory_whenAppIsRunning_expectFailure() throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
     host.start(RUNNER_APP_ID);
 
@@ -514,7 +657,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void updateFromDirectory_whenStagedDirectoryInvalid_expectFailure() throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
 
     AppHostException exception =
@@ -537,7 +680,8 @@ class LocalProcessAppHostTest {
         new LocalProcessAppHost(
             new AppHostLayout(dataDir, cacheDir, runDir),
             Duration.ofSeconds(1),
-            new java.security.SecureRandom());
+            new java.security.SecureRandom(),
+            AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Path installParent = Files.createDirectories(dataDir.resolve("apps"));
     Path externalInstalled = Files.createDirectories(tempDir.resolve("external-installed"));
@@ -565,7 +709,8 @@ class LocalProcessAppHostTest {
         new LocalProcessAppHost(
             new AppHostLayout(dataDir, cacheDir, runDir),
             Duration.ofSeconds(1),
-            new java.security.SecureRandom());
+            new java.security.SecureRandom(),
+            AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
 
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
 
@@ -596,7 +741,8 @@ class LocalProcessAppHostTest {
         new LocalProcessAppHost(
             new AppHostLayout(dataDir, cacheDir, runDir),
             Duration.ofSeconds(1),
-            new java.security.SecureRandom());
+            new java.security.SecureRandom(),
+            AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
 
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
 
@@ -622,7 +768,7 @@ class LocalProcessAppHostTest {
   @Test
   void listInstalled_whenStaleTemporaryInstallDirectoryExists_expectInstalledAppsOnly()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path staleInstallDirectory =
         tempDir
@@ -642,7 +788,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         stageInstalledExecutableApp(
             "non-launchable-app",
@@ -664,7 +810,7 @@ class LocalProcessAppHostTest {
   @Test
   void installFromDirectory_whenWindowsLauncherUsesUnsupportedScript_expectFailure()
       throws IOException {
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
     Path stagedApp =
         stageInstalledExecutableApp(
             "unsupported-windows-script-app", "bin/launch.ps1", "Write-Output 'hi'\n", Map.of());
@@ -677,7 +823,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void installFromDirectory_whenWindowsLauncherIsGenericMzBlob_expectFailure() throws IOException {
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1), new AppEnv(Map.of(), WINDOWS_11));
     Path stagedApp =
         stageInstalledExecutableApp("generic-mz-app", "bin/fake.bin", "placeholder", Map.of());
     byte[] fakeMz = new byte[64];
@@ -694,7 +840,7 @@ class LocalProcessAppHostTest {
   @Test
   void lifecycle_whenManifestUsesMixedCaseAppId_expectPublicApiAcceptsOriginalCase()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledApp(MIXED_CASE_APP_ID));
 
@@ -713,7 +859,7 @@ class LocalProcessAppHostTest {
 
   @Test
   void lifecycle_whenInstalledScriptRuns_expectEnvTokenStopAndUninstall() throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
 
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
@@ -749,7 +895,7 @@ class LocalProcessAppHostTest {
   @Test
   void start_whenInstalledProcessExitsImmediately_expectFailureAndNoRunningState()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledRunnerApp(immediateExitScriptContent(new AppEnv())));
 
     Instant started = Instant.now();
@@ -768,7 +914,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledRunnerApp(DELAYED_STARTUP_EXIT_SCRIPT));
 
     try {
@@ -787,7 +933,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
     Path externalBin = Files.createDirectories(tempDir.resolve("external-bin"));
     Path externalLaunch = externalBin.resolve(scriptName(appEnv));
@@ -820,7 +966,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID,
@@ -861,7 +1007,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID,
@@ -907,7 +1053,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID,
@@ -942,7 +1088,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Assumptions.assumeTrue(appEnv.onPath(PYTHON3_COMMAND));
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledExecutableApp(
             PYTHON_DAEMON_APP_ID,
@@ -978,7 +1124,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), "Mac OS X"));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1), new AppEnv(Map.of(), "Mac OS X"));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID,
@@ -1016,7 +1162,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1), new AppEnv(Map.of(), "FreeBSD"));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1), new AppEnv(Map.of(), "FreeBSD"));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID,
@@ -1188,7 +1334,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(1));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(1));
     Path stagedApp =
         stageInstalledExecutableApp(
             LATE_CHILD_APP_ID,
@@ -1222,7 +1368,7 @@ class LocalProcessAppHostTest {
   @Test
   void stop_whenProcessDoesNotExit_expectRunningStatePreserved()
       throws ReflectiveOperationException {
-    LocalProcessAppHost host = host(Duration.ofMillis(10));
+    LocalProcessAppHost host = allowUnsignedHost(Duration.ofMillis(10));
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(host, RUNNER_APP_ID, snapshot, new NonStoppingProcess(snapshot.pid()));
 
@@ -1243,7 +1389,7 @@ class LocalProcessAppHostTest {
   @Test
   void stop_whenProcessExitsBetweenRefreshAndTracking_expectCleanSuccess()
       throws IOException, ReflectiveOperationException {
-    LocalProcessAppHost host = host();
+    LocalProcessAppHost host = allowUnsignedHost();
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(
         host,
@@ -1260,7 +1406,7 @@ class LocalProcessAppHostTest {
   @Test
   void status_whenLiveProcessHandleOmitsOptionalMetadata_expectSnapshotRetained()
       throws ReflectiveOperationException {
-    LocalProcessAppHost host = host();
+    LocalProcessAppHost host = allowUnsignedHost();
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(host, RUNNER_APP_ID, snapshot, new NonStoppingProcess(snapshot.pid()));
 
@@ -1273,7 +1419,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(2));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(2));
     Path stagedApp =
         stageInstalledApp(
             RUNNER_APP_ID, WRAPPER_SCRIPT, Map.of(CHILD_SCRIPT_PATH, CHILD_PROCESS_SCRIPT));
@@ -1297,7 +1443,7 @@ class LocalProcessAppHostTest {
   void stop_whenRecoveredLateChildExitsWithinStopTimeout_expectCleanSuccess()
       throws IOException, ReflectiveOperationException {
     long recoveredChildPid = 84L;
-    LocalProcessAppHost host = host(Duration.ofMillis(200));
+    LocalProcessAppHost host = allowUnsignedHost(Duration.ofMillis(200));
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(
         host,
@@ -1316,7 +1462,7 @@ class LocalProcessAppHostTest {
       throws ReflectiveOperationException {
     String appId = "shutdown-respawn-app";
     long replacementChildPid = 84L;
-    LocalProcessAppHost host = host(Duration.ofMillis(200));
+    LocalProcessAppHost host = allowUnsignedHost(Duration.ofMillis(200));
     RunningAppSnapshot snapshot = runningSnapshot(appId);
     injectRunningProcess(
         host, appId, snapshot, new LateChildSpawningProcess(snapshot.pid(), replacementChildPid));
@@ -1374,7 +1520,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         stageInstalledExecutableApp(
             "invalid-shebang-app",
@@ -1417,7 +1563,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Assumptions.assumeTrue(appEnv.onPath(PYTHON3_COMMAND));
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         stageInstalledExecutableApp(
             "non-utf8-launcher-app",
@@ -1451,7 +1597,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Assumptions.assumeTrue(appEnv.onPath("bash"));
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(
             stageInstalledRunnerApp(
@@ -1480,7 +1626,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(
             stageInstalledExecutableApp(
@@ -1511,7 +1657,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host(Duration.ofSeconds(2));
+    AppHost host = allowUnsignedHost(Duration.ofSeconds(2));
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledRunnerApp(STDIN_EOF_SCRIPT));
 
@@ -1528,7 +1674,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledRunnerApp(SINGLE_RUN_EXIT_SCRIPT));
 
@@ -1610,7 +1756,7 @@ class LocalProcessAppHostTest {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
     Assumptions.assumeTrue(appEnv.onPath(MKFIFO_COMMAND));
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Path namedPipe = stagedApp.resolve("blocked.pipe");
 
@@ -1629,7 +1775,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         Files.createDirectories(tempDir.resolve(STAGE_DIR_NAME).resolve("manifest-symlink"));
     Path externalManifest = tempDir.resolve("outside-manifest.properties");
@@ -1649,7 +1795,7 @@ class LocalProcessAppHostTest {
   void installFromDirectory_whenStagingRootIsSymlink_expectFailure() throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Path linkedRoot = tempDir.resolve("linked-stage-root");
     Files.createSymbolicLink(linkedRoot, stagedApp.toAbsolutePath());
@@ -1664,7 +1810,7 @@ class LocalProcessAppHostTest {
   void installFromDirectory_whenStagingRootHasAliasedAncestor_expectSuccess() throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path realStagingParent = Files.createDirectories(tempDir.resolve("real-staging-parent"));
     Path aliasedParent = tempDir.resolve("aliased-staging-parent");
     Files.createSymbolicLink(aliasedParent, realStagingParent.toAbsolutePath());
@@ -1683,7 +1829,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
     Path externalRun = Files.createDirectories(tempDir.resolve("external-run"));
     Files.delete(installation.paths().runDir());
@@ -1701,7 +1847,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
     Path runAppsDir = tempDir.resolve("run").resolve("apps");
     Path externalRunAppsDir = tempDir.resolve("external-run-apps");
@@ -1718,7 +1864,7 @@ class LocalProcessAppHostTest {
   @Test
   void installFromDirectory_whenStagingRootOverlapsInstalledTree_expectCleanFailure()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         stageInstalledAppAt(
             tempDir.resolve("data"), SAMPLE_APP_ID, scriptContent(new AppEnv()), Map.of());
@@ -1733,7 +1879,7 @@ class LocalProcessAppHostTest {
   @Test
   void installFromDirectory_whenStagingRootCollidesWithRunDir_expectCleanFailure()
       throws IOException {
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp =
         stageInstalledAppAt(
             tempDir.resolve("run").resolve("apps").resolve(SAMPLE_APP_ID),
@@ -1753,7 +1899,7 @@ class LocalProcessAppHostTest {
   void installFromDirectory_whenWindowsJunctionEscapesStagingRoot_expectFailure() throws Exception {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeTrue(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Path externalRoot = Files.createDirectories(tempDir.resolve("outside-root"));
     Path junction = stagedApp.resolve("outside-junction");
@@ -1779,7 +1925,7 @@ class LocalProcessAppHostTest {
   void uninstall_whenWindowsJunctionExistsUnderAppData_expectTargetPreserved() throws Exception {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeTrue(appEnv.isWindows());
-    AppHost host = host();
+    AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path externalRoot = Files.createDirectories(tempDir.resolve("outside-uninstall-root"));
     Path externalFile = externalRoot.resolve("outside.txt");
@@ -1809,7 +1955,7 @@ class LocalProcessAppHostTest {
   @Test
   void preserveRunningState_whenTrackedProcessAlreadyExited_expectEntryRemovedWithoutFailure()
       throws ReflectiveOperationException {
-    LocalProcessAppHost host = host();
+    LocalProcessAppHost host = allowUnsignedHost();
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(host, RUNNER_APP_ID, snapshot, new ExitedProcess(snapshot.pid()));
 
@@ -1824,7 +1970,7 @@ class LocalProcessAppHostTest {
   @Test
   void preserveRunningState_whenTrackedProcessExitsDuringRefresh_expectEntryRemovedWithoutFailure()
       throws ReflectiveOperationException {
-    LocalProcessAppHost host = host();
+    LocalProcessAppHost host = allowUnsignedHost();
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(host, RUNNER_APP_ID, snapshot, new FadingProcess(snapshot.pid(), 1));
 
@@ -1836,40 +1982,70 @@ class LocalProcessAppHostTest {
     assertTrue(host.listRunning().isEmpty());
   }
 
-  private LocalProcessAppHost host() {
-    return host(Duration.ofSeconds(1));
+  private LocalProcessAppHost allowUnsignedHost() {
+    return allowUnsignedHost(Duration.ofSeconds(1));
   }
 
-  private LocalProcessAppHost host(Duration stopTimeout) {
-    return host(stopTimeout, new AppEnv());
+  private LocalProcessAppHost allowUnsignedHost(Duration stopTimeout) {
+    return allowUnsignedHost(stopTimeout, new AppEnv());
   }
 
-  private LocalProcessAppHost host(Duration stopTimeout, AppEnv appEnv) {
+  private LocalProcessAppHost allowUnsignedHost(Duration stopTimeout, AppEnv appEnv) {
     return new LocalProcessAppHost(
-        new AppHostLayout(
-            tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run")),
-        stopTimeout,
-        new java.security.SecureRandom(),
-        appEnv,
-        TEST_TIMING);
-  }
-
-  private LocalProcessAppHost host(
-      Duration stopTimeout,
-      AppEnv appEnv,
-      LocalProcessAppHost.ManagedTreeDeleter managedTreeDeleter) {
-    return new LocalProcessAppHost(
-        new AppHostLayout(
-            tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run")),
+        layout(),
         stopTimeout,
         new java.security.SecureRandom(),
         appEnv,
         TEST_TIMING,
-        managedTreeDeleter);
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+  }
+
+  private LocalProcessAppHost allowUnsignedHost(
+      Duration stopTimeout,
+      AppEnv appEnv,
+      LocalProcessAppHost.ManagedTreeDeleter managedTreeDeleter) {
+    return new LocalProcessAppHost(
+        layout(),
+        stopTimeout,
+        new java.security.SecureRandom(),
+        appEnv,
+        TEST_TIMING,
+        managedTreeDeleter,
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+  }
+
+  private LocalProcessAppHost requireSignedHost(
+      AppInstallVerificationPolicy.CopiedBundleVerifier verifier) {
+    return new LocalProcessAppHost(
+        layout(),
+        Duration.ofSeconds(1),
+        new java.security.SecureRandom(),
+        new AppEnv(),
+        TEST_TIMING,
+        AppInstallVerificationPolicy.requireSigned(verifier));
+  }
+
+  private LocalProcessAppHost signedHost(KeyPair keyPair) {
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+            new TrustedAppKey(
+                TEST_KEY_ID, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic()));
+    return requireSignedHost(
+        copiedBundleDirectory -> AppBundleVerifier.verify(copiedBundleDirectory, trustedKeys));
+  }
+
+  private AppHostLayout layout() {
+    return new AppHostLayout(
+        tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"));
   }
 
   private Path stageInstalledApp(String appId) throws IOException {
     return stageInstalledApp(appId, scriptContent(new AppEnv()), Map.of());
+  }
+
+  private Path signBundle(Path stagedDir, KeyPair keyPair) throws IOException {
+    AppBundleSigner.sign(stagedDir, TEST_KEY_ID, keyPair.getPrivate());
+    return stagedDir;
   }
 
   private Path stageInstalledRunnerApp(String scriptContent) throws IOException {
@@ -1984,6 +2160,14 @@ class LocalProcessAppHostTest {
                 tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"))
             .pathsFor(appId);
     return new RunningAppSnapshot(manifest, paths, DEFAULT_TOKEN, 42L, Instant.EPOCH);
+  }
+
+  private static KeyPair generateEd25519KeyPair() {
+    try {
+      return KeyPairGenerator.getInstance(AppBundleSignature.SIGNATURE_ALGORITHM).generateKeyPair();
+    } catch (Exception exception) {
+      throw new IllegalStateException("Failed to generate Ed25519 test key pair.", exception);
+    }
   }
 
   @SuppressWarnings({"java:S3011"})
@@ -2399,7 +2583,7 @@ class LocalProcessAppHostTest {
 
     try {
       return new ObservedPid(Long.parseLong(contents), contents);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return new ObservedPid(null, contents);
     }
   }

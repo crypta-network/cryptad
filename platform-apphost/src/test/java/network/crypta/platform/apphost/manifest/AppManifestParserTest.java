@@ -223,6 +223,20 @@ class AppManifestParserTest {
   }
 
   @Test
+  void parseContent_whenAppExecPointsAtDistributionSidecar_expectFailure() {
+    String invalidManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, "cryptad-app.catalog");
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+
+    assertEquals(
+        "app.exec must not point at distribution sidecar: cryptad-app.catalog",
+        exception.getMessage());
+  }
+
+  @Test
   void parseContent_whenQuotaValueIsMalformed_expectFailure() {
     String invalidDataQuotaManifest =
         minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
@@ -235,6 +249,20 @@ class AppManifestParserTest {
     assertThrows(
         AppManifestException.class,
         () -> AppManifestParser.parseContent(invalidCacheQuotaManifest));
+  }
+
+  @Test
+  void parseContent_whenOptionalManifestValueIsBlank_expectFailure() {
+    String invalidPermissionsManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+            + "app.permissions=\n";
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class,
+            () -> AppManifestParser.parseContent(invalidPermissionsManifest));
+
+    assertEquals("app.permissions must not be blank", exception.getMessage());
   }
 
   private static String minimalManifest(

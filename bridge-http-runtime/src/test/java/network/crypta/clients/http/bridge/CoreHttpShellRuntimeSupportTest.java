@@ -3,9 +3,14 @@ package network.crypta.clients.http.bridge;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -36,11 +41,15 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.UserAlertSurface;
@@ -81,6 +90,7 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class CoreHttpShellRuntimeSupportTest {
+  private static final String TRUSTED_KEY_ID = "local-dev";
 
   @Test
   void constructor_whenCoreIsNull_throwsNullPointerException() {
@@ -241,9 +251,7 @@ class CoreHttpShellRuntimeSupportTest {
     CoreHttpShellRuntimeSupport runtimeSupport;
     try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
         mockStatic(SemiOrderedShutdownHook.class)) {
-      shutdownHooks
-          .when(() -> assertNotSame(shutdownHook, SemiOrderedShutdownHook.get()))
-          .thenReturn(shutdownHook);
+      stubShutdownHookLookup(shutdownHooks, shutdownHook);
       runtimeSupport = new CoreHttpShellRuntimeSupport(core);
     }
 
@@ -254,6 +262,385 @@ class CoreHttpShellRuntimeSupportTest {
     assertEquals(expectedCacheDir.toAbsolutePath(), layout.cacheDir());
     assertEquals(expectedRunDir.toAbsolutePath(), layout.runDir());
     verify(shutdownHook).addEarlyJob(any(Thread.class));
+  }
+
+  @Test
+  void appHost_whenConstructedFromCore_expectUnsignedInstallRejectedByProductionPolicy(
+      @TempDir Path tempDir) throws IOException {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+
+    CoreHttpShellRuntimeSupport runtimeSupport;
+    try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+        mockStatic(SemiOrderedShutdownHook.class)) {
+      stubShutdownHookLookup(shutdownHooks, shutdownHook);
+      runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    }
+
+    AppBundleVerificationException exception =
+        assertThrows(
+            AppBundleVerificationException.class,
+            () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+    assertEquals("missing signature sidecar", exception.getMessage());
+  }
+
+  @Test
+  void appHost_whenAllowUnsignedAndCaseVariantSidecarPresent_expectSignedVerificationRequired(
+      @TempDir Path tempDir) throws IOException {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    Files.writeString(stagedDir.resolve("CRYPTAD-APP.DIGESTS"), "stale-digest");
+    String previousAllowUnsigned = System.getProperty("cryptad.apphost.allowUnsigned");
+
+    try {
+      System.setProperty("cryptad.apphost.allowUnsigned", "true");
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppBundleVerificationException exception =
+          assertThrows(
+              AppBundleVerificationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals("missing signature sidecar", exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.allowUnsigned", previousAllowUnsigned);
+    }
+  }
+
+  @Test
+  void appHost_whenTrustedKeyConfigured_expectSignedInstallAccepted(@TempDir Path tempDir)
+      throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-signed"), keyPair);
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      assertEquals(
+          "demo-app", runtimeSupport.appHost().installFromDirectory(stagedDir).manifest().appId());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appHost_whenTrustedPublicKeyFileContainsRawDer_expectSignedInstallAccepted(
+      @TempDir Path tempDir) throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-raw-der"), keyPair);
+    Path publicKeyFile = tempDir.resolve("public-key.der");
+    Files.write(publicKeyFile, keyPair.getPublic().getEncoded());
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+    String previousPublicKeyFile = System.getProperty("cryptad.apphost.trustedPublicKeyFile");
+
+    try {
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.clearProperty("cryptad.apphost.trustedPublicKeyBase64");
+      System.setProperty("cryptad.apphost.trustedPublicKeyFile", publicKeyFile.toString());
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      assertEquals(
+          "demo-app", runtimeSupport.appHost().installFromDirectory(stagedDir).manifest().appId());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyFile", previousPublicKeyFile);
+    }
+  }
+
+  @Test
+  void appHost_whenTrustedKeysFileIsUnreadable_expectBootstrapSucceedsAndInstallFailsOnDemand(
+      @TempDir Path tempDir) throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    String previousTrustedKeysFile = System.getProperty("cryptad.apphost.trustedKeysFile");
+
+    try {
+      System.setProperty(
+          "cryptad.apphost.trustedKeysFile",
+          tempDir.resolve("missing-trusted-keys.properties").toString());
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppHostConfigurationException exception =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals("Failed to load trusted app keys file.", exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeysFile", previousTrustedKeysFile);
+    }
+  }
+
+  @Test
+  void appHost_whenTrustedKeyIdDuplicatesTrustedKeysFile_expectInstallFailsWithVerificationError(
+      @TempDir Path tempDir) throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path trustedKeysFile = tempDir.resolve("trusted-keys.properties");
+    Files.writeString(
+        trustedKeysFile,
+        """
+        trusted.keys.version=1
+        key.0.id=%s
+        key.0.algorithm=Ed25519
+        key.0.public.key.base64=%s
+        """
+            .formatted(
+                TRUSTED_KEY_ID,
+                Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded())),
+        StandardCharsets.UTF_8);
+    String previousTrustedKeysFile = System.getProperty("cryptad.apphost.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.apphost.trustedKeysFile", trustedKeysFile.toString());
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppHostConfigurationException exception =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals("duplicate trusted key id: " + TRUSTED_KEY_ID, exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeysFile", previousTrustedKeysFile);
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appHost_whenTrustedPublicKeyConfiguredWithoutKeyId_expectInstallFailsWithVerificationError(
+      @TempDir Path tempDir) throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+    String previousPublicKeyFile = System.getProperty("cryptad.apphost.trustedPublicKeyFile");
+
+    try {
+      System.clearProperty("cryptad.apphost.trustedKeyId");
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+      System.clearProperty("cryptad.apphost.trustedPublicKeyFile");
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppHostConfigurationException exception =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals(
+          "Trusted app public key material requires trusted app key id.", exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyFile", previousPublicKeyFile);
+    }
+  }
+
+  @Test
+  void appHost_whenConflictingTrustedPublicKeyInputsProvided_expectConfigurationFailure(
+      @TempDir Path tempDir) throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path publicKeyFile = tempDir.resolve("public.pem");
+    Files.writeString(
+        publicKeyFile,
+        Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+        StandardCharsets.UTF_8);
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+    String previousPublicKeyFile = System.getProperty("cryptad.apphost.trustedPublicKeyFile");
+
+    try {
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+      System.setProperty("cryptad.apphost.trustedPublicKeyFile", publicKeyFile.toString());
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppHostConfigurationException exception =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals(
+          "Trusted app public key material must be configured by base64 or file, not both.",
+          exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyFile", previousPublicKeyFile);
+    }
   }
 
   @ParameterizedTest
@@ -566,6 +953,54 @@ class CoreHttpShellRuntimeSupportTest {
             Path.of("build", "test-runtime", "apphost", "run", appId).toAbsolutePath());
     return new RunningAppSnapshot(
         manifest, paths, "token-" + appId, 4242L, Instant.parse("2024-01-02T03:04:05Z"));
+  }
+
+  private static Path stageUnsignedApp(Path stagedDir) throws IOException {
+    Path binDir = Files.createDirectories(stagedDir.resolve("bin"));
+    Path launcher = binDir.resolve("launch.sh");
+    Files.writeString(
+        launcher,
+        """
+        #!/bin/sh
+        exit 0
+        """,
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        stagedDir.resolve(AppManifestParser.MANIFEST_FILE_NAME),
+        """
+        manifest.version=1
+        app.id=demo-app
+        app.name=Demo App
+        app.version=1.0.0
+        app.exec=bin/launch.sh
+        app.ui.entry=/
+        app.permissions=network.access
+        quota.data.bytes=1024
+        quota.cache.bytes=512
+        """,
+        StandardCharsets.UTF_8);
+    return stagedDir;
+  }
+
+  private static Path stageSignedApp(Path stagedDir, KeyPair keyPair) throws IOException {
+    Path unsigned = stageUnsignedApp(stagedDir);
+    AppBundleSigner.sign(unsigned, TRUSTED_KEY_ID, keyPair.getPrivate());
+    return unsigned;
+  }
+
+  private static void stubShutdownHookLookup(
+      MockedStatic<SemiOrderedShutdownHook> shutdownHooks, SemiOrderedShutdownHook shutdownHook) {
+    shutdownHooks
+        .when(() -> assertNotSame(shutdownHook, SemiOrderedShutdownHook.get()))
+        .thenReturn(shutdownHook);
+  }
+
+  private static void restoreSystemProperty(String name, String value) {
+    if (value == null) {
+      System.clearProperty(name);
+    } else {
+      System.setProperty(name, value);
+    }
   }
 
   private static void assertContentToadlet(Toadlet toadlet) {

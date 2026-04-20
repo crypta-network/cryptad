@@ -48,3 +48,15 @@ someone in danger.
 
 We will acknowledge a report within one week. If you do not get a reply
 within one week, it most likely got lost: Please send it again!
+
+
+App Bundle Signing Keys
+-----------------------
+
+Signed local AppHost bundles use developer-supplied key material during local build and verification tasks.
+
+- Do not commit production private keys, keystores, or exported PKCS#8 private key material to this repository.
+- Keep local development keys outside the repo and pass them through Gradle properties or environment variables, or point at local files outside the checkout.
+- If you generate a development-only key pair for testing signed bundles, label it clearly as non-production and rotate or remove it when no longer needed.
+
+Remote catalogs and remote bundle downloads are future work. PR-192 only establishes local signed staged bundle files and local verification hooks.
