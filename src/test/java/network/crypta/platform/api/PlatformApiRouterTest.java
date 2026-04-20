@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
@@ -2305,6 +2307,52 @@ class PlatformApiRouterTest {
             new AppHostException(
                 "installedAppsDir must not be a symlink, reparse point, or alias:"
                     + " /srv/node/apps/installed"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(500, response.statusCode());
+    assertEquals("Internal Server Error", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"internal_error\",\"message\":\"Failed to install app.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppInstallSignatureVerificationFails_expectSanitizedBadRequestJson()
+      throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenAnswer(_ -> Optional.empty());
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(
+            new AppBundleVerificationException(
+                "signature sidecar missing in copied bundle: /srv/node/apps/installed/demo-app"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("apps", "install"),
+                Map.of("stagedDir", List.of(stagedDir.toString()))));
+
+    assertEquals(400, response.statusCode());
+    assertEquals("Bad Request", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"Staged app bundle must pass"
+            + " trusted signature verification.\"}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppInstallTrustConfigurationFails_expectInternalErrorJson() throws Exception {
+    Path stagedDir = stageApp();
+    when(appHost.describe(APP_ID)).thenAnswer(_ -> Optional.empty());
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(new AppHostConfigurationException("Failed to load trusted app keys file."));
 
     PlatformApiResponse response =
         router.route(

@@ -10,16 +10,102 @@ plugins {
 
 version = rootProject.version
 
+val appDisplayName = "Queue Manager"
+val appId = "queue-manager"
+val appDistMainClass = "network.crypta.platform.appdist.AppDistributionTool"
 val mainSourceSet = sourceSets.named("main")
-val stageAppDir = layout.buildDirectory.dir("cryptad-app/queue-manager")
+val appDistCli by configurations.creating
+val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
 val stageAssetsDir = layout.projectDirectory.dir("src/staged")
 val manifestTemplateFile = stageAssetsDir.file("cryptad-app.properties.template")
 val launcherRelativePath = "bin/queue-manager.sh"
+val appDistPrivateKeyEnvironmentName = "CRYPTAD_APP_DIST_PRIVATE_KEY_BASE64"
 val stagedLauncher =
   stageAppDir.map { stageDirectory -> stageDirectory.file(launcherRelativePath).asFile.toPath() }
 
+fun Project.optionalSigningInput(propertyName: String, environmentName: String): String? =
+  providers
+    .gradleProperty(propertyName)
+    .orElse(providers.environmentVariable(environmentName))
+    .orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+
+fun Project.requiredSigningInput(
+  propertyName: String,
+  environmentName: String,
+  taskName: String,
+): String =
+  optionalSigningInput(propertyName, environmentName)
+    ?: throw GradleException("$taskName requires -P$propertyName or $environmentName to be set.")
+
+fun Project.addPrivateKeyArguments(
+  task: JavaExec,
+  taskName: String,
+  arguments: MutableList<String>,
+) {
+  val privateKeyBase64 =
+    optionalSigningInput(
+      "cryptadAppSigningPrivateKeyBase64",
+      "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64",
+    )
+  val privateKeyFile =
+    optionalSigningInput("cryptadAppSigningPrivateKeyFile", "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE")
+  when {
+    privateKeyBase64 != null && privateKeyFile != null ->
+      throw GradleException(
+        "$taskName requires app signing private key material from " +
+          "exactly one of -PcryptadAppSigningPrivateKeyBase64 / " +
+          "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 or -PcryptadAppSigningPrivateKeyFile / " +
+          "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE."
+      )
+    privateKeyBase64 != null -> {
+      task.environment(appDistPrivateKeyEnvironmentName, privateKeyBase64)
+      arguments += listOf("--private-key-env", appDistPrivateKeyEnvironmentName)
+    }
+    privateKeyFile != null ->
+      arguments += listOf("--private-key-file", file(privateKeyFile).absolutePath)
+    else ->
+      throw GradleException(
+        "$taskName requires app signing private key material via " +
+          "-PcryptadAppSigningPrivateKeyBase64 / CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 or " +
+          "-PcryptadAppSigningPrivateKeyFile / CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE."
+      )
+  }
+}
+
+fun Project.addPublicKeyArguments(taskName: String, arguments: MutableList<String>) {
+  val publicKeyBase64 =
+    optionalSigningInput(
+      "cryptadAppSigningPublicKeyBase64",
+      "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64",
+    )
+  val publicKeyFile =
+    optionalSigningInput("cryptadAppSigningPublicKeyFile", "CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE")
+  when {
+    publicKeyBase64 != null && publicKeyFile != null ->
+      throw GradleException(
+        "$taskName requires app signing public key material from " +
+          "exactly one of -PcryptadAppSigningPublicKeyBase64 / " +
+          "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 or -PcryptadAppSigningPublicKeyFile / " +
+          "CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE."
+      )
+    publicKeyBase64 != null -> arguments += listOf("--trusted-public-key-base64", publicKeyBase64)
+    publicKeyFile != null ->
+      arguments += listOf("--trusted-public-key-file", file(publicKeyFile).absolutePath)
+    else ->
+      throw GradleException(
+        "$taskName requires app signing public key material via " +
+          "-PcryptadAppSigningPublicKeyBase64 / CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 or " +
+          "-PcryptadAppSigningPublicKeyFile / CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE."
+      )
+  }
+}
+
 dependencies {
+  appDistCli(project(":platform-appdist"))
+
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(project(":platform-apphost"))
   testImplementation(libs.junitJupiterApi)
@@ -40,7 +126,7 @@ val generateManifest by
 val stageApp by
   tasks.registering(Sync::class) {
     group = "build"
-    description = "Stages the Queue Manager AppHost bundle."
+    description = "Stages the $appDisplayName AppHost bundle."
     dependsOn(generateManifest)
     into(stageAppDir)
     from(stageAssetsDir) { exclude("cryptad-app.properties.template") }
@@ -52,6 +138,53 @@ val stageApp by
       ) {
         Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
+    }
+  }
+
+val signApp by
+  tasks.registering(JavaExec::class) {
+    group = "build"
+    description = "Signs the staged $appDisplayName AppHost bundle."
+    dependsOn(stageApp)
+    classpath = appDistCli
+    mainClass.set(appDistMainClass)
+    inputs
+      .dir(stageAppDir)
+      .withPropertyName("queueManagerStagedBundleForSigning")
+      .withPathSensitivity(PathSensitivity.RELATIVE)
+    doFirst {
+      val signingTask = this as JavaExec
+      val arguments = mutableListOf("sign", "--bundle-dir", stageAppDir.get().asFile.absolutePath)
+      arguments +=
+        listOf(
+          "--key-id",
+          requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
+        )
+      addPrivateKeyArguments(signingTask, name, arguments)
+      setArgs(arguments)
+    }
+  }
+
+val verifyApp by
+  tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Verifies the signed staged $appDisplayName AppHost bundle."
+    mustRunAfter(signApp)
+    classpath = appDistCli
+    mainClass.set(appDistMainClass)
+    inputs
+      .dir(stageAppDir)
+      .withPropertyName("queueManagerStagedBundleForVerification")
+      .withPathSensitivity(PathSensitivity.RELATIVE)
+    doFirst {
+      val arguments = mutableListOf("verify", "--bundle-dir", stageAppDir.get().asFile.absolutePath)
+      arguments +=
+        listOf(
+          "--trusted-key-id",
+          requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
+        )
+      addPublicKeyArguments(name, arguments)
+      setArgs(arguments)
     }
   }
 

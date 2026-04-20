@@ -57,6 +57,7 @@ data, and serves applications.
 - [Overview](#overview)
 - [Quick Start](#quick-start)
 - [Building](#building)
+- [Signed App Bundles](#signed-app-bundles)
 - [Testing](#testing)
 - [Code Quality](#code-quality)
 - [Running Your Build](#running-your-build)
@@ -320,6 +321,35 @@ Cryptad now uses a partial multi-project Gradle build.
 The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 `gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
 `distributionSha256Sum=<sha256>` for the chosen Gradle distribution.
+
+## Signed App Bundles
+
+PR-192 keeps `stageApp` unsigned by default and adds local signing and verification tasks for first-party AppHost bundles.
+
+Common commands:
+
+```bash
+./gradlew stageFirstPartyApps
+./gradlew signFirstPartyApps \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+./gradlew verifyFirstPartyApps \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+```
+
+Signed staged bundles add `cryptad-app.digests` and `cryptad-app.signature` at the bundle root. The digest uses deterministic SHA-256 file entries, and the signature uses Ed25519 over the exact digest sidecar bytes.
+
+Production-facing installs reject unsigned bundles by default. To install signed bundles through a
+live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
+`CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_BASE64` or `CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE`, or use
+`CRYPTAD_APPHOST_TRUSTED_KEYS_FILE`. `CRYPTAD_APPHOST_ALLOW_UNSIGNED=true` is an explicit
+development-only escape hatch for unsigned local testing.
+
+Do not commit production private signing keys to this repository. Keep local development keys
+outside the repo and pass them through Gradle properties or environment variables. Remote catalogs
+and remote downloads are future work. See [docs/app-distribution.md](docs/app-distribution.md) for
+the full workflow and exact signing inputs.
 
 ## Testing
 
@@ -744,8 +774,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
 - Local app lifecycle work is separate from CoreUpdater. The current platform can install, start,
   stop, uninstall, and replace an installed app bundle from a caller-supplied local staged
-  directory through `:platform-apphost` and the Platform API v1. Remote catalogs, signed app
-  channels, and background app-update fetching remain future work.
+  directory through `:platform-apphost` and the Platform API v1. Signed local staged bundles are
+  now supported; remote catalogs, remote downloads, and background app-update fetching remain
+  future work.
 
 ## Architecture Overview
 

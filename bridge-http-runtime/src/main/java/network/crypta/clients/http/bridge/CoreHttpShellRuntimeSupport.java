@@ -2,6 +2,10 @@ package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -24,8 +28,16 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.appdist.AppBundleDigest;
+import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertSurface;
@@ -50,6 +62,22 @@ import org.slf4j.LoggerFactory;
 public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
+  private static final String APPHOST_ALLOW_UNSIGNED_PROPERTY = "cryptad.apphost.allowUnsigned";
+  private static final String APPHOST_ALLOW_UNSIGNED_ENV = "CRYPTAD_APPHOST_ALLOW_UNSIGNED";
+  private static final String TRUSTED_KEYS_FILE_PROPERTY = "cryptad.apphost.trustedKeysFile";
+  private static final String TRUSTED_KEYS_FILE_ENV = "CRYPTAD_APPHOST_TRUSTED_KEYS_FILE";
+  private static final String TRUSTED_KEY_ID_PROPERTY = "cryptad.apphost.trustedKeyId";
+  private static final String TRUSTED_KEY_ID_ENV = "CRYPTAD_APPHOST_TRUSTED_KEY_ID";
+  private static final String TRUSTED_PUBLIC_KEY_BASE64_PROPERTY =
+      "cryptad.apphost.trustedPublicKeyBase64";
+  private static final String TRUSTED_PUBLIC_KEY_BASE64_ENV =
+      "CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_BASE64";
+  private static final String TRUSTED_PUBLIC_KEY_FILE_PROPERTY =
+      "cryptad.apphost.trustedPublicKeyFile";
+  private static final String TRUSTED_PUBLIC_KEY_FILE_ENV =
+      "CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE";
+  private static final String TRUST_CONFIGURATION_ERROR_MESSAGE =
+      "Failed to load trusted app verification configuration.";
 
   /**
    * Creates a core-backed HTTP runtime adapter.
@@ -84,11 +112,6 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   @Override
   public Config config() {
     return core.getNode().getConfig();
-  }
-
-  @Override
-  public AppHost appHost() {
-    return appHost;
   }
 
   @Override
@@ -245,8 +268,150 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
         new AppHostLayout(
             core.getNode().nodeDir().dir().toPath(),
             core.getPersistentTempDir().toPath(),
-            core.getNode().runDir().dir().toPath()));
+            core.getNode().runDir().dir().toPath()),
+        createInstallVerificationPolicy());
   }
+
+  private static AppInstallVerificationPolicy createInstallVerificationPolicy() {
+    AppHostTrustConfiguration trustConfiguration = readTrustConfiguration();
+    AppInstallVerificationPolicy.CopiedBundleVerifier verifier =
+        copiedBundleDirectory ->
+            verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration);
+    return trustConfiguration.allowUnsigned()
+        ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(verifier)
+        : AppInstallVerificationPolicy.requireSigned(verifier);
+  }
+
+  private static void verifyBundleAgainstConfiguredTrust(
+      Path copiedBundleDirectory, AppHostTrustConfiguration trustConfiguration) throws IOException {
+    if (trustConfiguration.allowUnsigned()
+        && bundleHasNoDistributionSidecars(copiedBundleDirectory)) {
+      return;
+    }
+    AppBundleVerifier verifier;
+    try {
+      verifier = createBundleVerifier(trustConfiguration);
+    } catch (RuntimeException exception) {
+      throw new AppHostConfigurationException(
+          messageOrTrustConfigurationDefault(exception), exception);
+    }
+    verifier.verify(copiedBundleDirectory);
+  }
+
+  private static boolean bundleHasNoDistributionSidecars(Path copiedBundleDirectory) {
+    Path bundleRoot = copiedBundleDirectory.toAbsolutePath().normalize();
+    return !Files.exists(
+            bundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME), LinkOption.NOFOLLOW_LINKS)
+        && !Files.exists(
+            bundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME), LinkOption.NOFOLLOW_LINKS);
+  }
+
+  private static AppBundleVerifier createBundleVerifier(
+      AppHostTrustConfiguration trustConfiguration) {
+    TrustedAppKeys trustedKeys = loadTrustedAppKeys(trustConfiguration);
+    return trustConfiguration.allowUnsigned()
+        ? AppBundleVerifier.allowUnsignedForDevelopmentOnly(trustedKeys)
+        : AppBundleVerifier.requireSigned(trustedKeys);
+  }
+
+  private static AppHostTrustConfiguration readTrustConfiguration() {
+    return new AppHostTrustConfiguration(
+        allowUnsignedBundles(),
+        configuredValue(TRUSTED_KEYS_FILE_PROPERTY, TRUSTED_KEYS_FILE_ENV),
+        configuredValue(TRUSTED_KEY_ID_PROPERTY, TRUSTED_KEY_ID_ENV),
+        configuredValue(TRUSTED_PUBLIC_KEY_BASE64_PROPERTY, TRUSTED_PUBLIC_KEY_BASE64_ENV),
+        configuredValue(TRUSTED_PUBLIC_KEY_FILE_PROPERTY, TRUSTED_PUBLIC_KEY_FILE_ENV));
+  }
+
+  private static boolean allowUnsignedBundles() {
+    String configuredValue =
+        configuredValue(APPHOST_ALLOW_UNSIGNED_PROPERTY, APPHOST_ALLOW_UNSIGNED_ENV);
+    return Boolean.parseBoolean(configuredValue);
+  }
+
+  private static TrustedAppKeys loadTrustedAppKeys(AppHostTrustConfiguration trustConfiguration) {
+    TrustedAppKeys trustedKeys =
+        loadTrustedKeysFileIfConfigured(trustConfiguration.trustedKeysFile());
+    rejectPartialDirectTrustedKeyConfiguration(trustConfiguration);
+    if (trustConfiguration.keyId() == null) {
+      return trustedKeys;
+    }
+    return trustedKeys.plus(
+        loadDirectTrustedKey(
+            trustConfiguration.keyId(),
+            trustConfiguration.publicKeyBase64(),
+            trustConfiguration.publicKeyFile()));
+  }
+
+  private static void rejectPartialDirectTrustedKeyConfiguration(
+      AppHostTrustConfiguration trustConfiguration) {
+    if (trustConfiguration.keyId() == null
+        && (trustConfiguration.publicKeyBase64() != null
+            || trustConfiguration.publicKeyFile() != null)) {
+      throw new IllegalStateException(
+          "Trusted app public key material requires trusted app key id.");
+    }
+  }
+
+  private static TrustedAppKeys loadTrustedKeysFileIfConfigured(String configuredPath) {
+    if (configuredPath == null) {
+      return TrustedAppKeys.empty();
+    }
+    try {
+      return TrustedAppKeys.load(Path.of(configuredPath));
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to load trusted app keys file.", e);
+    }
+  }
+
+  private static TrustedAppKey loadDirectTrustedKey(
+      String keyId, String publicKeyBase64, String publicKeyFile) {
+    if (publicKeyBase64 == null && publicKeyFile == null) {
+      throw new IllegalStateException("Trusted app key id requires trusted public key material.");
+    }
+    if (publicKeyBase64 != null && publicKeyFile != null) {
+      throw new IllegalStateException(
+          "Trusted app public key material must be configured by base64 or file, not both.");
+    }
+    try {
+      return publicKeyFile != null
+          ? decodeTrustedPublicKeyFile(keyId, Path.of(publicKeyFile))
+          : TrustedAppKey.ed25519(keyId, publicKeyBase64);
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to load trusted app public key.", e);
+    }
+  }
+
+  private static TrustedAppKey decodeTrustedPublicKeyFile(String keyId, Path file)
+      throws IOException {
+    byte[] rawBytes = Files.readAllBytes(file.toAbsolutePath().normalize());
+    try {
+      return TrustedAppKey.ed25519(keyId, new String(rawBytes, StandardCharsets.UTF_8));
+    } catch (AppDistributionException | IllegalArgumentException _) {
+      return TrustedAppKey.ed25519(keyId, rawBytes);
+    }
+  }
+
+  private static String configuredValue(String propertyName, String environmentName) {
+    String propertyValue = System.getProperty(propertyName);
+    if (propertyValue != null && !propertyValue.isBlank()) {
+      return propertyValue.trim();
+    }
+    String environmentValue = System.getenv(environmentName);
+    return environmentValue == null || environmentValue.isBlank() ? null : environmentValue.trim();
+  }
+
+  private static String messageOrTrustConfigurationDefault(Throwable failure) {
+    String message = failure.getMessage();
+    return message == null || message.isBlank() ? TRUST_CONFIGURATION_ERROR_MESSAGE : message;
+  }
+
+  private record AppHostTrustConfiguration(
+      boolean allowUnsigned,
+      String trustedKeysFile,
+      String keyId,
+      String publicKeyBase64,
+      String publicKeyFile) {}
 
   /**
    * Creates the shutdown job that stops any AppHost-managed child processes on node exit.

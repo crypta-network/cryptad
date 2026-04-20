@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
@@ -49,6 +50,8 @@ public final class AppsApiHandler {
   private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
+  private static final String SIGNED_BUNDLE_FAILURE_MESSAGE =
+      "Staged app bundle must pass trusted signature verification.";
 
   /** Detached AppHost core used for app lifecycle and inventory operations. */
   private final AppHost appHost;
@@ -501,6 +504,9 @@ public final class AppsApiHandler {
     if (installed(appId)) {
       return conflict(APP_ALREADY_INSTALLED_PREFIX + appId);
     }
+    if (isSignedBundleVerificationFailure(failure)) {
+      return invalidBundle(SIGNED_BUNDLE_FAILURE_MESSAGE);
+    }
     if (isInvalidAppBundleFailure(failure)) {
       return invalidBundle(
           messageOrDefault(failure, "Staged app bundle failed AppHost validation."));
@@ -526,6 +532,9 @@ public final class AppsApiHandler {
     if (isMissingAppFailure(failure)) {
       return appNotFound();
     }
+    if (isSignedBundleVerificationFailure(failure)) {
+      return invalidBundle(SIGNED_BUNDLE_FAILURE_MESSAGE);
+    }
     if (isInvalidAppBundleFailure(failure)) {
       return invalidBundle(
           messageOrDefault(failure, "Staged app bundle failed AppHost validation."));
@@ -541,6 +550,10 @@ public final class AppsApiHandler {
   private static boolean isMissingAppFailure(AppHostException failure) {
     String message = failure.getMessage();
     return message != null && message.startsWith(APP_NOT_INSTALLED_PREFIX);
+  }
+
+  private static boolean isSignedBundleVerificationFailure(AppHostException failure) {
+    return failure instanceof AppBundleVerificationException;
   }
 
   /**

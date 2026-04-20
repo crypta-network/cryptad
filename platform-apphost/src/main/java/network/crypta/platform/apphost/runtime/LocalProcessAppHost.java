@@ -37,6 +37,7 @@ import network.crypta.fs.AppEnv;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -111,19 +112,49 @@ public final class LocalProcessAppHost implements AppHost {
   private final AppEnv appEnv;
   private final TimingConfig timing;
   private final ManagedTreeDeleter managedTreeDeleter;
+  private final AppInstallVerificationPolicy installVerificationPolicy;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
 
   /**
    * Creates a host bound to the supplied layout.
    *
    * <p>This convenience constructor uses the default stop timeout, a fresh secure token generator,
-   * and the ambient {@link AppEnv} for platform detection.
+   * and the ambient {@link AppEnv} for platform detection. It also rejects copied staged bundles
+   * until an explicit signed-bundle verifier is wired in.
    *
    * @param layout filesystem layout managed by the host
    */
   @SuppressWarnings("unused")
   public LocalProcessAppHost(AppHostLayout layout) {
-    this(layout, DEFAULT_STOP_TIMEOUT, new SecureRandom(), new AppEnv());
+    this(
+        layout,
+        DEFAULT_STOP_TIMEOUT,
+        new SecureRandom(),
+        new AppEnv(),
+        DEFAULT_TIMING,
+        LocalProcessAppHost::deleteRecursively,
+        AppInstallVerificationPolicy.rejectUnsignedByDefault());
+  }
+
+  /**
+   * Creates a host bound to the supplied layout and copied-bundle verification policy.
+   *
+   * <p>This overload uses the default stop timeout, a fresh secure token generator, and the ambient
+   * {@link AppEnv} for platform detection.
+   *
+   * @param layout filesystem layout managed by the host
+   * @param installVerificationPolicy copied-bundle verification policy applied on install/update
+   */
+  public LocalProcessAppHost(
+      AppHostLayout layout, AppInstallVerificationPolicy installVerificationPolicy) {
+    this(
+        layout,
+        DEFAULT_STOP_TIMEOUT,
+        new SecureRandom(),
+        new AppEnv(),
+        DEFAULT_TIMING,
+        LocalProcessAppHost::deleteRecursively,
+        installVerificationPolicy);
   }
 
   /**
@@ -131,7 +162,8 @@ public final class LocalProcessAppHost implements AppHost {
    *
    * <p>This overload is primarily useful for tests and controlled embeddings that need a
    * non-default shutdown policy or deterministic token generation while still using the ambient
-   * platform environment.
+   * platform environment. Production-facing defaults still reject unsigned copied bundles unless
+   * the caller supplies an explicit development/test verification policy overload.
    *
    * @param layout filesystem layout managed by the host
    * @param stopTimeout bounded timeout used before force-killing a child process
@@ -139,21 +171,67 @@ public final class LocalProcessAppHost implements AppHost {
    */
   public LocalProcessAppHost(
       AppHostLayout layout, Duration stopTimeout, SecureRandom secureRandom) {
-    this(layout, stopTimeout, secureRandom, new AppEnv(), DEFAULT_TIMING);
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        new AppEnv(),
+        DEFAULT_TIMING,
+        LocalProcessAppHost::deleteRecursively,
+        AppInstallVerificationPolicy.rejectUnsignedByDefault());
   }
 
+  /**
+   * Creates a host with an explicit stop timeout, token generator, and verification policy.
+   *
+   * @param layout filesystem layout managed by the host
+   * @param stopTimeout bounded timeout used before force-killing a child process
+   * @param secureRandom secure token generator for launch-token generation
+   * @param installVerificationPolicy copied-bundle verification policy applied on install/update
+   */
+  public LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppInstallVerificationPolicy installVerificationPolicy) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        new AppEnv(),
+        DEFAULT_TIMING,
+        LocalProcessAppHost::deleteRecursively,
+        installVerificationPolicy);
+  }
+
+  @SuppressWarnings("unused")
   LocalProcessAppHost(
       AppHostLayout layout, Duration stopTimeout, SecureRandom secureRandom, AppEnv appEnv) {
-    this(layout, stopTimeout, secureRandom, appEnv, DEFAULT_TIMING);
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        DEFAULT_TIMING,
+        LocalProcessAppHost::deleteRecursively,
+        AppInstallVerificationPolicy.rejectUnsignedByDefault());
   }
 
+  @SuppressWarnings("unused")
   LocalProcessAppHost(
       AppHostLayout layout,
       Duration stopTimeout,
       SecureRandom secureRandom,
       AppEnv appEnv,
       TimingConfig timing) {
-    this(layout, stopTimeout, secureRandom, appEnv, timing, LocalProcessAppHost::deleteRecursively);
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        LocalProcessAppHost::deleteRecursively,
+        AppInstallVerificationPolicy.rejectUnsignedByDefault());
   }
 
   LocalProcessAppHost(
@@ -162,13 +240,51 @@ public final class LocalProcessAppHost implements AppHost {
       SecureRandom secureRandom,
       AppEnv appEnv,
       TimingConfig timing,
+      AppInstallVerificationPolicy installVerificationPolicy) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        LocalProcessAppHost::deleteRecursively,
+        installVerificationPolicy);
+  }
+
+  @SuppressWarnings("unused")
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
       ManagedTreeDeleter managedTreeDeleter) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        managedTreeDeleter,
+        AppInstallVerificationPolicy.rejectUnsignedByDefault());
+  }
+
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
+      ManagedTreeDeleter managedTreeDeleter,
+      AppInstallVerificationPolicy installVerificationPolicy) {
     this.layout = Objects.requireNonNull(layout, "layout");
     this.stopTimeout = Objects.requireNonNull(stopTimeout, "stopTimeout");
     this.secureRandom = Objects.requireNonNull(secureRandom, "secureRandom");
     this.appEnv = Objects.requireNonNull(appEnv, "appEnv");
     this.timing = Objects.requireNonNull(timing, "timing");
     this.managedTreeDeleter = Objects.requireNonNull(managedTreeDeleter, "managedTreeDeleter");
+    this.installVerificationPolicy =
+        Objects.requireNonNull(installVerificationPolicy, "installVerificationPolicy");
     if (stopTimeout.isZero() || stopTimeout.isNegative()) {
       throw new IllegalArgumentException("stopTimeout must be positive");
     }
@@ -197,6 +313,7 @@ public final class LocalProcessAppHost implements AppHost {
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
+      verifyCopiedBundle(temporaryInstallRoot);
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
       InstalledAppPaths paths = layout.pathsFor(manifest.appId());
       rejectOverlappingMutableAppDirectories(stagingRoot, paths);
@@ -254,6 +371,7 @@ public final class LocalProcessAppHost implements AppHost {
         temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
+      verifyCopiedBundle(temporaryInstallRoot);
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
       requireMatchingUpdateTarget(normalizedAppId, manifest);
       replaceInstalledBundle(paths.installedRoot(), temporaryInstallRoot, backupInstallRoot);
@@ -508,6 +626,10 @@ public final class LocalProcessAppHost implements AppHost {
           "installed manifest app.id does not match directory name: " + installedDirectoryName);
     }
     return manifest;
+  }
+
+  private void verifyCopiedBundle(Path copiedRoot) throws IOException {
+    installVerificationPolicy.verifyCopiedBundle(copiedRoot);
   }
 
   private AppManifest validateCopiedBundle(Path copiedRoot) throws IOException {
