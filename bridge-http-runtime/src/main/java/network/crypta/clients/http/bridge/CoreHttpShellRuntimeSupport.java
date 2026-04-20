@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
@@ -28,8 +27,6 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.platform.appdist.AppBundleDigest;
-import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKey;
@@ -285,7 +282,7 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
   private static void verifyBundleAgainstConfiguredTrust(
       Path copiedBundleDirectory, AppHostTrustConfiguration trustConfiguration) throws IOException {
     if (trustConfiguration.allowUnsigned()
-        && bundleHasNoDistributionSidecars(copiedBundleDirectory)) {
+        && !AppBundleVerifier.hasDistributionSidecar(copiedBundleDirectory)) {
       return;
     }
     AppBundleVerifier verifier;
@@ -296,14 +293,6 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
           messageOrTrustConfigurationDefault(exception), exception);
     }
     verifier.verify(copiedBundleDirectory);
-  }
-
-  private static boolean bundleHasNoDistributionSidecars(Path copiedBundleDirectory) {
-    Path bundleRoot = copiedBundleDirectory.toAbsolutePath().normalize();
-    return !Files.exists(
-            bundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME), LinkOption.NOFOLLOW_LINKS)
-        && !Files.exists(
-            bundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME), LinkOption.NOFOLLOW_LINKS);
   }
 
   private static AppBundleVerifier createBundleVerifier(

@@ -77,7 +77,7 @@ public final class AppDistributionTool {
     Arguments args = Arguments.parse(arguments);
     Path bundleDir = AppDistributionSidecars.requireBundleRoot(args.requirePath(OPTION_BUNDLE_DIR));
     boolean allowUnsigned = args.has(OPTION_ALLOW_UNSIGNED);
-    if (allowUnsigned && !AppDistributionSidecars.hasDistributionSidecar(bundleDir)) {
+    if (allowUnsigned && !AppBundleVerifier.hasDistributionSidecar(bundleDir)) {
       validateBundleStructure(bundleDir);
       return;
     }

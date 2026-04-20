@@ -57,6 +57,22 @@ public final class AppBundleVerifier {
   }
 
   /**
+   * Returns whether a bundle root contains any reserved distribution sidecar.
+   *
+   * <p>The scan is case-insensitive and covers the reserved local distribution metadata names used
+   * by digest, signature, and catalog sidecars. Runtime integrations use this before applying an
+   * unsigned-development bypass so case variants such as {@code CRYPTAD-APP.DIGESTS} cannot be
+   * treated as ordinary payload files on case-sensitive filesystems.
+   *
+   * @param bundleRoot staged app bundle root directory to inspect
+   * @return {@code true} when a reserved sidecar name is present at the bundle root
+   * @throws IOException if the root is missing, unsafe, or cannot be listed
+   */
+  public static boolean hasDistributionSidecar(Path bundleRoot) throws IOException {
+    return AppDistributionSidecars.hasDistributionSidecar(bundleRoot);
+  }
+
+  /**
    * Reads and validates a signature sidecar.
    *
    * <p>This method validates only the signature sidecar format and supported algorithm/payload
@@ -163,7 +179,7 @@ public final class AppBundleVerifier {
    */
   public AppBundleVerification verify(Path bundleRoot) throws IOException {
     Path normalizedBundleRoot = AppDistributionSidecars.requireBundleRoot(bundleRoot);
-    if (allowUnsigned && !AppDistributionSidecars.hasDistributionSidecar(normalizedBundleRoot)) {
+    if (allowUnsigned && !hasDistributionSidecar(normalizedBundleRoot)) {
       return AppBundleVerification.unsigned();
     }
     AppBundleSignature signature = verify(normalizedBundleRoot, trustedKeys);

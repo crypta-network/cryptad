@@ -299,6 +299,48 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   @Test
+  void appHost_whenAllowUnsignedAndCaseVariantSidecarPresent_expectSignedVerificationRequired(
+      @TempDir Path tempDir) throws IOException {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+    Path stagedDir = stageUnsignedApp(tempDir.resolve("staged"));
+    Files.writeString(stagedDir.resolve("CRYPTAD-APP.DIGESTS"), "stale-digest");
+    String previousAllowUnsigned = System.getProperty("cryptad.apphost.allowUnsigned");
+
+    try {
+      System.setProperty("cryptad.apphost.allowUnsigned", "true");
+
+      CoreHttpShellRuntimeSupport runtimeSupport;
+      try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+          mockStatic(SemiOrderedShutdownHook.class)) {
+        stubShutdownHookLookup(shutdownHooks, shutdownHook);
+        runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+      }
+
+      AppBundleVerificationException exception =
+          assertThrows(
+              AppBundleVerificationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals("missing signature sidecar", exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.allowUnsigned", previousAllowUnsigned);
+    }
+  }
+
+  @Test
   void appHost_whenTrustedKeyConfigured_expectSignedInstallAccepted(@TempDir Path tempDir)
       throws Exception {
     NodeClientCore core = mock(NodeClientCore.class);
