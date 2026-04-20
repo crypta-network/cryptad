@@ -54,6 +54,21 @@ class AppBundleDigestWriterTest {
   }
 
   @Test
+  void write_whenBundleContainsCaseVariantSidecars_expectDigestExcludesThem() throws Exception {
+    Path bundleRoot = createBundle();
+    Files.writeString(bundleRoot.resolve("CRYPTAD-APP.DIGESTS"), "case-variant-digest");
+    Files.writeString(bundleRoot.resolve("CRYPTAD-APP.SIGNATURE"), "case-variant-signature");
+    Files.writeString(bundleRoot.resolve("CRYPTAD-APP.CATALOG"), "case-variant-catalog");
+
+    AppBundleDigest digest = AppBundleDigestWriter.write(bundleRoot);
+
+    assertFalse(
+        digest.entries().stream()
+            .map(AppBundleDigestEntry::path)
+            .anyMatch(path -> path.startsWith("CRYPTAD-APP.")));
+  }
+
+  @Test
   void write_whenPosixExecutableRequiresExecBit_expectDigestIncludesExecutableFlag()
       throws Exception {
     Path bundleRoot = createPosixExecutableBundle();

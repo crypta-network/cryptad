@@ -8,8 +8,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -22,6 +24,14 @@ import java.util.stream.Collectors;
  */
 final class AppDistributionSidecars {
   private static final String BUNDLE_ROOT_PARAMETER = "bundleRoot";
+  private static final String CATALOG_FILE_NAME = "cryptad-app.catalog";
+  private static final String CATALOG_SIGNATURE_FILE_NAME = "cryptad-app.catalog.signature";
+  private static final Set<String> DISTRIBUTION_SIDECAR_NAMES =
+      Set.of(
+          AppBundleDigest.DIGEST_FILE_NAME,
+          AppBundleSignature.SIGNATURE_FILE_NAME,
+          CATALOG_FILE_NAME,
+          CATALOG_SIGNATURE_FILE_NAME);
 
   /** UTF-8 byte-order mark accepted at the beginning of operator-authored text sidecars. */
   private static final char UTF_8_BOM = '\uFEFF';
@@ -115,10 +125,8 @@ final class AppDistributionSidecars {
    * @return {@code true} when the path names a digest, signature, or catalog sidecar
    */
   static boolean isDistributionSidecar(String path) {
-    return AppBundleDigest.DIGEST_FILE_NAME.equals(path)
-        || AppBundleSignature.SIGNATURE_FILE_NAME.equals(path)
-        || "cryptad-app.catalog".equals(path)
-        || "cryptad-app.catalog.signature".equals(path);
+    return DISTRIBUTION_SIDECAR_NAMES.contains(
+        Objects.requireNonNull(path, "path").toLowerCase(Locale.ROOT));
   }
 
   /**
