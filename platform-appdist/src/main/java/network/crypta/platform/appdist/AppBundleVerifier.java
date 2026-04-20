@@ -147,7 +147,8 @@ public final class AppBundleVerifier {
         AppDistributionSidecars.readRequiredBytes(
             normalizedBundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME), "digest sidecar");
     verifySignature(digestBytes, signature, trustedKey);
-    AppBundleDigestVerifier.verify(normalizedBundleRoot);
+    AppBundleDigest signedDigest = AppBundleDigestVerifier.read(digestBytes);
+    AppBundleDigestVerifier.verify(normalizedBundleRoot, signedDigest);
     return signature;
   }
 

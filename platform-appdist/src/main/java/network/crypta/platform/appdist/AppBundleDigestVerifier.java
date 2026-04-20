@@ -1,10 +1,12 @@
 package network.crypta.platform.appdist;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -41,7 +43,23 @@ public final class AppBundleDigestVerifier {
    * @throws IOException if the sidecar is missing, malformed, unsupported, or unsafe
    */
   public static AppBundleDigest read(Path digestFile) throws IOException {
-    String content = AppDistributionSidecars.readRequiredUtf8File(digestFile, "digest sidecar");
+    return read(AppDistributionSidecars.readRequiredBytes(digestFile, "digest sidecar"));
+  }
+
+  /**
+   * Parses and validates already-read digest sidecar bytes.
+   *
+   * <p>This overload is used by signed-bundle verification after the signature has been checked
+   * over the exact byte array read from {@code cryptad-app.digests}. Parsing those same bytes
+   * avoids a second filesystem read that could otherwise observe a different digest sidecar.
+   *
+   * @param digestBytes exact UTF-8 bytes read from {@code cryptad-app.digests}
+   * @return parsed digest snapshot with normalized paths and validated metadata
+   * @throws AppDistributionException if the sidecar bytes are malformed or unsupported
+   */
+  public static AppBundleDigest read(byte[] digestBytes) throws AppDistributionException {
+    String content =
+        new String(Objects.requireNonNull(digestBytes, "digestBytes"), StandardCharsets.UTF_8);
     Map<String, String> properties =
         AppDistributionSidecars.parseKeyValueSidecar(content, "digest sidecar");
     DigestHeader header = readDigestHeader(properties);
@@ -158,11 +176,36 @@ public final class AppBundleDigestVerifier {
   public static AppBundleDigest verify(Path bundleRoot) throws IOException {
     Path normalizedBundleRoot = AppDistributionSidecars.requireBundleRoot(bundleRoot);
     AppBundleDigest expected = read(normalizedBundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME));
+    return verifyNormalizedBundleRoot(normalizedBundleRoot, expected);
+  }
+
+  /**
+   * Verifies the current bundle contents against a caller-supplied digest snapshot.
+   *
+   * <p>Unlike {@link #verify(Path)}, this method does not read {@code cryptad-app.digests} from the
+   * bundle root. Signed-bundle callers should pass the digest parsed from the same bytes whose
+   * signature was just verified, so a concurrent rewrite of the sidecar cannot substitute a
+   * different digest inventory between signature validation and payload validation.
+   *
+   * @param bundleRoot staged app bundle root directory to compare with the supplied digest
+   * @param expected digest snapshot that was already parsed by the caller
+   * @return the supplied digest snapshot when verification succeeds
+   * @throws IOException if the bundle is unsafe, unreadable, or does not match the supplied digest
+   */
+  public static AppBundleDigest verify(Path bundleRoot, AppBundleDigest expected)
+      throws IOException {
+    Path normalizedBundleRoot = AppDistributionSidecars.requireBundleRoot(bundleRoot);
+    return verifyNormalizedBundleRoot(normalizedBundleRoot, expected);
+  }
+
+  private static AppBundleDigest verifyNormalizedBundleRoot(
+      Path normalizedBundleRoot, AppBundleDigest expected) throws IOException {
+    AppBundleDigest checkedExpected = Objects.requireNonNull(expected, "expected");
     AppBundleDigest actual = AppBundleDigestWriter.create(normalizedBundleRoot);
-    if (!expected.equals(actual)) {
+    if (!checkedExpected.equals(actual)) {
       throw new AppDistributionException("digest sidecar does not match bundle contents");
     }
-    return expected;
+    return checkedExpected;
   }
 
   private static int parseIndex(String rawIndex, String propertyName)

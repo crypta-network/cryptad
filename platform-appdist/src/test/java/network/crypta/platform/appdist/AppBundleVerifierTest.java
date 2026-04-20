@@ -215,6 +215,27 @@ class AppBundleVerifierTest {
     assertEquals("unsupported digest.algorithm: SHA-1", exception.getMessage());
   }
 
+  @Test
+  void digestVerifier_whenSidecarIsRewrittenAfterDigestRead_expectSuppliedDigestStillEnforced()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    AppBundleDigestWriter.write(bundleRoot);
+    AppBundleDigest signedDigest =
+        AppBundleDigestVerifier.read(
+            Files.readAllBytes(bundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME)));
+    Files.writeString(bundleRoot.resolve("README.txt"), "mutated", StandardCharsets.UTF_8);
+    AppBundleDigest rewrittenDigest = AppBundleDigestWriter.write(bundleRoot);
+
+    AppBundleDigest rereadDigest = AppBundleDigestVerifier.verify(bundleRoot);
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleDigestVerifier.verify(bundleRoot, signedDigest));
+
+    assertEquals(rewrittenDigest, rereadDigest);
+    assertEquals("digest sidecar does not match bundle contents", exception.getMessage());
+  }
+
   private Path createBundle() throws IOException {
     Path bundleRoot = tempDir.resolve("bundle");
     Files.createDirectories(bundleRoot.resolve("bin"));
