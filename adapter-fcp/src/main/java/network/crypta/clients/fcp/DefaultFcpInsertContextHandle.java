@@ -31,7 +31,7 @@ public final class DefaultFcpInsertContextHandle implements FcpInsertContextHand
   private final ClientEventProducer eventProducer;
 
   /** Count of consecutive RNFs that the runtime should treat as effective success. */
-  private final int consecutiveRnfsCountAsSuccess;
+  private int consecutiveRnfsCountAsSuccess;
 
   /** Maximum number of splitfile data blocks per segment captured from the runtime baseline. */
   private final int splitfileSegmentDataBlocks;
@@ -159,6 +159,11 @@ public final class DefaultFcpInsertContextHandle implements FcpInsertContextHand
   @Override
   public int getMaxInsertRetries() {
     return maxInsertRetries;
+  }
+
+  @Override
+  public void setConsecutiveRnfsCountAsSuccess(int consecutiveRnfsCountAsSuccess) {
+    this.consecutiveRnfsCountAsSuccess = consecutiveRnfsCountAsSuccess;
   }
 
   @Override

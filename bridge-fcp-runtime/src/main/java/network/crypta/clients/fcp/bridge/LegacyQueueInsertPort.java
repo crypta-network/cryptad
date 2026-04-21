@@ -317,7 +317,7 @@ public final class LegacyQueueInsertPort implements QueueInsertPort {
   private static FcpInsertOptions insertOptions(
       boolean compress, String compatibilityMode, byte[] overrideSplitfileCryptoKey) {
     return new FcpInsertOptions(
-        new FcpInsertBehaviorOptions(false, !compress, false, -1, false, false, false),
+        new FcpInsertBehaviorOptions(false, !compress, false, -1, null, false, false, false),
         new FcpInsertTuningOptions(
             false,
             Node.FORK_ON_CACHEABLE_DEFAULT,

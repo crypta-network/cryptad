@@ -26,7 +26,7 @@ class DefaultFcpInsertContextHandleTest {
     FcpInsertContextLimits limits = new FcpInsertContextLimits(4, 10, 11);
     FcpInsertOptions options =
         new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+            new FcpInsertBehaviorOptions(true, true, true, 9, null, true, false, true),
             new FcpInsertTuningOptions(
                 true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_CURRENT),
             null);
@@ -63,7 +63,7 @@ class DefaultFcpInsertContextHandleTest {
     FcpInsertContextLimits limits = new FcpInsertContextLimits(0, 1, 2);
     FcpInsertOptions options =
         new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+            new FcpInsertBehaviorOptions(false, false, false, 1, null, false, false, false),
             new FcpInsertTuningOptions(false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_1255),
             null);
 
@@ -83,7 +83,7 @@ class DefaultFcpInsertContextHandleTest {
         newHandle(
             new FcpInsertContextLimits(1, 2, 3),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(false, false, false, 0, false, false, false),
+                new FcpInsertBehaviorOptions(false, false, false, 0, null, false, false, false),
                 new FcpInsertTuningOptions(
                     false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_1251),
                 null));
@@ -92,6 +92,7 @@ class DefaultFcpInsertContextHandleTest {
     handle.setGetCHKOnly(true);
     handle.setDontCompress(true);
     handle.setMaxInsertRetries(12);
+    handle.setConsecutiveRnfsCountAsSuccess(0);
     handle.setCanWriteClientCache(true);
     handle.setCompressorDescriptor("BZ2");
     handle.setForkOnCacheable(true);
@@ -106,6 +107,7 @@ class DefaultFcpInsertContextHandleTest {
     assertTrue(handle.getCHKOnly());
     assertTrue(handle.isDontCompress());
     assertEquals(12, handle.getMaxInsertRetries());
+    assertEquals(0, handle.getConsecutiveRnfsCountAsSuccess());
     assertTrue(handle.canWriteClientCache());
     assertEquals("BZ2", handle.getCompressorDescriptor());
     assertTrue(handle.forkOnCacheable());
@@ -124,7 +126,7 @@ class DefaultFcpInsertContextHandleTest {
         newHandle(
             new FcpInsertContextLimits(1, 2, 3),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(false, false, false, 0, false, false, false),
+                new FcpInsertBehaviorOptions(false, false, false, 0, null, false, false, false),
                 new FcpInsertTuningOptions(
                     false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_1251),
                 null));
@@ -147,7 +149,7 @@ class DefaultFcpInsertContextHandleTest {
         newHandle(
             new FcpInsertContextLimits(4, 10, 11),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+                new FcpInsertBehaviorOptions(true, true, true, 9, null, true, false, true),
                 new FcpInsertTuningOptions(
                     true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
                 null));

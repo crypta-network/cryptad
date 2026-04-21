@@ -86,6 +86,44 @@ class ClientPutDiskDirMessageTest {
   }
 
   @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessProvided_preservesOverride()
+      throws MessageInvalidException {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putSingle("Filename", tempDir.toAbsolutePath().toString());
+    fs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, 0);
+
+    ClientPutDiskDirMessage message = new ClientPutDiskDirMessage(fs);
+
+    assertEquals(0, message.consecutiveRnfsCountAsSuccess);
+    assertEquals(
+        0, message.getFieldSet().getInt(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, -1));
+  }
+
+  @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessNegative_expectInvalidField() {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putSingle("Filename", tempDir.toAbsolutePath().toString());
+    fs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, -1);
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutDiskDirMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, ex.protocolCode);
+  }
+
+  @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessMalformed_expectParsingError() {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.putSingle("Filename", tempDir.toAbsolutePath().toString());
+    fs.putSingle(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, "not-a-number");
+
+    MessageInvalidException ex =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutDiskDirMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.ERROR_PARSING_NUMBER, ex.protocolCode);
+  }
+
+  @Test
   void constructor_whenPriorityClassOutOfRange_expectInvalidField() {
     short invalidPriorityClass = (short) (FcpPriorityClasses.PAUSED + 1);
     SimpleFieldSet fs = baseFieldSet();

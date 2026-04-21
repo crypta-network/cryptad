@@ -97,6 +97,20 @@ class ClientPutBaseTest {
   }
 
   @Test
+  void constructor_whenRnfOverrideProvided_appliesOverrideToRuntimeContext() {
+    DefaultFcpInsertContextHandle insertContext = newInsertContextHandle();
+    when(runtimeSupport.defaultPersistentInsertContextHandle()).thenReturn(insertContext);
+    ClientRequestParams params = newRequestParams("strict-rnf-id", Persistence.CONNECTION);
+
+    TestClientPutBase request =
+        new TestClientPutBase(
+            params, null, newOptions(0), handler, runtimeSupport, mock(FreenetURI.class));
+
+    assertSame(insertContext, request.ctx);
+    assertEquals(0, insertContext.getConsecutiveRnfsCountAsSuccess());
+  }
+
+  @Test
   void constructor_whenPersistentScoped_appliesInsertOptionsToRuntimeContext() {
     DefaultFcpInsertContextHandle insertContext = newInsertContextHandle();
     when(runtimeSupport.defaultPersistentInsertContextHandle()).thenReturn(insertContext);
@@ -252,8 +266,13 @@ class ClientPutBaseTest {
   }
 
   private static FcpInsertOptions newOptions() {
+    return newOptions(null);
+  }
+
+  private static FcpInsertOptions newOptions(Integer consecutiveRnfsCountAsSuccess) {
     return new FcpInsertOptions(
-        new FcpInsertBehaviorOptions(true, true, true, 5, true, true, true),
+        new FcpInsertBehaviorOptions(
+            true, true, true, 5, consecutiveRnfsCountAsSuccess, true, true, true),
         new FcpInsertTuningOptions(true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_CURRENT),
         null);
   }
@@ -263,7 +282,7 @@ class ClientPutBaseTest {
         new SimpleEventProducer(),
         new FcpInsertContextLimits(0, 1, 1),
         new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+            new FcpInsertBehaviorOptions(false, false, false, 1, null, false, false, false),
             new FcpInsertTuningOptions(
                 true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
             null));

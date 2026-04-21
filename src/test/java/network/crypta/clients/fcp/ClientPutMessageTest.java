@@ -210,6 +210,48 @@ class ClientPutMessageTest {
   }
 
   @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessProvided_usesExplicitValue()
+      throws MessageInvalidException {
+    SimpleFieldSet fs = baseFieldSet("put-strict-rnf");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 12L);
+    fs.put("ConsecutiveRNFsCountAsSuccess", 0);
+
+    ClientPutMessage message = new ClientPutMessage(fs);
+
+    assertEquals(0, message.consecutiveRnfsCountAsSuccess);
+    assertEquals(0, message.getFieldSet().getInt("ConsecutiveRNFsCountAsSuccess", -1));
+  }
+
+  @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessNegative_throwsInvalidField() {
+    SimpleFieldSet fs = baseFieldSet("put-invalid-rnf-threshold");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 12L);
+    fs.put("ConsecutiveRNFsCountAsSuccess", -1);
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, exception.protocolCode);
+    assertEquals("put-invalid-rnf-threshold", exception.ident);
+  }
+
+  @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessMalformed_throwsParsingError() {
+    SimpleFieldSet fs = baseFieldSet("put-malformed-rnf-threshold");
+    fs.putSingle("UploadFrom", "direct");
+    fs.put("DataLength", 12L);
+    fs.putSingle("ConsecutiveRNFsCountAsSuccess", "not-a-number");
+
+    MessageInvalidException exception =
+        assertThrows(MessageInvalidException.class, () -> new ClientPutMessage(fs));
+
+    assertEquals(ProtocolErrorMessage.ERROR_PARSING_NUMBER, exception.protocolCode);
+    assertEquals("put-malformed-rnf-threshold", exception.ident);
+  }
+
+  @Test
   void constructor_whenPriorityClassOutOfRange_throwsInvalidField() {
     short invalidPriorityClass = (short) (FcpPriorityClasses.PAUSED + 1);
     SimpleFieldSet fs = baseFieldSet("put-invalid-priority");

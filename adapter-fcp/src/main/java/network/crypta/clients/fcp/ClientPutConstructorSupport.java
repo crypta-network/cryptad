@@ -268,6 +268,7 @@ final class ClientPutConstructorSupport {
                 message.dontCompress,
                 message.localRequestOnly,
                 message.maxRetries,
+                message.consecutiveRnfsCountAsSuccess,
                 message.earlyEncode,
                 message.realTimeFlag,
                 message.ignoreUSKDatehints),
