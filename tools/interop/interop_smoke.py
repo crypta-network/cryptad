@@ -18,7 +18,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import BinaryIO, Iterable
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
@@ -584,30 +584,42 @@ def baseline_version() -> str:
     )
 
 
+def reserve_download_temp_path(asset_path: Path) -> Path:
+    with NamedTemporaryFile(
+        dir=asset_path.parent,
+        prefix=asset_path.name + ".",
+        suffix=".download",
+        delete=False,
+    ) as temp_asset:
+        return Path(temp_asset.name)
+
+
 def verified_download(url: str, expected_sha256: str, cache_dir: Path) -> Path:
     cache_dir.mkdir(parents=True, exist_ok=True)
     parsed_name = Path(urlparse(url).path).name
     if not parsed_name:
         raise InteropFailure(f"Cannot determine baseline asset name from URL: {url}")
     asset_path = cache_dir / parsed_name
-    temp_asset_path = asset_path.with_name(asset_path.name + ".download")
 
     def download_asset() -> None:
-        temp_asset_path.unlink(missing_ok=True)
-        urlretrieve(url, temp_asset_path)
-        downloaded_sha256 = sha256sum(temp_asset_path)
-        if downloaded_sha256 != expected_sha256:
+        temp_asset_path = reserve_download_temp_path(asset_path)
+        try:
+            urlretrieve(url, temp_asset_path)
+            downloaded_sha256 = sha256sum(temp_asset_path)
+            if downloaded_sha256 != expected_sha256:
+                raise InteropFailure(
+                    f"Hyphanet baseline checksum mismatch for {url}: "
+                    f"expected {expected_sha256}, got {downloaded_sha256}"
+                )
+            temp_asset_path.replace(asset_path)
+        except Exception:
             temp_asset_path.unlink(missing_ok=True)
-            raise InteropFailure(
-                f"Hyphanet baseline checksum mismatch for {url}: "
-                f"expected {expected_sha256}, got {downloaded_sha256}"
-            )
-        temp_asset_path.replace(asset_path)
+            raise
 
     if asset_path.exists():
         actual_sha256 = sha256sum(asset_path)
         if actual_sha256 != expected_sha256:
-            asset_path.unlink()
+            asset_path.unlink(missing_ok=True)
             download_asset()
     else:
         download_asset()
@@ -1274,6 +1286,21 @@ def self_test() -> int:
         pass
     else:
         raise AssertionError("duplicate FCP ports were not rejected")
+    with TemporaryDirectory() as temp_root:
+        asset_path = Path(temp_root) / "baseline.deb"
+        temp_path_1 = reserve_download_temp_path(asset_path)
+        temp_path_2 = reserve_download_temp_path(asset_path)
+        try:
+            assert temp_path_1 != temp_path_2
+            assert temp_path_1.parent == asset_path.parent
+            assert temp_path_2.parent == asset_path.parent
+            assert temp_path_1.name.startswith(asset_path.name + ".")
+            assert temp_path_2.name.startswith(asset_path.name + ".")
+            assert temp_path_1.name.endswith(".download")
+            assert temp_path_2.name.endswith(".download")
+        finally:
+            temp_path_1.unlink(missing_ok=True)
+            temp_path_2.unlink(missing_ok=True)
     assert (
         ssk_for_usk("USK@pub,crypto,AQACAAE/site/1")
         == "SSK@pub,crypto,AQACAAE/site-1"
