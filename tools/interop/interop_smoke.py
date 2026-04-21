@@ -18,6 +18,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import BinaryIO, Iterable
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
@@ -48,6 +49,11 @@ SENSITIVE_FIELDS = {
     "OverrideSplitfileCryptoKey",
 }
 POTENTIALLY_PRIVATE_URI_PREFIXES = ("SSK@", "USK@")
+HYPHANET_VERSIONED_JAR_RE = re.compile(
+    r"^(?P<base>.+)-"
+    r"(?P<version>\d+(?:\.\d+)+[0-9A-Za-z._-]*)"
+    r"\+(?P<build>[0-9A-Za-z._-]+)\.jar$"
+)
 
 
 class InteropFailure(RuntimeError):
@@ -599,16 +605,11 @@ def materialize_hyphanet_java_symlinks(extract_root: Path) -> None:
     if not java_dir.is_dir():
         return
 
-    version = re.escape(os.environ.get("HYPHANET_VERSION", "0.7.5"))
-    build = re.escape(os.environ.get("HYPHANET_BASELINE_VERSION") or os.environ.get("HYPHANET_BUILD", ""))
-    if not build:
-        return
-    suffix_pattern = re.compile(rf"-{version}\+{build}\.jar$")
     for jar_path in java_dir.glob("*.jar"):
-        match = suffix_pattern.search(jar_path.name)
+        match = HYPHANET_VERSIONED_JAR_RE.match(jar_path.name)
         if match is None:
             continue
-        target_name = jar_path.name[: match.start()] + ".jar"
+        target_name = match.group("base") + ".jar"
         target_path = java_dir / target_name
         if not target_path.exists():
             target_path.symlink_to(jar_path.name)
@@ -1235,6 +1236,27 @@ def self_test() -> int:
         build_client_get_fields("fetch-network", "CHK@sample", ignore_ds=True)["IgnoreDS"]
         == "true"
     )
+    with TemporaryDirectory() as temp_root:
+        extract_root = Path(temp_root)
+        java_dir = extract_root / "usr" / "share" / "java"
+        java_dir.mkdir(parents=True)
+        (java_dir / "freenet-0.8.0+1600.jar").touch()
+        (java_dir / "bcprov-jdk15on-1.70-0.8.0+1600.jar").touch()
+        (java_dir / "unversioned.jar").touch()
+        (java_dir / "already.jar").write_text("existing", encoding="utf-8")
+        (java_dir / "already-0.8.0+1600.jar").touch()
+
+        materialize_hyphanet_java_symlinks(extract_root)
+
+        assert (java_dir / "freenet.jar").is_symlink()
+        assert os.readlink(java_dir / "freenet.jar") == "freenet-0.8.0+1600.jar"
+        assert (java_dir / "bcprov-jdk15on-1.70.jar").is_symlink()
+        assert (
+            os.readlink(java_dir / "bcprov-jdk15on-1.70.jar")
+            == "bcprov-jdk15on-1.70-0.8.0+1600.jar"
+        )
+        assert not (java_dir / "unversioned.jar").is_symlink()
+        assert not (java_dir / "already.jar").is_symlink()
     print("interop_smoke.py self-test passed")
     return 0
 
