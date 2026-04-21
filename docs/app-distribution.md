@@ -5,6 +5,9 @@ This document describes Cryptad's local signed staged app bundle workflow for fi
 ## Scope
 
 PR-192 adds signed local bundle sidecars and Gradle tasks for staging, signing, and verifying first-party apps.
+PR-194 treats staging, signing, and verification as Phase 3 release gates; see
+[phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md) and
+[cryptad-release-workflow-and-runbook.md](cryptad-release-workflow-and-runbook.md).
 
 Out of scope in this PR:
 

@@ -3,6 +3,11 @@
 Use this gate to verify that a packaged Cryptad node can interoperate with a pinned Hyphanet
 baseline over darknet peering and FCP content operations.
 
+PR-194 records this existing harness as a Phase 3 release gate. The closeout summary is in
+[docs/phase-3-platform-primacy-closeout.md](../../docs/phase-3-platform-primacy-closeout.md), and
+the release checklist is in
+[docs/cryptad-release-workflow-and-runbook.md](../../docs/cryptad-release-workflow-and-runbook.md).
+
 ## Scope
 
 The gate is Linux-only and runs two local nodes:

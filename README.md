@@ -58,6 +58,8 @@ data, and serves applications.
 - [Quick Start](#quick-start)
 - [Building](#building)
 - [Signed App Bundles](#signed-app-bundles)
+- [Platform Closeout & API Surface](#platform-closeout--api-surface)
+- [Hyphanet Interop Gate](#hyphanet-interop-gate)
 - [Testing](#testing)
 - [Code Quality](#code-quality)
 - [Running Your Build](#running-your-build)
@@ -235,15 +237,17 @@ Cryptad now uses a partial multi-project Gradle build.
   `UpdaterPaths`.
 - `:platform-api` owns the transport-neutral Platform API v1 under
   `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
-  and the minimal local AppHost control surface as JSON-oriented responses, and is currently
-  mounted at `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The
-  current surface covers node info, peers, config export, connectivity, security-level snapshots,
-  and local app install/start/stop/update/uninstall routes; `GET /api/v1/config` defaults to the
-  effective `CURRENT` section when `sections=` is omitted.
+  and local AppHost control operations as JSON-oriented responses, and is currently mounted at
+  `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The current Phase
+  3 surface covers node, connectivity, queue, peers, config, security levels, updates,
+  wizard/welcome, alerts, diagnostics, and apps; `GET /api/v1/config` defaults to the effective
+  `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
   lifecycle, and per-start launch-token plumbing for local apps while staying separate from future
   Web Shell, application-UI, and remote update-channel work.
+- `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
+  staged AppHost bundles.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -350,6 +354,36 @@ Do not commit production private signing keys to this repository. Keep local dev
 outside the repo and pass them through Gradle properties or environment variables. Remote catalogs
 and remote downloads are future work. See [docs/app-distribution.md](docs/app-distribution.md) for
 the full workflow and exact signing inputs.
+
+## Platform Closeout & API Surface
+
+Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:platform-apphost` the
+primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
+compatibility, bridge, debug, and fallback surfaces.
+
+Key docs:
+
+- [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
+- [Platform API and Web Shell surface](docs/platform-api-surface.md)
+- [Signed App Distribution](docs/app-distribution.md)
+
+## Hyphanet Interop Gate
+
+The packaged-node Hyphanet interop smoke gate lives under `tools/interop/` and is wired into CI as
+the `interop-smoke` job. Local usage, baseline configuration, diagnostics, and follow-ups are
+documented in [tools/interop/README.md](tools/interop/README.md).
+
+Fast parser/client self-test:
+
+```bash
+python3 tools/interop/interop_smoke.py --self-test
+```
+
+Full gate when the local environment is prepared:
+
+```bash
+tools/interop/run-hyphanet-interop-smoke.sh
+```
 
 ## Testing
 
@@ -692,9 +726,14 @@ Root build also includes:
   path constants such as `ConnectivityPagePaths` and `UpdaterPaths`.
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
+  Its current family-level surface covers node, connectivity, queue, peers, config, security
+  levels, updates, wizard/welcome, alerts, diagnostics, and apps.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged app updates now flow through this core; future Web Shell, app UI, and remote
   update-channel work remain separate and later.
+- `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
+  signatures, trusted-key verification, and the signing/verification CLI used by first-party app
+  Gradle tasks.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -764,7 +803,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 ## Branching & Releases
 
 - Standard branching and release workflow: see `docs/standard-git-branching-and-release-workflow.md` (validated copy). The original wiki page is also available: https://github.com/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad
-- [Release workflow and operations runbook](https://github.com/crypta-network/cryptad/wiki/Cryptad-Release-Workflow-and-Runbook)
+- [Release workflow and operations runbook](docs/cryptad-release-workflow-and-runbook.md)
 
 ## Update System
 
@@ -789,7 +828,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
-    `:platform-api`, `:platform-apphost`, `:platform-web-shell`, `:runtime-node`,
+    `:platform-api`, `:platform-apphost`, `:platform-appdist`, `:platform-web-shell`,
+    `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
     `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -931,7 +971,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
-  v1 core for installed local apps;
+  v1 core for installed local apps; `:platform-appdist` provides the local app bundle digest,
+  signing, and verification tooling;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level
