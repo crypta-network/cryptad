@@ -43,6 +43,15 @@
 - **Environment validation**: run smoke tests on each target OS using `build/jpackage/Crypta`, `build/distributions/`, or the staged Flatpak bundle. Ensure the installers launch and locate `cryptad-dist/` correctly.
 - **Dependency review**: verify updater metadata and package checksums are consistent with produced artifacts.
 
+## Phase 3 Release Gates
+Treat these as release blockers, in order:
+
+1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
+2. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
+3. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
+4. **Hyphanet interop smoke** - run the packaged-node compatibility smoke locally when the environment is prepared, or verify that the CI `interop-smoke` job passed. The gate is documented in [tools/interop/README.md](../tools/interop/README.md) and summarized in [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
+5. **Interop failure artifacts** - if the interop gate fails, preserve `build/interop-smoke/` from the local run or the CI uploaded artifact before rerunning or cleaning the workspace.
+
 ## Build
 1. Clean build for deterministic artifacts:
    ```bash
