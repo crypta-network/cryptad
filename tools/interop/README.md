@@ -120,6 +120,9 @@ The harness fails before node startup if it cannot find a local jar or a verifie
 It never downloads an unverified remote jar or package.
 Verified baseline packages are cached in `build/interop-cache/` by default so reruns can work
 without re-downloading the baseline. Set `INTEROP_CACHE_DIR` to use a different cache location.
+Extracted `.deb` contents are staged under the per-run `downloads/` diagnostics directory, not in
+the reusable cache, so concurrent runs with separate work directories cannot replace each other's
+classpath while nodes are starting.
 
 ## Timeouts and ports
 

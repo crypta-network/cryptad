@@ -370,7 +370,21 @@ def ensure_tcp_port_available(port: int) -> None:
         probe.close()
 
 
+def ensure_distinct_node_ports(ports: Ports) -> None:
+    duplicate_bindings: list[str] = []
+    if ports.cryptad_fnp == ports.hyphanet_fnp:
+        duplicate_bindings.append(f"FNP UDP {ports.cryptad_fnp}")
+    if ports.cryptad_fcp == ports.hyphanet_fcp:
+        duplicate_bindings.append(f"FCP TCP {ports.cryptad_fcp}")
+    if duplicate_bindings:
+        raise InteropFailure(
+            "Cryptad and Hyphanet must use distinct node ports: "
+            + ", ".join(duplicate_bindings)
+        )
+
+
 def ensure_ports_available(ports: Ports) -> None:
+    ensure_distinct_node_ports(ports)
     ensure_udp_port_available(ports.cryptad_fnp)
     ensure_tcp_port_available(ports.cryptad_fcp)
     ensure_udp_port_available(ports.hyphanet_fnp)
@@ -641,7 +655,7 @@ def prepare_hyphanet_baseline(layout: Layout, cache_dir: Path) -> Baseline:
     if asset_path.suffix == ".deb":
         if shutil.which("dpkg-deb") is None:
             raise InteropFailure("dpkg-deb is required to extract a Hyphanet .deb baseline")
-        extract_root = cache_dir / "hyphanet-root"
+        extract_root = layout.downloads_dir / "hyphanet-root"
         if extract_root.exists():
             shutil.rmtree(extract_root)
         subprocess.run(["dpkg-deb", "-x", str(asset_path), str(extract_root)], check=True)
@@ -1247,6 +1261,19 @@ def self_test() -> int:
         build_client_get_fields("fetch-network", "CHK@sample", ignore_ds=True)["IgnoreDS"]
         == "true"
     )
+    ensure_distinct_node_ports(Ports(19401, 19402, 19501, 19502))
+    try:
+        ensure_distinct_node_ports(Ports(19401, 19402, 19401, 19502))
+    except InteropFailure:
+        pass
+    else:
+        raise AssertionError("duplicate FNP ports were not rejected")
+    try:
+        ensure_distinct_node_ports(Ports(19401, 19402, 19501, 19402))
+    except InteropFailure:
+        pass
+    else:
+        raise AssertionError("duplicate FCP ports were not rejected")
     assert (
         ssk_for_usk("USK@pub,crypto,AQACAAE/site/1")
         == "SSK@pub,crypto,AQACAAE/site-1"
