@@ -1095,6 +1095,17 @@ def usk_from_ssk(uri: str, site_name: str, edition: int) -> str:
     return f"USK@{key_part.removeprefix('SSK@')}/{site_name}/{edition}"
 
 
+def ssk_for_usk(uri: str) -> str:
+    parts = uri.split("/")
+    if len(parts) != 3 or not parts[0].startswith("USK@"):
+        raise InteropFailure(f"Cannot derive edition SSK from non-edition USK URI: {uri}")
+    try:
+        edition = abs(int(parts[2], 10))
+    except ValueError as exc:
+        raise InteropFailure(f"Cannot derive edition SSK from USK with invalid edition: {uri}") from exc
+    return f"SSK@{parts[0].removeprefix('USK@')}/{parts[1]}-{edition}"
+
+
 def record_uri(summary: dict[str, object], flow: str, direction: str, uri_type: str, uri: str) -> None:
     uris = summary.setdefault("uris", [])
     if isinstance(uris, list):
@@ -1236,6 +1247,20 @@ def self_test() -> int:
         build_client_get_fields("fetch-network", "CHK@sample", ignore_ds=True)["IgnoreDS"]
         == "true"
     )
+    assert (
+        ssk_for_usk("USK@pub,crypto,AQACAAE/site/1")
+        == "SSK@pub,crypto,AQACAAE/site-1"
+    )
+    assert (
+        ssk_for_usk("USK@pub,crypto,AQACAAE/site/-2")
+        == "SSK@pub,crypto,AQACAAE/site-2"
+    )
+    try:
+        ssk_for_usk("USK@pub,crypto,AQACAAE/site/not-an-edition")
+    except InteropFailure:
+        pass
+    else:
+        raise AssertionError("invalid USK edition was not rejected")
     with TemporaryDirectory() as temp_root:
         extract_root = Path(temp_root)
         java_dir = extract_root / "usr" / "share" / "java"
@@ -1866,13 +1891,14 @@ def run() -> int:
                     ssk_payload_from_cryptad,
                 )
             if usk_request_from_cryptad_ed1:
+                usk_edition_ssk_from_cryptad = ssk_for_usk(usk_request_from_cryptad_ed1)
                 payload = fetch_direct_until_available(
                     "127.0.0.1",
                     ports.hyphanet_fcp,
-                    "hyphanet-refetch-cryptad-usk-after-restart",
+                    "hyphanet-refetch-cryptad-usk-ssk-after-restart",
                     layout.transcripts_dir / "hyphanet.fcp.txt",
-                    "hyphanet-refetch-cryptad-usk-after-restart",
-                    usk_request_from_cryptad_ed1,
+                    "hyphanet-refetch-cryptad-usk-ssk-after-restart",
+                    usk_edition_ssk_from_cryptad,
                     restart_fetch_timeout,
                     ignore_ds=True,
                 )

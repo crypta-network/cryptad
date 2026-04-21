@@ -35,6 +35,10 @@ The restart flow uses the current minimum release gate: restart and refetch. The
 `ListPersistentRequests` before and after restart and records the results. Creating a long-lived
 persistent request and proving replay across restart remains a follow-up because it needs more
 runtime soak time than this CI smoke should consume.
+For the post-restart USK check, the harness refetches the deterministic edition through its
+equivalent edition SSK with `IgnoreDS=true`. The earlier USK smoke still exercises FCP USK request
+URIs directly; restart recovery uses the SSK form to prove the restarted node can serve the edition
+without spending the rest of the CI budget in USK polling.
 
 ## Run locally
 
