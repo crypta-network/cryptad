@@ -114,6 +114,8 @@ tools/interop/run-hyphanet-interop-smoke.sh
 
 The harness fails before node startup if it cannot find a local jar or a verified URL/checksum pair.
 It never downloads an unverified remote jar or package.
+Verified baseline packages are cached in `build/interop-cache/` by default so reruns can work
+without re-downloading the baseline. Set `INTEROP_CACHE_DIR` to use a different cache location.
 
 ## Timeouts and ports
 
