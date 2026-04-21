@@ -61,7 +61,7 @@ class ClientPutTest {
             new SimpleEventProducer(),
             new FcpInsertContextLimits(0, 1, 1),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+                new FcpInsertBehaviorOptions(false, false, false, 1, null, false, false, false),
                 new FcpInsertTuningOptions(
                     true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
                 null));
@@ -244,7 +244,7 @@ class ClientPutTest {
 
     put.start(context);
 
-    verify(put).onFailure(failure, (FcpInsertCallbackState) null);
+    verify(put).onFailure(failure, null);
   }
 
   @Test
@@ -355,7 +355,7 @@ class ClientPutTest {
     boolean restarted = spyPut.restart(context, false);
 
     assertFalse(restarted);
-    verify(spyPut).onFailure(failure, (FcpInsertCallbackState) null);
+    verify(spyPut).onFailure(failure, null);
   }
 
   @Test
@@ -492,10 +492,6 @@ class ClientPutTest {
   }
 
   private static ClientPut roundTrip(ClientPut value) throws Exception {
-    return roundTripObject(value, ClientPut.class);
-  }
-
-  private static <T> T roundTripObject(Object value, Class<T> type) throws Exception {
     byte[] serialized;
     try (ByteArrayOutputStream output = new ByteArrayOutputStream();
         ObjectOutputStream objectOutput = new ObjectOutputStream(output)) {
@@ -505,7 +501,7 @@ class ClientPutTest {
     }
     try (ObjectInputStream objectInput =
         new ObjectInputStream(new ByteArrayInputStream(serialized))) {
-      return type.cast(objectInput.readObject());
+      return (ClientPut) objectInput.readObject();
     }
   }
 }

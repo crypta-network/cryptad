@@ -254,6 +254,30 @@ class SingleBlockInserterTest {
   }
 
   @Test
+  void onFailure_whenRNFThresholdIsZero_doesNotCountRouteNotFoundAsSuccess() {
+    insertCtx.setConsecutiveRNFsCountAsSuccess(0);
+    ClientContext ctx = newMinimalClientContext(insertCtx);
+    SingleBlockInserter inserter =
+        newInserter(
+            ctx,
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
+
+    inserter.onFailure(new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), null, ctx);
+
+    verify(parent, never()).completedBlock(false, ctx);
+    verify(cb, never()).onSuccess(inserter, ctx);
+    verify(cb, never())
+        .onFailure(any(InsertException.class), Mockito.eq(inserter), Mockito.eq(ctx));
+  }
+
+  @Test
   void getWakeupTime_whenAlreadyRunningInsert_returnsMax() {
     // Build a mocked context that returns a mocked insert scheduler
     ClientRequestScheduler mockScheduler = mock(ClientRequestScheduler.class);

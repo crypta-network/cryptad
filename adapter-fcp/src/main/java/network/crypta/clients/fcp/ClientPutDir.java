@@ -138,6 +138,7 @@ public final class ClientPutDir extends ClientPutBase {
                 message.dontCompress,
                 message.localRequestOnly,
                 message.maxRetries,
+                message.consecutiveRnfsCountAsSuccess,
                 message.earlyEncode,
                 message.realTimeFlag,
                 message.ignoreUSKDatehints),
@@ -452,7 +453,7 @@ public final class ClientPutDir extends ClientPutBase {
       }
     } catch (InsertException e) {
       started = true;
-      onFailure(e, (FcpInsertCallbackState) null);
+      onFailure(e, null);
     }
   }
 
@@ -633,7 +634,7 @@ public final class ClientPutDir extends ClientPutBase {
         }
       }
     } catch (InsertException e) {
-      this.onFailure(e, (FcpInsertCallbackState) null);
+      this.onFailure(e, null);
       return false;
     }
     if (client != null) {

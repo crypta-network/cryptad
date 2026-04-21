@@ -431,7 +431,8 @@ public final class SingleBlockInserter extends SendableInsert
       if (LOG.isDebugEnabled())
         LOG.debug(
             "Consecutive RNFs: {} / {}", consecutiveRNFs, ctx.getConsecutiveRNFsCountAsSuccess());
-      if (consecutiveRNFs >= ctx.getConsecutiveRNFsCountAsSuccess()) {
+      if (ctx.getConsecutiveRNFsCountAsSuccess() > 0
+          && consecutiveRNFs >= ctx.getConsecutiveRNFsCountAsSuccess()) {
         if (LOG.isDebugEnabled())
           LOG.debug("Consecutive RNFs: {} - counting as success", consecutiveRNFs);
         onSuccess(keyNum, getKeyNoEncode(), context);

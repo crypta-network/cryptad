@@ -221,7 +221,7 @@ class CoreFcpInsertRuntimeSupportTest {
             eventProducer,
             new FcpInsertContextLimits(4, 10, 11),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+                new FcpInsertBehaviorOptions(true, true, true, 9, null, true, false, true),
                 new FcpInsertTuningOptions(
                     true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
                 null));
@@ -444,7 +444,7 @@ class CoreFcpInsertRuntimeSupportTest {
                 new SimpleEventProducer(),
                 new FcpInsertContextLimits(4, 10, 11),
                 new FcpInsertOptions(
-                    new FcpInsertBehaviorOptions(true, true, true, 9, true, false, true),
+                    new FcpInsertBehaviorOptions(true, true, true, 9, null, true, false, true),
                     new FcpInsertTuningOptions(
                         true, true, "GZIP", 2, 3, FcpCompatibilityMode.COMPAT_1468),
                     null)),

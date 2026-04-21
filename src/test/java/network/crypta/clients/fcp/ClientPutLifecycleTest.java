@@ -43,7 +43,7 @@ class ClientPutLifecycleTest {
             new SimpleEventProducer(),
             new FcpInsertContextLimits(0, 1, 1),
             new FcpInsertOptions(
-                new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+                new FcpInsertBehaviorOptions(false, false, false, 1, null, false, false, false),
                 new FcpInsertTuningOptions(
                     true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
                 null)));
@@ -97,11 +97,11 @@ class ClientPutLifecycleTest {
     ClientPut request = spy(clientPut);
     setField(ClientPut.class, request, "putter", putter);
     doThrow(failure).when(putter).start(context);
-    doNothing().when(request).onFailure(failure, (FcpInsertCallbackState) null);
+    doNothing().when(request).onFailure(failure, null);
 
     new ClientPutLifecycle(request).start(context);
 
-    verify(request).onFailure(failure, (FcpInsertCallbackState) null);
+    verify(request).onFailure(failure, null);
   }
 
   @Test
@@ -143,12 +143,12 @@ class ClientPutLifecycleTest {
     setField(ClientRequest.class, request, "client", client);
     when(putter.canRestart()).thenReturn(true);
     when(putter.restart(context)).thenThrow(failure);
-    doNothing().when(request).onFailure(failure, (FcpInsertCallbackState) null);
+    doNothing().when(request).onFailure(failure, null);
 
     boolean restarted = new ClientPutLifecycle(request).restart(context);
 
     assertFalse(restarted);
-    verify(request).onFailure(failure, (FcpInsertCallbackState) null);
+    verify(request).onFailure(failure, null);
   }
 
   @Test

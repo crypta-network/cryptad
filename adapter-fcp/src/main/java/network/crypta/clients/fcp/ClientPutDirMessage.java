@@ -91,6 +91,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
   final FreenetURI uri;
   final int verbosity;
   final int maxRetries;
+  final Integer consecutiveRnfsCountAsSuccess;
   final boolean getCHKOnly;
   final short priorityClass;
   final Persistence persistence;
@@ -136,6 +137,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     uri = requestParams.uri();
     verbosity = requestParams.verbosity();
     maxRetries = behaviorOptions.maxRetries();
+    consecutiveRnfsCountAsSuccess = behaviorOptions.consecutiveRnfsCountAsSuccess();
     getCHKOnly = behaviorOptions.getCHKOnly();
     priorityClass = requestParams.priorityClass();
     persistence = requestParams.persistence();
@@ -181,6 +183,8 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     FreenetURI uri = parseUri(fs, identifier, global);
     int verbosity = parseOptionalInt(fs, "Verbosity", "Verbosity field", identifier, global);
     int maxRetries = parseOptionalInt(fs, "MaxRetries", "MaxSize field", identifier, global);
+    Integer consecutiveRnfsCountAsSuccess =
+        parseOptionalConsecutiveRnfsCountAsSuccess(fs, identifier, global);
     boolean getCHKOnly = fs.getBoolean("GetCHKOnly", false);
     short priorityClass = parsePriorityClass(fs, identifier, global);
     Persistence persistence = Persistence.parseOrThrow(fs.get("Persistence"), identifier, global);
@@ -206,6 +210,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
             dontCompress,
             localRequestOnly,
             maxRetries,
+            consecutiveRnfsCountAsSuccess,
             earlyEncode,
             realTimeFlag,
             ignoreUSKDatehints);
@@ -265,6 +270,9 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     sfs.putSingle("Identifier", identifier);
     sfs.put("Verbosity", verbosity);
     sfs.put("MaxRetries", maxRetries);
+    if (consecutiveRnfsCountAsSuccess != null) {
+      sfs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, consecutiveRnfsCountAsSuccess);
+    }
     sfs.putSingle("ClientToken", clientToken);
     sfs.put("GetCHKOnly", getCHKOnly);
     sfs.put("PriorityClass", priorityClass);
@@ -366,6 +374,34 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ERROR_PARSING_NUMBER,
           "Error parsing " + errorFieldLabel + ": " + e.getMessage(),
+          identifier,
+          global);
+    }
+  }
+
+  private static Integer parseOptionalConsecutiveRnfsCountAsSuccess(
+      SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
+    String value = fs.get(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS);
+    if (value == null) {
+      return null;
+    }
+    try {
+      int parsed = Integer.parseInt(value, 10);
+      if (parsed < 0) {
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.INVALID_FIELD,
+            ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS + " must be zero or larger",
+            identifier,
+            global);
+      }
+      return parsed;
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing "
+              + ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS
+              + " field: "
+              + e.getMessage(),
           identifier,
           global);
     }

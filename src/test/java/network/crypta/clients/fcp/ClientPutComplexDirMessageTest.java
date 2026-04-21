@@ -90,6 +90,18 @@ class ClientPutComplexDirMessageTest {
   }
 
   @Test
+  void constructor_whenConsecutiveRnfsCountAsSuccessProvided_preservesOverride() throws Exception {
+    SimpleFieldSet fs = baseFieldSet();
+    fs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, 0);
+    addDirectFile(fs, 0, "alpha.txt", 5);
+
+    ClientPutComplexDirMessage message =
+        new ClientPutComplexDirMessage(fs, tempBucketFactory, persistentBucketFactory);
+
+    assertEquals(0, message.consecutiveRnfsCountAsSuccess);
+  }
+
+  @Test
   void constructor_whenPersistenceForever_expectPersistentBucketsUsed() throws Exception {
     SimpleFieldSet fs = baseFieldSet();
     fs.putOverwrite("Persistence", "forever");

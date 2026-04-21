@@ -60,6 +60,7 @@ public final class ClientPutMessage extends DataCarryingMessage {
   final String identifier;
   final int verbosity;
   final int maxRetries;
+  final Integer consecutiveRnfsCountAsSuccess;
   final boolean getCHKOnly;
   final short priorityClass;
   final Persistence persistence;
@@ -134,6 +135,9 @@ public final class ClientPutMessage extends DataCarryingMessage {
         parseOptionalIntOrZero(fs.get(FIELD_VERBOSITY), FIELD_VERBOSITY, identifier, global);
     contentType = fs.get("Metadata.ContentType");
     maxRetries = parseOptionalIntOrZero(fs.get("MaxRetries"), "MaxSize", identifier, global);
+    consecutiveRnfsCountAsSuccess =
+        parseOptionalNonNegativeInteger(
+            fs.get(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS), identifier, global);
     getCHKOnly = fs.getBoolean("GetCHKOnly", false);
     priorityClass = parsePriorityClass(fs.get("PriorityClass"), identifier, global);
 
@@ -263,6 +267,33 @@ public final class ClientPutMessage extends DataCarryingMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ERROR_PARSING_NUMBER,
           "Error parsing " + errorFieldName + " field: " + e.getMessage(),
+          identifier,
+          global);
+    }
+  }
+
+  private static Integer parseOptionalNonNegativeInteger(
+      String rawValue, String identifier, boolean global) throws MessageInvalidException {
+    if (rawValue == null) {
+      return null;
+    }
+    try {
+      int parsed = Integer.parseInt(rawValue, 10);
+      if (parsed < 0) {
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.INVALID_FIELD,
+            ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS + " must be zero or larger",
+            identifier,
+            global);
+      }
+      return parsed;
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing "
+              + ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS
+              + " field: "
+              + e.getMessage(),
           identifier,
           global);
     }
@@ -452,6 +483,9 @@ public final class ClientPutMessage extends DataCarryingMessage {
     sfs.putSingle("Identifier", identifier);
     sfs.put(FIELD_VERBOSITY, verbosity);
     sfs.put("MaxRetries", maxRetries);
+    if (consecutiveRnfsCountAsSuccess != null) {
+      sfs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, consecutiveRnfsCountAsSuccess);
+    }
     sfs.putSingle("Metadata.ContentType", contentType);
     sfs.putSingle("ClientToken", clientToken);
     switch (uploadFromType) {

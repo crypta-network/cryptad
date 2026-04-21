@@ -155,7 +155,7 @@ class ClientPutPersistentTagBuilderTest {
         new FcpInsertContextLimits(0, 0, 0),
         new FcpInsertOptions(
             new FcpInsertBehaviorOptions(
-                false, dontCompress, false, maxRetries, false, false, false),
+                false, dontCompress, false, maxRetries, null, false, false, false),
             new FcpInsertTuningOptions(false, false, compressorDescriptor, 0, 0, compatibilityMode),
             null));
   }

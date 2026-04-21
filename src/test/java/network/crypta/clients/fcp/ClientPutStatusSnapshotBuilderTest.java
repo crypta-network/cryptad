@@ -145,7 +145,7 @@ class ClientPutStatusSnapshotBuilderTest {
     return new DefaultFcpInsertContextHandle(
         new FcpInsertContextLimits(0, 0, 0),
         new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(false, false, false, 0, false, false, false),
+            new FcpInsertBehaviorOptions(false, false, false, 0, null, false, false, false),
             new FcpInsertTuningOptions(
                 false, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
             null));

@@ -7,6 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,6 +58,8 @@ import static org.mockito.Mockito.withSettings;
 class ClientPutDirTest {
 
   @Mock private PersistentRequestClient persistentRequestClient;
+
+  @TempDir Path tempDir;
 
   @Test
   void register_whenPersistentAndTagsRequested_registersAndQueuesTagMessage() throws Exception {
@@ -195,7 +199,7 @@ class ClientPutDirTest {
 
     putDir.start(mock(ClientContext.class));
 
-    verify(putDir).onFailure(failure, (FcpInsertCallbackState) null);
+    verify(putDir).onFailure(failure, null);
   }
 
   @Test
@@ -275,6 +279,29 @@ class ClientPutDirTest {
   @Test
   void getType_alwaysReturnsPutDir() {
     assertEquals(RequestType.PUTDIR, newClientPutDir().getType());
+  }
+
+  @Test
+  void constructor_whenMessageHasRnfOverride_appliesOverrideToRuntimeContext() throws Exception {
+    FcpInsertRuntimeSupport runtimeSupport = mock(FcpInsertRuntimeSupport.class);
+    FcpInsertContextHandle insertContext = newSerializableInsertContextHandle();
+    FCPServer server = mock(FCPServer.class);
+    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+    ClientPutDirExecution execution = mock(ClientPutDirExecution.class);
+    when(server.insertRuntimeSupport()).thenReturn(runtimeSupport);
+    when(runtimeSupport.defaultPersistentInsertContextHandle()).thenReturn(insertContext);
+    when(runtimeSupport.normalizeInsertUri(any(FreenetURI.class), any()))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(runtimeSupport.createDirectoryExecution(any())).thenReturn(execution);
+    SimpleFieldSet fs = newDirFieldSet();
+    fs.put(ClientPutBase.FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS, 0);
+    ClientPutDiskDirMessage message = new ClientPutDiskDirMessage(fs);
+
+    ClientPutDir putDir = new ClientPutDir(handler, message, new HashMap<>(), true, server);
+
+    FcpInsertContextHandle ctx =
+        (FcpInsertContextHandle) getField(ClientPutBase.class, putDir, "ctx");
+    assertEquals(0, ctx.getConsecutiveRnfsCountAsSuccess());
   }
 
   @Test
@@ -415,7 +442,7 @@ class ClientPutDirTest {
         new SimpleEventProducer(),
         new FcpInsertContextLimits(0, 1, 1),
         new FcpInsertOptions(
-            new FcpInsertBehaviorOptions(false, false, false, 1, false, false, false),
+            new FcpInsertBehaviorOptions(false, false, false, 1, null, false, false, false),
             new FcpInsertTuningOptions(
                 true, false, null, 0, 0, FcpCompatibilityMode.COMPAT_CURRENT),
             null));
@@ -425,6 +452,15 @@ class ClientPutDirTest {
     ClientPutDir putDir = spy(newClientPutDir());
     doReturn(message).when(putDir).persistentTagMessage();
     return putDir;
+  }
+
+  private SimpleFieldSet newDirFieldSet() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle("Identifier", "put-dir");
+    fs.putSingle("URI", "CHK@");
+    fs.putSingle("Persistence", "connection");
+    fs.putSingle("Filename", tempDir.toAbsolutePath().toString());
+    return fs;
   }
 
   private static void setField(Class<?> owner, Object target, String name, Object value)

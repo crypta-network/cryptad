@@ -137,6 +137,12 @@ public abstract class ClientPutBase extends ClientRequest
    */
   public static final String FILE_HASH = "FileHash";
 
+  /**
+   * FCP field carrying a request-local override for how many consecutive route-not-found outcomes
+   * may be treated as insert success.
+   */
+  static final String FIELD_CONSECUTIVE_RNFS_COUNT_AS_SUCCESS = "ConsecutiveRNFsCountAsSuccess";
+
   // Legacy threshold callback removed.
 
   private static final Map<Integer, UploadFrom> uploadFromByCode = new HashMap<>();
@@ -260,7 +266,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param requestParams request metadata including URI, identifiers, and scheduling flags
    * @param charset optional charset hint that influences metadata generation when meaningful
    * @param options insert tuning options that should persist across restarts
-   * @param handler connection handler for immediate responses during the resume handshake
+   * @param handler connection handler for immediate responses during the resuming handshake
    * @param client persistent request owner used to enqueue outbound messages after resumption
    * @param runtimeSupport insert runtime support used to get shared factories and contexts for
    *     resumed jobs
@@ -292,6 +298,9 @@ public abstract class ClientPutBase extends ClientRequest
     ctx.setDontCompress(options.dontCompress());
     ctx.addEventListener(this);
     ctx.setMaxInsertRetries(options.maxRetries());
+    if (options.consecutiveRnfsCountAsSuccess() != null) {
+      ctx.setConsecutiveRnfsCountAsSuccess(options.consecutiveRnfsCountAsSuccess());
+    }
     ctx.setCanWriteClientCache(options.canWriteClientCache());
     ctx.setCompressorDescriptor(options.compressorDescriptor());
     ctx.setForkOnCacheable(options.forkOnCacheable());

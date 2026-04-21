@@ -25,6 +25,8 @@ package network.crypta.clients.fcp;
  *     avoids network propagation by policy.
  * @param maxRetries maximum retries before failing the insert; the value is stored as provided and
  *     may follow sentinel conventions used elsewhere.
+ * @param consecutiveRnfsCountAsSuccess optional request-local RNF-as-success threshold; {@code
+ *     null} keeps the runtime default.
  * @param earlyEncode whether encoding should begin before all data is received; {@code true} favors
  *     lower latency for streaming inserts.
  * @param realTimeFlag whether to schedule the insert in real-time queues; {@code true} requests low
@@ -38,6 +40,7 @@ public record FcpInsertBehaviorOptions(
     boolean dontCompress,
     boolean localRequestOnly,
     int maxRetries,
+    Integer consecutiveRnfsCountAsSuccess,
     boolean earlyEncode,
     boolean realTimeFlag,
     boolean ignoreUSKDatehints) {}

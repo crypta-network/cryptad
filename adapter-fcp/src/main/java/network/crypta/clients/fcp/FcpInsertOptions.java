@@ -35,6 +35,7 @@ public final class FcpInsertOptions {
   private final boolean dontCompress;
   private final boolean localRequestOnly;
   private final int maxRetries;
+  private final Integer consecutiveRnfsCountAsSuccess;
   private final boolean earlyEncode;
   private final boolean canWriteClientCache;
   private final boolean forkOnCacheable;
@@ -70,6 +71,7 @@ public final class FcpInsertOptions {
     this.dontCompress = behaviorOptions.dontCompress();
     this.localRequestOnly = behaviorOptions.localRequestOnly();
     this.maxRetries = behaviorOptions.maxRetries();
+    this.consecutiveRnfsCountAsSuccess = behaviorOptions.consecutiveRnfsCountAsSuccess();
     this.earlyEncode = behaviorOptions.earlyEncode();
     this.realTimeFlag = behaviorOptions.realTimeFlag();
     this.ignoreUSKDatehints = behaviorOptions.ignoreUSKDatehints();
@@ -136,6 +138,19 @@ public final class FcpInsertOptions {
    */
   public int maxRetries() {
     return maxRetries;
+  }
+
+  /**
+   * Returns the request-local RNF-as-success threshold, if one was supplied.
+   *
+   * <p>A {@code null} return value means the caller did not override the runtime default. A value
+   * of {@code 0} disables counting RNFs as success for callers that need strict insertion
+   * semantics, such as compatibility gates that immediately fetch from another node.
+   *
+   * @return request-local RNF-as-success threshold, or {@code null} to keep the runtime default.
+   */
+  public Integer consecutiveRnfsCountAsSuccess() {
+    return consecutiveRnfsCountAsSuccess;
   }
 
   /**
@@ -293,6 +308,7 @@ public final class FcpInsertOptions {
         && dontCompress == other.dontCompress
         && localRequestOnly == other.localRequestOnly
         && maxRetries == other.maxRetries
+        && Objects.equals(consecutiveRnfsCountAsSuccess, other.consecutiveRnfsCountAsSuccess)
         && earlyEncode == other.earlyEncode
         && canWriteClientCache == other.canWriteClientCache
         && forkOnCacheable == other.forkOnCacheable
@@ -323,6 +339,7 @@ public final class FcpInsertOptions {
             dontCompress,
             localRequestOnly,
             maxRetries,
+            consecutiveRnfsCountAsSuccessHashCode(),
             earlyEncode,
             canWriteClientCache,
             forkOnCacheable,
@@ -334,6 +351,12 @@ public final class FcpInsertOptions {
             ignoreUSKDatehints);
     result = 31 * result + Arrays.hashCode(overrideSplitfileCryptoKey);
     return result;
+  }
+
+  private int consecutiveRnfsCountAsSuccessHashCode() {
+    return consecutiveRnfsCountAsSuccess == null
+        ? 0x349C567B
+        : 31 * Integer.hashCode(consecutiveRnfsCountAsSuccess);
   }
 
   /**
@@ -356,6 +379,8 @@ public final class FcpInsertOptions {
         + localRequestOnly
         + ", maxRetries="
         + maxRetries
+        + ", consecutiveRnfsCountAsSuccess="
+        + consecutiveRnfsCountAsSuccess
         + ", earlyEncode="
         + earlyEncode
         + ", canWriteClientCache="

@@ -78,9 +78,16 @@ public interface FcpInsertContextHandle extends Serializable {
   int getMaxInsertRetries();
 
   /**
-   * Returns the baseline count of consecutive RNFs that should count as success.
+   * Sets the count of consecutive RNFs that should count as success.
    *
-   * @return consecutive RNF success threshold captured from the runtime defaults
+   * @param consecutiveRnfsCountAsSuccess consecutive RNF success threshold for this request
+   */
+  void setConsecutiveRnfsCountAsSuccess(int consecutiveRnfsCountAsSuccess);
+
+  /**
+   * Returns the count of consecutive RNFs that should count as success.
+   *
+   * @return consecutive RNF success threshold currently configured on the handle
    */
   int getConsecutiveRnfsCountAsSuccess();
 
