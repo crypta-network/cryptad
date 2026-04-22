@@ -33,6 +33,7 @@ public final class AppCatalogArtifactDownloader {
   private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(2);
 
   private final HttpClient httpClient;
+  private final ArtifactCleaner artifactCleaner;
 
   /**
    * Creates a downloader backed by the default no-redirect JDK HTTP client.
@@ -61,6 +62,12 @@ public final class AppCatalogArtifactDownloader {
    */
   public AppCatalogArtifactDownloader(HttpClient httpClient) {
     this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
+    artifactCleaner = Files::deleteIfExists;
+  }
+
+  AppCatalogArtifactDownloader(HttpClient httpClient, ArtifactCleaner artifactCleaner) {
+    this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
+    this.artifactCleaner = Objects.requireNonNull(artifactCleaner, "artifactCleaner");
   }
 
   /**
@@ -86,8 +93,16 @@ public final class AppCatalogArtifactDownloader {
       copyArtifact(checkedEntry, artifact);
       return artifact;
     } catch (RuntimeException exception) {
-      Files.deleteIfExists(artifact);
+      deleteArtifactAfterFailure(artifact, exception);
       throw exception;
+    }
+  }
+
+  private void deleteArtifactAfterFailure(Path artifact, RuntimeException originalException) {
+    try {
+      artifactCleaner.deleteIfExists(artifact);
+    } catch (IOException cleanupException) {
+      originalException.addSuppressed(cleanupException);
     }
   }
 
@@ -216,5 +231,10 @@ public final class AppCatalogArtifactDownloader {
           AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
           "artifact digest does not match catalog entry for app: " + entry.appId());
     }
+  }
+
+  @FunctionalInterface
+  interface ArtifactCleaner {
+    boolean deleteIfExists(Path artifact) throws IOException;
   }
 }

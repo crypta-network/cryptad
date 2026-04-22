@@ -423,6 +423,28 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void download_whenArtifactValidationAndCleanupFail_expectCatalogErrorPreserved() {
+    CloseRecordingInputStream body = new CloseRecordingInputStream();
+    IOException cleanupFailure = new IOException("delete failed");
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new InputStreamResponse(200, body, contentLength("2"))),
+            _ -> {
+              throw cleanupFailure;
+            });
+    AppCatalogEntry entry = remoteEntry();
+    Path scratchDirectory = tempDir.resolve("scratch-cleanup-failure");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH, exception.errorCode());
+    assertEquals(1, exception.getSuppressed().length);
+    assertEquals(cleanupFailure, exception.getSuppressed()[0]);
+    assertTrue(body.closed());
+  }
+
+  @Test
   void download_whenRemoteContentLengthIsMalformed_expectArtifactDownloadFailed() {
     CloseRecordingInputStream body = new CloseRecordingInputStream();
     AppCatalogArtifactDownloader downloader =
