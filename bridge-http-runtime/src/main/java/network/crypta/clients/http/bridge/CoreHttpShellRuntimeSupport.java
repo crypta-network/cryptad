@@ -27,6 +27,8 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogSourceStore;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKey;
@@ -55,8 +57,10 @@ import org.slf4j.LoggerFactory;
  *
  * @param core daemon core that backs delegated shell services and browse bootstrap wiring
  * @param appHost shared AppHost instance used by the platform control plane
+ * @param appCatalogManager shared signed app-catalog manager used by the platform control plane
  */
-public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
+public record CoreHttpShellRuntimeSupport(
+    NodeClientCore core, AppHost appHost, AppCatalogManager appCatalogManager)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
   private static final String APPHOST_ALLOW_UNSIGNED_PROPERTY = "cryptad.apphost.allowUnsigned";
@@ -86,7 +90,11 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
    * @throws NullPointerException if {@code core} is {@code null}
    */
   public CoreHttpShellRuntimeSupport(NodeClientCore core) {
-    this(core, createManagedAppHost(Objects.requireNonNull(core, "core")));
+    this(Objects.requireNonNull(core, "core"), createManagedAppServices(core));
+  }
+
+  private CoreHttpShellRuntimeSupport(NodeClientCore core, AppPlatformServices services) {
+    this(core, services.appHost(), services.appCatalogManager());
   }
 
   /**
@@ -97,8 +105,22 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
   public CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost) {
+    this(core, appHost, null);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core, AppHost appHost, AppCatalogManager appCatalogManager) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
+    this.appCatalogManager = appCatalogManager;
   }
 
   @Override
@@ -244,10 +266,10 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
    * @param core daemon core that exposes the current node and temp-directory layout
    * @return managed AppHost instance rooted in the current node layout
    */
-  private static AppHost createManagedAppHost(NodeClientCore core) {
-    AppHost appHost = createAppHost(core);
-    SemiOrderedShutdownHook.get().addEarlyJob(createAppHostShutdownJob(appHost));
-    return appHost;
+  private static AppPlatformServices createManagedAppServices(NodeClientCore core) {
+    AppPlatformServices services = createAppPlatformServices(core);
+    SemiOrderedShutdownHook.get().addEarlyJob(createAppHostShutdownJob(services.appHost()));
+    return services;
   }
 
   /**
@@ -260,17 +282,24 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
    * @param core daemon core that exposes the current node and temp-directory layout
    * @return long-lived AppHost instance rooted in the current node layout
    */
-  private static AppHost createAppHost(NodeClientCore core) {
-    return new LocalProcessAppHost(
+  private static AppPlatformServices createAppPlatformServices(NodeClientCore core) {
+    AppHostLayout layout =
         new AppHostLayout(
             core.getNode().nodeDir().dir().toPath(),
             core.getPersistentTempDir().toPath(),
-            core.getNode().runDir().dir().toPath()),
-        createInstallVerificationPolicy());
+            core.getNode().runDir().dir().toPath());
+    AppHostTrustConfiguration trustConfiguration = readTrustConfiguration();
+    AppHost appHost =
+        new LocalProcessAppHost(layout, createInstallVerificationPolicy(trustConfiguration));
+    AppCatalogManager appCatalogManager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(layout.dataDir().resolve("apps").resolve("catalogs")),
+            () -> loadTrustedAppKeys(trustConfiguration));
+    return new AppPlatformServices(appHost, appCatalogManager);
   }
 
-  private static AppInstallVerificationPolicy createInstallVerificationPolicy() {
-    AppHostTrustConfiguration trustConfiguration = readTrustConfiguration();
+  private static AppInstallVerificationPolicy createInstallVerificationPolicy(
+      AppHostTrustConfiguration trustConfiguration) {
     AppInstallVerificationPolicy.CopiedBundleVerifier verifier =
         copiedBundleDirectory ->
             verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration);
@@ -401,6 +430,8 @@ public record CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost)
       String keyId,
       String publicKeyBase64,
       String publicKeyFile) {}
+
+  private record AppPlatformServices(AppHost appHost, AppCatalogManager appCatalogManager) {}
 
   /**
    * Creates the shutdown job that stops any AppHost-managed child processes on node exit.

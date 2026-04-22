@@ -44,6 +44,7 @@ public final class LegacyAdminHttpRouteRegistrar implements LegacyHttpRouteRegis
         new FProxyRegistrarDependencies(
             context.runtimePorts(),
             context.appHost(),
+            context.appCatalogManager(),
             context.config(),
             context.browseRoot(),
             context.browseRouteRegistrar(),

@@ -15,6 +15,7 @@ dependencies {
 
   api(project(":runtime-spi"))
   api(project(":platform-apphost"))
+  api(project(":platform-appcatalog"))
 
   compileOnly(libs.jetbrainsAnnotations)
 

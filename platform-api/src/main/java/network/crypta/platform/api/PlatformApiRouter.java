@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.alerts.AlertsApiHandler;
+import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
@@ -14,6 +15,7 @@ import network.crypta.platform.api.queue.QueueApiHandler;
 import network.crypta.platform.api.security.SecurityLevelsApiHandler;
 import network.crypta.platform.api.updates.UpdatesApiHandler;
 import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -34,6 +36,12 @@ public final class PlatformApiRouter {
 
   /** Shared 405 message for routes that only support POST. */
   private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
+
+  /** HTTP-style method name for DELETE routes. */
+  private static final String METHOD_DELETE = "DELETE";
+
+  /** Envelope key for one catalog summary. */
+  private static final String CATALOG_ENVELOPE_KEY = "catalog";
 
   /** Handler for the {@code /node/...} endpoint family. */
   private final NodeApiHandler nodeApiHandler;
@@ -69,13 +77,18 @@ public final class PlatformApiRouter {
   private final AppsApiHandler appsApiHandler;
 
   /**
+   * Handler for the {@code /app-catalogs/...} endpoint family, when catalog support is available.
+   */
+  private final AppCatalogsApiHandler appCatalogsApiHandler;
+
+  /**
    * Creates a router backed by the supplied runtime ports.
    *
    * @param runtimePorts detached runtime-port aggregate used to resolve API requests
    * @throws NullPointerException if {@code runtimePorts} is {@code null}
    */
   public PlatformApiRouter(RuntimePorts runtimePorts) {
-    this(runtimePorts, null);
+    this(runtimePorts, null, null);
   }
 
   /**
@@ -86,6 +99,19 @@ public final class PlatformApiRouter {
    * @throws NullPointerException if {@code runtimePorts} is {@code null}
    */
   public PlatformApiRouter(RuntimePorts runtimePorts, AppHost appHost) {
+    this(runtimePorts, appHost, null);
+  }
+
+  /**
+   * Creates a router backed by runtime ports, AppHost, and signed app catalogs.
+   *
+   * @param runtimePorts detached runtime-port aggregate used to resolve API requests
+   * @param appHost detached AppHost used by app lifecycle and catalog install/update routes
+   * @param appCatalogManager signed catalog manager used by the catalog endpoint family
+   * @throws NullPointerException if {@code runtimePorts} is {@code null}
+   */
+  public PlatformApiRouter(
+      RuntimePorts runtimePorts, AppHost appHost, AppCatalogManager appCatalogManager) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
@@ -107,6 +133,10 @@ public final class PlatformApiRouter {
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic());
     appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost);
+    appCatalogsApiHandler =
+        appHost == null || appCatalogManager == null
+            ? null
+            : new AppCatalogsApiHandler(appCatalogManager, appHost);
   }
 
   /**
@@ -143,6 +173,9 @@ public final class PlatformApiRouter {
     }
 
     String firstSegment = segments.getFirst();
+    if ("app-catalogs".equals(firstSegment)) {
+      return routeAppCatalogsRequest(segments, request);
+    }
     if ("apps".equals(firstSegment)) {
       return routeAppsRequest(segments, request);
     }
@@ -168,11 +201,14 @@ public final class PlatformApiRouter {
       return routeAlertsRequest(segments, request);
     }
 
-    if (!"GET".equals(request.method())) {
-      return PlatformApiResponse.error(
-          405, Map.of("Allow", "GET"), "method_not_allowed", GET_ONLY_MESSAGE);
-    }
+    return routeGetOnlyRequest(segments, request, firstSegment);
+  }
 
+  private PlatformApiResponse routeGetOnlyRequest(
+      List<String> segments, PlatformApiRequest request, String firstSegment) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
     if ("node".equals(firstSegment)) {
       return routeNodeRequest(segments, request);
     }
@@ -182,7 +218,6 @@ public final class PlatformApiRouter {
     if ("diagnostics".equals(firstSegment) && segments.size() == 1) {
       return PlatformApiResponse.ok(diagnosticsApiHandler.snapshot());
     }
-
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 
@@ -433,7 +468,7 @@ public final class PlatformApiRouter {
     if ("GET".equals(method)) {
       return PlatformApiResponse.ok(envelope("app", appsApiHandler.get(appId)));
     }
-    if ("DELETE".equals(method)) {
+    if (METHOD_DELETE.equals(method)) {
       return PlatformApiResponse.ok(envelope("app", appsApiHandler.uninstall(appId)));
     }
     return methodNotAllowed(
@@ -452,7 +487,7 @@ public final class PlatformApiRouter {
    * @return {@code true} when the request should be treated as {@code /apps/{appId}}
    */
   private static boolean targetsInstalledAppResource(String method) {
-    return "GET".equals(method) || "DELETE".equals(method);
+    return "GET".equals(method) || METHOD_DELETE.equals(method);
   }
 
   /**
@@ -475,6 +510,104 @@ public final class PlatformApiRouter {
       case "update" ->
           PlatformApiResponse.ok(
               envelope("app", appsApiHandler.update(appId, request.queryParameters())));
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  /**
+   * Routes requests beneath the {@code /app-catalogs} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected catalog endpoint
+   */
+  private PlatformApiResponse routeAppCatalogsRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (appCatalogsApiHandler == null) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    return switch (segments.size()) {
+      case 1 -> routeAppCatalogsCollection(request);
+      case 2 -> routeAppCatalogsResource(segments.get(1), request);
+      case 3 -> routeAppCatalogsActionOrApps(segments.get(1), segments.get(2), request);
+      case 4 -> routeAppCatalogApp(segments.get(1), segments.get(2), segments.get(3), request);
+      case 5 ->
+          routeAppCatalogAppAction(
+              segments.get(1), segments.get(2), segments.get(3), segments.get(4), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeAppCatalogsCollection(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(envelope("catalogs", appCatalogsApiHandler.listCatalogs()));
+  }
+
+  private PlatformApiResponse routeAppCatalogsResource(
+      String resource, PlatformApiRequest request) {
+    if (METHOD_DELETE.equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.remove(resource)));
+    }
+    if ("add".equals(resource)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.created(
+          envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.add(request.queryParameters())));
+    }
+    return methodNotAllowed(METHOD_DELETE, "Platform API v1 supports DELETE requests only.");
+  }
+
+  private PlatformApiResponse routeAppCatalogsActionOrApps(
+      String catalogId, String action, PlatformApiRequest request) {
+    if ("refresh".equals(action)) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.refresh(catalogId)));
+    }
+    if ("apps".equals(action)) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(envelope("apps", appCatalogsApiHandler.listApps(catalogId)));
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  private PlatformApiResponse routeAppCatalogApp(
+      String catalogId, String appsSegment, String appId, PlatformApiRequest request) {
+    if (!"apps".equals(appsSegment)) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    if (!"GET".equals(request.method())) {
+      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(envelope("app", appCatalogsApiHandler.getApp(catalogId, appId)));
+  }
+
+  private PlatformApiResponse routeAppCatalogAppAction(
+      String catalogId,
+      String appsSegment,
+      String appId,
+      String action,
+      PlatformApiRequest request) {
+    if (!"apps".equals(appsSegment)) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    if (!"POST".equals(request.method())) {
+      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+    }
+    return switch (action) {
+      case "install" ->
+          PlatformApiResponse.created(
+              envelope("app", appCatalogsApiHandler.install(catalogId, appId)));
+      case "update" ->
+          PlatformApiResponse.ok(envelope("app", appCatalogsApiHandler.update(catalogId, appId)));
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }

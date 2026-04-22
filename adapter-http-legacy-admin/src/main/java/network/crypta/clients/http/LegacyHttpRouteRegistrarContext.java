@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.util.Objects;
 import network.crypta.config.Config;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -22,6 +23,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * @param runtimePorts detached runtime-spi ports surfaced to HTTP routes and helper pages
  * @param appHost shared AppHost bridge that exposes the current Platform API runtime surface
+ * @param appCatalogManager optional signed app-catalog manager for catalog Platform API routes
  * @param config node configuration view used when listing or filtering sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet that anchors the registration pass at the legacy
  *     browsing root
@@ -33,10 +35,40 @@ import network.crypta.runtime.spi.RuntimePorts;
 public record LegacyHttpRouteRegistrarContext(
     RuntimePorts runtimePorts,
     AppHost appHost,
+    AppCatalogManager appCatalogManager,
     Config config,
     Toadlet browseRoot,
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
     InsertCompatibilityModes insertCompatibilityModes) {
+
+  /**
+   * Creates a context for embeddings that have not configured signed app catalogs.
+   *
+   * @param runtimePorts detached runtime-spi ports exposed to the HTTP registrar
+   * @param appHost shared AppHost bridge made visible through HTTP-owned routes
+   * @param config node configuration view that registration may inspect for sub-config pages
+   * @param browseRoot prebuilt root browse toadlet registered at the browsing root
+   * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
+   *     publication
+   * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+   *     forms
+   */
+  public LegacyHttpRouteRegistrarContext(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      Config config,
+      Toadlet browseRoot,
+      LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
+      InsertCompatibilityModes insertCompatibilityModes) {
+    this(
+        runtimePorts,
+        appHost,
+        null,
+        config,
+        browseRoot,
+        browseRouteRegistrar,
+        insertCompatibilityModes);
+  }
 
   /**
    * Creates a validated route-registration context.
@@ -48,6 +80,7 @@ public record LegacyHttpRouteRegistrarContext(
    *
    * @param runtimePorts detached runtime-spi ports exposed to the HTTP registrar
    * @param appHost shared AppHost bridge made visible through HTTP-owned routes
+   * @param appCatalogManager optional signed app-catalog manager for catalog Platform API routes
    * @param config node configuration view that registration may inspect for sub-config pages
    * @param browseRoot prebuilt root browse toadlet registered at the browsing root
    * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route

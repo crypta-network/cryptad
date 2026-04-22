@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import network.crypta.config.Config;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -16,7 +17,7 @@ import network.crypta.support.Ticker;
  * starts from the legacy node core. Implementations may expose old HTTP-local concepts such as
  * alerts, ticker access, and legacy bootstrap work, but the seam is not a new cross-module platform
  * abstraction. Its purpose is to keep shell behavior explicit, locally testable, and detached from
- * direct {@link network.crypta.node.NodeClientCore} field access inside the server itself.
+ * direct legacy node-core field access inside the server itself.
  */
 public interface HttpShellRuntimeSupport {
 
@@ -50,6 +51,17 @@ public interface HttpShellRuntimeSupport {
    * @return shared AppHost instance used by Platform API app-management routes
    */
   AppHost appHost();
+
+  /**
+   * Returns the long-lived signed app-catalog manager used by the platform control plane.
+   *
+   * <p>A {@code null} value means the current embedding exposes AppHost lifecycle routes but has
+   * not configured catalog source management. The Platform API router treats that state as the
+   * catalog endpoint family being unavailable rather than constructing a per-request manager.
+   *
+   * @return shared app-catalog manager, or {@code null} when catalog support is unavailable
+   */
+  AppCatalogManager appCatalogManager();
 
   /**
    * Creates the legacy push-data manager used by the shell's interval push flow.

@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.util.Objects;
 import network.crypta.config.Config;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -21,6 +22,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  *
  * @param runtimePorts detached runtime ports exposed to the HTTP shell
  * @param appHost shared AppHost instance exposed through the Platform API bridge
+ * @param appCatalogManager optional signed app-catalog manager exposed through the Platform API
  * @param config node configuration used to list sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet handed to the registrar for root-path registration
  * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route publication
@@ -30,10 +32,40 @@ import network.crypta.runtime.spi.RuntimePorts;
 record FProxyRegistrarDependencies(
     RuntimePorts runtimePorts,
     AppHost appHost,
+    AppCatalogManager appCatalogManager,
     Config config,
     Toadlet browseRoot,
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
     InsertCompatibilityModes insertCompatibilityModes) {
+  /**
+   * Creates a dependency bundle for embeddings without signed app-catalog support.
+   *
+   * @param runtimePorts runtime-spi ports exposed to HTTP-layer toadlets and helper pages
+   * @param appHost shared AppHost instance exposed through the Platform API bridge
+   * @param config node configuration used to list and filter sub-config toadlets
+   * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path
+   * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route
+   *     publication
+   * @param insertCompatibilityModes detached compatibility-mode choices used by queue and insert
+   *     forms
+   */
+  FProxyRegistrarDependencies(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      Config config,
+      Toadlet browseRoot,
+      LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
+      InsertCompatibilityModes insertCompatibilityModes) {
+    this(
+        runtimePorts,
+        appHost,
+        null,
+        config,
+        browseRoot,
+        browseRouteRegistrar,
+        insertCompatibilityModes);
+  }
+
   /**
    * Creates a validated dependency bundle for {@link FProxyRegistrar}.
    *
@@ -43,6 +75,7 @@ record FProxyRegistrarDependencies(
    *
    * @param runtimePorts runtime-spi ports exposed to HTTP-layer toadlets and helper pages
    * @param appHost shared AppHost instance exposed through the Platform API bridge
+   * @param appCatalogManager optional signed app-catalog manager exposed through the Platform API
    * @param config node configuration used to list and filter sub-config toadlets
    * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path
    * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route

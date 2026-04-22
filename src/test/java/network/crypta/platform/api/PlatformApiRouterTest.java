@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
@@ -91,6 +94,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -1967,6 +1971,23 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenCatalogIdMatchesAddAndDeleteRequested_expectCatalogRemovedJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+
+    PlatformApiResponse response =
+        catalogRouter.route(request("DELETE", List.of("app-catalogs", "add"), Map.of()));
+
+    verify(catalogManager).remove("add");
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            Map.of(
+                "catalog", orderedJson(Map.entry("catalogId", "add"), Map.entry("removed", true)))),
+        response.body());
+  }
+
+  @Test
   void route_whenAppsListRequested_expectAppsEnvelopeAndMergedRunningState() throws Exception {
     InstalledAppSnapshot installed = installedSnapshot();
     RunningAppSnapshot running = runningSnapshot();
@@ -2572,6 +2593,119 @@ class PlatformApiRouterTest {
         response.body());
   }
 
+  @Test
+  void route_whenCatalogInstallSucceedsAndCleanupFails_expectCreatedJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    Path stagedDir = tempDir.resolve("catalog-install-stage");
+    InstalledAppSnapshot installed = installedSnapshot();
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
+    when(appHost.installFromDirectory(stagedDir)).thenReturn(installed);
+    doThrow(new IOException("cleanup failed")).when(plan).close();
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+
+    assertEquals(201, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary(APP_VERSION))), response.body());
+  }
+
+  @Test
+  void route_whenCatalogInstallRepeated_expectConflictWithoutPreparingPlan() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app already installed: alpha\"}}",
+        response.body());
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void route_whenCatalogUpdateSucceedsAndCleanupFails_expectUpdatedJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    Path stagedDir = tempDir.resolve("catalog-update-stage");
+    InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
+    when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
+    doThrow(new IOException("cleanup failed")).when(plan).close();
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary("9.9.9"))), response.body());
+  }
+
+  @Test
+  void route_whenCatalogUpdateTargetMissing_expectNotFoundWithoutPreparingPlan() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(404, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void route_whenCatalogUpdateInstalledManifestUnreadable_expectUpdatedJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    Path stagedDir = tempDir.resolve("catalog-repair-stage");
+    InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
+    when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary("9.9.9"))), response.body());
+    //noinspection resource
+    verify(catalogManager).prepareInstallPlan("core", APP_ID);
+    verify(appHost).updateFromDirectory(APP_ID, stagedDir);
+  }
+
   private static PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
@@ -2664,10 +2798,37 @@ class PlatformApiRouterTest {
     return stagedDir;
   }
 
+  private AppCatalogEntry catalogEntry(String version) {
+    return new AppCatalogEntry(
+        APP_ID,
+        APP_NAME,
+        version,
+        "Catalog app summary",
+        tempDir.resolve("artifact.zip").toUri(),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of("network.access"));
+  }
+
   private static Map<String, Object> summary(
       boolean installed, boolean running, Long pid, Instant startedAt) {
     return summaryFor(
         APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, running, pid, startedAt);
+  }
+
+  private static Map<String, Object> catalogSummary(String appVersion) {
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(9);
+    summary.put("appId", APP_ID);
+    summary.put("name", APP_NAME);
+    summary.put("version", appVersion);
+    summary.put("uiEntry", APP_UI_ENTRY);
+    summary.put("permissions", List.of("network.access", "file.read"));
+    summary.put("installed", true);
+    summary.put("running", false);
+    summary.put("pid", null);
+    summary.put("startedAt", null);
+    return summary;
   }
 
   private static Map<String, Object> installRouteSummary(boolean installed) {

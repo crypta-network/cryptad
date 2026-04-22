@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.HTMLEncoder;
@@ -88,7 +89,6 @@ public final class ToadletContextImpl implements ToadletContext {
    */
   private static final String METHODS_MUST_HAVE_DATA = "POST";
   private static final String METHODS_CANNOT_HAVE_DATA = "GET";
-  private static final String METHODS_RESTRICTED_MODE = "GET POST";
 
   private final MultiValueTable<String, String> headers;
   private ArrayList<ReceivedCookie>
@@ -911,7 +911,7 @@ public final class ToadletContextImpl implements ToadletContext {
     Bucket data = dataResult.data;
     try {
       if (!container.enableExtendedMethodHandling()
-          && !METHODS_RESTRICTED_MODE.contains(requestLine.method)) {
+          && !isMethodAllowedInRestrictedMode(requestLine.method, requestLine.uri)) {
         sendError(
             sock.getOutputStream(),
             403,
@@ -931,6 +931,20 @@ public final class ToadletContextImpl implements ToadletContext {
     } finally {
       if (data != null) data.free();
     }
+  }
+
+  static boolean isMethodAllowedInRestrictedMode(String method, URI uri) {
+    return switch (method) {
+      case "GET", "POST" -> true;
+      case "DELETE" -> isPlatformApiPath(uri);
+      default -> false;
+    };
+  }
+
+  private static boolean isPlatformApiPath(URI uri) {
+    return uri != null
+        && uri.getPath() != null
+        && uri.getPath().startsWith(PlatformApiPaths.API_V1_PREFIX);
   }
 
   private static RequestLine parseRequestLine(String firstLine, Socket sock)
