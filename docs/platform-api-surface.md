@@ -57,6 +57,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | Alerts | `GET /api/v1/alerts` lists current alerts. `POST /api/v1/alerts/{alertId}/dismiss` dismisses one alert by detached identifier. |
 | Diagnostics | `GET /api/v1/diagnostics` exposes the ordered diagnostic snapshot and plain-text export. |
 | Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router. The family also covers local staged-bundle install, app lookup, start, stop, update, and uninstall. |
+| App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. The family also covers source add/remove, refresh, catalog app listing/detail, and install/update from a verified catalog artifact. |
 
 ## Web Shell relationship
 
@@ -68,7 +69,7 @@ The shell currently includes these first-party panels and surfaces:
 
 - Overview and connectivity snapshots.
 - Alert queue and diagnostics.
-- Installed apps.
+- Installed apps and signed catalog app discovery.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
 - Publisher local file/directory insert workflow.

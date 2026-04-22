@@ -14,6 +14,7 @@
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const shellState = {
     alertsSnapshot: null,
+    appCatalogsSnapshot: null,
     appsSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
@@ -87,6 +88,8 @@
   };
   const appsControls = {
     refreshButton: document.getElementById("apps-refresh-button"),
+    catalogSourceForm: document.getElementById("catalog-source-form"),
+    catalogSourceInput: document.getElementById("catalog-source-input"),
   };
   const publisherControls = {
     fileForm: document.getElementById("publisher-file-form"),
@@ -880,6 +883,27 @@
     }
   }
 
+  function catalogMutationPath(catalogId, appId, action) {
+    if (typeof catalogId !== "string" || catalogId.length === 0) {
+      return null;
+    }
+    const encodedCatalogId = encodeURIComponent(catalogId);
+    if (action === "refresh") {
+      return `app-catalogs/${encodedCatalogId}/refresh`;
+    }
+    if (action === "remove") {
+      return `app-catalogs/${encodedCatalogId}`;
+    }
+    if (typeof appId !== "string" || appId.length === 0) {
+      return null;
+    }
+    const encodedAppId = encodeURIComponent(appId);
+    if (action === "install" || action === "update") {
+      return `app-catalogs/${encodedCatalogId}/apps/${encodedAppId}/${action}`;
+    }
+    return null;
+  }
+
   function appUiEntryNode(app) {
     const href = normalizeAppUiEntryHref(app.uiEntry);
     if (!href) {
@@ -907,6 +931,29 @@
     form.dataset.appId = appId;
     form.dataset.appAction = action;
     form.dataset.appName = appDisplayName(app);
+
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    form.append(submit);
+    return form;
+  }
+
+  function buildCatalogActionForm(catalog, app, action, label) {
+    const catalogId = typeof catalog.catalogId === "string" ? catalog.catalogId : "";
+    const appId = app && typeof app.appId === "string" ? app.appId : "";
+    const path = catalogMutationPath(catalogId, appId, action);
+    if (!path) {
+      return null;
+    }
+
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.catalogId = catalogId;
+    form.dataset.catalogAppId = appId;
+    form.dataset.catalogAction = action;
+    form.dataset.catalogAppName = app ? appDisplayName(app) : catalogId;
 
     const submit = document.createElement("button");
     submit.className = "button button-secondary";
@@ -974,30 +1021,133 @@
 
   function renderApps(data) {
     shellState.appsSnapshot = data;
+    shellState.appCatalogsSnapshot = Array.isArray(data.catalogs) ? data.catalogs : null;
     updateAppsToolbar();
     clear(sections.apps);
 
     const apps = Array.isArray(data.apps) ? data.apps : [];
+    const catalogs = Array.isArray(data.catalogs) ? data.catalogs : [];
+    const catalogError = typeof data.catalogError === "string" ? data.catalogError : "";
     const runningApps = apps.filter((app) => app && typeof app === "object" && app.running).length;
     const summaryEntries = [
       ["Installed apps", `${apps.length}`],
       ["Running apps", `${runningApps}`],
+      ["Catalogs", `${catalogs.length}`],
       ["Scope", formPassword ? "Shell-native" : "Read-only"],
-      ...topLevelFieldEntries(data, ["apps"]),
+      ...topLevelFieldEntries(data, ["apps", "catalogs"]),
     ];
     sections.apps.append(summaryCard("Apps summary", summaryEntries, apps.length ? "" : "is-warning"));
 
-    if (!apps.length) {
+    if (apps.length) {
+      const list = document.createElement("div");
+      list.className = "app-card-list";
+      apps.forEach((app) => {
+        list.append(renderAppCard(app && typeof app === "object" ? app : {}));
+      });
+      sections.apps.append(list);
+    } else {
       sections.apps.append(text("p", "empty-state", "No installed apps were returned."));
-      return;
     }
 
+    renderCatalogs(catalogs, catalogError);
+  }
+
+  function renderCatalogs(catalogs, catalogError) {
+    sections.apps.append(text("h3", "app-card-title", "Catalog apps"));
+    if (catalogError) {
+      sections.apps.append(text("p", "error-state", `Catalogs unavailable: ${catalogError}`));
+      return;
+    }
+    if (!Array.isArray(catalogs) || catalogs.length === 0) {
+      sections.apps.append(text("p", "empty-state", "No app catalogs were returned."));
+      return;
+    }
     const list = document.createElement("div");
     list.className = "app-card-list";
-    apps.forEach((app) => {
-      list.append(renderAppCard(app && typeof app === "object" ? app : {}));
+    catalogs.forEach((catalog) => {
+      list.append(renderCatalogCard(catalog && typeof catalog === "object" ? catalog : {}));
     });
     sections.apps.append(list);
+  }
+
+  function renderCatalogCard(catalog) {
+    const card = document.createElement("article");
+    card.className = "app-card";
+    const title = typeof catalog.name === "string" && catalog.name ? catalog.name : scalar(catalog.catalogId);
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(text("h3", "app-card-title", title), text("p", "app-card-subtitle", scalar(catalog.catalogId)));
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill("Signed catalog"));
+    pills.append(createPill(`${Array.isArray(catalog.apps) ? catalog.apps.length : 0} apps`));
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Source", scalar(catalog.source)],
+        ["Generated", formatIsoTimestamp(catalog.generatedAt)],
+        ["Refreshed", formatIsoTimestamp(catalog.refreshedAt)],
+      ]),
+    );
+    if (formPassword) {
+      const actions = document.createElement("div");
+      actions.className = "app-card-actions";
+      const refreshForm = buildCatalogActionForm(catalog, null, "refresh", "Refresh");
+      const removeForm = buildCatalogActionForm(catalog, null, "remove", "Remove");
+      if (refreshForm) {
+        actions.append(refreshForm);
+      }
+      if (removeForm) {
+        actions.append(removeForm);
+      }
+      if (actions.childNodes.length) {
+        card.append(actions);
+      }
+    }
+
+    const apps = Array.isArray(catalog.apps) ? catalog.apps : [];
+    if (!apps.length) {
+      card.append(text("p", "empty-state", "No apps were returned for this catalog."));
+      return card;
+    }
+    const appList = document.createElement("div");
+    appList.className = "catalog-app-list";
+    apps.forEach((app) => {
+      appList.append(renderCatalogAppCard(catalog, app && typeof app === "object" ? app : {}));
+    });
+    card.append(appList);
+    return card;
+  }
+
+  function renderCatalogAppCard(catalog, app) {
+    const card = document.createElement("section");
+    card.className = "catalog-app-card";
+    card.append(text("h4", "catalog-app-title", appDisplayName(app)));
+    card.append(
+      definitionList([
+        ["App ID", scalar(app.appId)],
+        ["Version", scalar(app.version)],
+        ["Installed version", scalar(app.installedVersion)],
+        ["Summary", scalar(app.summary)],
+        ["Permissions", formatPermissions(app.permissions)],
+        ["Installed", app.installed ? "Yes" : "No"],
+        ["Running", app.running ? "Yes" : "No"],
+      ]),
+    );
+    if (formPassword) {
+      const actions = document.createElement("div");
+      actions.className = "app-card-actions";
+      const action = app.installed ? "update" : "install";
+      const form = buildCatalogActionForm(catalog, app, action, app.installed ? "Update" : "Install");
+      if (form) {
+        actions.append(form);
+        card.append(actions);
+      }
+    }
+    return card;
   }
 
   function getNestedValue(root, path) {
@@ -1227,6 +1377,9 @@
   }
 
   function updateAppsToolbar() {
+    if (appsControls.catalogSourceForm) {
+      appsControls.catalogSourceForm.hidden = !formPassword;
+    }
     if (sections.appsReadonlyHint) {
       sections.appsReadonlyHint.hidden = !!formPassword;
     }
@@ -1748,12 +1901,16 @@
     return data;
   }
 
-  async function loadOptionalJson(url) {
-    try {
-      return await loadJson(url);
-    } catch (error) {
+  async function loadOptionalJson(url, optionalStatuses = [404]) {
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      return data;
+    }
+    if (optionalStatuses.includes(response.status)) {
       return null;
     }
+    throw new Error(extractApiError(data, response));
   }
 
   async function postForm(path, formData, unavailableMessage) {
@@ -1948,22 +2105,49 @@
   async function loadAppsSection() {
     const loadGeneration = ++appsLoadGeneration;
     shellState.appsSnapshot = null;
+    shellState.appCatalogsSnapshot = null;
     clear(sections.apps);
-    sections.apps.append(text("p", "loading", "Loading installed apps..."));
+    sections.apps.append(text("p", "loading", "Loading installed apps and catalogs..."));
     updateAppsToolbar();
 
+    let installedSnapshot;
     try {
-      const snapshot = await loadJson(apiUrl("apps"));
-      if (loadGeneration !== appsLoadGeneration) {
-        return;
-      }
-      renderApps(snapshot);
+      installedSnapshot = await loadJson(apiUrl("apps"));
     } catch (error) {
       if (loadGeneration !== appsLoadGeneration) {
         return;
       }
       renderError(sections.apps, "apps", error);
+      return;
     }
+
+    let catalogs = [];
+    let catalogError = "";
+    try {
+      const catalogsSnapshot = await loadOptionalJson(apiUrl("app-catalogs"));
+      catalogs =
+        catalogsSnapshot && Array.isArray(catalogsSnapshot.catalogs)
+          ? await Promise.all(
+              catalogsSnapshot.catalogs.map(loadCatalogApps),
+            )
+          : [];
+    } catch (error) {
+      catalogError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+
+    if (loadGeneration !== appsLoadGeneration) {
+      return;
+    }
+    renderApps({ ...installedSnapshot, catalogs, catalogError });
+  }
+
+  async function loadCatalogApps(catalog) {
+    if (!catalog || typeof catalog !== "object" || typeof catalog.catalogId !== "string") {
+      return catalog;
+    }
+    const apps = await loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));
+    return { ...catalog, apps: apps && Array.isArray(apps.apps) ? apps.apps : [] };
   }
 
   async function dismissAlert(form) {
@@ -2013,6 +2197,50 @@
       if (operation && operation !== action) {
         setAppsStatus(`App action completed: ${operation.replaceAll("_", " ")}.`, "is-success");
       }
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitCatalogSource(event) {
+    event.preventDefault();
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    if (typeof form.reportValidity === "function" && !form.reportValidity()) {
+      return;
+    }
+    try {
+      await postForm(
+        "app-catalogs/add",
+        new FormData(form),
+        "Catalog actions unavailable in read-only mode.",
+      );
+      form.reset();
+      setAppsStatus("Catalog source added.", "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitCatalogMutation(form, action) {
+    const catalogId = form.dataset.catalogId || "";
+    const appId = form.dataset.catalogAppId || "";
+    const path = catalogMutationPath(catalogId, appId, action);
+    if (!path) {
+      setAppsStatus("Catalog action unavailable for this entry.", "is-error");
+      return;
+    }
+    try {
+      if (action === "remove") {
+        await deleteForm(path, new FormData(form), "Catalog actions unavailable in read-only mode.");
+      } else {
+        await postForm(path, new FormData(form), "Catalog actions unavailable in read-only mode.");
+      }
+      setAppsStatus(`Catalog action completed: ${action}.`, "is-success");
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -2622,12 +2850,18 @@
 
   function bindAppsInteractions() {
     appsControls.refreshButton.addEventListener("click", () => {
-      setAppsStatus("Refreshing installed apps.");
+      setAppsStatus("Refreshing installed apps and catalogs.");
       loadAppsSection();
     });
     sections.apps.addEventListener("submit", async (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      const catalogAction = form.dataset.catalogAction;
+      if (catalogAction) {
+        event.preventDefault();
+        await submitCatalogMutation(form, catalogAction);
         return;
       }
       const action = form.dataset.appAction;
@@ -2637,6 +2871,9 @@
       event.preventDefault();
       await submitAppMutation(form, action);
     });
+    if (appsControls.catalogSourceForm) {
+      appsControls.catalogSourceForm.addEventListener("submit", submitCatalogSource);
+    }
   }
 
   function bindPublisherInteractions() {

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import network.crypta.clients.http.bookmark.BookmarkManager;
+import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
@@ -88,6 +89,20 @@ class ToadletContextImplTest {
   void shouldDisconnectAfterHandled_http10WithoutHeader_returnsTrue() {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
     assertTrue(invokeShouldDisconnectAfterHandled(true, headers));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenDeleteTargetsPlatformApi_returnsTrue() {
+    URI uri = URI.create("http://localhost" + PlatformApiPaths.API_V1_PREFIX + "apps/alpha");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenDeleteTargetsNonPlatformRoute_returnsFalse() {
+    URI uri = URI.create("http://localhost/downloads/");
+
+    assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
   }
 
   @Test

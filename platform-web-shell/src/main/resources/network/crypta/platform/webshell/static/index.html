@@ -110,6 +110,19 @@
           <p class="panel-description" hidden id="apps-readonly-hint">
             App lifecycle actions are unavailable in read-only mode.
           </p>
+          <form class="control-form" hidden id="catalog-source-form">
+            <div class="control-form-grid">
+              <label class="queue-field" for="catalog-source-input">
+                <span>Catalog source</span>
+                <input id="catalog-source-input" name="source" type="text" autocomplete="off">
+              </label>
+            </div>
+            <div class="control-form-actions">
+              <button class="button button-primary" id="catalog-source-submit" type="submit">
+                Add catalog
+              </button>
+            </div>
+          </form>
           <div class="panel-body" id="apps-body">
             <p class="loading">Loading installed apps...</p>
           </div>

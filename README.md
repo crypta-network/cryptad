@@ -248,6 +248,9 @@ Cryptad now uses a partial multi-project Gradle build.
   Web Shell, application-UI, and remote update-channel work.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
   staged AppHost bundles.
+- `:platform-appcatalog` owns signed app catalog parsing, signature verification, remote/local
+  catalog fetching, artifact digest checks, safe ZIP extraction, and verified staging for AppHost
+  install/update flows.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -343,6 +346,10 @@ Common commands:
 ```
 
 Signed staged bundles add `cryptad-app.digests` and `cryptad-app.signature` at the bundle root. The digest uses deterministic SHA-256 file entries, and the signature uses Ed25519 over the exact digest sidecar bytes.
+
+Signed app catalogs add a verified source layer above signed bundles. See
+[`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
+catalog signatures, trusted-key configuration, and `/api/v1/app-catalogs` install/update flow.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -814,8 +821,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Local app lifecycle work is separate from CoreUpdater. The current platform can install, start,
   stop, uninstall, and replace an installed app bundle from a caller-supplied local staged
   directory through `:platform-apphost` and the Platform API v1. Signed local staged bundles are
-  now supported; remote catalogs, remote downloads, and background app-update fetching remain
-  future work.
+  supported. Signed local and HTTPS catalog sources can now install or update apps through the
+  same AppHost staged-directory semantics; background app-update fetching remains future work.
 
 ## Architecture Overview
 
@@ -972,7 +979,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps; `:platform-appdist` provides the local app bundle digest,
-  signing, and verification tooling;
+  signing, and verification tooling; `:platform-appcatalog` provides signed catalog source,
+  artifact verification, and safe ZIP staging support;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

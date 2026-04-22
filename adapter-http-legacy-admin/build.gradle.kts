@@ -19,6 +19,7 @@ dependencies {
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
   implementation(project(":platform-api"))
+  implementation(project(":platform-appcatalog"))
   implementation(project(":platform-apphost"))
   implementation(project(":platform-web-shell"))
   implementation(project(":runtime-alerts"))

@@ -13,6 +13,7 @@ import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
@@ -51,6 +52,7 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static final String DELETE_METHOD = "DELETE";
   private static final String ALERTS_SEGMENT = "alerts";
+  private static final String APP_CATALOGS_SEGMENT = "app-catalogs";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
@@ -82,6 +84,18 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public PlatformApiToadlet(RuntimePorts runtimePorts, AppHost appHost) {
     this(new PlatformApiRouter(runtimePorts, appHost));
+  }
+
+  /**
+   * Creates a platform API toadlet backed by runtime ports, AppHost, and signed catalogs.
+   *
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
+   * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   */
+  public PlatformApiToadlet(
+      RuntimePorts runtimePorts, AppHost appHost, AppCatalogManager appCatalogManager) {
+    this(new PlatformApiRouter(runtimePorts, appHost, appCatalogManager));
   }
 
   /**
@@ -376,11 +390,40 @@ public final class PlatformApiToadlet extends Toadlet {
   private static boolean requiresNonAppFormPassword(String method, List<String> pathSegments) {
     return requiresQueueFormPassword(method, pathSegments)
         || requiresPeersFormPassword(method, pathSegments)
+        || requiresAppCatalogsFormPassword(method, pathSegments)
         || requiresConfigFormPassword(method, pathSegments)
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
         || requiresAlertsFormPassword(method, pathSegments)
         || requiresWizardFormPassword(method, pathSegments);
+  }
+
+  /**
+   * Returns whether the current request targets a mutating signed app-catalog route.
+   *
+   * @param method HTTP method name forwarded into the router
+   * @param pathSegments decoded path segments beneath the Platform API mount point
+   * @return {@code true} when the request must present the legacy form password
+   */
+  private static boolean requiresAppCatalogsFormPassword(String method, List<String> pathSegments) {
+    if (pathSegments.isEmpty() || !APP_CATALOGS_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if (DELETE_METHOD.equals(method)) {
+      return pathSegments.size() == 2;
+    }
+    if (!"POST".equals(method)) {
+      return false;
+    }
+    if (pathSegments.size() == 2) {
+      return "add".equals(pathSegments.get(1));
+    }
+    if (pathSegments.size() == 3) {
+      return "refresh".equals(pathSegments.get(2));
+    }
+    return pathSegments.size() == 5
+        && "apps".equals(pathSegments.get(2))
+        && ("install".equals(pathSegments.get(4)) || "update".equals(pathSegments.get(4)));
   }
 
   /**

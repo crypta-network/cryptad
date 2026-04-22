@@ -8,6 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class WebShellResourcesTest {
+  private static final String EVENT_PREVENT_DEFAULT = "event.preventDefault();";
+  private static final String CLEAR_WIZARD_BANDWIDTH_CHOICE_REQUIREMENT =
+      " clearWizardBandwidthChoiceRequirement);";
+
   @Test
   void readText_whenIndexResourceRequested_expectShellMarkup() {
     String html = WebShellResources.readText(WebShellPaths.INDEX_RESOURCE_PATH);
@@ -34,6 +38,9 @@ class WebShellResourcesTest {
         "id=\"apps\"",
         "id=\"apps-body\"",
         "id=\"apps-status\"",
+        "id=\"catalog-source-form\"",
+        "id=\"catalog-source-input\"",
+        "id=\"catalog-source-submit\"",
         "peer-create-form\" hidden",
         "name=\"referenceText\"",
         "id=\"peers-status\"",
@@ -91,6 +98,7 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains("white-space: pre-wrap;"));
     assertTrue(stylesheet.contains(".app-card-list {"));
     assertTrue(stylesheet.contains(".app-card-actions {"));
+    assertTrue(stylesheet.contains(".catalog-app-card {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
@@ -137,7 +145,7 @@ class WebShellResourcesTest {
 
   private static void assertQueueMutationSubmissionOrder(String script) {
     int submitHandlerIndex = script.indexOf("const path = queueMutationPath(submitter.name);");
-    int preventDefaultIndex = script.indexOf("event.preventDefault();", submitHandlerIndex);
+    int preventDefaultIndex = script.indexOf(EVENT_PREVENT_DEFAULT, submitHandlerIndex);
     int awaitMutationIndex =
         script.indexOf("await submitQueueMutation(form, submitter, path);", submitHandlerIndex);
     int refreshFormPasswordIndex =
@@ -166,7 +174,8 @@ class WebShellResourcesTest {
         script.indexOf(
             "queueState.page === \"downloads\" ? loadOptionalJson(queueCountUrl()) :"
                 + " Promise.resolve(null);");
-    int loadOptionalJsonIndex = script.indexOf("async function loadOptionalJson(url)");
+    int loadOptionalJsonIndex =
+        script.indexOf("async function loadOptionalJson(url, optionalStatuses = [404])");
     int snapshotAwaitIndex =
         script.indexOf("const snapshot = await snapshotRequest;", queueLoadIndex);
     int optionalAwaitIndex =
@@ -180,6 +189,8 @@ class WebShellResourcesTest {
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(queueCountLoadIndex >= 0);
     assertTrue(loadOptionalJsonIndex >= 0);
+    assertTrue(script.contains("optionalStatuses.includes(response.status)"));
+    assertTrue(script.contains("throw new Error(extractApiError(data, response));"));
     assertTrue(snapshotAwaitIndex > queueLoadIndex);
     assertTrue(optionalAwaitIndex > snapshotAwaitIndex);
   }
@@ -252,7 +263,7 @@ class WebShellResourcesTest {
     int bindPeersIndex = script.indexOf("function bindPeerInteractions()");
     int actionLookupIndex =
         script.indexOf("const action = form.dataset.peerAction;", bindPeersIndex);
-    int preventDefaultIndex = script.indexOf("event.preventDefault();", actionLookupIndex);
+    int preventDefaultIndex = script.indexOf(EVENT_PREVENT_DEFAULT, actionLookupIndex);
     int requiresForceRemovalIndex =
         script.indexOf(
             "const requiresForceRemoval = form.dataset.peerRequiresForceRemoval === \"true\";",
@@ -293,36 +304,64 @@ class WebShellResourcesTest {
     String appUiEntryHelper = script.substring(appUiEntryHelperIndex, legacyLinkHelperIndex);
 
     assertTrue(script.contains("appsSnapshot: null"));
+    assertTrue(script.contains("appCatalogsSnapshot: null"));
     assertTrue(script.contains("let appsLoadGeneration = 0;"));
     assertTrue(script.contains("apps: document.getElementById(\"apps-body\")"));
     assertTrue(script.contains("appsStatus: document.getElementById(\"apps-status\")"));
     assertTrue(
         script.contains("appsReadonlyHint: document.getElementById(\"apps-readonly-hint\")"));
     assertTrue(script.contains("const appsControls = {"));
+    assertTrue(
+        script.contains("catalogSourceForm: document.getElementById(\"catalog-source-form\")"));
     assertTrue(script.contains("function normalizeAppUiEntryHref(value)"));
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
     assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function renderAppCard(app)"));
     assertTrue(script.contains("function renderApps(data)"));
+    assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
+    assertTrue(script.contains("Catalogs unavailable: ${catalogError}"));
+    assertTrue(script.contains("function renderCatalogCard(catalog)"));
+    assertTrue(script.contains("function renderCatalogAppCard(catalog, app)"));
+    assertTrue(script.contains("async function loadCatalogApps(catalog)"));
     assertTrue(script.contains("function appMutationPath(appId, action)"));
+    assertTrue(script.contains("function catalogMutationPath(catalogId, appId, action)"));
     assertTrue(script.contains("async function loadAppsSection()"));
+    assertTrue(script.contains("async function submitCatalogSource(event)"));
+    assertTrue(script.contains("async function submitCatalogMutation(form, action)"));
     assertTrue(script.contains("async function deleteForm(path, formData, unavailableMessage)"));
-    assertTrue(script.contains("setAppsStatus(\"Refreshing installed apps.\");"));
+    assertTrue(script.contains("setAppsStatus(\"Refreshing installed apps and catalogs.\");"));
     assertTrue(script.contains("loadJson(apiUrl(\"apps\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
+    assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
+    assertTrue(
+        script.contains(
+            "const apps = await"
+                + " loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));"));
     assertTrue(script.contains("return `apps/${encodedAppId}/${action}`;"));
     assertTrue(script.contains("return `apps/${encodedAppId}`;"));
+    assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
+    assertTrue(
+        script.contains(
+            "return `app-catalogs/${encodedCatalogId}/apps/${encodedAppId}/${action}`;"));
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
+    assertTrue(script.contains("Catalog actions unavailable in read-only mode."));
   }
 
   private static void assertAppsSubmissionOrder(String script) {
     int bindAppsIndex = script.indexOf("function bindAppsInteractions()");
     int actionLookupIndex = script.indexOf("const action = form.dataset.appAction;", bindAppsIndex);
-    int preventDefaultIndex = script.indexOf("event.preventDefault();", actionLookupIndex);
+    int preventDefaultIndex = script.indexOf(EVENT_PREVENT_DEFAULT, actionLookupIndex);
     int mutationIndex = script.indexOf("await submitAppMutation(form, action);", bindAppsIndex);
+    int catalogActionLookupIndex =
+        script.indexOf("const catalogAction = form.dataset.catalogAction;", bindAppsIndex);
+    int catalogMutationIndex =
+        script.indexOf("await submitCatalogMutation(form, catalogAction);", bindAppsIndex);
 
     assertTrue(bindAppsIndex >= 0);
+    assertTrue(catalogActionLookupIndex > bindAppsIndex);
+    assertTrue(catalogMutationIndex > catalogActionLookupIndex);
     assertTrue(actionLookupIndex > bindAppsIndex);
     assertTrue(preventDefaultIndex > actionLookupIndex);
     assertTrue(mutationIndex > preventDefaultIndex);
@@ -330,19 +369,31 @@ class WebShellResourcesTest {
 
   private static void assertAppsLoadSequencing(String script) {
     int loadAppsIndex = script.indexOf("const loadGeneration = ++appsLoadGeneration;");
-    int successGuardIndex =
-        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", loadAppsIndex);
-    int renderAppsIndex = script.indexOf("renderApps(snapshot);", loadAppsIndex);
-    int errorGuardIndex =
-        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", successGuardIndex + 1);
+    int installedAwaitIndex =
+        script.indexOf("installedSnapshot = await loadJson(apiUrl(\"apps\"));", loadAppsIndex);
+    int installedErrorGuardIndex =
+        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", installedAwaitIndex);
     int renderErrorIndex =
-        script.indexOf("renderError(sections.apps, \"apps\", error);", loadAppsIndex);
+        script.indexOf("renderError(sections.apps, \"apps\", error);", installedErrorGuardIndex);
+    int catalogLoadIndex =
+        script.indexOf(
+            "const catalogsSnapshot = await loadOptionalJson(apiUrl(\"app-catalogs\"));",
+            renderErrorIndex);
+    int catalogErrorIndex = script.indexOf("catalogError =", catalogLoadIndex);
+    int successGuardIndex =
+        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", catalogErrorIndex);
+    int renderAppsIndex =
+        script.indexOf(
+            "renderApps({ ...installedSnapshot, catalogs, catalogError });", successGuardIndex);
 
     assertTrue(loadAppsIndex >= 0);
-    assertTrue(successGuardIndex > loadAppsIndex);
+    assertTrue(installedAwaitIndex > loadAppsIndex);
+    assertTrue(installedErrorGuardIndex > installedAwaitIndex);
+    assertTrue(renderErrorIndex > installedErrorGuardIndex);
+    assertTrue(catalogLoadIndex > renderErrorIndex);
+    assertTrue(catalogErrorIndex > catalogLoadIndex);
+    assertTrue(successGuardIndex > catalogErrorIndex);
     assertTrue(renderAppsIndex > successGuardIndex);
-    assertTrue(errorGuardIndex > renderAppsIndex);
-    assertTrue(renderErrorIndex > errorGuardIndex);
   }
 
   private static void assertPublisherMarkersPresent(String script) {
@@ -554,15 +605,15 @@ class WebShellResourcesTest {
     assertTrue(
         script.contains(
             "wizardControls.downloadLimit.addEventListener(\"input\","
-                + " clearWizardBandwidthChoiceRequirement);"));
+                + CLEAR_WIZARD_BANDWIDTH_CHOICE_REQUIREMENT));
     assertTrue(
         script.contains(
             "wizardControls.uploadLimit.addEventListener(\"input\","
-                + " clearWizardBandwidthChoiceRequirement);"));
+                + CLEAR_WIZARD_BANDWIDTH_CHOICE_REQUIREMENT));
     assertTrue(
         script.contains(
             "wizardControls.monthlyLimit.addEventListener(\"input\","
-                + " clearWizardBandwidthChoiceRequirement);"));
+                + CLEAR_WIZARD_BANDWIDTH_CHOICE_REQUIREMENT));
     assertTrue(script.contains("await postForm(\"config/overrides\", formData"));
     assertTrue(script.contains("await postForm(\"updates/core/download\", new FormData()"));
     assertTrue(

@@ -488,6 +488,7 @@ public final class SimpleToadletServer
         new LegacyHttpRouteRegistrarContext(
             runtimePorts,
             runtimeSupportRef.appHost(),
+            runtimeSupportRef.appCatalogManager(),
             runtimeSupportRef.config(),
             bootstrap.browseRoot(),
             bootstrap.browseRouteRegistrar(),

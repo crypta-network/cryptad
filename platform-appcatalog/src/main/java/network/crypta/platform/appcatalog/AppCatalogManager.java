@@ -1,0 +1,283 @@
+package network.crypta.platform.appcatalog;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import network.crypta.platform.appdist.TrustedAppKeys;
+
+/**
+ * Coordinates signed catalog sources, refreshes, artifact staging, and bundle verification.
+ *
+ * <p>The manager owns no global state. Runtime composition supplies the file-backed store and a
+ * trusted-key provider, and API handlers call the manager for catalog operations. Install and
+ * update flows stop at {@link AppCatalogInstallPlan}; callers still delegate final installation to
+ * AppHost so existing staged-directory semantics and verification policies remain intact.
+ *
+ * <p>All public methods are synchronized because they read and update a shared source store and
+ * create scratch directories below the same root. The manager re-reads trusted keys for each
+ * operation through {@link TrustedKeyProvider}, which lets deployments rotate catalog/app signing
+ * keys without recreating the manager. It verifies stored sidecars before listing or selecting
+ * entries, and it never weakens the signed-bundle verification performed by {@code
+ * platform-appdist}.
+ */
+public final class AppCatalogManager {
+  private final AppCatalogSourceStore sourceStore;
+  private final TrustedKeyProvider trustedKeyProvider;
+  private final AppCatalogFetcher fetcher;
+  private final AppCatalogArtifactDownloader artifactDownloader;
+  private final AppCatalogBundleExtractor bundleExtractor;
+
+  /**
+   * Creates a manager with default JDK fetch and download helpers.
+   *
+   * <p>This constructor is the normal runtime entry point. It uses the default no-redirect fetcher,
+   * the default artifact downloader, and the standard ZIP extractor. The supplied store determines
+   * both persistent catalog state and the scratch root used during install/update staging.
+   *
+   * @param sourceStore file-backed catalog source store
+   * @param trustedKeyProvider provider for the current trusted app/catalog keys
+   */
+  public AppCatalogManager(
+      AppCatalogSourceStore sourceStore, TrustedKeyProvider trustedKeyProvider) {
+    this(
+        sourceStore,
+        trustedKeyProvider,
+        new AppCatalogFetcher(),
+        new AppCatalogArtifactDownloader(),
+        new AppCatalogBundleExtractor());
+  }
+
+  /**
+   * Creates a manager with explicit collaborators for tests and controlled embeddings.
+   *
+   * <p>Supplying collaborators keeps network and filesystem edges deterministic in unit tests while
+   * preserving the same orchestration order as production: fetch, verify catalog, download
+   * artifact, extract, verify bundle, then return a plan.
+   *
+   * @param sourceStore file-backed catalog source store
+   * @param trustedKeyProvider provider for the current trusted app/catalog keys
+   * @param fetcher catalog source fetcher
+   * @param artifactDownloader artifact downloader and digest checker
+   * @param bundleExtractor ZIP extractor and signed-bundle verifier
+   */
+  public AppCatalogManager(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedKeyProvider,
+      AppCatalogFetcher fetcher,
+      AppCatalogArtifactDownloader artifactDownloader,
+      AppCatalogBundleExtractor bundleExtractor) {
+    this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
+    this.trustedKeyProvider = Objects.requireNonNull(trustedKeyProvider, "trustedKeyProvider");
+    this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
+    this.artifactDownloader = Objects.requireNonNull(artifactDownloader, "artifactDownloader");
+    this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
+  }
+
+  /**
+   * Lists all configured catalogs after re-verifying stored sidecars.
+   *
+   * <p>The returned snapshots are built from authenticated catalog bytes stored on disk. If a
+   * stored signature becomes invalid under the current trusted-key policy, the listing fails rather
+   * than returning stale metadata from a previous verification.
+   *
+   * @return source snapshots sorted by catalog id
+   * @throws IOException if stored catalog state cannot be read
+   */
+  public synchronized List<AppCatalogSourceSnapshot> listCatalogs() throws IOException {
+    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
+    return sourceStore.list().stream()
+        .map(stored -> snapshot(stored, trustedKeys))
+        .sorted(java.util.Comparator.comparing(AppCatalogSourceSnapshot::catalogId))
+        .toList();
+  }
+
+  /**
+   * Adds a catalog source and immediately verifies its signed catalog.
+   *
+   * <p>The source is fetched before it is persisted. A catalog id conflict is checked after
+   * signature verification so an attacker cannot reserve an id with unsigned or malformed content.
+   * Successful additions persist the exact fetched sidecar bytes, not a reserialized catalog model.
+   *
+   * @param rawSource operator-supplied source path or URI
+   * @return stored source snapshot for the new catalog
+   * @throws IOException if fetch, signature verification, or persistence fails
+   */
+  public synchronized AppCatalogSourceSnapshot addSource(String rawSource) throws IOException {
+    AppCatalogSource source = AppCatalogSource.parse(rawSource);
+    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
+    FetchedCatalog fetched = fetcher.fetch(source);
+    AppCatalog catalog =
+        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+    if (sourceStore.exists(catalog.catalogId())) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.CATALOG_CONFLICT,
+          "Catalog already configured: " + catalog.catalogId());
+    }
+    Instant now = Instant.now();
+    sourceStore.write(catalog, source, fetched, now, now);
+    return AppCatalogSourceSnapshot.of(catalog, source, now, now);
+  }
+
+  /**
+   * Removes a configured catalog source.
+   *
+   * <p>Removal affects only the configured source and cached catalog sidecars. Apps already
+   * installed from the catalog are left in AppHost and must be managed through app lifecycle APIs.
+   *
+   * @param catalogId catalog id to remove
+   * @throws IOException if the source is missing or cannot be deleted
+   */
+  public synchronized void remove(String catalogId) throws IOException {
+    sourceStore.remove(normalizeCatalogIdForLookup(catalogId));
+  }
+
+  /**
+   * Refreshes one configured catalog source.
+   *
+   * <p>Refresh reuses the stored source URI and preserves the original local {@code addedAt}
+   * timestamp. The newly fetched catalog must authenticate to the same normalized catalog id;
+   * otherwise the refresh is rejected and the previous stored sidecars remain in place.
+   *
+   * @param catalogId catalog id to refresh
+   * @return updated source snapshot after successful verification
+   * @throws IOException if fetch, verification, or persistence fails
+   */
+  public synchronized AppCatalogSourceSnapshot refresh(String catalogId) throws IOException {
+    String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
+    StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
+    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
+    FetchedCatalog fetched = fetcher.fetch(stored.source());
+    AppCatalog catalog =
+        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+    if (!normalizedCatalogId.equals(catalog.catalogId())) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+          "refreshed catalog id does not match configured source: " + normalizedCatalogId);
+    }
+    Instant refreshedAt = Instant.now();
+    sourceStore.write(catalog, stored.source(), fetched, stored.addedAt(), refreshedAt);
+    return AppCatalogSourceSnapshot.of(catalog, stored.source(), stored.addedAt(), refreshedAt);
+  }
+
+  /**
+   * Lists apps from a configured catalog.
+   *
+   * <p>The catalog is read and verified on each call. The result preserves {@code catalog.entries}
+   * order so UI and API clients can display entries deterministically without re-sorting.
+   *
+   * @param catalogId catalog id to read
+   * @return entries in catalog-declared deterministic order
+   * @throws IOException if the catalog is missing or fails verification
+   */
+  public synchronized List<AppCatalogEntry> listApps(String catalogId) throws IOException {
+    return readVerifiedCatalog(catalogId).entries();
+  }
+
+  /**
+   * Returns one catalog app entry.
+   *
+   * <p>The app id is normalized using the same rules as signed app manifests. Missing catalogs and
+   * missing apps remain distinct error codes so API adapters can return stable {@code
+   * catalog_not_found} or {@code app_not_found} responses.
+   *
+   * @param catalogId catalog id to read
+   * @param appId app id to select
+   * @return selected catalog entry
+   * @throws IOException if catalog state cannot be read
+   */
+  public synchronized AppCatalogEntry getApp(String catalogId, String appId) throws IOException {
+    return readVerifiedCatalog(catalogId)
+        .entry(appId)
+        .orElseThrow(
+            () ->
+                new AppCatalogException(
+                    AppCatalogSidecars.APP_NOT_FOUND, "Catalog app not found."));
+  }
+
+  /**
+   * Downloads, extracts, and verifies one app bundle from a catalog.
+   *
+   * <p>The returned plan is the only output of the catalog install/update preparation path. The
+   * method verifies the catalog entry, downloads the declared artifact, checks size and SHA-256,
+   * extracts the ZIP safely, verifies the extracted signed bundle, and confirms manifest id/version
+   * match the catalog. If any step fails, the per-operation scratch tree is removed before the
+   * failure is rethrown.
+   *
+   * @param catalogId catalog id containing the app
+   * @param appId catalog app id to prepare
+   * @return temporary installation plan whose staged directory can be passed to AppHost
+   * @throws IOException if catalog lookup, download, extraction, or bundle verification fails
+   */
+  public synchronized AppCatalogInstallPlan prepareInstallPlan(String catalogId, String appId)
+      throws IOException {
+    String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
+    AppCatalogEntry entry = getApp(normalizedCatalogId, appId);
+    Path stagingDirectory = sourceStore.stagingDirectory();
+    Files.createDirectories(stagingDirectory);
+    Path scratchRoot = Files.createTempDirectory(stagingDirectory, normalizedCatalogId + "-");
+    try {
+      Path artifactZip = artifactDownloader.download(entry, scratchRoot);
+      Path stagedBundle =
+          bundleExtractor.extract(
+              entry, artifactZip, scratchRoot, trustedKeyProvider.trustedKeys());
+      return new AppCatalogInstallPlan(normalizedCatalogId, entry, stagedBundle, scratchRoot);
+    } catch (IOException | RuntimeException exception) {
+      AppCatalogBundleExtractor.deleteRecursively(scratchRoot);
+      throw exception;
+    }
+  }
+
+  private AppCatalog readVerifiedCatalog(String catalogId) throws IOException {
+    StoredCatalogSource stored = sourceStore.read(normalizeCatalogIdForLookup(catalogId));
+    return verifyStoredCatalog(stored, trustedKeyProvider.trustedKeys());
+  }
+
+  private static AppCatalogSourceSnapshot snapshot(
+      StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+    AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
+    return AppCatalogSourceSnapshot.of(
+        catalog, stored.source(), stored.addedAt(), stored.refreshedAt());
+  }
+
+  private static AppCatalog verifyStoredCatalog(
+      StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+    return AppCatalogVerifier.verify(
+        stored.fetchedCatalog().catalogBytes(),
+        stored.fetchedCatalog().signatureBytes(),
+        trustedKeys);
+  }
+
+  private static String normalizeCatalogIdForLookup(String catalogId) {
+    try {
+      return AppCatalog.normalizeCatalogId(catalogId);
+    } catch (AppCatalogException _) {
+      throw new AppCatalogException(AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog not found.");
+    }
+  }
+
+  /**
+   * Supplies the trusted keys used for catalog and bundle verification.
+   *
+   * <p>Runtime wiring can reload key files on each operation by implementing this provider as a
+   * small adapter over the same trusted-key configuration used by AppHost bundle verification.
+   * Implementations should be side-effect-light because the manager calls them while holding its
+   * monitor.
+   */
+  @FunctionalInterface
+  public interface TrustedKeyProvider {
+    /**
+     * Returns the current trusted app/catalog keys.
+     *
+     * <p>The returned registry is used for both catalog signature verification and extracted bundle
+     * verification. Returning an empty or stale registry makes signed catalog operations fail
+     * closed.
+     *
+     * @return immutable trusted-key registry
+     * @throws IOException if key material cannot be loaded from runtime configuration
+     */
+    TrustedAppKeys trustedKeys() throws IOException;
+  }
+}

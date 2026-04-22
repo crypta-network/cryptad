@@ -1,0 +1,111 @@
+package network.crypta.platform.appcatalog;
+
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import network.crypta.platform.appdist.AppBundleManifest;
+
+/**
+ * Verified v1 app catalog content.
+ *
+ * <p>The catalog preserves the deterministic entry order declared by {@code catalog.entries}. It is
+ * immutable after construction, and every entry is keyed by the normalized AppHost app id used by
+ * installation and update flows. Runtime code should treat an instance as a point-in-time view of
+ * one signed catalog payload, not as a live subscription to the source URI.
+ *
+ * <p>The constructor performs the same validation that the parser performs after signature
+ * verification, which makes the record safe for tests and controlled tooling to instantiate
+ * directly. Catalog ids use the signed-bundle app-id grammar so they can also serve as on-disk
+ * directory names and API path segments. Entry lists are copied, duplicate app ids are rejected,
+ * and no mutable collections from callers are retained.
+ *
+ * @param version catalog schema version, currently {@code 1}
+ * @param catalogId stable catalog identifier used by API paths and local storage
+ * @param name human-readable catalog name
+ * @param generatedAt timestamp declared by the catalog producer
+ * @param entries catalog entries in declared deterministic order
+ */
+public record AppCatalog(
+    int version,
+    String catalogId,
+    String name,
+    Instant generatedAt,
+    List<AppCatalogEntry> entries) {
+  /**
+   * Creates a validated immutable catalog.
+   *
+   * <p>The canonical constructor normalizes {@code catalogId}, trims and validates the display
+   * name, copies {@code entries}, and rejects duplicate normalized app ids. It does not verify
+   * signatures or artifact metadata; callers must only construct instances from already
+   * authenticated bytes or from trusted test/tooling fixtures.
+   *
+   * @param version catalog schema version, currently {@code 1}
+   * @param catalogId stable catalog identifier used by API paths and local storage
+   * @param name human-readable catalog name shown to operators
+   * @param generatedAt timestamp declared by the catalog producer
+   * @param entries catalog entries in declared deterministic order
+   * @throws AppCatalogException if the catalog header or entry set is invalid
+   */
+  public AppCatalog {
+    if (version != 1) {
+      throw AppCatalogSidecars.invalidEntry("unsupported catalog.version: " + version);
+    }
+    catalogId = normalizeCatalogId(catalogId);
+    name =
+        AppCatalogSidecars.requireNonBlankSingleLine(
+            name, "catalog.name", AppCatalogSidecars.INVALID_CATALOG_ENTRY);
+    Objects.requireNonNull(generatedAt, "generatedAt");
+    entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
+    rejectDuplicateEntries(entries);
+  }
+
+  /**
+   * Finds one catalog entry by normalized app id.
+   *
+   * <p>The lookup accepts raw caller input and normalizes it with the same rules used for catalog
+   * parsing and AppHost installation. A syntactically invalid id is rejected before the entry list
+   * is scanned; a valid but absent id returns {@link Optional#empty()}.
+   *
+   * @param appId raw or normalized app identifier from a caller
+   * @return matching catalog entry, when present in the verified catalog
+   * @throws AppCatalogException if {@code appId} is not a valid AppHost id
+   */
+  public Optional<AppCatalogEntry> entry(String appId) throws AppCatalogException {
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    return entries.stream().filter(entry -> entry.appId().equals(normalizedAppId)).findFirst();
+  }
+
+  /**
+   * Normalizes a catalog id using the same path-safe grammar as app ids.
+   *
+   * <p>Catalog ids are used as API path components and source-store directory names, so this method
+   * deliberately reuses the signed-bundle id grammar instead of accepting arbitrary catalog labels.
+   * The result is trimmed, lower-case, and safe to compare as a stable identifier.
+   *
+   * @param catalogId raw catalog identifier from a catalog or API path
+   * @return normalized lower-case catalog id
+   * @throws AppCatalogException if the id is not path-safe
+   */
+  public static String normalizeCatalogId(String catalogId) throws AppCatalogException {
+    try {
+      return AppBundleManifest.normalizeAppId(catalogId);
+    } catch (IllegalArgumentException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
+    }
+  }
+
+  private static void rejectDuplicateEntries(List<AppCatalogEntry> entries)
+      throws AppCatalogException {
+    Map<String, AppCatalogEntry> byId = new LinkedHashMap<>();
+    for (AppCatalogEntry entry : entries) {
+      AppCatalogEntry previous = byId.putIfAbsent(entry.appId(), entry);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate catalog entry app id: " + entry.appId());
+      }
+    }
+  }
+}

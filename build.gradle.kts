@@ -17,6 +17,7 @@ version = "3"
 val internalLeafProjects =
   listOf(
     project(":platform-appdist"),
+    project(":platform-appcatalog"),
     project(":foundation-support"),
     project(":foundation-store"),
     project(":foundation-store-contracts"),
@@ -100,6 +101,7 @@ dependencies {
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
   implementation(project(":platform-api"))
+  implementation(project(":platform-appcatalog"))
   implementation(project(":platform-apphost"))
   implementation(project(":platform-web-shell"))
   implementation(project(":runtime-alerts"))
@@ -148,6 +150,7 @@ dependencies {
   // testImplementation
   testImplementation(project(":launcher-desktop"))
   testImplementation(project(":platform-appdist"))
+  testImplementation(project(":platform-appcatalog"))
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
