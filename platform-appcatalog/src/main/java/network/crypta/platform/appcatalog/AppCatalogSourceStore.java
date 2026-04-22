@@ -38,6 +38,7 @@ public final class AppCatalogSourceStore {
   private static final String REFRESHED_AT_KEY = "source.refreshedAt";
 
   private final Path rootDirectory;
+  private final SourceMetadataWriter sourceMetadataWriter;
 
   /**
    * Creates a source store rooted at a host-owned directory.
@@ -49,8 +50,14 @@ public final class AppCatalogSourceStore {
    * @param rootDirectory directory where source records and catalog sidecars are stored
    */
   public AppCatalogSourceStore(Path rootDirectory) {
+    this(rootDirectory, AppCatalogSourceStore::writeSourceMetadata);
+  }
+
+  AppCatalogSourceStore(Path rootDirectory, SourceMetadataWriter sourceMetadataWriter) {
     this.rootDirectory =
         Objects.requireNonNull(rootDirectory, "rootDirectory").toAbsolutePath().normalize();
+    this.sourceMetadataWriter =
+        Objects.requireNonNull(sourceMetadataWriter, "sourceMetadataWriter");
   }
 
   /**
@@ -167,7 +174,10 @@ public final class AppCatalogSourceStore {
     Files.createDirectories(rootDirectory);
     Path directory = catalogDirectory(catalog.catalogId());
     Path sourceFile = directory.resolve(SOURCE_FILE_NAME);
-    boolean sourceExisted = Files.isRegularFile(sourceFile, LinkOption.NOFOLLOW_LINKS);
+    FetchedCatalog previousFetchedCatalog =
+        Files.isRegularFile(sourceFile, LinkOption.NOFOLLOW_LINKS)
+            ? readFetchedCatalog(directory)
+            : null;
     Files.createDirectories(directory);
     try {
       Files.write(
@@ -175,13 +185,15 @@ public final class AppCatalogSourceStore {
       Files.write(
           directory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
           fetchedCatalog.signatureBytes());
-      writeSourceMetadata(
+      sourceMetadataWriter.write(
           directory,
           sourceFile,
           serializeSource(catalog.catalogId(), source, addedAt, refreshedAt));
     } catch (IOException exception) {
-      if (!sourceExisted) {
+      if (previousFetchedCatalog == null) {
         cleanupIncompleteAdd(directory, exception);
+      } else {
+        restoreFetchedCatalog(directory, previousFetchedCatalog, exception);
       }
       throw exception;
     }
@@ -206,15 +218,7 @@ public final class AppCatalogSourceStore {
   }
 
   private StoredCatalogSource readByDirectory(Path directory) throws IOException {
-    Map<String, String> properties =
-        AppCatalogSidecars.parseKeyValueSidecar(
-            AppCatalogSidecars.utf8(
-                AppCatalogSidecars.readRequiredBytes(
-                    directory.resolve(SOURCE_FILE_NAME),
-                    AppCatalogSidecars.MAX_SIGNATURE_BYTES,
-                    "catalog source metadata",
-                    AppCatalogSidecars.INVALID_CATALOG_SOURCE)),
-            "catalog source metadata");
+    Map<String, String> properties = readSourceMetadata(directory);
     validateSourceVersion(properties.remove(SOURCE_VERSION_KEY));
     String catalogId = removeRequired(properties, CATALOG_ID_KEY);
     AppCatalog.normalizeCatalogId(catalogId);
@@ -268,6 +272,25 @@ public final class AppCatalogSourceStore {
     return catalogDirectory(catalogId).resolve(SOURCE_FILE_NAME);
   }
 
+  private static Map<String, String> readSourceMetadata(Path directory) throws IOException {
+    try {
+      return AppCatalogSidecars.parseKeyValueSidecar(
+          AppCatalogSidecars.utf8(
+              AppCatalogSidecars.readRequiredBytes(
+                  directory.resolve(SOURCE_FILE_NAME),
+                  AppCatalogSidecars.MAX_SIGNATURE_BYTES,
+                  "catalog source metadata",
+                  AppCatalogSidecars.INVALID_CATALOG_SOURCE)),
+          "catalog source metadata");
+    } catch (AppCatalogException exception) {
+      if (AppCatalogSidecars.INVALID_CATALOG_ENTRY.equals(exception.errorCode())) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.getMessage(), exception);
+      }
+      throw exception;
+    }
+  }
+
   private static void writeSourceMetadata(Path directory, Path sourceFile, String content)
       throws IOException {
     Path tempFile = Files.createTempFile(directory, ".catalog-source-", ".tmp");
@@ -298,6 +321,24 @@ public final class AppCatalogSourceStore {
     } catch (IOException cleanupException) {
       originalException.addSuppressed(cleanupException);
     }
+  }
+
+  private static void restoreFetchedCatalog(
+      Path directory, FetchedCatalog fetchedCatalog, IOException originalException) {
+    try {
+      Files.write(
+          directory.resolve(AppCatalogSignature.CATALOG_FILE_NAME), fetchedCatalog.catalogBytes());
+      Files.write(
+          directory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
+          fetchedCatalog.signatureBytes());
+    } catch (IOException restoreException) {
+      originalException.addSuppressed(restoreException);
+    }
+  }
+
+  @FunctionalInterface
+  interface SourceMetadataWriter {
+    void write(Path directory, Path sourceFile, String content) throws IOException;
   }
 
   private static void validateSourceVersion(String versionText) {

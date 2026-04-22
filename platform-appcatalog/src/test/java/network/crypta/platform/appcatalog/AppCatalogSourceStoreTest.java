@@ -1,5 +1,6 @@
 package network.crypta.platform.appcatalog;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -91,6 +92,41 @@ class AppCatalogSourceStoreTest {
   }
 
   @Test
+  void write_whenExistingSourceMetadataWriteFails_expectPreviousSidecarsPreserved()
+      throws Exception {
+    Path rootDirectory = tempDir.resolve(STORE_DIRECTORY);
+    AppCatalogSourceStore store = new AppCatalogSourceStore(rootDirectory);
+    FetchedCatalog original = fetchedCatalog("core");
+    FetchedCatalog replacement =
+        new FetchedCatalog(
+            bytes("catalog.id=core\nreplacement=true\n"),
+            bytes("catalog.signature.key.id=replacement\n"));
+    store.write(catalog("core"), source("core"), original, ADDED_AT, REFRESHED_AT);
+    AppCatalogSourceStore.SourceMetadataWriter failingWriter =
+        (_, _, _) -> {
+          throw new IOException("metadata write failed");
+        };
+    AppCatalogSourceStore failingStore = new AppCatalogSourceStore(rootDirectory, failingWriter);
+
+    IOException exception =
+        assertThrows(
+            IOException.class,
+            () ->
+                failingStore.write(
+                    catalog("core"),
+                    source("core"),
+                    replacement,
+                    ADDED_AT,
+                    REFRESHED_AT.plusSeconds(60)));
+    StoredCatalogSource stored = store.read("core");
+
+    assertEquals("metadata write failed", exception.getMessage());
+    assertEquals(REFRESHED_AT, stored.refreshedAt());
+    assertArrayEquals(original.catalogBytes(), stored.fetchedCatalog().catalogBytes());
+    assertArrayEquals(original.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
   void remove_whenCatalogExists_expectCatalogDeletedAndStagingPreserved() throws Exception {
     AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
     store.write(catalog("core"), source("core"), fetchedCatalog("core"), ADDED_AT, REFRESHED_AT);
@@ -119,6 +155,18 @@ class AppCatalogSourceStoreTest {
     Files.writeString(
         store.rootDirectory().resolve("core").resolve(SOURCE_FILE_NAME),
         sourceMetadata("other", source("core").displayUri()));
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> store.read("core"));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+  }
+
+  @Test
+  void read_whenSourceMetadataLineIsMalformed_expectInvalidCatalogSource() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    Path catalogDirectory = Files.createDirectories(store.rootDirectory().resolve("core"));
+    Files.writeString(catalogDirectory.resolve(SOURCE_FILE_NAME), "not-a-key-value-line\n");
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> store.read("core"));
