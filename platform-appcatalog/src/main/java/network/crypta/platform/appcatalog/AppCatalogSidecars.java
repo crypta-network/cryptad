@@ -357,9 +357,14 @@ final class AppCatalogSidecars {
           return;
         }
       }
-      default -> throw new IllegalStateException("Unexpected value: " + normalizedScheme);
+      default -> throw unsupportedScheme(errorCode, fieldName, scheme);
     }
-    throw new AppCatalogException(errorCode, "unsupported " + fieldName + " scheme: " + scheme);
+    throw unsupportedScheme(errorCode, fieldName, scheme);
+  }
+
+  private static AppCatalogException unsupportedScheme(
+      String errorCode, String fieldName, String scheme) {
+    return new AppCatalogException(errorCode, "unsupported " + fieldName + " scheme: " + scheme);
   }
 
   /**

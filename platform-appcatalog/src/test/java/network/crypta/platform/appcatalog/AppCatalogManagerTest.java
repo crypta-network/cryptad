@@ -287,6 +287,7 @@ class AppCatalogManagerTest {
   @ValueSource(
       strings = {
         "http://127.example.com/cryptad-app-catalog.properties",
+        "ftp://example.invalid/cryptad-app-catalog.properties",
         "https:/cryptad-app-catalog.properties",
         "file:cryptad-app-catalog.properties",
         "file://localhost/tmp/cryptad-app-catalog.properties"
@@ -306,6 +307,7 @@ class AppCatalogManagerTest {
   @ValueSource(
       strings = {
         "http://127.example.com/queue-manager.zip",
+        "ftp://example.invalid/queue-manager.zip",
         "https:queue-manager.zip",
         "file:///tmp/queue-manager.zip?download=1"
       })

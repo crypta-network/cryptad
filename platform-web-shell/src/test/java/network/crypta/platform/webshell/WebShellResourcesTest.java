@@ -172,10 +172,12 @@ class WebShellResourcesTest {
         script.indexOf("renderError(sections.queue, \"queue\", error);", queueLoadIndex);
     int queueCountLoadIndex =
         script.indexOf(
-            "queueState.page === \"downloads\" ? loadOptionalJson(queueCountUrl()) :"
+            "queueState.page === \"downloads\" ? loadBestEffortOptionalJson(queueCountUrl()) :"
                 + " Promise.resolve(null);");
     int loadOptionalJsonIndex =
         script.indexOf("async function loadOptionalJson(url, optionalStatuses = [404])");
+    int loadBestEffortOptionalJsonIndex =
+        script.indexOf("async function loadBestEffortOptionalJson(url)");
     int snapshotAwaitIndex =
         script.indexOf("const snapshot = await snapshotRequest;", queueLoadIndex);
     int optionalAwaitIndex =
@@ -189,8 +191,10 @@ class WebShellResourcesTest {
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(queueCountLoadIndex >= 0);
     assertTrue(loadOptionalJsonIndex >= 0);
+    assertTrue(loadBestEffortOptionalJsonIndex > loadOptionalJsonIndex);
     assertTrue(script.contains("optionalStatuses.includes(response.status)"));
     assertTrue(script.contains("throw new Error(extractApiError(data, response));"));
+    assertTrue(script.contains("return await loadOptionalJson(url);"));
     assertTrue(snapshotAwaitIndex > queueLoadIndex);
     assertTrue(optionalAwaitIndex > snapshotAwaitIndex);
   }

@@ -1913,6 +1913,14 @@
     throw new Error(extractApiError(data, response));
   }
 
+  async function loadBestEffortOptionalJson(url) {
+    try {
+      return await loadOptionalJson(url);
+    } catch (error) {
+      return null;
+    }
+  }
+
   async function postForm(path, formData, unavailableMessage) {
     return submitFormMutation("POST", path, formData, unavailableMessage);
   }
@@ -2290,8 +2298,8 @@
 
     const snapshotRequest = loadJson(queuePageUrl());
     const countRequest =
-      queueState.page === "downloads" ? loadOptionalJson(queueCountUrl()) : Promise.resolve(null);
-    const keysRequest = queueState.keysVisible ? loadOptionalJson(queueKeysUrl()) : Promise.resolve(null);
+      queueState.page === "downloads" ? loadBestEffortOptionalJson(queueCountUrl()) : Promise.resolve(null);
+    const keysRequest = queueState.keysVisible ? loadBestEffortOptionalJson(queueKeysUrl()) : Promise.resolve(null);
 
     try {
       const snapshot = await snapshotRequest;
