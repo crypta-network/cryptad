@@ -2,9 +2,11 @@ package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -109,7 +111,8 @@ public final class AppCatalogSourceStore {
       for (Path child :
           children.sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
         if (!Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)
-            || child.equals(stagingDirectory())) {
+            || child.equals(stagingDirectory())
+            || !Files.isRegularFile(child.resolve(SOURCE_FILE_NAME), LinkOption.NOFOLLOW_LINKS)) {
           continue;
         }
         sources.add(readByDirectory(child));
@@ -141,9 +144,11 @@ public final class AppCatalogSourceStore {
   /**
    * Writes or replaces one stored source and its latest fetched sidecars.
    *
-   * <p>The method writes source metadata, catalog bytes, and signature bytes below the catalog id
-   * directory. It stores the raw fetched sidecars rather than serializing {@code catalog},
-   * preserving the exact bytes that passed signature verification.
+   * <p>The method writes catalog bytes and signature bytes before the source metadata marker. The
+   * metadata file is the store's commit marker, so a failed add that writes only fetched sidecars
+   * is skipped by {@link #list()} and does not block retry as a configured catalog. It stores the
+   * raw fetched sidecars rather than serializing {@code catalog}, preserving the exact bytes that
+   * passed signature verification.
    *
    * @param catalog catalog content verified from {@code fetchedCatalog}
    * @param source source descriptor used to fetch the catalog
@@ -161,15 +166,25 @@ public final class AppCatalogSourceStore {
       throws IOException {
     Files.createDirectories(rootDirectory);
     Path directory = catalogDirectory(catalog.catalogId());
+    Path sourceFile = directory.resolve(SOURCE_FILE_NAME);
+    boolean sourceExisted = Files.isRegularFile(sourceFile, LinkOption.NOFOLLOW_LINKS);
     Files.createDirectories(directory);
-    Files.writeString(
-        directory.resolve(SOURCE_FILE_NAME),
-        serializeSource(catalog.catalogId(), source, addedAt, refreshedAt));
-    Files.write(
-        directory.resolve(AppCatalogSignature.CATALOG_FILE_NAME), fetchedCatalog.catalogBytes());
-    Files.write(
-        directory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
-        fetchedCatalog.signatureBytes());
+    try {
+      Files.write(
+          directory.resolve(AppCatalogSignature.CATALOG_FILE_NAME), fetchedCatalog.catalogBytes());
+      Files.write(
+          directory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
+          fetchedCatalog.signatureBytes());
+      writeSourceMetadata(
+          directory,
+          sourceFile,
+          serializeSource(catalog.catalogId(), source, addedAt, refreshedAt));
+    } catch (IOException exception) {
+      if (!sourceExisted) {
+        cleanupIncompleteAdd(directory, exception);
+      }
+      throw exception;
+    }
   }
 
   /**
@@ -251,6 +266,38 @@ public final class AppCatalogSourceStore {
 
   private Path sourceFile(String catalogId) {
     return catalogDirectory(catalogId).resolve(SOURCE_FILE_NAME);
+  }
+
+  private static void writeSourceMetadata(Path directory, Path sourceFile, String content)
+      throws IOException {
+    Path tempFile = Files.createTempFile(directory, ".catalog-source-", ".tmp");
+    boolean moved = false;
+    try {
+      Files.writeString(tempFile, content);
+      moveReplacing(tempFile, sourceFile);
+      moved = true;
+    } finally {
+      if (!moved) {
+        Files.deleteIfExists(tempFile);
+      }
+    }
+  }
+
+  private static void moveReplacing(Path source, Path target) throws IOException {
+    try {
+      Files.move(
+          source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    } catch (AtomicMoveNotSupportedException _) {
+      Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  private static void cleanupIncompleteAdd(Path directory, IOException originalException) {
+    try {
+      AppCatalogBundleExtractor.deleteRecursively(directory);
+    } catch (IOException cleanupException) {
+      originalException.addSuppressed(cleanupException);
+    }
   }
 
   private static void validateSourceVersion(String versionText) {

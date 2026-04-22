@@ -69,6 +69,28 @@ class AppCatalogSourceStoreTest {
   }
 
   @Test
+  void listAndWrite_whenDirectoryHasSidecarsButNoSource_expectSkippedAndRetrySucceeds()
+      throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    Path catalogDirectory = Files.createDirectories(store.rootDirectory().resolve("core"));
+    Files.write(
+        catalogDirectory.resolve(AppCatalogSignature.CATALOG_FILE_NAME), bytes("partial catalog"));
+    Files.write(
+        catalogDirectory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
+        bytes("partial signature"));
+    FetchedCatalog fetchedCatalog = fetchedCatalog("core");
+
+    assertFalse(store.exists("core"));
+    assertTrue(store.list().isEmpty());
+
+    store.write(catalog("core"), source("core"), fetchedCatalog, ADDED_AT, REFRESHED_AT);
+    StoredCatalogSource stored = store.read("core");
+
+    assertArrayEquals(fetchedCatalog.catalogBytes(), stored.fetchedCatalog().catalogBytes());
+    assertArrayEquals(fetchedCatalog.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
   void remove_whenCatalogExists_expectCatalogDeletedAndStagingPreserved() throws Exception {
     AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
     store.write(catalog("core"), source("core"), fetchedCatalog("core"), ADDED_AT, REFRESHED_AT);
