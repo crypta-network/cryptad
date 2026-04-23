@@ -30,7 +30,9 @@ public final class AppStaticAssetResolver {
    * <p>The resolver does not cache real paths, file attributes, or content-type decisions. Reusing
    * one instance across requests is equivalent to constructing a new instance for each request.
    */
-  public AppStaticAssetResolver() {}
+  public AppStaticAssetResolver() {
+    // This resolver is stateless; all filesystem metadata is read during each resolve call.
+  }
 
   /**
    * Resolves one normalized bundle-relative static asset path.
