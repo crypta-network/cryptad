@@ -27,6 +27,7 @@ include(
   ":apps:queue-manager",
   ":apps:publisher",
   ":platform-appdist",
+  ":platform-app-ui",
   ":platform-appcatalog",
   ":foundation-support",
   ":foundation-store",

@@ -146,7 +146,7 @@ Notes
 
 ## Building
 
-We use the [Gradle Wrapper](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html). If you trust the committed
+We use the [Gradle Wrapper](https://docs.gradle.org/9.4.1/userguide/gradle_wrapper.html). If you trust the committed
 wrapper, you can build immediately.
 
 Prerequisites:
@@ -181,8 +181,8 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`,
   `network.crypta.support.IllegalValueException`, `network.crypta.support.JVMVersion`, the generic
   `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` support surface, and the
-  generic utility/file-helper surface around `URIPreEncoder`, `IOUtils`, and
-  `LegacyFileSupport`, plus the cycle-safe file-backed support I/O slice (`BaseFileBucket`,
+  generic utility/file-helper surface around `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, and
+  `HTMLDecoder`, plus the cycle-safe file-backed support I/O slice (`BaseFileBucket`,
   `FileBucket`, `FileRandomAccessBuffer`, `PersistentTempFileBucket`,
   `PooledFileRandomAccessBuffer`, `TempFileBucket`, and their related
   exceptions/factories).
@@ -216,10 +216,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `BinaryBlobFormatException`, `BinaryBlobWriter`, `CacheFetchResult`, `ClientGetterOptions`,
   `ClientPutterOptions`, `PersistenceDisabledException`, `TooManyFilesInsertException`), the
   client failure/filter exception subset, selected filter policy/helper types such as
-  `HTMLFilterPolicy`, the MIME helper `network.crypta.support.MediaType`, and the small
-  manifest/model helper subset under `network.crypta.support.*` (`ManifestElement`,
-  `ContainerSizeEstimator`) plus `InsertUriChecks` that stay free of `:runtime-node`, adapter,
-  and root-composition dependencies.
+  `HTMLFilterPolicy`, concrete media/CSS/HTML parser and filter helpers, the MIME helper
+  `network.crypta.support.MediaType`, and the small manifest/model helper subset under
+  `network.crypta.support.*` (`ManifestElement`, `ContainerSizeEstimator`) plus
+  `InsertUriChecks` that stay free of `:runtime-node`, adapter, and root-composition
+  dependencies.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   address matching, allowlist parsing, listener abstraction, `SSLNetworkInterface`,
@@ -228,8 +229,8 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
-  `PeerStatusCounts`, and `SendableRequestItem*` that stay free of `:runtime-node`, adapters, and
-  root-composition dependencies.
+  `PeerStatusCounts`, `RequestPriorityClasses`, and `SendableRequestItem*` that stay free of
+  `:runtime-node`, adapters, and root-composition dependencies.
 - `:runtime-spi` owns `network.crypta.runtime.spi` and the JDK-only runtime/config boundary used
   by higher layers, including the admin-HTTP config, connectivity, connections, queue,
   security-levels, shared page-chrome, core-update action, first-time-wizard, symlinker, and
@@ -244,8 +245,11 @@ Cryptad now uses a partial multi-project Gradle build.
   `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
-  lifecycle, and per-start launch-token plumbing for local apps while staying separate from future
-  Web Shell, application-UI, and remote update-channel work.
+  lifecycle, and per-start launch-token plumbing for local apps.
+- `:platform-app-ui` owns app-owned static UI route helpers under
+  `network.crypta.platform.appui`. It maps static app UI metadata to `/apps/{appId}/`, resolves
+  installed-bundle assets, and enforces traversal, symlink, and content-type boundaries before the
+  HTTP adapter streams files.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
   staged AppHost bundles.
 - `:platform-appcatalog` owns signed app catalog parsing, signature verification, remote/local
@@ -331,7 +335,8 @@ The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 
 ## Signed App Bundles
 
-PR-192 keeps `stageApp` unsigned by default and adds local signing and verification tasks for first-party AppHost bundles.
+Local AppHost app bundles keep `stageApp` unsigned by default and use separate signing and
+verification tasks for first-party bundles.
 
 Common commands:
 
@@ -351,6 +356,11 @@ Signed app catalogs add a verified source layer above signed bundles. See
 [`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
 catalog signatures, trusted-key configuration, and `/api/v1/app-catalogs` install/update flow.
 
+Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
+Static UI bundles open at `/apps/{appId}/`; shell-panel bundles keep existing local links such as
+`/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
+security headers, and static asset boundary.
+
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
 `CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_BASE64` or `CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE`, or use
@@ -358,9 +368,10 @@ live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` 
 development-only escape hatch for unsigned local testing.
 
 Do not commit production private signing keys to this repository. Keep local development keys
-outside the repo and pass them through Gradle properties or environment variables. Remote catalogs
-and remote downloads are future work. See [docs/app-distribution.md](docs/app-distribution.md) for
-the full workflow and exact signing inputs.
+outside the repo and pass them through Gradle properties or environment variables. Catalog-backed
+install/update endpoints are available now; background app-update scheduling remains future work.
+See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
+inputs.
 
 ## Platform Closeout & API Surface
 
@@ -368,11 +379,17 @@ Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:pla
 primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
 compatibility, bridge, debug, and fallback surfaces.
 
+Current Phase 4 app-platform work extends that path with signed catalog sources and app-owned
+static UI routes. Installed apps can be launched through `/app/node/` shell-panel links or through
+stable `/apps/{appId}/` routes when the signed bundle declares `app.ui.mode=static`.
+
 Key docs:
 
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
 - [Platform API and Web Shell surface](docs/platform-api-surface.md)
 - [Signed App Distribution](docs/app-distribution.md)
+- [Signed app catalogs](docs/app-catalogs.md)
+- [App-owned static UI](docs/app-owned-ui.md)
 
 ## Hyphanet Interop Gate
 
@@ -695,8 +712,8 @@ Root build also includes:
   `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
   and `network.crypta.support.JVMVersion`, including the generic `HTTPRequest` /
   `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface, generic helpers such as
-  `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, and the cycle-safe file-backed support
-  I/O slice.
+  `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, and `HTMLDecoder`, and the cycle-safe
+  file-backed support I/O slice.
 - `:foundation-store-contracts`: neutral store contracts plus the store-maintenance alert seam
   shared by store code and root runtime/UI adapters.
 - `:foundation-crypto-keys`: extracted `network.crypta.crypt`, `network.crypta.keys`, and the
@@ -719,8 +736,9 @@ Root build also includes:
   `SplitfileProgressEvent`, `SplitfileCompatibilityModeEvent`, `SplitfileCompatibilityMode`), the
   leaf-safe `network.crypta.client.async` utility/value subset, the leaf-safe client
   failure/filter exception subset, selected filter policy/helper types such as
-  `HTMLFilterPolicy`, `network.crypta.support.MediaType`, `InsertUriChecks`, and the small
-  manifest/model helper subset under `network.crypta.support.*`.
+  `HTMLFilterPolicy`, concrete media/CSS/HTML parser and filter helpers,
+  `network.crypta.support.MediaType`, `InsertUriChecks`, and the small manifest/model helper
+  subset under `network.crypta.support.*`.
 - `:kernel-transport`: compile-neutral phase-1 transport leaf spanning selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allowlist parsing, listener abstraction, `SSLNetworkInterface`, statistics collection,
@@ -728,19 +746,25 @@ Root build also includes:
 - `:kernel-routing`: compile-neutral phase-1 routing/helper leaf spanning selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
-  `PeerStatusCounts`, and `SendableRequestItem*`.
-- `:runtime-spi`: JDK-only runtime ports plus immutable config snapshot/value types and shared
-  path constants such as `ConnectivityPagePaths` and `UpdaterPaths`.
+  `PeerStatusCounts`, `RequestPriorityClasses`, and `SendableRequestItem*`.
+- `:runtime-spi`: JDK-only runtime ports plus immutable config, alert, and runtime
+  snapshot/value types and shared path constants such as `ConnectivityPagePaths` and
+  `UpdaterPaths`.
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
   Its current family-level surface covers node, connectivity, queue, peers, config, security
-  levels, updates, wizard/welcome, alerts, diagnostics, and apps.
+  levels, updates, wizard/welcome, alerts, diagnostics, apps, and app catalogs.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
-  Local staged app updates now flow through this core; future Web Shell, app UI, and remote
-  update-channel work remain separate and later.
+  Local staged and verified catalog app updates now flow through this core; background remote
+  update-channel work remains separate and later.
+- `:platform-app-ui`: app-owned static UI route and asset-resolution helpers used by the legacy
+  HTTP admin adapter to serve `/apps/{appId}/` without exposing data/cache/run directories or
+  traversal paths.
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
   signatures, trusted-key verification, and the signing/verification CLI used by first-party app
   Gradle tasks.
+- `:platform-appcatalog`: signed catalog source parsing, signature verification, artifact digest
+  checks, safe ZIP extraction, and verified staging for AppHost install/update flows.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -822,7 +846,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   stop, uninstall, and replace an installed app bundle from a caller-supplied local staged
   directory through `:platform-apphost` and the Platform API v1. Signed local staged bundles are
   supported. Signed local and HTTPS catalog sources can now install or update apps through the
-  same AppHost staged-directory semantics; background app-update fetching remains future work.
+  same AppHost staged-directory semantics. Static app UI routes are served from the installed
+  bundle under `/apps/{appId}/`; background app-update fetching remains future work.
 
 ## Architecture Overview
 
@@ -835,8 +860,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
-    `:platform-api`, `:platform-apphost`, `:platform-appdist`, `:platform-web-shell`,
-    `:runtime-node`,
+    `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`,
+    `:platform-appcatalog`, `:platform-web-shell`, `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
     `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -884,7 +909,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `CoreFcpServerDependenciesFactory`, with package-local seams such as
   `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
   `FcpInsertRuntimeSupport` splitting server-owned, message-owned, GET/fetch, and insert/USK
-  concerns. The protocol leaf also keeps the persistent-bucket and filter seams detached from the
+  concerns. FCP insert request options and mutable insert-context handles stay adapter-owned
+  through `FcpInsertOptions`, `FcpInsertBehaviorOptions`, and `FcpInsertContextHandle`. The
+  protocol leaf also keeps the persistent-bucket and filter seams detached from the
   concrete runtime, while runtime-owned FCP seam types now live under `network.crypta.runtime.fcp`
   and `network.crypta.runtime.endpoints.fcp`. Concrete persistent-request services, queue
   adapters, alert-feed adapters, persistent-bucket bindings, filter bindings, and endpoint-handle
@@ -944,8 +971,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.node.PrioRunnable`, `network.crypta.node.SemiOrderedShutdownHook`, and
   `network.crypta.support.IllegalValueException`, plus `network.crypta.support.JVMVersion`, the
   generic `HTTPRequest` / `HTTPUploadedFile` / `MultiValueTable` / `SizeUtil` surface, generic
-  helpers such as `URIPreEncoder`, `IOUtils`, and `LegacyFileSupport`, and the cycle-safe
-  file-backed support I/O slice.
+  helpers such as `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, and `HTMLDecoder`, and the
+  cycle-safe file-backed support I/O slice.
 - Support (`network.crypta.support`): logging, data structures, threading, and helpers are now
   split between `:foundation-support` and the root project. Keep generic reusable utilities in the
   foundation leaf; daemon-coupled support code still remains in the root.
@@ -967,19 +994,21 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   exception subset, the `network.crypta.client.async.persistence` seam, the leaf-safe
   `network.crypta.client.async` utility/value subset, event/helper types such as
   `SplitfileCompatibilityMode*`, selected filter policy/helper types such as `HTMLFilterPolicy`,
-  plus `network.crypta.support.MediaType`, `InsertUriChecks`, and the small manifest/model helper
-  subset under `network.crypta.support.*`;
+  concrete media/CSS/HTML parser and filter helpers, plus `network.crypta.support.MediaType`,
+  `InsertUriChecks`, and the small manifest/model helper subset under
+  `network.crypta.support.*`;
   `:kernel-transport` provides the compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers including `SSLNetworkInterface`; `:kernel-routing` provides the
   compile-neutral phase-1 `network.crypta.node` helper slice across selected request/routing
-  value, exception, callback, and request-item types; `:runtime-spi` provides
+  value, exception, callback, priority, and request-item types; `:runtime-spi` provides
   `network.crypta.runtime.spi`;
   `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
   feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
-  v1 core for installed local apps; `:platform-appdist` provides the local app bundle digest,
-  signing, and verification tooling; `:platform-appcatalog` provides signed catalog source,
+  v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route and
+  asset-resolution helpers; `:platform-appdist` provides the local app bundle digest, signing, and
+  verification tooling; `:platform-appcatalog` provides signed catalog source,
   artifact verification, and safe ZIP staging support;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`

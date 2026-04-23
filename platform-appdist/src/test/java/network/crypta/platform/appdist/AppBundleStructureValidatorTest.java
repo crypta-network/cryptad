@@ -95,7 +95,45 @@ class AppBundleStructureValidatorTest {
         "app.exec is not launchable on any supported platform: bin/start", exception.getMessage());
   }
 
+  @Test
+  void validate_whenStaticUiEntryExists_expectValidatedBundle() throws Exception {
+    Path bundleRoot =
+        createBundle(
+            "bin/start.sh",
+            "echo sample\n",
+            "app.ui.mode=static\napp.ui.entry=static/index.html\n");
+    Files.createDirectories(bundleRoot.resolve("static"));
+    Files.writeString(bundleRoot.resolve("static/index.html"), "<html></html>");
+
+    AppBundleStructureValidator.ValidatedBundle validated =
+        AppBundleStructureValidator.validate(bundleRoot);
+
+    assertEquals(AppUiMode.STATIC, validated.manifest().uiMode());
+  }
+
+  @Test
+  void validate_whenStaticUiEntryIsMissing_expectFailure() throws Exception {
+    Path bundleRoot =
+        createBundle(
+            "bin/start.sh",
+            "echo sample\n",
+            "app.ui.mode=static\napp.ui.entry=static/index.html\n");
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class, () -> AppBundleStructureValidator.validate(bundleRoot));
+
+    assertEquals(
+        "app.ui.entry does not resolve to a file in bundle: static/index.html",
+        exception.getMessage());
+  }
+
   private Path createBundle(String execPath, String executableContent) throws Exception {
+    return createBundle(execPath, executableContent, "");
+  }
+
+  private Path createBundle(String execPath, String executableContent, String uiProperties)
+      throws Exception {
     Path bundleRoot = Files.createTempDirectory(tempDir, "bundle-");
     Path executable = bundleRoot.resolve(execPath);
     Files.createDirectories(executable.getParent());
@@ -108,7 +146,8 @@ class AppBundleStructureValidatorTest {
         app.version=1.0.0
         app.exec=%s
         """
-            .formatted(execPath),
+                .formatted(execPath)
+            + uiProperties,
         StandardCharsets.UTF_8);
     Files.writeString(executable, executableContent, StandardCharsets.UTF_8);
     return bundleRoot;

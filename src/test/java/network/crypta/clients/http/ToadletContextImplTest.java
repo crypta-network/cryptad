@@ -99,6 +99,20 @@ class ToadletContextImplTest {
   }
 
   @Test
+  void isMethodAllowedInRestrictedMode_whenHeadTargetsAppUi_returnsTrue() {
+    URI uri = URI.create("http://localhost/apps/demo-app/");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("HEAD", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenHeadTargetsPlatformApi_returnsFalse() {
+    URI uri = URI.create("http://localhost" + PlatformApiPaths.API_V1_PREFIX + "apps/install");
+
+    assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("HEAD", uri));
+  }
+
+  @Test
   void isMethodAllowedInRestrictedMode_whenDeleteTargetsNonPlatformRoute_returnsFalse() {
     URI uri = URI.create("http://localhost/downloads/");
 

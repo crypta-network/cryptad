@@ -1,6 +1,7 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated September 16, 2025, to cover the CoreUpdater package-based distribution flow.
+> Updated April 23, 2026, to cover the CoreUpdater package-based distribution flow, signed
+> first-party app bundles, signed app catalogs, and app-owned static UI routing.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -43,14 +44,26 @@
 - **Environment validation**: run smoke tests on each target OS using `build/jpackage/Crypta`, `build/distributions/`, or the staged Flatpak bundle. Ensure the installers launch and locate `cryptad-dist/` correctly.
 - **Dependency review**: verify updater metadata and package checksums are consistent with produced artifacts.
 
-## Phase 3 Release Gates
+## Platform Release Gates
 Treat these as release blockers, in order:
 
 1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
 2. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 3. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
-4. **Hyphanet interop smoke** - run the packaged-node compatibility smoke locally when the environment is prepared, or verify that the CI `interop-smoke` job passed. The gate is documented in [tools/interop/README.md](../tools/interop/README.md) and summarized in [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
-5. **Interop failure artifacts** - if the interop gate fails, preserve `build/interop-smoke/` from the local run or the CI uploaded artifact before rerunning or cleaning the workspace.
+4. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
+   validates artifact size/SHA-256, extracts safely, and can install or update through
+   `/api/v1/app-catalogs`. The catalog contract is documented in
+   [app-catalogs.md](app-catalogs.md).
+5. **App-owned UI smoke, when static UI apps ship** - open the advertised `uiUrl` for at least one
+   static UI app, confirm nested-entry assets load under `/apps/{appId}/`, and verify no
+   filesystem path leaks appear in error responses. The route contract is documented in
+   [app-owned-ui.md](app-owned-ui.md).
+6. **Hyphanet interop smoke** - run the packaged-node compatibility smoke locally when the
+   environment is prepared, or verify that the CI `interop-smoke` job passed. The gate is
+   documented in [tools/interop/README.md](../tools/interop/README.md) and summarized in
+   [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
+7. **Interop failure artifacts** - if the interop gate fails, preserve `build/interop-smoke/` from
+   the local run or the CI uploaded artifact before rerunning or cleaning the workspace.
 
 ## Build
 1. Clean build for deterministic artifacts:

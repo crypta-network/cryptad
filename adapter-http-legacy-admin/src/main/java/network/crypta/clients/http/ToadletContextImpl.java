@@ -25,6 +25,7 @@ import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.platform.api.PlatformApiPaths;
+import network.crypta.platform.appui.AppUiPaths;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.HTMLEncoder;
@@ -696,11 +697,15 @@ public final class ToadletContextImpl implements ToadletContext {
     }
     mvt.put("cross-origin-embedder-policy", "require-corp");
     mvt.put("cross-origin-opener-policy", "same-origin");
-    String contentSecurityPolicy = generateCSP(options.allowScripts(), options.allowFrames());
-    mvt.put("content-security-policy", contentSecurityPolicy);
-    mvt.put("x-content-security-policy", contentSecurityPolicy);
-    mvt.put("x-webkit-csp", contentSecurityPolicy);
-    mvt.put("x-frame-options", options.allowFrames() ? "SAMEORIGIN" : "DENY");
+    if (!mvt.containsKey("content-security-policy")) {
+      String contentSecurityPolicy = generateCSP(options.allowScripts(), options.allowFrames());
+      mvt.put("content-security-policy", contentSecurityPolicy);
+      mvt.put("x-content-security-policy", contentSecurityPolicy);
+      mvt.put("x-webkit-csp", contentSecurityPolicy);
+    }
+    if (!mvt.containsKey("x-frame-options")) {
+      mvt.put("x-frame-options", options.allowFrames() ? "SAMEORIGIN" : "DENY");
+    }
     StringBuilder buf = new StringBuilder(1024);
     buf.append("HTTP/1.1 ");
     buf.append(replyHeaders.code());
@@ -936,9 +941,14 @@ public final class ToadletContextImpl implements ToadletContext {
   static boolean isMethodAllowedInRestrictedMode(String method, URI uri) {
     return switch (method) {
       case "GET", "POST" -> true;
+      case "HEAD" -> isAppUiPath(uri);
       case "DELETE" -> isPlatformApiPath(uri);
       default -> false;
     };
+  }
+
+  private static boolean isAppUiPath(URI uri) {
+    return uri != null && uri.getPath() != null && uri.getPath().startsWith(AppUiPaths.APPS_ROOT);
   }
 
   private static boolean isPlatformApiPath(URI uri) {

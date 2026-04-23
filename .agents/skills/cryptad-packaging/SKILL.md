@@ -24,8 +24,9 @@ Use this skill when working on:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`,
-  `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+  `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
+  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
@@ -41,6 +42,12 @@ Use this skill when working on:
   daemon distribution rooted at `:cryptad`.
 - The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, and the
   `:platform-apphost` JAR contributes the transport-neutral local AppHost core used by that API.
+- The `:platform-app-ui` JAR contributes app-owned static UI route helpers used by the legacy HTTP
+  admin adapter to serve installed bundle files under `/apps/{appId}/`.
+- The `:platform-appdist` JAR contributes signed local app bundle digest, signature, verifier,
+  trusted-key, and distribution-tool classes used by first-party app tasks and AppHost validation.
+- The `:platform-appcatalog` JAR contributes signed catalog source parsing, verification,
+  artifact download, safe ZIP extraction, and verified staging support.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
   JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
 - The `:runtime-alerts` JAR contributes the detached alert/feed model subset, including the
@@ -62,6 +69,10 @@ Use this skill when working on:
   helper package.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
+- First-party app projects such as `:apps:queue-manager` and `:apps:publisher` provide staged app
+  bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
+  artifacts and AppHost install inputs; they are not daemon entrypoints inside
+  `build/cryptad-dist`.
 
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.

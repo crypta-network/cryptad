@@ -1,7 +1,10 @@
 # Phase 3 Platform Primacy Closeout
 
 This document records the Phase 3 Platform Primacy state after PR-194: what landed, which modules
-own the platform surfaces now, which release gates must pass, and which work stays deferred.
+owned the platform surfaces at closeout, which release gates must pass, and which work stayed
+deferred at that snapshot. Later Phase 4 app-platform work has since added signed app catalogs and
+app-owned static UI routes; those current contracts live in [app-catalogs.md](app-catalogs.md) and
+[app-owned-ui.md](app-owned-ui.md).
 
 ## Status
 
@@ -88,8 +91,9 @@ Signing and verification are separate release gates:
 
 Signing inputs, trusted-key inputs, sidecar formats, and local install/update examples are
 documented in [app-distribution.md](app-distribution.md). The staged bundles are local bundles.
-Remote catalogs, remote bundle downloads, browser-side uploads, and app-owned static serving remain
-future work.
+At the PR-194 snapshot, remote catalogs, remote bundle downloads, app-owned static UI serving, and
+browser-side uploads were still future work. Current catalog and app-owned static UI behavior is
+documented in [app-catalogs.md](app-catalogs.md) and [app-owned-ui.md](app-owned-ui.md).
 
 ## Platform API and Web Shell
 
@@ -133,12 +137,14 @@ The release runbook records the same gates in
 
 ## Deferred to Phase 4
 
-Phase 4 candidates are plans, not PR-194 implementation scope:
+Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 
-- Remote signed app catalogs and remote bundle fetch.
-- App proxy/static serving for independent app UIs.
-- Broader first-party app catalog.
-- Better app permission enforcement and audit surfaces.
+- Remote signed app catalogs and verified artifact staging have landed; background update
+  scheduling remains future work.
+- App-owned static UI routes have landed for installed static bundles; stronger isolation remains
+  future work.
+- Broader first-party app catalog remains future work.
+- Better app permission enforcement and audit surfaces remain future work.
 - Legacy admin and browse retirement plan.
 - Longer USK and persistent-request interop soak tests.
 - Multi-OS interop matrix.

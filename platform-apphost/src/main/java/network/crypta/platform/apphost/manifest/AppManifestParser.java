@@ -55,6 +55,7 @@ public final class AppManifestParser {
         manifest.appName(),
         manifest.appVersion(),
         manifest.execPathText(),
+        manifest.uiMode(),
         manifest.uiEntry(),
         manifest.permissions(),
         manifest.dataQuotaBytes(),

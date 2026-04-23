@@ -34,6 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
@@ -645,8 +646,22 @@ public final class LocalProcessAppHost implements AppHost {
       throw new AppHostException(
           "app.exec does not resolve to a file in copied bundle: " + manifest.execPathText());
     }
+    validateCopiedStaticUiEntry(copiedRoot, manifest);
     validateLaunchableCopiedExecutable(copiedExecutable, manifest);
     return manifest;
+  }
+
+  private static void validateCopiedStaticUiEntry(Path copiedRoot, AppManifest manifest)
+      throws IOException {
+    if (manifest.uiMode() != AppUiMode.STATIC) {
+      return;
+    }
+    Path copiedUiEntry =
+        resolveBundleEntry(copiedRoot, manifest.staticUiEntryPath(), "app.ui.entry");
+    if (!Files.isRegularFile(copiedUiEntry, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException(
+          "app.ui.entry does not resolve to a file in copied bundle: " + manifest.uiEntry());
+    }
   }
 
   private static void requireMatchingUpdateTarget(String requestedAppId, AppManifest manifest)
@@ -1058,6 +1073,7 @@ public final class LocalProcessAppHost implements AppHost {
     environment.put("CRYPTAD_APP_RUN_DIR", paths.runDir().toString());
     environment.put("CRYPTAD_APP_TOKEN", token);
     environment.put("CRYPTAD_APP_PERMISSIONS", manifest.permissionsCsv());
+    environment.put("CRYPTAD_APP_UI_MODE", manifest.uiMode().manifestValue());
     if (manifest.uiEntry() != null) {
       environment.put("CRYPTAD_APP_UI_ENTRY", manifest.uiEntry());
     }

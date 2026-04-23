@@ -305,6 +305,9 @@ final class FProxyRegistrar {
             true,
             ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot())));
 
+    AppUiToadlet appUiToadlet = new AppUiToadlet(dependencies.appHost());
+    server.register(appUiToadlet, ToadletRegistration.basic(null, appUiToadlet.path(), true, true));
+
     PlatformApiToadlet platformApiToadlet =
         new PlatformApiToadlet(
             runtimePorts, dependencies.appHost(), dependencies.appCatalogManager());

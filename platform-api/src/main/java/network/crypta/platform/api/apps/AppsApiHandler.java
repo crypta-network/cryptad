@@ -18,6 +18,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
+import network.crypta.platform.appui.AppUiPaths;
 
 /**
  * App-management endpoint family for Platform API v1.
@@ -374,11 +375,13 @@ public final class AppsApiHandler {
    */
   private static Map<String, Object> summarize(
       AppManifest manifest, boolean installed, RunningAppSnapshot running) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
     json.put("appId", manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
+    json.put("uiMode", manifest.uiMode().manifestValue());
     json.put("uiEntry", manifest.uiEntry());
+    json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put("permissions", manifest.permissions());
     json.put("quota", quota(manifest));
     json.put("installed", installed);
@@ -398,11 +401,13 @@ public final class AppsApiHandler {
    * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
    */
   private static Map<String, Object> summarizeUnknown(String appId) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
     json.put("appId", appId);
     json.put("name", null);
     json.put("version", null);
+    json.put("uiMode", "none");
     json.put("uiEntry", null);
+    json.put("uiUrl", null);
     json.put("permissions", List.of());
     json.put("quota", unknownQuota());
     json.put("installed", false);
@@ -579,6 +584,7 @@ public final class AppsApiHandler {
         || message.startsWith("staging directory ")
         || message.startsWith("copied manifest ")
         || message.startsWith("copied app.exec ")
+        || message.startsWith("app.ui.entry ")
         || message.startsWith("app.exec ")
         || message.startsWith("staged app bundle ");
   }

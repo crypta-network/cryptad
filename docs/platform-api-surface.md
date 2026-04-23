@@ -1,6 +1,7 @@
 # Platform API Surface
 
-This page documents the current local Platform API v1 and Web Shell surfaces after Phase 3.
+This page documents the current local Platform API v1, Web Shell, app catalog, and app-owned UI
+surfaces.
 
 ## Scope
 
@@ -13,6 +14,10 @@ declared stable remote public API.
 
 Web Shell v1 is mounted separately at `/app/node/`. Its static assets are served beneath
 `/app/node/static/`, and its bootstrap payload points the browser at the Platform API root.
+
+Installed apps with static browser UI are mounted separately at `/apps/{appId}/`. The Platform API
+continues to own the JSON lifecycle/control plane under `/api/v1/apps`; it only publishes
+`uiMode`, `uiEntry`, and `uiUrl` so shells can open the correct app UI route.
 
 ## Response contract
 
@@ -81,7 +86,7 @@ JavaScript, and bootstrap model are owned by `:platform-web-shell`.
 
 ## Legacy HTTP and FCP relationship
 
-Platform API v1 does not replace legacy HTTP or FCP in Phase 3.
+Platform API v1 does not replace legacy HTTP or FCP in the current platform work.
 
 Legacy HTTP remains the current transport and authentication boundary for `/api/v1/` and
 `/app/node/`. The shared admin shell, admin toadlets, updater actions, and fallback pages remain in

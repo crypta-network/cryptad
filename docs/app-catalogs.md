@@ -108,7 +108,13 @@ Install and update endpoints prepare a verified temporary staged bundle, then de
 `/api/v1/apps/install?stagedDir=...` and `/api/v1/apps/{appId}/update?stagedDir=...` flows are
 unchanged.
 
+Catalog-installed apps use the same manifest UI contract as local staged apps. If the verified
+bundle declares `app.ui.mode=static` and a relative `app.ui.entry`, Cryptad serves the installed
+bundle UI at `/apps/{appId}/`. Existing shell-panel entries such as `/app/node/#queue` still open
+through their declared local route. See [app-owned-ui.md](app-owned-ui.md) for the static UI route
+and security boundary.
+
 ## Future work
 
-This PR does not add app-owned `/apps/{appId}/` static UI proxying, permission enforcement,
-container or WASM sandboxing, public app-store governance, or background app update scheduling.
+This PR does not add permission enforcement, container or WASM sandboxing, public app-store
+governance, or background app update scheduling.

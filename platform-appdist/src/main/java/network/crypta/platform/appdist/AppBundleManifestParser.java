@@ -261,7 +261,8 @@ public final class AppBundleManifestParser {
     String appName = required(properties, "app.name");
     String appVersion = required(properties, "app.version");
     String execPathText = normalizeExecPath(required(properties, "app.exec"));
-    String uiEntry = optional(properties, "app.ui.entry");
+    AppUiMode uiMode = parseUiMode(optional(properties, "app.ui.mode"));
+    String uiEntry = optionalUiEntry(properties);
     List<String> permissions = parsePermissions(optional(properties, "app.permissions"));
     Long dataQuotaBytes = parseOptionalLong(properties, "quota.data.bytes");
     Long cacheQuotaBytes = parseOptionalLong(properties, "quota.cache.bytes");
@@ -272,10 +273,19 @@ public final class AppBundleManifestParser {
           appName,
           appVersion,
           execPathText,
+          uiMode,
           uiEntry,
           permissions,
           dataQuotaBytes,
           cacheQuotaBytes);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static AppUiMode parseUiMode(String rawValue) throws AppDistributionException {
+    try {
+      return AppUiMode.parseManifestValue(rawValue);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -408,5 +418,14 @@ public final class AppBundleManifestParser {
       throw new AppDistributionException(key + " must not be blank");
     }
     return trimmed;
+  }
+
+  private static String optionalUiEntry(Properties properties) {
+    String value = properties.getProperty("app.ui.entry");
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    return trimmed.isEmpty() ? null : trimmed;
   }
 }

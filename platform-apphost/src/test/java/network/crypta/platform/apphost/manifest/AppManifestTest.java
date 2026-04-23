@@ -1,6 +1,7 @@
 package network.crypta.platform.apphost.manifest;
 
 import java.util.List;
+import network.crypta.platform.appdist.AppUiMode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -71,5 +72,27 @@ class AppManifestTest {
                     null));
 
     assertEquals("app.name must not be blank", exception.getMessage());
+  }
+
+  @Test
+  void constructor_whenStaticUiEntryIsUnsafe_expectFailure() {
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                new AppManifest(
+                    1,
+                    SAMPLE_APP_ID,
+                    SAMPLE_APP_NAME,
+                    SAMPLE_APP_VERSION,
+                    SAMPLE_EXEC_PATH,
+                    AppUiMode.STATIC,
+                    "../index.html",
+                    NO_PERMISSIONS,
+                    null,
+                    null));
+
+    assertEquals(
+        "app.ui.entry must stay under the app root: ../index.html", exception.getMessage());
   }
 }

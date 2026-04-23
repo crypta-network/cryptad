@@ -2,6 +2,7 @@
 
 `:adapter-http-legacy-admin` owns the shared legacy `network.crypta.clients.http` shell, the
 admin toadlets, the `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
+`/apps/{appId}/` app-owned static UI entrypoint. It also owns the matching
 `network/crypta/clients/http/**` main resources. It does not own the concrete browse/FProxy
 implementation classes. The admin leaf is now detached from `:runtime-node`.
 
@@ -34,6 +35,11 @@ The shared shell stays browse-neutral by crossing `LegacyHttpPaths` / `LegacyHtt
 constants and other small seam types instead of importing concrete browse-owned collaborator
 classes directly. Route publication, bookmark handling, push handling, and browser-side helpers
 stay split across the admin shell, the browse leaf, and the runtime bridge.
+
+App-owned static UI serving stays in the admin adapter as a thin HTTP bridge over `:platform-app-ui`
+and `:platform-apphost`. The adapter owns `/apps/` route registration and response writing, while
+the platform leaves own installed-app lookup, UI-mode interpretation, path normalization, content
+types, and static asset confinement.
 
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

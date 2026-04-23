@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import network.crypta.platform.appdist.AppBundleManifest;
+import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.InstalledAppPaths;
 
 /**
@@ -24,6 +26,7 @@ import network.crypta.platform.apphost.InstalledAppPaths;
  * @param appName human-readable application name
  * @param appVersion display version string
  * @param execPathText executable path relative to the installed app root
+ * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
  * @param uiEntry optional UI entry path, or {@code null}
  * @param permissions normalized permission strings
  * @param dataQuotaBytes optional data quota metadata, or {@code null}
@@ -35,6 +38,7 @@ public record AppManifest(
     String appName,
     String appVersion,
     String execPathText,
+    AppUiMode uiMode,
     String uiEntry,
     List<String> permissions,
     Long dataQuotaBytes,
@@ -47,23 +51,89 @@ public record AppManifest(
    * @param appName human-readable application name
    * @param appVersion display version string
    * @param execPathText executable path relative to the installed app root
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
    * @param uiEntry optional UI entry path, or {@code null}
    * @param permissions normalized permission strings
    * @param dataQuotaBytes optional data quota metadata, or {@code null}
    * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
    */
   public AppManifest {
-    if (manifestVersion != 1) {
-      throw new IllegalArgumentException("unsupported manifest.version: " + manifestVersion);
-    }
-    appId = normalizeAppId(appId);
-    appName = requireNonBlank(appName, "app.name");
-    appVersion = requireNonBlank(appVersion, "app.version");
-    execPathText = requireNonBlank(execPathText, "app.exec");
-    uiEntry = normalizeOptional(uiEntry);
-    permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
-    dataQuotaBytes = normalizeQuota(dataQuotaBytes, "quota.data.bytes");
-    cacheQuotaBytes = normalizeQuota(cacheQuotaBytes, "quota.cache.bytes");
+    AppBundleManifest normalized =
+        new AppBundleManifest(
+            manifestVersion,
+            appId,
+            appName,
+            appVersion,
+            execPathText,
+            uiMode,
+            uiEntry,
+            permissions,
+            dataQuotaBytes,
+            cacheQuotaBytes);
+    manifestVersion = normalized.manifestVersion();
+    appId = normalized.appId();
+    appName = normalized.appName();
+    appVersion = normalized.appVersion();
+    execPathText = normalized.execPathText();
+    uiMode = normalized.uiMode();
+    uiEntry = normalized.uiEntry();
+    permissions = normalized.permissions();
+    dataQuotaBytes = normalized.dataQuotaBytes();
+    cacheQuotaBytes = normalized.cacheQuotaBytes();
+  }
+
+  /**
+   * Creates a manifest using the appdist-owned backward-compatible UI-mode inference rules.
+   *
+   * <p>This overload preserves source compatibility for tests and embeddings that construct AppHost
+   * manifests directly. Text parsed from {@code cryptad-app.properties} normally arrives through
+   * {@link AppManifestParser}, which supplies the canonical normalized mode.
+   *
+   * @param manifestVersion manifest schema version
+   * @param appId stable path-safe app identifier
+   * @param appName human-readable application name
+   * @param appVersion display version string
+   * @param execPathText executable path relative to the installed app root
+   * @param uiEntry optional UI entry path, or {@code null}
+   * @param permissions normalized permission strings
+   * @param dataQuotaBytes optional data quota metadata, or {@code null}
+   * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   */
+  public AppManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes) {
+    this(
+        new AppBundleManifest(
+            manifestVersion,
+            appId,
+            appName,
+            appVersion,
+            execPathText,
+            uiEntry,
+            permissions,
+            dataQuotaBytes,
+            cacheQuotaBytes));
+  }
+
+  private AppManifest(AppBundleManifest manifest) {
+    this(
+        manifest.manifestVersion(),
+        manifest.appId(),
+        manifest.appName(),
+        manifest.appVersion(),
+        manifest.execPathText(),
+        manifest.uiMode(),
+        manifest.uiEntry(),
+        manifest.permissions(),
+        manifest.dataQuotaBytes(),
+        manifest.cacheQuotaBytes());
   }
 
   /**
@@ -77,6 +147,19 @@ public record AppManifest(
    */
   public Path execPath() {
     return Path.of(execPathText).normalize();
+  }
+
+  /**
+   * Returns the static UI entry as a normalized relative installed-bundle path.
+   *
+   * @return normalized static UI entry path within the installed bundle
+   * @throws IllegalStateException if this manifest does not declare a static UI
+   */
+  public Path staticUiEntryPath() {
+    if (uiMode != AppUiMode.STATIC) {
+      throw new IllegalStateException("app.ui.mode is not static: " + uiMode.manifestValue());
+    }
+    return Path.of(uiEntry).normalize();
   }
 
   /**
@@ -104,35 +187,12 @@ public record AppManifest(
    *     AppHost naming pattern
    */
   public static String normalizeAppId(String appId) {
-    String normalized = requireNonBlank(appId, "app.id").toLowerCase(Locale.ROOT);
+    String trimmed = Objects.requireNonNull(appId, "app.id").trim();
+    if (trimmed.isEmpty()) {
+      throw new IllegalArgumentException("app.id must not be blank");
+    }
+    String normalized = trimmed.toLowerCase(Locale.ROOT);
     InstalledAppPaths.normalizeAppId(normalized);
     return normalized;
-  }
-
-  private static String normalizeOptional(String value) {
-    if (value == null) {
-      return null;
-    }
-    String trimmed = value.trim();
-    return trimmed.isEmpty() ? null : trimmed;
-  }
-
-  private static Long normalizeQuota(Long quota, String fieldName) {
-    if (quota == null) {
-      return null;
-    }
-    if (quota < 0L) {
-      throw new IllegalArgumentException(fieldName + " must be >= 0");
-    }
-    return quota;
-  }
-
-  private static String requireNonBlank(String value, String fieldName) {
-    Objects.requireNonNull(value, fieldName);
-    String trimmed = value.trim();
-    if (trimmed.isEmpty()) {
-      throw new IllegalArgumentException(fieldName + " must not be blank");
-    }
-    return trimmed;
   }
 }

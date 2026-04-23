@@ -50,13 +50,25 @@ We will acknowledge a report within one week. If you do not get a reply
 within one week, it most likely got lost: Please send it again!
 
 
-App Bundle Signing Keys
------------------------
+App bundle, catalog, and UI trust boundaries
+--------------------------------------------
 
-Signed local AppHost bundles use developer-supplied key material during local build and verification tasks.
+Signed AppHost bundles and signed app catalogs use developer-supplied Ed25519 key material during
+local build, verification, install, and catalog-refresh flows.
 
 - Do not commit production private keys, keystores, or exported PKCS#8 private key material to this repository.
 - Keep local development keys outside the repo and pass them through Gradle properties or environment variables, or point at local files outside the checkout.
-- If you generate a development-only key pair for testing signed bundles, label it clearly as non-production and rotate or remove it when no longer needed.
+- If you generate a development-only key pair for testing signed bundles or catalogs, label it clearly as non-production and rotate or remove it when no longer needed.
+- The unsigned-bundle bypass is only for explicit local development. It does not make remote catalogs or remote artifacts trusted.
 
-Remote catalogs and remote bundle downloads are future work. PR-192 only establishes local signed staged bundle files and local verification hooks.
+Catalog installs and updates verify the signed catalog, the advertised artifact size and SHA-256,
+and the extracted bundle signature before AppHost installs the app. Catalog fetches support local
+files, `https:`, and loopback-only `http:` sources.
+
+App-owned static UI routes serve files from the immutable installed bundle under `/apps/{appId}/`.
+They do not serve app data, cache, run directories, catalog scratch directories, or caller staging
+paths. Static UI remains same-origin with the local admin UI and Platform API, so external URL
+entries are rejected and route responses use conservative CSP, `nosniff`, no-referrer, and
+non-public no-cache headers. Treat a bypass that serves host files, follows symlink escapes,
+executes JavaScript while the admin UI has JavaScript disabled, or allows bundled UI to exfiltrate
+operator-entered data off-node as security-relevant.
