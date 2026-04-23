@@ -22,10 +22,12 @@ Use this skill when you need to:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`,
-  `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+  `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
+  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
+- First-party app bundle projects live under `:apps:queue-manager` and `:apps:publisher`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -36,7 +38,7 @@ Use this skill when you need to:
   `network.crypta.node.SemiOrderedShutdownHook`, `network.crypta.support.IllegalValueException`,
   `network.crypta.support.JVMVersion`, the generic `HTTPRequest` / `HTTPUploadedFile` /
   `MultiValueTable` / `SizeUtil` surface, generic helpers such as `URIPreEncoder`, `IOUtils`,
-  and `LegacyFileSupport`, plus the cycle-safe file-backed support I/O slice.
+  `LegacyFileSupport`, and `HTMLDecoder`, plus the cycle-safe file-backed support I/O slice.
 - `:foundation-store-contracts` owns the neutral `network.crypta.store` contracts
   `BlockMetadata`, `GetPubkey`, and `StorableBlock`, plus the `network.crypta.store.alerts`
   seam.
@@ -57,7 +59,8 @@ Use this skill when you need to:
   `network.crypta.client`, `network.crypta.client.events`, `network.crypta.client.filter`,
   `network.crypta.client.async.alerts`, `network.crypta.client.async.persistence`,
   event/helper types such as `SplitfileCompatibilityMode*`, filter policy/helper types such as
-  `HTMLFilterPolicy`, `InsertUriChecks`, and `network.crypta.support.MediaType`.
+  `HTMLFilterPolicy`, concrete media/CSS/HTML parser/filter helpers, `InsertUriChecks`, and
+  `network.crypta.support.MediaType`.
 - `:kernel-transport` owns the compile-neutral phase-1 transport slice across selected
   `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
   allow-list parsing, listener abstraction, `SSLNetworkInterface`, I/O statistics collection,
@@ -65,7 +68,8 @@ Use this skill when you need to:
 - `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice across selected
   `network.crypta.node` value, exception, callback, and request-item helper types such as
   `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
-  `PeerStatusCounts`, `RecentlyFailedReturn`, and `SendableRequestItem*`.
+  `PeerStatusCounts`, `RecentlyFailedReturn`, `RequestPriorityClasses`, and
+  `SendableRequestItem*`.
 - Every extracted internal leaf must keep leaf-owned aggregated-output metadata in sync at
   `<leaf>/gradle/owned-output-patterns.txt`, even for structurally separate package/resource
   moves. Non-clean builds and branch switches can leave stale non-owner aggregated outputs behind,
@@ -87,6 +91,13 @@ Use this skill when you need to:
   under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core plus its focused leaf
   tests under `platform-apphost/src/test/java`.
+- `:platform-app-ui` owns app-owned static UI route, path, content-type, header, and asset
+  resolver helpers plus focused tests under `platform-app-ui/src/test/java`.
+- `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest, and
+  distribution-tool code plus focused tests under `platform-appdist/src/test/java`.
+- `:platform-appcatalog` owns signed catalog source parsing, verification, artifact download,
+  safe ZIP extraction, and verified staging code plus focused tests under
+  `platform-appcatalog/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
   `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
@@ -144,6 +155,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Run the focused leaf-local boundary suites:
   - `./gradlew :platform-api:test`
   - `./gradlew :platform-apphost:test`
+  - `./gradlew :platform-app-ui:test`
+  - `./gradlew :platform-appdist:test`
+  - `./gradlew :platform-appcatalog:test`
   - `./gradlew :platform-web-shell:test`
   - `./gradlew :kernel-content:test`
   - `./gradlew :kernel-transport:test`
@@ -162,8 +176,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava`
 - Compile the support leaf when you touched extracted generic support classes:
   - `./gradlew :foundation-support:classes`
-  - Representative moved types: `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, file-backed
-    buckets, generic HTTP request/upload helpers.
+  - Representative moved types: `URIPreEncoder`, `IOUtils`, `LegacyFileSupport`, `HTMLDecoder`,
+    file-backed buckets, generic HTTP request/upload helpers.
 - Compile the crypto/keys leaf when you touched `network.crypta.crypt`, `network.crypta.keys`,
   or the moved bucket/length helpers:
   - `./gradlew :foundation-crypto-keys:classes`
@@ -186,8 +200,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   classes:
   - `./gradlew :kernel-content:compileJava`
   - Representative moved types: `ClientEventProducer`, `SplitfileCompatibilityMode*`,
-    `HTMLFilterPolicy`, `InsertUriChecks`, `PersistentRequestCoordinatorContext`,
-    `ClientGetterOptions`.
+    `HTMLFilterPolicy`, concrete media/CSS/HTML parser/filter helpers, `InsertUriChecks`,
+    `PersistentRequestCoordinatorContext`, `ClientGetterOptions`.
 - Compile the phase-1 kernel-transport leaf when you touched extracted compile-neutral transport
   helpers:
   - `./gradlew :kernel-transport:compileJava`
@@ -196,12 +210,19 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Compile the phase-1 kernel-routing leaf when you touched extracted compile-neutral routing/helper
   classes:
   - `./gradlew :kernel-routing:compileJava`
+  - Representative moved types: `RequestPriorityClasses`, `RequestClient`, `SendableRequestItem*`.
 - Compile only the runtime SPI leaf when you touched just that JDK-only API surface:
   - `./gradlew :runtime-spi:compileJava`
 - Compile the Platform API leaf when you touched `network.crypta.platform.api`:
   - `./gradlew :platform-api:compileJava`
 - Compile the AppHost leaf when you touched `network.crypta.platform.apphost`:
   - `./gradlew :platform-apphost:compileJava`
+- Compile the app-owned static UI leaf when you touched `network.crypta.platform.appui`:
+  - `./gradlew :platform-app-ui:compileJava`
+- Compile the app distribution leaf when you touched `network.crypta.platform.appdist`:
+  - `./gradlew :platform-appdist:compileJava`
+- Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
+  - `./gradlew :platform-appcatalog:compileJava`
 - Compile the Web Shell leaf when you touched `network.crypta.platform.webshell`:
   - `./gradlew :platform-web-shell:compileJava`
 - Compile the extracted runtime-alerts leaf when you touched `network.crypta.runtime.alerts`:
@@ -223,6 +244,16 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :bridge-http-runtime:compileJava`
 - Compile the root project and its unchanged test tree against the leaf-module layout:
   - `./gradlew compileJava compileTestJava`
+
+## First-party app bundle checks
+- Stage first-party app bundles:
+  - `./gradlew stageFirstPartyApps`
+- Run app project tests:
+  - `./gradlew :apps:queue-manager:test`
+  - `./gradlew :apps:publisher:test`
+- Sign and verify staged bundles only when signing/trusted-key inputs are available:
+  - `./gradlew signFirstPartyApps`
+  - `./gradlew verifyFirstPartyApps`
 
 ## Run tasks
 - Run daemon entrypoint (`network.crypta.runtime.bootstrap.NodeStarter`):

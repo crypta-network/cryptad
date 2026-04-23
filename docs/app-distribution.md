@@ -4,18 +4,18 @@ This document describes Cryptad's local signed staged app bundle workflow for fi
 
 ## Scope
 
-PR-192 adds signed local bundle sidecars and Gradle tasks for staging, signing, and verifying first-party apps.
-PR-194 treats staging, signing, and verification as Phase 3 release gates; see
-[phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md) and
+This page covers the local signed bundle sidecars and Gradle tasks used to stage, sign, and verify
+first-party AppHost apps. PR-194 treats staging, signing, and verification as Phase 3 release gates;
+see [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md) and
 [cryptad-release-workflow-and-runbook.md](cryptad-release-workflow-and-runbook.md).
 
-Out of scope in this PR:
+Related but documented elsewhere:
 
-- Remote catalog fetching
-- Remote bundle downloads
-- Public app store UI
-- Browser-side bundle uploads
-- App proxying and app-owned static serving
+- Signed catalog sources and remote/local catalog artifact install/update:
+  [app-catalogs.md](app-catalogs.md)
+- App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
+- Public app store UI, browser-side bundle uploads, permission enforcement, SDK APIs, and app
+  sandboxing remain future platform work.
 
 ## Bundle Files
 
@@ -43,7 +43,28 @@ The sidecars follow the PR-192 local distribution format:
   - `signature.payload=cryptad-app.digests`
   - `signature.value.base64=<base64 Ed25519 signature over the exact digest sidecar bytes>`
 
-The digest includes `cryptad-app.properties` and regular bundle files. It excludes distribution sidecars such as `cryptad-app.digests`, `cryptad-app.signature`, and reserved future catalog sidecars.
+The digest includes `cryptad-app.properties` and regular bundle files. It excludes reserved
+distribution sidecars such as `cryptad-app.digests`, `cryptad-app.signature`,
+`cryptad-app.catalog`, and `cryptad-app.catalog.signature`.
+
+## UI Manifest Fields
+
+App bundles can declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
+
+```properties
+app.ui.mode=none|shell-panel|static
+app.ui.entry=static/index.html
+```
+
+The mode is optional for compatibility. Missing `app.ui.entry` means `none`; an absolute local
+entry such as `/app/node/#queue` infers `shell-panel`; a relative entry such as
+`static/index.html` infers `static`. Static entries are normalized relative paths inside the
+signed bundle and are validated during structure checks. They must not point at reserved
+distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
+colons, or control characters. Existing shell-panel entries remain valid.
+
+See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, static asset
+security boundary, and API summary fields.
 
 ## Gradle Tasks
 
@@ -167,4 +188,6 @@ Preferred local patterns:
 
 ## Future Work
 
-Remote catalog fetching, remote bundle downloads, and public catalog management are deferred to later PRs. PR-192 only establishes signed local bundle files and Gradle-side signing and verification hooks.
+Public catalog governance, background app-update scheduling, permission enforcement, SDK APIs, and
+app sandboxing remain later platform work. Signed bundles now carry the manifest metadata needed by
+app-owned static UI routes.

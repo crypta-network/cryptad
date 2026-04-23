@@ -264,6 +264,23 @@ class FProxyRegistrarTest {
   }
 
   @Test
+  void maybeCreateFProxyEtc_whenRegisteringAppUi_registersHiddenAppsPrefixAtFront() {
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
+
+    ToadletRegistration appUiRegistration =
+        capturedRegistrations().stream()
+            .filter(registered -> registered.toadlet() instanceof AppUiToadlet)
+            .map(RegisteredToadlet::registration)
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals("/apps/", appUiRegistration.urlPrefix());
+    assertTrue(appUiRegistration.atFront());
+    assertTrue(appUiRegistration.fullOnly());
+  }
+
+  @Test
   void maybeCreateFProxyEtc_whenUsingConcreteBrowseRegistrar_preservesTailBrowseRouteOrder() {
     FProxyRegistrar.maybeCreateFProxyEtc(
         dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
@@ -364,6 +381,7 @@ class FProxyRegistrarTest {
             any(LegacyHttpBrowseRouteRegistrarContext.class),
             same(server));
     verifyRegistrationInOrder(inOrder, server, WebShellToadlet.class, WebShellPaths.SHELL_ROOT);
+    verifyRegistrationInOrder(inOrder, server, AppUiToadlet.class, "/apps/");
     verifyRegistrationInOrder(
         inOrder, server, PlatformApiToadlet.class, PlatformApiToadlet.MOUNT_PATH);
     inOrder

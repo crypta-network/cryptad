@@ -62,12 +62,27 @@ public final class AppBundleStructureValidator {
           "app.exec does not resolve to a file in bundle: " + manifest.execPathText());
     }
     AppDistributionSidecars.validateBundleEntry(normalizedBundleRoot, bundleRealRoot, executable);
+    validateStaticUiEntry(normalizedBundleRoot, bundleRealRoot, manifest);
     LaunchMode launchMode = classifyLaunchMode(executable);
     if (launchMode == null) {
       throw new AppDistributionException(
           "app.exec is not launchable on any supported platform: " + manifest.execPathText());
     }
     return new ValidatedBundle(manifest, executable, launchMode);
+  }
+
+  private static void validateStaticUiEntry(
+      Path normalizedBundleRoot, Path bundleRealRoot, AppBundleManifest manifest)
+      throws IOException {
+    if (manifest.uiMode() != AppUiMode.STATIC) {
+      return;
+    }
+    Path staticEntry = normalizedBundleRoot.resolve(manifest.staticUiEntryPath()).normalize();
+    if (!Files.isRegularFile(staticEntry, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppDistributionException(
+          "app.ui.entry does not resolve to a file in bundle: " + manifest.uiEntry());
+    }
+    AppDistributionSidecars.validateBundleEntry(normalizedBundleRoot, bundleRealRoot, staticEntry);
   }
 
   private static LaunchMode classifyLaunchMode(Path executable) throws IOException {

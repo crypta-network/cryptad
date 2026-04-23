@@ -14,6 +14,7 @@ dependencies {
   implementation(project(":kernel-content"))
 
   api(project(":runtime-spi"))
+  api(project(":platform-app-ui"))
   api(project(":platform-apphost"))
   api(project(":platform-appcatalog"))
 

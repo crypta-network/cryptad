@@ -1,5 +1,6 @@
 package network.crypta.platform.appdist;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +27,7 @@ import java.util.regex.Pattern;
  * @param appName human-readable application name shown by host and API surfaces
  * @param appVersion display version string recorded in installed app summaries
  * @param execPathText executable path relative to the bundle root, using normalized separators
+ * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
  * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
  * @param permissions normalized permission strings declared by the app manifest
  * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
@@ -37,12 +39,14 @@ public record AppBundleManifest(
     String appName,
     String appVersion,
     String execPathText,
+    AppUiMode uiMode,
     String uiEntry,
     List<String> permissions,
     Long dataQuotaBytes,
     Long cacheQuotaBytes) {
   private static final Pattern APP_ID_PATTERN =
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
+  private static final Pattern WINDOWS_DRIVE_PREFIX_PATTERN = Pattern.compile("^[a-zA-Z]:.*");
 
   /**
    * Creates a validated staged-bundle manifest snapshot.
@@ -58,6 +62,7 @@ public record AppBundleManifest(
    * @param appName human-readable application name shown by host and API surfaces
    * @param appVersion display version string recorded in installed app summaries
    * @param execPathText executable path relative to the bundle root, using normalized separators
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
    * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
    * @param permissions normalized permission strings declared by the app manifest
    * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
@@ -73,9 +78,50 @@ public record AppBundleManifest(
     appVersion = requireNonBlank(appVersion, "app.version");
     execPathText = requireNonBlank(execPathText, "app.exec");
     uiEntry = normalizeOptional(uiEntry);
+    uiMode = inferUiMode(uiMode, uiEntry);
+    uiEntry = normalizeUiEntry(uiMode, uiEntry);
     permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
     dataQuotaBytes = normalizeQuota(dataQuotaBytes, "quota.data.bytes");
     cacheQuotaBytes = normalizeQuota(cacheQuotaBytes, "quota.cache.bytes");
+  }
+
+  /**
+   * Creates a manifest using the backward-compatible UI-mode inference rules.
+   *
+   * <p>This overload keeps existing tests and callers source-compatible while the parser supplies
+   * the explicit canonical mode field for newly parsed manifests.
+   *
+   * @param manifestVersion manifest schema version, currently required to be {@code 1}
+   * @param appId stable lower-case application identifier safe for managed bundle paths
+   * @param appName human-readable application name shown by host and API surfaces
+   * @param appVersion display version string recorded in installed app summaries
+   * @param execPathText executable path relative to the bundle root, using normalized separators
+   * @param uiEntry optional UI entry path, or {@code null} when the app has no browser UI surface
+   * @param permissions normalized permission strings declared by the app manifest
+   * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
+   * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   */
+  public AppBundleManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        null,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes);
   }
 
   /**
@@ -89,6 +135,23 @@ public record AppBundleManifest(
    */
   public Path execPath() {
     return Path.of(execPathText).normalize();
+  }
+
+  /**
+   * Returns the static UI entry as a normalized relative bundle path.
+   *
+   * <p>This method is only valid for {@link AppUiMode#STATIC} manifests. The parser and record
+   * constructor have already rejected absolute paths, traversal, and platform-specific absolute
+   * forms, but callers still need filesystem checks before serving or trusting the resolved file.
+   *
+   * @return normalized static UI entry path within the bundle
+   * @throws IllegalStateException if this manifest does not declare a static UI
+   */
+  public Path staticUiEntryPath() {
+    if (uiMode != AppUiMode.STATIC) {
+      throw new IllegalStateException("app.ui.mode is not static: " + uiMode.manifestValue());
+    }
+    return Path.of(uiEntry).normalize();
   }
 
   /**
@@ -118,6 +181,97 @@ public record AppBundleManifest(
     }
     String trimmed = value.trim();
     return trimmed.isEmpty() ? null : trimmed;
+  }
+
+  private static AppUiMode inferUiMode(AppUiMode explicitMode, String uiEntry) {
+    if (explicitMode != null) {
+      return explicitMode;
+    }
+    if (uiEntry == null) {
+      return AppUiMode.NONE;
+    }
+    return uiEntry.startsWith("/") ? AppUiMode.SHELL_PANEL : AppUiMode.STATIC;
+  }
+
+  private static String normalizeUiEntry(AppUiMode uiMode, String uiEntry) {
+    return switch (Objects.requireNonNull(uiMode, "uiMode")) {
+      case NONE -> normalizeNoUiEntry(uiEntry);
+      case SHELL_PANEL -> normalizeShellPanelUiEntry(uiEntry);
+      case STATIC -> normalizeStaticUiEntry(uiEntry);
+    };
+  }
+
+  private static String normalizeNoUiEntry(String uiEntry) {
+    if (uiEntry != null) {
+      throw new IllegalArgumentException("app.ui.entry must be absent when app.ui.mode=none");
+    }
+    return null;
+  }
+
+  private static String normalizeShellPanelUiEntry(String uiEntry) {
+    if (uiEntry == null) {
+      throw new IllegalArgumentException("app.ui.entry is required when app.ui.mode=shell-panel");
+    }
+    if (!uiEntry.startsWith("/") || uiEntry.startsWith("//")) {
+      throw new IllegalArgumentException("app.ui.entry must be an absolute local path");
+    }
+    try {
+      URI uri = URI.create("http://localhost" + uiEntry);
+      if (!"localhost".equals(uri.getHost())
+          || uri.getRawPath() == null
+          || !uri.getRawPath().startsWith("/")
+          || uri.getRawUserInfo() != null) {
+        throw new IllegalArgumentException("app.ui.entry must be an absolute local path");
+      }
+    } catch (IllegalArgumentException exception) {
+      throw new IllegalArgumentException("app.ui.entry must be an absolute local path", exception);
+    }
+    return uiEntry;
+  }
+
+  private static String normalizeStaticUiEntry(String uiEntry) {
+    if (uiEntry == null) {
+      throw new IllegalArgumentException("app.ui.entry is required when app.ui.mode=static");
+    }
+    String staticUiEntry = normalizeRelativeUiPath(uiEntry);
+    if (AppDistributionSidecars.isDistributionSidecar(staticUiEntry)) {
+      throw new IllegalArgumentException(
+          "app.ui.entry must not point at distribution sidecar: " + staticUiEntry);
+    }
+    return staticUiEntry;
+  }
+
+  private static String normalizeRelativeUiPath(String rawValue) {
+    String normalized = rawValue.trim().replace('\\', '/');
+    if (normalized.isEmpty()) {
+      throw new IllegalArgumentException("app.ui.entry must not be blank");
+    }
+    if (normalized.startsWith("/")
+        || normalized.startsWith("\\")
+        || WINDOWS_DRIVE_PREFIX_PATTERN.matcher(normalized).matches()) {
+      throw new IllegalArgumentException("app.ui.entry must be relative: " + rawValue);
+    }
+    String[] segments = normalized.split("/", -1);
+    for (String segment : segments) {
+      if (segment.isBlank() || segment.equals(".") || segment.equals("..")) {
+        throw new IllegalArgumentException(
+            "app.ui.entry must stay under the app root: " + rawValue);
+      }
+      if (segment.indexOf(':') >= 0 || containsControlCharacter(segment)) {
+        throw new IllegalArgumentException(
+            "app.ui.entry contains an unsafe path segment: " + rawValue);
+      }
+    }
+    return String.join("/", segments);
+  }
+
+  private static boolean containsControlCharacter(String segment) {
+    for (int index = 0; index < segment.length(); index++) {
+      if (Character.isISOControl(segment.charAt(index))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static Long normalizeQuota(Long quota, String fieldName) {

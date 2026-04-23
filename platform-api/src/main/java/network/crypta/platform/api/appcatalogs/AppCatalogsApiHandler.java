@@ -18,6 +18,7 @@ import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.appui.AppUiPaths;
 
 /**
  * Signed app-catalog endpoint family for Platform API v1.
@@ -43,6 +44,9 @@ public final class AppCatalogsApiHandler {
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
   private static final String INSTALL_FAILED_MESSAGE = "Failed to install catalog app.";
   private static final String UPDATE_FAILED_MESSAGE = "Failed to update catalog app.";
+  private static final String INVALID_APP_BUNDLE_ERROR_CODE = "invalid_app_bundle";
+  private static final String APPHOST_BUNDLE_VALIDATION_MESSAGE =
+      "Catalog app bundle failed AppHost validation.";
 
   private final AppCatalogManager catalogManager;
   private final AppHost appHost;
@@ -342,11 +346,13 @@ public final class AppCatalogsApiHandler {
   }
 
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
     json.put("appId", manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
+    json.put("uiMode", manifest.uiMode().manifestValue());
     json.put("uiEntry", manifest.uiEntry());
+    json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put("permissions", manifest.permissions());
     json.put("installed", true);
     json.put("running", false);
@@ -371,7 +377,11 @@ public final class AppCatalogsApiHandler {
     }
     if (exception instanceof AppBundleVerificationException) {
       return new PlatformApiException(
-          400, "invalid_app_bundle", "Catalog app bundle failed trusted verification.");
+          400, INVALID_APP_BUNDLE_ERROR_CODE, "Catalog app bundle failed trusted verification.");
+    }
+    if (isInvalidAppBundleFailure(exception)) {
+      return new PlatformApiException(
+          400, INVALID_APP_BUNDLE_ERROR_CODE, APPHOST_BUNDLE_VALIDATION_MESSAGE);
     }
     return internalError(INSTALL_FAILED_MESSAGE);
   }
@@ -385,9 +395,30 @@ public final class AppCatalogsApiHandler {
     }
     if (exception instanceof AppBundleVerificationException) {
       return new PlatformApiException(
-          400, "invalid_app_bundle", "Catalog app bundle failed trusted verification.");
+          400, INVALID_APP_BUNDLE_ERROR_CODE, "Catalog app bundle failed trusted verification.");
+    }
+    if (isInvalidAppBundleFailure(exception)) {
+      return new PlatformApiException(
+          400, INVALID_APP_BUNDLE_ERROR_CODE, APPHOST_BUNDLE_VALIDATION_MESSAGE);
     }
     return internalError(UPDATE_FAILED_MESSAGE);
+  }
+
+  private static boolean isInvalidAppBundleFailure(AppHostException failure) {
+    if (failure instanceof network.crypta.platform.apphost.manifest.AppManifestException) {
+      return true;
+    }
+    String message = failure.getMessage();
+    if (message == null || message.isBlank()) {
+      return false;
+    }
+    return message.startsWith("stagedAppDirectory ")
+        || message.startsWith("staging directory ")
+        || message.startsWith("copied manifest ")
+        || message.startsWith("copied app.exec ")
+        || message.startsWith("app.ui.entry ")
+        || message.startsWith("app.exec ")
+        || message.startsWith("staged app bundle ");
   }
 
   private static boolean isAlreadyInstalledFailure(AppHostException failure) {

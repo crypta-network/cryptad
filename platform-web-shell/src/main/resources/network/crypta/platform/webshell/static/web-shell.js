@@ -904,8 +904,19 @@
     return null;
   }
 
+  function appUiHref(app) {
+    const explicitHref = normalizeAppUiEntryHref(app.uiUrl);
+    if (explicitHref) {
+      return explicitHref;
+    }
+    if (app.uiMode === "static" && typeof app.appId === "string" && app.appId.length > 0) {
+      return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);
+    }
+    return normalizeAppUiEntryHref(app.uiEntry);
+  }
+
   function appUiEntryNode(app) {
-    const href = normalizeAppUiEntryHref(app.uiEntry);
+    const href = appUiHref(app);
     if (!href) {
       return null;
     }
@@ -914,7 +925,7 @@
     const link = document.createElement("a");
     link.className = "button button-secondary";
     link.href = href;
-    link.textContent = "Open UI";
+    link.textContent = "Open";
     container.append(link);
     return container;
   }
@@ -980,8 +991,8 @@
     pills.className = "app-card-pills";
     pills.append(createPill("Installed"));
     pills.append(createPill(app.running ? "Running" : "Stopped", app.running ? "is-success" : "is-warning"));
-    if (app.uiEntry) {
-      pills.append(createPill("UI entry"));
+    if (app.uiUrl || app.uiEntry) {
+      pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
     header.append(heading, pills);
     card.append(header);
@@ -991,7 +1002,9 @@
       ["App ID", typeof app.appId === "string" && app.appId ? app.appId : "Unavailable"],
       ["Version", typeof app.version === "string" && app.version ? app.version : "Unavailable"],
       ["Permissions", formatPermissions(app.permissions)],
-      ["UI entry", uiEntryNode || scalar(app.uiEntry)],
+      ["UI mode", scalar(app.uiMode)],
+      ["UI", uiEntryNode || scalar(app.uiUrl)],
+      ["UI entry", scalar(app.uiEntry)],
       ["Running", app.running ? "Yes" : "No"],
       ["PID", app.running ? scalar(app.pid) : "Unavailable"],
       ["Started at", app.running ? formatIsoTimestamp(app.startedAt) : "Unavailable"],

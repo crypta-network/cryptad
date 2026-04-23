@@ -6,13 +6,12 @@ plugins {
 }
 
 java {
-  // Keep build-logic compatible with Gradle's embedded Kotlin
-  toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
-  sourceCompatibility = JavaVersion.VERSION_21
-  targetCompatibility = JavaVersion.VERSION_21
+  toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
 }
 
-kotlin { jvmToolchain(21) }
+kotlin { jvmToolchain(25) }
 
 repositories {
   // Needed to resolve plugin marker artifacts like org.beryx:badass-runtime-plugin
@@ -42,6 +41,5 @@ dependencies {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-  // Keep build-logic compatible with Gradle's embedded Kotlin
-  compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+  compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
 }

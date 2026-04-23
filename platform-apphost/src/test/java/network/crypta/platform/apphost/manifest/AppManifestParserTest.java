@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppUiMode;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,6 +59,7 @@ class AppManifestParserTest {
     assertEquals(SAMPLE_APP_NAME, manifest.appName());
     assertEquals("1.2.3", manifest.appVersion());
     assertEquals(Path.of("bin", "start.sh"), manifest.execPath());
+    assertEquals(AppUiMode.SHELL_PANEL, manifest.uiMode());
     assertEquals("/", manifest.uiEntry());
     assertEquals(java.util.List.of("network.read", "ui.open"), manifest.permissions());
     assertEquals(Long.valueOf(1048576L), manifest.dataQuotaBytes());
@@ -220,6 +222,46 @@ class AppManifestParserTest {
     String invalidManifest =
         minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, "C:launch.cmd");
     assertThrows(AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+  }
+
+  @Test
+  void parseContent_whenUiModeMissingAndRelativeEntry_expectStaticMode() throws Exception {
+    AppManifest manifest =
+        AppManifestParser.parseContent(
+            minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+                + "app.ui.entry=static/index.html\n");
+
+    assertEquals(AppUiMode.STATIC, manifest.uiMode());
+    assertEquals(Path.of("static", "index.html"), manifest.staticUiEntryPath());
+  }
+
+  @Test
+  void parseContent_whenStaticUiEntryTraversesParent_expectFailure() {
+    String invalidManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+            + "app.ui.mode=static\n"
+            + "app.ui.entry=../index.html\n";
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+
+    assertEquals(
+        "app.ui.entry must stay under the app root: ../index.html", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenShellPanelUiEntryIsExternalUrl_expectFailure() {
+    String invalidManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+            + "app.ui.mode=shell-panel\n"
+            + "app.ui.entry=https://example.invalid\n";
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+
+    assertEquals("app.ui.entry must be an absolute local path", exception.getMessage());
   }
 
   @Test

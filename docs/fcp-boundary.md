@@ -17,6 +17,11 @@ protocol-side seams, but `:adapter-fcp` must stay detached from the bridge and f
 `:runtime-spi` stays detached and JDK-only. Shared runtime/config ports live there; concrete FCP
 runtime binding stays in `:bridge-fcp-runtime`.
 
+FCP insert construction keeps request options and mutable insert-context handles adapter-owned.
+Types such as `FcpInsertOptions`, `FcpInsertBehaviorOptions`, and `FcpInsertContextHandle` are
+protocol-side seams; runtime implementations adapt them in `:bridge-fcp-runtime` instead of
+exporting daemon `InsertContext` internals back into `:adapter-fcp`.
+
 Default production binding still starts in
 `src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java`.
 

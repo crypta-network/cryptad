@@ -1,0 +1,4 @@
+# Aggregated main outputs that must be pruned on non-clean builds because :platform-app-ui owns
+# them now.
+
+network/crypta/platform/appui/**

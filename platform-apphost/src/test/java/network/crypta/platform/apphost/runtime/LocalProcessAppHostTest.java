@@ -1712,6 +1712,7 @@ class LocalProcessAppHostTest {
         environment.get("PATH"));
     assertEquals(DEFAULT_TOKEN, environment.get("CRYPTAD_APP_TOKEN"));
     assertEquals(RUNNER_APP_ID, environment.get("CRYPTAD_APP_ID"));
+    assertEquals("shell-panel", environment.get("CRYPTAD_APP_UI_MODE"));
   }
 
   @Test
@@ -1768,6 +1769,41 @@ class LocalProcessAppHostTest {
 
     assertTrue(
         exception.getMessage().contains("staging directory must contain only regular files"));
+  }
+
+  @Test
+  void installFromDirectory_whenStaticUiEntryIsMissing_expectFailure() throws Exception {
+    AppEnv appEnv = new AppEnv();
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    Files.writeString(
+        stagedApp.resolve(MANIFEST_FILE_NAME),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/%s
+        app.ui.mode=static
+        app.ui.entry=static/index.html
+        app.permissions=%s
+        quota.data.bytes=4096
+        quota.cache.bytes=1024
+        """
+            .formatted(
+                SAMPLE_APP_ID,
+                displayName(SAMPLE_APP_ID),
+                APP_VERSION,
+                scriptName(appEnv),
+                STANDARD_PERMISSIONS_TEXT),
+        StandardCharsets.UTF_8);
+    AppHost host = allowUnsignedHost();
+
+    AppHostException exception =
+        assertThrows(AppHostException.class, () -> host.installFromDirectory(stagedApp));
+
+    assertEquals(
+        "app.ui.entry does not resolve to a file in copied bundle: static/index.html",
+        exception.getMessage());
   }
 
   @Test
@@ -2342,6 +2378,7 @@ class LocalProcessAppHostTest {
     assertTrue(capture.contains("CRYPTAD_APP_RUN_DIR=" + installation.paths().runDir()));
     assertTrue(capture.contains("CRYPTAD_APP_TOKEN=" + running.token()));
     assertTrue(capture.contains("CRYPTAD_APP_PERMISSIONS=" + STANDARD_PERMISSIONS_TEXT));
+    assertTrue(capture.contains("CRYPTAD_APP_UI_MODE=shell-panel"));
     assertTrue(capture.contains("CRYPTAD_APP_UI_ENTRY=/"));
   }
 

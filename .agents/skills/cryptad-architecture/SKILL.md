@@ -52,8 +52,8 @@ Use this skill when you need to:
     `network.crypta.client`, `network.crypta.client.events`,
     `network.crypta.client.filter`, `network.crypta.client.async.alerts`,
     `network.crypta.client.async.persistence`, selected filter policy/helper types such as
-    `HTMLFilterPolicy`, selected event/helper types such as `SplitfileCompatibilityMode*`, and
-    `network.crypta.support.MediaType`
+    `HTMLFilterPolicy`, concrete media/CSS/HTML parser/filter helpers, selected event/helper
+    types such as `SplitfileCompatibilityMode*`, and `network.crypta.support.MediaType`
   - `:kernel-transport` → the compile-neutral phase-1 transport slice across selected
     `network.crypta.io`, `network.crypta.io.comm`, and `network.crypta.io.xfer` helpers such as
     address matchers, allow-list parsing, listener abstractions, `SSLNetworkInterface`,
@@ -61,11 +61,18 @@ Use this skill when you need to:
   - `:kernel-routing` → the compile-neutral phase-1 routing/helper slice across selected
     `network.crypta.node` value, exception, callback, and request-item helper types such as
     `BaseRequestThrottle`, `LowLevelGetException`, `LowLevelPutException`, `RequestClient`,
-    `PeerStatusCounts`, `RecentlyFailedReturn`, and `SendableRequestItem*`
+    `PeerStatusCounts`, `RecentlyFailedReturn`, `RequestPriorityClasses`, and
+    `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core)
+  - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
+    resolution helpers)
+  - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
+    signature, manifest, verifier, trusted-key, and distribution tooling)
+  - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
+    artifact verification, safe ZIP extraction, and verified staging)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
@@ -89,8 +96,14 @@ Use this skill when you need to:
   - `:thirdparty-legacy` → `org.bitpedia`, `org.sevenzip`, `org.spaceroots`
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
     resources
+- First-party app bundle subprojects:
+  - `:apps:queue-manager` → staged Queue Manager AppHost bundle that currently launches the shell
+    queue panel
+  - `:apps:publisher` → staged Publisher AppHost bundle that currently launches the shell
+    publisher panel
 - The runtime boundary is split intentionally:
-  - `:runtime-spi` exposes small JDK-only ports and immutable config DTOs.
+  - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
+    updater, and shell DTOs.
   - `:runtime-node` now implements the daemon-backed ports across
     `network.crypta.runtime.core` and `network.crypta.runtime.admin`. The runtime nucleus lives in
     `network.crypta.runtime.core.LegacyRuntimePorts` plus core adapters such as
@@ -114,8 +127,11 @@ Use this skill when you need to:
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
-  transport-neutral AppHost core, `:platform-web-shell` owns the browser-facing node-management
-  shell, `:runtime-alerts` owns the extracted alert/feed model subset, `:runtime-node` owns the
+  transport-neutral AppHost core, `:platform-app-ui` owns app-owned static UI route helpers,
+  `:platform-appdist` owns signed local bundle distribution, `:platform-appcatalog` owns signed
+  catalog sources and verified staging, `:platform-web-shell` owns the browser-facing
+  node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
+  `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
   `:bridge-fcp-runtime` owns the concrete FCP bridge implementations,
   `:adapter-http-legacy-admin` owns the shared legacy HTTP shell/admin layer,
@@ -222,9 +238,10 @@ Use this skill when you need to:
     archive/value/helper classes, immutable event values, the full
     `network.crypta.client.async.alerts` seam, client-local seams under
     `network.crypta.client.async.persistence`, a conservative subset of filter helper/parser
-    types plus policy holders such as `HTMLFilterPolicy`, event/helper types such as
-    `ClientEventProducer` and `SplitfileCompatibilityMode*`, utility/value types such as
-    `ClientGetterOptions` and `ClientPutterOptions`, `InsertUriChecks`, and
+    types plus policy holders such as `HTMLFilterPolicy`, concrete media/CSS/HTML parser/filter
+    helpers, event/helper types such as `ClientEventProducer` and `SplitfileCompatibilityMode*`,
+    utility/value types such as `ClientGetterOptions` and `ClientPutterOptions`, `InsertUriChecks`,
+    and
     `network.crypta.support.MediaType`.
   - `:runtime-node` still owns the cyclic async scheduler/request engine, high-level client APIs,
     and the remaining filter/archive surfaces that still depend on request scheduling or node
@@ -244,6 +261,9 @@ Use this skill when you need to:
   - Package-local seams split the remaining daemon-backed work by concern:
     `FcpServerRuntimeSupport`, `FcpMessageRuntimeSupport`, `FcpFetchRuntimeSupport`, and
     `FcpInsertRuntimeSupport`.
+  - FCP insert request options and mutable insert-context handles stay adapter-owned through
+    `FcpInsertOptions`, `FcpInsertBehaviorOptions`, and `FcpInsertContextHandle`; bridge code
+    adapts those seams to runtime insert contexts.
   - Runtime-owned FCP seam types now live under `network.crypta.runtime.fcp` and
     `network.crypta.runtime.endpoints.fcp`, while concrete persistent-request services, queue
     adapters, alert-feed adapters, and endpoint-handle wrappers now live under
@@ -279,7 +299,8 @@ Use this skill when you need to:
   - `WelcomeToadlet` splits detached GET state and POST actions across `WelcomePagePort` and
     `WelcomeActionPort`, bundled in `WelcomeToadletRuntimePorts`.
   - FProxy and shell bootstrap now have local package-private seams:
-    `BookmarkRuntimeSupport`, `FProxyRuntimeSupport`, `HttpShellRuntimeSupport`,
+    `BookmarkRuntimeSupport`, `BrowseContentClient`, `FProxyRuntimeSupport`,
+    `HttpShellRuntimeSupport`,
     `HttpShellFProxyBootstrap`, and `FProxyRegistrarDependencies`.
   - HTTP/admin alert rendering now crosses the detached
     `network.crypta.runtime.alerts.UserAlertSurface` instead of importing
@@ -293,15 +314,29 @@ Use this skill when you need to:
 
 ### Platform control/UI modules
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
-  It exposes node/config/peer/connectivity/security snapshots plus the local AppHost control
-  plane and is currently mounted at `/api/v1/` by the legacy HTTP adapter.
+  It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
+  apps, and app-catalog control-plane families and is currently mounted at `/api/v1/` by the
+  legacy HTTP adapter.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
   install/list/describe/start/stop/update/uninstall operations.
+- `:platform-app-ui` owns `network.crypta.platform.appui`, the transport-neutral app-owned static
+  UI path layer. It maps installed static UI manifests to `/apps/{appId}/`, preserves nested entry
+  base URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
+  deterministic content-type and security-header helpers for HTTP adapters.
+- `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
+  distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
+  sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries, and
+  exposes the distribution tool used by first-party app Gradle tasks.
+- `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
+  artifact staging layer. It verifies catalog signatures, enforces source/URI policy, validates
+  artifact size and SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to
+  AppHost install/update flows.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
-  constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`.
+  constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
+  opens app-owned `uiUrl` values when installed app summaries expose them.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
@@ -311,15 +346,17 @@ Use this skill when you need to:
   `QueueCompletionPort`, `QueuePagePort`, `QueueDownloadPort`, `QueueInsertPort`,
   `QueueMutationPort`, `StatisticsPort`, `SecurityLevelsPort`, `PageChromePort`,
   `CoreUpdateActionPort`, `FirstTimeWizardPort`, `ToadletSymlinkPort`, `WelcomePagePort`,
-  `WelcomeActionPort`, `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
+  `WelcomeActionPort`, `AlertFeedPort`, `AlertMutationPort`, `RequestQueuePort`, `NodeInfoPort`,
+  and `PeerPort`
 - Detached DTOs include config, connectivity, peer, darknet-friends, node-reference, queue,
-  security-level, shared shell, first-time-wizard, symlinker, welcome-page, and statistics/report
-  snapshot types such as
+  security-level, shared shell, first-time-wizard, symlinker, welcome-page, alert, and
+  statistics/report snapshot types such as
   `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`, `PeerSnapshot`,
   `DarknetConnectionPeerSnapshot`, `DarknetUploadedFile`, `NodeReferenceSnapshot`,
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
-  `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, and `WelcomePageSnapshot`
+  `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, `WelcomePageSnapshot`,
+  `AlertListSnapshot`, `AlertSnapshot`, and `AlertSeverity`
 - Daemon-backed adapters in `network.crypta.runtime.core` (currently in `:runtime-node`):
   `LegacyRuntimePorts`, `LegacyConfigPort`,
   `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`, `LegacyRequestQueuePort`,
@@ -392,7 +429,7 @@ Use this skill when you need to:
   `network.crypta.support.http`, `network.crypta.support.IllegalValueException`,
   `network.crypta.support.JVMVersion`, the generic `HTTPRequest` / `HTTPUploadedFile` /
   `MultiValueTable` / `SizeUtil` surface, generic helpers such as `URIPreEncoder`, `IOUtils`,
-  and `LegacyFileSupport`, and the cycle-safe file-backed support I/O slice
+  `LegacyFileSupport`, and `HTMLDecoder`, and the cycle-safe file-backed support I/O slice
 - `:foundation-store-contracts`: neutral `network.crypta.store` contracts plus
   `network.crypta.store.alerts`
 - `:foundation-crypto-keys`: `network.crypta.crypt`, `network.crypta.keys`, plus adjacent
@@ -406,8 +443,8 @@ Use this skill when you need to:
 - `:foundation-compat`: `network.crypta.compat`, `network.crypta.compat.bandwidth`
 - `:kernel-content`: compile-neutral phase-1 content slice across selected `network.crypta.client*`
   classes, `network.crypta.client.async.persistence`, event/helper types such as
-  `SplitfileCompatibilityMode*`, filter policy/helper types such as `HTMLFilterPolicy`,
-  `InsertUriChecks`, and `network.crypta.support.MediaType`
+  `SplitfileCompatibilityMode*`, filter policy/helper types such as `HTMLFilterPolicy`, concrete
+  media/CSS/HTML parser/filter helpers, `InsertUriChecks`, and `network.crypta.support.MediaType`
 - `:kernel-transport`: compile-neutral phase-1 transport slice across selected
   `network.crypta.io*` helpers including `SSLNetworkInterface`
 - `:kernel-routing`: compile-neutral phase-1 routing/helper slice across selected
@@ -415,6 +452,9 @@ Use this skill when you need to:
 - `:runtime-spi`: `network.crypta.runtime.spi`
 - `:platform-api`: `network.crypta.platform.api`
 - `:platform-apphost`: `network.crypta.platform.apphost`
+- `:platform-app-ui`: `network.crypta.platform.appui`
+- `:platform-appdist`: `network.crypta.platform.appdist`
+- `:platform-appcatalog`: `network.crypta.platform.appcatalog`
 - `:platform-web-shell`: `network.crypta.platform.webshell`
 - `:runtime-alerts`: `network.crypta.runtime.alerts`, including the detached
   `UserAlertSurface`

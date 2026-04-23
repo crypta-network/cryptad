@@ -12,7 +12,7 @@ dependencies {
   // AppEnv is the repo's single source of truth for OS detection and keeps Windows launch
   // handling out of raw os.name checks.
   implementation(project(":foundation-fs"))
-  implementation(project(":platform-appdist"))
+  api(project(":platform-appdist"))
 
   compileOnly(libs.jetbrainsAnnotations)
 

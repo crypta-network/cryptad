@@ -321,6 +321,11 @@ class WebShellResourcesTest {
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
     assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
+    assertTrue(script.contains("function appUiHref(app)"));
+    assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl);"));
+    assertTrue(
+        script.contains(
+            "return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);"));
     assertTrue(script.contains("function renderAppCard(app)"));
     assertTrue(script.contains("function renderApps(data)"));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));

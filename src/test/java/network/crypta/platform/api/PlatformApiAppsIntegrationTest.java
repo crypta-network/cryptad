@@ -78,6 +78,8 @@ class PlatformApiAppsIntegrationTest {
 
     assertEquals(201, installResponse.statusCode());
     assertTrue(installResponse.body().contains("\"appId\":\"demo-app\""));
+    assertTrue(installResponse.body().contains("\"uiMode\":\"shell-panel\""));
+    assertTrue(installResponse.body().contains("\"uiUrl\":\"/\""));
     assertTrue(installResponse.body().contains("\"installed\":true"));
     assertTrue(installResponse.body().contains("\"running\":false"));
     assertFalse(installResponse.body().contains("token"));

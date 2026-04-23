@@ -2637,6 +2637,33 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenCatalogInstallStaticUiEntryInvalid_expectInvalidBundle() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    Path stagedDir = tempDir.resolve("catalog-invalid-static-ui-install");
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
+    when(appHost.installFromDirectory(stagedDir))
+        .thenThrow(
+            new AppHostException(
+                "app.ui.entry does not resolve to a file in copied bundle: static/index.html"));
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"Catalog app bundle failed"
+            + " AppHost validation.\"}}",
+        response.body());
+    verify(plan).close();
+  }
+
+  @Test
   void route_whenCatalogUpdateSucceedsAndCleanupFails_expectUpdatedJson() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
@@ -2678,6 +2705,32 @@ class PlatformApiRouterTest {
     //noinspection resource
     verify(catalogManager, never()).prepareInstallPlan(any(), any());
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void route_whenCatalogUpdateStaticUiEntryInvalid_expectInvalidBundle() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    Path stagedDir = tempDir.resolve("catalog-invalid-static-ui-update");
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
+    when(appHost.updateFromDirectory(APP_ID, stagedDir))
+        .thenThrow(new AppHostException("app.ui.entry must not traverse links in copied bundle"));
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(400, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_bundle\",\"message\":\"Catalog app bundle failed"
+            + " AppHost validation.\"}}",
+        response.body());
+    verify(plan).close();
   }
 
   @Test
@@ -2818,11 +2871,13 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> catalogSummary(String appVersion) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(9);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(11);
     summary.put("appId", APP_ID);
     summary.put("name", APP_NAME);
     summary.put("version", appVersion);
+    summary.put("uiMode", uiMode(APP_UI_ENTRY));
     summary.put("uiEntry", APP_UI_ENTRY);
+    summary.put("uiUrl", uiUrl(APP_ID, APP_UI_ENTRY));
     summary.put("permissions", List.of("network.access", "file.read"));
     summary.put("installed", true);
     summary.put("running", false);
@@ -2845,11 +2900,13 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
+    summary.put("uiMode", uiMode(appUiEntry));
     summary.put("uiEntry", appUiEntry);
+    summary.put("uiUrl", uiUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
     quota.put("dataBytes", 4096L);
@@ -2863,11 +2920,13 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
+    summary.put("uiMode", "none");
     summary.put("uiEntry", null);
+    summary.put("uiUrl", null);
     summary.put("permissions", List.of());
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
     quota.put("dataBytes", null);
@@ -2878,6 +2937,30 @@ class PlatformApiRouterTest {
     summary.put("pid", null);
     summary.put("startedAt", null);
     return summary;
+  }
+
+  private static String uiMode(String appUiEntry) {
+    if (appUiEntry == null) {
+      return "none";
+    }
+    return appUiEntry.startsWith("/") ? "shell-panel" : "static";
+  }
+
+  private static String uiUrl(String appId, String appUiEntry) {
+    return switch (uiMode(appUiEntry)) {
+      case "none" -> null;
+      case "shell-panel" -> appUiEntry;
+      case "static" -> staticUiUrl(appId, appUiEntry);
+      default -> throw new IllegalArgumentException("unexpected UI mode");
+    };
+  }
+
+  private static String staticUiUrl(String appId, String appUiEntry) {
+    int lastSlash = appUiEntry.lastIndexOf('/');
+    if (lastSlash < 0) {
+      return "/apps/" + appId + "/";
+    }
+    return "/apps/" + appId + "/" + appUiEntry.substring(0, lastSlash + 1);
   }
 
   private static final class TwoStepOptionalAnswer<T>

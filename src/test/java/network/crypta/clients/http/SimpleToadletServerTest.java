@@ -113,6 +113,18 @@ class SimpleToadletServerTest {
   }
 
   @Test
+  void findToadlet_whenAppsPrefixRegisteredAtFront_returnsAppsToadletBeforeCatchAll()
+      throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    DummyToadlet catchAllToadlet = new DummyToadlet("/");
+    DummyToadlet appsToadlet = new DummyToadlet("/apps/");
+    server.register(catchAllToadlet, ToadletRegistration.basic(null, "/", false, false));
+    server.register(appsToadlet, ToadletRegistration.basic(null, "/apps/", true, false));
+
+    assertSame(appsToadlet, server.findToadlet(new URI("http://localhost/apps/demo-app/")));
+  }
+
+  @Test
   void findToadlet_whenWizardIncomplete_redirectsToWizardAndPreservesQuery() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
     HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
