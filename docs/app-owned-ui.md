@@ -42,6 +42,7 @@ The legacy HTTP admin adapter mounts static app UI at app-owned paths such as:
 ```text
 /apps/{appId}/
 /apps/{appId}/static/...
+/apps/{appId}/.well-known/cryptad-bootstrap.json
 ```
 
 `GET /apps/{appId}/` serves the app's declared static `app.ui.entry` when that entry lives at the
@@ -84,7 +85,43 @@ with non-public no-cache headers instead of the legacy admin adapter's long-live
 policy.
 
 The route remains same-origin with the local admin UI and Platform API. Permission enforcement,
-stronger isolation, and audit logging belong to later platform work.
+stronger isolation, and audit logging belong to later platform work. Until stronger browser
+isolation exists, install static UI bundles only from sources trusted to run JavaScript in the local
+admin origin.
+
+## First-party app bootstrap
+
+First-party static app UIs can fetch:
+
+```text
+GET /apps/{appId}/.well-known/cryptad-bootstrap.json
+```
+
+The legacy HTTP admin adapter builds this JSON dynamically after the same full-access check used by
+app UI assets. The path is reserved by the host; it is not read from the installed bundle.
+
+The current payload is deliberately small:
+
+```json
+{
+  "appId": "queue-manager",
+  "name": "Queue Manager",
+  "uiRoot": "/apps/queue-manager/",
+  "assetRoot": "/apps/queue-manager/static/",
+  "platformApiRoot": "/api/v1/",
+  "shellRoot": "/app/node/",
+  "formPassword": "<local-admin-form-password>"
+}
+```
+
+`formPassword` is the existing local-admin mutation guard accepted by the legacy Platform API
+bridge. Static first-party UIs add it as a form field when they submit mutating `/api/v1/` requests,
+the same way the Web Shell does. Read-only requests do not need it.
+
+The bootstrap does not expose `CRYPTAD_APP_TOKEN`, AppHost launch tokens, signing keys, trusted-key
+material, installed-bundle filesystem paths, data/cache/run paths, or catalog scratch paths. It is
+not an app permission token and it is not the planned JavaScript SDK. Browser-issued app sessions,
+third-party SDK ergonomics, and stronger app isolation remain later platform work.
 
 ## Platform API summary fields
 
@@ -120,21 +157,34 @@ Static UI bundle:
 
 ```properties
 manifest.version=1
-app.id=demo-app
-app.name=Demo App
+app.id=queue-manager
+app.name=Queue Manager
 app.version=1.0.0
 app.exec=bin/launch.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
-app.permissions=network.access
+app.permissions=queue.read,queue.write
 ```
 
-Shell-panel bundle:
+First-party Publisher bundle:
 
 ```properties
 manifest.version=1
-app.id=queue-manager
-app.name=Queue Manager
+app.id=publisher
+app.name=Publisher
+app.version=1.0.0
+app.exec=bin/launch.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=queue.read,queue.write,content.insert
+```
+
+Transitional shell-panel bundle:
+
+```properties
+manifest.version=1
+app.id=legacy-queue-panel
+app.name=Legacy Queue Panel
 app.version=1.0.0
 app.exec=bin/launch.sh
 app.ui.mode=shell-panel

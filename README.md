@@ -359,7 +359,9 @@ catalog signatures, trusted-key configuration, and `/api/v1/app-catalogs` instal
 Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
 Static UI bundles open at `/apps/{appId}/`; shell-panel bundles keep existing local links such as
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
-security headers, and static asset boundary.
+first-party bootstrap JSON, security headers, and static asset boundary. The repo-owned Queue
+Manager and Publisher bundles now stage static UIs at `/apps/queue-manager/static/` and
+`/apps/publisher/static/`.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -379,9 +381,10 @@ Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:pla
 primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
 compatibility, bridge, debug, and fallback surfaces.
 
-Current Phase 4 app-platform work extends that path with signed catalog sources and app-owned
-static UI routes. Installed apps can be launched through `/app/node/` shell-panel links or through
-stable `/apps/{appId}/` routes when the signed bundle declares `app.ui.mode=static`.
+Current Phase 4 app-platform work extends that path with signed catalog sources, app-owned static
+UI routes, and independent first-party Queue Manager and Publisher UIs. Installed apps can be
+launched through `/app/node/` shell-panel links or through stable `/apps/{appId}/` routes when the
+signed bundle declares `app.ui.mode=static`.
 
 Key docs:
 

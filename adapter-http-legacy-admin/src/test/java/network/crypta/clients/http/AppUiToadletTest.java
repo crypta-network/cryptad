@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -133,6 +134,76 @@ class AppUiToadletTest {
     assertEquals("text/javascript; charset=UTF-8", reply.mimeType());
     assertEquals(10L, reply.length());
     assertEquals("export {};", captureBucketWriteText());
+  }
+
+  @Test
+  void handleMethodGET_whenBootstrapRequested_expectOperatorScopedJsonWithoutAppToken()
+      throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn("form-secret");
+    enableJavascript(true);
+
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
+        request,
+        ctx);
+
+    ReplyCapture reply = captureReply();
+    assertEquals(200, reply.statusCode());
+    assertEquals("application/json; charset=UTF-8", reply.mimeType());
+    assertEquals("no-store", reply.headers().getFirst("cache-control"));
+    String body = captureByteArrayWriteText();
+    assertTrue(body.contains("\"appId\":\"demo-app\""));
+    assertTrue(body.contains("\"name\":\"Demo App\""));
+    assertTrue(body.contains("\"uiRoot\":\"/apps/demo-app/\""));
+    assertTrue(body.contains("\"assetRoot\":\"/apps/demo-app/static/\""));
+    assertTrue(body.contains("\"platformApiRoot\":\"/api/v1/\""));
+    assertTrue(body.contains("\"shellRoot\":\"/app/node/\""));
+    assertTrue(body.contains("\"formPassword\":\"form-secret\""));
+    assertFalse(body.contains("CRYPTAD_APP_TOKEN"));
+    assertFalse(body.contains("launchToken"));
+  }
+
+  @Test
+  void handleMethodHEAD_whenBootstrapRequestedForStaticApp_expectHeadersOnlyJson()
+      throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.getFormPassword()).thenReturn("form-secret");
+    enableJavascript(true);
+
+    toadlet.handleMethodHEAD(
+        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
+        request,
+        ctx);
+
+    ReplyCapture reply = captureReply();
+    assertEquals(200, reply.statusCode());
+    assertEquals("application/json; charset=UTF-8", reply.mimeType());
+    assertEquals("no-store", reply.headers().getFirst("cache-control"));
+    assertTrue(reply.length() > 0L);
+    verifyNoBodyWrites();
+  }
+
+  @Test
+  void handleMethodHEAD_whenBootstrapRequestedForShellPanelApp_expectNotFound() throws Exception {
+    InstalledAppSnapshot snapshot = app(AppUiMode.SHELL_PANEL, "/app/node/#queue");
+    AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+
+    toadlet.handleMethodHEAD(
+        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
+        request,
+        ctx);
+
+    ReplyCapture reply = captureReply();
+    assertEquals(404, reply.statusCode());
+    assertEquals("Not Found", reply.reasonPhrase());
+    assertEquals(0L, reply.length());
+    verifyNoBodyWrites();
   }
 
   @Test
@@ -392,6 +463,18 @@ class AppUiToadletTest {
     }
   }
 
+  private String captureByteArrayWriteText() throws Exception {
+    ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> offset = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<Integer> length = ArgumentCaptor.forClass(Integer.class);
+
+    verify(ctx).writeData(bytes.capture(), offset.capture(), length.capture());
+    verify(ctx, never()).writeData(any(Bucket.class));
+
+    return new String(
+        bytes.getValue(), offset.getValue(), length.getValue(), StandardCharsets.UTF_8);
+  }
+
   private void enableJavascript(boolean enabled) {
     when(ctx.getContainer()).thenReturn(container);
     when(container.isFProxyJavascriptEnabled()).thenReturn(enabled);
@@ -408,6 +491,10 @@ class AppUiToadletTest {
   }
 
   private InstalledAppSnapshot staticApp(String uiEntry) {
+    return app(AppUiMode.STATIC, uiEntry);
+  }
+
+  private InstalledAppSnapshot app(AppUiMode uiMode, String uiEntry) {
     AppManifest manifest =
         new AppManifest(
             1,
@@ -415,7 +502,7 @@ class AppUiToadletTest {
             "Demo App",
             "1.0.0",
             "bin/launch.sh",
-            AppUiMode.STATIC,
+            uiMode,
             uiEntry,
             List.of(),
             null,

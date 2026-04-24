@@ -2,16 +2,22 @@ package network.crypta.clients.http;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppStaticAsset;
 import network.crypta.platform.appui.AppStaticAssetException;
 import network.crypta.platform.appui.AppStaticAssetService;
+import network.crypta.platform.appui.AppUiBootstrap;
+import network.crypta.platform.appui.AppUiBootstrapJson;
+import network.crypta.platform.appui.AppUiBootstrapService;
 import network.crypta.platform.appui.AppUiPaths;
 import network.crypta.platform.appui.AppUiRoute;
 import network.crypta.platform.appui.AppUiSecurityHeaders;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileBucket;
@@ -42,8 +48,14 @@ public final class AppUiToadlet extends Toadlet {
   /** Reason phrase used when raw app UI paths contain traversal, encoded separators, or bad ids. */
   private static final String BAD_REQUEST_REASON = "Bad Request";
 
+  /** JSON media type used for dynamic first-party static UI bootstrap metadata. */
+  private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
+
   /** Request-scoped resolver that keeps AppHost and filesystem validation outside this adapter. */
   private final AppStaticAssetService assetService;
+
+  /** Request-scoped resolver for the reserved dynamic bootstrap resource. */
+  private final AppUiBootstrapService bootstrapService;
 
   /**
    * Creates an app UI toadlet backed by the shared AppHost.
@@ -56,7 +68,7 @@ public final class AppUiToadlet extends Toadlet {
    * @param appHost AppHost used to describe installed applications and their bundle roots
    */
   public AppUiToadlet(AppHost appHost) {
-    this(new AppStaticAssetService(appHost));
+    this(new AppStaticAssetService(appHost), new AppUiBootstrapService(appHost));
   }
 
   /**
@@ -68,8 +80,20 @@ public final class AppUiToadlet extends Toadlet {
    *
    * @param assetService resolver used to map raw HTTP paths to installed bundle assets
    */
+  @SuppressWarnings("unused")
   AppUiToadlet(AppStaticAssetService assetService) {
+    this(assetService, null);
+  }
+
+  /**
+   * Creates an app UI toadlet with explicit asset and bootstrap resolvers.
+   *
+   * @param assetService resolver used to map raw HTTP paths to installed bundle assets
+   * @param bootstrapService resolver used for the reserved bootstrap resource, or {@code null}
+   */
+  AppUiToadlet(AppStaticAssetService assetService, AppUiBootstrapService bootstrapService) {
     this.assetService = Objects.requireNonNull(assetService, "assetService");
+    this.bootstrapService = bootstrapService;
   }
 
   /** {@inheritDoc} */
@@ -140,6 +164,10 @@ public final class AppUiToadlet extends Toadlet {
         writeRedirect(ctx, appendRawQuery(redirectTarget, uri.getRawQuery()), includeBody);
         return;
       }
+      if (AppUiBootstrapService.isBootstrapRequest(requestPath)) {
+        writeBootstrap(ctx, requestPath, includeBody);
+        return;
+      }
       Optional<String> canonicalRootRedirect = assetService.canonicalRootRedirect(requestPath);
       if (canonicalRootRedirect.isPresent()) {
         writeRedirect(
@@ -158,6 +186,49 @@ public final class AppUiToadlet extends Toadlet {
       } else {
         sendError(ctx, 400, BAD_REQUEST_REASON, "App UI path is not valid.", includeBody);
       }
+    }
+  }
+
+  /**
+   * Writes the reserved dynamic app UI bootstrap resource.
+   *
+   * <p>The bootstrap exposes route roots and the existing local-admin form password for same-origin
+   * first-party static UIs. It deliberately does not expose AppHost launch tokens or installed
+   * filesystem paths.
+   *
+   * @param ctx response context that receives headers and body bytes
+   * @param requestPath raw app UI request path
+   * @param includeBody whether the JSON body should be written after headers
+   * @throws ToadletContextClosedException if the client connection closes during response writing
+   * @throws IOException if AppHost lookup or response output fails
+   */
+  private void writeBootstrap(ToadletContext ctx, String requestPath, boolean includeBody)
+      throws ToadletContextClosedException, IOException, AppStaticAssetException {
+    if (bootstrapService == null) {
+      sendError(ctx, 404, NOT_FOUND_REASON, "App UI bootstrap not found.", includeBody);
+      return;
+    }
+    Optional<AppUiBootstrap> bootstrap =
+        bootstrapService.resolve(
+            requestPath,
+            PlatformApiPaths.API_V1_PREFIX,
+            WebShellPaths.SHELL_ROOT,
+            ctx.getFormPassword());
+    if (bootstrap.isEmpty()) {
+      sendError(ctx, 404, NOT_FOUND_REASON, "App UI bootstrap not found.", includeBody);
+      return;
+    }
+
+    byte[] body = AppUiBootstrapJson.serialize(bootstrap.get()).getBytes(StandardCharsets.UTF_8);
+    ctx.sendReplyHeaders(
+        200,
+        "OK",
+        bootstrapResponseHeaders(ctx.getContainer().isFProxyJavascriptEnabled()),
+        JSON_CONTENT_TYPE,
+        body.length,
+        true);
+    if (includeBody) {
+      ctx.writeData(body, 0, body.length);
     }
   }
 
@@ -257,6 +328,13 @@ public final class AppUiToadlet extends Toadlet {
         AppUiSecurityHeaders.headers(javascriptEnabled).entrySet()) {
       headers.put(header.getKey(), header.getValue());
     }
+    return headers;
+  }
+
+  private static MultiValueTable<String, String> bootstrapResponseHeaders(
+      boolean javascriptEnabled) {
+    MultiValueTable<String, String> headers = responseHeaders(javascriptEnabled);
+    headers.put("cache-control", "no-store");
     return headers;
   }
 
