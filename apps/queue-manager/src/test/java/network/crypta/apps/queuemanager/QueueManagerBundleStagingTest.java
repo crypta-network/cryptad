@@ -90,6 +90,8 @@ class QueueManagerBundleStagingTest {
     assertTrue(appScript.contains("isQueueKeyListLink"));
     assertTrue(appScript.contains("queue/keys"));
     assertTrue(appScript.contains("downloadTextFile(`${state.page}-keys.txt`"));
+    assertTrue(appScript.contains("unsupportedQueueAction"));
+    assertTrue(appScript.contains("Queue action is not supported by Platform API yet."));
     assertFalse(appScript.contains("CRYPTAD_APP_TOKEN"));
   }
 

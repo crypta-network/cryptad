@@ -87,6 +87,13 @@ class PublisherBundleStagingTest {
     assertTrue(appScript.contains("cryptad-bootstrap.json"));
     assertTrue(appScript.contains("platformApiRoot"));
     assertTrue(appScript.contains("formPassword"));
+    assertTrue(
+        appScript.contains("elements.result.addEventListener(\"submit\", interceptQueueSubmit);"));
+    assertTrue(appScript.contains("url.searchParams.set(\"sortBy\", state.uploadQueueSortBy);"));
+    assertTrue(appScript.contains("isUploadQueueKeyListLink"));
+    assertTrue(appScript.contains("queue/keys"));
+    assertTrue(appScript.contains("unsupportedQueueAction"));
+    assertTrue(appScript.contains("Queue actions are handled in Queue Manager."));
     assertFalse(appScript.contains("CRYPTAD_APP_TOKEN"));
   }
 

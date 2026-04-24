@@ -5,6 +5,8 @@
   const defaultCompatibilityMode = "COMPAT_CURRENT";
   const state = {
     bootstrap: {},
+    uploadQueueReversed: false,
+    uploadQueueSortBy: null,
   };
 
   const elements = {
@@ -32,6 +34,8 @@
     elements.fileForm.addEventListener("submit", submitInsert);
     elements.directoryForm.addEventListener("submit", submitInsert);
     elements.uploadQueueButton.addEventListener("click", showUploadQueue);
+    elements.result.addEventListener("click", interceptQueueClick);
+    elements.result.addEventListener("submit", interceptQueueSubmit);
   }
 
   async function loadBootstrap() {
@@ -108,9 +112,15 @@
       setStatus("Loading upload queue...");
       const url = apiUrl("queue");
       url.searchParams.set("page", "uploads");
+      if (state.uploadQueueSortBy) {
+        url.searchParams.set("sortBy", state.uploadQueueSortBy);
+      }
+      if (state.uploadQueueReversed) {
+        url.searchParams.set("reversed", "true");
+      }
       const snapshot = await loadJson(url);
       renderQueue(snapshot.contentHtml);
-      setStatus("Showing upload queue.");
+      setStatus(uploadQueueStatusMessage());
     } catch (error) {
       setStatus(errorMessage(error), "error");
     }
@@ -147,6 +157,74 @@
     sanitize(parsed.body);
     container.replaceChildren(...Array.from(parsed.body.childNodes));
     elements.result.replaceChildren(container);
+  }
+
+  function interceptQueueClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const anchor = target ? target.closest("a") : null;
+    if (anchor && elements.result.contains(anchor)) {
+      interceptQueueAnchor(event, anchor);
+    }
+  }
+
+  function interceptQueueAnchor(event, anchor) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return false;
+    }
+
+    const href = anchor.getAttribute("href") || "";
+    if (isUploadQueueKeyListLink(href)) {
+      event.preventDefault();
+      exportUploadQueueKeys();
+      return true;
+    }
+    if (updateUploadQueueSort(href)) {
+      event.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
+  function interceptQueueSubmit(event) {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    const submitter = event.submitter || form.querySelector("button, input[type='submit']");
+    event.preventDefault();
+    setStatus(unsupportedQueueAction(submitter && submitter.name), "error");
+  }
+
+  function unsupportedQueueAction(submitterName) {
+    const action = typeof submitterName === "string" ? submitterName.replaceAll("_", " ") : "";
+    if (!action) {
+      return "Queue actions are handled in Queue Manager.";
+    }
+    return `Queue action "${action}" is handled in Queue Manager.`;
+  }
+
+  async function exportUploadQueueKeys() {
+    setStatus("Preparing upload key list...");
+    try {
+      const url = apiUrl("queue/keys");
+      url.searchParams.set("page", "uploads");
+      const data = await loadJson(url);
+      const keys = Array.isArray(data.keys)
+        ? data.keys.filter((value) => typeof value === "string")
+        : [];
+      const textBody = keys.length === 0 ? "" : `${keys.join("\n")}\n`;
+      downloadTextFile("uploads-keys.txt", textBody);
+      setStatus(`Exported ${keys.length} upload queue keys.`, "success");
+    } catch (error) {
+      setStatus(errorMessage(error), "error");
+    }
   }
 
   function sanitize(root) {
@@ -213,6 +291,48 @@
     return new URL(path, new URL(root, window.location.origin));
   }
 
+  function updateUploadQueueSort(rawHref) {
+    if (typeof rawHref !== "string" || !rawHref.startsWith("?")) {
+      return false;
+    }
+    const params = new URLSearchParams(rawHref.slice(1));
+    if (!params.has("sortBy")) {
+      return false;
+    }
+    state.uploadQueueSortBy = params.get("sortBy");
+    state.uploadQueueReversed = params.get("reversed") === "true" || params.has("reversed");
+    showUploadQueue();
+    return true;
+  }
+
+  function isUploadQueueKeyListLink(rawHref) {
+    const href = typeof rawHref === "string" ? rawHref.trim() : "";
+    if (href === "listKeys.txt") {
+      return true;
+    }
+    if (!href || href.startsWith("?") || href.startsWith("#") || href.startsWith("//")) {
+      return false;
+    }
+    try {
+      const url = new URL(href, window.location.href);
+      return url.origin === window.location.origin && url.pathname === "/uploads/listKeys.txt";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function downloadTextFile(filename, body) {
+    const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
   function normalizeLocalRoot(value, fallback) {
     if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
       return fallback;
@@ -258,6 +378,15 @@
     const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
     const random = Math.random().toString(36).slice(2, 8);
     return `publisher-${sourceType}-${timestamp}-${random}`;
+  }
+
+  function uploadQueueStatusMessage() {
+    if (!state.uploadQueueSortBy) {
+      return "Showing upload queue.";
+    }
+    return `Showing upload queue sorted by ${state.uploadQueueSortBy}${
+      state.uploadQueueReversed ? " descending" : ""
+    }.`;
   }
 
   function summaryRow(label, value) {

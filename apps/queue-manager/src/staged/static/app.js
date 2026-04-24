@@ -175,10 +175,11 @@
     }
     const submitter = event.submitter || form.querySelector("button, input[type='submit']");
     const path = queueMutationPath(submitter && submitter.name);
+    event.preventDefault();
     if (!path) {
+      setStatus(unsupportedQueueAction(submitter && submitter.name), "error");
       return;
     }
-    event.preventDefault();
     submitQueueMutation(new FormData(form, submitter), submitter, path);
   }
 
@@ -242,6 +243,14 @@
         }
         return null;
     }
+  }
+
+  function unsupportedQueueAction(submitterName) {
+    const action = typeof submitterName === "string" ? submitterName.replaceAll("_", " ") : "";
+    if (!action) {
+      return "Queue action is not supported by Platform API yet.";
+    }
+    return `Queue action "${action}" is not supported by Platform API yet.`;
   }
 
   async function submitDirectDownload(event) {
