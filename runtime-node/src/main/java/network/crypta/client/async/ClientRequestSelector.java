@@ -250,9 +250,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
           chooseRequestInner(fuzz, random, offeredKeys, starter, realTime, context, now);
       SendableRequest req = r.req;
       if (req == null) {
-        if (r.wakeupTime != Long.MAX_VALUE && r.wakeupTime > now) {
-          wakeupTime = Math.min(wakeupTime, r.wakeupTime);
-        }
+        wakeupTime = rememberFutureWakeup(r, now, wakeupTime);
         continue;
       }
       if (isInsertScheduler && req instanceof SendableGet) {
@@ -264,12 +262,21 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       }
       ChosenBlock block = maybeMakeChosenRequest(req, context, now);
       if (block != null) return block;
+      wakeupTime = rememberFutureWakeup(r, now, wakeupTime);
     }
     if (wakeupTime != Long.MAX_VALUE) {
       // Wake up later. Use one de-duplicated job after the bounded retries.
       sched.scheduleWakeStarterAt(wakeupTime);
     }
     return null;
+  }
+
+  private static long rememberFutureWakeup(
+      SelectorReturn result, long now, long currentWakeupTime) {
+    if (result.wakeupTime != Long.MAX_VALUE && result.wakeupTime > now) {
+      return Math.min(currentWakeupTime, result.wakeupTime);
+    }
+    return currentWakeupTime;
   }
 
   /**
@@ -363,7 +370,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * <p>When a request is immediately available, {@link #req} is non-{@code null} and can be handed
    * off to build a {@code ChosenBlock}. When selection finds nothing runnable, {@link #req} is
    * {@code null} and {@link #wakeupTime} carries the earliest time at which another attempt may be
-   * worthwhile. The type is immutable and intended for short-lived use by the scheduler.
+   * worthwhile. A non-{@code null} request may also carry a wakeup when it is a fallback candidate
+   * chosen while another queue is in cooldown. The type is immutable and intended for short-lived
+   * use by the scheduler.
    */
   public static class SelectorReturn {
     /**
@@ -381,6 +390,11 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     SelectorReturn(SendableRequest req) {
       this.req = req;
       this.wakeupTime = -1;
+    }
+
+    SelectorReturn(SendableRequest req, long wakeupTime) {
+      this.req = req;
+      this.wakeupTime = wakeupTime;
     }
 
     SelectorReturn(long wakeupTime) {
@@ -416,7 +430,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     if (l > Integer.MAX_VALUE) {
       SelectorReturn offeredSecond =
           maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
-      if (offeredSecond != null) return offeredSecond;
+      if (offeredSecond != null) return new SelectorReturn(offeredSecond.req, l);
       if (LOG.isDebugEnabled())
         LOG.debug("No priority available for the next {}", TimeUtil.formatTime(l - now));
       return new SelectorReturn(l);
@@ -445,7 +459,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     if (selected.req != null) return selected;
     SelectorReturn offeredSecond =
         maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
-    return offeredSecond != null ? offeredSecond : selected;
+    return offeredSecond != null
+        ? new SelectorReturn(offeredSecond.req, selected.wakeupTime)
+        : selected;
   }
 
   private SelectorReturn selectFromPriorities(
