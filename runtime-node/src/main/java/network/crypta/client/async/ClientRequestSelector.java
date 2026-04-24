@@ -433,12 +433,19 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
     SelectorReturn selected =
         selectFromPriorities(choosenPriorityClass, starter, context, now, realTime, random);
-    if (selected.req == null) {
-      SelectorReturn offeredSecond =
-          maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
-      if (offeredSecond != null) return offeredSecond;
-    }
-    return selected;
+    return maybeUseOfferedKeysIfNoRequest(selected, tryOfferedKeys, offeredKeys, context, now);
+  }
+
+  private SelectorReturn maybeUseOfferedKeysIfNoRequest(
+      SelectorReturn selected,
+      boolean tryOfferedKeys,
+      OfferedKeysList offeredKeys,
+      ClientContext context,
+      long now) {
+    if (selected.req != null) return selected;
+    SelectorReturn offeredSecond =
+        maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
+    return offeredSecond != null ? offeredSecond : selected;
   }
 
   private SelectorReturn selectFromPriorities(
@@ -1173,7 +1180,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * <p>No-op for insert schedulers or canceled requests. Maintains a bounded history used to
    * occasionally prioritize requests that recently fetched successfully.
    *
-   * @param succeeded the successful {@link BaseSendableGet}; ignored if cancelled
+   * @param succeeded the successful {@link BaseSendableGet}; ignored if canceled
    */
   public void succeeded(BaseSendableGet succeeded) {
     // Do nothing.
