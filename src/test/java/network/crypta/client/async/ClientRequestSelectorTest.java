@@ -3,6 +3,7 @@ package network.crypta.client.async;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClientImpl;
@@ -527,6 +528,102 @@ class ClientRequestSelectorTest {
   }
 
   @Test
+  void chooseRequest_whenFutureWakeupReturned_schedulesOneStarterWakeup() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    long wakeupTime = System.currentTimeMillis() + 1234L;
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return new SelectorReturn(wakeupTime);
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertNull(block);
+    verify(sched).scheduleWakeStarterAt(wakeupTime);
+  }
+
+  @Test
+  void chooseRequest_whenRepeatedFutureWakeupsReturned_schedulesEarliestWakeupOnce() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    long now = System.currentTimeMillis();
+    long earliestWakeupTime = now + 1234L;
+    long[] wakeupTimes = {
+      now + 5000L, earliestWakeupTime, Long.MAX_VALUE, now + 2500L, now + 7500L
+    };
+    int[] calls = {0};
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return new SelectorReturn(wakeupTimes[calls[0]++]);
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertNull(block);
+    assertEquals(5, calls[0]);
+    verify(sched).scheduleWakeStarterAt(earliestWakeupTime);
+  }
+
+  @Test
+  void chooseRequest_whenFirstSelectionMissesButSecondFindsRequest_returnsRequest() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    SendableRequest req = mock(SendableRequest.class);
+    ChosenBlock expected = mock(ChosenBlock.class);
+    int[] calls = {0};
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return calls[0]++ == 0 ? new SelectorReturn(Long.MAX_VALUE) : new SelectorReturn(req);
+          }
+
+          @Override
+          public ChosenBlock maybeMakeChosenRequest(
+              SendableRequest request, ClientContext context, long now) {
+            return Objects.equals(request, req) ? expected : null;
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertSame(expected, block);
+    assertEquals(2, calls[0]);
+    verify(sched, times(0)).scheduleWakeStarterAt(anyLong());
+  }
+
+  @Test
   void chooseRequestInner_whenOfferedKeysReadyAndChosen_returnsOfferedKeys() {
     ClientContext ctx = minimalContext();
     ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
@@ -544,5 +641,71 @@ class ClientRequestSelectorTest {
             0, random, offered, mock(RequestStarter.class), true, ctx, System.currentTimeMillis());
     assertNotNull(ret);
     assertSame(offered, ret.req);
+  }
+
+  @Test
+  void chooseRequestInner_whenPrioritiesCoolingAndOfferedKeysReadyButNotTried_returnsOfferedKeys() {
+    ClientContext ctx = minimalContext();
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    ClientRequestSelector selector = new ClientRequestSelector(false, false, false, sched);
+    RequestClient client = mock(RequestClient.class);
+    ClientRequestSchedulerGroup group = mock(ClientRequestSchedulerGroup.class);
+    RequestStarter starter = mock(RequestStarter.class);
+    long wakeupTime = System.currentTimeMillis() + 60_000L;
+
+    SendableGet req = mock(SendableGet.class);
+    when(req.getPriorityClass()).thenReturn(RequestStarter.INTERACTIVE_PRIORITY_CLASS);
+    when(req.getClient()).thenReturn(client);
+    when(req.getSchedulerGroup()).thenReturn(group);
+    when(req.getWakeupTime(any(), anyLong())).thenReturn(wakeupTime);
+    when(req.realTimeFlag()).thenReturn(false);
+    when(req.isCancelled()).thenReturn(false);
+    selector.addToGrabArray(RequestStarter.INTERACTIVE_PRIORITY_CLASS, client, group, req, ctx);
+
+    OfferedKeysList offered = mock(OfferedKeysList.class);
+    when(offered.getWakeupTime(any(), anyLong())).thenReturn(0L);
+
+    RandomSource random = mock(RandomSource.class);
+    when(random.nextBoolean()).thenReturn(false);
+
+    ClientRequestSelector.SelectorReturn ret =
+        selector.chooseRequestInner(
+            0, random, offered, starter, false, ctx, System.currentTimeMillis());
+
+    assertNotNull(ret);
+    assertSame(offered, ret.req);
+    assertEquals(wakeupTime, ret.wakeupTime);
+  }
+
+  @Test
+  void chooseRequest_whenOfferedFallbackCannotRun_schedulesCooldownWakeup() {
+    ClientContext ctx = minimalContext();
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    ClientRequestSelector selector = new ClientRequestSelector(false, false, false, sched);
+    RequestClient client = mock(RequestClient.class);
+    ClientRequestSchedulerGroup group = mock(ClientRequestSchedulerGroup.class);
+    RequestStarter starter = mock(RequestStarter.class);
+    long wakeupTime = System.currentTimeMillis() + 60_000L;
+
+    SendableGet req = mock(SendableGet.class);
+    when(req.getPriorityClass()).thenReturn(RequestStarter.INTERACTIVE_PRIORITY_CLASS);
+    when(req.getClient()).thenReturn(client);
+    when(req.getSchedulerGroup()).thenReturn(group);
+    when(req.getWakeupTime(any(), anyLong())).thenReturn(wakeupTime);
+    when(req.realTimeFlag()).thenReturn(false);
+    when(req.isCancelled()).thenReturn(false);
+    selector.addToGrabArray(RequestStarter.INTERACTIVE_PRIORITY_CLASS, client, group, req, ctx);
+
+    OfferedKeysList offered = mock(OfferedKeysList.class);
+    when(offered.getWakeupTime(any(), anyLong())).thenReturn(0L);
+    when(offered.chooseKey(any(), any())).thenReturn(null);
+
+    RandomSource random = mock(RandomSource.class);
+    when(random.nextBoolean()).thenReturn(false);
+
+    ChosenBlock block = selector.chooseRequest(0, random, offered, starter, false, ctx);
+
+    assertNull(block);
+    verify(sched).scheduleWakeStarterAt(wakeupTime);
   }
 }

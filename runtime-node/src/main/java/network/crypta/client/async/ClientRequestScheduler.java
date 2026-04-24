@@ -67,6 +67,7 @@ import org.slf4j.LoggerFactory;
  */
 public class ClientRequestScheduler implements RequestScheduler {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequestScheduler.class);
+  private static final long NO_WAKE_STARTER_JOB = Long.MAX_VALUE;
 
   private KeyListenerTracker schedCore;
   final KeyListenerTracker schedTransient;
@@ -87,10 +88,15 @@ public class ClientRequestScheduler implements RequestScheduler {
   final boolean isRTScheduler;
   final RandomSource random;
   private final RequestStarter starter;
+  private final String wakeStarterJobName;
+  private final Object wakeStarterJobLock = new Object();
   private final Node node;
 
   /** Human-readable scheduler name for logs and diagnostics. */
   public final String name;
+
+  private Runnable queuedWakeStarterJob;
+  private long queuedWakeStarterJobTime = NO_WAKE_STARTER_JOB;
 
   final DatastoreChecker datastoreChecker;
 
@@ -155,6 +161,7 @@ public class ClientRequestScheduler implements RequestScheduler {
     selector = new ClientRequestSelector(mode.forInserts(), mode.forSSKs(), mode.forRT(), this);
 
     this.name = name;
+    this.wakeStarterJobName = "Wake request starter for " + name;
 
     this.choosenPriorityScheduler = PRIORITY_HARD; // Will be reset later.
     if (!mode.forInserts()) {
@@ -792,6 +799,38 @@ public class ClientRequestScheduler implements RequestScheduler {
   @Override
   public void wakeStarter() {
     starter.wakeUp();
+  }
+
+  /**
+   * Schedules the earliest pending starter wakeup for the given absolute wall-clock time.
+   *
+   * <p>The scheduler owns coalescing instead of relying on ticker-specific duplicate handling:
+   * later wakeups keep the existing pending job, while earlier wakeups replace it.
+   *
+   * @param wakeupTime absolute time in milliseconds since the epoch
+   */
+  void scheduleWakeStarterAt(long wakeupTime) {
+    synchronized (wakeStarterJobLock) {
+      if (queuedWakeStarterJob != null && queuedWakeStarterJobTime <= wakeupTime) return;
+      if (queuedWakeStarterJob != null) clientContext.ticker.removeQueuedJob(queuedWakeStarterJob);
+      WakeStarterJob job = new WakeStarterJob();
+      queuedWakeStarterJob = job;
+      queuedWakeStarterJobTime = wakeupTime;
+      clientContext.ticker.queueTimedJobAbsolute(job, wakeStarterJobName, wakeupTime, false, false);
+    }
+  }
+
+  private final class WakeStarterJob implements Runnable {
+    @Override
+    public void run() {
+      synchronized (wakeStarterJobLock) {
+        if (queuedWakeStarterJob == this) {
+          queuedWakeStarterJob = null;
+          queuedWakeStarterJobTime = NO_WAKE_STARTER_JOB;
+        }
+      }
+      wakeStarter();
+    }
   }
 
   /**
