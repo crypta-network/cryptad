@@ -251,9 +251,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       if (req == null) {
         if (r.wakeupTime != Long.MAX_VALUE && r.wakeupTime > now) {
           // Wake up later.
-          sched.clientContext.ticker.queueTimedJob(sched::wakeStarter, r.wakeupTime - now);
+          sched.scheduleWakeStarterAt(r.wakeupTime);
         }
-        continue;
+        return null;
       }
       if (isInsertScheduler && req instanceof SendableGet) {
         IllegalStateException e =
@@ -529,8 +529,8 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       long now) {
     long cooldownTime = chosenTracker.getWakeupTime(context, now);
     if (cooldownTime > 0) {
-      if (LOG.isInfoEnabled()) {
-        LOG.info(
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "Priority {} is in cooldown for another {} {}",
             choosenPriorityClass,
             cooldownTime - now,
@@ -552,13 +552,13 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
     if (val.item == null) {
       if (val.wakeupTime == -1)
-        LOG.info(
+        LOG.debug(
             PRIORITY
                 + "{} returned cooldown time of -1 - nothing to schedule, should remove priority",
             choosenPriorityClass);
       else {
-        if (LOG.isInfoEnabled()) {
-          LOG.info(
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
               PRIORITY + "{} returned cooldown time of {} = {}",
               choosenPriorityClass,
               val.wakeupTime - now,

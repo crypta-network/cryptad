@@ -87,6 +87,8 @@ public class ClientRequestScheduler implements RequestScheduler {
   final boolean isRTScheduler;
   final RandomSource random;
   private final RequestStarter starter;
+  private final Runnable wakeStarterJob;
+  private final String wakeStarterJobName;
   private final Node node;
 
   /** Human-readable scheduler name for logs and diagnostics. */
@@ -149,12 +151,14 @@ public class ClientRequestScheduler implements RequestScheduler {
             mode.forInserts(), mode.forSSKs(), mode.forRT(), random, this, null, false);
     this.datastoreChecker = core.getStoreChecker();
     this.starter = starter;
+    this.wakeStarterJob = this::wakeStarter;
     this.random = random;
     this.node = node;
     this.clientContext = context;
     selector = new ClientRequestSelector(mode.forInserts(), mode.forSSKs(), mode.forRT(), this);
 
     this.name = name;
+    this.wakeStarterJobName = "Wake request starter for " + name;
 
     this.choosenPriorityScheduler = PRIORITY_HARD; // Will be reset later.
     if (!mode.forInserts()) {
@@ -792,6 +796,19 @@ public class ClientRequestScheduler implements RequestScheduler {
   @Override
   public void wakeStarter() {
     starter.wakeUp();
+  }
+
+  /**
+   * Schedules a de-duplicated starter wakeup for the given absolute wall-clock time.
+   *
+   * <p>The wakeup job is a stable {@link Runnable} instance so the ticker can coalesce repeated
+   * cooldown wakeups for this scheduler.
+   *
+   * @param wakeupTime absolute time in milliseconds since the epoch
+   */
+  void scheduleWakeStarterAt(long wakeupTime) {
+    clientContext.ticker.queueTimedJobAbsolute(
+        wakeStarterJob, wakeStarterJobName, wakeupTime, false, true);
   }
 
   /**

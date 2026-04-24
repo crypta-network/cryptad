@@ -41,6 +41,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -57,6 +58,7 @@ class ClientRequestSchedulerTest {
 
   @Mock private NodeClientCore core;
   @Mock private DatastoreChecker datastoreChecker;
+  @Mock private Ticker ticker;
 
   private ClientContext context;
 
@@ -64,7 +66,6 @@ class ClientRequestSchedulerTest {
   void setUp() {
     // Minimal, real ClientContext with most dummies to satisfy field access
     PriorityAwareExecutor mainExecutor = mock(PriorityAwareExecutor.class);
-    Ticker ticker = mock(Ticker.class);
     ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
 
     context =
@@ -438,6 +439,20 @@ class ClientRequestSchedulerTest {
     ClientRequestScheduler sched = newScheduler(false);
     sched.wakeStarter();
     verify(starter).wakeUp();
+  }
+
+  @Test
+  void scheduleWakeStarterAt_whenCalledRepeatedly_usesStableDedupedTickerJob() {
+    ClientRequestScheduler sched = newScheduler(false);
+
+    sched.scheduleWakeStarterAt(1234L);
+    sched.scheduleWakeStarterAt(5678L);
+
+    ArgumentCaptor<Runnable> wakeJob = ArgumentCaptor.forClass(Runnable.class);
+    verify(ticker, times(2))
+        .queueTimedJobAbsolute(
+            wakeJob.capture(), eq("Wake request starter for test"), anyLong(), eq(false), eq(true));
+    assertSame(wakeJob.getAllValues().get(0), wakeJob.getAllValues().get(1));
   }
 
   @Test

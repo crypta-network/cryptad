@@ -527,6 +527,33 @@ class ClientRequestSelectorTest {
   }
 
   @Test
+  void chooseRequest_whenFutureWakeupReturned_schedulesOneStarterWakeup() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    long wakeupTime = System.currentTimeMillis() + 1234L;
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return new SelectorReturn(wakeupTime);
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertNull(block);
+    verify(sched).scheduleWakeStarterAt(wakeupTime);
+  }
+
+  @Test
   void chooseRequestInner_whenOfferedKeysReadyAndChosen_returnsOfferedKeys() {
     ClientContext ctx = minimalContext();
     ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
