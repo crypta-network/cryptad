@@ -85,6 +85,11 @@ class QueueManagerBundleStagingTest {
     assertTrue(appScript.contains("cryptad-bootstrap.json"));
     assertTrue(appScript.contains("platformApiRoot"));
     assertTrue(appScript.contains("formPassword"));
+    assertTrue(appScript.contains("url.searchParams.set(\"sortBy\", state.sortBy);"));
+    assertTrue(appScript.contains("url.searchParams.set(\"reversed\", \"true\");"));
+    assertTrue(appScript.contains("isQueueKeyListLink"));
+    assertTrue(appScript.contains("queue/keys"));
+    assertTrue(appScript.contains("downloadTextFile(`${state.page}-keys.txt`"));
     assertFalse(appScript.contains("CRYPTAD_APP_TOKEN"));
   }
 

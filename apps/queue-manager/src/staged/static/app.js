@@ -5,6 +5,8 @@
   const state = {
     bootstrap: {},
     page: "downloads",
+    reversed: false,
+    sortBy: null,
   };
 
   const elements = {
@@ -51,6 +53,10 @@
   }
 
   async function selectPage(page) {
+    if (state.page !== page) {
+      state.sortBy = null;
+      state.reversed = false;
+    }
     state.page = page;
     updateTabs();
     await loadQueue();
@@ -62,9 +68,15 @@
     try {
       const url = apiUrl("queue");
       url.searchParams.set("page", state.page);
+      if (state.sortBy) {
+        url.searchParams.set("sortBy", state.sortBy);
+      }
+      if (state.reversed) {
+        url.searchParams.set("reversed", "true");
+      }
       const snapshot = await loadJson(url);
       renderQueue(snapshot.contentHtml);
-      setStatus(`Showing ${state.page}.`);
+      setStatus(queueStatusMessage());
     } catch (error) {
       setStatus(errorMessage(error), "error");
       renderText("Queue snapshot unavailable.");
@@ -111,6 +123,10 @@
 
   function interceptQueueClick(event) {
     const target = event.target instanceof Element ? event.target : null;
+    const anchor = target ? target.closest("a") : null;
+    if (anchor && elements.content.contains(anchor) && interceptQueueAnchor(event, anchor)) {
+      return;
+    }
     const button = target ? target.closest("button, input[type='submit']") : null;
     if (!button || !elements.content.contains(button)) {
       return;
@@ -125,6 +141,31 @@
     }
     event.preventDefault();
     submitQueueMutation(new FormData(), button, path);
+  }
+
+  function interceptQueueAnchor(event, anchor) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return false;
+    }
+
+    const href = anchor.getAttribute("href") || "";
+    if (isQueueKeyListLink(href)) {
+      event.preventDefault();
+      exportQueueKeys();
+      return true;
+    }
+    if (updateQueueSort(href)) {
+      event.preventDefault();
+      return true;
+    }
+    return false;
   }
 
   function interceptQueueSubmit(event) {
@@ -218,6 +259,23 @@
     }
   }
 
+  async function exportQueueKeys() {
+    setStatus(`Preparing ${state.page} key list...`);
+    try {
+      const url = apiUrl("queue/keys");
+      url.searchParams.set("page", state.page);
+      const data = await loadJson(url);
+      const keys = Array.isArray(data.keys)
+        ? data.keys.filter((value) => typeof value === "string")
+        : [];
+      const textBody = keys.length === 0 ? "" : `${keys.join("\n")}\n`;
+      downloadTextFile(`${state.page}-keys.txt`, textBody);
+      setStatus(`Exported ${keys.length} ${state.page} queue keys.`, "success");
+    } catch (error) {
+      setStatus(errorMessage(error), "error");
+    }
+  }
+
   async function postForm(path, formData) {
     const password = typeof state.bootstrap.formPassword === "string" ? state.bootstrap.formPassword : "";
     if (!password) {
@@ -260,6 +318,51 @@
     return new URL(path, new URL(root, window.location.origin));
   }
 
+  function updateQueueSort(rawHref) {
+    if (typeof rawHref !== "string" || !rawHref.startsWith("?")) {
+      return false;
+    }
+    const params = new URLSearchParams(rawHref.slice(1));
+    if (!params.has("sortBy")) {
+      return false;
+    }
+    state.sortBy = params.get("sortBy");
+    state.reversed = params.get("reversed") === "true" || params.has("reversed");
+    loadQueue();
+    return true;
+  }
+
+  function isQueueKeyListLink(rawHref) {
+    const href = typeof rawHref === "string" ? rawHref.trim() : "";
+    if (href === "listKeys.txt") {
+      return true;
+    }
+    if (!href || href.startsWith("?") || href.startsWith("#") || href.startsWith("//")) {
+      return false;
+    }
+    try {
+      const url = new URL(href, window.location.href);
+      return (
+        url.origin === window.location.origin &&
+        (url.pathname === "/downloads/listKeys.txt" || url.pathname === "/uploads/listKeys.txt")
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function downloadTextFile(filename, body) {
+    const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
   function normalizeLocalRoot(value, fallback) {
     if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
       return fallback;
@@ -297,6 +400,13 @@
     elements.downloadsTab.setAttribute("aria-selected", downloads ? "true" : "false");
     elements.uploadsTab.setAttribute("aria-selected", downloads ? "false" : "true");
     elements.downloadPanel.hidden = !downloads;
+  }
+
+  function queueStatusMessage() {
+    if (!state.sortBy) {
+      return `Showing ${state.page}.`;
+    }
+    return `Showing ${state.page} sorted by ${state.sortBy}${state.reversed ? " descending" : ""}.`;
   }
 
   function renderText(value) {
