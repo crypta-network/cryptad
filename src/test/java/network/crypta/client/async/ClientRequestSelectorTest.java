@@ -555,6 +555,39 @@ class ClientRequestSelectorTest {
   }
 
   @Test
+  void chooseRequest_whenRepeatedFutureWakeupsReturned_schedulesEarliestWakeupOnce() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    long now = System.currentTimeMillis();
+    long earliestWakeupTime = now + 1234L;
+    long[] wakeupTimes = {
+      now + 5000L, earliestWakeupTime, Long.MAX_VALUE, now + 2500L, now + 7500L
+    };
+    int[] calls = {0};
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return new SelectorReturn(wakeupTimes[calls[0]++]);
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertNull(block);
+    assertEquals(5, calls[0]);
+    verify(sched).scheduleWakeStarterAt(earliestWakeupTime);
+  }
+
+  @Test
   void chooseRequest_whenFirstSelectionMissesButSecondFindsRequest_returnsRequest() {
     ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
     SendableRequest req = mock(SendableRequest.class);

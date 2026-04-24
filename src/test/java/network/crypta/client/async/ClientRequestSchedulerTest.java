@@ -449,10 +449,17 @@ class ClientRequestSchedulerTest {
     sched.scheduleWakeStarterAt(5678L);
 
     ArgumentCaptor<Runnable> wakeJob = ArgumentCaptor.forClass(Runnable.class);
+    ArgumentCaptor<Long> wakeTime = ArgumentCaptor.forClass(Long.class);
     verify(ticker, times(2))
         .queueTimedJobAbsolute(
-            wakeJob.capture(), eq("Wake request starter for test"), anyLong(), eq(false), eq(true));
+            wakeJob.capture(),
+            eq("Wake request starter for test"),
+            wakeTime.capture(),
+            eq(false),
+            eq(true));
     assertSame(wakeJob.getAllValues().get(0), wakeJob.getAllValues().get(1));
+    assertEquals(1234L, wakeTime.getAllValues().get(0));
+    assertEquals(5678L, wakeTime.getAllValues().get(1));
   }
 
   @Test
