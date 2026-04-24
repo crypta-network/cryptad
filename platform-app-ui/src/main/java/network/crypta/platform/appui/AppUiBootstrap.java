@@ -117,30 +117,39 @@ public record AppUiBootstrap(
     }
   }
 
-  private static void requireText(String value, String label) {
+  private static String requireText(String value, String label) {
     Objects.requireNonNull(value, label);
     if (value.isBlank()) {
       throw new IllegalArgumentException(label + " must not be blank");
     }
+    return value;
   }
 
   private static void requireRootPath(String value, String label) {
-    requireText(value, label);
-    if (value.charAt(0) != '/' || value.startsWith("//")) {
+    String path = requireText(value, label);
+    requireSingleLeadingSlash(path, label);
+    requireUriPathOnly(path, label);
+    if (!path.endsWith("/")) {
+      throw new IllegalArgumentException(label + " must end with '/'");
+    }
+  }
+
+  private static void requireSingleLeadingSlash(String path, String label) {
+    if (path.charAt(0) != '/' || path.startsWith("//")) {
       throw new IllegalArgumentException(label + " must start with a single leading '/'");
     }
+  }
+
+  private static void requireUriPathOnly(String path, String label) {
     try {
-      URI uri = URI.create("http://localhost" + value);
-      if (!value.equals(uri.getRawPath())
+      URI uri = URI.create("http://localhost" + path);
+      if (!path.equals(uri.getRawPath())
           || uri.getRawQuery() != null
           || uri.getRawFragment() != null) {
         throw new IllegalArgumentException(label + " must be a valid absolute root path");
       }
     } catch (IllegalArgumentException exception) {
       throw new IllegalArgumentException(label + " must be a valid absolute root path", exception);
-    }
-    if (!value.endsWith("/")) {
-      throw new IllegalArgumentException(label + " must end with '/'");
     }
   }
 }

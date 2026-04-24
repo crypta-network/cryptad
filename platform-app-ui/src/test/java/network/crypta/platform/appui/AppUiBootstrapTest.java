@@ -71,6 +71,15 @@ class AppUiBootstrapTest {
 
     String json = AppUiBootstrapJson.serialize(bootstrap);
 
+    assertEquals(
+        "{\"appId\":\"demo-app\","
+            + "\"name\":\"Demo \\u003cApp\\u003e\","
+            + "\"uiRoot\":\"/apps/demo-app/\","
+            + "\"assetRoot\":\"/apps/demo-app/static/\","
+            + "\"platformApiRoot\":\"/api/v1/\","
+            + "\"shellRoot\":\"/app/node/\","
+            + "\"formPassword\":\"secret\\u0026value\"}",
+        json);
     assertTrue(json.contains("\"name\":\"Demo \\u003cApp\\u003e\""));
     assertTrue(json.contains("\"formPassword\":\"secret\\u0026value\""));
     assertFalse(json.contains("CRYPTAD_APP_TOKEN"));

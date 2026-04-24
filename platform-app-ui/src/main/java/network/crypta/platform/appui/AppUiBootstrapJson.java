@@ -1,8 +1,6 @@
 package network.crypta.platform.appui;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.StringJoiner;
 
 /**
  * JSON serializer for {@link AppUiBootstrap}.
@@ -23,6 +21,21 @@ import java.util.StringJoiner;
  * @see AppUiBootstrapService
  */
 public final class AppUiBootstrapJson {
+  private static final Map<Character, String> STRING_ESCAPES =
+      Map.ofEntries(
+          Map.entry('"', "\\\""),
+          Map.entry('\\', "\\\\"),
+          Map.entry('\b', "\\b"),
+          Map.entry('\f', "\\f"),
+          Map.entry('\n', "\\n"),
+          Map.entry('\r', "\\r"),
+          Map.entry('\t', "\\t"),
+          Map.entry('<', "\\u003c"),
+          Map.entry('>', "\\u003e"),
+          Map.entry('&', "\\u0026"),
+          Map.entry('\u2028', "\\u2028"),
+          Map.entry('\u2029', "\\u2029"));
+
   private AppUiBootstrapJson() {}
 
   /**
@@ -39,101 +52,59 @@ public final class AppUiBootstrapJson {
    * @throws NullPointerException if {@code bootstrap} is {@code null}
    */
   public static String serialize(AppUiBootstrap bootstrap) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
-    json.put("appId", bootstrap.appId());
-    json.put("name", bootstrap.name());
-    json.put("uiRoot", bootstrap.uiRoot());
-    json.put("assetRoot", bootstrap.assetRoot());
-    json.put("platformApiRoot", bootstrap.platformApiRoot());
-    json.put("shellRoot", bootstrap.shellRoot());
-    json.put("formPassword", bootstrap.formPassword());
-    return writeJson(json);
+    StringBuilder out = new StringBuilder(160);
+    out.append('{');
+    appendStringField(out, "appId", bootstrap.appId());
+    appendStringField(out, "name", bootstrap.name());
+    appendStringField(out, "uiRoot", bootstrap.uiRoot());
+    appendStringField(out, "assetRoot", bootstrap.assetRoot());
+    appendStringField(out, "platformApiRoot", bootstrap.platformApiRoot());
+    appendStringField(out, "shellRoot", bootstrap.shellRoot());
+    appendNullableStringField(out, "formPassword", bootstrap.formPassword());
+    return out.append('}').toString();
   }
 
-  private static String writeJson(Object value) {
-    StringBuilder out = new StringBuilder();
-    appendJsonValue(out, value);
-    return out.toString();
+  private static void appendStringField(StringBuilder out, String name, String value) {
+    appendFieldName(out, name);
+    appendJsonString(out, value);
   }
 
-  private static void appendJsonValue(StringBuilder out, Object value) {
+  private static void appendNullableStringField(StringBuilder out, String name, String value) {
+    appendFieldName(out, name);
     if (value == null) {
       out.append("null");
-      return;
+    } else {
+      appendJsonString(out, value);
     }
-    if (value instanceof String text) {
-      appendJsonString(out, text);
-      return;
-    }
-    if (value instanceof Number || value instanceof Boolean) {
-      out.append(value);
-      return;
-    }
-    if (value instanceof Map<?, ?> map) {
-      appendJsonObject(out, map);
-      return;
-    }
-    if (value instanceof Iterable<?> iterable) {
-      appendJsonArray(out, iterable);
-      return;
-    }
-    appendJsonString(out, value.toString());
   }
 
-  private static void appendJsonObject(StringBuilder out, Map<?, ?> map) {
-    out.append('{');
-    StringJoiner joiner = new StringJoiner(",");
-    map.forEach(
-        (key, value) -> {
-          StringBuilder entry = new StringBuilder();
-          appendJsonString(entry, String.valueOf(key));
-          entry.append(':');
-          appendJsonValue(entry, value);
-          joiner.add(entry.toString());
-        });
-    out.append(joiner);
-    out.append('}');
-  }
-
-  private static void appendJsonArray(StringBuilder out, Iterable<?> iterable) {
-    out.append('[');
-    StringJoiner joiner = new StringJoiner(",");
-    for (Object item : iterable) {
-      StringBuilder entry = new StringBuilder();
-      appendJsonValue(entry, item);
-      joiner.add(entry.toString());
+  private static void appendFieldName(StringBuilder out, String name) {
+    if (out.length() > 1) {
+      out.append(',');
     }
-    out.append(joiner);
-    out.append(']');
+    appendJsonString(out, name);
+    out.append(':');
   }
 
   private static void appendJsonString(StringBuilder out, String value) {
     out.append('"');
     for (int index = 0; index < value.length(); index++) {
-      char ch = value.charAt(index);
-      switch (ch) {
-        case '"' -> out.append("\\\"");
-        case '\\' -> out.append("\\\\");
-        case '\b' -> out.append("\\b");
-        case '\f' -> out.append("\\f");
-        case '\n' -> out.append("\\n");
-        case '\r' -> out.append("\\r");
-        case '\t' -> out.append("\\t");
-        case '<' -> out.append("\\u003c");
-        case '>' -> out.append("\\u003e");
-        case '&' -> out.append("\\u0026");
-        case '\u2028' -> out.append("\\u2028");
-        case '\u2029' -> out.append("\\u2029");
-        default -> {
-          if (ch < 0x20) {
-            out.append("\\u");
-            out.append(String.format("%04x", (int) ch));
-          } else {
-            out.append(ch);
-          }
-        }
-      }
+      appendJsonCharacter(out, value.charAt(index));
     }
     out.append('"');
+  }
+
+  private static void appendJsonCharacter(StringBuilder out, char value) {
+    String replacement = STRING_ESCAPES.get(value);
+    if (replacement != null) {
+      out.append(replacement);
+      return;
+    }
+    if (value < 0x20) {
+      out.append("\\u");
+      out.append(String.format("%04x", (int) value));
+    } else {
+      out.append(value);
+    }
   }
 }
