@@ -244,16 +244,16 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       boolean realTime,
       ClientContext context) {
     long now = System.currentTimeMillis();
+    long wakeupTime = Long.MAX_VALUE;
     for (int i = 0; i < 5; i++) {
       SelectorReturn r =
           chooseRequestInner(fuzz, random, offeredKeys, starter, realTime, context, now);
       SendableRequest req = r.req;
       if (req == null) {
         if (r.wakeupTime != Long.MAX_VALUE && r.wakeupTime > now) {
-          // Wake up later.
-          sched.scheduleWakeStarterAt(r.wakeupTime);
+          wakeupTime = Math.min(wakeupTime, r.wakeupTime);
         }
-        return null;
+        continue;
       }
       if (isInsertScheduler && req instanceof SendableGet) {
         IllegalStateException e =
@@ -264,6 +264,10 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       }
       ChosenBlock block = maybeMakeChosenRequest(req, context, now);
       if (block != null) return block;
+    }
+    if (wakeupTime != Long.MAX_VALUE) {
+      // Wake up later. Use one de-duplicated job after the bounded retries.
+      sched.scheduleWakeStarterAt(wakeupTime);
     }
     return null;
   }

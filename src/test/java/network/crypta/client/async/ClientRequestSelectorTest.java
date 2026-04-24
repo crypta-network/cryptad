@@ -3,6 +3,7 @@ package network.crypta.client.async;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClientImpl;
@@ -551,6 +552,42 @@ class ClientRequestSelectorTest {
 
     assertNull(block);
     verify(sched).scheduleWakeStarterAt(wakeupTime);
+  }
+
+  @Test
+  void chooseRequest_whenFirstSelectionMissesButSecondFindsRequest_returnsRequest() {
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    SendableRequest req = mock(SendableRequest.class);
+    ChosenBlock expected = mock(ChosenBlock.class);
+    int[] calls = {0};
+    ClientRequestSelector selector =
+        new ClientRequestSelector(false, false, false, sched) {
+          @Override
+          SelectorReturn chooseRequestInner(
+              int fuzz,
+              RandomSource random,
+              OfferedKeysList offeredKeys,
+              RequestStarter starter,
+              boolean realTime,
+              ClientContext context,
+              long now) {
+            return calls[0]++ == 0 ? new SelectorReturn(Long.MAX_VALUE) : new SelectorReturn(req);
+          }
+
+          @Override
+          public ChosenBlock maybeMakeChosenRequest(
+              SendableRequest request, ClientContext context, long now) {
+            return Objects.equals(request, req) ? expected : null;
+          }
+        };
+
+    ChosenBlock block =
+        selector.chooseRequest(
+            0, new DummyRandomSource(1), null, mock(RequestStarter.class), false, minimalContext());
+
+    assertSame(expected, block);
+    assertEquals(2, calls[0]);
+    verify(sched, times(0)).scheduleWakeStarterAt(anyLong());
   }
 
   @Test
