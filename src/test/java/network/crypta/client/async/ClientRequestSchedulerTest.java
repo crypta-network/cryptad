@@ -442,7 +442,7 @@ class ClientRequestSchedulerTest {
   }
 
   @Test
-  void scheduleWakeStarterAt_whenCalledRepeatedly_usesStableDedupedTickerJob() {
+  void scheduleWakeStarterAt_whenLaterTimeIsQueuedAfterEarlier_keepsEarlierWakeup() {
     ClientRequestScheduler sched = newScheduler(false);
 
     sched.scheduleWakeStarterAt(1234L);
@@ -450,16 +450,68 @@ class ClientRequestSchedulerTest {
 
     ArgumentCaptor<Runnable> wakeJob = ArgumentCaptor.forClass(Runnable.class);
     ArgumentCaptor<Long> wakeTime = ArgumentCaptor.forClass(Long.class);
+    verify(ticker)
+        .queueTimedJobAbsolute(
+            wakeJob.capture(),
+            eq("Wake request starter for test"),
+            wakeTime.capture(),
+            eq(false),
+            eq(false));
+    assertEquals(1234L, wakeTime.getValue());
+    verifyNoMoreInteractions(ticker);
+  }
+
+  @Test
+  void scheduleWakeStarterAt_whenEarlierTimeIsQueued_replacesPendingWakeup() {
+    ClientRequestScheduler sched = newScheduler(false);
+
+    sched.scheduleWakeStarterAt(5678L);
+    sched.scheduleWakeStarterAt(1234L);
+
+    ArgumentCaptor<Runnable> wakeJob = ArgumentCaptor.forClass(Runnable.class);
+    ArgumentCaptor<Runnable> removedJob = ArgumentCaptor.forClass(Runnable.class);
+    ArgumentCaptor<Long> wakeTime = ArgumentCaptor.forClass(Long.class);
     verify(ticker, times(2))
         .queueTimedJobAbsolute(
             wakeJob.capture(),
             eq("Wake request starter for test"),
             wakeTime.capture(),
             eq(false),
-            eq(true));
-    assertSame(wakeJob.getAllValues().get(0), wakeJob.getAllValues().get(1));
-    assertEquals(1234L, wakeTime.getAllValues().get(0));
-    assertEquals(5678L, wakeTime.getAllValues().get(1));
+            eq(false));
+    verify(ticker).removeQueuedJob(removedJob.capture());
+    assertSame(wakeJob.getAllValues().get(0), removedJob.getValue());
+    assertEquals(5678L, wakeTime.getAllValues().get(0));
+    assertEquals(1234L, wakeTime.getAllValues().get(1));
+    verifyNoMoreInteractions(ticker);
+  }
+
+  @Test
+  void scheduleWakeStarterAt_whenQueuedWakeupRuns_allowsFutureScheduling() {
+    ClientRequestScheduler sched = newScheduler(false);
+
+    sched.scheduleWakeStarterAt(1234L);
+
+    ArgumentCaptor<Runnable> wakeJob = ArgumentCaptor.forClass(Runnable.class);
+    verify(ticker)
+        .queueTimedJobAbsolute(
+            wakeJob.capture(),
+            eq("Wake request starter for test"),
+            eq(1234L),
+            eq(false),
+            eq(false));
+
+    wakeJob.getValue().run();
+    sched.scheduleWakeStarterAt(5678L);
+
+    verify(starter).wakeUp();
+    verify(ticker, times(2))
+        .queueTimedJobAbsolute(
+            any(Runnable.class),
+            eq("Wake request starter for test"),
+            anyLong(),
+            eq(false),
+            eq(false));
+    verifyNoMoreInteractions(ticker);
   }
 
   @Test
