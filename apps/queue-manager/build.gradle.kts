@@ -19,6 +19,11 @@ val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
 val stageAssetsDir = layout.projectDirectory.dir("src/staged")
 val manifestTemplateFile = stageAssetsDir.file("cryptad-app.properties.template")
+val platformSdkJsFile =
+  project(":platform-sdk-js")
+    .layout
+    .projectDirectory
+    .file("src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js")
 val launcherRelativePath = "bin/queue-manager.sh"
 val appDistPrivateKeyEnvironmentName = "CRYPTAD_APP_DIST_PRIVATE_KEY_BASE64"
 val stagedLauncher =
@@ -130,6 +135,7 @@ val stageApp by
     dependsOn(generateManifest)
     into(stageAppDir)
     from(stageAssetsDir) { exclude("cryptad-app.properties.template") }
+    from(platformSdkJsFile) { into("static") }
     from(generatedManifestDir)
     doLast {
       val launcher = stagedLauncher.get()

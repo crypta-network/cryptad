@@ -250,6 +250,9 @@ Cryptad now uses a partial multi-project Gradle build.
   `network.crypta.platform.appui`. It maps static app UI metadata to `/apps/{appId}/`, resolves
   installed-bundle assets, and enforces traversal, symlink, and content-type boundaries before the
   HTTP adapter streams files.
+- `:platform-sdk-js` owns the dependency-free browser SDK resource used by app-owned static UI
+  bundles. First-party app staging copies this SDK into staged `static/` assets so pages can use
+  the same bootstrap, Platform API, mutation, error, and fragment-sanitization helpers.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
   staged AppHost bundles.
 - `:platform-appcatalog` owns signed app catalog parsing, signature verification, remote/local
@@ -361,7 +364,8 @@ Static UI bundles open at `/apps/{appId}/`; shell-panel bundles keep existing lo
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
 first-party bootstrap JSON, security headers, and static asset boundary. The repo-owned Queue
 Manager and Publisher bundles now stage static UIs at `/apps/queue-manager/static/` and
-`/apps/publisher/static/`.
+`/apps/publisher/static/`, including the browser SDK described in
+[`docs/platform-sdk-js.md`](docs/platform-sdk-js.md).
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -393,6 +397,7 @@ Key docs:
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
 - [App-owned static UI](docs/app-owned-ui.md)
+- [Platform JavaScript SDK](docs/platform-sdk-js.md)
 
 ## Hyphanet Interop Gate
 
@@ -763,6 +768,8 @@ Root build also includes:
 - `:platform-app-ui`: app-owned static UI route and asset-resolution helpers used by the legacy
   HTTP admin adapter to serve `/apps/{appId}/` without exposing data/cache/run directories or
   traversal paths.
+- `:platform-sdk-js`: browser-native SDK resource for app-owned static UI bootstrap, Platform API
+  form/JSON helpers, error handling, and conservative legacy-fragment sanitization.
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
   signatures, trusted-key verification, and the signing/verification CLI used by first-party app
   Gradle tasks.
@@ -1010,8 +1017,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route and
-  asset-resolution helpers; `:platform-appdist` provides the local app bundle digest, signing, and
-  verification tooling; `:platform-appcatalog` provides signed catalog source,
+  asset-resolution helpers; `:platform-sdk-js` provides the browser SDK resource for app-owned
+  static UI; `:platform-appdist` provides the local app bundle digest, signing, and verification
+  tooling; `:platform-appcatalog` provides signed catalog source,
   artifact verification, and safe ZIP staging support;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`

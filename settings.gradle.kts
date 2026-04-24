@@ -43,6 +43,7 @@ include(
   ":runtime-spi",
   ":platform-api",
   ":platform-apphost",
+  ":platform-sdk-js",
   ":platform-web-shell",
   ":runtime-alerts",
   ":runtime-node",
