@@ -35,7 +35,9 @@ The staged bundle contains:
 ```text
 cryptad-app.properties
 bin/publisher.sh
-static/README.txt
+static/index.html
+static/app.js
+static/app.css
 cryptad-app.digests          # after signApp
 cryptad-app.signature        # after signApp
 ```
@@ -65,11 +67,13 @@ curl -X POST --data-urlencode "formPassword=<token>" \
   http://127.0.0.1:<port>/api/v1/apps/publisher/stop
 ```
 
-The bundle intentionally stays conservative in PR-192:
+The bundle intentionally stays narrow in PR-198:
 
-- Local signed staged bundles are supported. Remote catalogs and remote downloads are deferred.
-- App proxying and app-owned static serving are deferred.
-- The bundle points `app.ui.entry` at the shell-native publisher route: `/app/node/#publisher`.
+- Local signed staged bundles and catalog-backed installs use the shared first-party app workflow.
+- The primary UI lives under `/apps/publisher/static/`.
+- `static/index.html` fetches `/apps/publisher/.well-known/cryptad-bootstrap.json` before calling
+  Platform API v1, then uses the operator-scoped `platformApiRoot` and `formPassword` from that
+  bootstrap for publisher queue actions.
 - The launcher is a POSIX shell script; Windows-specific first-party app launch packaging remains deferred.
 
 See [docs/app-distribution.md](../../docs/app-distribution.md) for the exact signing inputs and the shared first-party app workflow.

@@ -1,0 +1,186 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1d2733;
+  background: #f6f7f9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.app-header,
+.toolbar,
+.download-panel,
+.queue-content {
+  background: #ffffff;
+  border: 1px solid #d9dee5;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 8px 8px 0 0;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #526170;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  line-height: 1.2;
+}
+
+.toolbar,
+.download-panel {
+  border-top: 0;
+  padding: 14px 20px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.button,
+.tab {
+  min-height: 40px;
+  border: 1px solid #aeb8c4;
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: #ffffff;
+  color: #1d2733;
+  cursor: pointer;
+}
+
+.button.primary,
+.tab.active {
+  border-color: #215f9a;
+  background: #215f9a;
+  color: #ffffff;
+}
+
+.button.secondary:hover,
+.tab:hover {
+  border-color: #215f9a;
+}
+
+.direct-download {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.6fr) auto auto;
+  gap: 12px;
+  align-items: end;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #526170;
+  font-size: 0.9rem;
+}
+
+input[type="text"] {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #b8c2cf;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #1d2733;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.status {
+  min-height: 24px;
+  margin: 14px 0;
+  color: #526170;
+}
+
+.status.success {
+  color: #14643e;
+}
+
+.status.error {
+  color: #9d2626;
+}
+
+.queue-content {
+  min-height: 300px;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 0 0 8px 8px;
+}
+
+.empty {
+  margin: 0;
+  color: #526170;
+}
+
+.legacy-fragment {
+  max-width: 100%;
+}
+
+.legacy-fragment table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.legacy-fragment th,
+.legacy-fragment td {
+  border-bottom: 1px solid #e2e6ec;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.legacy-fragment a {
+  color: #215f9a;
+}
+
+.legacy-fragment input,
+.legacy-fragment select {
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    width: min(100vw - 20px, 1180px);
+    padding-top: 10px;
+  }
+
+  .app-header,
+  .direct-download {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

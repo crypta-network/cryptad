@@ -27,7 +27,7 @@ class WebShellResourcesTest {
         "Operator subset",
         "First-time setup",
         "Installed apps",
-        "First-party publishing surface",
+        "Publisher fallback panel",
         "Installed apps JSON",
         "Alerts JSON",
         "Diagnostics JSON",

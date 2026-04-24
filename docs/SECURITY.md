@@ -69,6 +69,15 @@ App-owned static UI routes serve files from the immutable installed bundle under
 They do not serve app data, cache, run directories, catalog scratch directories, or caller staging
 paths. Static UI remains same-origin with the local admin UI and Platform API, so external URL
 entries are rejected and route responses use conservative CSP, `nosniff`, no-referrer, and
-non-public no-cache headers. Treat a bypass that serves host files, follows symlink escapes,
-executes JavaScript while the admin UI has JavaScript disabled, or allows bundled UI to exfiltrate
-operator-entered data off-node as security-relevant.
+non-public no-cache headers.
+
+First-party static app UIs can fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` to discover
+local route roots and the existing local-admin form password used for mutating Platform API calls.
+That bootstrap is host/operator scoped. It must not contain `CRYPTAD_APP_TOKEN`, AppHost launch
+tokens, trusted key material, or installed-bundle/data/cache/run filesystem paths. Static UI code
+still runs in the local admin origin until stronger isolation exists, so treat untrusted static UI
+JavaScript as having local admin browser-origin access.
+
+Treat a bypass that serves host files, follows symlink escapes, executes JavaScript while the admin
+UI has JavaScript disabled, exposes AppHost launch tokens to browser code, or allows bundled UI to
+exfiltrate operator-entered data off-node as security-relevant.

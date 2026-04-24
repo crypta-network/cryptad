@@ -57,10 +57,10 @@ The Phase 3 platform path is split across focused modules:
   app layout, process lifecycle, running-state snapshots, and launch-token plumbing.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
   staged bundles.
-- `apps/queue-manager` owns the Queue Manager first-party app bundle. Its `app.ui.entry` points to
-  `/app/node/#queue`.
-- `apps/publisher` owns the Publisher first-party app bundle. Its `app.ui.entry` points to
-  `/app/node/#publisher`.
+- `apps/queue-manager` owns the Queue Manager first-party app bundle. Current staged bundles
+  declare `app.ui.mode=static` and open under `/apps/queue-manager/static/`.
+- `apps/publisher` owns the Publisher first-party app bundle. Current staged bundles declare
+  `app.ui.mode=static` and open under `/apps/publisher/static/`.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
 - `:bridge-fcp-runtime` owns the concrete runtime bindings for FCP.

@@ -19,6 +19,11 @@ Installed apps with static browser UI are mounted separately at `/apps/{appId}/`
 continues to own the JSON lifecycle/control plane under `/api/v1/apps`; it only publishes
 `uiMode`, `uiEntry`, and `uiUrl` so shells can open the correct app UI route.
 
+Static first-party app UIs use `/apps/{appId}/.well-known/cryptad-bootstrap.json` for route
+metadata and the existing local-admin form password needed by mutating Platform API calls. That
+bootstrap is served by the app UI route, not by `/api/v1/apps`, and it does not expose
+`CRYPTAD_APP_TOKEN` or AppHost filesystem paths.
+
 ## Response contract
 
 The router emits JSON responses. Successful reads generally return `200 OK`; create-style
@@ -67,8 +72,9 @@ parameter; check the handler and tests when adding or changing a specific contra
 ## Web Shell relationship
 
 The Web Shell uses the Platform API for node management, queue control, peer control, alerts,
-diagnostics, config, updater, security levels, wizard, installed-app lifecycle work, and the
-Publisher/Queue Manager first-party app surfaces.
+diagnostics, config, updater, security levels, wizard, and installed-app lifecycle work. The
+repo-owned Publisher and Queue Manager apps now use the same Platform API from their own static
+routes under `/apps/publisher/` and `/apps/queue-manager/`.
 
 The shell currently includes these first-party panels and surfaces:
 
@@ -77,8 +83,9 @@ The shell currently includes these first-party panels and surfaces:
 - Installed apps and signed catalog app discovery.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
-- Publisher local file/directory insert workflow.
-- Queue control plane.
+- Publisher and Queue Manager open as independent first-party app UIs when installed.
+- Publisher local file/directory insert workflow and queue control remain available in the shell as
+  fallback operator panels.
 - Legacy links for pages that remain fallback or debug surfaces.
 
 The shell is hosted by `:adapter-http-legacy-admin`, but its route constants, HTML template, CSS,

@@ -63,8 +63,12 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, static asset
-security boundary, and API summary fields.
+The repo-owned Queue Manager and Publisher bundles use `app.ui.mode=static` and
+`app.ui.entry=static/index.html`, so installed copies open under `/apps/queue-manager/static/` and
+`/apps/publisher/static/`.
+
+See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
+bootstrap JSON, static asset security boundary, and API summary fields.
 
 ## Gradle Tasks
 
@@ -188,6 +192,6 @@ Preferred local patterns:
 
 ## Future Work
 
-Public catalog governance, background app-update scheduling, permission enforcement, SDK APIs, and
+Public catalog governance, background app-update scheduling, richer permission UX, SDK APIs, and
 app sandboxing remain later platform work. Signed bundles now carry the manifest metadata needed by
 app-owned static UI routes.
