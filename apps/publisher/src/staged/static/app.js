@@ -4,7 +4,6 @@
   const appId = "publisher";
   const defaultCompatibilityMode = "COMPAT_CURRENT";
   const state = {
-    bootstrap: {},
     uploadQueueReversed: false,
     uploadQueueSortBy: null,
   };
@@ -22,11 +21,11 @@
   async function start() {
     bindControls();
     try {
-      state.bootstrap = await loadBootstrap();
+      await CryptaPlatform.bootstrap.load({ appId });
       initializeForm(elements.fileForm);
       initializeForm(elements.directoryForm);
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
@@ -36,17 +35,6 @@
     elements.uploadQueueButton.addEventListener("click", showUploadQueue);
     elements.result.addEventListener("click", interceptQueueClick);
     elements.result.addEventListener("submit", interceptQueueSubmit);
-  }
-
-  async function loadBootstrap() {
-    const response = await fetch(`/apps/${appId}/.well-known/cryptad-bootstrap.json`, {
-      headers: { Accept: "application/json" },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data && typeof data === "object" ? data : {};
   }
 
   function initializeForm(form) {
@@ -65,15 +53,18 @@
     event.preventDefault();
     const form = event.currentTarget;
     const sourceType = sourceTypeFor(form);
-    const path = sourceType === "directory" ? "queue/inserts/directory" : "queue/inserts/file";
+    const insert =
+      sourceType === "directory"
+        ? CryptaPlatform.content.insertDirectory
+        : CryptaPlatform.content.insertFile;
     try {
-      const result = await postForm(path, buildInsertFormData(form));
+      const result = await insert(buildInsertFormData(form));
       setStatus("Insert queued.", "success");
       renderInsertResult(result);
       form.reset();
       initializeForm(form);
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
@@ -110,19 +101,15 @@
   async function showUploadQueue() {
     try {
       setStatus("Loading upload queue...");
-      const url = apiUrl("queue");
-      url.searchParams.set("page", "uploads");
-      if (state.uploadQueueSortBy) {
-        url.searchParams.set("sortBy", state.uploadQueueSortBy);
-      }
-      if (state.uploadQueueReversed) {
-        url.searchParams.set("reversed", "true");
-      }
-      const snapshot = await loadJson(url);
+      const snapshot = await CryptaPlatform.queue.snapshot({
+        page: "uploads",
+        sortBy: state.uploadQueueSortBy,
+        reversed: state.uploadQueueReversed,
+      });
       renderQueue(snapshot.contentHtml);
       setStatus(uploadQueueStatusMessage());
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
@@ -153,9 +140,7 @@
       elements.result.replaceChildren(container);
       return;
     }
-    const parsed = new DOMParser().parseFromString(contentHtml, "text/html");
-    sanitize(parsed.body);
-    container.replaceChildren(...Array.from(parsed.body.childNodes));
+    container.replaceChildren(CryptaPlatform.dom.sanitizeFragment(contentHtml));
     elements.result.replaceChildren(container);
   }
 
@@ -213,9 +198,9 @@
   async function exportUploadQueueKeys() {
     setStatus("Preparing upload key list...");
     try {
-      const url = apiUrl("queue/keys");
+      const url = CryptaPlatform.api.url("queue/keys");
       url.searchParams.set("page", "uploads");
-      const data = await loadJson(url);
+      const data = await CryptaPlatform.api.get(url);
       const keys = Array.isArray(data.keys)
         ? data.keys.filter((value) => typeof value === "string")
         : [];
@@ -223,72 +208,8 @@
       downloadTextFile("uploads-keys.txt", textBody);
       setStatus(`Exported ${keys.length} upload queue keys.`, "success");
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
-  }
-
-  function sanitize(root) {
-    root
-      .querySelectorAll("script, style, template, iframe, frame, frameset, object, embed, link, meta, base")
-      .forEach((node) => node.remove());
-
-    root.querySelectorAll("*").forEach((element) => {
-      Array.from(element.attributes).forEach((attribute) => {
-        const name = attribute.name.toLowerCase();
-        if (name.startsWith("on") || name === "style" || name === "srcdoc") {
-          element.removeAttribute(attribute.name);
-          return;
-        }
-        if (
-          (name === "href" || name === "src" || name === "action" || name === "formaction") &&
-          !isSameOrigin(attribute.value)
-        ) {
-          element.removeAttribute(attribute.name);
-        }
-      });
-    });
-  }
-
-  async function postForm(path, formData) {
-    const password = typeof state.bootstrap.formPassword === "string" ? state.bootstrap.formPassword : "";
-    if (!password) {
-      throw new Error("Publisher actions are unavailable.");
-    }
-    const body = new URLSearchParams();
-    for (const [key, value] of formData.entries()) {
-      if (typeof value === "string") {
-        body.append(key, value);
-      }
-    }
-    body.set("formPassword", password);
-
-    const response = await fetch(apiUrl(path), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      },
-      body: body.toString(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data;
-  }
-
-  async function loadJson(url) {
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data;
-  }
-
-  function apiUrl(path) {
-    const root = normalizeLocalRoot(state.bootstrap.platformApiRoot, "/api/v1/");
-    return new URL(path, new URL(root, window.location.origin));
   }
 
   function updateUploadQueueSort(rawHref) {
@@ -315,7 +236,7 @@
     }
     try {
       const url = new URL(href, window.location.href);
-      return url.origin === window.location.origin && url.pathname === "/uploads/listKeys.txt";
+      return CryptaPlatform.dom.sameOrigin(url.href) && url.pathname === "/uploads/listKeys.txt";
     } catch (error) {
       return false;
     }
@@ -331,36 +252,6 @@
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-  }
-
-  function normalizeLocalRoot(value, fallback) {
-    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-      return fallback;
-    }
-    try {
-      const url = new URL(value, window.location.origin);
-      if (url.origin !== window.location.origin || url.search || url.hash) {
-        return fallback;
-      }
-      return url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  function isSameOrigin(rawValue) {
-    const value = typeof rawValue === "string" ? rawValue.trim() : "";
-    if (!value || value.startsWith("#")) {
-      return true;
-    }
-    if (value.startsWith("//")) {
-      return false;
-    }
-    try {
-      return new URL(value, window.location.href).origin === window.location.origin;
-    } catch (error) {
-      return false;
-    }
   }
 
   function sourceTypeFor(form) {
@@ -409,14 +300,4 @@
     elements.status.className = `status ${tone || ""}`.trim();
   }
 
-  function apiError(data, response) {
-    if (data && data.error && typeof data.error.message === "string") {
-      return data.error.message;
-    }
-    return `${response.status} ${response.statusText}`;
-  }
-
-  function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
-  }
 })();

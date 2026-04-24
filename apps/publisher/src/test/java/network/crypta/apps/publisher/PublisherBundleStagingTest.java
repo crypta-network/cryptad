@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublisherBundleStagingTest {
@@ -22,6 +23,18 @@ class PublisherBundleStagingTest {
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/publisher.sh";
   private static final String EXPECTED_PERMISSIONS = "queue.read,queue.write,content.insert";
+  private static final Path PLATFORM_SDK_SOURCE_PATH =
+      Path.of(
+          "platform-sdk-js",
+          "src",
+          "main",
+          "resources",
+          "network",
+          "crypta",
+          "platform",
+          "sdk",
+          "js",
+          "crypta-platform.js");
 
   @Test
   void stagedBundle_whenManifestParsed_expectExpectedAppHostFields() throws Exception {
@@ -79,22 +92,99 @@ class PublisherBundleStagingTest {
   void stagedBundle_whenStaticUiStaged_expectEntryAssetsPresent() throws Exception {
     Path staticDirectory = stageDirectory().resolve("static");
 
+    verifyStaticAssetsPresent(staticDirectory);
+    verifySdkLoadsBeforeAppScript(Files.readString(staticDirectory.resolve("index.html")));
+    verifyStagedSdkScript(Files.readString(staticDirectory.resolve("crypta-platform.js")));
+    verifyPublisherAppScript(Files.readString(staticDirectory.resolve("app.js")));
+  }
+
+  private static void verifyStaticAssetsPresent(Path staticDirectory) {
     assertTrue(Files.isRegularFile(staticDirectory.resolve("index.html")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("app.js")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("app.css")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-platform.js")));
     assertTrue(Files.notExists(staticDirectory.resolve("README.txt")));
-    String appScript = Files.readString(staticDirectory.resolve("app.js"));
-    assertTrue(appScript.contains("cryptad-bootstrap.json"));
-    assertTrue(appScript.contains("platformApiRoot"));
-    assertTrue(appScript.contains("formPassword"));
-    assertTrue(
-        appScript.contains("elements.result.addEventListener(\"submit\", interceptQueueSubmit);"));
-    assertTrue(appScript.contains("url.searchParams.set(\"sortBy\", state.uploadQueueSortBy);"));
-    assertTrue(appScript.contains("isUploadQueueKeyListLink"));
-    assertTrue(appScript.contains("queue/keys"));
-    assertTrue(appScript.contains("unsupportedQueueAction"));
-    assertTrue(appScript.contains("Queue actions are handled in Queue Manager."));
-    assertFalse(appScript.contains("CRYPTAD_APP_TOKEN"));
+  }
+
+  private static void verifySdkLoadsBeforeAppScript(String indexHtml) {
+    int sdkScriptIndex = indexHtml.indexOf("crypta-platform.js");
+    int appScriptIndex = indexHtml.indexOf("app.js");
+
+    assertTrue(sdkScriptIndex >= 0, "index.html must load the platform SDK.");
+    assertTrue(appScriptIndex > sdkScriptIndex, "index.html must load app.js after the SDK.");
+  }
+
+  private static void verifyStagedSdkScript(String sdkScript) throws Exception {
+    assertEquals(canonicalSdkScript(), sdkScript);
+    verifyContainsAll(
+        sdkScript,
+        "window.CryptaPlatform",
+        "bootstrap:",
+        "api:",
+        "queue:",
+        "content:",
+        "dom:",
+        "formPassword");
+    verifyContainsNone(sdkScript, "CRYPTAD_APP_TOKEN");
+  }
+
+  private static void verifyPublisherAppScript(String appScript) {
+    verifyContainsAll(
+        appScript,
+        "CryptaPlatform.bootstrap.load({ appId })",
+        "CryptaPlatform.content.insertFile",
+        "CryptaPlatform.content.insertDirectory",
+        "CryptaPlatform.queue.snapshot",
+        "CryptaPlatform.api.url(\"queue/keys\")",
+        "CryptaPlatform.api.get(url)",
+        "CryptaPlatform.dom.sanitizeFragment",
+        "CryptaPlatform.api.errorMessage",
+        "elements.result.addEventListener(\"submit\", interceptQueueSubmit);",
+        "sortBy: state.uploadQueueSortBy",
+        "reversed: state.uploadQueueReversed",
+        "isUploadQueueKeyListLink",
+        "queue/keys",
+        "unsupportedQueueAction",
+        "Queue actions are handled in Queue Manager.");
+    verifyContainsNone(
+        appScript,
+        "function loadBootstrap",
+        "function postForm",
+        "function loadJson",
+        "function normalizeLocalRoot",
+        "function apiError",
+        "function errorMessage",
+        "function sanitize(",
+        "CRYPTAD_APP_TOKEN");
+  }
+
+  private static void verifyContainsAll(String text, String... expectedFragments) {
+    for (String expectedFragment : expectedFragments) {
+      assertTrue(
+          text.contains(expectedFragment), () -> "Expected fragment missing: " + expectedFragment);
+    }
+  }
+
+  private static void verifyContainsNone(String text, String... forbiddenFragments) {
+    for (String forbiddenFragment : forbiddenFragments) {
+      assertFalse(
+          text.contains(forbiddenFragment),
+          () -> "Forbidden fragment present: " + forbiddenFragment);
+    }
+  }
+
+  private static String canonicalSdkScript() throws Exception {
+    return Files.readString(repoRoot().resolve(PLATFORM_SDK_SOURCE_PATH));
+  }
+
+  private static Path repoRoot() throws Exception {
+    Path path = Path.of("");
+    Path directory = path.toAbsolutePath().normalize();
+    while (directory != null && !Files.isRegularFile(directory.resolve("settings.gradle.kts"))) {
+      directory = directory.getParent();
+    }
+    assertNotNull(directory, "Could not locate the repo root from " + path.toAbsolutePath());
+    return directory.toRealPath();
   }
 
   private static Path stageDirectory() {

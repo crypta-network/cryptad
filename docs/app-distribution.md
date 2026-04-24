@@ -14,8 +14,9 @@ Related but documented elsewhere:
 - Signed catalog sources and remote/local catalog artifact install/update:
   [app-catalogs.md](app-catalogs.md)
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
-- Public app store UI, browser-side bundle uploads, permission enforcement, SDK APIs, and app
-  sandboxing remain future platform work.
+- Browser SDK helpers for app-owned static UI: [platform-sdk-js.md](platform-sdk-js.md)
+- Public app store UI, browser-side bundle uploads, richer permission UX, and app sandboxing
+  remain future platform work.
 
 ## Bundle Files
 
@@ -68,7 +69,9 @@ The repo-owned Queue Manager and Publisher bundles use `app.ui.mode=static` and
 `/apps/publisher/static/`.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
-bootstrap JSON, static asset security boundary, and API summary fields.
+bootstrap JSON, static asset security boundary, and API summary fields. See
+[platform-sdk-js.md](platform-sdk-js.md) for the staged browser SDK used by first-party static UI
+bundles.
 
 ## Gradle Tasks
 
@@ -192,6 +195,6 @@ Preferred local patterns:
 
 ## Future Work
 
-Public catalog governance, background app-update scheduling, richer permission UX, SDK APIs, and
-app sandboxing remain later platform work. Signed bundles now carry the manifest metadata needed by
-app-owned static UI routes.
+Public catalog governance, background app-update scheduling, richer permission UX, and app
+sandboxing remain later platform work. Signed bundles now carry the manifest metadata and staged
+browser assets needed by app-owned static UI routes.

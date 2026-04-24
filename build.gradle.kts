@@ -33,6 +33,7 @@ val internalLeafProjects =
     project(":runtime-spi"),
     project(":platform-api"),
     project(":platform-apphost"),
+    project(":platform-sdk-js"),
     project(":platform-web-shell"),
     project(":runtime-alerts"),
     project(":runtime-node"),
@@ -105,6 +106,7 @@ dependencies {
   implementation(project(":platform-app-ui"))
   implementation(project(":platform-appcatalog"))
   implementation(project(":platform-apphost"))
+  implementation(project(":platform-sdk-js"))
   implementation(project(":platform-web-shell"))
   implementation(project(":runtime-alerts"))
   implementation(project(":runtime-node"))

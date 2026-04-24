@@ -5,8 +5,10 @@ This document describes how installed AppHost bundles declare and serve app-owne
 
 ## Scope
 
-App-owned static UI is a local browser surface for installed apps. It does not add permission
-enforcement, a JavaScript SDK, sandboxing, container execution, or remote protocol changes.
+App-owned static UI is a local browser surface for installed apps. It does not add sandboxing,
+container execution, browser-scoped app sessions, or remote protocol changes. The
+[`CryptaPlatform` JavaScript SDK](platform-sdk-js.md) is only a browser convenience wrapper around
+the existing bootstrap and Platform API calls; permission enforcement remains server-side.
 
 The route serves immutable files from the installed app bundle only. It does not serve app data,
 cache, run directories, catalog scratch directories, or caller staging paths.
@@ -120,8 +122,9 @@ the same way the Web Shell does. Read-only requests do not need it.
 
 The bootstrap does not expose `CRYPTAD_APP_TOKEN`, AppHost launch tokens, signing keys, trusted-key
 material, installed-bundle filesystem paths, data/cache/run paths, or catalog scratch paths. It is
-not an app permission token and it is not the planned JavaScript SDK. Browser-issued app sessions,
-third-party SDK ergonomics, and stronger app isolation remain later platform work.
+not an app permission token. The [Platform JavaScript SDK](platform-sdk-js.md) consumes this
+bootstrap as route metadata and as the source of the existing `formPassword` mutation guard.
+Browser-issued app sessions and stronger app isolation remain later platform work.
 
 ## Platform API summary fields
 

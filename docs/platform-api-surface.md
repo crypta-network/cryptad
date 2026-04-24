@@ -24,6 +24,10 @@ metadata and the existing local-admin form password needed by mutating Platform 
 bootstrap is served by the app UI route, not by `/api/v1/apps`, and it does not expose
 `CRYPTAD_APP_TOKEN` or AppHost filesystem paths.
 
+The [Platform JavaScript SDK](platform-sdk-js.md) is a browser convenience layer over that
+bootstrap and the same-origin Platform API. It does not create a new authority boundary; server-side
+Platform API permission checks and app-origin audit remain authoritative.
+
 ## Response contract
 
 The router emits JSON responses. Successful reads generally return `200 OK`; create-style

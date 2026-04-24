@@ -3,7 +3,6 @@
 
   const appId = "queue-manager";
   const state = {
-    bootstrap: {},
     page: "downloads",
     reversed: false,
     sortBy: null,
@@ -24,10 +23,10 @@
   async function start() {
     bindControls();
     try {
-      state.bootstrap = await loadBootstrap();
+      await CryptaPlatform.bootstrap.load({ appId });
       await loadQueue();
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
       renderText("Queue Manager is not ready.");
     }
   }
@@ -39,17 +38,6 @@
     elements.directDownloadForm.addEventListener("submit", submitDirectDownload);
     elements.content.addEventListener("submit", interceptQueueSubmit);
     elements.content.addEventListener("click", interceptQueueClick);
-  }
-
-  async function loadBootstrap() {
-    const response = await fetch(`/apps/${appId}/.well-known/cryptad-bootstrap.json`, {
-      headers: { Accept: "application/json" },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data && typeof data === "object" ? data : {};
   }
 
   async function selectPage(page) {
@@ -66,19 +54,15 @@
     renderText("Loading queue snapshot...");
     setStatus("");
     try {
-      const url = apiUrl("queue");
-      url.searchParams.set("page", state.page);
-      if (state.sortBy) {
-        url.searchParams.set("sortBy", state.sortBy);
-      }
-      if (state.reversed) {
-        url.searchParams.set("reversed", "true");
-      }
-      const snapshot = await loadJson(url);
+      const snapshot = await CryptaPlatform.queue.snapshot({
+        page: state.page,
+        sortBy: state.sortBy,
+        reversed: state.reversed,
+      });
       renderQueue(snapshot.contentHtml);
       setStatus(queueStatusMessage());
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
       renderText("Queue snapshot unavailable.");
     }
   }
@@ -93,32 +77,8 @@
       return;
     }
 
-    const parsed = new DOMParser().parseFromString(contentHtml, "text/html");
-    sanitize(parsed.body);
-    fragment.replaceChildren(...Array.from(parsed.body.childNodes));
+    fragment.replaceChildren(CryptaPlatform.dom.sanitizeFragment(contentHtml));
     elements.content.append(fragment);
-  }
-
-  function sanitize(root) {
-    root
-      .querySelectorAll("script, style, template, iframe, frame, frameset, object, embed, link, meta, base")
-      .forEach((node) => node.remove());
-
-    root.querySelectorAll("*").forEach((element) => {
-      Array.from(element.attributes).forEach((attribute) => {
-        const name = attribute.name.toLowerCase();
-        if (name.startsWith("on") || name === "style" || name === "srcdoc") {
-          element.removeAttribute(attribute.name);
-          return;
-        }
-        if (
-          (name === "href" || name === "src" || name === "action" || name === "formaction") &&
-          !isSameOrigin(attribute.value)
-        ) {
-          element.removeAttribute(attribute.name);
-        }
-      });
-    });
   }
 
   function interceptQueueClick(event) {
@@ -186,12 +146,12 @@
   async function submitQueueMutation(source, submitter, path) {
     const body = filterQueueFormData(source, submitter, path);
     try {
-      const result = await postForm(path, body);
+      const result = await CryptaPlatform.queue.mutate(path, body);
       const operation = result.operation || submitter.name || "queue action";
       setStatus(`Completed ${String(operation).replaceAll("_", " ")}.`, "success");
       await loadQueue();
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
@@ -256,7 +216,7 @@
   async function submitDirectDownload(event) {
     event.preventDefault();
     try {
-      await postForm("queue/downloads", new FormData(elements.directDownloadForm));
+      await CryptaPlatform.queue.directDownload(new FormData(elements.directDownloadForm));
       elements.directDownloadForm.reset();
       elements.directDownloadForm.querySelector('input[name="filterData"]').checked = true;
       setStatus("Direct download queued.", "success");
@@ -264,16 +224,16 @@
       updateTabs();
       await loadQueue();
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
   async function exportQueueKeys() {
     setStatus(`Preparing ${state.page} key list...`);
     try {
-      const url = apiUrl("queue/keys");
+      const url = CryptaPlatform.api.url("queue/keys");
       url.searchParams.set("page", state.page);
-      const data = await loadJson(url);
+      const data = await CryptaPlatform.api.get(url);
       const keys = Array.isArray(data.keys)
         ? data.keys.filter((value) => typeof value === "string")
         : [];
@@ -281,50 +241,8 @@
       downloadTextFile(`${state.page}-keys.txt`, textBody);
       setStatus(`Exported ${keys.length} ${state.page} queue keys.`, "success");
     } catch (error) {
-      setStatus(errorMessage(error), "error");
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
-  }
-
-  async function postForm(path, formData) {
-    const password = typeof state.bootstrap.formPassword === "string" ? state.bootstrap.formPassword : "";
-    if (!password) {
-      throw new Error("Mutating queue actions are unavailable.");
-    }
-    const body = new URLSearchParams();
-    for (const [key, value] of formData.entries()) {
-      if (typeof value === "string") {
-        body.append(key, value);
-      }
-    }
-    body.set("formPassword", password);
-
-    const response = await fetch(apiUrl(path), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      },
-      body: body.toString(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data;
-  }
-
-  async function loadJson(url) {
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(apiError(data, response));
-    }
-    return data;
-  }
-
-  function apiUrl(path) {
-    const root = normalizeLocalRoot(state.bootstrap.platformApiRoot, "/api/v1/");
-    return new URL(path, new URL(root, window.location.origin));
   }
 
   function updateQueueSort(rawHref) {
@@ -352,7 +270,7 @@
     try {
       const url = new URL(href, window.location.href);
       return (
-        url.origin === window.location.origin &&
+        CryptaPlatform.dom.sameOrigin(url.href) &&
         (url.pathname === "/downloads/listKeys.txt" || url.pathname === "/uploads/listKeys.txt")
       );
     } catch (error) {
@@ -370,36 +288,6 @@
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-  }
-
-  function normalizeLocalRoot(value, fallback) {
-    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-      return fallback;
-    }
-    try {
-      const url = new URL(value, window.location.origin);
-      if (url.origin !== window.location.origin || url.search || url.hash) {
-        return fallback;
-      }
-      return url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  function isSameOrigin(rawValue) {
-    const value = typeof rawValue === "string" ? rawValue.trim() : "";
-    if (!value || value.startsWith("#")) {
-      return true;
-    }
-    if (value.startsWith("//")) {
-      return false;
-    }
-    try {
-      return new URL(value, window.location.href).origin === window.location.origin;
-    } catch (error) {
-      return false;
-    }
   }
 
   function updateTabs() {
@@ -434,14 +322,4 @@
     return node;
   }
 
-  function apiError(data, response) {
-    if (data && data.error && typeof data.error.message === "string") {
-      return data.error.message;
-    }
-    return `${response.status} ${response.statusText}`;
-  }
-
-  function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
-  }
 })();
