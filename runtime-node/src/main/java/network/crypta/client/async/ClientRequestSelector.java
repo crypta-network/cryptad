@@ -410,6 +410,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
     long l = choosePriority(fuzz, random, context, now);
     if (l > Integer.MAX_VALUE) {
+      SelectorReturn offeredSecond =
+          maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
+      if (offeredSecond != null) return offeredSecond;
       if (LOG.isDebugEnabled())
         LOG.debug("No priority available for the next {}", TimeUtil.formatTime(l - now));
       return new SelectorReturn(l);
@@ -424,7 +427,14 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       return new SelectorReturn(Long.MAX_VALUE);
     }
 
-    return selectFromPriorities(choosenPriorityClass, starter, context, now, realTime, random);
+    SelectorReturn selected =
+        selectFromPriorities(choosenPriorityClass, starter, context, now, realTime, random);
+    if (selected.req == null) {
+      SelectorReturn offeredSecond =
+          maybeUseOfferedKeysIfNotTried(tryOfferedKeys, offeredKeys, context, now);
+      if (offeredSecond != null) return offeredSecond;
+    }
+    return selected;
   }
 
   private SelectorReturn selectFromPriorities(

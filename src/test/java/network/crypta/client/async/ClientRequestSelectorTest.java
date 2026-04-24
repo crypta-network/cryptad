@@ -572,4 +572,36 @@ class ClientRequestSelectorTest {
     assertNotNull(ret);
     assertSame(offered, ret.req);
   }
+
+  @Test
+  void chooseRequestInner_whenPrioritiesCoolingAndOfferedKeysReadyButNotTried_returnsOfferedKeys() {
+    ClientContext ctx = minimalContext();
+    ClientRequestScheduler sched = mock(ClientRequestScheduler.class);
+    ClientRequestSelector selector = new ClientRequestSelector(false, false, false, sched);
+    RequestClient client = mock(RequestClient.class);
+    ClientRequestSchedulerGroup group = mock(ClientRequestSchedulerGroup.class);
+    RequestStarter starter = mock(RequestStarter.class);
+
+    SendableGet req = mock(SendableGet.class);
+    when(req.getPriorityClass()).thenReturn(RequestStarter.INTERACTIVE_PRIORITY_CLASS);
+    when(req.getClient()).thenReturn(client);
+    when(req.getSchedulerGroup()).thenReturn(group);
+    when(req.getWakeupTime(any(), anyLong())).thenReturn(System.currentTimeMillis() + 60_000L);
+    when(req.realTimeFlag()).thenReturn(false);
+    when(req.isCancelled()).thenReturn(false);
+    selector.addToGrabArray(RequestStarter.INTERACTIVE_PRIORITY_CLASS, client, group, req, ctx);
+
+    OfferedKeysList offered = mock(OfferedKeysList.class);
+    when(offered.getWakeupTime(any(), anyLong())).thenReturn(0L);
+
+    RandomSource random = mock(RandomSource.class);
+    when(random.nextBoolean()).thenReturn(false);
+
+    ClientRequestSelector.SelectorReturn ret =
+        selector.chooseRequestInner(
+            0, random, offered, starter, false, ctx, System.currentTimeMillis());
+
+    assertNotNull(ret);
+    assertSame(offered, ret.req);
+  }
 }
