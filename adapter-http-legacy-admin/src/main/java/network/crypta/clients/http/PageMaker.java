@@ -575,7 +575,29 @@ public final class PageMaker {
 
     topBarDiv.addChild("h1", title);
     renderNavigation(pageDiv, ctx, renderParameters, fullAccess, activePath);
-    return pageDiv.addChild(TAG_DIV, "id", "content");
+    HTMLNode contentDiv = pageDiv.addChild(TAG_DIV, "id", "content");
+    addLegacyAdminRetirementNotice(contentDiv, ctx);
+    return contentDiv;
+  }
+
+  private void addLegacyAdminRetirementNotice(HTMLNode contentDiv, ToadletContext ctx) {
+    if (ctx == null) {
+      return;
+    }
+    LegacyAdminSurface surface =
+        ctx.getUri() == null
+            ? surfaceForActiveToadlet(ctx)
+            : LegacyAdminRetirementRegistry.findByLegacyPath(ctx.getUri().getPath())
+                .orElseGet(() -> surfaceForActiveToadlet(ctx));
+    LegacyAdminRetirementNotice.addTo(contentDiv, surface);
+  }
+
+  private LegacyAdminSurface surfaceForActiveToadlet(ToadletContext ctx) {
+    Toadlet activeToadlet = ctx.activeToadlet();
+    if (activeToadlet == null) {
+      return null;
+    }
+    return LegacyAdminRetirementRegistry.findByLegacyPath(activeToadlet.path()).orElse(null);
   }
 
   private void addWebPushInputs(HTMLNode bodyNode, ToadletContext ctx, boolean webPushingEnabled) {

@@ -103,6 +103,8 @@ public final class ToadletContextImpl implements ToadletContext {
   private final BookmarkManagerHandle bookmarkManager;
   private final InetAddress remoteAddr;
   private Exception firstReplySendingException;
+  private int replyStatusCode = -1;
+  private boolean requestGateDenied;
   private final AtomicReference<Toadlet> activeToadlet = new AtomicReference<>();
 
   /** The unique id of the request */
@@ -433,6 +435,7 @@ public final class ToadletContextImpl implements ToadletContext {
             mvt,
             replyHeaders.forceDisableJavascript());
     sendReplyHeaders(sockOutputStream, resolvedHeaders, options);
+    replyStatusCode = resolvedHeaders.code();
   }
 
   /**
@@ -501,6 +504,7 @@ public final class ToadletContextImpl implements ToadletContext {
   public boolean checkFormPassword(HTTPRequest request, String redirectTo)
       throws ToadletContextClosedException, IOException {
     if (!hasFormPassword(request)) {
+      requestGateDenied = true;
       MultiValueTable<String, String> redirectHeaders =
           MultiValueTable.from("Location", redirectTo);
       sendReplyHeaders(302, "Found", redirectHeaders, null, 0);
@@ -529,6 +533,7 @@ public final class ToadletContextImpl implements ToadletContext {
     if (isAllowedFullAccess()) {
       return true;
     } else {
+      requestGateDenied = true;
       toadlet.sendUnauthorizedPage(this);
       return false;
     }
@@ -1086,6 +1091,8 @@ public final class ToadletContextImpl implements ToadletContext {
           IllegalAccessException,
           ToadletInvocationException {
     URI currentUri = uri;
+    LegacyAdminSurface usageSurface =
+        LegacyAdminRetirementRegistry.findByLegacyPath(uri.getPath()).orElse(null);
     boolean redirect;
     do {
       redirect = false;
@@ -1118,6 +1125,7 @@ public final class ToadletContextImpl implements ToadletContext {
 
         try {
           callToadletMethod(toadlet, method, currentUri, req, ctx, data, sock);
+          recordLegacyAdminUsageIfAccepted(usageSurface, ctx);
         } catch (RedirectException re) {
           currentUri = re.newuri;
           redirect = true;
@@ -1126,6 +1134,17 @@ public final class ToadletContextImpl implements ToadletContext {
         req.freeParts();
       }
     } while (redirect);
+  }
+
+  private static void recordLegacyAdminUsageIfAccepted(
+      LegacyAdminSurface usageSurface, ToadletContextImpl ctx) {
+    if (usageSurface != null && ctx.hasAcceptedLegacyAdminUsageResponse()) {
+      LegacyAdminUsageRecorder.defaultRecorder().recordSurface(usageSurface);
+    }
+  }
+
+  boolean hasAcceptedLegacyAdminUsageResponse() {
+    return !requestGateDenied && replyStatusCode >= 200 && replyStatusCode < 400;
   }
 
   private static FindToadletResult findToadlet(

@@ -1,0 +1,67 @@
+package network.crypta.runtime.spi;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@SuppressWarnings("java:S100")
+class LegacyAdminUsageSnapshotTest {
+  @Test
+  void constructor_whenSourceListMutatedAfterCreation_expectDefensiveCopy() {
+    LegacyAdminSurfaceUsage usage = usage("queue-downloads", 1L, 1_770_000_000_000L);
+    ArrayList<LegacyAdminSurfaceUsage> source = new ArrayList<>();
+    source.add(usage);
+
+    LegacyAdminUsageSnapshot snapshot = new LegacyAdminUsageSnapshot(source);
+
+    source.clear();
+
+    assertEquals(List.of(usage), snapshot.surfaces());
+  }
+
+  @Test
+  void surfaces_whenSnapshotExposed_expectUnmodifiableList() {
+    LegacyAdminUsageSnapshot snapshot =
+        new LegacyAdminUsageSnapshot(List.of(usage("queue-downloads", 1L, 1L)));
+    List<LegacyAdminSurfaceUsage> surfaces = snapshot.surfaces();
+    LegacyAdminSurfaceUsage usageToAdd = usage("statistics", 2L, 2L);
+
+    assertThrows(UnsupportedOperationException.class, () -> surfaces.add(usageToAdd));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenCountNegative_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class, () -> usage("queue-downloads", -1L, 1_770_000_000_000L));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenTimestampNegative_expectIllegalArgumentException() {
+    assertThrows(IllegalArgumentException.class, () -> usage("queue-downloads", 1L, -1L));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenReplacementUrlNull_expectAccepted() {
+    LegacyAdminSurfaceUsage usage =
+        new LegacyAdminSurfaceUsage("help", "Help", "/help/", "RETAINED", null, 0L, 0L);
+
+    assertEquals("help", usage.surfaceId());
+    assertNull(usage.replacementUrl());
+  }
+
+  private static LegacyAdminSurfaceUsage usage(
+      String surfaceId, long count, long lastSeenEpochMillis) {
+    return new LegacyAdminSurfaceUsage(
+        surfaceId,
+        "Download queue",
+        "/downloads/",
+        "PRIMARY_REPLACED",
+        "/apps/queue-manager/",
+        count,
+        lastSeenEpochMillis);
+  }
+}

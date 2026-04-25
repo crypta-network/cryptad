@@ -28,6 +28,7 @@ class WebShellResourcesTest {
         "First-time setup",
         "Installed apps",
         "Publisher fallback panel",
+        "Fallback and retained legacy pages",
         "Installed apps JSON",
         "Alerts JSON",
         "Diagnostics JSON",

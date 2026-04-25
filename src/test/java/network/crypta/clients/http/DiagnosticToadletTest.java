@@ -77,7 +77,17 @@ class DiagnosticToadletTest {
     toadlet.handleMethodGET(URI.create("http://localhost/diagnostic/"), request, ctx);
 
     assertEquals(
-        "Crypta Version:\n3.0\nSystem Information:\njava.version=25\n\n",
+        """
+        Legacy fallback page
+        This legacy page remains available as a fallback and debug view.
+        The primary flow is now in Web Shell diagnostics: /app/node/#diagnostics
+
+        Crypta Version:
+        3.0
+        System Information:
+        java.version=25
+
+        """,
         body.toString(StandardCharsets.UTF_8));
     verify(diagnostic).snapshot();
     verify(ctx)
