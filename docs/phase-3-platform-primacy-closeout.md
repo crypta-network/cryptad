@@ -123,7 +123,8 @@ content cross-fetches, Cryptad restart/refetch, and persistent request listings 
 restart. Tier 2 runs through the scheduled/manual `interop-extended` job, with a multi-OS
 `interop-self-test` matrix for parser, summary, and redaction behavior on platforms where the
 pinned Linux Hyphanet baseline cannot run. Tier 2 covers long-lived `SubscribeUSK`, persistent
-request replay across Cryptad restart, and optional opennet skip plumbing. Local usage,
+request replay across Cryptad restart, and optional opennet launch plumbing with skipped
+path-validation status. Local usage,
 diagnostics, artifact layout, and summary fields are documented in
 [tools/interop/README.md](../tools/interop/README.md).
 

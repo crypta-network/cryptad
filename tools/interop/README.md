@@ -61,10 +61,10 @@ subscriber to observe it. If the pinned baseline accepts the subscription but do
 target update before the soak timeout, the harness records a bounded fetch fallback and the
 limitation in `summary.json` and `artifacts/usk-subscribe-soak.json`.
 
-Opennet remains off in Tier 1 and Tier 2 by default. `INTEROP_ENABLE_OPENNET=1` records the
-`opennet_optional` flow as requested, but the current pinned Linux baseline does not have a
-deterministic local opennet startup path. The flow is reported as skipped with a reason, not as a
-replacement for the darknet gate.
+Opennet remains off in Tier 1 and Tier 2 by default. `INTEROP_ENABLE_OPENNET=1` launches both
+nodes with `node.opennet.enabled=true` and records the `opennet_optional` flow as requested, but
+the current pinned Linux baseline does not have a deterministic local opennet path-validation flow.
+The flow is reported as skipped with a reason, not as a replacement for the darknet gate.
 
 ## Run locally
 
@@ -128,7 +128,7 @@ Cryptad distribution, and then passes deterministic CLI arguments to `interop_sm
 | `INTEROP_MODE` | `smoke` | `smoke` keeps the short Tier 1 gate. `extended` enables Tier 2 flows unless explicitly disabled. |
 | `INTEROP_ENABLE_USK_SUBSCRIBE_SOAK` | unset | Set to `1` to enable `usk_subscribe_soak` outside extended mode. Set to `0` to disable it in extended mode. |
 | `INTEROP_ENABLE_PERSISTENT_REPLAY` | unset | Set to `1` to enable `persistent_request_replay` outside extended mode. Set to `0` to disable it in extended mode. |
-| `INTEROP_ENABLE_OPENNET` | `0` | Requests optional opennet plumbing. The current harness reports `opennet_optional` as skipped because deterministic local opennet startup is not pinned. |
+| `INTEROP_ENABLE_OPENNET` | `0` | Launches both nodes with opennet enabled and records optional opennet plumbing. The current harness reports `opennet_optional` as skipped because deterministic local opennet path validation is not pinned. |
 | `INTEROP_SKIP_BUILD` | `0` | Set to `1` when `CRYPTAD_DIST_DIR` already exists. |
 | `INTEROP_WORKDIR` | unset | Primary output/work directory override. Takes precedence over `INTEROP_OUT_DIR`. |
 | `INTEROP_OUT_DIR` | `build/interop-smoke` for smoke, `build/interop-extended` for extended | Output/work directory when `INTEROP_WORKDIR` is unset. |
@@ -394,7 +394,7 @@ starting the pinned Linux-only Hyphanet baseline. Full node interop on macOS and
 blocked until the project pins a portable baseline artifact for those platforms.
 
 A release record should name the host OS, baseline, command line, timeout settings, whether opennet
-was requested, the `SubscribeUSK` duration, persistent replay identifier, and the final
+was enabled, the `SubscribeUSK` duration, persistent replay identifier, and the final
 `summary.json` path. Release records must not include `artifacts/private-insert-uris.json`.
 
 ## Release-readiness expectations

@@ -1972,8 +1972,8 @@ def selected_flows(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]
         skipped["opennet_optional"] = "disabled; pass --enable-opennet for optional opennet plumbing"
     else:
         skipped["opennet_optional"] = (
-            "requested, but deterministic local opennet startup is not implemented for the "
-            "pinned Linux baseline"
+            "requested and node configs were launched with opennet enabled, but deterministic "
+            "opennet path validation is not implemented for the pinned Linux baseline"
         )
 
     return enabled, skipped
@@ -2161,6 +2161,26 @@ def self_test() -> int:
         )
         assert not (java_dir / "unversioned.jar").is_symlink()
         assert not (java_dir / "already.jar").is_symlink()
+    with TemporaryDirectory() as temp_root:
+        ports = Ports(
+            cryptad_fnp=19401,
+            cryptad_fcp=19402,
+            hyphanet_fnp=19501,
+            hyphanet_fcp=19502,
+        )
+        temp_path = Path(temp_root)
+        cryptad_config = make_cryptad_config(
+            temp_path / "cryptad",
+            ports,
+            enable_opennet=True,
+        )
+        hyphanet_config = make_hyphanet_config(
+            temp_path / "hyphanet",
+            ports,
+            enable_opennet=True,
+        )
+        assert "node.opennet.enabled=true\n" in cryptad_config.read_text(encoding="utf-8")
+        assert "node.opennet.enabled=true\n" in hyphanet_config.read_text(encoding="utf-8")
     env_names = (
         "INTEROP_MODE",
         "INTEROP_ENABLE_USK_SUBSCRIBE_SOAK",
@@ -2181,6 +2201,12 @@ def self_test() -> int:
         assert "usk_subscribe_soak" in extended_enabled
         assert "persistent_request_replay" in extended_enabled
         assert "opennet_optional" in extended_skipped
+        opennet_args = parse_args(["--self-test", "--mode", "extended", "--enable-opennet"])
+        _, opennet_skipped = selected_flows(opennet_args)
+        assert "opennet_optional" in opennet_skipped
+        assert "node configs were launched with opennet enabled" in opennet_skipped[
+            "opennet_optional"
+        ]
         disabled_args = parse_args(
             [
                 "--self-test",
@@ -2368,7 +2394,7 @@ def run() -> int:
             "usk_subscribe_soak_enabled": args.enable_usk_subscribe_soak,
             "persistent_replay_enabled": args.enable_persistent_replay,
             "opennet_requested": args.enable_opennet,
-            "opennet_enabled": False,
+            "opennet_enabled": args.enable_opennet,
             "soak_duration_seconds": args.soak_duration_seconds,
             "soak_poll_interval_seconds": args.soak_poll_interval_seconds,
         },
@@ -2420,14 +2446,26 @@ def run() -> int:
         )
 
         log_progress("Starting Cryptad node...")
-        cryptad_runtime = launch_cryptad(args.cryptad_dist_dir.resolve(), layout.cryptad_dir, layout, ports)
+        cryptad_runtime = launch_cryptad(
+            args.cryptad_dist_dir.resolve(),
+            layout.cryptad_dir,
+            layout,
+            ports,
+            enable_opennet=args.enable_opennet,
+        )
         nodes.append(cryptad_runtime)
         add_artifact(summary, layout, cryptad_runtime.stdout_path)
         add_artifact(summary, layout, cryptad_runtime.stderr_path)
         add_artifact(summary, layout, cryptad_runtime.config_file)
 
         log_progress("Starting Hyphanet node...")
-        hyphanet_runtime = launch_hyphanet(baseline, layout.hyphanet_dir, layout, ports)
+        hyphanet_runtime = launch_hyphanet(
+            baseline,
+            layout.hyphanet_dir,
+            layout,
+            ports,
+            enable_opennet=args.enable_opennet,
+        )
         nodes.append(hyphanet_runtime)
         add_artifact(summary, layout, hyphanet_runtime.stdout_path)
         add_artifact(summary, layout, hyphanet_runtime.stderr_path)
@@ -2967,6 +3005,7 @@ def run() -> int:
                 layout,
                 ports,
                 label="cryptad-restart",
+                enable_opennet=args.enable_opennet,
             )
             nodes.append(cryptad_runtime)
             add_artifact(summary, layout, cryptad_runtime.stdout_path)

@@ -66,7 +66,7 @@ Treat these as release blockers, in order:
 7. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
    the scheduled/manual `interop-extended` job when the release changes FCP, peer handling,
    datastore persistence, restart behavior, USK/SSK request handling, packaging layout, or node
-   startup. Record `SubscribeUSK` duration, persistent request replay identifier, opennet request
+   startup. Record `SubscribeUSK` duration, persistent request replay identifier, opennet enabled
    status, timeout settings, host OS, baseline, and the final `summary.json` path in the release
    record.
 8. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
