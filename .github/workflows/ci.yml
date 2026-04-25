@@ -124,6 +124,7 @@ jobs:
     env:
       PERF_MODE: smoke
       PERF_OUT_DIR: build/perf-smoke
+      PERF_TIMEOUT_SECONDS: '900'
 
     steps:
       - uses: actions/checkout@v6
@@ -142,14 +143,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
 
-      - name: Build runnable Cryptad dist
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew assembleCryptadDist
-
       - name: Run performance smoke
         env:
-          PERF_SKIP_BUILD: '1'
+          GITHUB_TOKEN: ${{ github.token }}
         run: tools/perf/run-performance-smoke.sh
 
       - name: Upload performance smoke diagnostics

@@ -195,9 +195,8 @@ CI has two jobs:
 - `performance-self-test` runs `python3 tools/perf/perf_smoke.py --self-test` with Python 3.12 on
   the regular multi-OS self-test matrix. It does not start Cryptad.
 - `performance-smoke` runs only on `workflow_dispatch` and `schedule` on Linux. It builds
-  `build/cryptad-dist/` with Python 3.12 available, runs the smoke profile with
-  `PERF_SKIP_BUILD=1`, and uploads
-  `summary.json` plus `artifacts/`.
+  `build/cryptad-dist/` through the perf runner so `distribution.build_ms` is collected, runs the
+  smoke profile with Python 3.12 available, and uploads `summary.json` plus `artifacts/`.
 
 Regular pull requests get the Python self-test without the full node smoke. That keeps the default
 PR path low-flake while preserving scheduled/manual evidence for release candidates.

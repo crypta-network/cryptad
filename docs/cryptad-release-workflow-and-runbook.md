@@ -283,11 +283,12 @@ Verify a staging node downloads and exposes the installer correctly (`updates/co
 
 ### 6) Record Performance Gate
 ```bash
-PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
+tools/perf/run-performance-smoke.sh
 jq '.status, .comparison.status' build/perf-smoke/summary.json
 ```
 Record the command line, mode, host OS or runner label, Java version, commit SHA, baseline path,
-`build/perf-smoke/summary.json`, key threshold decisions, and whether a baseline update was made.
+`build/perf-smoke/summary.json`, key threshold decisions, whether `distribution.build_ms` was
+collected or intentionally skipped, and whether a baseline update was made.
 
 ### 7) Promote to Production
 ```bash
