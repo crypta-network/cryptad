@@ -58,12 +58,20 @@ Treat these as release blockers, in order:
    static UI app, confirm nested-entry assets load under `/apps/{appId}/`, and verify no
    filesystem path leaks appear in error responses. The route contract is documented in
    [app-owned-ui.md](app-owned-ui.md).
-6. **Hyphanet interop smoke** - run the packaged-node compatibility smoke locally when the
-   environment is prepared, or verify that the CI `interop-smoke` job passed. The gate is
-   documented in [tools/interop/README.md](../tools/interop/README.md) and summarized in
+6. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
+   when the environment is prepared, or verify that the CI `interop-smoke` job passed for the
+   release candidate. The gate is documented in
+   [tools/interop/README.md](../tools/interop/README.md) and summarized in
    [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
-7. **Interop failure artifacts** - if the interop gate fails, preserve `build/interop-smoke/` from
-   the local run or the CI uploaded artifact before rerunning or cleaning the workspace.
+7. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
+   the scheduled/manual `interop-extended` job when the release changes FCP, peer handling,
+   datastore persistence, restart behavior, USK/SSK request handling, packaging layout, or node
+   startup. Record `SubscribeUSK` duration, persistent request replay identifier, opennet request
+   status, timeout settings, host OS, baseline, and the final `summary.json` path in the release
+   record.
+8. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
+   `build/interop-extended/` from the local run or CI uploaded artifact before rerunning or cleaning
+   the workspace. Do not publish `artifacts/private-insert-uris.json`; CI uploads exclude it.
 
 ## Build
 1. Clean build for deterministic artifacts:
@@ -80,6 +88,8 @@ Treat these as release blockers, in order:
    - macOS: `open build/jpackage/Crypta.app` (or run `Contents/MacOS/Crypta`).
    - Windows: test `build/jpackage/Crypta/Crypta.exe` inside a VM.
    - Linux: install with `dpkg -i` / `rpm -i` on fresh VMs; validate service + desktop flows.
+   - Interop caveat: the Hyphanet interop harness is Linux-only. macOS and Windows release
+     readiness must come from installer, launcher, and application smoke tests on those platforms.
 
 ## Generate Release Descriptor and CHKs
 1. **Insert artifacts to Crypta to obtain CHKs**. Run `fcpupload` separately for each installer type you ship and record both the returned CHK and the artifact size:
@@ -142,6 +152,24 @@ Treat these as release blockers, in order:
   - Exercise `/core-update/` Install; ensure installers launch or store portals open for Flatpak/Snap.
 - Verify changelog links resolve through the recorded CHKs.
 - On Linux, inspect preference order (Flatpak inside sandbox, native packages on host) matches expectations.
+- Verify the Linux Tier 1 Hyphanet interop gate:
+  ```bash
+  tools/interop/run-hyphanet-interop-smoke.sh
+  ```
+  In CI, the `interop-smoke` job builds with `./gradlew assembleCryptadDist` and then runs the same
+  gate with `INTEROP_SKIP_BUILD=1`. The expected diagnostics root is `build/interop-smoke/`.
+- Inspect `build/interop-smoke/summary.json` for `status=success`, `mode=smoke`, all Tier 1
+  `flows` marked `passed`, `restart_recovery_level=restart-and-refetch`,
+  recorded `restart_recovery_checks`,
+  Hyphanet baseline metadata, public URI records, and process statuses.
+- Preserve `build/interop-smoke/` for the release record when the run fails.
+- For Tier 2, run or verify `interop-extended` and preserve `build/interop-extended/` when it fails
+  or when the release record needs soak evidence. The extended summary should include
+  `usk_subscribe_soak`, `persistent_request_replay`, `enabled_flows`, `skipped_flows`,
+  `artifacts/usk-subscribe-soak.json`, `artifacts/persistent-request-replay.json`, and
+  `artifacts/interop-report.md`.
+- Do not attach `artifacts/private-insert-uris.json` to release records or shared diagnostics. It
+  contains temporary SSK/USK insert keys and is intentionally excluded from CI artifact uploads.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.
