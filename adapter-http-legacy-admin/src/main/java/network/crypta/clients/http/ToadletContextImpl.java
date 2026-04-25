@@ -21,6 +21,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.l10n.NodeL10n;
@@ -1098,6 +1099,7 @@ public final class ToadletContextImpl implements ToadletContext {
       redirect = false;
       FindToadletResult toadletResult = findToadlet(container, ctx, currentUri);
       if (toadletResult.handled) {
+        recordLegacyAdminUsageIfAccepted(toadletResult.usageSurface(), ctx);
         return;
       }
       Toadlet toadlet = toadletResult.toadlet;
@@ -1152,11 +1154,21 @@ public final class ToadletContextImpl implements ToadletContext {
       throws IOException, ToadletContextClosedException {
     try {
       Toadlet toadlet = container.findToadlet(uri);
-      return new FindToadletResult(toadlet, false);
+      return new FindToadletResult(toadlet, false, null);
     } catch (PermanentRedirectException e) {
       Toadlet.writePermanentRedirect(ctx, "Found elsewhere", e.newuri.toASCIIString());
-      return new FindToadletResult(null, true);
+      return new FindToadletResult(
+          null, true, canonicalRedirectSurface(uri, e.newuri).orElse(null));
     }
+  }
+
+  private static Optional<LegacyAdminSurface> canonicalRedirectSurface(URI requestUri, URI newUri) {
+    String requestPath = requestUri.getPath();
+    String newPath = newUri.getPath();
+    if (requestPath == null || newPath == null || !newPath.equals(requestPath + "/")) {
+      return Optional.empty();
+    }
+    return LegacyAdminRetirementRegistry.findByLegacyPath(newPath);
   }
 
   private record DataReadResult(Bucket data, boolean continueProcessing) {
@@ -1175,7 +1187,8 @@ public final class ToadletContextImpl implements ToadletContext {
     }
   }
 
-  private record FindToadletResult(Toadlet toadlet, boolean handled) {}
+  private record FindToadletResult(
+      Toadlet toadlet, boolean handled, LegacyAdminSurface usageSurface) {}
 
   private static final class ToadletInvocationException extends Exception {
     ToadletInvocationException(Throwable cause) {

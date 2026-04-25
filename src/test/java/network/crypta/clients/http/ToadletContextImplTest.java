@@ -198,6 +198,38 @@ class ToadletContextImplTest {
   }
 
   @Test
+  void handle_whenSlashlessLegacyRequestGetsCanonicalRedirect_recordsLegacyAdminUsage()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(QueueToadlet.PATH_DOWNLOADS));
+      Socket socket = new FakeSocket(rawSlashlessDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(1L, queueDownloadsUsageCount());
+      assertEquals(
+          "301",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
+    }
+  }
+
+  @Test
+  void handle_whenLegacyRequestGetsNonCanonicalRedirect_doesNotRecordLegacyAdminUsage()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(FirstTimeWizardToadlet.TOADLET_URL));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(0L, queueDownloadsUsageCount());
+      assertEquals(
+          "301",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
+    }
+  }
+
+  @Test
   void handle_whenLegacyRequestRedirectsToHelper_recordsOriginalLegacySurface() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
       URI helperUri = URI.create(LocalDirectoryToadlet.basePath() + QueueToadlet.PATH_DOWNLOADS);
@@ -427,8 +459,24 @@ class ToadletContextImplTest {
             });
   }
 
+  private void configurePermanentRedirect(URI newUri) throws Exception {
+    org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
+    org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
+    org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
+    org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
+        .thenThrow(new PermanentRedirectException(newUri));
+  }
+
   private static byte[] rawDownloadsGetRequest() {
-    return ("GET " + QueueToadlet.PATH_DOWNLOADS + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    return rawGetRequest(QueueToadlet.PATH_DOWNLOADS);
+  }
+
+  private static byte[] rawSlashlessDownloadsGetRequest() {
+    return rawGetRequest("/downloads");
+  }
+
+  private static byte[] rawGetRequest(String path) {
+    return ("GET " + path + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
         .getBytes(StandardCharsets.US_ASCII);
   }
 
