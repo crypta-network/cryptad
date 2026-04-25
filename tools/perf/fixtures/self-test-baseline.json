@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "fixture.latency_ms": {
+      "baseline": 100,
+      "fail_ms": 150,
+      "fail_on_regression": true,
+      "fail_ratio": 1.5,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 120,
+      "warn_ratio": 1.2
+    },
+    "fixture.payload_bytes": {
+      "baseline": 1000,
+      "fail_on_regression": true,
+      "fail_ratio": 1.5,
+      "max_bytes": 2000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.2
+    },
+    "fixture.skipped_ms": {
+      "baseline": 100,
+      "fail_on_regression": false,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 200
+    }
+  },
+  "version": 1
+}

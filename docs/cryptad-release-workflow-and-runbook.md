@@ -1,7 +1,8 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated April 23, 2026, to cover the CoreUpdater package-based distribution flow, signed
-> first-party app bundles, signed app catalogs, and app-owned static UI routing.
+> Updated April 25, 2026, to cover the CoreUpdater package-based distribution flow, signed
+> first-party app bundles, signed app catalogs, app-owned static UI routing, and the lightweight
+> performance regression gate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -72,6 +73,15 @@ Treat these as release blockers, in order:
 8. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
    `build/interop-extended/` from the local run or CI uploaded artifact before rerunning or cleaning
    the workspace. Do not publish `artifacts/private-insert-uris.json`; CI uploads exclude it.
+9. **Performance regression smoke** - run the packaged performance smoke locally or verify the
+   scheduled/manual `performance-smoke` CI job when preparing a release candidate. The gate is
+   documented in [tools/perf/README.md](../tools/perf/README.md). Treat deterministic asset-size
+   failures as release blockers unless a maintainer records an accepted baseline update or waiver.
+10. **Performance evidence, when performance-sensitive behavior changed** - run or verify the
+    performance smoke when the release changes startup, packaging layout, Platform API, Web Shell,
+    SDK assets, first-party app bundles, FCP startup, storage, routing, persistence, or JVM/runtime
+    packaging. Record the command, mode, host OS or runner label, Java version, baseline path,
+    `summary.json` path, and comparison status in the release record.
 
 ## Build
 1. Clean build for deterministic artifacts:
@@ -170,6 +180,17 @@ Treat these as release blockers, in order:
   `artifacts/interop-report.md`.
 - Do not attach `artifacts/private-insert-uris.json` to release records or shared diagnostics. It
   contains temporary SSK/USK insert keys and is intentionally excluded from CI artifact uploads.
+- Verify the lightweight performance gate with Python 3.12 or newer:
+  ```bash
+  PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
+  ```
+  If `build/cryptad-dist/` has not been built yet, omit `PERF_SKIP_BUILD=1` and let the wrapper run
+  `./gradlew assembleCryptadDist`.
+- Inspect `build/perf-smoke/summary.json` and `build/perf-smoke/artifacts/perf-report.md`.
+  Deterministic asset-size regressions should block promotion unless the release record includes a
+  maintainer-reviewed baseline update. Environment-sensitive startup, FCP, and Platform API timing
+  regressions should be investigated on comparable hardware before promotion. CI uploads
+  `summary.json` and `artifacts/` from the scheduled/manual `performance-smoke` job.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.
@@ -260,24 +281,37 @@ fcpput -p reboot -r 1 -g "${STAGING_USK}${BUILD_N}" core-info.json
 ```
 Verify a staging node downloads and exposes the installer correctly (`updates/core/` and Alerts UI).
 
-### 6) Promote to Production
+### 6) Record Performance Gate
+```bash
+tools/perf/run-performance-smoke.sh
+jq '.status, .comparison.status' build/perf-smoke/summary.json
+```
+Record the command line, mode, host OS or runner label, Java version, commit SHA, baseline path,
+`build/perf-smoke/summary.json`, key threshold decisions, whether `distribution.build_ms` was
+collected or intentionally skipped, and whether a baseline update was made.
+
+### 7) Promote to Production
 ```bash
 fcpput -p reboot -r 1 -g "${PROD_USK}${BUILD_N}" core-info.json
 ```
 Retain the descriptor and package CHKs in the release record.
 
-### 7) Post-release Checklist
+### 8) Post-release Checklist
 - Update the public release page and announcement channels.
 - Monitor `[CoreUpdater] progress` logs across canary nodes.
+- Retain `build/perf-smoke/` or the CI performance artifact when a performance gate fails or when
+  the release record needs performance evidence.
 - Prepare a fallback plan (revocation message, follow-up descriptor) in case regressions surface.
 
-### 8) Emergency Actions
+### 9) Emergency Actions
 ```bash
 # Pause downloads network-wide
 echo "Emergency: pause ${BUILD_N}. Investigating installer regressions." | \
   fcpput -p reboot -r 1 -g "${REVOKE_SSK}"
 ```
-To supersede a bad release, craft a new descriptor with corrected `packages` and publish to the next edition number.
+To supersede a bad release, craft a new descriptor with corrected `packages` and publish to the next
+edition number. If the incident is a confirmed performance regression, link the relevant
+`build/perf-smoke/summary.json` or CI artifact in the incident record.
 
 ---
 Keep this runbook synchronized with future CoreUpdater/AppEnv changes. Update references whenever package selection logic or descriptor schema evolves.

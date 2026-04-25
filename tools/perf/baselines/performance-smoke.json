@@ -1,0 +1,177 @@
+{
+  "description": "Conservative baseline for the lightweight Cryptad performance smoke gate.",
+  "metrics": {
+    "apphost.publisher_staged_bundle_bytes": {
+      "baseline": 31185,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apphost.queue_manager_staged_bundle_bytes": {
+      "baseline": 28351,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apps.publisher_static_bytes": {
+      "baseline": 16049,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apps.queue_manager_static_bytes": {
+      "baseline": 14956,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "distribution.build_ms": {
+      "baseline": 120000,
+      "fail_ms": 300000,
+      "fail_on_regression": false,
+      "fail_ratio": 2.5,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 180000,
+      "warn_ratio": 1.5
+    },
+    "distribution.size_bytes": {
+      "baseline": 32504247,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 100000000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "fcp.client_hello_ms": {
+      "baseline": 100,
+      "fail_ms": 1000,
+      "fail_on_regression": false,
+      "fail_ratio": 3.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 250,
+      "warn_ratio": 1.5
+    },
+    "node.startup_to_process_spawn_ms": {
+      "baseline": 100,
+      "fail_ms": 5000,
+      "fail_on_regression": false,
+      "fail_ratio": 10.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 1000,
+      "warn_ratio": 5.0
+    },
+    "node.startup_to_fcp_ready_ms": {
+      "baseline": 60000,
+      "fail_ms": 120000,
+      "fail_on_regression": false,
+      "fail_ratio": 2.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 90000,
+      "warn_ratio": 1.5
+    },
+    "node.startup_to_platform_readiness_ms": {
+      "baseline": 60000,
+      "fail_ms": 120000,
+      "fail_on_regression": false,
+      "fail_ratio": 2.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 90000,
+      "warn_ratio": 1.5
+    },
+    "platform_api.apps_ms": {
+      "baseline": 100,
+      "fail_ms": 1000,
+      "fail_on_regression": false,
+      "fail_ratio": 3.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 250,
+      "warn_ratio": 1.5
+    },
+    "platform_api.diagnostics_ms": {
+      "baseline": 100,
+      "fail_ms": 1000,
+      "fail_on_regression": false,
+      "fail_ratio": 3.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 250,
+      "warn_ratio": 1.5
+    },
+    "platform_api.node_ms": {
+      "baseline": 100,
+      "fail_ms": 1000,
+      "fail_on_regression": false,
+      "fail_ratio": 3.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 250,
+      "warn_ratio": 1.5
+    },
+    "platform_api.peers_ms": {
+      "baseline": 100,
+      "fail_ms": 1000,
+      "fail_on_regression": false,
+      "fail_ratio": 3.0,
+      "required": false,
+      "unit": "ms",
+      "warn_ms": 250,
+      "warn_ratio": 1.5
+    },
+    "platform_sdk.crypta_platform_js_bytes": {
+      "baseline": 14726,
+      "fail_on_regression": true,
+      "fail_ratio": 1.6,
+      "max_bytes": 100000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.25
+    },
+    "web_shell.index_html_bytes": {
+      "baseline": 28740,
+      "fail_on_regression": true,
+      "fail_ratio": 1.6,
+      "max_bytes": 150000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.25
+    },
+    "web_shell.web_shell_css_bytes": {
+      "baseline": 14764,
+      "fail_on_regression": true,
+      "fail_ratio": 1.6,
+      "max_bytes": 100000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.25
+    },
+    "web_shell.web_shell_js_bytes": {
+      "baseline": 105731,
+      "fail_on_regression": true,
+      "fail_ratio": 1.6,
+      "max_bytes": 500000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.25
+    }
+  },
+  "version": 1
+}

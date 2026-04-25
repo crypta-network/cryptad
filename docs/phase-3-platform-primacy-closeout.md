@@ -159,4 +159,5 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 - Better app permission enforcement and audit surfaces remain future work.
 - Legacy admin and browse retirement plan.
 - Portable full-node Hyphanet baseline artifacts for macOS and Windows.
-- Performance and regression gates.
+- Lightweight performance and regression smoke coverage now lives under
+  [tools/perf](../tools/perf/README.md); broader benchmark depth remains future work.
