@@ -117,8 +117,15 @@ not recreated:
 - `tools/interop/run-hyphanet-interop-smoke.sh`
 - `tools/interop/interop_smoke.py`
 
-CI runs the gate through the `interop-smoke` job in `.github/workflows/ci.yml` after building a
-runnable Cryptad distribution. Local usage and diagnostics are documented in
+CI runs the Tier 1 gate through the `interop-smoke` job in `.github/workflows/ci.yml` after building
+a runnable Cryptad distribution. Tier 1 is Linux-only and covers darknet peer exchange, FCP
+content cross-fetches, Cryptad restart/refetch, and persistent request listings before and after
+restart. Tier 2 runs through the scheduled/manual `interop-extended` job, with a multi-OS
+`interop-self-test` matrix for parser, summary, and redaction behavior on platforms where the
+pinned Linux Hyphanet baseline cannot run. Tier 2 covers long-lived `SubscribeUSK`, persistent
+request replay across Cryptad restart, and optional opennet launch plumbing with skipped
+path-validation status. Local usage,
+diagnostics, artifact layout, and summary fields are documented in
 [tools/interop/README.md](../tools/interop/README.md).
 
 ## Release gates
@@ -129,8 +136,13 @@ Treat these gates as blockers before promoting a Phase 3 release:
 2. Stage first-party apps.
 3. Sign first-party apps with the intended release or staging signing inputs.
 4. Verify first-party apps with the matching trusted public key inputs.
-5. Run the Hyphanet interop smoke gate locally or verify the CI `interop-smoke` job passed.
-6. Preserve `build/interop-smoke/` diagnostics when the interop smoke fails.
+5. Run the Linux Hyphanet interop Tier 1 smoke gate locally or verify the CI `interop-smoke` job
+   passed.
+6. Run or verify the Tier 2 extended interop job when the release changes FCP, peer handling,
+   persistence, restart behavior, USK/SSK request handling, packaging layout, or node startup.
+7. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
+   fails or when Tier 2 evidence is part of the release record. Shared diagnostics must exclude
+   `artifacts/private-insert-uris.json`.
 
 The release runbook records the same gates in
 [cryptad-release-workflow-and-runbook.md](cryptad-release-workflow-and-runbook.md).
@@ -146,7 +158,5 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 - Broader first-party app catalog remains future work.
 - Better app permission enforcement and audit surfaces remain future work.
 - Legacy admin and browse retirement plan.
-- Longer USK and persistent-request interop soak tests.
-- Multi-OS interop matrix.
-- Opennet interop gate.
+- Portable full-node Hyphanet baseline artifacts for macOS and Windows.
 - Performance and regression gates.
