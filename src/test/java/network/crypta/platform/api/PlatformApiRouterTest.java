@@ -50,6 +50,8 @@ import network.crypta.runtime.spi.FirstTimeWizardCurrentBandwidthLimits;
 import network.crypta.runtime.spi.FirstTimeWizardPort;
 import network.crypta.runtime.spi.FirstTimeWizardSnapshot;
 import network.crypta.runtime.spi.FirstTimeWizardSubmission;
+import network.crypta.runtime.spi.LegacyAdminSurfaceUsage;
+import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 import network.crypta.runtime.spi.NodeFieldSet;
 import network.crypta.runtime.spi.NodeGreetingSnapshot;
 import network.crypta.runtime.spi.NodeInfoPort;
@@ -271,6 +273,38 @@ class PlatformApiRouterTest {
     assertEquals(
         "{\"sectionCount\":1,\"sections\":[{\"title\":\"System Information:\",\"lines\":[\"alpha\","
             + "\"\",\"beta\"]}],\"plainTextExport\":\"System Information:\\nalpha\\n\\nbeta\\n\"}",
+        response.body());
+  }
+
+  @Test
+  void route_whenDiagnosticsRouterHasLegacyAdminUsage_expectLegacyAdminUsageJson() {
+    PlatformApiRouter diagnosticsRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            null,
+            () ->
+                new LegacyAdminUsageSnapshot(
+                    List.of(
+                        new LegacyAdminSurfaceUsage(
+                            "queue-downloads",
+                            "Download queue",
+                            "/downloads/",
+                            "PRIMARY_REPLACED",
+                            "/apps/queue-manager/",
+                            3L,
+                            1_770_000_000_000L))));
+    when(diagnosticPort.snapshot()).thenReturn(new DiagnosticReportSnapshot(List.of()));
+
+    PlatformApiResponse response =
+        diagnosticsRouter.route(request("GET", List.of("diagnostics"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"sectionCount\":0,\"sections\":[],\"plainTextExport\":\"\",\"legacyAdmin\":{\"surfaces\""
+            + ":[{\"id\":\"queue-downloads\",\"title\":\"Download queue\",\"path\":\"/downloads/\","
+            + "\"state\":\"PRIMARY_REPLACED\",\"replacementUrl\":\"/apps/queue-manager/\","
+            + "\"count\":3,\"lastSeenEpochMillis\":1770000000000}]}}",
         response.body());
   }
 

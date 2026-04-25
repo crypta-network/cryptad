@@ -21,6 +21,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.l10n.NodeL10n;
@@ -103,6 +104,8 @@ public final class ToadletContextImpl implements ToadletContext {
   private final BookmarkManagerHandle bookmarkManager;
   private final InetAddress remoteAddr;
   private Exception firstReplySendingException;
+  private int replyStatusCode = -1;
+  private boolean requestGateDenied;
   private final AtomicReference<Toadlet> activeToadlet = new AtomicReference<>();
 
   /** The unique id of the request */
@@ -433,6 +436,7 @@ public final class ToadletContextImpl implements ToadletContext {
             mvt,
             replyHeaders.forceDisableJavascript());
     sendReplyHeaders(sockOutputStream, resolvedHeaders, options);
+    replyStatusCode = resolvedHeaders.code();
   }
 
   /**
@@ -501,6 +505,7 @@ public final class ToadletContextImpl implements ToadletContext {
   public boolean checkFormPassword(HTTPRequest request, String redirectTo)
       throws ToadletContextClosedException, IOException {
     if (!hasFormPassword(request)) {
+      requestGateDenied = true;
       MultiValueTable<String, String> redirectHeaders =
           MultiValueTable.from("Location", redirectTo);
       sendReplyHeaders(302, "Found", redirectHeaders, null, 0);
@@ -529,6 +534,7 @@ public final class ToadletContextImpl implements ToadletContext {
     if (isAllowedFullAccess()) {
       return true;
     } else {
+      requestGateDenied = true;
       toadlet.sendUnauthorizedPage(this);
       return false;
     }
@@ -1086,11 +1092,14 @@ public final class ToadletContextImpl implements ToadletContext {
           IllegalAccessException,
           ToadletInvocationException {
     URI currentUri = uri;
+    LegacyAdminSurface usageSurface =
+        LegacyAdminRetirementRegistry.findByLegacyPath(uri.getPath()).orElse(null);
     boolean redirect;
     do {
       redirect = false;
       FindToadletResult toadletResult = findToadlet(container, ctx, currentUri);
       if (toadletResult.handled) {
+        recordLegacyAdminUsageIfAccepted(toadletResult.usageSurface(), ctx);
         return;
       }
       Toadlet toadlet = toadletResult.toadlet;
@@ -1118,6 +1127,7 @@ public final class ToadletContextImpl implements ToadletContext {
 
         try {
           callToadletMethod(toadlet, method, currentUri, req, ctx, data, sock);
+          recordLegacyAdminUsageIfAccepted(usageSurface, ctx);
         } catch (RedirectException re) {
           currentUri = re.newuri;
           redirect = true;
@@ -1128,16 +1138,37 @@ public final class ToadletContextImpl implements ToadletContext {
     } while (redirect);
   }
 
+  private static void recordLegacyAdminUsageIfAccepted(
+      LegacyAdminSurface usageSurface, ToadletContextImpl ctx) {
+    if (usageSurface != null && ctx.hasAcceptedLegacyAdminUsageResponse()) {
+      LegacyAdminUsageRecorder.defaultRecorder().recordSurface(usageSurface);
+    }
+  }
+
+  boolean hasAcceptedLegacyAdminUsageResponse() {
+    return !requestGateDenied && replyStatusCode >= 200 && replyStatusCode < 400;
+  }
+
   private static FindToadletResult findToadlet(
       ToadletContainer container, ToadletContextImpl ctx, URI uri)
       throws IOException, ToadletContextClosedException {
     try {
       Toadlet toadlet = container.findToadlet(uri);
-      return new FindToadletResult(toadlet, false);
+      return new FindToadletResult(toadlet, false, null);
     } catch (PermanentRedirectException e) {
       Toadlet.writePermanentRedirect(ctx, "Found elsewhere", e.newuri.toASCIIString());
-      return new FindToadletResult(null, true);
+      return new FindToadletResult(
+          null, true, canonicalRedirectSurface(uri, e.newuri).orElse(null));
     }
+  }
+
+  private static Optional<LegacyAdminSurface> canonicalRedirectSurface(URI requestUri, URI newUri) {
+    String requestPath = requestUri.getPath();
+    String newPath = newUri.getPath();
+    if (requestPath == null || newPath == null || !newPath.equals(requestPath + "/")) {
+      return Optional.empty();
+    }
+    return LegacyAdminRetirementRegistry.findByLegacyPath(newPath);
   }
 
   private record DataReadResult(Bucket data, boolean continueProcessing) {
@@ -1156,7 +1187,8 @@ public final class ToadletContextImpl implements ToadletContext {
     }
   }
 
-  private record FindToadletResult(Toadlet toadlet, boolean handled) {}
+  private record FindToadletResult(
+      Toadlet toadlet, boolean handled, LegacyAdminSurface usageSurface) {}
 
   private static final class ToadletInvocationException extends Exception {
     ToadletInvocationException(Throwable cause) {

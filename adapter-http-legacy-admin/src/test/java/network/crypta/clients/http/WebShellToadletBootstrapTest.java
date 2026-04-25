@@ -37,4 +37,22 @@ class WebShellToadletBootstrapTest {
             "/config-custom/"),
         bootstrap.legacyLinks().stream().map(WebShellBootstrap.LegacyLink::path).toList());
   }
+
+  @Test
+  void defaultLegacyLinks_whenBuilt_expectOnlyPendingOrRetainedFallbackPages() {
+    List<WebShellBootstrap.LegacyLink> links = WebShellToadlet.defaultLegacyLinks();
+
+    assertEquals(
+        List.of(
+            "/send_n2ntm/",
+            "/chat/",
+            "/translation/",
+            "/help/",
+            LegacyContentFilterSupport.CONTENT_FILTER_PATH),
+        links.stream().map(WebShellBootstrap.LegacyLink::path).toList());
+    assertEquals(
+        List.of(
+            "Node-to-node messages", "Chat and forums", "Translation", "Help", "Content filter"),
+        links.stream().map(WebShellBootstrap.LegacyLink::label).toList());
+  }
 }

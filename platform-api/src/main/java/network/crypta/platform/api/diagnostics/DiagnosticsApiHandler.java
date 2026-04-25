@@ -7,6 +7,9 @@ import java.util.Objects;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
+import network.crypta.runtime.spi.LegacyAdminSurfaceUsage;
+import network.crypta.runtime.spi.LegacyAdminUsagePort;
+import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 
 /**
  * Diagnostics endpoint family for Platform API v1.
@@ -27,6 +30,9 @@ public final class DiagnosticsApiHandler {
   /** Detached runtime diagnostic-report port. */
   private final DiagnosticPort diagnosticPort;
 
+  /** Optional process-local legacy admin usage source. */
+  private final LegacyAdminUsagePort legacyAdminUsagePort;
+
   /**
    * Creates a diagnostics API handler backed by the supplied detached runtime port.
    *
@@ -38,7 +44,21 @@ public final class DiagnosticsApiHandler {
    * @throws NullPointerException if {@code diagnosticPort} is {@code null}
    */
   public DiagnosticsApiHandler(DiagnosticPort diagnosticPort) {
+    this(diagnosticPort, null);
+  }
+
+  /**
+   * Creates a diagnostics API handler backed by the supplied detached runtime port and optional
+   * legacy-admin usage source.
+   *
+   * @param diagnosticPort detached runtime port used to read the current diagnostic report
+   * @param legacyAdminUsagePort optional process-local legacy admin usage source
+   * @throws NullPointerException if {@code diagnosticPort} is {@code null}
+   */
+  public DiagnosticsApiHandler(
+      DiagnosticPort diagnosticPort, LegacyAdminUsagePort legacyAdminUsagePort) {
     this.diagnosticPort = Objects.requireNonNull(diagnosticPort, "diagnosticPort");
+    this.legacyAdminUsagePort = legacyAdminUsagePort;
   }
 
   /**
@@ -57,10 +77,33 @@ public final class DiagnosticsApiHandler {
     List<Map<String, Object>> sections =
         snapshot.sections().stream().map(DiagnosticsApiHandler::toJson).toList();
 
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
     json.put("sectionCount", sections.size());
     json.put("sections", sections);
     json.put("plainTextExport", render(snapshot));
+    if (legacyAdminUsagePort != null) {
+      json.put("legacyAdmin", legacyAdminUsageToJson(legacyAdminUsagePort.snapshot()));
+    }
+    return json;
+  }
+
+  private static Map<String, Object> legacyAdminUsageToJson(LegacyAdminUsageSnapshot snapshot) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(1);
+    json.put(
+        "surfaces",
+        snapshot.surfaces().stream().map(DiagnosticsApiHandler::legacySurfaceUsageToJson).toList());
+    return json;
+  }
+
+  private static Map<String, Object> legacySurfaceUsageToJson(LegacyAdminSurfaceUsage surface) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put("id", surface.surfaceId());
+    json.put("title", surface.title());
+    json.put("path", surface.legacyPath());
+    json.put("state", surface.state());
+    json.put("replacementUrl", surface.replacementUrl());
+    json.put("count", surface.count());
+    json.put("lastSeenEpochMillis", surface.lastSeenEpochMillis());
     return json;
   }
 

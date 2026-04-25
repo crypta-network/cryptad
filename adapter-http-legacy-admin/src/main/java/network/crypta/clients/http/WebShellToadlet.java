@@ -34,15 +34,6 @@ public final class WebShellToadlet extends Toadlet {
   /** Shared reason phrase for missing shell routes and shell-owned assets. */
   private static final String NOT_FOUND_REASON = "Not Found";
 
-  /** Leading and trailing separator reused when synthesizing stable legacy UI paths. */
-  private static final String ROOT_PATH_DELIMITER = "/";
-
-  /** Path segment for the legacy opennet peers page surfaced from the shell. */
-  private static final String STRANGERS_SEGMENT = "strangers";
-
-  /** Path segment for the legacy alerts page surfaced from the shell. */
-  private static final String ALERTS_SEGMENT = "alerts";
-
   /** Adapter-owned bootstrap payload injected into the rendered shell document. */
   private final WebShellBootstrap bootstrap;
 
@@ -115,21 +106,16 @@ public final class WebShellToadlet extends Toadlet {
   /**
    * Returns the default legacy deep links exposed by the Web Shell.
    *
-   * <p>The list stays adapter-owned because these routes are defined by the legacy HTTP surface and
-   * may include configuration-driven mount points.
+   * <p>The list is sourced from the retirement registry so primary-replaced legacy admin pages stop
+   * appearing as shell fallback links. Only retained or pending pages that still need a legacy
+   * entry point remain here.
    *
-   * @return ordered legacy links for friends, peers, downloads, status, and config pages
+   * @return ordered fallback links for retained or pending legacy pages
    */
-  private static List<WebShellBootstrap.LegacyLink> defaultLegacyLinks() {
-    return List.of(
-        legacyLink(LegacyHttpPaths.FRIENDS_PATH, "Friends"),
-        legacyLink(legacyPath(STRANGERS_SEGMENT), "Strangers"),
-        legacyLink(QueueToadlet.PATH_DOWNLOADS, "Downloads"),
-        legacyLink(ConnectivityToadlet.CONNECTIVITY_PATH, "Connectivity"),
-        legacyLink(SecurityLevelsToadlet.PATH, "Security levels"),
-        legacyLink(StatisticsToadlet.TOADLET_URL, "Statistics"),
-        legacyLink(legacyPath(ALERTS_SEGMENT), "Alerts"),
-        legacyLink(LegacyHttpPaths.CONFIG_PATH, "Config"));
+  static List<WebShellBootstrap.LegacyLink> defaultLegacyLinks() {
+    return LegacyAdminRetirementRegistry.webShellFallbackSurfaces().stream()
+        .map(surface -> legacyLink(surface.legacyPath(), surface.title()))
+        .toList();
   }
 
   /**
@@ -141,16 +127,6 @@ public final class WebShellToadlet extends Toadlet {
    */
   private static WebShellBootstrap.LegacyLink legacyLink(String path, String label) {
     return new WebShellBootstrap.LegacyLink(path, label);
-  }
-
-  /**
-   * Builds one stable legacy route path from a single path segment.
-   *
-   * @param pathSegment route segment without leading or trailing slashes
-   * @return canonical legacy route with a leading and trailing slash
-   */
-  private static String legacyPath(String pathSegment) {
-    return ROOT_PATH_DELIMITER + pathSegment + ROOT_PATH_DELIMITER;
   }
 
   /**

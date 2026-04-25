@@ -54,6 +54,9 @@ public class DiagnosticToadlet extends Toadlet {
 
   private String render(DiagnosticReportSnapshot snapshot) {
     StringBuilder builder = new StringBuilder();
+    LegacyAdminRetirementRegistry.findById("diagnostic")
+        .flatMap(LegacyAdminRetirementNotice::renderPlainText)
+        .ifPresent(builder::append);
     for (DiagnosticSectionSnapshot section : snapshot.sections()) {
       builder.append(section.title()).append('\n');
       for (String line : section.lines()) {

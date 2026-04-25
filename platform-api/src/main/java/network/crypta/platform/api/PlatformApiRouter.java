@@ -17,6 +17,7 @@ import network.crypta.platform.api.updates.UpdatesApiHandler;
 import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
@@ -87,6 +88,7 @@ public final class PlatformApiRouter {
    * @param runtimePorts detached runtime-port aggregate used to resolve API requests
    * @throws NullPointerException if {@code runtimePorts} is {@code null}
    */
+  @SuppressWarnings("unused")
   public PlatformApiRouter(RuntimePorts runtimePorts) {
     this(runtimePorts, null, null);
   }
@@ -112,6 +114,24 @@ public final class PlatformApiRouter {
    */
   public PlatformApiRouter(
       RuntimePorts runtimePorts, AppHost appHost, AppCatalogManager appCatalogManager) {
+    this(runtimePorts, appHost, appCatalogManager, null);
+  }
+
+  /**
+   * Creates a router backed by runtime ports, AppHost, signed app catalogs, and optional
+   * legacy-admin usage diagnostics.
+   *
+   * @param runtimePorts detached runtime-port aggregate used to resolve API requests
+   * @param appHost detached AppHost used by app lifecycle and catalog install/update routes
+   * @param appCatalogManager signed catalog manager used by the catalog endpoint family
+   * @param legacyAdminUsage optional process-local legacy admin usage source
+   * @throws NullPointerException if {@code runtimePorts} is {@code null}
+   */
+  public PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
@@ -131,7 +151,7 @@ public final class PlatformApiRouter {
             runtimePorts.queueSupport(),
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
-    diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic());
+    diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
     appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null

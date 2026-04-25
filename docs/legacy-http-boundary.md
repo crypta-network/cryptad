@@ -41,6 +41,11 @@ and `:platform-apphost`. The adapter owns `/apps/` route registration and respon
 the platform leaves own installed-app lookup, UI-mode interpretation, path normalization, content
 types, and static asset confinement.
 
+Legacy admin retirement metadata also stays in `:adapter-http-legacy-admin`. The registry records
+which admin pages are primary-replaced, pending, retained, or infrastructure, renders fallback
+notices for replaced pages, and feeds process-local usage counters into Platform API diagnostics.
+The retirement plan is documented in [legacy-retirement-plan.md](legacy-retirement-plan.md).
+
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or
 `:platform-web-shell` instead of growing new direct dependencies on
@@ -48,6 +53,6 @@ Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-brow
 `src/main/java/network/crypta/runtime/bootstrap/DefaultNodeRuntimeBridgeFactories.java`, and the
 updater-action adapters remain in `:adapter-http-legacy-admin`.
 
-Future browse/FProxy decomposition or replacement remains a separate concern. This page documents
-the current admin/shared-shell, browse, and runtime boundary, and the concrete browse leaf remains
-out of scope for this closeout.
+Future browse/FProxy decomposition or replacement remains a separate concern. The concrete browse
+leaf is explicitly retained by the retirement plan and remains out of scope for legacy admin page
+removal.

@@ -1,6 +1,9 @@
 package network.crypta.clients.http;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -19,6 +22,7 @@ import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
+import network.crypta.support.io.ArrayBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ToadletContextImplTest {
+  private static final String QUEUE_DOWNLOADS_SURFACE_ID = "queue-downloads";
+  private static final String WRONG_FORM_PASSWORD_BODY = "formPassword=wrong&confirm=true";
 
   @Mock private BucketFactory bucketFactory;
   @Mock private PageMaker pageMaker;
@@ -177,6 +183,89 @@ class ToadletContextImplTest {
     Map<String, List<String>> headers = parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
     assertEquals("302", headers.get("__status").getFirst());
     assertEquals("/redirect", headers.get("location").getFirst());
+  }
+
+  @Test
+  void handle_whenLegacyGetAccepted_recordsLegacyAdminUsage() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(1L, queueDownloadsUsageCount());
+    }
+  }
+
+  @Test
+  void handle_whenSlashlessLegacyRequestGetsCanonicalRedirect_recordsLegacyAdminUsage()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(QueueToadlet.PATH_DOWNLOADS));
+      Socket socket = new FakeSocket(rawSlashlessDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(1L, queueDownloadsUsageCount());
+      assertEquals(
+          "301",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
+    }
+  }
+
+  @Test
+  void handle_whenLegacyRequestGetsNonCanonicalRedirect_doesNotRecordLegacyAdminUsage()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(FirstTimeWizardToadlet.TOADLET_URL));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(0L, queueDownloadsUsageCount());
+      assertEquals(
+          "301",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
+    }
+  }
+
+  @Test
+  void handle_whenLegacyRequestRedirectsToHelper_recordsOriginalLegacySurface() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      URI helperUri = URI.create(LocalDirectoryToadlet.basePath() + QueueToadlet.PATH_DOWNLOADS);
+      configureRedirectDispatch(
+          new RedirectingToadlet(QueueToadlet.PATH_DOWNLOADS, helperUri),
+          new DispatchTestToadlet(LocalDirectoryToadlet.basePath(), 200));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(1L, queueDownloadsUsageCount());
+    }
+  }
+
+  @Test
+  void handle_whenPostFormPasswordDenied_doesNotRecordLegacyAdminUsage() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
+      Socket socket = new FakeSocket(rawDeniedDownloadsPostRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(0L, queueDownloadsUsageCount());
+    }
+  }
+
+  @Test
+  void handle_whenFullAccessDenied_doesNotRecordLegacyAdminUsage() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new FullAccessCheckingToadlet(QueueToadlet.PATH_DOWNLOADS));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(0L, queueDownloadsUsageCount());
+    }
   }
 
   @Test
@@ -339,19 +428,114 @@ class ToadletContextImplTest {
 
   private ToadletContextImpl newContext(MultiValueTable<String, String> headers) throws Exception {
     Socket socket = new FakeSocket(outputStream, InetAddress.getLoopbackAddress());
-    ToadletRequestServices services =
-        new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
     return new ToadletContextImpl(
-        socket, headers, bucketFactory, services, new URI("http://example.com/"), 1L);
+        socket, headers, bucketFactory, newRequestServices(), new URI("http://example.com/"), 1L);
+  }
+
+  private ToadletRequestServices newRequestServices() {
+    return new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
+  }
+
+  private void configureDispatch(Toadlet toadlet) throws Exception {
+    org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
+    org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
+    org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
+    org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
+        .thenReturn(toadlet);
+  }
+
+  private void configureRedirectDispatch(Toadlet originalToadlet, Toadlet helperToadlet)
+      throws Exception {
+    org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
+    org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
+    org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
+    org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
+        .thenAnswer(
+            invocation -> {
+              URI requestedUri = invocation.getArgument(0);
+              return requestedUri.getPath().startsWith(helperToadlet.path())
+                  ? helperToadlet
+                  : originalToadlet;
+            });
+  }
+
+  private void configurePermanentRedirect(URI newUri) throws Exception {
+    org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
+    org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
+    org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
+    org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
+        .thenThrow(new PermanentRedirectException(newUri));
+  }
+
+  private static byte[] rawDownloadsGetRequest() {
+    return rawGetRequest(QueueToadlet.PATH_DOWNLOADS);
+  }
+
+  private static byte[] rawSlashlessDownloadsGetRequest() {
+    return rawGetRequest("/downloads");
+  }
+
+  private static byte[] rawGetRequest(String path) {
+    return ("GET " + path + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .getBytes(StandardCharsets.US_ASCII);
+  }
+
+  private static byte[] rawDeniedDownloadsPostRequest() {
+    return ("POST "
+            + QueueToadlet.PATH_DOWNLOADS
+            + " HTTP/1.1\r\nHost: localhost\r\nContent-Type: "
+            + "application/x-www-form-urlencoded; charset=UTF-8\r\nContent-Length: "
+            + WRONG_FORM_PASSWORD_BODY.length()
+            + "\r\n\r\n"
+            + WRONG_FORM_PASSWORD_BODY)
+        .getBytes(StandardCharsets.US_ASCII);
+  }
+
+  private static long queueDownloadsUsageCount() {
+    return LegacyAdminUsageRecorder.defaultRecorder().snapshot().surfaces().stream()
+        .filter(surface -> surface.surfaceId().equals(QUEUE_DOWNLOADS_SURFACE_ID))
+        .findFirst()
+        .orElseThrow()
+        .count();
+  }
+
+  private static LegacyAdminUsageScope clearedLegacyAdminUsage() {
+    return new LegacyAdminUsageScope();
+  }
+
+  private static final class LegacyAdminUsageScope implements AutoCloseable {
+    LegacyAdminUsageScope() {
+      LegacyAdminUsageRecorder.defaultRecorder().clear();
+    }
+
+    @Override
+    public void close() {
+      LegacyAdminUsageRecorder.defaultRecorder().clear();
+    }
   }
 
   private static class FakeSocket extends Socket {
+    private final ByteArrayInputStream is;
     private final ByteArrayOutputStream os;
     private final InetAddress inetAddress;
 
     FakeSocket(ByteArrayOutputStream os, InetAddress inetAddress) {
+      this(new byte[0], os, inetAddress);
+    }
+
+    FakeSocket(byte[] input, ByteArrayOutputStream os) {
+      this(input, os, InetAddress.getLoopbackAddress());
+    }
+
+    FakeSocket(byte[] input, ByteArrayOutputStream os, InetAddress inetAddress) {
+      this.is = new ByteArrayInputStream(input);
       this.os = os;
       this.inetAddress = inetAddress;
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return is;
     }
 
     @Override
@@ -367,6 +551,70 @@ class ToadletContextImplTest {
     @Override
     public void close() {
       // no-op for tests
+    }
+  }
+
+  private static class DispatchTestToadlet extends Toadlet {
+    private final String path;
+    private final int replyCode;
+
+    DispatchTestToadlet(String path, int replyCode) {
+      this.path = path;
+      this.replyCode = replyCode;
+    }
+
+    @Override
+    public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
+        throws ToadletContextClosedException, IOException {
+      ctx.sendReplyHeaders(replyCode, replyCode == 200 ? "OK" : "Error", null, "text/plain", 0);
+    }
+
+    @SuppressWarnings({"UnusedMethod", "unused"})
+    public void handleMethodPOST(URI uri, HTTPRequest request, ToadletContext ctx)
+        throws ToadletContextClosedException, IOException {
+      handleMethodGET(uri, request, ctx);
+    }
+
+    @Override
+    public String path() {
+      return path;
+    }
+  }
+
+  private static final class RedirectingToadlet extends Toadlet {
+    private final String path;
+    private final URI redirectUri;
+
+    RedirectingToadlet(String path, URI redirectUri) {
+      this.path = path;
+      this.redirectUri = redirectUri;
+    }
+
+    @Override
+    public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
+        throws RedirectException {
+      throw new RedirectException(redirectUri);
+    }
+
+    @Override
+    public String path() {
+      return path;
+    }
+  }
+
+  private static final class FullAccessCheckingToadlet extends DispatchTestToadlet {
+    FullAccessCheckingToadlet(String path) {
+      super(path, 200);
+    }
+
+    @Override
+    public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
+        throws ToadletContextClosedException, IOException {
+      if (!ctx.isAllowedFullAccess()) {
+        ctx.sendReplyHeaders(403, "Forbidden", null, "text/plain", 0);
+        return;
+      }
+      super.handleMethodGET(uri, request, ctx);
     }
   }
 }

@@ -126,6 +126,10 @@ not an app permission token. The [Platform JavaScript SDK](platform-sdk-js.md) c
 bootstrap as route metadata and as the source of the existing `formPassword` mutation guard.
 Browser-issued app sessions and stronger app isolation remain later platform work.
 
+Queue Manager and Publisher are also the primary replacements for the legacy queue and insert
+admin pages in the current retirement map. The full map is maintained in
+[legacy-retirement-plan.md](legacy-retirement-plan.md).
+
 ## Platform API summary fields
 
 Installed app summaries expose UI metadata:

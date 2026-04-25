@@ -69,7 +69,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | Updates | `GET /api/v1/updates/core` reports core-updater availability. `POST /api/v1/updates/core/download` triggers the current package download flow. |
 | Wizard/welcome | `GET /api/v1/wizard/first-time` exposes the detached first-time setup snapshot. `POST /api/v1/wizard/first-time/apply` submits the shell-native onboarding/reset model. There is no separate `/welcome` Platform API family in Phase 3; welcome-page fallback behavior remains on the legacy/admin side. |
 | Alerts | `GET /api/v1/alerts` lists current alerts. `POST /api/v1/alerts/{alertId}/dismiss` dismisses one alert by detached identifier. |
-| Diagnostics | `GET /api/v1/diagnostics` exposes the ordered diagnostic snapshot and plain-text export. |
+| Diagnostics | `GET /api/v1/diagnostics` exposes the ordered diagnostic snapshot and plain-text export. When served through the legacy HTTP bridge, it also includes process-local `legacyAdmin.surfaces[]` counters for legacy admin retirement planning. |
 | Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router. The family also covers local staged-bundle install, app lookup, start, stop, update, and uninstall. |
 | App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. The family also covers source add/remove, refresh, catalog app listing/detail, and install/update from a verified catalog artifact. |
 
@@ -91,6 +91,8 @@ The shell currently includes these first-party panels and surfaces:
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.
 - Legacy links for pages that remain fallback or debug surfaces.
+- Replaced legacy admin pages are not primary shell navigation targets; their current retirement
+  state is tracked in [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
 The shell is hosted by `:adapter-http-legacy-admin`, but its route constants, HTML template, CSS,
 JavaScript, and bootstrap model are owned by `:platform-web-shell`.

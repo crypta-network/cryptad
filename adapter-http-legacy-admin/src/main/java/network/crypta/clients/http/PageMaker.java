@@ -1,11 +1,13 @@
 package network.crypta.clients.http;
 
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
@@ -575,7 +577,35 @@ public final class PageMaker {
 
     topBarDiv.addChild("h1", title);
     renderNavigation(pageDiv, ctx, renderParameters, fullAccess, activePath);
-    return pageDiv.addChild(TAG_DIV, "id", "content");
+    HTMLNode contentDiv = pageDiv.addChild(TAG_DIV, "id", "content");
+    addLegacyAdminRetirementNotice(contentDiv, ctx);
+    return contentDiv;
+  }
+
+  private void addLegacyAdminRetirementNotice(HTMLNode contentDiv, ToadletContext ctx) {
+    if (ctx == null) {
+      return;
+    }
+    LegacyAdminSurface surface =
+        Optional.ofNullable(surfaceForActiveToadlet(ctx))
+            .orElseGet(() -> surfaceForRequestUri(ctx));
+    LegacyAdminRetirementNotice.addTo(contentDiv, surface);
+  }
+
+  private LegacyAdminSurface surfaceForActiveToadlet(ToadletContext ctx) {
+    Toadlet activeToadlet = ctx.activeToadlet();
+    if (activeToadlet == null) {
+      return null;
+    }
+    return LegacyAdminRetirementRegistry.findByLegacyPath(activeToadlet.path()).orElse(null);
+  }
+
+  private LegacyAdminSurface surfaceForRequestUri(ToadletContext ctx) {
+    URI uri = ctx.getUri();
+    if (uri == null) {
+      return null;
+    }
+    return LegacyAdminRetirementRegistry.findByLegacyPath(uri.getPath()).orElse(null);
   }
 
   private void addWebPushInputs(HTMLNode bodyNode, ToadletContext ctx, boolean webPushingEnabled) {

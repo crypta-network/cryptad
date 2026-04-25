@@ -73,7 +73,9 @@ public final class PlatformApiToadlet extends Toadlet {
    * @param runtimePorts detached runtime ports exposed to the platform API leaf
    */
   public PlatformApiToadlet(RuntimePorts runtimePorts) {
-    this(new PlatformApiRouter(runtimePorts));
+    this(
+        new PlatformApiRouter(
+            runtimePorts, null, null, LegacyAdminUsageRecorder.defaultRecorder()));
   }
 
   /**
@@ -83,7 +85,9 @@ public final class PlatformApiToadlet extends Toadlet {
    * @param appHost detached AppHost exposed through the app-management control surface
    */
   public PlatformApiToadlet(RuntimePorts runtimePorts, AppHost appHost) {
-    this(new PlatformApiRouter(runtimePorts, appHost));
+    this(
+        new PlatformApiRouter(
+            runtimePorts, appHost, null, LegacyAdminUsageRecorder.defaultRecorder()));
   }
 
   /**
@@ -95,7 +99,9 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public PlatformApiToadlet(
       RuntimePorts runtimePorts, AppHost appHost, AppCatalogManager appCatalogManager) {
-    this(new PlatformApiRouter(runtimePorts, appHost, appCatalogManager));
+    this(
+        new PlatformApiRouter(
+            runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()));
   }
 
   /**
