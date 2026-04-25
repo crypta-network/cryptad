@@ -78,6 +78,9 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   /** Maximum number of compressed bytes to read from the ZIP stream overall. */
   private static final long MAX_ZIP_SCAN_BYTES = 16L * 1024L * 1024L; // 16 MiB
 
+  /** Delay before retrying a fetch while the key is still in the recently-failed table. */
+  private static final long RECENTLY_FAILED_RETRY_DELAY_MILLIS = SECONDS.toMillis(1);
+
   private final FetchContext ctx;
   private ClientGetter cg;
   private FreenetURI uri;
@@ -702,13 +705,18 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
     if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, localCg);
     if (errorCode == FetchExceptionMode.CANCELLED || !e.isFatal()) {
-      LOG.info("Rescheduling new request");
-      ticker.queueTimedJob(this::maybeUpdate, 0);
+      long retryDelay = retryDelayForFailure(errorCode);
+      LOG.info("Rescheduling update request after {} with delay {} ms", errorCode, retryDelay);
+      ticker.queueTimedJob(this::maybeUpdate, retryDelay);
     } else {
       LOG.error("Canceling fetch : {}", e.getMessage());
       LOG.error("Unexpected error fetching update: {}", e.getMessage());
       // Fatal error: wait for the next version; do not reschedule now.
     }
+  }
+
+  private static long retryDelayForFailure(FetchExceptionMode errorCode) {
+    return errorCode == FetchExceptionMode.RECENTLY_FAILED ? RECENTLY_FAILED_RETRY_DELAY_MILLIS : 0;
   }
 
   /** Called before {@link #kill()} to mark the updater as stopping. Avoids taking locks. */
