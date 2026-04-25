@@ -547,10 +547,16 @@ def collect_distribution_metrics(
         metrics["distribution.build_ms"] = metric_collected(build_ms, "ms")
 
 
+def gradle_wrapper_path(settings: Settings, system_name: str | None = None) -> Path:
+    current_system = system_name or platform.system()
+    wrapper_name = "gradlew.bat" if current_system == "Windows" else "gradlew"
+    return settings.workspace_root / wrapper_name
+
+
 def run_distribution_build(settings: Settings, layout: Layout) -> tuple[int | None, bool]:
     if settings.mode == "self-test" or settings.skip_build:
         return None, True
-    gradlew = settings.workspace_root / "gradlew"
+    gradlew = gradle_wrapper_path(settings)
     if not gradlew.is_file():
         return None, False
     stdout_path = layout.logs_dir / "assembleCryptadDist.stdout.log"
@@ -1597,6 +1603,9 @@ def run_self_test(settings: Settings) -> tuple[dict[str, Any], int]:
     assert cryptad_launcher_path(settings, "Windows").name == "cryptad.bat"
     assert cryptad_launcher_path(settings, "Linux").name == "cryptad"
     assert cryptad_launcher_path(settings, "Darwin").name == "cryptad"
+    assert gradle_wrapper_path(settings, "Windows").name == "gradlew.bat"
+    assert gradle_wrapper_path(settings, "Linux").name == "gradlew"
+    assert gradle_wrapper_path(settings, "Darwin").name == "gradlew"
 
     defaults = settings_from_args(build_parser().parse_args(["--self-test"]), {})
     assert defaults.mode == "self-test"
@@ -1658,7 +1667,7 @@ def run_self_test(settings: Settings) -> tuple[dict[str, Any], int]:
     finished_at = utc_now()
     duration_ms = monotonic_ms() - started_ms
     metrics = {
-        "self_test.assertions": metric_collected(38, "count"),
+        "self_test.assertions": metric_collected(41, "count"),
         "fixture.latency_ms": metric_collected(100, "ms"),
         "fixture.payload_bytes": metric_collected(1000, "bytes"),
         "fixture.skipped_ms": metric_skipped("optional check disabled", "ms"),
