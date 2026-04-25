@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import java.net.URI;
 import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.PageChromeSnapshot;
@@ -230,6 +231,45 @@ class PageMakerTest {
     assertTrue(html.contains("id=\"requestId\""));
     assertTrue(html.contains("value=\"req-push\""));
     assertTrue(html.contains(ClientSideLocalizationScript.getClientSideLocalizationScript()));
+  }
+
+  @Test
+  void getPageNode_whenRequestUriIsReplacedButActiveToadletIsInfrastructure_skipsNotice() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    Toadlet directoryBrowser = mock(Toadlet.class);
+    when(directoryBrowser.path()).thenReturn(LocalDirectoryToadlet.basePath());
+    when(context.activeToadlet()).thenReturn(directoryBrowser);
+    lenient().when(context.getUri()).thenReturn(URI.create(QueueToadlet.PATH_DOWNLOADS));
+
+    PageNode page =
+        maker.getPageNode(
+            "Directory",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertFalse(html.contains("legacy-admin-retirement-notice"));
+    assertFalse(html.contains("Queue Manager app"));
+  }
+
+  @Test
+  void getPageNode_whenActiveToadletMissingAndRequestUriIsReplaced_rendersNotice() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(context.getUri()).thenReturn(URI.create(QueueToadlet.PATH_DOWNLOADS));
+
+    PageNode page =
+        maker.getPageNode(
+            "Downloads",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("legacy-admin-retirement-notice"));
+    assertTrue(html.contains("Queue Manager app"));
   }
 
   @Test
