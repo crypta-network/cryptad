@@ -5,6 +5,8 @@ import java.net.MalformedURLException;
 import java.nio.file.Path;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
+import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.USKManager;
@@ -25,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
@@ -134,6 +137,18 @@ class NodeUpdaterTest {
         updater.getUpdateKey().toString(false, false),
         recordedUri.getValue().toString(false, false));
     assertTrue(updater.getBlobFile(1434).exists());
+  }
+
+  @Test
+  void onFailure_whenRecentlyFailed_expectDelayedRetry() {
+    // Arrange
+    FetchException recentlyFailed = new FetchException(FetchExceptionMode.RECENTLY_FAILED);
+
+    // Act
+    updater.onFailure(recentlyFailed);
+
+    // Assert
+    verify(ticker).queueTimedJob(any(Runnable.class), eq(1000L));
   }
 
   private NodeUpdaterParams defaultParams() throws MalformedURLException {
