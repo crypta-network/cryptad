@@ -420,12 +420,15 @@ public final class AppBundleManifestParser {
     return trimmed;
   }
 
-  private static String optionalUiEntry(Properties properties) {
+  private static String optionalUiEntry(Properties properties) throws AppDistributionException {
     String value = properties.getProperty("app.ui.entry");
     if (value == null) {
       return null;
     }
     String trimmed = value.trim();
-    return trimmed.isEmpty() ? null : trimmed;
+    if (trimmed.isEmpty()) {
+      throw new AppDistributionException("app.ui.entry must not be blank");
+    }
+    return trimmed;
   }
 }
