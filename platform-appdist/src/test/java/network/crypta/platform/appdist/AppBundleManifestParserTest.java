@@ -50,6 +50,16 @@ class AppBundleManifestParserTest {
   }
 
   @Test
+  void parseContent_whenUiEntryValueIsBlank_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleManifestParser.parseContent(minimalManifest("app.ui.entry=\n")));
+
+    assertEquals("app.ui.entry must not be blank", exception.getMessage());
+  }
+
+  @Test
   void parseContent_whenStaticUiEntryIsAbsolute_expectFailure() {
     AppDistributionException exception =
         assertThrows(
