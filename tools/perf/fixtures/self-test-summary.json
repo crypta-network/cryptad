@@ -1,0 +1,26 @@
+{
+  "comparison": {
+    "regressions": [],
+    "status": "pass",
+    "warnings": []
+  },
+  "metrics": {
+    "fixture.latency_ms": {
+      "status": "collected",
+      "unit": "ms",
+      "value": 100
+    },
+    "fixture.payload_bytes": {
+      "status": "collected",
+      "unit": "bytes",
+      "value": 1000
+    },
+    "fixture.skipped_ms": {
+      "reason": "optional check disabled",
+      "status": "skipped",
+      "unit": "ms"
+    }
+  },
+  "mode": "self-test",
+  "status": "success"
+}

@@ -417,6 +417,24 @@ Full gate when the local environment is prepared:
 tools/interop/run-hyphanet-interop-smoke.sh
 ```
 
+## Performance Regression Gate
+
+The lightweight packaged-node performance regression gate lives under `tools/perf/`. Local usage,
+metrics, baseline policy, CI behavior, and interpretation guidance are documented in
+[tools/perf/README.md](tools/perf/README.md).
+
+Fast self-test with Python 3.12 or newer:
+
+```bash
+python3 tools/perf/perf_smoke.py --self-test
+```
+
+Smoke run when the local environment is prepared:
+
+```bash
+tools/perf/run-performance-smoke.sh
+```
+
 ## Testing
 
 - Run all tests:
