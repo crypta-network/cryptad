@@ -266,6 +266,9 @@ public final class AppBundleManifestParser {
     List<String> permissions = parsePermissions(optional(properties, "app.permissions"));
     Long dataQuotaBytes = parseOptionalLong(properties, "quota.data.bytes");
     Long cacheQuotaBytes = parseOptionalLong(properties, "quota.cache.bytes");
+    AppRestartPolicy restartPolicy = parseRestartPolicy(optional(properties, "app.restart.policy"));
+    int restartMaxAttempts = parseRestartMaxAttempts(properties);
+    long restartBackoffMillis = parseRestartBackoffMillis(properties);
     try {
       return new AppBundleManifest(
           manifestVersion,
@@ -277,7 +280,19 @@ public final class AppBundleManifestParser {
           uiEntry,
           permissions,
           dataQuotaBytes,
-          cacheQuotaBytes);
+          cacheQuotaBytes,
+          restartPolicy,
+          restartMaxAttempts,
+          restartBackoffMillis);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static AppRestartPolicy parseRestartPolicy(String rawValue)
+      throws AppDistributionException {
+    try {
+      return AppRestartPolicy.parseManifestValue(rawValue);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -393,6 +408,42 @@ public final class AppBundleManifestParser {
     }
     try {
       return Long.parseLong(value);
+    } catch (NumberFormatException exception) {
+      throw new AppDistributionException("invalid " + key + ": " + value, exception);
+    }
+  }
+
+  private static int parseRestartMaxAttempts(Properties properties)
+      throws AppDistributionException {
+    String key = "app.restart.maxAttempts";
+    String value = optional(properties, key);
+    if (value == null) {
+      return 0;
+    }
+    try {
+      int parsed = Integer.parseInt(value);
+      if (parsed < 0) {
+        throw new AppDistributionException(key + " must be >= 0");
+      }
+      return parsed;
+    } catch (NumberFormatException exception) {
+      throw new AppDistributionException("invalid " + key + ": " + value, exception);
+    }
+  }
+
+  private static long parseRestartBackoffMillis(Properties properties)
+      throws AppDistributionException {
+    String key = "app.restart.backoff.ms";
+    String value = optional(properties, key);
+    if (value == null) {
+      return 0L;
+    }
+    try {
+      long parsed = Long.parseLong(value);
+      if (parsed < 0L) {
+        throw new AppDistributionException(key + " must be >= 0");
+      }
+      return parsed;
     } catch (NumberFormatException exception) {
       throw new AppDistributionException("invalid " + key + ": " + value, exception);
     }

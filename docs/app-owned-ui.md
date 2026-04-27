@@ -158,6 +158,21 @@ Shell-panel apps preserve their existing local route:
 
 Apps without a UI use `uiMode=none`, `uiEntry=null`, and `uiUrl=null`.
 
+Runtime hardening APIs are separate from the app summary:
+
+```text
+GET /api/v1/apps/{appId}/runtime
+GET /api/v1/apps/{appId}/logs?maxBytes=65536
+```
+
+The runtime endpoint reports process state, PID, start time, last exit metadata, restart attempt
+counts, and process-log availability. The logs endpoint returns a bounded, token-redacted tail of
+the app's combined stdout/stderr log. Neither endpoint exposes `CRYPTAD_APP_TOKEN` or absolute
+installed/data/cache/run filesystem paths.
+
+The Web Shell uses those endpoints for operator visibility. Static app UIs must not treat the
+runtime endpoint as proof of app-level health; it is process status only.
+
 ## Examples
 
 Static UI bundle:

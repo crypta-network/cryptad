@@ -29,6 +29,37 @@ class AppBundleManifestParserTest {
 
     assertEquals(AppUiMode.NONE, manifest.uiMode());
     assertNull(manifest.uiEntry());
+    assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
+    assertEquals(0, manifest.restartMaxAttempts());
+    assertEquals(0L, manifest.restartBackoffMillis());
+  }
+
+  @Test
+  void parseContent_whenRestartPolicyDeclared_expectRestartFields() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                app.restart.policy=on-failure
+                app.restart.maxAttempts=3
+                app.restart.backoff.ms=250
+                """));
+
+    assertEquals(AppRestartPolicy.ON_FAILURE, manifest.restartPolicy());
+    assertEquals(3, manifest.restartMaxAttempts());
+    assertEquals(250L, manifest.restartBackoffMillis());
+  }
+
+  @Test
+  void parseContent_whenRestartAttemptsNegative_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("app.restart.maxAttempts=-1\n")));
+
+    assertEquals("app.restart.maxAttempts must be >= 0", exception.getMessage());
   }
 
   @Test

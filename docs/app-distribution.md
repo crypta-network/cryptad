@@ -73,6 +73,27 @@ bootstrap JSON, static asset security boundary, and API summary fields. See
 [platform-sdk-js.md](platform-sdk-js.md) for the staged browser SDK used by first-party static UI
 bundles.
 
+## Runtime Manifest Fields
+
+App bundles can declare a minimal restart policy:
+
+```properties
+app.restart.policy=never|on-failure
+app.restart.maxAttempts=0
+app.restart.backoff.ms=0
+```
+
+All fields are optional. The default policy is `never`, with no automatic restart attempts. When a
+bundle opts in to `on-failure`, AppHost restarts only after a non-zero process exit, only within the
+current daemon session, and only up to `app.restart.maxAttempts`. Explicit operator stop suppresses
+automatic restart. Each restart receives a fresh `CRYPTAD_APP_TOKEN`.
+
+`app.restart.maxAttempts` and `app.restart.backoff.ms` must be non-negative integers. AppHost does
+not persist restart state across daemon restarts and does not run app-provided health checks.
+
+See [apphost-runtime-hardening.md](apphost-runtime-hardening.md) for the process boundary, runtime
+status, process-log tailing, token redaction, and remaining sandbox limitations.
+
 ## Gradle Tasks
 
 Per app:

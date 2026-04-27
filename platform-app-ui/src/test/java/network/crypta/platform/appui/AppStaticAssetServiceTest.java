@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeState;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -273,6 +277,44 @@ class AppStaticAssetServiceTest {
     @Override
     public List<RunningAppSnapshot> listRunning() {
       return List.of();
+    }
+
+    @Override
+    public AppRuntimeStatusSnapshot runtimeStatus(String appId) throws IOException {
+      InstalledAppSnapshot snapshot = snapshots.get(appId);
+      if (snapshot == null) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      return new AppRuntimeStatusSnapshot(
+          appId, AppRuntimeState.STOPPED, false, null, null, null, null, 0, 0, false, null);
+    }
+
+    @Override
+    public List<AppRuntimeStatusSnapshot> listRuntimeStatus() {
+      return snapshots.keySet().stream()
+          .map(
+              appId ->
+                  new AppRuntimeStatusSnapshot(
+                      appId,
+                      AppRuntimeState.STOPPED,
+                      false,
+                      null,
+                      null,
+                      null,
+                      null,
+                      0,
+                      0,
+                      false,
+                      null))
+          .toList();
+    }
+
+    @Override
+    public AppProcessLogSnapshot readProcessLogTail(String appId, int maxBytes) throws IOException {
+      if (!snapshots.containsKey(appId)) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      return new AppProcessLogSnapshot(appId, false, false, maxBytes, 0L, "", null);
     }
   }
 }

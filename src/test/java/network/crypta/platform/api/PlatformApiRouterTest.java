@@ -17,6 +17,9 @@ import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeState;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -92,6 +95,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -2053,6 +2057,56 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppRuntimeRequested_expectRuntimeEnvelopeWithoutToken() throws Exception {
+    when(appHost.runtimeStatus(APP_ID))
+        .thenReturn(
+            new AppRuntimeStatusSnapshot(
+                APP_ID,
+                AppRuntimeState.RUNNING,
+                true,
+                APP_PID,
+                STARTED_AT,
+                null,
+                null,
+                1,
+                1,
+                true,
+                128L));
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("apps", APP_ID, "runtime"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(PlatformApiJsonWriter.write(Map.of("runtime", runtimeSummary())), response.body());
+    assertFalse(response.body().contains("token"));
+  }
+
+  @Test
+  void route_whenAppLogsRequested_expectLogsEnvelopeWithoutToken() throws Exception {
+    when(appHost.readProcessLogTail(APP_ID, 32))
+        .thenReturn(
+            new AppProcessLogSnapshot(
+                APP_ID, true, true, 32, 128L, "CRYPTAD_APP_TOKEN=[REDACTED]\nready\n", STARTED_AT));
+
+    PlatformApiResponse response =
+        router.route(
+            request("GET", List.of("apps", APP_ID, "logs"), Map.of("maxBytes", List.of("32"))));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(PlatformApiJsonWriter.write(Map.of("logs", logsSummary())), response.body());
+    assertFalse(response.body().contains("secret"));
+  }
+
+  @Test
+  void route_whenAppRuntimePostRequested_expectMethodNotAllowedWithAllowGet() {
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "runtime"), Map.of()));
+
+    assertEquals(405, response.statusCode());
+    assertEquals(Map.of("Allow", "GET"), response.headers());
+  }
+
+  @Test
   void route_whenAppIdMatchesInstallRoute_expectDescribeJson() throws Exception {
     InstalledAppSnapshot installed = installedSnapshot(INSTALL_ROUTE_APP_ID);
     when(appHost.describe(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.of(installed));
@@ -2506,6 +2560,23 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppStopRequestedDuringRestartBackoff_expectDelegatesStopAndReturnsSummary()
+      throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.stop(APP_ID)).thenReturn(true);
+
+    PlatformApiResponse response =
+        router.route(request("POST", List.of("apps", APP_ID, "stop"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
+        response.body());
+    verify(appHost).stop(APP_ID);
+  }
+
+  @Test
   void route_whenRunningAppManifestUnreadableDuringStop_expectStoppedSummaryJson()
       throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
@@ -2923,6 +2994,34 @@ class PlatformApiRouterTest {
   private static Map<String, Object> installRouteSummary(boolean installed) {
     return summaryFor(
         INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, false, null, null);
+  }
+
+  private static Map<String, Object> runtimeSummary() {
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(11);
+    summary.put("appId", APP_ID);
+    summary.put("state", "RUNNING");
+    summary.put("running", true);
+    summary.put("pid", APP_PID);
+    summary.put("startedAt", STARTED_AT.toString());
+    summary.put("lastExitAt", null);
+    summary.put("lastExitCode", null);
+    summary.put("restartCount", 1);
+    summary.put("currentRestartAttempt", 1);
+    summary.put("logAvailable", true);
+    summary.put("logSizeBytes", 128L);
+    return summary;
+  }
+
+  private static Map<String, Object> logsSummary() {
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(7);
+    summary.put("appId", APP_ID);
+    summary.put("available", true);
+    summary.put("truncated", true);
+    summary.put("maxBytes", 32);
+    summary.put("sizeBytes", 128L);
+    summary.put("text", "CRYPTAD_APP_TOKEN=[REDACTED]\nready\n");
+    summary.put("lastModifiedAt", STARTED_AT.toString());
+    return summary;
   }
 
   private static Map<String, Object> summaryFor(

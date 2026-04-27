@@ -883,6 +883,18 @@
     }
   }
 
+  function appRuntimePath(appId) {
+    return typeof appId === "string" && appId.length > 0
+      ? `apps/${encodeURIComponent(appId)}/runtime`
+      : null;
+  }
+
+  function appLogsPath(appId, maxBytes) {
+    return typeof appId === "string" && appId.length > 0
+      ? `apps/${encodeURIComponent(appId)}/logs?maxBytes=${encodeURIComponent(String(maxBytes))}`
+      : null;
+  }
+
   function catalogMutationPath(catalogId, appId, action) {
     if (typeof catalogId !== "string" || catalogId.length === 0) {
       return null;
@@ -977,6 +989,15 @@
   function renderAppCard(app) {
     const card = document.createElement("article");
     card.className = "app-card";
+    const runtime = app && app.runtime && typeof app.runtime === "object" ? app.runtime : null;
+    const logs = app && app.logs && typeof app.logs === "object" ? app.logs : null;
+    const runtimeError = typeof app.runtimeError === "string" ? app.runtimeError : "";
+    const runtimeState =
+      runtime && typeof runtime.state === "string" && runtime.state ? runtime.state : app.running ? "RUNNING" : "STOPPED";
+    const runtimeRunning = runtime ? !!runtime.running : !!app.running;
+    const runtimeStoppable = runtimeRunning || runtimeState === "RESTARTING";
+    const runtimePid = runtime ? runtime.pid : app.pid;
+    const runtimeStartedAt = runtime ? runtime.startedAt : app.startedAt;
 
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -990,7 +1011,7 @@
     const pills = document.createElement("div");
     pills.className = "app-card-pills";
     pills.append(createPill("Installed"));
-    pills.append(createPill(app.running ? "Running" : "Stopped", app.running ? "is-success" : "is-warning"));
+    pills.append(createPill(runtimeState, runtimeRunning ? "is-success" : "is-warning"));
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
@@ -1005,17 +1026,31 @@
       ["UI mode", scalar(app.uiMode)],
       ["UI", uiEntryNode || scalar(app.uiUrl)],
       ["UI entry", scalar(app.uiEntry)],
-      ["Running", app.running ? "Yes" : "No"],
-      ["PID", app.running ? scalar(app.pid) : "Unavailable"],
-      ["Started at", app.running ? formatIsoTimestamp(app.startedAt) : "Unavailable"],
+      ["Runtime state", runtimeState],
+      ["Running", runtimeRunning ? "Yes" : "No"],
+      ["PID", runtimeRunning ? scalar(runtimePid) : "Unavailable"],
+      ["Started at", runtimeRunning ? formatIsoTimestamp(runtimeStartedAt) : "Unavailable"],
+      ["Last exit code", runtime && runtime.lastExitCode != null ? scalar(runtime.lastExitCode) : "Unavailable"],
+      ["Last exit at", runtime ? formatIsoTimestamp(runtime.lastExitAt) : "Unavailable"],
+      ["Restart attempts", runtime ? scalar(runtime.currentRestartAttempt) : "Unavailable"],
+      ["Process log", logs && logs.available ? `${scalar(logs.sizeBytes)} bytes` : "Unavailable"],
+      ["Runtime detail", runtimeError || (runtime ? "Available" : "Unavailable")],
     ];
     card.append(definitionList(entries));
+    const logDetails = appLogDetailsNode(logs, app.logsError);
+    if (logDetails) {
+      card.append(logDetails);
+    }
 
     const actions = document.createElement("div");
     actions.className = "app-card-actions";
     if (formPassword) {
-      const startForm = buildAppActionForm(app, app.running ? "stop" : "start", app.running ? "Stop" : "Start");
-      const uninstallForm = app.running
+      const startForm = buildAppActionForm(
+        app,
+        runtimeStoppable ? "stop" : "start",
+        runtimeStoppable ? "Stop" : "Start",
+      );
+      const uninstallForm = runtimeStoppable
         ? null
         : buildAppActionForm(app, "uninstall", "Uninstall");
       if (startForm) {
@@ -1030,6 +1065,30 @@
     }
 
     return card;
+  }
+
+  function appLogDetailsNode(logs, logsError) {
+    const details = document.createElement("details");
+    details.className = "json-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Runtime log tail";
+    details.append(summary);
+    if (logsError) {
+      details.append(text("p", "error-state", logsError));
+      return details;
+    }
+    if (!logs || !logs.available) {
+      details.append(text("p", "empty-state", "No process log is available."));
+      return details;
+    }
+    if (logs.truncated) {
+      details.append(text("p", "empty-state", `Showing the last ${scalar(logs.maxBytes)} bytes.`));
+    }
+    const pre = document.createElement("pre");
+    pre.className = "json-code app-log-tail";
+    pre.textContent = typeof logs.text === "string" ? logs.text : "";
+    details.append(pre);
+    return details;
   }
 
   function renderApps(data) {
@@ -2134,6 +2193,11 @@
     let installedSnapshot;
     try {
       installedSnapshot = await loadJson(apiUrl("apps"));
+      const apps =
+        installedSnapshot && Array.isArray(installedSnapshot.apps)
+          ? await Promise.all(installedSnapshot.apps.map(loadAppRuntimeDetails))
+          : [];
+      installedSnapshot = { ...installedSnapshot, apps };
     } catch (error) {
       if (loadGeneration !== appsLoadGeneration) {
         return;
@@ -2161,6 +2225,39 @@
       return;
     }
     renderApps({ ...installedSnapshot, catalogs, catalogError });
+  }
+
+  async function loadAppRuntimeDetails(app) {
+    if (!app || typeof app !== "object" || typeof app.appId !== "string" || app.appId.length === 0) {
+      return app;
+    }
+    const runtimePath = appRuntimePath(app.appId);
+    const logsPath = appLogsPath(app.appId, 65536);
+    let runtime = null;
+    let runtimeError = "";
+    let logs = null;
+    let logsError = "";
+    try {
+      const runtimeSnapshot = runtimePath ? await loadOptionalJson(apiUrl(runtimePath)) : null;
+      runtime =
+        runtimeSnapshot && runtimeSnapshot.runtime && typeof runtimeSnapshot.runtime === "object"
+          ? runtimeSnapshot.runtime
+          : runtimeSnapshot;
+    } catch (error) {
+      runtimeError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+    try {
+      const logsSnapshot = logsPath ? await loadOptionalJson(apiUrl(logsPath)) : null;
+      logs =
+        logsSnapshot && logsSnapshot.logs && typeof logsSnapshot.logs === "object"
+          ? logsSnapshot.logs
+          : logsSnapshot;
+    } catch (error) {
+      logsError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+    return { ...app, runtime, runtimeError, logs, logsError };
   }
 
   async function loadCatalogApps(catalog) {

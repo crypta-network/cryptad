@@ -521,15 +521,39 @@ public final class PlatformApiRouter {
   private PlatformApiResponse routeAppsAction(
       String appId, String action, PlatformApiRequest request) {
     String method = request.method();
-    if (!"POST".equals(method)) {
-      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
-    }
     return switch (action) {
-      case "start" -> PlatformApiResponse.ok(envelope("app", appsApiHandler.start(appId)));
-      case "stop" -> PlatformApiResponse.ok(envelope("app", appsApiHandler.stop(appId)));
-      case "update" ->
-          PlatformApiResponse.ok(
-              envelope("app", appsApiHandler.update(appId, request.queryParameters())));
+      case "runtime" -> {
+        if (!"GET".equals(method)) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("runtime", appsApiHandler.runtime(appId)));
+      }
+      case "logs" -> {
+        if (!"GET".equals(method)) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("logs", appsApiHandler.logs(appId, request.queryParameters())));
+      }
+      case "start" -> {
+        if (!"POST".equals(method)) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("app", appsApiHandler.start(appId)));
+      }
+      case "stop" -> {
+        if (!"POST".equals(method)) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("app", appsApiHandler.stop(appId)));
+      }
+      case "update" -> {
+        if (!"POST".equals(method)) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("app", appsApiHandler.update(appId, request.queryParameters())));
+      }
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }

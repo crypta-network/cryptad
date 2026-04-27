@@ -13,6 +13,9 @@ import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeState;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -27,6 +30,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 @SuppressWarnings("java:S100")
 class AppsApiHandlerTest {
   private static final String APP_ID = "demo-app";
+  private static final String ERROR_INVALID_APP_BUNDLE = "invalid_app_bundle";
+  private static final String FIELD_MAX_BYTES = "maxBytes";
+  private static final String FIELD_RUNNING = "running";
+  private static final String FIELD_UI_ENTRY = "uiEntry";
+  private static final String FIELD_UI_MODE = "uiMode";
+  private static final String FIELD_UI_URL = "uiUrl";
+  private static final String SAMPLE_INSTANT_TEXT = "2024-01-02T03:04:05Z";
+  private static final String SHELL_PANEL_ENTRY = "/app/node/#queue";
   private static final String SIGNED_BUNDLE_FAILURE_MESSAGE =
       "Staged app bundle must pass trusted signature verification.";
   private static final String STAGED_DIR_PARAMETER = "stagedDir";
@@ -50,7 +61,7 @@ class AppsApiHandlerTest {
             PlatformApiException.class, () -> handler.install(installParameters));
 
     assertEquals(400, exception.statusCode());
-    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertEquals(ERROR_INVALID_APP_BUNDLE, exception.errorCode());
     assertEquals(SIGNED_BUNDLE_FAILURE_MESSAGE, exception.getMessage());
   }
 
@@ -71,7 +82,7 @@ class AppsApiHandlerTest {
             PlatformApiException.class, () -> handler.update(APP_ID, updateParameters));
 
     assertEquals(400, exception.statusCode());
-    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertEquals(ERROR_INVALID_APP_BUNDLE, exception.errorCode());
     assertEquals(SIGNED_BUNDLE_FAILURE_MESSAGE, exception.getMessage());
   }
 
@@ -91,7 +102,7 @@ class AppsApiHandlerTest {
             PlatformApiException.class, () -> handler.install(installParameters));
 
     assertEquals(400, exception.statusCode());
-    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertEquals(ERROR_INVALID_APP_BUNDLE, exception.errorCode());
     assertEquals(
         "app.ui.entry does not resolve to a file in copied bundle: static/index.html",
         exception.getMessage());
@@ -112,7 +123,7 @@ class AppsApiHandlerTest {
             PlatformApiException.class, () -> handler.update(APP_ID, updateParameters));
 
     assertEquals(400, exception.statusCode());
-    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertEquals(ERROR_INVALID_APP_BUNDLE, exception.errorCode());
     assertEquals("app.ui.entry must not traverse links in copied bundle", exception.getMessage());
   }
 
@@ -142,21 +153,21 @@ class AppsApiHandlerTest {
 
     Map<String, Object> summary = handler.get(APP_ID);
 
-    assertEquals("static", summary.get("uiMode"));
-    assertEquals("static/index.html", summary.get("uiEntry"));
-    assertEquals("/apps/demo-app/static/", summary.get("uiUrl"));
+    assertEquals("static", summary.get(FIELD_UI_MODE));
+    assertEquals("static/index.html", summary.get(FIELD_UI_ENTRY));
+    assertEquals("/apps/demo-app/static/", summary.get(FIELD_UI_URL));
   }
 
   @Test
   void get_whenShellPanelAppInstalled_expectShellPanelUrlPreserved() {
     AppsApiHandler handler =
-        new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.SHELL_PANEL, "/app/node/#queue")));
+        new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.SHELL_PANEL, SHELL_PANEL_ENTRY)));
 
     Map<String, Object> summary = handler.get(APP_ID);
 
-    assertEquals("shell-panel", summary.get("uiMode"));
-    assertEquals("/app/node/#queue", summary.get("uiEntry"));
-    assertEquals("/app/node/#queue", summary.get("uiUrl"));
+    assertEquals("shell-panel", summary.get(FIELD_UI_MODE));
+    assertEquals(SHELL_PANEL_ENTRY, summary.get(FIELD_UI_ENTRY));
+    assertEquals(SHELL_PANEL_ENTRY, summary.get(FIELD_UI_URL));
   }
 
   @Test
@@ -165,9 +176,104 @@ class AppsApiHandlerTest {
 
     Map<String, Object> summary = handler.get(APP_ID);
 
-    assertEquals("none", summary.get("uiMode"));
-    assertNull(summary.get("uiEntry"));
-    assertNull(summary.get("uiUrl"));
+    assertEquals("none", summary.get(FIELD_UI_MODE));
+    assertNull(summary.get(FIELD_UI_ENTRY));
+    assertNull(summary.get(FIELD_UI_URL));
+  }
+
+  @Test
+  void runtime_whenAppRunning_expectTokenFreeRuntimeStatus() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.runtimeStatus =
+        new AppRuntimeStatusSnapshot(
+            APP_ID,
+            AppRuntimeState.RUNNING,
+            true,
+            4242L,
+            java.time.Instant.parse(SAMPLE_INSTANT_TEXT),
+            null,
+            null,
+            1,
+            1,
+            true,
+            128L);
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> runtime = handler.runtime(APP_ID);
+
+    assertEquals("RUNNING", runtime.get("state"));
+    assertEquals(true, runtime.get(FIELD_RUNNING));
+    assertEquals(4242L, runtime.get("pid"));
+    assertEquals(SAMPLE_INSTANT_TEXT, runtime.get("startedAt"));
+    org.junit.jupiter.api.Assertions.assertFalse(runtime.toString().contains("token"));
+  }
+
+  @Test
+  void logs_whenAppLogExists_expectTokenFreeProcessLog() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.processLog =
+        new AppProcessLogSnapshot(
+            APP_ID,
+            true,
+            true,
+            16,
+            64L,
+            "CRYPTAD_APP_TOKEN=[REDACTED]\nready\n",
+            java.time.Instant.parse(SAMPLE_INSTANT_TEXT));
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> logs = handler.logs(APP_ID, Map.of(FIELD_MAX_BYTES, List.of("16")));
+
+    assertEquals(true, logs.get("available"));
+    assertEquals(true, logs.get("truncated"));
+    assertEquals(16, logs.get(FIELD_MAX_BYTES));
+    assertEquals("CRYPTAD_APP_TOKEN=[REDACTED]\nready\n", logs.get("text"));
+    org.junit.jupiter.api.Assertions.assertFalse(logs.toString().contains("secret-token"));
+  }
+
+  @Test
+  void logs_whenMaxBytesMalformed_expectInvalidQueryParameter() {
+    AppsApiHandler handler = new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.NONE, null)));
+    Map<String, List<String>> queryParameters = Map.of(FIELD_MAX_BYTES, List.of("0"));
+
+    PlatformApiException exception =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            PlatformApiException.class, () -> handler.logs(APP_ID, queryParameters));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("invalid_query_parameter", exception.errorCode());
+  }
+
+  @Test
+  void stop_whenAppIsRestarting_expectDelegatesStopAndReturnsInstalledSummary() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.runtimeStatus =
+        new AppRuntimeStatusSnapshot(
+            APP_ID, AppRuntimeState.RESTARTING, false, null, null, null, 7, 0, 1, true, 64L);
+    appHost.stopResult = true;
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.stop(APP_ID);
+
+    assertEquals(APP_ID, summary.get("appId"));
+    assertEquals(false, summary.get(FIELD_RUNNING));
+    assertEquals(1, appHost.stopCalls);
+  }
+
+  @Test
+  void stop_whenRestartingAppManifestUnreadable_expectCancelsRestartAndReturnsFallbackSummary() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.describeFailure = new IOException("manifest unreadable");
+    appHost.stopResult = true;
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.stop(APP_ID);
+
+    assertEquals(APP_ID, summary.get("appId"));
+    assertNull(summary.get("name"));
+    assertEquals(true, summary.get("installed"));
+    assertEquals(false, summary.get(FIELD_RUNNING));
+    assertEquals(1, appHost.stopCalls);
   }
 
   private Path stageApp(Path stagedDir) throws IOException {
@@ -262,11 +368,30 @@ class AppsApiHandlerTest {
     public List<RunningAppSnapshot> listRunning() {
       return List.of();
     }
+
+    @Override
+    public AppRuntimeStatusSnapshot runtimeStatus(String appId) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<AppRuntimeStatusSnapshot> listRuntimeStatus() {
+      return List.of();
+    }
+
+    @Override
+    public AppProcessLogSnapshot readProcessLogTail(String appId, int maxBytes) {
+      throw new UnsupportedOperationException();
+    }
   }
 
-  @SuppressWarnings("ClassCanBeRecord")
   private static final class SingleAppHost implements AppHost {
     private final InstalledAppSnapshot snapshot;
+    private AppRuntimeStatusSnapshot runtimeStatus;
+    private AppProcessLogSnapshot processLog;
+    private IOException describeFailure;
+    private boolean stopResult;
+    private int stopCalls;
 
     private SingleAppHost(InstalledAppSnapshot snapshot) {
       this.snapshot = snapshot;
@@ -293,7 +418,10 @@ class AppsApiHandlerTest {
     }
 
     @Override
-    public Optional<InstalledAppSnapshot> describe(String appId) {
+    public Optional<InstalledAppSnapshot> describe(String appId) throws IOException {
+      if (describeFailure != null) {
+        throw describeFailure;
+      }
       return APP_ID.equals(appId) ? Optional.of(snapshot) : Optional.empty();
     }
 
@@ -304,7 +432,8 @@ class AppsApiHandlerTest {
 
     @Override
     public boolean stop(String appId) {
-      throw new UnsupportedOperationException();
+      stopCalls++;
+      return stopResult;
     }
 
     @Override
@@ -315,6 +444,33 @@ class AppsApiHandlerTest {
     @Override
     public List<RunningAppSnapshot> listRunning() {
       return List.of();
+    }
+
+    @Override
+    public AppRuntimeStatusSnapshot runtimeStatus(String appId) throws IOException {
+      if (!APP_ID.equals(appId)) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      if (runtimeStatus != null) {
+        return runtimeStatus;
+      }
+      return new AppRuntimeStatusSnapshot(
+          appId, AppRuntimeState.STOPPED, false, null, null, null, null, 0, 0, false, null);
+    }
+
+    @Override
+    public List<AppRuntimeStatusSnapshot> listRuntimeStatus() throws IOException {
+      return List.of(runtimeStatus(APP_ID));
+    }
+
+    @Override
+    public AppProcessLogSnapshot readProcessLogTail(String appId, int maxBytes) throws IOException {
+      if (!APP_ID.equals(appId)) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      return processLog == null
+          ? new AppProcessLogSnapshot(appId, false, false, maxBytes, 0L, "", null)
+          : processLog;
     }
   }
 }

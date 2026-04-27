@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,9 @@ class AppManifestParserTest {
             app.permissions=network.read, ui.open
             quota.data.bytes=1048576
             quota.cache.bytes=2048
+            app.restart.policy=on-failure
+            app.restart.maxAttempts=2
+            app.restart.backoff.ms=50
             """);
 
     assertEquals(1, manifest.manifestVersion());
@@ -64,6 +68,9 @@ class AppManifestParserTest {
     assertEquals(java.util.List.of("network.read", "ui.open"), manifest.permissions());
     assertEquals(Long.valueOf(1048576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2048L), manifest.cacheQuotaBytes());
+    assertEquals(AppRestartPolicy.ON_FAILURE, manifest.restartPolicy());
+    assertEquals(2, manifest.restartMaxAttempts());
+    assertEquals(50L, manifest.restartBackoffMillis());
   }
 
   @Test

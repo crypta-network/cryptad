@@ -21,6 +21,12 @@ import java.util.Optional;
  * newer filesystem or process state than an earlier snapshot.
  */
 public interface AppHost {
+  /** Default number of process-log bytes returned by bounded log-tail APIs. */
+  int DEFAULT_PROCESS_LOG_TAIL_BYTES = 64 * 1024;
+
+  /** Hard maximum number of process-log bytes returned by bounded log-tail APIs. */
+  int MAX_PROCESS_LOG_TAIL_BYTES = 1024 * 1024;
+
   /**
    * Installs one app from a local staging directory.
    *
@@ -148,4 +154,38 @@ public interface AppHost {
    * @return immutable list of running snapshots sorted by app id
    */
   List<RunningAppSnapshot> listRunning();
+
+  /**
+   * Returns token-free process runtime status for one installed app.
+   *
+   * <p>The status is process-observed only. It does not perform app-provided HTTP health checks or
+   * expose launch tokens, data/cache/run paths, or other host filesystem locations.
+   *
+   * @param appId stable application identifier
+   * @return token-free runtime status snapshot
+   * @throws IOException if the app is not installed or the host cannot inspect its runtime files
+   */
+  AppRuntimeStatusSnapshot runtimeStatus(String appId) throws IOException;
+
+  /**
+   * Lists token-free runtime status for all installed apps.
+   *
+   * @return immutable runtime status snapshots sorted by app id
+   * @throws IOException if the installed-app tree cannot be scanned
+   */
+  @SuppressWarnings("unused")
+  List<AppRuntimeStatusSnapshot> listRuntimeStatus() throws IOException;
+
+  /**
+   * Returns a bounded, token-redacted tail of one app's combined process output log.
+   *
+   * <p>Implementations must clamp the requested byte bound to {@link #MAX_PROCESS_LOG_TAIL_BYTES},
+   * redact launch tokens from returned text, and avoid exposing the runtime log path.
+   *
+   * @param appId stable application identifier
+   * @param maxBytes requested maximum bytes to read before clamping
+   * @return token-redacted process-log snapshot
+   * @throws IOException if the app is not installed or the log cannot be inspected safely
+   */
+  AppProcessLogSnapshot readProcessLogTail(String appId, int maxBytes) throws IOException;
 }
