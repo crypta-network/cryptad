@@ -1,5 +1,6 @@
 package network.crypta.platform.apphost;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -68,6 +69,15 @@ class RunningAppSnapshotTest {
   }
 
   @Test
+  void redact_whenTokenAssignmentUsesColonAndWhitespace_expectAssignmentRedacted() {
+    String token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    String redacted = AppHostTokenRedactor.redact("CRYPTAD_APP_TOKEN \t: \t" + token + "\n", null);
+
+    assertEquals("CRYPTAD_APP_TOKEN \t: \t[REDACTED]\n", redacted);
+  }
+
+  @Test
   void redact_whenKnownAppHostPathsAppearInLogText_expectPathRolesRedacted() {
     InstalledAppPaths paths = paths();
 
@@ -106,10 +116,13 @@ class RunningAppSnapshotTest {
     InstalledAppPaths shortPaths =
         new InstalledAppPaths(
             SAMPLE_APP_ID, Path.of("i"), Path.of("d"), Path.of("c"), Path.of("r"));
+    String longestAcceptedAssignment =
+        "CRYPTAD_APP_TOKEN" + " ".repeat(16) + ":" + " ".repeat(16) + "0".repeat(64);
 
     int overlapBytes = AppHostTokenRedactor.redactionOverlapBytes(null, shortPaths);
 
-    assertTrue(overlapBytes >= "CRYPTAD_APP_TOKEN=".length() + 64 - 1);
+    assertTrue(
+        overlapBytes >= longestAcceptedAssignment.getBytes(StandardCharsets.UTF_8).length - 1);
   }
 
   private InstalledAppPaths paths() {

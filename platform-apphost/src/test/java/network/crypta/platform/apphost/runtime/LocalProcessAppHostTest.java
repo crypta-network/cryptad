@@ -1197,6 +1197,24 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void processLogTail_whenUnknownTokenColonAssignmentIsSplit_expectAssignmentRedacted()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    String token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    String assignment = "CRYPTAD_APP_TOKEN" + " ".repeat(16) + ":" + " ".repeat(16) + token;
+    Files.writeString(installation.paths().processLogFile(), assignment, StandardCharsets.UTF_8);
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 32);
+
+    assertTrue(logTail.available());
+    assertTrue(logTail.truncated());
+    assertTrue(logTail.text().contains("[REDACTED]"));
+    assertFalse(logTail.text().contains(token.substring(token.length() - 32)));
+    assertFalse(logTail.text().matches("(?s).*[0-9a-f]{8}.*"));
+  }
+
+  @Test
   void processLogTail_whenMaxBytesSmall_expectTailIsBoundedAndRedacted() throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());

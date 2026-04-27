@@ -41,12 +41,24 @@ public final class AppHostTokenRedactor {
   private static final String APP_CACHE_DIR_PLACEHOLDER = "[APP_CACHE_DIR]";
   private static final String APP_RUN_DIR_PLACEHOLDER = "[APP_RUN_DIR]";
   private static final String APP_PROCESS_LOG_PLACEHOLDER = "[APP_PROCESS_LOG]";
-  private static final String TOKEN_ASSIGNMENT_PREFIX = "CRYPTAD_APP_TOKEN=";
+  private static final String TOKEN_ENVIRONMENT_NAME = "CRYPTAD_APP_TOKEN";
+  private static final int TOKEN_ASSIGNMENT_SEPARATOR_BYTES = 1;
+  private static final int TOKEN_ASSIGNMENT_MAX_WHITESPACE_BYTES = 16;
   private static final int APPHOST_TOKEN_HEX_CHARS = 64;
   private static final int UNKNOWN_TOKEN_ASSIGNMENT_BYTES =
-      TOKEN_ASSIGNMENT_PREFIX.length() + APPHOST_TOKEN_HEX_CHARS;
+      TOKEN_ENVIRONMENT_NAME.length()
+          + TOKEN_ASSIGNMENT_SEPARATOR_BYTES
+          + (TOKEN_ASSIGNMENT_MAX_WHITESPACE_BYTES * 2)
+          + APPHOST_TOKEN_HEX_CHARS;
   private static final Pattern TOKEN_ASSIGNMENT_PATTERN =
-      Pattern.compile("(CRYPTAD_APP_TOKEN\\s*[:=]\\s*)([^\\s,;\"'\\]}]+)");
+      Pattern.compile(
+          "("
+              + TOKEN_ENVIRONMENT_NAME
+              + "[ \\t]{0,"
+              + TOKEN_ASSIGNMENT_MAX_WHITESPACE_BYTES
+              + "}[:=][ \\t]{0,"
+              + TOKEN_ASSIGNMENT_MAX_WHITESPACE_BYTES
+              + "})([^\\s,;\"'\\]}]+)");
 
   private AppHostTokenRedactor() {}
 
@@ -56,7 +68,9 @@ public final class AppHostTokenRedactor {
    * <p>This overload is useful when the exact launch token is unavailable, such as after daemon
    * restart while an older {@code process.log} remains on disk. It still recognizes common
    * environment-assignment shapes, including {@code CRYPTAD_APP_TOKEN=value} and {@code
-   * CRYPTAD_APP_TOKEN: value}. It does not attempt to guess unrelated free-form secrets.
+   * CRYPTAD_APP_TOKEN: value}. Optional spacing around the separator is intentionally bounded so
+   * log-tail callers can reserve enough overlap to redact a split assignment deterministically. It
+   * does not attempt to guess unrelated free-form secrets.
    *
    * @param text source diagnostic text to filter before display
    * @return text with recognizable token assignments redacted
@@ -117,8 +131,9 @@ public final class AppHostTokenRedactor {
    *
    * <p>The returned value is based on UTF-8 byte length, because process logs are tailed by bytes
    * before they are decoded for display. The calculation includes a fixed allowance for a
-   * 64-character AppHost token assignment even when the exact token is unavailable, plus every
-   * known AppHost path spelling that this redactor can replace.
+   * 64-character AppHost token assignment, including the longest bounded spacing form accepted by
+   * the assignment redactor, even when the exact token is unavailable. It also covers every known
+   * AppHost path spelling that this redactor can replace.
    *
    * @param token exact current or last launch token, or {@code null} when unavailable
    * @param paths AppHost-owned paths for the app whose log is being tailed
