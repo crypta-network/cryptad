@@ -59,6 +59,9 @@ public record PlatformApiPrincipal(
       if (!permissions.isEmpty()) {
         throw new IllegalArgumentException("host principal must not carry app permissions");
       }
+      if (authSource != PlatformApiAuthSource.HOST_LOCAL) {
+        throw new IllegalArgumentException("host principal requires HOST_LOCAL auth source");
+      }
     }
   }
 

@@ -2152,6 +2152,26 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppPrincipalHitsUnsupportedAppsReadShape_expectForbiddenAndDeniedAudit() {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+
+    PlatformApiResponse response =
+        auditedRouter.route(
+            appRequest(List.of("apps", APP_ID, "start"), Map.of(), List.of("apps.read")));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(appHost);
+    List<AppAuditEvent> events = auditLog.recentForApp(APP_ID, 10);
+    assertEquals(1, events.size());
+    assertEquals(AppAuditDecision.DENIED, events.getFirst().decision());
+    assertEquals("apps.unmapped", events.getFirst().action());
+    assertEquals("unmapped_route", events.getFirst().reasonCode());
+  }
+
+  @Test
   void route_whenAppRuntimeRequested_expectRuntimeEnvelopeWithoutToken() throws Exception {
     when(appHost.runtimeStatus(APP_ID))
         .thenReturn(

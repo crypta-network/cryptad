@@ -155,6 +155,11 @@ class PlatformApiCapabilitiesTest {
             "POST", List.of("alerts", "42", "dismiss"), "alerts", "alerts.dismiss", "alerts.write"),
         route("GET", List.of("diagnostics"), "diagnostics", "diagnostics.read", "diagnostics.read"),
         route("GET", List.of("apps"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha", "runtime"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha", "logs"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha", "permissions"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha", "audit"), "apps", "apps.read", "apps.read"),
         route("POST", List.of("apps", "install"), "apps", "apps.install", "apps.manage"),
         route("DELETE", List.of("apps", "alpha"), "apps", "apps.uninstall", "apps.manage"),
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
@@ -183,6 +188,8 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("POST", List.of("node", "greeting")),
         new UnmappedRouteCase("PUT", List.of("queue", "requests", "remove")),
         new UnmappedRouteCase("POST", List.of("queue", "inserts", "unknown")),
+        new UnmappedRouteCase("GET", List.of("apps", "alpha", "start")),
+        new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "logs")),
         new UnmappedRouteCase(
             "DELETE", List.of("app-catalogs", "default", "apps", "alpha", "install")));

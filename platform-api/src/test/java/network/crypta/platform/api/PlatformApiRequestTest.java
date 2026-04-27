@@ -97,6 +97,14 @@ class PlatformApiRequestTest {
                 PlatformApiAuthSource.HOST_LOCAL,
                 null,
                 permissions));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new PlatformApiPrincipal(
+                PlatformApiPrincipalType.HOST_OPERATOR,
+                PlatformApiAuthSource.APP_TOKEN,
+                null,
+                noPermissions));
   }
 
   @Test

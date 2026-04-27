@@ -89,6 +89,7 @@ final class PlatformApiCapabilities {
 
   private static final String FAMILY_ALERTS = "alerts";
   private static final String FAMILY_APP_CATALOGS = "app-catalogs";
+  private static final String FAMILY_APPS = "apps";
   private static final String FAMILY_CONFIG = "config";
   private static final String FAMILY_PEERS = "peers";
   private static final String FAMILY_QUEUE = "queue";
@@ -155,7 +156,7 @@ final class PlatformApiCapabilities {
       case FAMILY_WIZARD -> wizardAction(method, segments);
       case FAMILY_QUEUE -> queueAction(method, segments);
       case FAMILY_PEERS -> peersAction(method, segments);
-      case "apps" -> appsAction(method, segments);
+      case FAMILY_APPS -> appsAction(method, segments);
       case FAMILY_APP_CATALOGS -> catalogsAction(method, segments);
       default -> null;
     };
@@ -356,22 +357,47 @@ final class PlatformApiCapabilities {
    */
   private static PlatformApiAction appsAction(String method, List<String> segments) {
     if ("GET".equals(method)) {
-      return action("apps", APPS_READ, APPS_READ);
+      return appsReadAction(segments);
     }
     if ("DELETE".equals(method) && segments.size() == 2) {
-      return action("apps", "apps.uninstall", APPS_MANAGE);
+      return action(FAMILY_APPS, "apps.uninstall", APPS_MANAGE);
     }
     if (!"POST".equals(method)) {
       return null;
     }
     if (segments.size() == 2 && "install".equals(segments.get(1))) {
-      return action("apps", "apps.install", APPS_MANAGE);
+      return action(FAMILY_APPS, "apps.install", APPS_MANAGE);
     }
     if (segments.size() == 3
         && ("start".equals(segments.get(2))
             || "stop".equals(segments.get(2))
             || "update".equals(segments.get(2)))) {
-      return action("apps", "apps." + segments.get(2), APPS_MANAGE);
+      return action(FAMILY_APPS, "apps." + segments.get(2), APPS_MANAGE);
+    }
+    return null;
+  }
+
+  /**
+   * Maps explicit read-only app routes.
+   *
+   * <p>GET is deliberately not treated as a blanket grant for {@code /apps/**}. Lifecycle action
+   * names such as {@code start} and unsupported child resources must stay unmapped for app
+   * principals so the router records a default-deny authorization decision instead of allowing the
+   * request to reach handler-level 404 or 405 handling.
+   *
+   * @param segments decoded route segments beneath the API v1 prefix
+   * @return app read action for supported read shapes, or {@code null} for unsupported routes
+   */
+  private static PlatformApiAction appsReadAction(List<String> segments) {
+    if (segments.size() == 1 || segments.size() == 2) {
+      return action(FAMILY_APPS, APPS_READ, APPS_READ);
+    }
+    if (segments.size() == 3
+        && ("runtime".equals(segments.get(2))
+            || "logs".equals(segments.get(2))
+            || "permissions".equals(segments.get(2))
+            || "audit".equals(segments.get(2)))) {
+      return action(FAMILY_APPS, APPS_READ, APPS_READ);
     }
     return null;
   }
