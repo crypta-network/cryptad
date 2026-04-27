@@ -289,7 +289,7 @@ final class PlatformApiCapabilities {
    */
   private static PlatformApiAction queueAction(String method, List<String> segments) {
     if ("GET".equals(method)) {
-      return action(FAMILY_QUEUE, QUEUE_READ, QUEUE_READ);
+      return queueReadAction(segments);
     }
     if (!"POST".equals(method)) {
       return null;
@@ -311,6 +311,25 @@ final class PlatformApiCapabilities {
     }
     if ("cleanup".equals(resource) && ("uploads".equals(action) || "downloads".equals(action))) {
       return action(FAMILY_QUEUE, "queue.cleanup." + action, QUEUE_WRITE);
+    }
+    return null;
+  }
+
+  /**
+   * Maps explicit read-only queue routes.
+   *
+   * <p>The queue family also contains mutation-shaped resources such as {@code requests/remove} and
+   * creation resources such as {@code downloads}. Those routes are not valid GET reads, so app
+   * principals must not receive a blanket {@code queue.read} grant for every queue path.
+   *
+   * @param segments decoded route segments beneath the API v1 prefix
+   * @return queue read action for supported read shapes, or {@code null} for unsupported routes
+   */
+  private static PlatformApiAction queueReadAction(List<String> segments) {
+    if (segments.size() == 1
+        || (segments.size() == 2
+            && ("count".equals(segments.get(1)) || "keys".equals(segments.get(1))))) {
+      return action(FAMILY_QUEUE, QUEUE_READ, QUEUE_READ);
     }
     return null;
   }

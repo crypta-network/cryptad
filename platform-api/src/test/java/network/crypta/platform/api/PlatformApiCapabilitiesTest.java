@@ -93,6 +93,8 @@ class PlatformApiCapabilitiesTest {
             "connectivity.read",
             "connectivity.read"),
         route("GET", List.of("queue"), "queue", "queue.read", "queue.read"),
+        route("GET", List.of("queue", "count"), "queue", "queue.read", "queue.read"),
+        route("GET", List.of("queue", "keys"), "queue", "queue.read", "queue.read"),
         route(
             "POST",
             List.of("queue", "downloads"),
@@ -199,6 +201,8 @@ class PlatformApiCapabilitiesTest {
     return List.of(
         new UnmappedRouteCase("POST", List.of("node", "greeting")),
         new UnmappedRouteCase("PUT", List.of("queue", "requests", "remove")),
+        new UnmappedRouteCase("GET", List.of("queue", "downloads")),
+        new UnmappedRouteCase("GET", List.of("queue", "requests", "remove")),
         new UnmappedRouteCase("POST", List.of("queue", "inserts", "unknown")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "start")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
