@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import network.crypta.platform.appdist.AppBundleManifest;
+import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.InstalledAppPaths;
 
@@ -31,6 +32,9 @@ import network.crypta.platform.apphost.InstalledAppPaths;
  * @param permissions normalized permission strings
  * @param dataQuotaBytes optional data quota metadata, or {@code null}
  * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+ * @param restartPolicy normalized process restart policy
+ * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+ * @param restartBackoffMillis delay before an automatic restart attempt
  */
 public record AppManifest(
     int manifestVersion,
@@ -42,7 +46,10 @@ public record AppManifest(
     String uiEntry,
     List<String> permissions,
     Long dataQuotaBytes,
-    Long cacheQuotaBytes) {
+    Long cacheQuotaBytes,
+    AppRestartPolicy restartPolicy,
+    int restartMaxAttempts,
+    long restartBackoffMillis) {
   /**
    * Creates a validated manifest snapshot.
    *
@@ -56,6 +63,9 @@ public record AppManifest(
    * @param permissions normalized permission strings
    * @param dataQuotaBytes optional data quota metadata, or {@code null}
    * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
    */
   public AppManifest {
     AppBundleManifest normalized =
@@ -69,7 +79,10 @@ public record AppManifest(
             uiEntry,
             permissions,
             dataQuotaBytes,
-            cacheQuotaBytes);
+            cacheQuotaBytes,
+            restartPolicy,
+            restartMaxAttempts,
+            restartBackoffMillis);
     manifestVersion = normalized.manifestVersion();
     appId = normalized.appId();
     appName = normalized.appName();
@@ -80,6 +93,50 @@ public record AppManifest(
     permissions = normalized.permissions();
     dataQuotaBytes = normalized.dataQuotaBytes();
     cacheQuotaBytes = normalized.cacheQuotaBytes();
+    restartPolicy = normalized.restartPolicy();
+    restartMaxAttempts = normalized.restartMaxAttempts();
+    restartBackoffMillis = normalized.restartBackoffMillis();
+  }
+
+  /**
+   * Creates a manifest with the default restart policy.
+   *
+   * @param manifestVersion manifest schema version
+   * @param appId stable path-safe app identifier
+   * @param appName human-readable application name
+   * @param appVersion display version string
+   * @param execPathText executable path relative to the installed app root
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null}
+   * @param permissions normalized permission strings
+   * @param dataQuotaBytes optional data quota metadata, or {@code null}
+   * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   */
+  public AppManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        AppRestartPolicy.NEVER,
+        0,
+        0L);
   }
 
   /**
@@ -133,7 +190,10 @@ public record AppManifest(
         manifest.uiEntry(),
         manifest.permissions(),
         manifest.dataQuotaBytes(),
-        manifest.cacheQuotaBytes());
+        manifest.cacheQuotaBytes(),
+        manifest.restartPolicy(),
+        manifest.restartMaxAttempts(),
+        manifest.restartBackoffMillis());
   }
 
   /**

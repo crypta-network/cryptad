@@ -99,6 +99,7 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains("white-space: pre-wrap;"));
     assertTrue(stylesheet.contains(".app-card-list {"));
     assertTrue(stylesheet.contains(".app-card-actions {"));
+    assertTrue(stylesheet.contains(".app-log-tail {"));
     assertTrue(stylesheet.contains(".catalog-app-card {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions {"));
@@ -323,11 +324,22 @@ class WebShellResourcesTest {
     assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));
+    assertTrue(script.contains("function appRuntimePath(appId)"));
+    assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
+    assertTrue(script.contains("async function loadAppRuntimeDetails(app)"));
     assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl);"));
     assertTrue(
         script.contains(
             "return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);"));
     assertTrue(script.contains("function renderAppCard(app)"));
+    assertTrue(
+        script.contains(
+            "const runtimeStoppable = runtimeRunning || runtimeState === \"RESTARTING\";"));
+    assertTrue(script.contains("runtimeStoppable ? \"stop\" : \"start\""));
+    assertTrue(script.contains("runtimeStoppable ? \"Stop\" : \"Start\""));
+    assertTrue(script.contains("const uninstallForm = runtimeStoppable"));
+    assertTrue(script.contains("Runtime log tail"));
+    assertTrue(script.contains("app-log-tail"));
     assertTrue(script.contains("function renderApps(data)"));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
     assertTrue(script.contains("Catalogs unavailable: ${catalogError}"));
@@ -342,6 +354,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("async function deleteForm(path, formData, unavailableMessage)"));
     assertTrue(script.contains("setAppsStatus(\"Refreshing installed apps and catalogs.\");"));
     assertTrue(script.contains("loadJson(apiUrl(\"apps\"))"));
+    assertTrue(script.contains("installedSnapshot.apps.map(loadAppRuntimeDetails)"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
     assertTrue(
@@ -350,6 +363,8 @@ class WebShellResourcesTest {
                 + " loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));"));
     assertTrue(script.contains("return `apps/${encodedAppId}/${action}`;"));
     assertTrue(script.contains("return `apps/${encodedAppId}`;"));
+    assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/runtime`"));
+    assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/logs?maxBytes="));
     assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
     assertTrue(
         script.contains(

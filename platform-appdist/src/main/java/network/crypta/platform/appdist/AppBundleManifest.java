@@ -32,6 +32,9 @@ import java.util.regex.Pattern;
  * @param permissions normalized permission strings declared by the app manifest
  * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
  * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+ * @param restartPolicy normalized process restart policy
+ * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+ * @param restartBackoffMillis delay before an automatic restart attempt
  */
 public record AppBundleManifest(
     int manifestVersion,
@@ -43,7 +46,10 @@ public record AppBundleManifest(
     String uiEntry,
     List<String> permissions,
     Long dataQuotaBytes,
-    Long cacheQuotaBytes) {
+    Long cacheQuotaBytes,
+    AppRestartPolicy restartPolicy,
+    int restartMaxAttempts,
+    long restartBackoffMillis) {
   private static final Pattern APP_ID_PATTERN =
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
   private static final Pattern WINDOWS_DRIVE_PREFIX_PATTERN = Pattern.compile("^[a-zA-Z]:.*");
@@ -67,6 +73,9 @@ public record AppBundleManifest(
    * @param permissions normalized permission strings declared by the app manifest
    * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
    * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
    * @throws IllegalArgumentException if any value cannot represent a valid v1 app manifest
    */
   public AppBundleManifest {
@@ -83,6 +92,51 @@ public record AppBundleManifest(
     permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
     dataQuotaBytes = normalizeQuota(dataQuotaBytes, "quota.data.bytes");
     cacheQuotaBytes = normalizeQuota(cacheQuotaBytes, "quota.cache.bytes");
+    Objects.requireNonNull(restartPolicy, "restartPolicy");
+    requireValidRestartMaxAttempts(restartMaxAttempts);
+    requireValidRestartBackoffMillis(restartBackoffMillis);
+  }
+
+  /**
+   * Creates a manifest with the default restart policy.
+   *
+   * @param manifestVersion manifest schema version, currently required to be {@code 1}
+   * @param appId stable lower-case application identifier safe for managed bundle paths
+   * @param appName human-readable application name shown by host and API surfaces
+   * @param appVersion display version string recorded in installed app summaries
+   * @param execPathText executable path relative to the bundle root, using normalized separators
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
+   * @param permissions normalized permission strings declared by the app manifest
+   * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
+   * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   */
+  @SuppressWarnings("unused")
+  public AppBundleManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        AppRestartPolicy.NEVER,
+        0,
+        0L);
   }
 
   /**
@@ -121,7 +175,10 @@ public record AppBundleManifest(
         uiEntry,
         permissions,
         dataQuotaBytes,
-        cacheQuotaBytes);
+        cacheQuotaBytes,
+        AppRestartPolicy.NEVER,
+        0,
+        0L);
   }
 
   /**
@@ -282,6 +339,18 @@ public record AppBundleManifest(
       throw new IllegalArgumentException(fieldName + " must be >= 0");
     }
     return quota;
+  }
+
+  private static void requireValidRestartMaxAttempts(int maxAttempts) {
+    if (maxAttempts < 0) {
+      throw new IllegalArgumentException("app.restart.maxAttempts must be >= 0");
+    }
+  }
+
+  private static void requireValidRestartBackoffMillis(long backoffMillis) {
+    if (backoffMillis < 0L) {
+      throw new IllegalArgumentException("app.restart.backoff.ms must be >= 0");
+    }
   }
 
   private static String requireNonBlank(String value, String fieldName) {

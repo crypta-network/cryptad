@@ -13,6 +13,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -34,13 +35,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppHostTokenRedactor;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeState;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
@@ -69,6 +76,7 @@ public final class LocalProcessAppHost implements AppHost {
   private static final String INSTALLED_APPS_DIR_LABEL = "installedAppsDir";
   private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
   private static final String PROC_ROOT = "/proc";
+  private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final List<String> WINDOWS_ROOT_ENVIRONMENT_NAMES =
       List.of("SystemRoot", "SYSTEMROOT", "WINDIR");
   private static final int MAX_SHEBANG_PROBE_BYTES = 4096;
@@ -115,6 +123,8 @@ public final class LocalProcessAppHost implements AppHost {
   private final ManagedTreeDeleter managedTreeDeleter;
   private final AppInstallVerificationPolicy installVerificationPolicy;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
+  private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
+  private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
 
   /**
    * Creates a host bound to the supplied layout.
@@ -362,7 +372,7 @@ public final class LocalProcessAppHost implements AppHost {
       throw new AppHostException("cannot update a running app: " + normalizedAppId);
     }
     if (!Files.isDirectory(paths.installedRoot(), LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppHostException("app is not installed: " + normalizedAppId);
+      throw new AppHostException(APP_NOT_INSTALLED_PREFIX + normalizedAppId);
     }
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
@@ -376,6 +386,7 @@ public final class LocalProcessAppHost implements AppHost {
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
       requireMatchingUpdateTarget(normalizedAppId, manifest);
       replaceInstalledBundle(paths.installedRoot(), temporaryInstallRoot, backupInstallRoot);
+      cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
       return new InstalledAppSnapshot(manifest, paths);
     } catch (IOException | RuntimeException e) {
       deleteScratchTreeIfPresent(temporaryInstallRoot);
@@ -401,13 +412,15 @@ public final class LocalProcessAppHost implements AppHost {
       throw new AppHostException("cannot uninstall a running app: " + appId);
     }
     if (!Files.exists(paths.installedRoot())) {
-      throw new AppHostException("app is not installed: " + appId);
+      throw new AppHostException(APP_NOT_INSTALLED_PREFIX + appId);
     }
 
     deleteRecursively(paths.installedRoot());
     deleteRecursively(paths.dataDir());
     deleteRecursively(paths.cacheDir());
     deleteRecursively(paths.runDir());
+    runtimeRecords.remove(paths.appId());
+    explicitStopRequests.remove(paths.appId());
   }
 
   /**
@@ -480,14 +493,22 @@ public final class LocalProcessAppHost implements AppHost {
     if (liveRunningProcess(normalizedAppId) != null) {
       throw new AppHostException("app is already running: " + appId);
     }
+    explicitStopRequests.remove(normalizedAppId);
 
     InstalledAppSnapshot installation =
         describe(normalizedAppId)
-            .orElseThrow(() -> new AppHostException("app is not installed: " + appId));
+            .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
+    return launchInstalledApp(installation, 0, 0);
+  }
+
+  private RunningAppSnapshot launchInstalledApp(
+      InstalledAppSnapshot installation, int restartCount, int currentRestartAttempt)
+      throws IOException {
+    String normalizedAppId = installation.appId();
     InstalledAppPaths paths = installation.paths();
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
-    Files.deleteIfExists(paths.processLogFile());
+    prepareProcessLogFile(paths);
 
     Path executable =
         resolveBundleEntry(
@@ -507,20 +528,23 @@ public final class LocalProcessAppHost implements AppHost {
 
     Instant startedAt = Instant.now();
     Process process = builder.start();
-    discardChildInput(process, appId);
+    discardChildInput(process, normalizedAppId);
     List<ProcessHandle> startupProcessTree = observeStartupProcessTree(process, normalizedAppId);
     if (startupProcessTree.isEmpty()) {
-      startupProcessTree =
-          recoverTrackedProcesses(
-              installation.manifest(),
-              paths,
-              token,
-              startedAt,
-              List.of(process.toHandle()),
-              ProcessHandle.allProcesses().toList());
+      startupProcessTree = recoverStartupProcessTree(installation, token, startedAt, process);
     }
     if (startupProcessTree.isEmpty()) {
-      throw startupFailure(appId, process);
+      recordProcessExit(
+          normalizedAppId,
+          new ProcessExitRecord(
+              paths,
+              processExitCode(process),
+              Instant.now(),
+              restartCount,
+              currentRestartAttempt,
+              token,
+              false));
+      throw startupFailure(normalizedAppId, process);
     }
     RunningAppSnapshot snapshot =
         new RunningAppSnapshot(
@@ -534,12 +558,22 @@ public final class LocalProcessAppHost implements AppHost {
             startedAt);
     CompletableFuture<Void> exitCleanup = new CompletableFuture<>();
     RunningProcess runningProcess =
-        new RunningProcess(process, snapshot, exitCleanup, startupProcessTree);
+        new RunningProcess(
+            process,
+            snapshot,
+            exitCleanup,
+            startupProcessTree,
+            restartCount,
+            currentRestartAttempt);
     runningApps.put(normalizedAppId, runningProcess);
+    runtimeRecords.compute(
+        normalizedAppId,
+        (_, previousRecord) ->
+            RuntimeRecord.running(snapshot, restartCount, currentRestartAttempt, previousRecord));
     startTrackedProcessTreeObserver(normalizedAppId, process, exitCleanup);
     RunningProcess liveRunningProcess = liveRunningProcess(normalizedAppId);
     if (liveRunningProcess == null) {
-      throw startupFailure(appId, process);
+      throw startupFailure(normalizedAppId, process);
     }
     return liveRunningProcess.snapshot();
   }
@@ -562,8 +596,15 @@ public final class LocalProcessAppHost implements AppHost {
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     RunningProcess runningProcess = liveRunningProcess(normalizedAppId);
     if (runningProcess == null) {
+      RuntimeRecord restartRecord = runtimeRecords.get(normalizedAppId);
+      if (restartRecord != null && restartRecord.state() == AppRuntimeState.RESTARTING) {
+        explicitStopRequests.add(normalizedAppId);
+        runtimeRecords.put(normalizedAppId, restartRecord.stopped());
+        return true;
+      }
       return false;
     }
+    explicitStopRequests.add(normalizedAppId);
 
     RunningProcess trackedRunningProcess =
         trackRunningProcessForStop(normalizedAppId, runningProcess);
@@ -575,6 +616,7 @@ public final class LocalProcessAppHost implements AppHost {
       return true;
     }
     completeStop(normalizedAppId, appId, trackedRunningProcess);
+    runtimeRecords.put(normalizedAppId, RuntimeRecord.stopped(trackedRunningProcess));
     return true;
   }
 
@@ -614,6 +656,213 @@ public final class LocalProcessAppHost implements AppHost {
       }
     }
     return List.copyOf(running);
+  }
+
+  /**
+   * Returns token-free runtime status for one installed app.
+   *
+   * @param appId stable application identifier
+   * @return process-level runtime status snapshot
+   * @throws IOException if the app is not installed or managed files cannot be inspected
+   */
+  @Override
+  public synchronized AppRuntimeStatusSnapshot runtimeStatus(String appId) throws IOException {
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    RunningProcess runningProcess = liveRunningProcess(normalizedAppId);
+    if (runningProcess != null) {
+      RuntimeRecord previousRecord = runtimeRecords.get(normalizedAppId);
+      return statusSnapshot(normalizedAppId, RuntimeRecord.running(runningProcess, previousRecord));
+    }
+    InstalledAppSnapshot installed =
+        describe(normalizedAppId)
+            .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
+    RuntimeRecord runtimeRecord = runtimeRecords.get(normalizedAppId);
+    if (runtimeRecord == null) {
+      runtimeRecord = RuntimeRecord.stopped(installed.paths());
+    }
+    return statusSnapshot(normalizedAppId, runtimeRecord.withoutRunningProcess(installed.paths()));
+  }
+
+  /**
+   * Lists token-free runtime status for installed apps.
+   *
+   * @return runtime status snapshots sorted by app id
+   * @throws IOException if the installed-app tree cannot be read safely
+   */
+  @Override
+  public synchronized List<AppRuntimeStatusSnapshot> listRuntimeStatus() throws IOException {
+    List<AppRuntimeStatusSnapshot> statuses = new ArrayList<>();
+    for (InstalledAppSnapshot installed : listInstalled()) {
+      statuses.add(runtimeStatus(installed.appId()));
+    }
+    return List.copyOf(statuses);
+  }
+
+  /**
+   * Reads a bounded, token-redacted tail of one app's process log.
+   *
+   * @param appId stable application identifier
+   * @param maxBytes requested maximum bytes before clamping
+   * @return redacted process-log tail snapshot
+   * @throws IOException if the app is not installed or the log cannot be inspected safely
+   */
+  @Override
+  public synchronized AppProcessLogSnapshot readProcessLogTail(String appId, int maxBytes)
+      throws IOException {
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    int boundedMaxBytes = boundedLogTailBytes(maxBytes);
+    RunningProcess runningProcess = liveRunningProcess(normalizedAppId);
+    InstalledAppPaths paths =
+        runningProcess == null
+            ? describe(normalizedAppId)
+                .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId))
+                .paths()
+            : runningProcess.snapshot().paths();
+    String token = runningProcess == null ? null : runningProcess.snapshot().token();
+    RuntimeRecord runtimeRecord =
+        runningProcess == null ? runtimeRecords.get(normalizedAppId) : null;
+    if (token == null && runtimeRecord != null) {
+      token = runtimeRecord.lastLaunchToken();
+    }
+    return readProcessLogTail(normalizedAppId, paths, token, boundedMaxBytes);
+  }
+
+  private void prepareProcessLogFile(InstalledAppPaths paths) throws IOException {
+    Files.deleteIfExists(paths.processLogFile());
+    Files.createFile(paths.processLogFile());
+    OwnerOnlyFilePermissions.hardenSensitiveFile(paths.processLogFile());
+  }
+
+  private AppRuntimeStatusSnapshot statusSnapshot(String appId, RuntimeRecord runtimeRecord)
+      throws IOException {
+    LogMetadata log = logMetadata(runtimeRecord.paths());
+    return new AppRuntimeStatusSnapshot(
+        appId,
+        runtimeRecord.state(),
+        runtimeRecord.running(),
+        runtimeRecord.pid(),
+        runtimeRecord.startedAt(),
+        runtimeRecord.lastExitAt(),
+        runtimeRecord.lastExitCode(),
+        runtimeRecord.restartCount(),
+        runtimeRecord.currentRestartAttempt(),
+        log.available(),
+        log.sizeBytes());
+  }
+
+  private static int boundedLogTailBytes(int maxBytes) {
+    if (maxBytes <= 0) {
+      throw new IllegalArgumentException("maxBytes must be positive");
+    }
+    return Math.min(maxBytes, AppHost.MAX_PROCESS_LOG_TAIL_BYTES);
+  }
+
+  private AppProcessLogSnapshot readProcessLogTail(
+      String appId, InstalledAppPaths paths, String token, int maxBytes) throws IOException {
+    Path logFile = paths.processLogFile();
+    BasicFileAttributes attributes = processLogAttributes(logFile);
+    if (attributes == null) {
+      return new AppProcessLogSnapshot(appId, false, false, maxBytes, 0L, "", null);
+    }
+    long sizeBytes = attributes.size();
+    int overlapBytes = AppHostTokenRedactor.redactionOverlapBytes(token, paths);
+    int bytesToRead = logTailReadBytes(sizeBytes, maxBytes, overlapBytes);
+    long startOffset = sizeBytes - bytesToRead;
+    ByteBuffer buffer = ByteBuffer.allocate(bytesToRead);
+    try (SeekableByteChannel channel =
+        Files.newByteChannel(logFile, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+      channel.position(startOffset);
+      while (buffer.hasRemaining()) {
+        if (channel.read(buffer) < 0) {
+          break;
+        }
+      }
+    }
+    buffer.flip();
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes);
+    String redactedText =
+        AppHostTokenRedactor.redact(new String(bytes, StandardCharsets.UTF_8), token, paths);
+    String text = boundedUtf8Tail(redactedText, maxBytes);
+    return new AppProcessLogSnapshot(
+        appId,
+        true,
+        sizeBytes > maxBytes,
+        maxBytes,
+        sizeBytes,
+        text,
+        attributes.lastModifiedTime().toInstant());
+  }
+
+  private static int logTailReadBytes(long sizeBytes, int maxBytes, int overlapBytes) {
+    long requestedBytes = Math.min(sizeBytes, (long) maxBytes + overlapBytes);
+    return Math.toIntExact(Math.min(requestedBytes, Integer.MAX_VALUE));
+  }
+
+  private static String boundedUtf8Tail(String text, int maxBytes) {
+    byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    if (bytes.length <= maxBytes) {
+      return text;
+    }
+    return new String(bytes, bytes.length - maxBytes, maxBytes, StandardCharsets.UTF_8);
+  }
+
+  private static LogMetadata logMetadata(InstalledAppPaths paths) throws IOException {
+    BasicFileAttributes attributes = processLogAttributes(paths.processLogFile());
+    if (attributes == null) {
+      return new LogMetadata(false, null);
+    }
+    return new LogMetadata(true, attributes.size());
+  }
+
+  private static BasicFileAttributes processLogAttributes(Path logFile) throws IOException {
+    if (!Files.exists(logFile, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(logFile)) {
+      return null;
+    }
+    BasicFileAttributes attributes =
+        Files.readAttributes(logFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+    return attributes.isRegularFile() ? attributes : null;
+  }
+
+  private void recordProcessExit(String appId, ProcessExitRecord exitRecord) {
+    runtimeRecords.put(
+        appId,
+        new RuntimeRecord(
+            exitRecord.paths(),
+            exitState(exitRecord.exitCode(), exitRecord.explicitStop()),
+            false,
+            null,
+            null,
+            exitRecord.exitAt(),
+            exitRecord.exitCode(),
+            exitRecord.lastLaunchToken(),
+            exitRecord.restartCount(),
+            exitRecord.currentRestartAttempt()));
+  }
+
+  private static AppRuntimeState exitState(Integer exitCode, boolean explicitStop) {
+    if (explicitStop) {
+      return AppRuntimeState.STOPPED;
+    }
+    if (exitCode != null && exitCode == 0) {
+      return AppRuntimeState.EXITED;
+    }
+    return AppRuntimeState.CRASHED;
+  }
+
+  private static Integer processExitCode(Process process) {
+    try {
+      return process.exitValue();
+    } catch (IllegalThreadStateException _) {
+      return null;
+    }
+  }
+
+  private static Integer trackedAppExitCode(RunningProcess runningProcess) {
+    if (runningProcess.isRepresentativeProcessHandoff()) {
+      return null;
+    }
+    return processExitCode(runningProcess.process());
   }
 
   private AppManifest readInstalledManifest(Path installedRoot) throws IOException {
@@ -702,9 +951,112 @@ public final class LocalProcessAppHost implements AppHost {
       runningApps.replace(appId, runningProcess, refreshedRunningProcess);
       return refreshedRunningProcess;
     }
+    recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
     runningProcess.exitCleanup().join();
     runningApps.remove(appId, runningProcess);
     return null;
+  }
+
+  private void recordExitAndScheduleRestartIfNeeded(String appId, RunningProcess runningProcess) {
+    boolean explicitStop = explicitStopRequests.contains(appId);
+    Integer exitCode = trackedAppExitCode(runningProcess);
+    Instant exitAt = Instant.now();
+    if (shouldRestart(runningProcess, exitCode, explicitStop)) {
+      int nextAttempt = runningProcess.currentRestartAttempt() + 1;
+      runtimeRecords.put(
+          appId, RuntimeRecord.restarting(runningProcess, exitCode, exitAt, nextAttempt));
+      scheduleRestart(
+          appId,
+          nextAttempt,
+          Duration.ofMillis(runningProcess.snapshot().manifest().restartBackoffMillis()));
+      return;
+    }
+    recordProcessExit(
+        appId,
+        ProcessExitRecord.fromRunningProcess(runningProcess, exitCode, exitAt, explicitStop));
+  }
+
+  private void cancelPendingRestartAfterAcceptedUpdate(String appId) {
+    RuntimeRecord runtimeRecord = runtimeRecords.get(appId);
+    if (runtimeRecord != null && runtimeRecord.state() == AppRuntimeState.RESTARTING) {
+      runtimeRecords.put(appId, runtimeRecord.stopped());
+    }
+  }
+
+  private static boolean shouldRestart(
+      RunningProcess runningProcess, Integer exitCode, boolean explicitStop) {
+    AppManifest manifest = runningProcess.snapshot().manifest();
+    return !explicitStop
+        && isFailureExit(exitCode)
+        && manifest.restartPolicy() == AppRestartPolicy.ON_FAILURE
+        && runningProcess.currentRestartAttempt() < manifest.restartMaxAttempts();
+  }
+
+  private static boolean isFailureExit(Integer exitCode) {
+    return exitCode == null || exitCode != 0;
+  }
+
+  private void scheduleRestart(String appId, int restartAttempt, Duration backoff) {
+    Thread.ofVirtual()
+        .name("apphost-restart-", 0)
+        .start(
+            () -> {
+              try {
+                sleepBeforeRestart(backoff);
+                restartIfStillScheduled(appId, restartAttempt);
+              } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+              }
+            });
+  }
+
+  private static void sleepBeforeRestart(Duration backoff) throws InterruptedException {
+    long sleepMillis = restartBackoffSleepMillis(backoff);
+    if (sleepMillis == 0L) {
+      return;
+    }
+    TimeUnit.MILLISECONDS.sleep(sleepMillis);
+  }
+
+  static long restartBackoffSleepMillis(Duration backoff) {
+    if (backoff.isZero() || backoff.isNegative()) {
+      return 0L;
+    }
+    try {
+      return backoff.toMillis();
+    } catch (ArithmeticException _) {
+      return Long.MAX_VALUE;
+    }
+  }
+
+  private synchronized void restartIfStillScheduled(String appId, int restartAttempt) {
+    RuntimeRecord scheduledRecord = runtimeRecords.get(appId);
+    if (scheduledRecord == null
+        || scheduledRecord.state() != AppRuntimeState.RESTARTING
+        || scheduledRecord.currentRestartAttempt() != restartAttempt) {
+      return;
+    }
+    if (explicitStopRequests.contains(appId)) {
+      runtimeRecords.put(appId, scheduledRecord.stopped());
+      return;
+    }
+    if (liveRunningProcess(appId) != null) {
+      return;
+    }
+    try {
+      InstalledAppSnapshot installation =
+          describe(appId).orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
+      launchInstalledApp(installation, restartAttempt, restartAttempt);
+    } catch (IOException _) {
+      recordRestartLaunchFailureIfUnchanged(appId, scheduledRecord, Instant.now());
+    }
+  }
+
+  private void recordRestartLaunchFailureIfUnchanged(
+      String appId, RuntimeRecord scheduledRecord, Instant failedAt) {
+    if (scheduledRecord.equals(runtimeRecords.get(appId))) {
+      runtimeRecords.put(appId, scheduledRecord.failedRestart(failedAt));
+    }
   }
 
   private static Path normalizeExistingDirectory(Path directory) throws IOException {
@@ -967,17 +1319,50 @@ public final class LocalProcessAppHost implements AppHost {
                 observeTrackedProcessTreeUntilExit(appId, process);
               } finally {
                 try {
-                  runningApps.computeIfPresent(
-                      appId,
-                      (ignoredAppId, activeProcess) ->
-                          activeProcess.process() == process && !activeProcess.isAlive()
-                              ? null
-                              : activeProcess);
+                  recordObservedProcessExit(appId, process);
                 } finally {
                   exitCleanup.complete(null);
                 }
               }
             });
+  }
+
+  private List<ProcessHandle> recoverStartupProcessTree(
+      InstalledAppSnapshot installation, String token, Instant startedAt, Process process)
+      throws AppHostException {
+    long deadline = System.nanoTime() + timing.trackedProcessPostExitCaptureGracePeriod().toNanos();
+    while (true) {
+      List<ProcessHandle> recoveredHandles =
+          aliveHandles(
+              recoverTrackedProcesses(
+                  installation.manifest(),
+                  installation.paths(),
+                  token,
+                  startedAt,
+                  List.of(process.toHandle()),
+                  ProcessHandle.allProcesses().toList()));
+      if (!recoveredHandles.isEmpty() || System.nanoTime() >= deadline) {
+        return recoveredHandles;
+      }
+      try {
+        TimeUnit.NANOSECONDS.sleep(timing.startupProcessPollInterval().toNanos());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new AppHostException("interrupted while starting app: " + installation.appId(), e);
+      }
+    }
+  }
+
+  private void recordObservedProcessExit(String appId, Process process) {
+    runningApps.computeIfPresent(
+        appId,
+        (ignoredAppId, runningProcess) -> {
+          if (runningProcess.process() != process || runningProcess.isAlive()) {
+            return runningProcess;
+          }
+          recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
+          return null;
+        });
   }
 
   private void observeTrackedProcessTreeUntilExit(String appId, Process process) {
@@ -990,6 +1375,7 @@ public final class LocalProcessAppHost implements AppHost {
                 trackedProcessRefreshIntervalNanos(startupTrackingDeadline), TimeUnit.NANOSECONDS);
         if (exited) {
           capturePostExitProcessTreeHandoff(appId, process);
+          observeTrackedHandoffProcessTreeUntilExit(appId, process);
           break;
         }
       }
@@ -998,6 +1384,21 @@ public final class LocalProcessAppHost implements AppHost {
     } finally {
       refreshObservedProcessTree(appId, process);
     }
+  }
+
+  private void observeTrackedHandoffProcessTreeUntilExit(String appId, Process process)
+      throws InterruptedException {
+    while (observedProcessTreeStillAlive(appId, process)) {
+      TimeUnit.NANOSECONDS.sleep(timing.trackedProcessRefreshInterval().toNanos());
+      refreshObservedProcessTree(appId, process);
+    }
+  }
+
+  private boolean observedProcessTreeStillAlive(String appId, Process process) {
+    RunningProcess runningProcess = runningApps.get(appId);
+    return runningProcess != null
+        && runningProcess.process() == process
+        && runningProcess.isAlive();
   }
 
   private void capturePostExitProcessTreeHandoff(String appId, Process process)
@@ -1725,6 +2126,10 @@ public final class LocalProcessAppHost implements AppHost {
     List<ProcessHandle> processTree = runningProcess.processTree();
     RunningProcess trackedRunningProcess = runningProcess.tryWithProcessTree(processTree);
     if (trackedRunningProcess == null) {
+      recordProcessExit(
+          appId,
+          ProcessExitRecord.fromRunningProcess(
+              runningProcess, trackedAppExitCode(runningProcess), Instant.now(), true));
       runningProcess.exitCleanup().join();
       runningApps.remove(appId, runningProcess);
       return null;
@@ -1742,6 +2147,7 @@ public final class LocalProcessAppHost implements AppHost {
       runningApps.put(appId, refreshedRunningProcess);
       return refreshedRunningProcess;
     }
+    recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
     runningProcess.exitCleanup().join();
     runningApps.remove(appId, runningProcess);
     return null;
@@ -2183,22 +2589,228 @@ public final class LocalProcessAppHost implements AppHost {
         .pid();
   }
 
+  private record ProcessExitRecord(
+      InstalledAppPaths paths,
+      Integer exitCode,
+      Instant exitAt,
+      int restartCount,
+      int currentRestartAttempt,
+      String lastLaunchToken,
+      boolean explicitStop) {
+    private static ProcessExitRecord fromRunningProcess(
+        RunningProcess runningProcess, Integer exitCode, Instant exitAt, boolean explicitStop) {
+      return new ProcessExitRecord(
+          runningProcess.snapshot().paths(),
+          exitCode,
+          exitAt,
+          runningProcess.restartCount(),
+          runningProcess.currentRestartAttempt(),
+          runningProcess.snapshot().token(),
+          explicitStop);
+    }
+  }
+
+  private record LogMetadata(boolean available, Long sizeBytes) {}
+
+  private record RuntimeRecord(
+      InstalledAppPaths paths,
+      AppRuntimeState state,
+      boolean running,
+      Long pid,
+      Instant startedAt,
+      Instant lastExitAt,
+      Integer lastExitCode,
+      String lastLaunchToken,
+      int restartCount,
+      int currentRestartAttempt) {
+    private static RuntimeRecord running(
+        RunningProcess runningProcess, RuntimeRecord previousRecord) {
+      return running(
+          runningProcess.snapshot(),
+          runningProcess.restartCount(),
+          runningProcess.currentRestartAttempt(),
+          previousRecord);
+    }
+
+    private static RuntimeRecord running(
+        RunningAppSnapshot snapshot,
+        int restartCount,
+        int currentRestartAttempt,
+        RuntimeRecord previousRecord) {
+      return new RuntimeRecord(
+          snapshot.paths(),
+          AppRuntimeState.RUNNING,
+          true,
+          snapshot.pid(),
+          snapshot.startedAt(),
+          previousRecord == null ? null : previousRecord.lastExitAt(),
+          previousRecord == null ? null : previousRecord.lastExitCode(),
+          snapshot.token(),
+          restartCount,
+          currentRestartAttempt);
+    }
+
+    private static RuntimeRecord restarting(
+        RunningProcess runningProcess, Integer exitCode, Instant exitAt, int restartAttempt) {
+      return new RuntimeRecord(
+          runningProcess.snapshot().paths(),
+          AppRuntimeState.RESTARTING,
+          false,
+          null,
+          null,
+          exitAt,
+          exitCode,
+          runningProcess.snapshot().token(),
+          runningProcess.restartCount(),
+          restartAttempt);
+    }
+
+    private static RuntimeRecord stopped(InstalledAppPaths paths) {
+      return new RuntimeRecord(
+          paths, AppRuntimeState.STOPPED, false, null, null, null, null, null, 0, 0);
+    }
+
+    private static RuntimeRecord stopped(RunningProcess runningProcess) {
+      return new RuntimeRecord(
+          runningProcess.snapshot().paths(),
+          AppRuntimeState.STOPPED,
+          false,
+          null,
+          null,
+          Instant.now(),
+          trackedAppExitCode(runningProcess),
+          runningProcess.snapshot().token(),
+          runningProcess.restartCount(),
+          runningProcess.currentRestartAttempt());
+    }
+
+    private RuntimeRecord stopped() {
+      return new RuntimeRecord(
+          paths,
+          AppRuntimeState.STOPPED,
+          false,
+          null,
+          null,
+          lastExitAt,
+          lastExitCode,
+          lastLaunchToken,
+          restartCount,
+          currentRestartAttempt);
+    }
+
+    private RuntimeRecord failedRestart(Instant failedAt) {
+      return new RuntimeRecord(
+          paths,
+          AppRuntimeState.CRASHED,
+          false,
+          null,
+          null,
+          failedAt,
+          lastExitCode,
+          lastLaunchToken,
+          restartCount,
+          currentRestartAttempt);
+    }
+
+    private RuntimeRecord withoutRunningProcess(InstalledAppPaths installedPaths) {
+      if (running) {
+        return new RuntimeRecord(
+            installedPaths,
+            AppRuntimeState.STOPPED,
+            false,
+            null,
+            null,
+            lastExitAt,
+            lastExitCode,
+            lastLaunchToken,
+            restartCount,
+            currentRestartAttempt);
+      }
+      return paths.equals(installedPaths) ? this : withPaths(installedPaths);
+    }
+
+    private RuntimeRecord withPaths(InstalledAppPaths installedPaths) {
+      return new RuntimeRecord(
+          installedPaths,
+          state,
+          running,
+          pid,
+          startedAt,
+          lastExitAt,
+          lastExitCode,
+          lastLaunchToken,
+          restartCount,
+          currentRestartAttempt);
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "RuntimeRecord[paths="
+          + paths
+          + ", state="
+          + state
+          + ", running="
+          + running
+          + ", pid="
+          + pid
+          + ", startedAt="
+          + startedAt
+          + ", lastExitAt="
+          + lastExitAt
+          + ", lastExitCode="
+          + lastExitCode
+          + ", lastLaunchToken="
+          + (lastLaunchToken == null ? null : AppHostTokenRedactor.REDACTED)
+          + ", restartCount="
+          + restartCount
+          + ", currentRestartAttempt="
+          + currentRestartAttempt
+          + ']';
+    }
+  }
+
   @SuppressWarnings("ClassCanBeRecord")
   private static final class RunningProcess {
     private final Process process;
     private final RunningAppSnapshot snapshot;
     private final CompletableFuture<Void> exitCleanup;
     private final List<ProcessHandle> trackedHandles;
+    private final int restartCount;
+    private final int currentRestartAttempt;
+    private final boolean representativeProcessHandoff;
 
     private RunningProcess(
         Process process,
         RunningAppSnapshot snapshot,
         CompletableFuture<Void> exitCleanup,
-        List<ProcessHandle> trackedHandles) {
+        List<ProcessHandle> trackedHandles,
+        int restartCount,
+        int currentRestartAttempt) {
+      this(
+          process,
+          snapshot,
+          exitCleanup,
+          trackedHandles,
+          restartCount,
+          currentRestartAttempt,
+          false);
+    }
+
+    private RunningProcess(
+        Process process,
+        RunningAppSnapshot snapshot,
+        CompletableFuture<Void> exitCleanup,
+        List<ProcessHandle> trackedHandles,
+        int restartCount,
+        int currentRestartAttempt,
+        boolean representativeProcessHandoff) {
       this.process = Objects.requireNonNull(process, "process");
       this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
       this.exitCleanup = Objects.requireNonNull(exitCleanup, "exitCleanup");
       this.trackedHandles = List.copyOf(Objects.requireNonNull(trackedHandles, "trackedHandles"));
+      this.restartCount = restartCount;
+      this.currentRestartAttempt = currentRestartAttempt;
+      this.representativeProcessHandoff = representativeProcessHandoff;
     }
 
     private Process process() {
@@ -2211,6 +2823,18 @@ public final class LocalProcessAppHost implements AppHost {
 
     private CompletableFuture<Void> exitCleanup() {
       return exitCleanup;
+    }
+
+    private int restartCount() {
+      return restartCount;
+    }
+
+    private int currentRestartAttempt() {
+      return currentRestartAttempt;
+    }
+
+    private boolean isRepresentativeProcessHandoff() {
+      return representativeProcessHandoff;
     }
 
     private boolean isAlive() {
@@ -2233,7 +2857,7 @@ public final class LocalProcessAppHost implements AppHost {
       if (currentProcessTree.isEmpty()) {
         return null;
       }
-      return tryWithProcessTree(currentProcessTree);
+      return tryWithAliveProcessTree(currentProcessTree);
     }
 
     private RunningProcess tryWithProcessTree(List<ProcessHandle> newProcessTree) {
@@ -2241,6 +2865,20 @@ public final class LocalProcessAppHost implements AppHost {
       if (aliveProcessTree.isEmpty()) {
         return null;
       }
+      return tryWithAliveProcessTree(aliveProcessTree);
+    }
+
+    private RunningProcess tryWithAliveProcessTree(List<ProcessHandle> aliveProcessTree) {
+      boolean rootProcessExited = rootProcessExited(aliveProcessTree);
+      if (!rootProcessExited && !isEffectivelyAlive(process.toHandle())) {
+        aliveProcessTree = withoutRootProcess(aliveProcessTree);
+        if (aliveProcessTree.isEmpty()) {
+          return null;
+        }
+        rootProcessExited = true;
+      }
+      boolean updatedRepresentativeProcessHandoff =
+          representativeProcessHandoff || rootProcessExited;
       long updatedPid = representativePid(aliveProcessTree, snapshot.pid(), false);
       RunningAppSnapshot updatedSnapshot =
           updatedPid == snapshot.pid()
@@ -2252,10 +2890,28 @@ public final class LocalProcessAppHost implements AppHost {
                   updatedPid,
                   snapshot.startedAt());
       if (trackedHandlePids().equals(handlePids(aliveProcessTree))
-          && updatedPid == snapshot.pid()) {
+          && updatedPid == snapshot.pid()
+          && updatedRepresentativeProcessHandoff == representativeProcessHandoff) {
         return this;
       }
-      return new RunningProcess(process, updatedSnapshot, exitCleanup, aliveProcessTree);
+      return new RunningProcess(
+          process,
+          updatedSnapshot,
+          exitCleanup,
+          aliveProcessTree,
+          restartCount,
+          currentRestartAttempt,
+          updatedRepresentativeProcessHandoff);
+    }
+
+    private boolean rootProcessExited(List<ProcessHandle> aliveProcessTree) {
+      long rootPid = process.pid();
+      return aliveProcessTree.stream().noneMatch(processHandle -> processHandle.pid() == rootPid);
+    }
+
+    private List<ProcessHandle> withoutRootProcess(List<ProcessHandle> processTree) {
+      long rootPid = process.pid();
+      return processTree.stream().filter(processHandle -> processHandle.pid() != rootPid).toList();
     }
 
     private List<Long> trackedHandlePids() {

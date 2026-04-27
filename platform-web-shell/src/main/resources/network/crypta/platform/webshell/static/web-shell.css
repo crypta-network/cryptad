@@ -584,6 +584,12 @@ a {
   align-items: center;
 }
 
+.app-log-tail {
+  max-height: 280px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .diagnostics-lines,
 .diagnostics-export {
   margin: 0;

@@ -9,13 +9,18 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Duration;
@@ -24,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -44,8 +50,12 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeState;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
@@ -73,12 +83,19 @@ class LocalProcessAppHostTest {
   private static final String NORMALIZED_MIXED_CASE_APP_ID = "mixedcase-app";
   private static final String PYTHON_DAEMON_APP_ID = "python-daemon-app";
   private static final String APP_VERSION = "2.0.0";
+  private static final String UPDATED_APP_VERSION = "3.0.0";
   private static final String DEFAULT_TOKEN = "token";
   private static final String CACHE_DIR_NAME = "cache";
   private static final String INSTALLED_DIR_NAME = "installed";
+  private static final String STAGE_UPDATE_DIR_NAME = "stage-update";
   private static final String INSTALLED_APPS_DIR_SYMLINK_MESSAGE =
       "installedAppsDir must not be a symlink";
   private static final String CONTENT_FILE_NAME = "content.txt";
+  private static final String NEW_BUNDLE_FILE_NAME = "new-bundle.txt";
+  private static final String NEW_BUNDLE_CONTENT = "new-bundle\n";
+  private static final String PROCESS_LOG_FILE_NAME = "process.log";
+  private static final String SIGNED_BUNDLE_REQUIRED_MESSAGE =
+      "signed app bundle verification is required";
   private static final String POSIX_LAUNCH_PATH = "bin/launch";
   private static final String STARTUP_EXIT_MESSAGE_PREFIX = "app exited during startup: ";
   private static final String WINDOWS_11 = "Windows 11";
@@ -117,6 +134,7 @@ class LocalProcessAppHostTest {
       TEST_TIMING.startupExitGracePeriod().plusMillis(25);
   private static final Duration TEST_POST_SPAWN_EXIT_DELAY = Duration.ofMillis(40);
   private static final Duration TEST_SHORT_EXIT_DELAY = Duration.ofMillis(50);
+  private static final Duration TEST_CLEAN_CHILD_EXIT_DELAY = Duration.ofMillis(500);
   private static final String TEST_LOOP_SLEEP_SECONDS = secondsLiteral(TEST_LOOP_SLEEP);
   private static final String TEST_DELAYED_WRAPPER_EXIT_SECONDS =
       secondsLiteral(TEST_DELAYED_WRAPPER_EXIT);
@@ -126,6 +144,8 @@ class LocalProcessAppHostTest {
   private static final String TEST_POST_SPAWN_EXIT_DELAY_SECONDS =
       secondsLiteral(TEST_POST_SPAWN_EXIT_DELAY);
   private static final String TEST_SHORT_EXIT_DELAY_SECONDS = secondsLiteral(TEST_SHORT_EXIT_DELAY);
+  private static final String TEST_CLEAN_CHILD_EXIT_DELAY_SECONDS =
+      secondsLiteral(TEST_CLEAN_CHILD_EXIT_DELAY);
   private static final String LATE_CHILD_APP_ID = "late-child-app";
   private static final String SHELL_NOEXEC_APP_ID = "shell-noexec-app";
   private static final String WRAPPER_SCRIPT =
@@ -284,6 +304,136 @@ class LocalProcessAppHostTest {
       exit 0
       """
           .formatted(TEST_SHORT_EXIT_DELAY_SECONDS);
+  private static final String WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      pwd > "$CRYPTAD_APP_RUN_DIR/cwd.txt"
+      echo "cwd=$(pwd)"
+      echo "CRYPTAD_APP_DATA_DIR=$CRYPTAD_APP_DATA_DIR"
+      echo "CRYPTAD_APP_CACHE_DIR=$CRYPTAD_APP_CACHE_DIR"
+      echo "CRYPTAD_APP_RUN_DIR=$CRYPTAD_APP_RUN_DIR"
+      echo "process-log=$CRYPTAD_APP_RUN_DIR/%s"
+      echo "CRYPTAD_APP_TOKEN=$CRYPTAD_APP_TOKEN"
+      echo "raw-token=$CRYPTAD_APP_TOKEN"
+      while :; do
+        sleep %s
+      done
+      """
+          .formatted(PROCESS_LOG_FILE_NAME, TEST_LOOP_SLEEP_SECONDS);
+  private static final String IMMEDIATE_TOKEN_CRASH_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      echo "raw-token=$CRYPTAD_APP_TOKEN"
+      exit 7
+      """;
+  private static final String IMMEDIATE_CRASH_SCRIPT =
+      """
+      #!/bin/sh
+      exit 7
+      """;
+  private static final String RESTART_ON_FAILURE_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/restart-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%%s\\n' "$count" > "$count_file"
+      if [ "$count" -eq 1 ]; then
+        sleep 0.500
+        exit 7
+      fi
+      trap 'exit 0' TERM INT
+      while :; do
+        sleep %s
+      done
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
+  private static final String WAITING_WRAPPER_CLEAN_EXIT_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/wait-wrapper-run-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%%s\\n' "$count" > "$count_file"
+      ./%s &
+      child=$!
+      echo "$child" > "$CRYPTAD_APP_RUN_DIR/%s"
+      wait "$child"
+      """
+          .formatted(CHILD_SCRIPT_PATH, CHILD_PID_FILE_NAME);
+  private static final String CLEAN_EXIT_CHILD_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      sleep %s
+      exit 0
+      """
+          .formatted(TEST_CLEAN_CHILD_EXIT_DELAY_SECONDS);
+  private static final String RESTART_ATTEMPT_STARTUP_FAILURE_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/restart-startup-failure-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%s\\n' "$count" > "$count_file"
+      if [ "$count" -eq 1 ]; then
+        sleep 0.500
+        exit 7
+      fi
+      exit 9
+      """;
+  private static final String DAEMONIZED_RESTART_ON_FAILURE_CHILD_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/daemonized-restart-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%%s\\n' "$count" > "$count_file"
+      if [ "$count" -eq 1 ]; then
+        sleep 0.500
+        exit 7
+      fi
+      trap 'exit 0' TERM INT
+      while :; do
+        sleep %s
+      done
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
+  private static final String RESTART_STOP_SUPPRESSION_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/restart-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%%s\\n' "$count" > "$count_file"
+      trap 'exit 7' TERM INT
+      while :; do
+        sleep %s
+      done
+      """
+          .formatted(TEST_LOOP_SLEEP_SECONDS);
 
   @TempDir private Path tempDir;
 
@@ -297,7 +447,7 @@ class LocalProcessAppHostTest {
         assertThrows(
             AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
 
-    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertEquals(SIGNED_BUNDLE_REQUIRED_MESSAGE, exception.getMessage());
     assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
     assertEquals(List.of(), host.listInstalled());
   }
@@ -310,8 +460,7 @@ class LocalProcessAppHostTest {
         requireSignedHost(
             copiedBundleDirectory -> {
               verifiedBundle.set(copiedBundleDirectory);
-              throw new AppBundleVerificationException(
-                  "signed app bundle verification is required");
+              throw new AppBundleVerificationException(SIGNED_BUNDLE_REQUIRED_MESSAGE);
             });
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
     Files.writeString(stagedApp.resolve(MANIFEST_FILE_NAME), "manifest.version=1\n");
@@ -321,7 +470,7 @@ class LocalProcessAppHostTest {
             AppBundleVerificationException.class, () -> host.installFromDirectory(stagedApp));
 
     Path copiedBundle = verifiedBundle.get();
-    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertEquals(SIGNED_BUNDLE_REQUIRED_MESSAGE, exception.getMessage());
     assertNotNull(copiedBundle);
     assertNotEquals(stagedApp.toAbsolutePath().normalize(), copiedBundle);
     assertTrue(copiedBundle.startsWith(layout().installedAppsDir()));
@@ -416,28 +565,28 @@ class LocalProcessAppHostTest {
     Path updatedStage =
         signBundle(
             stageInstalledAppAt(
-                tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+                tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(SAMPLE_APP_ID),
                 SAMPLE_APP_ID,
-                "3.0.0",
+                UPDATED_APP_VERSION,
                 """
                 #!/bin/sh
                 printf 'new\\n'
                 """,
-                Map.of("new-bundle.txt", "new-bundle\n")),
+                Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT)),
             keyPair);
 
     InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
 
-    assertEquals("3.0.0", updated.manifest().appVersion());
+    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
     assertEquals(installation.paths(), updated.paths());
     assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
     assertEquals("keep-cache", Files.readString(cacheSentinel, StandardCharsets.UTF_8));
     assertEquals("keep-run", Files.readString(runSentinel, StandardCharsets.UTF_8));
     assertFalse(Files.exists(updated.paths().installedRoot().resolve("bundle-only.txt")));
     assertEquals(
-        "new-bundle\n",
+        NEW_BUNDLE_CONTENT,
         Files.readString(
-            updated.paths().installedRoot().resolve("new-bundle.txt"), StandardCharsets.UTF_8));
+            updated.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME), StandardCharsets.UTF_8));
     assertEquals(
         """
         #!/bin/sh
@@ -445,7 +594,8 @@ class LocalProcessAppHostTest {
         """,
         Files.readString(
             updated.paths().executablePath(updated.manifest()), StandardCharsets.UTF_8));
-    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
     assertEquals(List.of(updated), host.listInstalled());
   }
 
@@ -488,14 +638,13 @@ class LocalProcessAppHostTest {
         requireSignedHost(
             copiedBundleDirectory -> {
               verifiedBundle.set(copiedBundleDirectory);
-              throw new AppBundleVerificationException(
-                  "signed app bundle verification is required");
+              throw new AppBundleVerificationException(SIGNED_BUNDLE_REQUIRED_MESSAGE);
             });
     Path updatedStage =
         stageInstalledAppAt(
             tempDir.resolve("stage-update-unsigned").resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
-            "3.0.0",
+            UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
             Map.of());
     Files.writeString(updatedStage.resolve(MANIFEST_FILE_NAME), "manifest.version=1\n");
@@ -506,7 +655,7 @@ class LocalProcessAppHostTest {
             () -> host.updateFromDirectory(SAMPLE_APP_ID, updatedStage));
 
     Path copiedBundle = verifiedBundle.get();
-    assertEquals("signed app bundle verification is required", exception.getMessage());
+    assertEquals(SIGNED_BUNDLE_REQUIRED_MESSAGE, exception.getMessage());
     assertNotNull(copiedBundle);
     assertNotEquals(updatedStage.toAbsolutePath().normalize(), copiedBundle);
     assertTrue(copiedBundle.startsWith(layout().installedAppsDir()));
@@ -523,7 +672,7 @@ class LocalProcessAppHostTest {
         stageInstalledAppAt(
             tempDir.resolve("stage-repair").resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
-            "3.0.0",
+            UPDATED_APP_VERSION,
             """
             #!/bin/sh
             printf 'repaired\\n'
@@ -532,8 +681,9 @@ class LocalProcessAppHostTest {
 
     InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
 
-    assertEquals("3.0.0", updated.manifest().appVersion());
-    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
     assertEquals(
         "repair-bundle\n",
         Files.readString(
@@ -547,9 +697,9 @@ class LocalProcessAppHostTest {
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path mismatchedStage =
         stageInstalledAppAt(
-            tempDir.resolve("stage-update").resolve(DUPLICATE_APP_ID),
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(DUPLICATE_APP_ID),
             DUPLICATE_APP_ID,
-            "3.0.0",
+            UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
             Map.of());
 
@@ -582,22 +732,23 @@ class LocalProcessAppHostTest {
     Files.delete(installation.paths().manifestFile());
     Path updatedStage =
         stageInstalledAppAt(
-            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
-            "3.0.0",
+            UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
-            Map.of("new-bundle.txt", "new-bundle\n"));
+            Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT));
 
     assertThrows(IOException.class, () -> host.describe(SAMPLE_APP_ID));
 
     InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
 
-    assertEquals("3.0.0", updated.manifest().appVersion());
-    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
     assertEquals(
-        "new-bundle\n",
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(
+        NEW_BUNDLE_CONTENT,
         Files.readString(
-            updated.paths().installedRoot().resolve("new-bundle.txt"), StandardCharsets.UTF_8));
+            updated.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -613,16 +764,17 @@ class LocalProcessAppHostTest {
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path updatedStage =
         stageInstalledAppAt(
-            tempDir.resolve("stage-update").resolve(SAMPLE_APP_ID),
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
-            "3.0.0",
+            UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
-            Map.of("new-bundle.txt", "new-bundle\n"));
+            Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT));
 
     InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
 
-    assertEquals("3.0.0", updated.manifest().appVersion());
-    assertEquals("3.0.0", host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
     try (var entries = Files.list(updated.paths().installedRoot().getParent())) {
       assertTrue(
           entries.anyMatch(
@@ -653,6 +805,40 @@ class LocalProcessAppHostTest {
     } finally {
       host.stop(RUNNER_APP_ID);
     }
+  }
+
+  @Test
+  void updateFromDirectory_whenRestartPending_expectAcceptedUpdateCancelsRestart()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(RESTART_ON_FAILURE_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 750);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+    waitForRuntimeState(host, AppRuntimeState.RESTARTING);
+    Path updatedRunMarker = installation.paths().runDir().resolve("updated-ran.txt");
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-update-restarting").resolve(RUNNER_APP_ID),
+            RUNNER_APP_ID,
+            UPDATED_APP_VERSION,
+            """
+            #!/bin/sh
+            set -eu
+            printf 'updated\\n' > "$CRYPTAD_APP_RUN_DIR/updated-ran.txt"
+            exit 0
+            """,
+            Map.of());
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(RUNNER_APP_ID, updatedStage);
+    LockSupport.parkNanos(Duration.ofSeconds(1).toNanos());
+
+    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
+    assertFalse(Files.exists(updatedRunMarker));
+    assertEquals(AppRuntimeState.STOPPED, host.runtimeStatus(RUNNER_APP_ID).state());
   }
 
   @Test
@@ -893,6 +1079,49 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void start_whenAppRuns_expectWorkingDirectoryRuntimeStatusAndRedactedLog() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation =
+        host.installFromDirectory(stageInstalledRunnerApp(WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT));
+
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    Path cwdFile = installation.paths().runDir().resolve("cwd.txt");
+    waitForFile(cwdFile);
+    waitForFile(installation.paths().processLogFile());
+    assertEquals(
+        installation.paths().installedRoot().toString(),
+        Files.readString(cwdFile, StandardCharsets.UTF_8).trim());
+
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppRuntimeState.RUNNING, status.state());
+    assertTrue(status.running());
+    assertNotNull(status.pid());
+    assertTrue(status.logAvailable());
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 4096);
+    assertTrue(logTail.available());
+    assertFalse(logTail.text().contains(running.token()));
+    assertFalse(logTail.text().contains(installation.paths().installedRoot().toString()));
+    assertFalse(logTail.text().contains(installation.paths().dataDir().toString()));
+    assertFalse(logTail.text().contains(installation.paths().cacheDir().toString()));
+    assertFalse(logTail.text().contains(installation.paths().runDir().toString()));
+    assertFalse(logTail.text().contains(installation.paths().processLogFile().toString()));
+    assertTrue(logTail.text().contains("cwd=[APP_INSTALL_DIR]"));
+    assertTrue(logTail.text().contains("CRYPTAD_APP_DATA_DIR=[APP_DATA_DIR]"));
+    assertTrue(logTail.text().contains("CRYPTAD_APP_CACHE_DIR=[APP_CACHE_DIR]"));
+    assertTrue(logTail.text().contains("CRYPTAD_APP_RUN_DIR=[APP_RUN_DIR]"));
+    assertTrue(logTail.text().contains("process-log=[APP_PROCESS_LOG]"));
+    assertTrue(logTail.text().contains("CRYPTAD_APP_TOKEN=[REDACTED]"));
+    assertTrue(logTail.text().contains("raw-token=[REDACTED]"));
+
+    assertTrue(host.stop(RUNNER_APP_ID));
+    assertEquals(AppRuntimeState.STOPPED, host.runtimeStatus(RUNNER_APP_ID).state());
+  }
+
+  @Test
   void start_whenInstalledProcessExitsImmediately_expectFailureAndNoRunningState()
       throws IOException {
     AppHost host = allowUnsignedHost();
@@ -907,6 +1136,251 @@ class LocalProcessAppHostTest {
     assertTrue(elapsed.compareTo(Duration.ofSeconds(3)) < 0);
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     assertTrue(host.listRunning().isEmpty());
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppRuntimeState.EXITED, status.state());
+    assertEquals(0, status.lastExitCode());
+  }
+
+  @Test
+  void start_whenInstalledProcessCrashesImmediately_expectCrashedRuntimeStatus()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT));
+
+    AppHostException exception =
+        assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertTrue(exception.getMessage().contains(STARTUP_EXIT_MESSAGE_PREFIX + RUNNER_APP_ID));
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppRuntimeState.CRASHED, status.state());
+    assertEquals(7, status.lastExitCode());
+  }
+
+  @Test
+  void processLogTail_whenExitedProcessPrintedRawToken_expectLastLaunchTokenRedacted()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_TOKEN_CRASH_SCRIPT));
+
+    assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 4096);
+    assertTrue(logTail.available());
+    assertTrue(logTail.text().contains("raw-token=[REDACTED]"));
+    assertFalse(logTail.text().matches("(?s).*raw-token=[0-9a-f]{64}.*"));
+    AppProcessLogSnapshot smallLogTail = host.readProcessLogTail(RUNNER_APP_ID, 12);
+    assertTrue(smallLogTail.available());
+    assertFalse(smallLogTail.text().matches("(?s).*[0-9a-f]{8}.*"));
+  }
+
+  @Test
+  void processLogTail_whenTailStartsInsideKnownPath_expectPathRedactedBeforeTrim()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    Files.writeString(
+        installation.paths().processLogFile(),
+        "path=" + installation.paths().dataDir() + "\n",
+        StandardCharsets.UTF_8);
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 16);
+
+    assertTrue(logTail.available());
+    assertTrue(logTail.truncated());
+    assertTrue(logTail.text().contains("[APP_DATA_DIR]"));
+    assertFalse(logTail.text().contains("/"));
+    assertFalse(logTail.text().contains(installation.paths().dataDir().toString()));
+  }
+
+  @Test
+  void processLogTail_whenUnknownTokenColonAssignmentIsSplit_expectAssignmentRedacted()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    String token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    String assignment = "CRYPTAD_APP_TOKEN" + " ".repeat(16) + ":" + " ".repeat(16) + token;
+    Files.writeString(installation.paths().processLogFile(), assignment, StandardCharsets.UTF_8);
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 32);
+
+    assertTrue(logTail.available());
+    assertTrue(logTail.truncated());
+    assertTrue(logTail.text().contains("[REDACTED]"));
+    assertFalse(logTail.text().contains(token.substring(token.length() - 32)));
+    assertFalse(logTail.text().matches("(?s).*[0-9a-f]{8}.*"));
+  }
+
+  @Test
+  void processLogTail_whenMaxBytesSmall_expectTailIsBoundedAndRedacted() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation =
+        host.installFromDirectory(stageInstalledRunnerApp(WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+    waitForFile(installation.paths().processLogFile());
+
+    AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 24);
+
+    assertTrue(logTail.available());
+    assertTrue(logTail.truncated());
+    assertEquals(24, logTail.maxBytes());
+    assertFalse(logTail.text().contains(running.token()));
+    assertTrue(logTail.text().length() <= 64);
+    assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void restartPolicy_whenOnFailureConfigured_expectBoundedRestartAndVisibleAttempt()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(RESTART_ON_FAILURE_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    waitForFileContent(runCountFile, "2\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.RUNNING);
+    assertEquals(1, status.currentRestartAttempt());
+    assertEquals(1, status.restartCount());
+    assertEquals(7, status.lastExitCode());
+    assertNotNull(status.lastExitAt());
+
+    assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void restartPolicy_whenShellWrapperWaitsForCleanChildExit_expectNoFailureRestart()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp =
+        stageInstalledApp(
+            RUNNER_APP_ID,
+            WAITING_WRAPPER_CLEAN_EXIT_SCRIPT,
+            Map.of(CHILD_SCRIPT_PATH, CLEAN_EXIT_CHILD_SCRIPT));
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("wait-wrapper-run-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.EXITED);
+    assertEquals(0, status.lastExitCode());
+    assertEquals(0, status.currentRestartAttempt());
+    assertEquals(0, status.restartCount());
+    assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+  }
+
+  @Test
+  void restartPolicy_whenDaemonizedChildDisappears_expectUnknownExitRestarts() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp =
+        stageInstalledApp(
+            RUNNER_APP_ID,
+            DAEMONIZING_WRAPPER_IMMEDIATE_EXIT_SCRIPT,
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_RESTART_ON_FAILURE_CHILD_SCRIPT));
+    appendOnFailureRestartPolicy(stagedApp, 300);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("daemonized-restart-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    waitForRuntimeState(host, AppRuntimeState.RESTARTING);
+    waitForFileContent(runCountFile, "2\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.RUNNING);
+    assertEquals(1, status.currentRestartAttempt());
+    assertEquals(1, status.restartCount());
+
+    assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void restartPolicy_whenDaemonizedChildExitsWithoutPolling_expectObserverRestarts()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp =
+        stageInstalledApp(
+            RUNNER_APP_ID,
+            DAEMONIZING_WRAPPER_IMMEDIATE_EXIT_SCRIPT,
+            Map.of(CHILD_SCRIPT_PATH, DAEMONIZED_RESTART_ON_FAILURE_CHILD_SCRIPT));
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("daemonized-restart-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    waitForFileContent(runCountFile, "2\n");
+    assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void restartPolicy_whenRestartAttemptExitsDuringStartup_expectAttemptExitRecorded()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(RESTART_ATTEMPT_STARTUP_FAILURE_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("restart-startup-failure-count.txt");
+    waitForFileContent(runCountFile, "2\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.CRASHED);
+    assertEquals(9, status.lastExitCode());
+    assertEquals(1, status.currentRestartAttempt());
+    assertEquals(1, status.restartCount());
+  }
+
+  @Test
+  void restartBackoffSleepMillis_whenManifestBackoffWouldOverflowNanos_expectMillisValue() {
+    long nanosOverflowingBackoffMillis = Long.MAX_VALUE / 1_000_000L + 1L;
+
+    assertEquals(
+        nanosOverflowingBackoffMillis,
+        LocalProcessAppHost.restartBackoffSleepMillis(
+            Duration.ofMillis(nanosOverflowingBackoffMillis)));
+    assertEquals(
+        Long.MAX_VALUE,
+        LocalProcessAppHost.restartBackoffSleepMillis(Duration.ofSeconds(Long.MAX_VALUE)));
+  }
+
+  @Test
+  void restartPolicy_whenOperatorStopsProcess_expectNoRestart() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(RESTART_STOP_SUPPRESSION_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    assertTrue(host.stop(RUNNER_APP_ID));
+    LockSupport.parkNanos(Duration.ofMillis(150).toNanos());
+
+    assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
+    assertEquals(AppRuntimeState.STOPPED, host.runtimeStatus(RUNNER_APP_ID).state());
   }
 
   @Test
@@ -1696,6 +2170,7 @@ class LocalProcessAppHostTest {
 
     environment.put("GITHUB_TOKEN", "secret");
     environment.put("AWS_SECRET_ACCESS_KEY", "top-secret");
+    environment.put("CRYPTAD_NODE_DATASTORE_DIR", "/srv/cryptad/datastore");
 
     LocalProcessAppHost.populateEnvironment(
         environment,
@@ -1706,6 +2181,7 @@ class LocalProcessAppHostTest {
 
     assertFalse(environment.containsKey("GITHUB_TOKEN"));
     assertFalse(environment.containsKey("AWS_SECRET_ACCESS_KEY"));
+    assertFalse(environment.containsKey("CRYPTAD_NODE_DATASTORE_DIR"));
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin",
@@ -1749,6 +2225,77 @@ class LocalProcessAppHostTest {
     assertTrue(pathEntries.stream().anyMatch(entry -> entry.endsWith("/System32")));
     assertTrue(
         pathEntries.stream().anyMatch(entry -> entry.endsWith("/System32/WindowsPowerShell/v1.0")));
+  }
+
+  @Test
+  void ownerOnlyFilePermissions_whenPosixViewAvailable_expectOwnerOnlyModes() throws IOException {
+    Path directory = Files.createDirectories(tempDir.resolve("owner-only-dir"));
+    Path file =
+        Files.writeString(directory.resolve(PROCESS_LOG_FILE_NAME), "log", StandardCharsets.UTF_8);
+    Assumptions.assumeTrue(
+        Files.getFileAttributeView(directory, PosixFileAttributeView.class) != null);
+
+    assertTrue(OwnerOnlyFilePermissions.hardenDirectory(directory));
+    assertTrue(OwnerOnlyFilePermissions.hardenSensitiveFile(file));
+
+    assertEquals(
+        Set.of(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.OWNER_EXECUTE),
+        Files.getPosixFilePermissions(directory));
+    assertEquals(
+        Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+        Files.getPosixFilePermissions(file));
+  }
+
+  @Test
+  void ownerOnlyFilePermissions_whenPathIsSymlink_expectTargetPermissionsUnchanged()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    Path target =
+        Files.writeString(tempDir.resolve("symlink-target.log"), "log", StandardCharsets.UTF_8);
+    Assumptions.assumeTrue(
+        Files.getFileAttributeView(target, PosixFileAttributeView.class) != null);
+    Set<PosixFilePermission> targetPermissions =
+        Set.of(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.GROUP_READ,
+            PosixFilePermission.OTHERS_READ);
+    Files.setPosixFilePermissions(target, targetPermissions);
+    Path link = tempDir.resolve("symlink-process.log");
+    try {
+      Files.createSymbolicLink(link, target);
+    } catch (IOException | UnsupportedOperationException exception) {
+      Assumptions.assumeTrue(false, "symbolic links unavailable: " + exception.getMessage());
+    }
+
+    try {
+      OwnerOnlyFilePermissions.hardenSensitiveFile(link);
+    } catch (IOException _) {
+      // Some POSIX providers expose a no-follow symlink view but do not support chmod on symlinks.
+    }
+
+    assertEquals(targetPermissions, Files.getPosixFilePermissions(target));
+  }
+
+  @Test
+  void ownerOnlyFilePermissions_whenPosixViewUnavailable_expectFallbackWithoutFailure()
+      throws IOException {
+    Path zipFile = tempDir.resolve("non-posix.zip");
+    URI zipUri = URI.create("jar:" + zipFile.toUri());
+    try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, Map.of("create", "true"))) {
+      Path directory = zipFs.getPath("/state");
+      Files.createDirectory(directory);
+      Path file =
+          Files.writeString(
+              directory.resolve(PROCESS_LOG_FILE_NAME), "log", StandardCharsets.UTF_8);
+
+      assertFalse(OwnerOnlyFilePermissions.hardenDirectory(directory));
+      assertFalse(OwnerOnlyFilePermissions.hardenSensitiveFile(file));
+    }
   }
 
   @Test
@@ -1875,7 +2422,7 @@ class LocalProcessAppHostTest {
         assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
 
     assertTrue(exception.getMessage().contains("runDir must not be a symlink"));
-    assertFalse(Files.exists(externalRun.resolve("process.log")));
+    assertFalse(Files.exists(externalRun.resolve(PROCESS_LOG_FILE_NAME)));
   }
 
   @Test
@@ -1894,7 +2441,8 @@ class LocalProcessAppHostTest {
         assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
 
     assertTrue(exception.getMessage().contains("runDir must not be a symlink"));
-    assertFalse(Files.exists(externalRunAppsDir.resolve(RUNNER_APP_ID).resolve("process.log")));
+    assertFalse(
+        Files.exists(externalRunAppsDir.resolve(RUNNER_APP_ID).resolve(PROCESS_LOG_FILE_NAME)));
   }
 
   @Test
@@ -2088,6 +2636,20 @@ class LocalProcessAppHostTest {
     return stageInstalledApp(RUNNER_APP_ID, scriptContent, Map.of());
   }
 
+  private static void appendOnFailureRestartPolicy(Path stagedApp, long backoffMillis)
+      throws IOException {
+    Files.writeString(
+        stagedApp.resolve(MANIFEST_FILE_NAME),
+        """
+        app.restart.policy=%s
+        app.restart.maxAttempts=%d
+        app.restart.backoff.ms=%d
+        """
+            .formatted("on-failure", 1, backoffMillis),
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+  }
+
   private Path stageInstalledApp(String appId, String scriptContent, Map<String, String> extraFiles)
       throws IOException {
     Path stagedDir = tempDir.resolve(STAGE_DIR_NAME).resolve(appId);
@@ -2229,10 +2791,15 @@ class LocalProcessAppHostTest {
         Class.forName(LocalProcessAppHost.class.getName() + "$RunningProcess");
     Constructor<?> constructor =
         runningProcessClass.getDeclaredConstructor(
-            Process.class, RunningAppSnapshot.class, CompletableFuture.class, List.class);
+            Process.class,
+            RunningAppSnapshot.class,
+            CompletableFuture.class,
+            List.class,
+            int.class,
+            int.class);
     constructor.setAccessible(true);
     Object runningProcess =
-        constructor.newInstance(process, snapshot, exitCleanup, List.of(process.toHandle()));
+        constructor.newInstance(process, snapshot, exitCleanup, List.of(process.toHandle()), 0, 0);
     runningApps.put(appId, runningProcess);
   }
 
@@ -2442,6 +3009,19 @@ class LocalProcessAppHostTest {
     throw new AssertionError("timed out waiting for app to be running: " + appId);
   }
 
+  private static AppRuntimeStatusSnapshot waitForRuntimeState(AppHost host, AppRuntimeState state)
+      throws IOException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    while (System.nanoTime() < deadline) {
+      AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+      if (status.state() == state) {
+        return status;
+      }
+      pausePolling("interrupted while waiting for app runtime state: " + RUNNER_APP_ID);
+    }
+    throw new AssertionError("timed out waiting for app runtime state: " + RUNNER_APP_ID);
+  }
+
   private static void waitForNotRunning(AppHost host) {
     long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
     while (System.nanoTime() < deadline) {
@@ -2468,6 +3048,18 @@ class LocalProcessAppHostTest {
       pausePolling("interrupted while waiting for app " + appId + " to report pid " + pid);
     }
     throw new AssertionError("timed out waiting for app " + appId + " to report pid " + pid);
+  }
+
+  private static void waitForFileContent(Path file, String expectedContent) throws IOException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    while (System.nanoTime() < deadline) {
+      if (Files.isRegularFile(file)
+          && expectedContent.equals(Files.readString(file, StandardCharsets.UTF_8))) {
+        return;
+      }
+      pausePolling("interrupted while waiting for file content: " + file);
+    }
+    throw new AssertionError("timed out waiting for file content: " + file);
   }
 
   private static void waitForProcessExit(long pid) throws IOException {

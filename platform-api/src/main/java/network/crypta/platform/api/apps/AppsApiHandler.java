@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
@@ -51,6 +54,11 @@ public final class AppsApiHandler {
   private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
+  private static final String FIELD_APP_ID = "appId";
+  private static final String FIELD_RUNNING = "running";
+  private static final String FIELD_STARTED_AT = "startedAt";
+  private static final String MAX_BYTES_POSITIVE_INTEGER_MESSAGE =
+      "Query parameter 'maxBytes' must be a positive integer.";
   private static final String SIGNED_BUNDLE_FAILURE_MESSAGE =
       "Staged app bundle must pass trusted signature verification.";
 
@@ -108,6 +116,48 @@ public final class AppsApiHandler {
     String normalizedAppId = normalizeAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     return summarize(installed.manifest(), true, appHost.status(normalizedAppId).orElse(null));
+  }
+
+  /**
+   * Returns token-free process runtime status for one installed app.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible runtime status summary
+   */
+  public Map<String, Object> runtime(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    try {
+      return summarizeRuntime(appHost.runtimeStatus(normalizedAppId));
+    } catch (AppHostException e) {
+      if (isMissingAppFailure(e)) {
+        throw appNotFound();
+      }
+      throw internalError("Failed to read app runtime status.");
+    } catch (IOException _) {
+      throw internalError("Failed to read app runtime status.");
+    }
+  }
+
+  /**
+   * Returns a bounded, token-redacted process-log tail for one installed app.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param queryParameters decoded query parameters for the current request
+   * @return JSON-compatible process-log snapshot
+   */
+  public Map<String, Object> logs(String appId, Map<String, List<String>> queryParameters) {
+    String normalizedAppId = normalizeAppId(appId);
+    int maxBytes = parseMaxBytes(queryParameters);
+    try {
+      return summarizeProcessLog(appHost.readProcessLogTail(normalizedAppId, maxBytes));
+    } catch (AppHostException e) {
+      if (isMissingAppFailure(e)) {
+        throw appNotFound();
+      }
+      throw internalError("Failed to read app process log.");
+    } catch (IOException _) {
+      throw internalError("Failed to read app process log.");
+    }
   }
 
   /**
@@ -208,12 +258,14 @@ public final class AppsApiHandler {
   }
 
   /**
-   * Stops one running app and returns the installed summary.
+   * Stops one running app or cancels one pending automatic restart and returns the installed
+   * summary.
    *
    * <p>This path anchors on the live {@link RunningAppSnapshot} first, which allows callers to stop
-   * a damaged-but-running app even if its installed manifest can no longer be read safely. When no
-   * live process exists, the method still distinguishes "not running" from "not installed" so
-   * callers receive the stable conflict or not-found contract instead of a generic internal error.
+   * a damaged-but-running app even if its installed manifest can no longer be read safely. The
+   * method delegates to AppHost before reading an installed summary on the non-running path so a
+   * pending {@code RESTARTING} backoff can still be canceled when the installed manifest is damaged
+   * or temporarily unreadable.
    *
    * @param appId stable application identifier extracted from the request path
    * @return JSON-compatible app summary after the app has stopped
@@ -221,19 +273,22 @@ public final class AppsApiHandler {
   public Map<String, Object> stop(String appId) {
     String normalizedAppId = normalizeAppId(appId);
     RunningAppSnapshot running = appHost.status(normalizedAppId).orElse(null);
-    if (running == null) {
-      requireInstalled(normalizedAppId);
-      throw conflict("app is not running: " + normalizedAppId);
-    }
 
     try {
       if (!appHost.stop(normalizedAppId)) {
+        requireInstalled(normalizedAppId);
         throw conflict("app is not running: " + normalizedAppId);
       }
-      return summarize(running.manifest(), true, null);
     } catch (IOException _) {
       throw internalError("Failed to stop app.");
     }
+    if (running != null) {
+      return summarize(running.manifest(), true, null);
+    }
+    InstalledAppSnapshot installed = describeForStopSummary(normalizedAppId);
+    return installed == null
+        ? summarizeUnknown(normalizedAppId, true)
+        : summarize(installed.manifest(), true, null);
   }
 
   /**
@@ -259,7 +314,7 @@ public final class AppsApiHandler {
       appHost.uninstall(normalizedAppId);
       return installed != null
           ? summarize(installed.manifest(), false, null)
-          : summarizeUnknown(normalizedAppId);
+          : summarizeUnknown(normalizedAppId, false);
     } catch (AppHostException e) {
       throw uninstallFailure(normalizedAppId, e);
     } catch (IOException _) {
@@ -306,6 +361,24 @@ public final class AppsApiHandler {
    * @return installed snapshot when it can be read safely, otherwise {@code null}
    */
   private InstalledAppSnapshot describeForUninstallSummary(String appId) {
+    try {
+      return appHost.describe(appId).orElse(null);
+    } catch (IOException _) {
+      return null;
+    }
+  }
+
+  /**
+   * Attempts to read the installed snapshot for stop response shaping.
+   *
+   * <p>Stop remains callable for pending restart cancellation even when the installed manifest is
+   * unreadable. This helper therefore treats read failures as "summary unavailable" after the
+   * stop/cancel operation has already succeeded.
+   *
+   * @param appId stable application identifier
+   * @return installed snapshot when it can be read safely, otherwise {@code null}
+   */
+  private InstalledAppSnapshot describeForStopSummary(String appId) {
     try {
       return appHost.describe(appId).orElse(null);
     } catch (IOException _) {
@@ -376,7 +449,7 @@ public final class AppsApiHandler {
   private static Map<String, Object> summarize(
       AppManifest manifest, boolean installed, RunningAppSnapshot running) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
-    json.put("appId", manifest.appId());
+    json.put(FIELD_APP_ID, manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
     json.put("uiMode", manifest.uiMode().manifestValue());
@@ -385,10 +458,54 @@ public final class AppsApiHandler {
     json.put("permissions", manifest.permissions());
     json.put("quota", quota(manifest));
     json.put("installed", installed);
-    json.put("running", running != null);
+    json.put(FIELD_RUNNING, running != null);
     json.put("pid", running == null ? null : running.pid());
-    json.put("startedAt", running == null ? null : running.startedAt().toString());
+    json.put(FIELD_STARTED_AT, running == null ? null : running.startedAt().toString());
     return json;
+  }
+
+  /**
+   * Builds one JSON-friendly runtime status object.
+   *
+   * @param snapshot token-free AppHost runtime status snapshot
+   * @return ordered JSON-compatible runtime status map
+   */
+  private static Map<String, Object> summarizeRuntime(AppRuntimeStatusSnapshot snapshot) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(11);
+    json.put(FIELD_APP_ID, snapshot.appId());
+    json.put("state", snapshot.state().name());
+    json.put(FIELD_RUNNING, snapshot.running());
+    json.put("pid", snapshot.pid());
+    json.put(FIELD_STARTED_AT, instantText(snapshot.startedAt()));
+    json.put("lastExitAt", instantText(snapshot.lastExitAt()));
+    json.put("lastExitCode", snapshot.lastExitCode());
+    json.put("restartCount", snapshot.restartCount());
+    json.put("currentRestartAttempt", snapshot.currentRestartAttempt());
+    json.put("logAvailable", snapshot.logAvailable());
+    json.put("logSizeBytes", snapshot.logSizeBytes());
+    return json;
+  }
+
+  /**
+   * Builds one JSON-friendly process-log object.
+   *
+   * @param snapshot bounded redacted AppHost process-log snapshot
+   * @return ordered JSON-compatible process-log map
+   */
+  private static Map<String, Object> summarizeProcessLog(AppProcessLogSnapshot snapshot) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put(FIELD_APP_ID, snapshot.appId());
+    json.put("available", snapshot.available());
+    json.put("truncated", snapshot.truncated());
+    json.put("maxBytes", snapshot.maxBytes());
+    json.put("sizeBytes", snapshot.sizeBytes());
+    json.put("text", snapshot.text());
+    json.put("lastModifiedAt", instantText(snapshot.lastModifiedAt()));
+    return json;
+  }
+
+  private static String instantText(Instant instant) {
+    return instant == null ? null : instant.toString();
   }
 
   /**
@@ -400,9 +517,9 @@ public final class AppsApiHandler {
    * @param appId normalized application identifier
    * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
    */
-  private static Map<String, Object> summarizeUnknown(String appId) {
+  private static Map<String, Object> summarizeUnknown(String appId, boolean installed) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
-    json.put("appId", appId);
+    json.put(FIELD_APP_ID, appId);
     json.put("name", null);
     json.put("version", null);
     json.put("uiMode", "none");
@@ -410,10 +527,10 @@ public final class AppsApiHandler {
     json.put("uiUrl", null);
     json.put("permissions", List.of());
     json.put("quota", unknownQuota());
-    json.put("installed", false);
-    json.put("running", false);
+    json.put("installed", installed);
+    json.put(FIELD_RUNNING, false);
     json.put("pid", null);
-    json.put("startedAt", null);
+    json.put(FIELD_STARTED_AT, null);
     return json;
   }
 
@@ -435,6 +552,25 @@ public final class AppsApiHandler {
     json.put("dataBytes", null);
     json.put("cacheBytes", null);
     return json;
+  }
+
+  private static int parseMaxBytes(Map<String, List<String>> queryParameters) {
+    String rawMaxBytes = PlatformApiParameters.readOptionalString(queryParameters, "maxBytes");
+    if (rawMaxBytes == null) {
+      return AppHost.DEFAULT_PROCESS_LOG_TAIL_BYTES;
+    }
+    if (rawMaxBytes.isBlank()) {
+      throw invalidQuery(MAX_BYTES_POSITIVE_INTEGER_MESSAGE);
+    }
+    try {
+      int parsed = Integer.parseInt(rawMaxBytes);
+      if (parsed <= 0) {
+        throw invalidQuery(MAX_BYTES_POSITIVE_INTEGER_MESSAGE);
+      }
+      return Math.min(parsed, AppHost.MAX_PROCESS_LOG_TAIL_BYTES);
+    } catch (NumberFormatException _) {
+      throw invalidQuery(MAX_BYTES_POSITIVE_INTEGER_MESSAGE);
+    }
   }
 
   /**

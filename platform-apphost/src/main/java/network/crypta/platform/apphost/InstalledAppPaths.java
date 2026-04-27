@@ -122,6 +122,9 @@ public record InstalledAppPaths(
     ensureMutableDirectory(dataDir, "dataDir");
     ensureMutableDirectory(cacheDir, "cacheDir");
     ensureMutableDirectory(runDir, "runDir");
+    OwnerOnlyFilePermissions.hardenDirectory(dataDir);
+    OwnerOnlyFilePermissions.hardenDirectory(cacheDir);
+    OwnerOnlyFilePermissions.hardenDirectory(runDir);
   }
 
   /**
@@ -134,7 +137,7 @@ public record InstalledAppPaths(
    */
   @SuppressWarnings("unused")
   public void ensureInstallParentDirectory() throws IOException {
-    Files.createDirectories(parentOrThrow(installedRoot, "installedRoot"));
+    Files.createDirectories(installedRootParentOrThrow(installedRoot));
   }
 
   /**
@@ -209,10 +212,10 @@ public record InstalledAppPaths(
     return !actualRealPath.equals(expectedRealPath);
   }
 
-  private static Path parentOrThrow(Path path, String label) throws AppHostException {
-    Path parent = path.getParent();
+  private static Path installedRootParentOrThrow(Path installedRoot) throws AppHostException {
+    Path parent = installedRoot.getParent();
     if (parent == null) {
-      throw new AppHostException(label + " must not be a filesystem root: " + path);
+      throw new AppHostException("installedRoot must not be a filesystem root: " + installedRoot);
     }
     return parent;
   }

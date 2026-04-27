@@ -71,6 +71,17 @@ paths. Static UI remains same-origin with the local admin UI and Platform API, s
 entries are rejected and route responses use conservative CSP, `nosniff`, no-referrer, and
 non-public no-cache headers.
 
+AppHost process launches are process isolation, not sandboxing. AppHost starts a local child
+process with the installed bundle root as its working directory, a minimal environment, per-app
+data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-originated Platform API
+authentication. It does not currently provide containers, WASM isolation, seccomp, chroot, jails,
+Windows Job Object restrictions, network isolation, or browser-scoped app sessions.
+
+Runtime status and process-log Platform API responses must remain token-free and path-free. Log
+tail responses redact the current launch token and obvious `CRYPTAD_APP_TOKEN=...` text before
+returning app output to the Web Shell. This is defense in depth for operator visibility; it is not a
+general secret scanner for arbitrary app output.
+
 First-party static app UIs can fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` to discover
 local route roots and the existing local-admin form password used for mutating Platform API calls.
 That bootstrap is host/operator scoped. It must not contain `CRYPTAD_APP_TOKEN`, AppHost launch
@@ -81,3 +92,6 @@ JavaScript as having local admin browser-origin access.
 Treat a bypass that serves host files, follows symlink escapes, executes JavaScript while the admin
 UI has JavaScript disabled, exposes AppHost launch tokens to browser code, or allows bundled UI to
 exfiltrate operator-entered data off-node as security-relevant.
+
+For the detailed runtime boundary, exposed environment variables, restart policy semantics, and
+remaining limitations, see [apphost-runtime-hardening.md](apphost-runtime-hardening.md).

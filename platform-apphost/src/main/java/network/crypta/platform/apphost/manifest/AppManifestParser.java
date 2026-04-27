@@ -59,6 +59,9 @@ public final class AppManifestParser {
         manifest.uiEntry(),
         manifest.permissions(),
         manifest.dataQuotaBytes(),
-        manifest.cacheQuotaBytes());
+        manifest.cacheQuotaBytes(),
+        manifest.restartPolicy(),
+        manifest.restartMaxAttempts(),
+        manifest.restartBackoffMillis());
   }
 }

@@ -3,6 +3,7 @@ package network.crypta.platform.apphost;
 import java.time.Instant;
 import java.util.Objects;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Immutable snapshot of one running child process.
@@ -56,5 +57,22 @@ public record RunningAppSnapshot(
    */
   public String appId() {
     return manifest.appId();
+  }
+
+  /**
+   * Returns a diagnostic string that never includes the launch token or filesystem paths.
+   *
+   * @return redacted diagnostic representation
+   */
+  @Override
+  public @NotNull String toString() {
+    return "RunningAppSnapshot[appId=%s, name=%s, version=%s, token=%s, pid=%d, startedAt=%s]"
+        .formatted(
+            manifest.appId(),
+            manifest.appName(),
+            manifest.appVersion(),
+            AppHostTokenRedactor.REDACTED,
+            pid,
+            startedAt);
   }
 }
