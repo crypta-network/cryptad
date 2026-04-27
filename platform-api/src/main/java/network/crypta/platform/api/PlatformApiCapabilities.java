@@ -416,7 +416,7 @@ final class PlatformApiCapabilities {
    */
   private static PlatformApiAction catalogsAction(String method, List<String> segments) {
     if ("GET".equals(method)) {
-      return action(FAMILY_APP_CATALOGS, CATALOGS_READ, CATALOGS_READ);
+      return catalogsReadAction(segments);
     }
     if ("DELETE".equals(method) && segments.size() == 2) {
       return action(FAMILY_APP_CATALOGS, "catalogs.remove", CATALOGS_MANAGE);
@@ -436,6 +436,27 @@ final class PlatformApiCapabilities {
       return action(FAMILY_APP_CATALOGS, "catalogs.apps." + segments.get(4), CATALOGS_MANAGE);
     }
     return null;
+  }
+
+  /**
+   * Maps explicit read-only app-catalog routes.
+   *
+   * <p>The catalog family has management resources such as {@code /app-catalogs/{catalogId}} and
+   * action resources such as {@code refresh}. Those are not valid GET reads in the router, so app
+   * principals must not receive a blanket {@code catalogs.read} grant for every catalog path.
+   *
+   * @param segments decoded route segments beneath the API v1 prefix
+   * @return catalog read action for supported read shapes, or {@code null} for unsupported routes
+   */
+  private static PlatformApiAction catalogsReadAction(List<String> segments) {
+    if (segments.size() == 1 || isCatalogAppRead(segments)) {
+      return action(FAMILY_APP_CATALOGS, CATALOGS_READ, CATALOGS_READ);
+    }
+    return null;
+  }
+
+  private static boolean isCatalogAppRead(List<String> segments) {
+    return (segments.size() == 3 || segments.size() == 4) && "apps".equals(segments.get(2));
   }
 
   /**

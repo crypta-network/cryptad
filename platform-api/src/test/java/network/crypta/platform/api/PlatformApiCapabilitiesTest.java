@@ -164,6 +164,18 @@ class PlatformApiCapabilitiesTest {
         route("DELETE", List.of("apps", "alpha"), "apps", "apps.uninstall", "apps.manage"),
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
         route(
+            "GET",
+            List.of("app-catalogs", "default", "apps"),
+            "app-catalogs",
+            "catalogs.read",
+            "catalogs.read"),
+        route(
+            "GET",
+            List.of("app-catalogs", "default", "apps", "alpha"),
+            "app-catalogs",
+            "catalogs.read",
+            "catalogs.read"),
+        route(
             "POST",
             List.of("app-catalogs", "add"),
             "app-catalogs",
@@ -191,6 +203,10 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "start")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "logs")),
+        new UnmappedRouteCase("GET", List.of("app-catalogs", "default")),
+        new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "refresh")),
+        new UnmappedRouteCase(
+            "GET", List.of("app-catalogs", "default", "apps", "alpha", "install")),
         new UnmappedRouteCase(
             "DELETE", List.of("app-catalogs", "default", "apps", "alpha", "install")));
   }
