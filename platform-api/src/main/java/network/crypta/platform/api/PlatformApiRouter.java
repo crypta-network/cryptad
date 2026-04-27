@@ -77,6 +77,9 @@ public final class PlatformApiRouter {
   /** Handler for the {@code /apps/...} endpoint family, when AppHost support is available. */
   private final AppsApiHandler appsApiHandler;
 
+  /** Bounded process-local audit log for app-originated authorization decisions. */
+  private final AppAuditLog appAuditLog;
+
   /**
    * Handler for the {@code /app-catalogs/...} endpoint family, when catalog support is available.
    */
@@ -132,7 +135,17 @@ public final class PlatformApiRouter {
       AppHost appHost,
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage) {
+    this(runtimePorts, appHost, appCatalogManager, legacyAdminUsage, new AppAuditLog());
+  }
+
+  PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage,
+      AppAuditLog appAuditLog) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
+    this.appAuditLog = Objects.requireNonNull(appAuditLog, "appAuditLog");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
@@ -152,7 +165,7 @@ public final class PlatformApiRouter {
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
-    appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost);
+    appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
@@ -170,13 +183,52 @@ public final class PlatformApiRouter {
    * @return JSON response for the routed endpoint
    */
   public PlatformApiResponse route(PlatformApiRequest request) {
+    PlatformApiRequest checkedRequest = Objects.requireNonNull(request, "request");
+    PlatformApiAuthorizationDecision authorization =
+        PlatformApiCapabilities.authorize(checkedRequest);
+    if (!authorization.allowed()) {
+      PlatformApiResponse response =
+          PlatformApiResponse.error(
+              403, "forbidden", "App principal lacks the required Platform API capability.");
+      appAuditLog.appendDecision(
+          checkedRequest,
+          authorization,
+          AppAuditDecision.DENIED,
+          response.statusCode(),
+          authorization.reasonCode());
+      return response;
+    }
+
     try {
-      return routeInternal(Objects.requireNonNull(request, "request"));
+      PlatformApiResponse response = routeInternal(checkedRequest);
+      appAuditLog.appendDecision(
+          checkedRequest,
+          authorization,
+          AppAuditDecision.ALLOWED,
+          response.statusCode(),
+          "route_completed");
+      return response;
     } catch (PlatformApiException e) {
-      return PlatformApiResponse.error(e.statusCode(), e.errorCode(), e.getMessage());
+      PlatformApiResponse response =
+          PlatformApiResponse.error(e.statusCode(), e.errorCode(), e.getMessage());
+      appAuditLog.appendDecision(
+          checkedRequest,
+          authorization,
+          AppAuditDecision.ALLOWED,
+          response.statusCode(),
+          e.errorCode());
+      return response;
     } catch (RuntimeException e) {
       LOG.log(System.Logger.Level.ERROR, "Unexpected Platform API failure", e);
-      return PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
+      PlatformApiResponse response =
+          PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
+      appAuditLog.appendDecision(
+          checkedRequest,
+          authorization,
+          AppAuditDecision.ALLOWED,
+          response.statusCode(),
+          "internal_error");
+      return response;
     }
   }
 
@@ -534,6 +586,18 @@ public final class PlatformApiRouter {
         }
         yield PlatformApiResponse.ok(
             envelope("logs", appsApiHandler.logs(appId, request.queryParameters())));
+      }
+      case "permissions" -> {
+        if (!"GET".equals(method)) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("permissions", appsApiHandler.permissions(appId)));
+      }
+      case "audit" -> {
+        if (!"GET".equals(method)) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("audit", appsApiHandler.audit(appId)));
       }
       case "start" -> {
         if (!"POST".equals(method)) {

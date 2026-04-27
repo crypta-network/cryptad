@@ -11,16 +11,37 @@ import java.util.Objects;
  *
  * <p>The record intentionally captures only the small amount of information that the current API
  * needs: the HTTP-style method, the relative path split into path segments beneath {@link
- * PlatformApiPaths#API_V1_PREFIX}, and the decoded query parameters with all supplied values.
- * Bridges remain responsible for any transport-specific parsing, authentication, or header handling
- * before constructing this request.
+ * PlatformApiPaths#API_V1_PREFIX}, the decoded query parameters with all supplied values, and the
+ * token-free principal established by the transport bridge. Bridges remain responsible for any
+ * transport-specific parsing, authentication, credential handling, or header parsing before
+ * constructing this request.
  *
  * @param method request method name such as {@code GET}
  * @param pathSegments relative path segments beneath the API v1 mount point
  * @param queryParameters decoded query parameters in encounter order
+ * @param principal token-free request principal
  */
 public record PlatformApiRequest(
-    String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
+    String method,
+    List<String> pathSegments,
+    Map<String, List<String>> queryParameters,
+    PlatformApiPrincipal principal) {
+  /**
+   * Creates a host/operator request descriptor.
+   *
+   * <p>This overload preserves existing tests and call sites that predate app-principal
+   * authorization. Requests built this way keep the legacy local host/operator authorization
+   * behavior.
+   *
+   * @param method request method name such as {@code GET}
+   * @param pathSegments relative path segments beneath the API v1 mount point
+   * @param queryParameters decoded query parameters in encounter order
+   */
+  public PlatformApiRequest(
+      String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
+    this(method, pathSegments, queryParameters, PlatformApiPrincipal.hostOperator());
+  }
+
   /**
    * Creates an immutable platform API request descriptor.
    *
@@ -39,6 +60,7 @@ public record PlatformApiRequest(
                 .map(segment -> Objects.requireNonNull(segment, "pathSegments value"))
                 .toList());
     queryParameters = immutableQueryParameters(queryParameters);
+    Objects.requireNonNull(principal, "principal");
   }
 
   /**

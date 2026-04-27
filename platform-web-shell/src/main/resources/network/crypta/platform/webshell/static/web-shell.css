@@ -590,6 +590,46 @@ a {
   overflow-wrap: anywhere;
 }
 
+.permission-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--shell-text);
+}
+
+.permission-list li {
+  overflow-wrap: anywhere;
+}
+
+.app-audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.app-audit-event {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(83, 214, 160, 0.72);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.app-audit-event.is-denied {
+  border-left-color: rgba(255, 104, 104, 0.82);
+}
+
+.app-audit-event-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.app-audit-action {
+  color: var(--shell-text);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .diagnostics-lines,
 .diagnostics-export {
   margin: 0;

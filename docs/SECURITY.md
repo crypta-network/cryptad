@@ -77,10 +77,23 @@ data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-origina
 authentication. It does not currently provide containers, WASM isolation, seccomp, chroot, jails,
 Windows Job Object restrictions, network isolation, or browser-scoped app sessions.
 
+App-originated Platform API calls authenticate with the launch token in `X-Crypta-App-Token`.
+`Authorization: Bearer` is accepted only when the Bearer value matches a live app token; unrelated
+Bearer credentials continue through the host/operator path so reverse proxies and shared clients do
+not accidentally convert local management requests into failed app-token attempts. Valid app
+principals are denied by default unless the route is covered by manifest-declared capabilities such
+as `queue.read`, `queue.write`, or `content.insert`. Invalid or stale `X-Crypta-App-Token` values
+fail authentication, and missing capabilities fail authorization without echoing the token.
+
 Runtime status and process-log Platform API responses must remain token-free and path-free. Log
 tail responses redact the current launch token and obvious `CRYPTAD_APP_TOKEN=...` text before
 returning app output to the Web Shell. This is defense in depth for operator visibility; it is not a
 general secret scanner for arbitrary app output.
+
+App-originated allowed and denied Platform API decisions are recorded in a bounded process-local
+audit log. Audit events keep route family, action, required capabilities, decision, status, and a
+short reason code. They must not include raw launch tokens, query strings, request bodies, form
+passwords, or filesystem paths.
 
 First-party static app UIs can fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` to discover
 local route roots and the existing local-admin form password used for mutating Platform API calls.
@@ -93,5 +106,7 @@ Treat a bypass that serves host files, follows symlink escapes, executes JavaScr
 UI has JavaScript disabled, exposes AppHost launch tokens to browser code, or allows bundled UI to
 exfiltrate operator-entered data off-node as security-relevant.
 
-For the detailed runtime boundary, exposed environment variables, restart policy semantics, and
-remaining limitations, see [apphost-runtime-hardening.md](apphost-runtime-hardening.md).
+For the detailed runtime boundary, exposed environment variables, restart policy semantics,
+permission matrix, audit model, and remaining limitations, see
+[apphost-runtime-hardening.md](apphost-runtime-hardening.md) and
+[app-permissions-and-audit.md](app-permissions-and-audit.md).

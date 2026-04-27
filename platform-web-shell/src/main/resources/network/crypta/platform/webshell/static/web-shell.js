@@ -895,6 +895,12 @@
       : null;
   }
 
+  function appAuditPath(appId) {
+    return typeof appId === "string" && appId.length > 0
+      ? `apps/${encodeURIComponent(appId)}/audit`
+      : null;
+  }
+
   function catalogMutationPath(catalogId, appId, action) {
     if (typeof catalogId !== "string" || catalogId.length === 0) {
       return null;
@@ -991,6 +997,7 @@
     card.className = "app-card";
     const runtime = app && app.runtime && typeof app.runtime === "object" ? app.runtime : null;
     const logs = app && app.logs && typeof app.logs === "object" ? app.logs : null;
+    const audit = app && app.audit && typeof app.audit === "object" ? app.audit : null;
     const runtimeError = typeof app.runtimeError === "string" ? app.runtimeError : "";
     const runtimeState =
       runtime && typeof runtime.state === "string" && runtime.state ? runtime.state : app.running ? "RUNNING" : "STOPPED";
@@ -1015,6 +1022,14 @@
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
+    const deniedCount = audit && typeof audit.recentDeniedCount === "number"
+      ? audit.recentDeniedCount
+      : typeof app.recentDeniedCount === "number"
+        ? app.recentDeniedCount
+        : 0;
+    if (deniedCount > 0) {
+      pills.append(createPill(`${deniedCount} denied`, "is-error"));
+    }
     header.append(heading, pills);
     card.append(header);
 
@@ -1033,10 +1048,13 @@
       ["Last exit code", runtime && runtime.lastExitCode != null ? scalar(runtime.lastExitCode) : "Unavailable"],
       ["Last exit at", runtime ? formatIsoTimestamp(runtime.lastExitAt) : "Unavailable"],
       ["Restart attempts", runtime ? scalar(runtime.currentRestartAttempt) : "Unavailable"],
+      ["Denied app calls", scalar(deniedCount)],
       ["Process log", logs && logs.available ? `${scalar(logs.sizeBytes)} bytes` : "Unavailable"],
       ["Runtime detail", runtimeError || (runtime ? "Available" : "Unavailable")],
     ];
     card.append(definitionList(entries));
+    card.append(appPermissionsDetailsNode(app));
+    card.append(appAuditDetailsNode(audit, app.auditError));
     const logDetails = appLogDetailsNode(logs, app.logsError);
     if (logDetails) {
       card.append(logDetails);
@@ -1065,6 +1083,71 @@
     }
 
     return card;
+  }
+
+  function appPermissionsDetailsNode(app) {
+    const details = document.createElement("details");
+    details.className = "json-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Declared permissions";
+    details.append(summary);
+    const permissions = Array.isArray(app.permissions) ? app.permissions : [];
+    if (!permissions.length) {
+      details.append(text("p", "empty-state", "No manifest permissions declared."));
+      return details;
+    }
+    const list = document.createElement("ul");
+    list.className = "permission-list";
+    permissions.forEach((permission) => {
+      list.append(text("li", "", scalar(permission)));
+    });
+    details.append(list);
+    return details;
+  }
+
+  function appAuditDetailsNode(audit, auditError) {
+    const details = document.createElement("details");
+    details.className = "json-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Recent app audit";
+    details.append(summary);
+    if (auditError) {
+      details.append(text("p", "error-state", auditError));
+      return details;
+    }
+    const events = audit && Array.isArray(audit.events) ? audit.events : [];
+    if (!events.length) {
+      details.append(text("p", "empty-state", "No app-originated Platform API calls recorded."));
+      return details;
+    }
+    const list = document.createElement("div");
+    list.className = "app-audit-list";
+    events.slice(0, 8).forEach((event) => {
+      const safeEvent = event && typeof event === "object" ? event : {};
+      const item = document.createElement("div");
+      const denied = safeEvent.decision === "DENIED";
+      item.className = "app-audit-event" + (denied ? " is-denied" : "");
+      const header = document.createElement("div");
+      header.className = "app-audit-event-header";
+      header.append(
+        createPill(scalar(safeEvent.decision), denied ? "is-error" : "is-success"),
+        text("span", "app-audit-action", scalar(safeEvent.action)),
+      );
+      item.append(header);
+      item.append(
+        definitionList([
+          ["Time", formatIsoTimestamp(safeEvent.timestamp)],
+          ["Method", scalar(safeEvent.method)],
+          ["Endpoint", scalar(safeEvent.endpointFamily)],
+          ["Required", formatPermissions(safeEvent.requiredCapabilities)],
+          ["Status", scalar(safeEvent.statusCode)],
+          ["Reason", scalar(safeEvent.reasonCode)],
+        ]),
+      );
+      list.append(item);
+    });
+    details.append(list);
+    return details;
   }
 
   function appLogDetailsNode(logs, logsError) {
@@ -2233,10 +2316,13 @@
     }
     const runtimePath = appRuntimePath(app.appId);
     const logsPath = appLogsPath(app.appId, 65536);
+    const auditPath = appAuditPath(app.appId);
     let runtime = null;
     let runtimeError = "";
     let logs = null;
     let logsError = "";
+    let audit = app.audit && typeof app.audit === "object" ? app.audit : null;
+    let auditError = "";
     try {
       const runtimeSnapshot = runtimePath ? await loadOptionalJson(apiUrl(runtimePath)) : null;
       runtime =
@@ -2257,7 +2343,17 @@
       logsError =
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
-    return { ...app, runtime, runtimeError, logs, logsError };
+    try {
+      const auditSnapshot = auditPath ? await loadOptionalJson(apiUrl(auditPath)) : null;
+      audit =
+        auditSnapshot && auditSnapshot.audit && typeof auditSnapshot.audit === "object"
+          ? auditSnapshot.audit
+          : auditSnapshot || audit;
+    } catch (error) {
+      auditError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+    return { ...app, runtime, runtimeError, logs, logsError, audit, auditError };
   }
 
   async function loadCatalogApps(catalog) {

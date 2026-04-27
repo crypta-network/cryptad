@@ -86,10 +86,11 @@ App-owned UI uses stable URLs across reinstall and update operations. Responses 
 with non-public no-cache headers instead of the legacy admin adapter's long-lived static cache
 policy.
 
-The route remains same-origin with the local admin UI and Platform API. Permission enforcement,
-stronger isolation, and audit logging belong to later platform work. Until stronger browser
-isolation exists, install static UI bundles only from sources trusted to run JavaScript in the local
-admin origin.
+The route remains same-origin with the local admin UI and Platform API. Static browser UI does not
+receive `CRYPTAD_APP_TOKEN` and cannot authenticate as the app process in this model. App
+permission enforcement and audit apply to process-originated Platform API calls that present the
+launch token. Stronger browser isolation remains later platform work. Until that exists, install
+static UI bundles only from sources trusted to run JavaScript in the local admin origin.
 
 ## First-party app bootstrap
 
@@ -163,6 +164,8 @@ Runtime hardening APIs are separate from the app summary:
 ```text
 GET /api/v1/apps/{appId}/runtime
 GET /api/v1/apps/{appId}/logs?maxBytes=65536
+GET /api/v1/apps/{appId}/permissions
+GET /api/v1/apps/{appId}/audit
 ```
 
 The runtime endpoint reports process state, PID, start time, last exit metadata, restart attempt
@@ -172,6 +175,11 @@ installed/data/cache/run filesystem paths.
 
 The Web Shell uses those endpoints for operator visibility. Static app UIs must not treat the
 runtime endpoint as proof of app-level health; it is process status only.
+
+The permissions and audit endpoints expose manifest-declared permissions, recent app-originated
+Platform API decisions, and retained denied-call counts. Audit entries are bounded and
+process-local, and they omit tokens, query strings, request bodies, form passwords, and filesystem
+paths.
 
 ## Examples
 

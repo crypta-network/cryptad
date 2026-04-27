@@ -44,14 +44,23 @@ Current error handling uses HTTP-style status codes:
 | Status | Current use |
 | --- | --- |
 | `400 Bad Request` | Malformed paths, malformed percent-encoding, or invalid query/form values. |
+| `401 Unauthorized` | App-token authentication failed because a supplied launch token is invalid, blank, stale, or unavailable. |
 | `403 Forbidden` | The legacy bridge rejects a caller without full access. |
 | `404 Not Found` | Unknown routes or missing resources. |
 | `405 Method Not Allowed` | A known route was called with the wrong method; the response includes `Allow`. |
 | `409 Conflict` | Stateful conflicts, confirmation requirements, or temporarily unavailable control paths. |
 | `500 Internal Server Error` | Unexpected failures after routing. |
 
-Mutating routes still rely on the legacy admin bridge for full-access checks and the form-password
-guard. Current Web Shell mutations submit URL-encoded form data.
+Host/operator mutating routes still rely on the legacy admin bridge for full-access checks and the
+form-password guard. Current Web Shell mutations submit URL-encoded form data.
+
+App processes can authenticate with the per-launch `CRYPTAD_APP_TOKEN` injected by AppHost. The
+legacy HTTP bridge accepts the token in `X-Crypta-App-Token`; it also accepts Bearer credentials in
+the `Authorization` header only when the Bearer value verifies as a live app token. Query parameters
+are ignored for token authentication, and unrelated Bearer credentials remain host/operator
+requests. Authenticated app requests are checked against manifest-declared capabilities before
+routing and are denied by default. See [app-permissions-and-audit.md](app-permissions-and-audit.md)
+for the matrix and audit model.
 
 ## Endpoint families
 
@@ -70,7 +79,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | Wizard/welcome | `GET /api/v1/wizard/first-time` exposes the detached first-time setup snapshot. `POST /api/v1/wizard/first-time/apply` submits the shell-native onboarding/reset model. There is no separate `/welcome` Platform API family in Phase 3; welcome-page fallback behavior remains on the legacy/admin side. |
 | Alerts | `GET /api/v1/alerts` lists current alerts. `POST /api/v1/alerts/{alertId}/dismiss` dismisses one alert by detached identifier. |
 | Diagnostics | `GET /api/v1/diagnostics` exposes the ordered diagnostic snapshot and plain-text export. When served through the legacy HTTP bridge, it also includes process-local `legacyAdmin.surfaces[]` counters for legacy admin retirement planning. |
-| Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router. The family also covers local staged-bundle install, app lookup, start, stop, update, uninstall, token-free runtime status at `GET /api/v1/apps/{appId}/runtime`, and bounded token-redacted process logs at `GET /api/v1/apps/{appId}/logs`. |
+| Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router. The family also covers local staged-bundle install, app lookup, start, stop, update, uninstall, declared permissions at `GET /api/v1/apps/{appId}/permissions`, recent app audit at `GET /api/v1/apps/{appId}/audit`, token-free runtime status at `GET /api/v1/apps/{appId}/runtime`, and bounded token-redacted process logs at `GET /api/v1/apps/{appId}/logs`. |
 | App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. The family also covers source add/remove, refresh, catalog app listing/detail, and install/update from a verified catalog artifact. |
 
 ## Web Shell relationship
