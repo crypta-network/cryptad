@@ -2171,6 +2171,46 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppPrincipalHitsUnsupportedAlertsReadShape_expectForbiddenAndDeniedAudit() {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+
+    PlatformApiResponse response =
+        auditedRouter.route(
+            appRequest(List.of("alerts", "42", "dismiss"), Map.of(), List.of("alerts.read")));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(alertMutationPort);
+    List<AppAuditEvent> events = auditLog.recentForApp(APP_ID, 10);
+    assertEquals(1, events.size());
+    assertEquals(AppAuditDecision.DENIED, events.getFirst().decision());
+    assertEquals("alerts.unmapped", events.getFirst().action());
+    assertEquals("unmapped_route", events.getFirst().reasonCode());
+  }
+
+  @Test
+  void route_whenAppPrincipalHitsUnsupportedConfigReadShape_expectForbiddenAndDeniedAudit() {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+
+    PlatformApiResponse response =
+        auditedRouter.route(
+            appRequest(List.of("config", "overrides"), Map.of(), List.of("config.read")));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(configPort);
+    List<AppAuditEvent> events = auditLog.recentForApp(APP_ID, 10);
+    assertEquals(1, events.size());
+    assertEquals(AppAuditDecision.DENIED, events.getFirst().decision());
+    assertEquals("config.unmapped", events.getFirst().action());
+    assertEquals("unmapped_route", events.getFirst().reasonCode());
+  }
+
+  @Test
   void route_whenAppPrincipalHitsUnsupportedAppsReadShape_expectForbiddenAndDeniedAudit() {
     AppAuditLog auditLog = new AppAuditLog();
     PlatformApiRouter auditedRouter =

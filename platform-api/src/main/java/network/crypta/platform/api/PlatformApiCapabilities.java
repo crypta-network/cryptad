@@ -146,9 +146,11 @@ final class PlatformApiCapabilities {
     String family = segments.getFirst();
     String method = request.method();
     return switch (family) {
-      case "node" -> getOnly(method, family, NODE_READ, NODE_READ);
-      case "connectivity" -> getOnly(method, family, CONNECTIVITY_READ, CONNECTIVITY_READ);
-      case "diagnostics" -> getOnly(method, family, DIAGNOSTICS_READ, DIAGNOSTICS_READ);
+      case "node" -> nodeAction(method, segments);
+      case "connectivity" ->
+          exactGet(method, family, CONNECTIVITY_READ, CONNECTIVITY_READ, segments.size() == 1);
+      case "diagnostics" ->
+          exactGet(method, family, DIAGNOSTICS_READ, DIAGNOSTICS_READ, segments.size() == 1);
       case FAMILY_ALERTS -> alertsAction(method, segments);
       case FAMILY_CONFIG -> configAction(method, segments);
       case FAMILY_SECURITY_LEVELS -> securityAction(method, segments);
@@ -163,6 +165,26 @@ final class PlatformApiCapabilities {
   }
 
   /**
+   * Maps the node identity and reference reads.
+   *
+   * <p>The router exposes only named node read resources, not a generic node subtree. Unsupported
+   * child paths therefore stay unmapped for app principals.
+   *
+   * @param method normalized HTTP-style method name
+   * @param segments decoded route segments beneath the API v1 prefix
+   * @return matched node read action, or {@code null} for unsupported node routes
+   */
+  private static PlatformApiAction nodeAction(String method, List<String> segments) {
+    return exactGet(
+        method,
+        "node",
+        NODE_READ,
+        NODE_READ,
+        segments.size() == 2
+            && ("greeting".equals(segments.get(1)) || "reference".equals(segments.get(1))));
+  }
+
+  /**
    * Maps alert feed and dismissal routes.
    *
    * <p>All alert reads require {@link #ALERTS_READ}. The only current alert mutation exposed
@@ -173,7 +195,7 @@ final class PlatformApiCapabilities {
    * @return matched alerts action, or {@code null} for unsupported alert routes
    */
   private static PlatformApiAction alertsAction(String method, List<String> segments) {
-    if ("GET".equals(method)) {
+    if ("GET".equals(method) && segments.size() == 1) {
       return action(FAMILY_ALERTS, ALERTS_READ, ALERTS_READ);
     }
     if ("POST".equals(method) && segments.size() == 3 && "dismiss".equals(segments.get(2))) {
@@ -185,8 +207,8 @@ final class PlatformApiCapabilities {
   /**
    * Maps configuration read and write routes.
    *
-   * <p>Configuration reads use the broad {@link #CONFIG_READ} capability. Writes are limited to the
-   * explicit override and persist endpoints and require {@link #CONFIG_WRITE}; other POST shapes
+   * <p>The root configuration export requires {@link #CONFIG_READ}. Writes are limited to the
+   * explicit override and persist endpoints and require {@link #CONFIG_WRITE}; unsupported shapes
    * remain unmapped for app principals.
    *
    * @param method normalized HTTP-style method name
@@ -194,7 +216,7 @@ final class PlatformApiCapabilities {
    * @return matched configuration action, or {@code null} for unsupported config routes
    */
   private static PlatformApiAction configAction(String method, List<String> segments) {
-    if ("GET".equals(method)) {
+    if ("GET".equals(method) && segments.size() == 1) {
       return action(FAMILY_CONFIG, CONFIG_READ, CONFIG_READ);
     }
     if ("POST".equals(method)
@@ -209,8 +231,8 @@ final class PlatformApiCapabilities {
    * Maps security-level read and mutation routes.
    *
    * <p>Security-level reads require {@link #SECURITY_READ}. Mutations are restricted to the network
-   * and physical threat-level endpoints and require {@link #SECURITY_WRITE}. Keeping the allowed
-   * mutation names explicit avoids granting future security routes by accident.
+   * and physical threat-level endpoints and require {@link #SECURITY_WRITE}. Keeping every allowed
+   * route name explicit avoids granting future security routes by accident.
    *
    * @param method normalized HTTP-style method name
    * @param segments decoded route segments beneath the API v1 prefix
@@ -218,12 +240,22 @@ final class PlatformApiCapabilities {
    */
   private static PlatformApiAction securityAction(String method, List<String> segments) {
     if ("GET".equals(method)) {
-      return action(FAMILY_SECURITY_LEVELS, SECURITY_READ, SECURITY_READ);
+      return securityReadAction(segments);
     }
     if ("POST".equals(method)
         && segments.size() == 2
         && ("network".equals(segments.get(1)) || "physical".equals(segments.get(1)))) {
       return action(FAMILY_SECURITY_LEVELS, "security." + segments.get(1), SECURITY_WRITE);
+    }
+    return null;
+  }
+
+  private static PlatformApiAction securityReadAction(List<String> segments) {
+    if (segments.size() == 1) {
+      return action(FAMILY_SECURITY_LEVELS, SECURITY_READ, SECURITY_READ);
+    }
+    if (segments.size() == 2 && "network-warning".equals(segments.get(1))) {
+      return action(FAMILY_SECURITY_LEVELS, "security.network-warning", SECURITY_READ);
     }
     return null;
   }
@@ -240,7 +272,7 @@ final class PlatformApiCapabilities {
    * @return matched updater action, or {@code null} for unsupported updater routes
    */
   private static PlatformApiAction updatesAction(String method, List<String> segments) {
-    if ("GET".equals(method)) {
+    if ("GET".equals(method) && segments.size() == 2 && "core".equals(segments.get(1))) {
       return action(FAMILY_UPDATES, UPDATES_READ, UPDATES_READ);
     }
     if ("POST".equals(method)
@@ -264,7 +296,7 @@ final class PlatformApiCapabilities {
    * @return matched wizard action, or {@code null} for unsupported wizard routes
    */
   private static PlatformApiAction wizardAction(String method, List<String> segments) {
-    if ("GET".equals(method)) {
+    if ("GET".equals(method) && segments.size() == 2 && "first-time".equals(segments.get(1))) {
       return action(FAMILY_WIZARD, WIZARD_READ, WIZARD_READ);
     }
     if ("POST".equals(method)
@@ -346,7 +378,7 @@ final class PlatformApiCapabilities {
    * @return matched peer action, or {@code null} for unsupported peer routes
    */
   private static PlatformApiAction peersAction(String method, List<String> segments) {
-    if ("GET".equals(method)) {
+    if ("GET".equals(method) && (segments.size() == 1 || segments.size() == 2)) {
       return action(FAMILY_PEERS, PEERS_READ, PEERS_READ);
     }
     if ("POST".equals(method) && segments.size() == 2 && "add".equals(segments.get(1))) {
@@ -479,21 +511,22 @@ final class PlatformApiCapabilities {
   }
 
   /**
-   * Builds an action only when the request method is {@code GET}.
+   * Builds an action only when the request method is {@code GET} and the route shape is supported.
    *
-   * <p>Read-only endpoint families use this helper when every path below the family has the same
-   * capability. Unsupported methods return {@code null} so app principals are denied before
-   * dispatch rather than reaching a handler-level method check.
+   * <p>Read-only endpoint families use this helper after checking the exact route shape.
+   * Unsupported methods or shapes return {@code null} so app principals are denied before dispatch
+   * rather than reaching a handler-level method or not-found check.
    *
    * @param method normalized HTTP-style method name
    * @param endpointFamily top-level endpoint family used in audit output
    * @param label deterministic action label used in audit output
    * @param capability single required manifest capability
-   * @return read action for {@code GET}, or {@code null} for other methods
+   * @param routeMatches whether the request path is one supported read route
+   * @return read action for supported {@code GET} routes, or {@code null} otherwise
    */
-  private static PlatformApiAction getOnly(
-      String method, String endpointFamily, String label, String capability) {
-    return "GET".equals(method) ? action(endpointFamily, label, capability) : null;
+  private static PlatformApiAction exactGet(
+      String method, String endpointFamily, String label, String capability, boolean routeMatches) {
+    return "GET".equals(method) && routeMatches ? action(endpointFamily, label, capability) : null;
   }
 
   /**

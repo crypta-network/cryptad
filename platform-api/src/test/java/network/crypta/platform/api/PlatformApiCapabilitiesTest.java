@@ -86,6 +86,7 @@ class PlatformApiCapabilitiesTest {
   private static List<RouteCase> allowedRoutes() {
     return List.of(
         route("GET", List.of("node", "greeting"), "node", "node.read", "node.read"),
+        route("GET", List.of("node", "reference"), "node", "node.read", "node.read"),
         route(
             "GET",
             List.of("connectivity"),
@@ -121,6 +122,7 @@ class PlatformApiCapabilitiesTest {
             "queue.cleanup.uploads",
             "queue.write"),
         route("GET", List.of("peers"), "peers", "peers.read", "peers.read"),
+        route("GET", List.of("peers", "peer-123"), "peers", "peers.read", "peers.read"),
         route("POST", List.of("peers", "add"), "peers", "peers.add", "peers.write"),
         route(
             "POST",
@@ -132,6 +134,12 @@ class PlatformApiCapabilitiesTest {
         route("POST", List.of("config", "overrides"), "config", "config.overrides", "config.write"),
         route(
             "GET", List.of("security-levels"), "security-levels", "security.read", "security.read"),
+        route(
+            "GET",
+            List.of("security-levels", "network-warning"),
+            "security-levels",
+            "security.network-warning",
+            "security.read"),
         route(
             "POST",
             List.of("security-levels", "network"),
@@ -200,10 +208,20 @@ class PlatformApiCapabilitiesTest {
   private static List<UnmappedRouteCase> unmappedAppRoutes() {
     return List.of(
         new UnmappedRouteCase("POST", List.of("node", "greeting")),
+        new UnmappedRouteCase("GET", List.of("node", "unknown")),
+        new UnmappedRouteCase("GET", List.of("connectivity", "status")),
+        new UnmappedRouteCase("GET", List.of("diagnostics", "heap")),
         new UnmappedRouteCase("PUT", List.of("queue", "requests", "remove")),
         new UnmappedRouteCase("GET", List.of("queue", "downloads")),
         new UnmappedRouteCase("GET", List.of("queue", "requests", "remove")),
         new UnmappedRouteCase("POST", List.of("queue", "inserts", "unknown")),
+        new UnmappedRouteCase("GET", List.of("peers", "peer-123", "settings")),
+        new UnmappedRouteCase("GET", List.of("config", "overrides")),
+        new UnmappedRouteCase("GET", List.of("config", "persist")),
+        new UnmappedRouteCase("GET", List.of("security-levels", "network")),
+        new UnmappedRouteCase("GET", List.of("updates", "core", "download")),
+        new UnmappedRouteCase("GET", List.of("wizard", "first-time", "apply")),
+        new UnmappedRouteCase("GET", List.of("alerts", "42", "dismiss")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "start")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "logs")),
