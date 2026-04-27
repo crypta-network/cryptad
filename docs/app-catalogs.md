@@ -116,5 +116,6 @@ and security boundary.
 
 ## Future work
 
-This PR does not add permission enforcement, container or WASM sandboxing, public app-store
-governance, or background app update scheduling.
+Manifest permissions are enforced for app-process Platform API calls as described in
+[app-permissions-and-audit.md](app-permissions-and-audit.md). Container or WASM sandboxing, public
+app-store governance, and background app update scheduling remain future work.

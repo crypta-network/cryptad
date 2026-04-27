@@ -42,9 +42,17 @@ CRYPTAD_APP_UI_MODE
 CRYPTAD_APP_UI_ENTRY   # only when the manifest declares a UI entry
 ```
 
-`CRYPTAD_APP_TOKEN` is for app-originated Platform API authentication. It is injected only into the
-child process environment. It is not exposed to static browser UI, Web Shell bootstrap JSON, app
-API summaries, runtime status JSON, or process-log tail responses.
+`CRYPTAD_APP_TOKEN` is for process-originated Platform API authentication. It is injected only into
+the child process environment. App processes should present it with `X-Crypta-App-Token`; the bridge
+also accepts `Authorization: Bearer` when the Bearer value matches a live app token. Unrelated
+Bearer credentials stay on the host/operator path. The token is not exposed to static browser UI,
+Web Shell bootstrap JSON, app API summaries, runtime status JSON, process-log tail responses, or app
+audit entries.
+
+The token authenticates only the currently running app instance. A stopped app or a previous run's
+token does not authenticate. The verified app principal contains the app id and manifest
+permissions, never the token itself. See [app-permissions-and-audit.md](app-permissions-and-audit.md)
+for the capability matrix and audit surface.
 
 AppHost does not inject daemon datastore paths, trusted-key files, catalog roots, signing material,
 or the daemon's current working directory. The child process working directory is the installed app
@@ -87,6 +95,10 @@ start time, last exit code/time, restart attempt counters, and log availability 
 Process-log tailing is bounded. The default is small, and AppHost clamps oversized requests to its
 hard maximum. Missing logs return a stable unavailable snapshot. Log responses include text and
 metadata only; they do not include the runtime log path.
+
+App-originated Platform API decisions are recorded separately in a bounded process-local audit log.
+The Apps API exposes recent entries through `GET /api/v1/apps/{appId}/audit`; those entries omit
+tokens, query strings, request bodies, form passwords, and filesystem paths.
 
 Before returning process-log text, AppHost redacts:
 

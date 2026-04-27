@@ -45,6 +45,7 @@ import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
+import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -656,6 +657,30 @@ public final class LocalProcessAppHost implements AppHost {
       }
     }
     return List.copyOf(running);
+  }
+
+  /**
+   * Authenticates a launch token against refreshed live runtime state.
+   *
+   * @param token opaque launch token presented by an app process
+   * @return token-free principal when the token belongs to a currently running app
+   */
+  @Override
+  public synchronized Optional<AppTokenPrincipal> authenticateLaunchToken(String token) {
+    if (token == null || token.isBlank()) {
+      return Optional.empty();
+    }
+    List<String> appIds = new ArrayList<>(runningApps.keySet());
+    appIds.sort(String::compareTo);
+    for (String appId : appIds) {
+      RunningProcess runningProcess = liveRunningProcess(appId);
+      if (runningProcess != null && token.equals(runningProcess.snapshot().token())) {
+        RunningAppSnapshot snapshot = runningProcess.snapshot();
+        return Optional.of(
+            new AppTokenPrincipal(snapshot.appId(), snapshot.manifest().permissions()));
+      }
+    }
+    return Optional.empty();
   }
 
   /**

@@ -156,7 +156,8 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 - App-owned static UI routes have landed for installed static bundles; stronger isolation remains
   future work.
 - Broader first-party app catalog remains future work.
-- Better app permission enforcement and audit surfaces remain future work.
+- App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
+  [app-permissions-and-audit.md](app-permissions-and-audit.md).
 - Legacy admin and browse retirement plan.
 - Portable full-node Hyphanet baseline artifacts for macOS and Windows.
 - Lightweight performance and regression smoke coverage now lives under

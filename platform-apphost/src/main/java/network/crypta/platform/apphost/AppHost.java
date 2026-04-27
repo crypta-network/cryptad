@@ -156,6 +156,22 @@ public interface AppHost {
   List<RunningAppSnapshot> listRunning();
 
   /**
+   * Authenticates a bearer launch token against the host's current live app state.
+   *
+   * <p>Blank, unknown, stopped, and stale launch tokens must not authenticate. Successful
+   * authentication returns a token-free principal containing the running app id and a sorted,
+   * immutable copy of its manifest permissions. Implementations must never return or expose the raw
+   * token through the principal.
+   *
+   * @param token opaque launch token presented by an app process
+   * @return token-free principal when the token belongs to a currently running app, or {@link
+   *     Optional#empty()} otherwise
+   */
+  default Optional<AppTokenPrincipal> authenticateLaunchToken(String token) {
+    return Optional.empty();
+  }
+
+  /**
    * Returns token-free process runtime status for one installed app.
    *
    * <p>The status is process-observed only. It does not perform app-provided HTTP health checks or

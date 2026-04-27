@@ -8,13 +8,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiPaths;
+import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -29,8 +32,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This toadlet keeps all transport-neutral routing and JSON construction inside {@code
  * :platform-api}. Its responsibility is limited to enforcing the existing full-access expectation
- * for admin-facing routes, translating legacy HTTP request state into a {@link PlatformApiRequest},
- * and writing the resulting JSON back through the legacy HTTP shell.
+ * for host/operator routes, authenticating AppHost launch-token headers when present, translating
+ * legacy HTTP request state into a {@link PlatformApiRequest}, and writing the resulting JSON back
+ * through the legacy HTTP shell.
  */
 @SuppressWarnings("unused")
 public final class PlatformApiToadlet extends Toadlet {
@@ -50,6 +54,9 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static final String URL_ENCODED_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
+  private static final String APP_TOKEN_HEADER = "x-crypta-app-token";
+  private static final String AUTHORIZATION_HEADER = "authorization";
+  private static final String BEARER_PREFIX = "bearer";
   private static final String DELETE_METHOD = "DELETE";
   private static final String ALERTS_SEGMENT = "alerts";
   private static final String APP_CATALOGS_SEGMENT = "app-catalogs";
@@ -67,6 +74,9 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   private final PlatformApiRouter router;
 
+  /** Optional AppHost used to authenticate process-originated app launch tokens. */
+  private final AppHost appHost;
+
   /**
    * Creates a platform API toadlet backed by the supplied runtime ports.
    *
@@ -74,8 +84,8 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public PlatformApiToadlet(RuntimePorts runtimePorts) {
     this(
-        new PlatformApiRouter(
-            runtimePorts, null, null, LegacyAdminUsageRecorder.defaultRecorder()));
+        new PlatformApiRouter(runtimePorts, null, null, LegacyAdminUsageRecorder.defaultRecorder()),
+        null);
   }
 
   /**
@@ -87,7 +97,8 @@ public final class PlatformApiToadlet extends Toadlet {
   public PlatformApiToadlet(RuntimePorts runtimePorts, AppHost appHost) {
     this(
         new PlatformApiRouter(
-            runtimePorts, appHost, null, LegacyAdminUsageRecorder.defaultRecorder()));
+            runtimePorts, appHost, null, LegacyAdminUsageRecorder.defaultRecorder()),
+        appHost);
   }
 
   /**
@@ -101,7 +112,8 @@ public final class PlatformApiToadlet extends Toadlet {
       RuntimePorts runtimePorts, AppHost appHost, AppCatalogManager appCatalogManager) {
     this(
         new PlatformApiRouter(
-            runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()));
+            runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()),
+        appHost);
   }
 
   /**
@@ -114,8 +126,13 @@ public final class PlatformApiToadlet extends Toadlet {
    * @param router transport-neutral router that handles request validation and response generation
    */
   PlatformApiToadlet(PlatformApiRouter router) {
+    this(router, null);
+  }
+
+  PlatformApiToadlet(PlatformApiRouter router, AppHost appHost) {
     super();
     this.router = Objects.requireNonNull(router, "router");
+    this.appHost = appHost;
   }
 
   @Override
@@ -269,11 +286,13 @@ public final class PlatformApiToadlet extends Toadlet {
   /**
    * Routes a request through the Platform API and writes either a full or header-only reply.
    *
-   * <p>Legacy HTTP integration keeps full-access enforcement at the bridge boundary. Mutating
-   * requests then pass through the legacy form-password check before the bridge converts them into
-   * a transport-neutral {@link PlatformApiRequest} and delegates to the router. Unexpected runtime
-   * failures are converted into a structured {@code 500} response so callers keep the Platform API
-   * JSON contract even when the bridge logs the underlying error.
+   * <p>Legacy HTTP integration keeps host/operator full-access enforcement at the bridge boundary.
+   * Mutating host/operator requests then pass through the legacy form-password check before the
+   * bridge converts them into a transport-neutral {@link PlatformApiRequest}. App-token requests
+   * skip that host/operator form guard and carry a token-free app principal into the router, where
+   * manifest capability enforcement happens centrally. Unexpected runtime failures are converted
+   * into a structured {@code 500} response so callers keep the Platform API JSON contract even when
+   * the bridge logs the underlying error.
    *
    * @param method HTTP method name forwarded into the Platform API router
    * @param uri request target supplied by the legacy HTTP shell
@@ -288,17 +307,8 @@ public final class PlatformApiToadlet extends Toadlet {
       String method, URI uri, HTTPRequest request, ToadletContext ctx, boolean includeBody)
       throws ToadletContextClosedException, IOException {
     PlatformApiResponse response;
-    if (!ctx.isAllowedFullAccess()) {
-      response = PlatformApiResponse.error(403, "forbidden", "Full access is required.");
-      writeJsonReply(ctx, response, includeBody);
-      return;
-    }
-    if (!authorizeMutationRequest(method, uri, request, ctx)) {
-      return;
-    }
-
     try {
-      response = router.route(toPlatformApiRequest(method, uri, request));
+      response = resolveAndRoutePlatformApiRequest(method, uri, request, ctx);
     } catch (URLEncodedFormatException _) {
       response =
           PlatformApiResponse.error(
@@ -310,7 +320,46 @@ public final class PlatformApiToadlet extends Toadlet {
       response =
           PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
     }
+    if (response == null) {
+      return;
+    }
     writeJsonReply(ctx, response, includeBody);
+  }
+
+  /**
+   * Resolves the request principal, enforces bridge-local host guards, and routes the API request.
+   *
+   * <p>The caller wraps this method in the Platform API error guard so unexpected failures in token
+   * authentication, host access checks, form-password checks, request conversion, or router
+   * dispatch all produce the same structured JSON error contract.
+   *
+   * @param method HTTP method name forwarded into the Platform API router
+   * @param uri request target supplied by the legacy HTTP shell
+   * @param request decoded legacy HTTP request wrapper
+   * @param ctx current toadlet context used for access checks
+   * @return Platform API response to write, or {@code null} when a bridge-local guard already wrote
+   *     the response
+   * @throws ToadletContextClosedException if the client disconnects while a guard response is sent
+   * @throws IOException if the legacy HTTP shell fails while writing a guard response
+   * @throws URLEncodedFormatException if the request path contains malformed percent-encoding
+   */
+  private PlatformApiResponse resolveAndRoutePlatformApiRequest(
+      String method, URI uri, HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException, URLEncodedFormatException {
+    PrincipalResolution principalResolution = resolvePrincipal(request);
+    if (principalResolution.failureResponse() != null) {
+      return principalResolution.failureResponse();
+    }
+    PlatformApiPrincipal principal = principalResolution.principal();
+
+    if (!principal.isApp() && !ctx.isAllowedFullAccess()) {
+      return PlatformApiResponse.error(403, "forbidden", "Full access is required.");
+    }
+    if (!principal.isApp() && !authorizeMutationRequest(method, uri, request, ctx)) {
+      return null;
+    }
+
+    return router.route(toPlatformApiRequest(method, uri, request, principal));
   }
 
   /**
@@ -603,7 +652,8 @@ public final class PlatformApiToadlet extends Toadlet {
    * @return immutable Platform API request built from the method, relative path, and query values
    * @throws URLEncodedFormatException if the request path contains malformed percent-encoding
    */
-  private PlatformApiRequest toPlatformApiRequest(String method, URI uri, HTTPRequest request)
+  private PlatformApiRequest toPlatformApiRequest(
+      String method, URI uri, HTTPRequest request, PlatformApiPrincipal principal)
       throws URLEncodedFormatException {
     LinkedHashMap<String, List<String>> queryParameters =
         LinkedHashMap.newLinkedHashMap(request.getParameterNames().size());
@@ -614,8 +664,108 @@ public final class PlatformApiToadlet extends Toadlet {
       queryParameters.put(parameterName, List.of(request.getMultipleParam(parameterName)));
     }
     copyBodyParametersIfPresent(request, queryParameters);
-    return new PlatformApiRequest(method, relativeApiPath(requestPath(uri)), queryParameters);
+    return new PlatformApiRequest(
+        method, relativeApiPath(requestPath(uri)), queryParameters, principal);
   }
+
+  private PrincipalResolution resolvePrincipal(HTTPRequest request) {
+    String directToken = directAppTokenFromHeader(request);
+    if (directToken != null) {
+      return authenticateExplicitAppToken(directToken);
+    }
+
+    String bearerToken = bearerTokenFromAuthorization(request);
+    if (bearerToken == null) {
+      return hostOperatorPrincipal();
+    }
+    return authenticateBearerTokenOrHostOperator(bearerToken);
+  }
+
+  private static PrincipalResolution unauthenticatedAppToken(String message) {
+    return new PrincipalResolution(
+        null, PlatformApiResponse.error(401, "invalid_app_token", message));
+  }
+
+  private static PrincipalResolution hostOperatorPrincipal() {
+    return new PrincipalResolution(PlatformApiPrincipal.hostOperator(), null);
+  }
+
+  /**
+   * Authenticates a token from the app-specific header.
+   *
+   * <p>{@code X-Crypta-App-Token} is an explicit app-token assertion, so blank, stale, unknown, or
+   * unavailable token validation returns a structured authentication failure.
+   *
+   * @param token token value after header normalization
+   * @return app principal for a live token, or an authentication failure response
+   */
+  private PrincipalResolution authenticateExplicitAppToken(String token) {
+    if (appHost == null) {
+      return unauthenticatedAppToken("App token authentication is unavailable.");
+    }
+    Optional<AppTokenPrincipal> appPrincipal = appHost.authenticateLaunchToken(token);
+    if (appPrincipal.isEmpty()) {
+      return unauthenticatedAppToken("Invalid app token.");
+    }
+    return appTokenPrincipal(appPrincipal.get());
+  }
+
+  /**
+   * Authenticates a Bearer token when it matches a live app token.
+   *
+   * <p>{@code Authorization: Bearer} is intentionally opportunistic because the same header is also
+   * used by reverse proxies and shared HTTP client configurations for unrelated host/operator
+   * credentials. A matching live AppHost token becomes an app principal. A non-matching Bearer
+   * value keeps the existing host/operator path instead of converting the request into a failed
+   * app-token attempt. Lookup failures are allowed to propagate to the guarded Platform API error
+   * path so a token-bearing request cannot silently widen into a host/operator principal when
+   * AppHost state is unavailable.
+   *
+   * @param token bearer token value after header normalization
+   * @return app principal for a live token, otherwise the host/operator principal
+   */
+  private PrincipalResolution authenticateBearerTokenOrHostOperator(String token) {
+    if (appHost == null) {
+      return hostOperatorPrincipal();
+    }
+    Optional<AppTokenPrincipal> appPrincipal = appHost.authenticateLaunchToken(token);
+    if (appPrincipal.isEmpty()) {
+      return hostOperatorPrincipal();
+    }
+    return appTokenPrincipal(appPrincipal.get());
+  }
+
+  private static PrincipalResolution appTokenPrincipal(AppTokenPrincipal principal) {
+    return new PrincipalResolution(
+        PlatformApiPrincipal.appToken(principal.appId(), principal.permissions()), null);
+  }
+
+  private static String directAppTokenFromHeader(HTTPRequest request) {
+    String directToken = request.getHeader(APP_TOKEN_HEADER);
+    return directToken == null ? null : directToken.trim();
+  }
+
+  private static String bearerTokenFromAuthorization(HTTPRequest request) {
+    String authorization = request.getHeader(AUTHORIZATION_HEADER);
+    if (authorization == null) {
+      return null;
+    }
+    String trimmed = authorization.trim();
+    if (trimmed.length() < BEARER_PREFIX.length()
+        || !trimmed.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
+      return null;
+    }
+    if (trimmed.length() == BEARER_PREFIX.length()) {
+      return "";
+    }
+    if (!Character.isWhitespace(trimmed.charAt(BEARER_PREFIX.length()))) {
+      return null;
+    }
+    return trimmed.substring(BEARER_PREFIX.length()).trim();
+  }
+
+  private record PrincipalResolution(
+      PlatformApiPrincipal principal, PlatformApiResponse failureResponse) {}
 
   /**
    * Copies body-backed form values into the query-like parameter map when present.

@@ -5,10 +5,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
@@ -23,8 +26,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -34,6 +39,7 @@ import static org.mockito.Mockito.when;
 class PlatformApiToadletTest {
 
   @Mock private PlatformApiRouter router;
+  @Mock private AppHost appHost;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
   @Mock private Bucket requestBody;
@@ -43,6 +49,207 @@ class PlatformApiToadletTest {
   @BeforeEach
   void setUp() {
     toadlet = new PlatformApiToadlet(router);
+    lenient().when(request.getHeader("x-crypta-app-token")).thenReturn(null);
+    lenient().when(request.getHeader("authorization")).thenReturn(null);
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenHeaderAuthenticates_routesAppPrincipalRequest()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("x-crypta-app-token")).thenReturn("secret-token");
+    when(appHost.authenticateLaunchToken("secret-token"))
+        .thenReturn(Optional.of(new AppTokenPrincipal("alpha", List.of("queue.read"))));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals("alpha", captor.getValue().principal().appId());
+    assertEquals(List.of("queue.read"), captor.getValue().principal().permissions());
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenBearerTokenAuthenticates_routesAppPrincipalRequest() throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("authorization")).thenReturn("Bearer secret-token");
+    when(appHost.authenticateLaunchToken("secret-token"))
+        .thenReturn(Optional.of(new AppTokenPrincipal("alpha", List.of("node.read"))));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals("alpha", captor.getValue().principal().appId());
+    assertEquals(List.of("node.read"), captor.getValue().principal().permissions());
+  }
+
+  @Test
+  void handleMethodGET_whenBearerTokenDoesNotAuthenticate_routesHostOperatorRequest()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("authorization")).thenReturn("Bearer proxy-token");
+    when(appHost.authenticateLaunchToken("proxy-token")).thenReturn(Optional.empty());
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals("HOST_OPERATOR", captor.getValue().principal().type().name());
+    verify(ctx).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenBearerTokenLookupFails_expectJson500WithoutHostFallback()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("authorization")).thenReturn("Bearer proxy-token");
+    when(appHost.authenticateLaunchToken("proxy-token"))
+        .thenThrow(new IllegalStateException("apphost state unavailable"));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(500, replyHeaders.statusCode());
+    assertEquals("Internal Server Error", replyHeaders.reasonPhrase());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"internal_error\",\"message\":\"Unexpected platform API"
+            + " failure.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("proxy-token"));
+  }
+
+  @Test
+  void handleMethodGET_whenTokenOnlyAppearsInQuery_routesHostRequestWithoutTokenAuth()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of("token"));
+    when(request.getMultipleParam("token")).thenReturn(new String[] {"secret-token"});
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/api/v1/node/greeting?token=secret-token"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals("HOST_OPERATOR", captor.getValue().principal().type().name());
+    assertEquals(Map.of("token", List.of("secret-token")), captor.getValue().queryParameters());
+    verify(appHost, never()).authenticateLaunchToken(any());
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenInvalid_expect401WithoutTokenLeak() throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("x-crypta-app-token")).thenReturn("secret-token");
+    when(appHost.authenticateLaunchToken("secret-token")).thenReturn(Optional.empty());
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    assertEquals("Unauthorized", replyHeaders.reasonPhrase());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_token\",\"message\":\"Invalid app token.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("secret-token"));
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenAuthenticationFails_expectJson500WithoutRouting()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("x-crypta-app-token")).thenReturn("secret-token");
+    when(appHost.authenticateLaunchToken("secret-token"))
+        .thenThrow(new IllegalStateException("apphost unavailable"));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(500, replyHeaders.statusCode());
+    assertEquals("Internal Server Error", replyHeaders.reasonPhrase());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"internal_error\",\"message\":\"Unexpected platform API"
+            + " failure.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("secret-token"));
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenProvidedButAppHostUnavailable_expect401WithoutRouting()
+      throws Exception {
+    when(request.getHeader("x-crypta-app-token")).thenReturn("secret-token");
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    assertEquals("Unauthorized", replyHeaders.reasonPhrase());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_token\",\"message\":\"App token authentication is"
+            + " unavailable.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("secret-token"));
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenHeaderBlank_expect401WithoutRouting() throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("x-crypta-app-token")).thenReturn("   ");
+    when(appHost.authenticateLaunchToken("")).thenReturn(Optional.empty());
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    verify(appHost).authenticateLaunchToken("");
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_token\",\"message\":\"Invalid app token.\"}}",
+        bodyWrite.bodyText());
+  }
+
+  @Test
+  void handleMethodGET_whenAuthorizationHeaderIsMalformedBearer_expectHostOperatorRequest()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost);
+    when(request.getHeader("authorization")).thenReturn("BearerToken secret-token");
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals("HOST_OPERATOR", captor.getValue().principal().type().name());
+    verify(appHost, never()).authenticateLaunchToken(any());
   }
 
   @Test
@@ -476,6 +683,7 @@ End
     toadlet.handleMethodPOST(URI.create(requestUri), request, ctx);
 
     verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, URI.create(requestUri).getPath());
     assertForbiddenBody();
   }
 

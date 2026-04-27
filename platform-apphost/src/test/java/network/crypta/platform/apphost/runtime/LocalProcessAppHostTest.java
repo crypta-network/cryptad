@@ -53,6 +53,7 @@ import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
+import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -1076,6 +1077,91 @@ class LocalProcessAppHostTest {
     host.uninstall(RUNNER_APP_ID);
     assertInstallationPathsRemoved(installation);
     assertTrue(host.listInstalled().isEmpty());
+  }
+
+  @Test
+  void authenticateLaunchToken_whenTokenBelongsToRunningApp_expectTokenFreePrincipal()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    try {
+      AppTokenPrincipal principal = host.authenticateLaunchToken(running.token()).orElseThrow();
+
+      assertEquals(RUNNER_APP_ID, principal.appId());
+      assertEquals(
+          List.of(FILE_READ_PERMISSION, NETWORK_ACCESS_PERMISSION), principal.permissions());
+      assertFalse(principal.toString().contains(running.token()));
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void authenticateLaunchToken_whenTokenIsBlankOrUnknown_expectEmpty() throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    try {
+      assertTrue(host.authenticateLaunchToken("").isEmpty());
+      assertTrue(host.authenticateLaunchToken("   ").isEmpty());
+      assertTrue(host.authenticateLaunchToken(null).isEmpty());
+      assertTrue(host.authenticateLaunchToken(running.token() + "-unknown").isEmpty());
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void authenticateLaunchToken_whenAppStops_expectOldTokenFails() throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    assertTrue(host.authenticateLaunchToken(running.token()).isPresent());
+    assertTrue(host.stop(RUNNER_APP_ID));
+
+    assertTrue(host.authenticateLaunchToken(running.token()).isEmpty());
+  }
+
+  @Test
+  void authenticateLaunchToken_whenAppRestarts_expectOldTokenFailsAndNewTokenSucceeds()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot firstRun = host.start(RUNNER_APP_ID);
+    assertTrue(host.stop(RUNNER_APP_ID));
+
+    RunningAppSnapshot secondRun = host.start(RUNNER_APP_ID);
+
+    try {
+      assertNotEquals(firstRun.token(), secondRun.token());
+      assertTrue(host.authenticateLaunchToken(firstRun.token()).isEmpty());
+      assertEquals(
+          RUNNER_APP_ID, host.authenticateLaunchToken(secondRun.token()).orElseThrow().appId());
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void authenticateLaunchToken_whenReturningPermissions_expectImmutableSortedManifestPermissions()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    try {
+      AppTokenPrincipal principal = host.authenticateLaunchToken(running.token()).orElseThrow();
+      List<String> permissions = principal.permissions();
+
+      assertEquals(List.of(FILE_READ_PERMISSION, NETWORK_ACCESS_PERMISSION), permissions);
+      assertThrows(UnsupportedOperationException.class, () -> permissions.add("extra"));
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
   }
 
   @Test

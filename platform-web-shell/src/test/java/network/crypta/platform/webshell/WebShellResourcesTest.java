@@ -100,6 +100,8 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".app-card-list {"));
     assertTrue(stylesheet.contains(".app-card-actions {"));
     assertTrue(stylesheet.contains(".app-log-tail {"));
+    assertTrue(stylesheet.contains(".permission-list {"));
+    assertTrue(stylesheet.contains(".app-audit-event.is-denied {"));
     assertTrue(stylesheet.contains(".catalog-app-card {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions {"));
@@ -326,6 +328,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function appUiHref(app)"));
     assertTrue(script.contains("function appRuntimePath(appId)"));
     assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
+    assertTrue(script.contains("function appAuditPath(appId)"));
     assertTrue(script.contains("async function loadAppRuntimeDetails(app)"));
     assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl);"));
     assertTrue(
@@ -339,6 +342,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("runtimeStoppable ? \"Stop\" : \"Start\""));
     assertTrue(script.contains("const uninstallForm = runtimeStoppable"));
     assertTrue(script.contains("Runtime log tail"));
+    assertTrue(script.contains("Declared permissions"));
+    assertTrue(script.contains("Recent app audit"));
+    assertTrue(script.contains("function appAuditDetailsNode(audit, auditError)"));
     assertTrue(script.contains("app-log-tail"));
     assertTrue(script.contains("function renderApps(data)"));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
@@ -365,6 +371,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("return `apps/${encodedAppId}`;"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/runtime`"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/logs?maxBytes="));
+    assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/audit`"));
     assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
     assertTrue(
         script.contains(

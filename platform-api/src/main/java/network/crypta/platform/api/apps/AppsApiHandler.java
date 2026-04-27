@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import network.crypta.platform.api.AppAuditEvent;
+import network.crypta.platform.api.AppAuditLog;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.apphost.AppBundleVerificationException;
@@ -55,6 +57,8 @@ public final class AppsApiHandler {
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
   private static final String FIELD_APP_ID = "appId";
+  private static final String FIELD_PERMISSIONS = "permissions";
+  private static final String FIELD_RECENT_DENIED_COUNT = "recentDeniedCount";
   private static final String FIELD_RUNNING = "running";
   private static final String FIELD_STARTED_AT = "startedAt";
   private static final String MAX_BYTES_POSITIVE_INTEGER_MESSAGE =
@@ -64,6 +68,9 @@ public final class AppsApiHandler {
 
   /** Detached AppHost core used for app lifecycle and inventory operations. */
   private final AppHost appHost;
+
+  /** Shared bounded audit log for app-originated Platform API decisions. */
+  private final AppAuditLog auditLog;
 
   /**
    * Creates an app-management handler backed by the supplied AppHost.
@@ -76,7 +83,18 @@ public final class AppsApiHandler {
    * @param appHost detached AppHost core used for app lifecycle operations
    */
   public AppsApiHandler(AppHost appHost) {
+    this(appHost, new AppAuditLog());
+  }
+
+  /**
+   * Creates an app-management handler backed by the supplied AppHost and audit log.
+   *
+   * @param appHost detached AppHost core used for app lifecycle operations
+   * @param auditLog bounded process-local app audit log
+   */
+  public AppsApiHandler(AppHost appHost, AppAuditLog auditLog) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
+    this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
   }
 
   /**
@@ -158,6 +176,35 @@ public final class AppsApiHandler {
     } catch (IOException _) {
       throw internalError("Failed to read app process log.");
     }
+  }
+
+  /**
+   * Returns the declared permissions for one installed app.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible permissions summary
+   */
+  public Map<String, Object> permissions(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    json.put(FIELD_APP_ID, normalizedAppId);
+    json.put(FIELD_PERMISSIONS, installed.manifest().permissions());
+    json.put(FIELD_RUNNING, appHost.status(normalizedAppId).isPresent());
+    json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(normalizedAppId));
+    return json;
+  }
+
+  /**
+   * Returns recent bounded audit entries for one installed app.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @return JSON-compatible audit summary
+   */
+  public Map<String, Object> audit(String appId) {
+    String normalizedAppId = normalizeAppId(appId);
+    requireInstalled(normalizedAppId);
+    return auditSummary(normalizedAppId);
   }
 
   /**
@@ -446,21 +493,23 @@ public final class AppsApiHandler {
    * @param running running snapshot when the app is live, or {@code null}
    * @return ordered JSON-compatible summary map
    */
-  private static Map<String, Object> summarize(
+  private Map<String, Object> summarize(
       AppManifest manifest, boolean installed, RunningAppSnapshot running) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
     json.put(FIELD_APP_ID, manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
     json.put("uiMode", manifest.uiMode().manifestValue());
     json.put("uiEntry", manifest.uiEntry());
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));
-    json.put("permissions", manifest.permissions());
+    json.put(FIELD_PERMISSIONS, manifest.permissions());
     json.put("quota", quota(manifest));
     json.put("installed", installed);
     json.put(FIELD_RUNNING, running != null);
     json.put("pid", running == null ? null : running.pid());
     json.put(FIELD_STARTED_AT, running == null ? null : running.startedAt().toString());
+    json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(manifest.appId()));
+    json.put("audit", auditSummary(manifest.appId()));
     return json;
   }
 
@@ -517,20 +566,46 @@ public final class AppsApiHandler {
    * @param appId normalized application identifier
    * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
    */
-  private static Map<String, Object> summarizeUnknown(String appId, boolean installed) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+  private Map<String, Object> summarizeUnknown(String appId, boolean installed) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
     json.put(FIELD_APP_ID, appId);
     json.put("name", null);
     json.put("version", null);
     json.put("uiMode", "none");
     json.put("uiEntry", null);
     json.put("uiUrl", null);
-    json.put("permissions", List.of());
+    json.put(FIELD_PERMISSIONS, List.of());
     json.put("quota", unknownQuota());
     json.put("installed", installed);
     json.put(FIELD_RUNNING, false);
     json.put("pid", null);
     json.put(FIELD_STARTED_AT, null);
+    json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(appId));
+    json.put("audit", auditSummary(appId));
+    return json;
+  }
+
+  private Map<String, Object> auditSummary(String appId) {
+    List<AppAuditEvent> recent = auditLog.recentForApp(appId, AppAuditLog.DEFAULT_APP_EVENT_LIMIT);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    json.put(FIELD_APP_ID, appId);
+    json.put("boundedEventLimit", AppAuditLog.DEFAULT_APP_EVENT_LIMIT);
+    json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(appId));
+    json.put("events", recent.stream().map(AppsApiHandler::summarizeAuditEvent).toList());
+    return json;
+  }
+
+  private static Map<String, Object> summarizeAuditEvent(AppAuditEvent event) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+    json.put("timestamp", event.timestamp().toString());
+    json.put(FIELD_APP_ID, event.appId());
+    json.put("method", event.method());
+    json.put("endpointFamily", event.endpointFamily());
+    json.put("action", event.action());
+    json.put("requiredCapabilities", event.requiredCapabilities());
+    json.put("decision", event.decision().name());
+    json.put("statusCode", event.statusCode());
+    json.put("reasonCode", event.reasonCode());
     return json;
   }
 

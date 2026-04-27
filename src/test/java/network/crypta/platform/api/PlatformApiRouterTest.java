@@ -2057,6 +2057,101 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppPermissionsRequested_expectDeclaredPermissionsAndDeniedCount()
+      throws Exception {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+    auditLog.append(
+        new AppAuditEvent(
+            STARTED_AT,
+            APP_ID,
+            "POST",
+            "queue",
+            "queue.requests.remove",
+            List.of("queue.write"),
+            AppAuditDecision.DENIED,
+            403,
+            "missing_capability"));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        auditedRouter.route(request("GET", List.of("apps", APP_ID, "permissions"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"permissions\":[\"network.access\",\"file.read\"]"));
+    assertTrue(response.body().contains("\"recentDeniedCount\":1"));
+    assertFalse(response.body().contains("token-"));
+  }
+
+  @Test
+  void route_whenAppAuditRequested_expectRecentTokenFreeAuditEntries() throws Exception {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+    auditLog.append(
+        new AppAuditEvent(
+            STARTED_AT,
+            APP_ID,
+            "GET",
+            "node",
+            "node.read",
+            List.of("node.read"),
+            AppAuditDecision.ALLOWED,
+            200,
+            "route_completed"));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiResponse response =
+        auditedRouter.route(request("GET", List.of("apps", APP_ID, "audit"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"decision\":\"ALLOWED\""));
+    assertTrue(response.body().contains("\"requiredCapabilities\":[\"node.read\"]"));
+    assertFalse(response.body().contains("token-"));
+  }
+
+  @Test
+  void route_whenAppPrincipalHasCapability_expectDispatchAndAllowedAudit() {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+    when(nodeInfoPort.greeting())
+        .thenReturn(new NodeGreetingSnapshot("Crypta", "1.0", 7, "abc123", true, "gzip", "en"));
+
+    PlatformApiResponse response =
+        auditedRouter.route(
+            appRequest(List.of("node", "greeting"), Map.of(), List.of("node.read")));
+
+    assertEquals(200, response.statusCode());
+    List<AppAuditEvent> events = auditLog.recentForApp(APP_ID, 10);
+    assertEquals(1, events.size());
+    assertEquals(AppAuditDecision.ALLOWED, events.getFirst().decision());
+    assertEquals("node.read", events.getFirst().action());
+  }
+
+  @Test
+  void route_whenAppPrincipalMissingCapability_expectForbiddenAndDeniedAudit() {
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter auditedRouter =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, auditLog);
+
+    PlatformApiResponse response =
+        auditedRouter.route(
+            appRequest(List.of("node", "greeting"), Map.of(), List.of("queue.read")));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    assertFalse(response.body().contains("secret-token"));
+    verifyNoInteractions(nodeInfoPort);
+    List<AppAuditEvent> events = auditLog.recentForApp(APP_ID, 10);
+    assertEquals(1, events.size());
+    assertEquals(AppAuditDecision.DENIED, events.getFirst().decision());
+    assertEquals("missing_capability", events.getFirst().reasonCode());
+  }
+
+  @Test
   void route_whenAppRuntimeRequested_expectRuntimeEnvelopeWithoutToken() throws Exception {
     when(appHost.runtimeStatus(APP_ID))
         .thenReturn(
@@ -2869,6 +2964,14 @@ class PlatformApiRouterTest {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
   }
 
+  private static PlatformApiRequest appRequest(
+      List<String> pathSegments,
+      Map<String, List<String>> queryParameters,
+      List<String> permissions) {
+    return new PlatformApiRequest(
+        "GET", pathSegments, queryParameters, PlatformApiPrincipal.appToken(APP_ID, permissions));
+  }
+
   @SafeVarargs
   private static Map<String, Object> orderedJson(Map.Entry<String, Object>... entries) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(entries.length);
@@ -3033,7 +3136,7 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(14);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
@@ -3049,11 +3152,13 @@ class PlatformApiRouterTest {
     summary.put("running", running);
     summary.put("pid", pid);
     summary.put("startedAt", startedAt == null ? null : startedAt.toString());
+    summary.put("recentDeniedCount", 0L);
+    summary.put("audit", emptyAuditSummary(appId));
     return summary;
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(14);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
@@ -3069,7 +3174,18 @@ class PlatformApiRouterTest {
     summary.put("running", false);
     summary.put("pid", null);
     summary.put("startedAt", null);
+    summary.put("recentDeniedCount", 0L);
+    summary.put("audit", emptyAuditSummary(APP_ID));
     return summary;
+  }
+
+  private static Map<String, Object> emptyAuditSummary(String appId) {
+    LinkedHashMap<String, Object> audit = LinkedHashMap.newLinkedHashMap(4);
+    audit.put("appId", appId);
+    audit.put("boundedEventLimit", AppAuditLog.DEFAULT_APP_EVENT_LIMIT);
+    audit.put("recentDeniedCount", 0L);
+    audit.put("events", List.of());
+    return audit;
   }
 
   private static String uiMode(String appUiEntry) {
