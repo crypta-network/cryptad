@@ -3265,7 +3265,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> runtimeSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(11);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
     summary.put("appId", APP_ID);
     summary.put("state", "RUNNING");
     summary.put("running", true);
@@ -3277,6 +3277,7 @@ class PlatformApiRouterTest {
     summary.put("currentRestartAttempt", 1);
     summary.put("logAvailable", true);
     summary.put("logSizeBytes", 128L);
+    summary.put("sandbox", sandboxSummary());
     return summary;
   }
 
@@ -3301,7 +3302,7 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(14);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(15);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
@@ -3313,6 +3314,7 @@ class PlatformApiRouterTest {
     quota.put("dataBytes", 4096L);
     quota.put("cacheBytes", 8192L);
     summary.put("quota", quota);
+    summary.put("sandbox", sandboxSummary());
     summary.put("installed", installed);
     summary.put("running", running);
     summary.put("pid", pid);
@@ -3323,7 +3325,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(14);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(15);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
@@ -3335,6 +3337,7 @@ class PlatformApiRouterTest {
     quota.put("dataBytes", null);
     quota.put("cacheBytes", null);
     summary.put("quota", quota);
+    summary.put("sandbox", sandboxSummary());
     summary.put("installed", false);
     summary.put("running", false);
     summary.put("pid", null);
@@ -3351,6 +3354,18 @@ class PlatformApiRouterTest {
     audit.put("recentDeniedCount", 0L);
     audit.put("events", List.of());
     return audit;
+  }
+
+  private static Map<String, Object> sandboxSummary() {
+    LinkedHashMap<String, Object> sandbox = LinkedHashMap.newLinkedHashMap(7);
+    sandbox.put("mode", "none");
+    sandbox.put("required", false);
+    sandbox.put("supportLevel", "none");
+    sandbox.put("provider", "no-sandbox");
+    sandbox.put("active", false);
+    sandbox.put("reason", "App is running without OS sandbox isolation");
+    sandbox.put("warnings", List.of("App is running without OS sandbox isolation"));
+    return sandbox;
   }
 
   private static String uiMode(String appUiEntry) {

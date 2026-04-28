@@ -3,8 +3,10 @@ package network.crypta.platform.appdist;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppBundleManifestParserTest {
   @Test
@@ -29,9 +31,55 @@ class AppBundleManifestParserTest {
 
     assertEquals(AppUiMode.NONE, manifest.uiMode());
     assertNull(manifest.uiEntry());
+    assertEquals(AppSandboxMode.NONE, manifest.sandboxMode());
+    assertFalse(manifest.sandboxRequired());
     assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
     assertEquals(0, manifest.restartMaxAttempts());
     assertEquals(0L, manifest.restartBackoffMillis());
+  }
+
+  @Test
+  void parseContent_whenRestrictedSandboxDeclared_expectSandboxFields() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                sandbox.mode=restricted-process
+                sandbox.required=true
+                """));
+
+    assertEquals(AppSandboxMode.RESTRICTED_PROCESS, manifest.sandboxMode());
+    assertTrue(manifest.sandboxRequired());
+  }
+
+  @Test
+  void parseContent_whenWasmPreviewSandboxDeclared_expectReservedModeParsed() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(minimalManifest("sandbox.mode=wasm-preview\n"));
+
+    assertEquals(AppSandboxMode.WASM_PREVIEW, manifest.sandboxMode());
+    assertFalse(manifest.sandboxRequired());
+  }
+
+  @Test
+  void parseContent_whenSandboxModeIsUnsupported_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleManifestParser.parseContent(minimalManifest("sandbox.mode=docker\n")));
+
+    assertEquals("unsupported sandbox.mode: docker", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenSandboxRequiredIsMalformed_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(minimalManifest("sandbox.required=maybe\n")));
+
+    assertEquals("invalid sandbox.required: maybe", exception.getMessage());
   }
 
   @Test

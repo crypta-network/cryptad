@@ -183,6 +183,23 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void prepareInstallPlan_whenZipContainsAppleDoubleEntries_expectMetadataIgnored()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectoryWithAppleDouble(bundle, tempDir.resolve("appledouble.zip"));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys(keyPair));
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("._cryptad-app.properties")));
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("__MACOSX")));
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve("._launch.sh")));
+    }
+  }
+
+  @Test
   void prepareInstallPlan_whenZipParentIsFile_expectInvalidAppBundle() throws Exception {
     KeyPair keyPair = keyPair();
     Path artifact = parentConflictZip(tempDir.resolve("parent-conflict.zip"));
@@ -594,6 +611,34 @@ class AppCatalogManagerTest {
         Files.copy(path, zip);
         zip.closeEntry();
       }
+    }
+    return targetZip;
+  }
+
+  private static Path zipDirectoryWithAppleDouble(Path sourceRoot, Path targetZip)
+      throws IOException {
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(targetZip));
+        var paths = Files.walk(sourceRoot)) {
+      for (Path path : paths.sorted(Comparator.naturalOrder()).toList()) {
+        if (Files.isDirectory(path)) {
+          continue;
+        }
+        String relative = sourceRoot.relativize(path).toString().replace('\\', '/');
+        zip.putNextEntry(new ZipEntry(relative));
+        Files.copy(path, zip);
+        zip.closeEntry();
+      }
+      zip.putNextEntry(new ZipEntry("._cryptad-app.properties"));
+      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
+      zip.putNextEntry(new ZipEntry("__MACOSX/"));
+      zip.closeEntry();
+      zip.putNextEntry(new ZipEntry("__MACOSX/._cryptad-app.properties"));
+      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
+      zip.putNextEntry(new ZipEntry("bin/._launch.sh"));
+      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
     }
     return targetZip;
   }

@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 
 /**
  * Parser and validator for the v1 app-host manifest format.
@@ -60,6 +61,7 @@ public final class AppManifestParser {
         manifest.permissions(),
         manifest.dataQuotaBytes(),
         manifest.cacheQuotaBytes(),
+        new AppSandboxPolicy(manifest.sandboxMode(), manifest.sandboxRequired()),
         manifest.restartPolicy(),
         manifest.restartMaxAttempts(),
         manifest.restartBackoffMillis());

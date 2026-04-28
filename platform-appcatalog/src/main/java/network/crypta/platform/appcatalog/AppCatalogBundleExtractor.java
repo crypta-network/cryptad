@@ -112,18 +112,28 @@ public final class AppCatalogBundleExtractor {
     }
   }
 
+  private static void extractZip(Path zipPath, Path stagedRoot) throws IOException {
+    extractZip(zipPath, stagedRoot, MAX_EXTRACTED_BYTES);
+  }
+
   // Archive expansion is safe here because every entry is path-normalized, duplicate-checked,
   // rooted under the private staging directory, and bounded by entry-count and byte caps.
   @SuppressWarnings("java:S5042")
-  private static void extractZip(Path zipPath, Path stagedRoot) throws IOException {
+  static void extractZip(Path zipPath, Path stagedRoot, long maxExtractedBytes) throws IOException {
     Path extractionRoot = stagedRoot.toAbsolutePath().normalize();
-    ExtractionState state = new ExtractionState();
+    ExtractionState state = new ExtractionState(maxExtractedBytes);
     Map<String, Integer> unixModesByPath = readCentralDirectoryUnixModes(zipPath);
     try (InputStream fileInput = Files.newInputStream(zipPath);
         ZipInputStream zipInput = new ZipInputStream(fileInput)) {
       ZipEntry entry;
       while ((entry = zipInput.getNextEntry()) != null) {
         String normalizedName = normalizeZipEntryName(entry.getName(), entry.isDirectory());
+        if (isIgnoredArchiveMetadata(normalizedName)) {
+          state.recordIgnoredEntry();
+          drainEntry(zipInput, state);
+          zipInput.closeEntry();
+          continue;
+        }
         state.recordEntry(normalizedName);
         Path target = resolveZipEntryTarget(extractionRoot, normalizedName);
         if (entry.isDirectory()) {
@@ -135,6 +145,18 @@ public final class AppCatalogBundleExtractor {
       }
     } catch (ZipException exception) {
       throw invalidBundle("zip artifact is corrupt", exception);
+    }
+  }
+
+  private static void drainEntry(ZipInputStream zipInput, ExtractionState state)
+      throws IOException {
+    byte[] buffer = new byte[COPY_BUFFER_BYTES];
+    int bytesRead;
+    while ((bytesRead = zipInput.read(buffer)) >= 0) {
+      if (bytesRead == 0) {
+        continue;
+      }
+      state.recordExtractedBytes(bytesRead);
     }
   }
 
@@ -266,6 +288,9 @@ public final class AppCatalogBundleExtractor {
         CentralDirectoryEntry entry = readCentralDirectoryEntry(channel, centralDirectoryEnd);
         if (entry.unixMode() != null && (entry.unixMode() & UNIX_EXECUTE_BITS) != 0) {
           String normalizedName = normalizeZipEntryName(entry.name(), entry.directory());
+          if (isIgnoredArchiveMetadata(normalizedName)) {
+            continue;
+          }
           unixModesByPath.putIfAbsent(normalizedName, entry.unixMode());
         }
       }
@@ -421,6 +446,15 @@ public final class AppCatalogBundleExtractor {
     return name.length() >= 2 && Character.isLetter(name.charAt(0)) && name.charAt(1) == ':';
   }
 
+  private static boolean isIgnoredArchiveMetadata(String normalizedName) {
+    for (String segment : normalizedName.split("/", -1)) {
+      if (segment.equals("__MACOSX") || segment.startsWith("._")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static void verifyExtractedBundle(
       AppCatalogEntry entry, Path stagedRoot, TrustedAppKeys trustedKeys) throws IOException {
     Path manifestFile = stagedRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME);
@@ -473,22 +507,38 @@ public final class AppCatalogBundleExtractor {
 
   private static final class ExtractionState {
     private final Set<String> seenPaths = new HashSet<>();
+    private final long maxExtractedBytes;
     private long extractedBytes;
     private int entryCount;
 
-    void recordEntry(String normalizedName) {
-      entryCount++;
-      if (entryCount > MAX_ZIP_ENTRIES) {
-        throw invalidBundle("zip artifact contains too many entries");
+    private ExtractionState(long maxExtractedBytes) {
+      if (maxExtractedBytes < 0L) {
+        throw new IllegalArgumentException("maxExtractedBytes must be non-negative");
       }
+      this.maxExtractedBytes = maxExtractedBytes;
+    }
+
+    void recordEntry(String normalizedName) {
+      recordEntryCount();
       if (!seenPaths.add(normalizedName)) {
         throw invalidBundle("zip artifact contains duplicate entry: " + normalizedName);
       }
     }
 
+    void recordIgnoredEntry() {
+      recordEntryCount();
+    }
+
+    private void recordEntryCount() {
+      entryCount++;
+      if (entryCount > MAX_ZIP_ENTRIES) {
+        throw invalidBundle("zip artifact contains too many entries");
+      }
+    }
+
     void recordExtractedBytes(int bytesRead) {
       extractedBytes += bytesRead;
-      if (extractedBytes > MAX_EXTRACTED_BYTES) {
+      if (extractedBytes > maxExtractedBytes) {
         throw invalidBundle("zip artifact exceeds extracted size cap");
       }
     }

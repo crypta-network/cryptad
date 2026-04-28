@@ -6,8 +6,10 @@ import java.util.Locale;
 import java.util.Objects;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppRestartPolicy;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.InstalledAppPaths;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 
 /**
  * Parsed v1 manifest for an installed application.
@@ -32,6 +34,7 @@ import network.crypta.platform.apphost.InstalledAppPaths;
  * @param permissions normalized permission strings
  * @param dataQuotaBytes optional data quota metadata, or {@code null}
  * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+ * @param sandboxPolicy requested process sandbox policy
  * @param restartPolicy normalized process restart policy
  * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
  * @param restartBackoffMillis delay before an automatic restart attempt
@@ -47,6 +50,7 @@ public record AppManifest(
     List<String> permissions,
     Long dataQuotaBytes,
     Long cacheQuotaBytes,
+    AppSandboxPolicy sandboxPolicy,
     AppRestartPolicy restartPolicy,
     int restartMaxAttempts,
     long restartBackoffMillis) {
@@ -63,6 +67,7 @@ public record AppManifest(
    * @param permissions normalized permission strings
    * @param dataQuotaBytes optional data quota metadata, or {@code null}
    * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   * @param sandboxPolicy requested process sandbox policy
    * @param restartPolicy normalized process restart policy
    * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
    * @param restartBackoffMillis delay before an automatic restart attempt
@@ -80,6 +85,8 @@ public record AppManifest(
             permissions,
             dataQuotaBytes,
             cacheQuotaBytes,
+            Objects.requireNonNullElse(sandboxPolicy, AppSandboxPolicy.defaults()).mode(),
+            sandboxPolicy != null && sandboxPolicy.required(),
             restartPolicy,
             restartMaxAttempts,
             restartBackoffMillis);
@@ -93,9 +100,104 @@ public record AppManifest(
     permissions = normalized.permissions();
     dataQuotaBytes = normalized.dataQuotaBytes();
     cacheQuotaBytes = normalized.cacheQuotaBytes();
+    sandboxPolicy = new AppSandboxPolicy(normalized.sandboxMode(), normalized.sandboxRequired());
     restartPolicy = normalized.restartPolicy();
     restartMaxAttempts = normalized.restartMaxAttempts();
     restartBackoffMillis = normalized.restartBackoffMillis();
+  }
+
+  /**
+   * Creates a manifest with explicit restart policy and default no-sandbox policy.
+   *
+   * @param manifestVersion manifest schema version
+   * @param appId stable path-safe app identifier
+   * @param appName human-readable application name
+   * @param appVersion display version string
+   * @param execPathText executable path relative to the installed app root
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null}
+   * @param permissions normalized permission strings
+   * @param dataQuotaBytes optional data quota metadata, or {@code null}
+   * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
+   */
+  public AppManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes,
+      AppRestartPolicy restartPolicy,
+      int restartMaxAttempts,
+      long restartBackoffMillis) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        AppSandboxPolicy.defaults(),
+        restartPolicy,
+        restartMaxAttempts,
+        restartBackoffMillis);
+  }
+
+  /**
+   * Creates a manifest with explicit sandbox fields and the default restart policy.
+   *
+   * @param manifestVersion manifest schema version
+   * @param appId stable path-safe app identifier
+   * @param appName human-readable application name
+   * @param appVersion display version string
+   * @param execPathText executable path relative to the installed app root
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null}
+   * @param permissions normalized permission strings
+   * @param dataQuotaBytes optional data quota metadata, or {@code null}
+   * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   * @param sandboxMode requested process sandbox mode
+   * @param sandboxRequired whether launch must fail when the requested sandbox mode is unsupported
+   */
+  public AppManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes,
+      AppSandboxMode sandboxMode,
+      boolean sandboxRequired) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        new AppSandboxPolicy(sandboxMode, sandboxRequired),
+        AppRestartPolicy.NEVER,
+        0,
+        0L);
   }
 
   /**
@@ -134,6 +236,7 @@ public record AppManifest(
         permissions,
         dataQuotaBytes,
         cacheQuotaBytes,
+        AppSandboxPolicy.defaults(),
         AppRestartPolicy.NEVER,
         0,
         0L);
@@ -191,6 +294,7 @@ public record AppManifest(
         manifest.permissions(),
         manifest.dataQuotaBytes(),
         manifest.cacheQuotaBytes(),
+        new AppSandboxPolicy(manifest.sandboxMode(), manifest.sandboxRequired()),
         manifest.restartPolicy(),
         manifest.restartMaxAttempts(),
         manifest.restartBackoffMillis());

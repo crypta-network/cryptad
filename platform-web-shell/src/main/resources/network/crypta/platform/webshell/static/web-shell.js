@@ -948,6 +948,58 @@
     return container;
   }
 
+  function appSandboxStatus(app, runtime) {
+    if (runtime && runtime.sandbox && typeof runtime.sandbox === "object") {
+      return runtime.sandbox;
+    }
+    if (app && app.sandbox && typeof app.sandbox === "object") {
+      return app.sandbox;
+    }
+    return null;
+  }
+
+  function sandboxLabel(status) {
+    if (!status || typeof status !== "object") {
+      return "Sandbox unavailable";
+    }
+    const mode = typeof status.mode === "string" ? status.mode : "";
+    const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
+    if (supportLevel === "enforced") {
+      return "Enforced sandbox";
+    }
+    if (supportLevel === "best-effort") {
+      return "Best-effort restricted process";
+    }
+    if (supportLevel === "unsupported") {
+      return status.required ? "Unsupported required sandbox" : "Unsupported sandbox";
+    }
+    if (mode === "none" || supportLevel === "none") {
+      return "No sandbox";
+    }
+    return scalar(mode || supportLevel || "unknown");
+  }
+
+  function sandboxTone(status) {
+    if (!status || typeof status !== "object") {
+      return "is-warning";
+    }
+    const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
+    if (supportLevel === "enforced") {
+      return "is-success";
+    }
+    if (supportLevel === "unsupported" && status.required) {
+      return "is-error";
+    }
+    return "is-warning";
+  }
+
+  function sandboxWarnings(status) {
+    if (!status || !Array.isArray(status.warnings) || status.warnings.length === 0) {
+      return "Unavailable";
+    }
+    return status.warnings.map((warning) => scalar(warning)).join("; ");
+  }
+
   function buildAppActionForm(app, action, label) {
     const appId = typeof app.appId === "string" ? app.appId : "";
     const path = appMutationPath(appId, action);
@@ -1005,6 +1057,7 @@
     const runtimeStoppable = runtimeRunning || runtimeState === "RESTARTING";
     const runtimePid = runtime ? runtime.pid : app.pid;
     const runtimeStartedAt = runtime ? runtime.startedAt : app.startedAt;
+    const sandbox = appSandboxStatus(app, runtime);
 
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -1019,6 +1072,7 @@
     pills.className = "app-card-pills";
     pills.append(createPill("Installed"));
     pills.append(createPill(runtimeState, runtimeRunning ? "is-success" : "is-warning"));
+    pills.append(createPill(sandboxLabel(sandbox), sandboxTone(sandbox)));
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
@@ -1041,6 +1095,10 @@
       ["UI mode", scalar(app.uiMode)],
       ["UI", uiEntryNode || scalar(app.uiUrl)],
       ["UI entry", scalar(app.uiEntry)],
+      ["Sandbox", sandboxLabel(sandbox)],
+      ["Sandbox required", sandbox && sandbox.required ? "Yes" : "No"],
+      ["Sandbox provider", sandbox ? scalar(sandbox.provider) : "Unavailable"],
+      ["Sandbox warnings", sandboxWarnings(sandbox)],
       ["Runtime state", runtimeState],
       ["Running", runtimeRunning ? "Yes" : "No"],
       ["PID", runtimeRunning ? scalar(runtimePid) : "Unavailable"],

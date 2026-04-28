@@ -23,6 +23,10 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
+import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import network.crypta.platform.appui.AppUiPaths;
 
 /**
@@ -60,6 +64,7 @@ public final class AppsApiHandler {
   private static final String FIELD_PERMISSIONS = "permissions";
   private static final String FIELD_RECENT_DENIED_COUNT = "recentDeniedCount";
   private static final String FIELD_RUNNING = "running";
+  private static final String FIELD_SANDBOX = "sandbox";
   private static final String FIELD_STARTED_AT = "startedAt";
   private static final String MAX_BYTES_POSITIVE_INTEGER_MESSAGE =
       "Query parameter 'maxBytes' must be a positive integer.";
@@ -504,6 +509,7 @@ public final class AppsApiHandler {
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put(FIELD_PERMISSIONS, manifest.permissions());
     json.put("quota", quota(manifest));
+    json.put(FIELD_SANDBOX, summarizeSandbox(sandboxStatus(manifest, running)));
     json.put("installed", installed);
     json.put(FIELD_RUNNING, running != null);
     json.put("pid", running == null ? null : running.pid());
@@ -532,6 +538,7 @@ public final class AppsApiHandler {
     json.put("currentRestartAttempt", snapshot.currentRestartAttempt());
     json.put("logAvailable", snapshot.logAvailable());
     json.put("logSizeBytes", snapshot.logSizeBytes());
+    json.put(FIELD_SANDBOX, summarizeSandbox(snapshot.sandboxStatus()));
     return json;
   }
 
@@ -576,6 +583,9 @@ public final class AppsApiHandler {
     json.put("uiUrl", null);
     json.put(FIELD_PERMISSIONS, List.of());
     json.put("quota", unknownQuota());
+    json.put(
+        FIELD_SANDBOX,
+        summarizeSandbox(AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults())));
     json.put("installed", installed);
     json.put(FIELD_RUNNING, false);
     json.put("pid", null);
@@ -627,6 +637,24 @@ public final class AppsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
     json.put("dataBytes", null);
     json.put("cacheBytes", null);
+    return json;
+  }
+
+  private static AppSandboxStatus sandboxStatus(AppManifest manifest, RunningAppSnapshot running) {
+    return running == null
+        ? AppSandboxProviders.inactiveStatus(manifest.sandboxPolicy())
+        : running.sandboxStatus();
+  }
+
+  private static Map<String, Object> summarizeSandbox(AppSandboxStatus status) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put("mode", status.mode().manifestValue());
+    json.put("required", status.required());
+    json.put("supportLevel", status.supportLevel().manifestValue());
+    json.put("provider", status.providerName());
+    json.put("active", status.active());
+    json.put("reason", status.reason());
+    json.put("warnings", status.warnings());
     return json;
   }
 
@@ -828,6 +856,9 @@ public final class AppsApiHandler {
    * @return structured Platform API exception
    */
   private PlatformApiException startFailure(String appId, AppHostException failure) {
+    if (failure instanceof AppSandboxException sandboxFailure) {
+      return new PlatformApiException(409, sandboxFailure.errorCode(), sandboxFailure.getMessage());
+    }
     if (appHost.status(appId).isPresent()) {
       return conflict("app is already running: " + appId);
     }

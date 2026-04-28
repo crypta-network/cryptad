@@ -7,8 +7,9 @@ recent app decisions.
 
 The app permission boundary applies to local AppHost child processes that authenticate with their
 current launch token and to app-owned static browser UIs that authenticate with browser app
-sessions. It does not add containers, WASM isolation, seccomp, chroot, browser origin isolation,
-FCP changes, wire-protocol changes, or persistent compliance-grade audit storage.
+sessions. It is separate from AppHost sandbox status. Permission checks do not add containers, WASM
+isolation, seccomp, chroot, browser origin isolation, FCP changes, wire-protocol changes, or
+persistent compliance-grade audit storage.
 
 Host/operator Web Shell requests keep the existing local-admin model. They do not need app
 permissions, and they are not recorded in the app audit log.

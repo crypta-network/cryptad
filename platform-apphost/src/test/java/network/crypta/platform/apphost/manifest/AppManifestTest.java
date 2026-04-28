@@ -1,11 +1,14 @@
 package network.crypta.platform.apphost.manifest;
 
 import java.util.List;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppManifestTest {
   private static final String SAMPLE_APP_ID = "sample-app";
@@ -94,5 +97,45 @@ class AppManifestTest {
 
     assertEquals(
         "app.ui.entry must stay under the app root: ../index.html", exception.getMessage());
+  }
+
+  @Test
+  void constructor_whenSandboxPolicyMissing_expectDefaultNoSandboxPolicy() {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            SAMPLE_APP_ID,
+            SAMPLE_APP_NAME,
+            SAMPLE_APP_VERSION,
+            SAMPLE_EXEC_PATH,
+            AppUiMode.NONE,
+            null,
+            NO_PERMISSIONS,
+            null,
+            null);
+
+    assertEquals(AppSandboxMode.NONE, manifest.sandboxPolicy().mode());
+    assertFalse(manifest.sandboxPolicy().required());
+  }
+
+  @Test
+  void constructor_whenRestrictedSandboxProvided_expectPolicyPreserved() {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            SAMPLE_APP_ID,
+            SAMPLE_APP_NAME,
+            SAMPLE_APP_VERSION,
+            SAMPLE_EXEC_PATH,
+            AppUiMode.NONE,
+            null,
+            NO_PERMISSIONS,
+            null,
+            null,
+            AppSandboxMode.RESTRICTED_PROCESS,
+            true);
+
+    assertEquals(AppSandboxMode.RESTRICTED_PROCESS, manifest.sandboxPolicy().mode());
+    assertTrue(manifest.sandboxPolicy().required());
   }
 }

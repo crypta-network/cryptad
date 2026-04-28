@@ -2,6 +2,9 @@ package network.crypta.platform.apphost;
 
 import java.time.Instant;
 import java.util.Objects;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 
 /**
  * Token-free process status snapshot for one installed app.
@@ -21,6 +24,9 @@ import java.util.Objects;
  * <p>Log metadata mirrors the process-log tail API without exposing the log path. Callers can use
  * {@code logAvailable} and {@code logSizeBytes} to decide whether to show a log action while still
  * keeping run directories and token-bearing launch details outside the public response shape.
+ * Sandbox metadata is likewise coarse and token-free: it reports requested mode, support level,
+ * provider name, and warnings without exposing command lines, environment values, or filesystem
+ * paths.
  *
  * @param appId stable application identifier normalized by {@link InstalledAppPaths#normalizeAppId}
  * @param state current host-observed runtime state for the installed app
@@ -33,6 +39,7 @@ import java.util.Objects;
  * @param currentRestartAttempt current or pending automatic restart attempt number
  * @param logAvailable whether the process log can currently be read as a regular file
  * @param logSizeBytes process log size in bytes, if known without exposing the path
+ * @param sandboxStatus token-free sandbox status for this runtime snapshot
  */
 public record AppRuntimeStatusSnapshot(
     String appId,
@@ -45,7 +52,8 @@ public record AppRuntimeStatusSnapshot(
     int restartCount,
     int currentRestartAttempt,
     boolean logAvailable,
-    Long logSizeBytes) {
+    Long logSizeBytes,
+    AppSandboxStatus sandboxStatus) {
   /**
    * Creates a validated runtime status snapshot.
    *
@@ -65,10 +73,12 @@ public record AppRuntimeStatusSnapshot(
    * @param currentRestartAttempt current or pending automatic restart attempt number
    * @param logAvailable whether the process log can currently be read as a regular file
    * @param logSizeBytes process log size in bytes, if known without exposing the path
+   * @param sandboxStatus token-free sandbox status for this runtime snapshot
    */
   public AppRuntimeStatusSnapshot {
     appId = InstalledAppPaths.normalizeAppId(appId);
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(sandboxStatus, "sandboxStatus");
     if (pid != null && pid <= 0L) {
       throw new IllegalArgumentException("pid must be positive when present");
     }
@@ -81,5 +91,50 @@ public record AppRuntimeStatusSnapshot(
     if (logSizeBytes != null && logSizeBytes < 0L) {
       throw new IllegalArgumentException("logSizeBytes must be non-negative when present");
     }
+  }
+
+  /**
+   * Creates a runtime snapshot with default no-sandbox status.
+   *
+   * <p>This overload preserves source compatibility for tests and alternate AppHost embeddings that
+   * construct snapshots directly.
+   *
+   * @param appId stable application identifier accepted by AppHost path normalization
+   * @param state current host-observed runtime state for the installed app
+   * @param running whether a managed process is currently live according to AppHost
+   * @param pid representative process id when running, otherwise {@code null}
+   * @param startedAt process start time when running, otherwise {@code null}
+   * @param lastExitAt last managed process exit time retained by this daemon, if known
+   * @param lastExitCode last managed process exit code retained by this daemon, if known
+   * @param restartCount completed automatic restart launches in this daemon-managed run
+   * @param currentRestartAttempt current or pending automatic restart attempt number
+   * @param logAvailable whether the process log can currently be read as a regular file
+   * @param logSizeBytes process log size in bytes, if known without exposing the path
+   */
+  public AppRuntimeStatusSnapshot(
+      String appId,
+      AppRuntimeState state,
+      boolean running,
+      Long pid,
+      Instant startedAt,
+      Instant lastExitAt,
+      Integer lastExitCode,
+      int restartCount,
+      int currentRestartAttempt,
+      boolean logAvailable,
+      Long logSizeBytes) {
+    this(
+        appId,
+        state,
+        running,
+        pid,
+        startedAt,
+        lastExitAt,
+        lastExitCode,
+        restartCount,
+        currentRestartAttempt,
+        logAvailable,
+        logSizeBytes,
+        AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults()));
   }
 }

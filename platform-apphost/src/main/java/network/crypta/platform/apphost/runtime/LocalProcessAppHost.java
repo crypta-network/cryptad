@@ -53,6 +53,10 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
+import network.crypta.platform.apphost.sandbox.AppSandboxLaunchContext;
+import network.crypta.platform.apphost.sandbox.AppSandboxLaunchPlan;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -123,6 +127,7 @@ public final class LocalProcessAppHost implements AppHost {
   private final TimingConfig timing;
   private final ManagedTreeDeleter managedTreeDeleter;
   private final AppInstallVerificationPolicy installVerificationPolicy;
+  private final AppSandboxProviders sandboxProviders;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
   private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
   private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
@@ -289,14 +294,35 @@ public final class LocalProcessAppHost implements AppHost {
       TimingConfig timing,
       ManagedTreeDeleter managedTreeDeleter,
       AppInstallVerificationPolicy installVerificationPolicy) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        new HostDependencies(
+            managedTreeDeleter, installVerificationPolicy, AppSandboxProviders.defaults()));
+  }
+
+  private LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
+      HostDependencies dependencies) {
     this.layout = Objects.requireNonNull(layout, "layout");
     this.stopTimeout = Objects.requireNonNull(stopTimeout, "stopTimeout");
     this.secureRandom = Objects.requireNonNull(secureRandom, "secureRandom");
     this.appEnv = Objects.requireNonNull(appEnv, "appEnv");
     this.timing = Objects.requireNonNull(timing, "timing");
-    this.managedTreeDeleter = Objects.requireNonNull(managedTreeDeleter, "managedTreeDeleter");
+    HostDependencies normalized = Objects.requireNonNull(dependencies, "dependencies");
+    this.managedTreeDeleter =
+        Objects.requireNonNull(normalized.managedTreeDeleter(), "managedTreeDeleter");
     this.installVerificationPolicy =
-        Objects.requireNonNull(installVerificationPolicy, "installVerificationPolicy");
+        Objects.requireNonNull(normalized.installVerificationPolicy(), "installVerificationPolicy");
+    this.sandboxProviders =
+        Objects.requireNonNull(normalized.sandboxProviders(), "sandboxProviders");
     if (stopTimeout.isZero() || stopTimeout.isNegative()) {
       throw new IllegalArgumentException("stopTimeout must be positive");
     }
@@ -521,11 +547,28 @@ public final class LocalProcessAppHost implements AppHost {
 
     String token = generateToken();
     List<String> command = launchCommand(executable);
-    ProcessBuilder builder = new ProcessBuilder(command);
-    builder.directory(paths.installedRoot().toFile());
+    Map<String, String> launchEnvironment = new LinkedHashMap<>();
+    populateEnvironment(launchEnvironment, installation.manifest(), paths, token, appEnv);
+    AppSandboxLaunchPlan launchPlan =
+        sandboxProviders.prepareLaunch(
+            new AppSandboxLaunchContext(
+                normalizedAppId,
+                paths.installedRoot(),
+                paths.dataDir(),
+                paths.cacheDir(),
+                paths.runDir(),
+                paths.processLogFile().getParent(),
+                command,
+                launchEnvironment,
+                paths.installedRoot(),
+                installation.manifest().sandboxPolicy(),
+                appEnv));
+    ProcessBuilder builder = new ProcessBuilder(launchPlan.command());
+    builder.directory(launchPlan.workingDirectory().toFile());
     builder.redirectErrorStream(true);
     builder.redirectOutput(ProcessBuilder.Redirect.appendTo(paths.processLogFile().toFile()));
-    populateEnvironment(builder.environment(), installation.manifest(), paths, token, appEnv);
+    builder.environment().clear();
+    builder.environment().putAll(launchPlan.environment());
 
     Instant startedAt = Instant.now();
     Process process = builder.start();
@@ -544,6 +587,7 @@ public final class LocalProcessAppHost implements AppHost {
               restartCount,
               currentRestartAttempt,
               token,
+              launchPlan.sandboxStatus(),
               false));
       throw startupFailure(normalizedAppId, process);
     }
@@ -556,7 +600,8 @@ public final class LocalProcessAppHost implements AppHost {
                 startupProcessTree,
                 process.pid(),
                 preferDescendantPid(executable, startupProcessTree)),
-            startedAt);
+            startedAt,
+            launchPlan.sandboxStatus());
     CompletableFuture<Void> exitCleanup = new CompletableFuture<>();
     RunningProcess runningProcess =
         new RunningProcess(
@@ -703,9 +748,16 @@ public final class LocalProcessAppHost implements AppHost {
             .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
     RuntimeRecord runtimeRecord = runtimeRecords.get(normalizedAppId);
     if (runtimeRecord == null) {
-      runtimeRecord = RuntimeRecord.stopped(installed.paths());
+      runtimeRecord =
+          RuntimeRecord.stopped(
+              installed.paths(),
+              AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy()));
     }
-    return statusSnapshot(normalizedAppId, runtimeRecord.withoutRunningProcess(installed.paths()));
+    return statusSnapshot(
+        normalizedAppId,
+        runtimeRecord.withoutRunningProcess(
+            installed.paths(),
+            AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy())));
   }
 
   /**
@@ -772,7 +824,8 @@ public final class LocalProcessAppHost implements AppHost {
         runtimeRecord.restartCount(),
         runtimeRecord.currentRestartAttempt(),
         log.available(),
-        log.sizeBytes());
+        log.sizeBytes(),
+        runtimeRecord.sandboxStatus());
   }
 
   private static int boundedLogTailBytes(int maxBytes) {
@@ -861,6 +914,7 @@ public final class LocalProcessAppHost implements AppHost {
             exitRecord.exitAt(),
             exitRecord.exitCode(),
             exitRecord.lastLaunchToken(),
+            exitRecord.sandboxStatus(),
             exitRecord.restartCount(),
             exitRecord.currentRestartAttempt()));
   }
@@ -2567,6 +2621,11 @@ public final class LocalProcessAppHost implements AppHost {
     void deleteRecursively(Path root) throws IOException;
   }
 
+  private record HostDependencies(
+      ManagedTreeDeleter managedTreeDeleter,
+      AppInstallVerificationPolicy installVerificationPolicy,
+      AppSandboxProviders sandboxProviders) {}
+
   record TimingConfig(
       Duration startupExitGracePeriod,
       Duration startupProcessCaptureWindow,
@@ -2621,6 +2680,7 @@ public final class LocalProcessAppHost implements AppHost {
       int restartCount,
       int currentRestartAttempt,
       String lastLaunchToken,
+      AppSandboxStatus sandboxStatus,
       boolean explicitStop) {
     private static ProcessExitRecord fromRunningProcess(
         RunningProcess runningProcess, Integer exitCode, Instant exitAt, boolean explicitStop) {
@@ -2631,6 +2691,7 @@ public final class LocalProcessAppHost implements AppHost {
           runningProcess.restartCount(),
           runningProcess.currentRestartAttempt(),
           runningProcess.snapshot().token(),
+          runningProcess.snapshot().sandboxStatus(),
           explicitStop);
     }
   }
@@ -2646,6 +2707,7 @@ public final class LocalProcessAppHost implements AppHost {
       Instant lastExitAt,
       Integer lastExitCode,
       String lastLaunchToken,
+      AppSandboxStatus sandboxStatus,
       int restartCount,
       int currentRestartAttempt) {
     private static RuntimeRecord running(
@@ -2671,6 +2733,7 @@ public final class LocalProcessAppHost implements AppHost {
           previousRecord == null ? null : previousRecord.lastExitAt(),
           previousRecord == null ? null : previousRecord.lastExitCode(),
           snapshot.token(),
+          snapshot.sandboxStatus(),
           restartCount,
           currentRestartAttempt);
     }
@@ -2686,13 +2749,14 @@ public final class LocalProcessAppHost implements AppHost {
           exitAt,
           exitCode,
           runningProcess.snapshot().token(),
+          runningProcess.snapshot().sandboxStatus(),
           runningProcess.restartCount(),
           restartAttempt);
     }
 
-    private static RuntimeRecord stopped(InstalledAppPaths paths) {
+    private static RuntimeRecord stopped(InstalledAppPaths paths, AppSandboxStatus sandboxStatus) {
       return new RuntimeRecord(
-          paths, AppRuntimeState.STOPPED, false, null, null, null, null, null, 0, 0);
+          paths, AppRuntimeState.STOPPED, false, null, null, null, null, null, sandboxStatus, 0, 0);
     }
 
     private static RuntimeRecord stopped(RunningProcess runningProcess) {
@@ -2705,6 +2769,7 @@ public final class LocalProcessAppHost implements AppHost {
           Instant.now(),
           trackedAppExitCode(runningProcess),
           runningProcess.snapshot().token(),
+          runningProcess.snapshot().sandboxStatus(),
           runningProcess.restartCount(),
           runningProcess.currentRestartAttempt());
     }
@@ -2719,6 +2784,7 @@ public final class LocalProcessAppHost implements AppHost {
           lastExitAt,
           lastExitCode,
           lastLaunchToken,
+          sandboxStatus,
           restartCount,
           currentRestartAttempt);
     }
@@ -2733,11 +2799,13 @@ public final class LocalProcessAppHost implements AppHost {
           failedAt,
           lastExitCode,
           lastLaunchToken,
+          sandboxStatus,
           restartCount,
           currentRestartAttempt);
     }
 
-    private RuntimeRecord withoutRunningProcess(InstalledAppPaths installedPaths) {
+    private RuntimeRecord withoutRunningProcess(
+        InstalledAppPaths installedPaths, AppSandboxStatus installedSandboxStatus) {
       if (running) {
         return new RuntimeRecord(
             installedPaths,
@@ -2748,13 +2816,17 @@ public final class LocalProcessAppHost implements AppHost {
             lastExitAt,
             lastExitCode,
             lastLaunchToken,
+            installedSandboxStatus,
             restartCount,
             currentRestartAttempt);
       }
-      return paths.equals(installedPaths) ? this : withPaths(installedPaths);
+      return paths.equals(installedPaths) && sandboxStatus.equals(installedSandboxStatus)
+          ? this
+          : withPathsAndSandboxStatus(installedPaths, installedSandboxStatus);
     }
 
-    private RuntimeRecord withPaths(InstalledAppPaths installedPaths) {
+    private RuntimeRecord withPathsAndSandboxStatus(
+        InstalledAppPaths installedPaths, AppSandboxStatus installedSandboxStatus) {
       return new RuntimeRecord(
           installedPaths,
           state,
@@ -2764,6 +2836,7 @@ public final class LocalProcessAppHost implements AppHost {
           lastExitAt,
           lastExitCode,
           lastLaunchToken,
+          installedSandboxStatus,
           restartCount,
           currentRestartAttempt);
     }
@@ -2786,6 +2859,8 @@ public final class LocalProcessAppHost implements AppHost {
           + lastExitCode
           + ", lastLaunchToken="
           + (lastLaunchToken == null ? null : AppHostTokenRedactor.REDACTED)
+          + ", sandboxStatus="
+          + sandboxStatus
           + ", restartCount="
           + restartCount
           + ", currentRestartAttempt="
@@ -2913,7 +2988,8 @@ public final class LocalProcessAppHost implements AppHost {
                   snapshot.paths(),
                   snapshot.token(),
                   updatedPid,
-                  snapshot.startedAt());
+                  snapshot.startedAt(),
+                  snapshot.sandboxStatus());
       if (trackedHandlePids().equals(handlePids(aliveProcessTree))
           && updatedPid == snapshot.pid()
           && updatedRepresentativeProcessHandoff == representativeProcessHandoff) {

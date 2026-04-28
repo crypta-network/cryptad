@@ -326,6 +326,10 @@ class WebShellResourcesTest {
     assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));
+    assertTrue(script.contains("function appSandboxStatus(app, runtime)"));
+    assertTrue(script.contains("function sandboxLabel(status)"));
+    assertTrue(script.contains("Unsupported required sandbox"));
+    assertTrue(script.contains("[\"Sandbox\", sandboxLabel(sandbox)]"));
     assertTrue(script.contains("function appRuntimePath(appId)"));
     assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
     assertTrue(script.contains("function appAuditPath(appId)"));

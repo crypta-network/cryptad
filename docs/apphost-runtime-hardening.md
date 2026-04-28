@@ -5,7 +5,8 @@ This document describes the current AppHost runtime boundary for local out-of-pr
 ## Scope
 
 AppHost runs installed apps as local child processes. The current hardening layer makes launch
-behavior explicit and adds operator visibility, but it does not add an operating-system sandbox.
+behavior explicit and adds operator visibility. PR-206 adds a sandbox policy and reporting model,
+but the default providers still do not add a hard operating-system sandbox.
 
 The current boundary provides:
 
@@ -14,12 +15,44 @@ The current boundary provides:
 - a minimal launch environment with AppHost variables only;
 - combined stdout/stderr capture in an app-owned `process.log`;
 - token-redacted runtime status and bounded process-log tail APIs;
+- sandbox policy parsing, provider selection, and token-free sandbox status reporting;
 - best-effort owner-only permissions on POSIX app data, cache, run, and process-log files;
 - bounded in-session restart attempts when a manifest opts in to `on-failure`.
 
 The current boundary does not provide containers, WASM isolation, seccomp, chroot, jails, Windows
-Job Object restrictions, browser origin isolation, or network isolation. A third-party app still
-runs as a local process under the same operating-system user as the daemon.
+Job Object restrictions, browser origin isolation, or network isolation by default. A third-party
+app still runs as a local process under the same operating-system user as the daemon unless a future
+provider explicitly reports an enforced sandbox.
+
+## Sandbox policy
+
+App manifests may declare:
+
+```properties
+sandbox.mode=none|restricted-process|wasm-preview
+sandbox.required=false
+```
+
+Missing `sandbox.mode` defaults to `none`, and missing `sandbox.required` defaults to `false`.
+Unknown modes and malformed booleans fail manifest validation.
+
+`sandbox.mode=none` is the backward-compatible launch path. The app runs as it did before PR-206,
+and API/Shell surfaces report that no OS sandbox isolation is active.
+
+`sandbox.mode=restricted-process` requests the v1 restricted-process provider. The default provider
+is intentionally best-effort: it verifies AppHost's sanitized environment, explicit installed-bundle
+working directory, and app-scoped data/cache/run directories. It does not create a container,
+seccomp profile, chroot, jail, Windows Job Object policy, or network/filesystem mediation layer.
+Runtime status therefore reports `supportLevel=best-effort`, not `enforced`.
+
+`sandbox.mode=wasm-preview` is parsed as a reserved future mode. The default host has no WASM
+provider. If `sandbox.required=true`, starting such an app fails with `unsupported_sandbox`; if it
+is optional, AppHost may report the mode as unsupported instead of claiming isolation.
+
+`sandbox.required=true` means AppHost must reject launch when no provider can support the requested
+mode. It does not upgrade a best-effort provider into hard isolation. Operators should read the
+reported `supportLevel`, `provider`, `active`, and warnings fields to understand what actually
+happened on the current host.
 
 ## Launch environment
 
@@ -95,6 +128,8 @@ GET /api/v1/apps/{appId}/logs?maxBytes=65536
 
 Runtime status reports `STOPPED`, `RUNNING`, `EXITED`, `CRASHED`, or `RESTARTING`, plus process id,
 start time, last exit code/time, restart attempt counters, and log availability when known.
+It also reports a `sandbox` object containing the requested mode, whether the manifest requires it,
+the provider name, the support level, whether sandbox isolation is active, and token-free warnings.
 
 Process-log tailing is bounded. The default is small, and AppHost clamps oversized requests to its
 hard maximum. Missing logs return a stable unavailable snapshot. Log responses include text and
@@ -139,5 +174,5 @@ resources available to the daemon user unless the operating system or operator e
 them outside AppHost.
 
 Future sandbox work may add stronger platform-specific controls such as process containment,
-network restrictions, syscall filters, or browser origin isolation. Those are out of scope for the
-current runtime hardening layer.
+network restrictions, syscall filters, filesystem mediation, or real WASM execution. Those are out
+of scope for the current runtime hardening layer.

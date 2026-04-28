@@ -63,7 +63,9 @@ local build, verification, install, and catalog-refresh flows.
 
 Catalog installs and updates verify the signed catalog, the advertised artifact size and SHA-256,
 and the extracted bundle signature before AppHost installs the app. Catalog fetches support local
-files, `https:`, and loopback-only `http:` sources.
+files, `https:`, and loopback-only `http:` sources. Catalog ZIP extraction drops macOS
+`__MACOSX/**` and AppleDouble `._*` metadata entries before verification; executable app payload
+still has to match the signed bundle digest.
 
 App-owned static UI routes serve files from the immutable installed bundle under `/apps/{appId}/`.
 They do not serve app data, cache, run directories, catalog scratch directories, or caller staging
@@ -71,11 +73,14 @@ paths. Static UI remains same-origin with the local admin UI and Platform API, s
 entries are rejected and route responses use conservative CSP, `nosniff`, no-referrer, and
 non-public no-cache headers.
 
-AppHost process launches are process isolation, not sandboxing. AppHost starts a local child
-process with the installed bundle root as its working directory, a minimal environment, per-app
-data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-originated Platform API
-authentication. It does not currently provide containers, WASM isolation, seccomp, chroot, jails,
-Windows Job Object restrictions, network isolation, or browser origin isolation.
+AppHost process launches are process isolation, not hard sandboxing by default. AppHost starts a
+local child process with the installed bundle root as its working directory, a minimal environment,
+per-app data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-originated
+Platform API authentication. App manifests can request `sandbox.mode=none`,
+`restricted-process`, or `wasm-preview`, and Platform API/Web Shell surfaces report the requested
+mode and actual support level. The default restricted-process provider is best-effort launch
+hygiene, not a container, WASM runtime, seccomp profile, chroot, jail, Windows Job Object policy,
+network isolation, or browser origin isolation.
 
 App-originated Platform API calls authenticate with the launch token in `X-Crypta-App-Token`.
 `Authorization: Bearer` is accepted only when the Bearer value matches a live app token; unrelated
