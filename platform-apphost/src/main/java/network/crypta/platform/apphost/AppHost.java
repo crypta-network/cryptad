@@ -28,6 +28,14 @@ public interface AppHost {
   int MAX_PROCESS_LOG_TAIL_BYTES = 1024 * 1024;
 
   /**
+   * Default display limit for each managed app {@code process.log} file.
+   *
+   * <p>Implementations may retain a small additional redaction overlap on disk so bounded log-tail
+   * reads can redact tokens and known paths before applying this visible byte limit.
+   */
+  long DEFAULT_PROCESS_LOG_MAX_BYTES = 1024L * 1024L;
+
+  /**
    * Installs one app from a local staging directory.
    *
    * <p>The staging directory is treated as caller-owned input. Implementations validate the

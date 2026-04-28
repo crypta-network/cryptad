@@ -113,8 +113,10 @@ unchanged.
 Catalog-installed apps use the same manifest UI contract as local staged apps. If the verified
 bundle declares `app.ui.mode=static` and a relative `app.ui.entry`, Cryptad serves the installed
 bundle UI at `/apps/{appId}/`. Existing shell-panel entries such as `/app/node/#queue` still open
-through their declared local route. See [app-owned-ui.md](app-owned-ui.md) for the static UI route
-and security boundary.
+through their declared local route. Catalog-installed bundles also use the same data/cache quota
+semantics as local staged apps: missing or `0` quota fields are unlimited, and positive values are
+enforced only for AppHost-managed app data/cache directories. See
+[app-owned-ui.md](app-owned-ui.md) for the static UI route and security boundary.
 
 ## Future work
 

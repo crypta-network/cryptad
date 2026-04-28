@@ -16,6 +16,9 @@ The current boundary provides:
 - combined stdout/stderr capture in an app-owned `process.log`;
 - token-redacted runtime status and bounded process-log tail APIs;
 - sandbox policy parsing, provider selection, and token-free sandbox status reporting;
+- measured AppHost-managed data/cache usage with positive-quota enforcement at launch/restart
+  boundaries;
+- best-effort process-log size bounding at lifecycle and status checkpoints;
 - best-effort owner-only permissions on POSIX app data, cache, run, and process-log files;
 - bounded in-session restart attempts when a manifest opts in to `on-failure`.
 
@@ -117,6 +120,36 @@ On POSIX filesystems, AppHost applies owner-only permissions where practical:
 On filesystems without POSIX attributes, AppHost falls back to the platform default and continues
 running. That fallback is not a security boundary.
 
+## Data, cache, and log quotas
+
+App manifests can declare:
+
+```properties
+quota.data.bytes=0
+quota.cache.bytes=0
+```
+
+Both fields are optional non-negative byte counts. AppHost enforces only positive values. A missing
+field and an explicit `0` mean unlimited or no explicit app quota, so existing first-party bundles
+that declare zero quotas remain installable and startable.
+
+Quota checks apply only to AppHost-managed app data and cache directories. AppHost measures regular
+files without following symlinks. It reports path-free warnings when a scan skips symlinks or cannot
+inspect all entries. An app that is already over a positive data or cache quota, or whose enforced
+quota area cannot be measured completely, cannot be started manually or by automatic restart until
+usage falls below the limit and measurement completes.
+
+The managed `process.log` file is bounded by host policy, not manifest metadata. AppHost applies the
+limit on a best-effort basis before launch, after process exit, before automatic restart, and before
+runtime status or process-log APIs return. When the file exceeds the limit, AppHost keeps the tail
+plus a small redaction overlap so recent diagnostics remain available and a bounded log read can
+still redact a token or known AppHost path split by the display boundary. The limit does not make app
+output a trusted secret store; token and path redaction still happen before log text leaves AppHost.
+
+Quota status is token-free and path-free. Runtime status and app summaries expose data/cache usage,
+raw manifest quota values, effective positive limits, enforcement booleans, over-limit booleans,
+process-log size/limit metadata, and warning strings safe for Web Shell display.
+
 ## Runtime status and logs
 
 The Platform API exposes process-level status:
@@ -127,13 +160,15 @@ GET /api/v1/apps/{appId}/logs?maxBytes=65536
 ```
 
 Runtime status reports `STOPPED`, `RUNNING`, `EXITED`, `CRASHED`, or `RESTARTING`, plus process id,
-start time, last exit code/time, restart attempt counters, and log availability when known.
+start time, last exit code/time, restart attempt counters, log availability when known, quota
+status, and display-safe runtime warnings.
 It also reports a `sandbox` object containing the requested mode, whether the manifest requires it,
 the provider name, the support level, whether sandbox isolation is active, and token-free warnings.
 
 Process-log tailing is bounded. The default is small, and AppHost clamps oversized requests to its
 hard maximum. Missing logs return a stable unavailable snapshot. Log responses include text and
-metadata only; they do not include the runtime log path.
+metadata only; they do not include the runtime log path. The on-disk `process.log` may be slightly
+larger than the display limit because AppHost retains redaction overlap before the visible tail.
 
 App-originated Platform API decisions are recorded separately in a bounded process-local audit log.
 The Apps API exposes recent entries through `GET /api/v1/apps/{appId}/audit`; those entries omit
@@ -164,14 +199,20 @@ When `policy=on-failure`, AppHost restarts only after a non-zero process exit, o
 current daemon session, and only up to `app.restart.maxAttempts`. Each restart gets a fresh launch
 token. Explicit operator stop suppresses automatic restart.
 
+AppHost also applies a bounded rolling restart-storm guard. The default guard suppresses automatic
+restart after five restart attempts within five minutes and records a runtime warning. Manual start
+is still allowed unless a positive data or cache quota is currently exceeded or cannot be measured
+completely.
+
 This is minimal restart plumbing, not a persistent supervisor. AppHost does not recover restart
 state across daemon restarts, does not run app-provided health checks, and does not retry forever.
 
 ## Remaining risks
 
-Third-party apps remain trusted local code. They can consume CPU, memory, disk, and network
-resources available to the daemon user unless the operating system or operator environment limits
-them outside AppHost.
+Third-party apps remain trusted local code. AppHost enforces positive data/cache quotas for its own
+managed mutable directories and bounds managed process logs, but it does not provide OS-level CPU,
+memory, network, or arbitrary filesystem isolation. Apps can still consume resources available to
+the daemon user unless the operating system or operator environment limits them outside AppHost.
 
 Future sandbox work may add stronger platform-specific controls such as process containment,
 network restrictions, syscall filters, filesystem mediation, or real WASM execution. Those are out

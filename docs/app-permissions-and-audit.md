@@ -145,3 +145,9 @@ Installed app summaries also include a small audit object and a retained denied-
 The Web Shell displays declared permissions, recent app-originated audit events, and denied-call
 counts on installed app cards. Audit entries include the auth source so operators can distinguish
 AppHost process-token calls from browser-session calls.
+
+Installed app summaries and runtime status also include quota status for AppHost-managed data,
+cache, and process-log resources. Those quota fields are operator visibility and lifecycle
+enforcement data; they do not grant app principals any additional Platform API capability and they
+must remain free of launch tokens, browser session tokens, command lines, and local filesystem
+paths.

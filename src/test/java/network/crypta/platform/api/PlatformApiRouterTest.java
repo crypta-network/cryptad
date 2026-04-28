@@ -18,12 +18,17 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppQuotaPolicy;
+import network.crypta.platform.apphost.AppQuotaStatus;
+import network.crypta.platform.apphost.AppQuotaUsage;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
 import network.crypta.runtime.spi.AlertFeedPort;
 import network.crypta.runtime.spi.AlertListSnapshot;
 import network.crypta.runtime.spi.AlertMutationPort;
@@ -100,6 +105,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -121,6 +127,8 @@ class PlatformApiRouterTest {
   private static final String APP_VERSION = "2.1.0";
   private static final String APP_UI_ENTRY = "ui/index.html";
   private static final long APP_PID = 4242L;
+  private static final long MANIFEST_DATA_QUOTA_BYTES = 4096L;
+  private static final long MANIFEST_CACHE_QUOTA_BYTES = 8192L;
 
   @Mock private RuntimePorts runtimePorts;
   @Mock private NodeInfoPort nodeInfoPort;
@@ -147,7 +155,7 @@ class PlatformApiRouterTest {
   private PlatformApiRouter router;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws IOException {
     when(runtimePorts.nodeInfo()).thenReturn(nodeInfoPort);
     when(runtimePorts.peer()).thenReturn(peerPort);
     when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
@@ -165,6 +173,9 @@ class PlatformApiRouterTest {
     when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
     when(runtimePorts.alertFeed()).thenReturn(alertFeedPort);
     when(runtimePorts.alertMutation()).thenReturn(alertMutationPort);
+    lenient()
+        .when(appHost.runtimeStatus(any()))
+        .thenAnswer(invocation -> stoppedRuntimeStatus(invocation.getArgument(0)));
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
@@ -3265,7 +3276,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> runtimeSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(14);
     summary.put("appId", APP_ID);
     summary.put("state", "RUNNING");
     summary.put("running", true);
@@ -3278,6 +3289,8 @@ class PlatformApiRouterTest {
     summary.put("logAvailable", true);
     summary.put("logSizeBytes", 128L);
     summary.put("sandbox", sandboxSummary());
+    summary.put("quota", unlimitedQuotaSummary(0L, 0L));
+    summary.put("warnings", List.of());
     return summary;
   }
 
@@ -3310,10 +3323,7 @@ class PlatformApiRouterTest {
     summary.put("uiEntry", appUiEntry);
     summary.put("uiUrl", uiUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
-    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
-    quota.put("dataBytes", 4096L);
-    quota.put("cacheBytes", 8192L);
-    summary.put("quota", quota);
+    summary.put("quota", manifestQuotaSummary(installed ? 0L : null, installed ? 0L : null));
     summary.put("sandbox", sandboxSummary());
     summary.put("installed", installed);
     summary.put("running", running);
@@ -3333,10 +3343,7 @@ class PlatformApiRouterTest {
     summary.put("uiEntry", null);
     summary.put("uiUrl", null);
     summary.put("permissions", List.of());
-    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(2);
-    quota.put("dataBytes", null);
-    quota.put("cacheBytes", null);
-    summary.put("quota", quota);
+    summary.put("quota", unknownQuotaSummary());
     summary.put("sandbox", sandboxSummary());
     summary.put("installed", false);
     summary.put("running", false);
@@ -3366,6 +3373,76 @@ class PlatformApiRouterTest {
     sandbox.put("reason", "App is running without OS sandbox isolation");
     sandbox.put("warnings", List.of("App is running without OS sandbox isolation"));
     return sandbox;
+  }
+
+  private static AppRuntimeStatusSnapshot stoppedRuntimeStatus(String appId) {
+    return new AppRuntimeStatusSnapshot(
+        appId,
+        AppRuntimeState.STOPPED,
+        false,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        false,
+        null,
+        AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults()),
+        manifestQuotaStatus(),
+        List.of());
+  }
+
+  private static AppQuotaStatus manifestQuotaStatus() {
+    return new AppQuotaStatus(
+        new AppQuotaPolicy(
+            MANIFEST_DATA_QUOTA_BYTES,
+            MANIFEST_CACHE_QUOTA_BYTES,
+            AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES),
+        new AppQuotaUsage(0L, 0L, null),
+        List.of());
+  }
+
+  private static Map<String, Object> manifestQuotaSummary(
+      Long dataUsageBytes, Long cacheUsageBytes) {
+    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
+    quota.put("dataBytes", MANIFEST_DATA_QUOTA_BYTES);
+    quota.put("cacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
+    quota.put("effectiveDataBytes", MANIFEST_DATA_QUOTA_BYTES);
+    quota.put("effectiveCacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
+    quota.put("dataUsageBytes", dataUsageBytes);
+    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataQuotaEnforced", true);
+    quota.put("cacheQuotaEnforced", true);
+    quota.put("dataOverLimit", false);
+    quota.put("cacheOverLimit", false);
+    quota.put("processLogMaxBytes", AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES);
+    quota.put("processLogSizeBytes", null);
+    quota.put("warnings", List.of());
+    return quota;
+  }
+
+  private static Map<String, Object> unlimitedQuotaSummary(
+      Long dataUsageBytes, Long cacheUsageBytes) {
+    LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
+    quota.put("dataBytes", null);
+    quota.put("cacheBytes", null);
+    quota.put("effectiveDataBytes", null);
+    quota.put("effectiveCacheBytes", null);
+    quota.put("dataUsageBytes", dataUsageBytes);
+    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataQuotaEnforced", false);
+    quota.put("cacheQuotaEnforced", false);
+    quota.put("dataOverLimit", false);
+    quota.put("cacheOverLimit", false);
+    quota.put("processLogMaxBytes", AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES);
+    quota.put("processLogSizeBytes", null);
+    quota.put("warnings", List.of());
+    return quota;
+  }
+
+  private static Map<String, Object> unknownQuotaSummary() {
+    return unlimitedQuotaSummary(null, null);
   }
 
   private static String uiMode(String appUiEntry) {

@@ -82,6 +82,17 @@ mode and actual support level. The default restricted-process provider is best-e
 hygiene, not a container, WASM runtime, seccomp profile, chroot, jail, Windows Job Object policy,
 network isolation, or browser origin isolation.
 
+AppHost enforces manifest data/cache quotas only when `quota.data.bytes` or `quota.cache.bytes` is
+positive. Missing quota fields and explicit `0` values mean unlimited or no explicit app quota for
+backward compatibility with existing first-party app manifests. Enforcement is scoped to
+AppHost-managed app data and cache directories, uses path-free status warnings for incomplete scans,
+and blocks launch or automatic restart for positive quotas when an enforced area cannot be measured
+completely. AppHost also bounds each managed `process.log` file on a best-effort basis at lifecycle
+and status checkpoints, while retaining a small redaction overlap before the visible tail so log
+bounding does not split tokens or known AppHost paths away from the context needed to redact them.
+These quotas do not provide CPU, memory, network, container, or full filesystem isolation and do not
+replace the sandbox provider model.
+
 App-originated Platform API calls authenticate with the launch token in `X-Crypta-App-Token`.
 `Authorization: Bearer` is accepted only when the Bearer value matches a live app token; unrelated
 Bearer credentials continue through the host/operator path so reverse proxies and shared clients do
@@ -100,7 +111,8 @@ sessions fail with `401 invalid_app_browser_session`.
 
 Runtime status and process-log Platform API responses must remain token-free and path-free. Log
 tail responses redact the current launch token and obvious `CRYPTAD_APP_TOKEN=...` text before
-returning app output to the Web Shell. This is defense in depth for operator visibility; it is not a
+returning app output to the Web Shell. Process-log truncation keeps enough overlap before the
+bounded tail for that redaction step. This is defense in depth for operator visibility; it is not a
 general secret scanner for arbitrary app output.
 
 App-originated allowed and denied Platform API decisions are recorded in a bounded process-local

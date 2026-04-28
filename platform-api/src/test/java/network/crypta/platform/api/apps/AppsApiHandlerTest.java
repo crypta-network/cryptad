@@ -14,6 +14,10 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppQuotaPolicy;
+import network.crypta.platform.apphost.AppQuotaStatus;
+import network.crypta.platform.apphost.AppQuotaUsage;
+import network.crypta.platform.apphost.AppQuotaWarning;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -187,6 +191,44 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  void get_whenManifestDeclaresQuota_expectSummaryIncludesEffectiveUsageAndWarnings() {
+    AppsApiHandler handler =
+        new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.NONE, null, 1024L, 0L)));
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    Map<?, ?> quota = (Map<?, ?>) summary.get("quota");
+    assertEquals(1024L, quota.get("dataBytes"));
+    assertEquals(0L, quota.get("cacheBytes"));
+    assertEquals(1024L, quota.get("effectiveDataBytes"));
+    assertNull(quota.get("effectiveCacheBytes"));
+    assertEquals(12L, quota.get("dataUsageBytes"));
+    assertEquals(34L, quota.get("cacheUsageBytes"));
+    assertEquals(true, quota.get("dataQuotaEnforced"));
+    assertEquals(false, quota.get("cacheQuotaEnforced"));
+    org.junit.jupiter.api.Assertions.assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void list_whenAppDisappearsBeforeQuotaLookup_expectSummaryWithoutMeasuredQuotaUsage() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null, 4096L, 1024L));
+    appHost.runtimeStatusFailure = new AppHostException("app is not installed: " + APP_ID);
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    List<Map<String, Object>> apps = handler.list();
+
+    assertEquals(1, apps.size());
+    Map<?, ?> quota = (Map<?, ?>) apps.getFirst().get("quota");
+    assertEquals(4096L, quota.get("dataBytes"));
+    assertEquals(1024L, quota.get("cacheBytes"));
+    assertEquals(4096L, quota.get("effectiveDataBytes"));
+    assertEquals(1024L, quota.get("effectiveCacheBytes"));
+    assertNull(quota.get("dataUsageBytes"));
+    assertNull(quota.get("cacheUsageBytes"));
+    assertNull(quota.get("processLogSizeBytes"));
+  }
+
+  @Test
   void runtime_whenAppRunning_expectTokenFreeRuntimeStatus() {
     SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
     appHost.runtimeStatus =
@@ -201,7 +243,14 @@ class AppsApiHandlerTest {
             1,
             1,
             true,
-            128L);
+            128L,
+            network.crypta.platform.apphost.sandbox.AppSandboxProviders.inactiveStatus(
+                network.crypta.platform.apphost.sandbox.AppSandboxPolicy.defaults()),
+            new AppQuotaStatus(
+                new AppQuotaPolicy(1024L, 0L, 2048L),
+                new AppQuotaUsage(128L, 64L, 128L),
+                List.of(AppQuotaWarning.cacheQuotaExceeded())),
+            List.of("Automatic restart suppressed after 5 attempts within 300000 ms."));
     AppsApiHandler handler = new AppsApiHandler(appHost);
 
     Map<String, Object> runtime = handler.runtime(APP_ID);
@@ -213,6 +262,21 @@ class AppsApiHandlerTest {
     Map<?, ?> sandbox = (Map<?, ?>) runtime.get("sandbox");
     assertEquals("none", sandbox.get("mode"));
     assertEquals(false, sandbox.get("active"));
+    Map<?, ?> quota = (Map<?, ?>) runtime.get("quota");
+    assertEquals(1024L, quota.get("dataBytes"));
+    assertEquals(0L, quota.get("cacheBytes"));
+    assertEquals(1024L, quota.get("effectiveDataBytes"));
+    assertNull(quota.get("effectiveCacheBytes"));
+    assertEquals(128L, quota.get("dataUsageBytes"));
+    assertEquals(64L, quota.get("cacheUsageBytes"));
+    assertEquals(true, quota.get("dataQuotaEnforced"));
+    assertEquals(false, quota.get("cacheQuotaEnforced"));
+    assertEquals(2048L, quota.get("processLogMaxBytes"));
+    assertEquals(128L, quota.get("processLogSizeBytes"));
+    assertEquals(List.of("Cache usage exceeds the configured app quota."), quota.get("warnings"));
+    assertEquals(
+        List.of("Automatic restart suppressed after 5 attempts within 300000 ms."),
+        runtime.get("warnings"));
     org.junit.jupiter.api.Assertions.assertFalse(runtime.toString().contains("token"));
   }
 
@@ -232,6 +296,26 @@ class AppsApiHandlerTest {
     assertEquals(409, exception.statusCode());
     assertEquals("unsupported_sandbox", exception.errorCode());
     org.junit.jupiter.api.Assertions.assertFalse(exception.getMessage().contains("secret-token"));
+  }
+
+  @Test
+  void start_whenDataQuotaExceeded_expectConflict() {
+    assertStartFailureIsQuotaConflict("app data quota exceeded: " + APP_ID);
+  }
+
+  @Test
+  void start_whenCacheQuotaExceeded_expectConflict() {
+    assertStartFailureIsQuotaConflict("app cache quota exceeded: " + APP_ID);
+  }
+
+  @Test
+  void start_whenDataQuotaScanIncomplete_expectConflict() {
+    assertStartFailureIsQuotaConflict("app data quota scan incomplete: " + APP_ID);
+  }
+
+  @Test
+  void start_whenCacheQuotaScanIncomplete_expectConflict() {
+    assertStartFailureIsQuotaConflict("app cache quota scan incomplete: " + APP_ID);
   }
 
   @Test
@@ -255,6 +339,20 @@ class AppsApiHandlerTest {
     assertEquals(16, logs.get(FIELD_MAX_BYTES));
     assertEquals("CRYPTAD_APP_TOKEN=[REDACTED]\nready\n", logs.get("text"));
     org.junit.jupiter.api.Assertions.assertFalse(logs.toString().contains("secret-token"));
+  }
+
+  private void assertStartFailureIsQuotaConflict(String message) {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.startFailure = new AppHostException(message);
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    PlatformApiException exception =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            PlatformApiException.class, () -> handler.start(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_conflict", exception.errorCode());
+    assertEquals(message, exception.getMessage());
   }
 
   @Test
@@ -323,6 +421,11 @@ class AppsApiHandlerTest {
   }
 
   private InstalledAppSnapshot snapshot(AppUiMode uiMode, String uiEntry) {
+    return snapshot(uiMode, uiEntry, null, null);
+  }
+
+  private InstalledAppSnapshot snapshot(
+      AppUiMode uiMode, String uiEntry, Long dataQuotaBytes, Long cacheQuotaBytes) {
     AppManifest manifest =
         new AppManifest(
             1,
@@ -333,8 +436,8 @@ class AppsApiHandlerTest {
             uiMode,
             uiEntry,
             List.of(),
-            null,
-            null);
+            dataQuotaBytes,
+            cacheQuotaBytes);
     InstalledAppPaths paths =
         new InstalledAppPaths(
             APP_ID,
@@ -416,6 +519,7 @@ class AppsApiHandlerTest {
     private AppRuntimeStatusSnapshot runtimeStatus;
     private AppProcessLogSnapshot processLog;
     private IOException describeFailure;
+    private IOException runtimeStatusFailure;
     private IOException startFailure;
     private boolean stopResult;
     private int stopCalls;
@@ -478,6 +582,9 @@ class AppsApiHandlerTest {
 
     @Override
     public AppRuntimeStatusSnapshot runtimeStatus(String appId) throws IOException {
+      if (runtimeStatusFailure != null) {
+        throw runtimeStatusFailure;
+      }
       if (!APP_ID.equals(appId)) {
         throw new AppHostException("app is not installed: " + appId);
       }
@@ -485,7 +592,24 @@ class AppsApiHandlerTest {
         return runtimeStatus;
       }
       return new AppRuntimeStatusSnapshot(
-          appId, AppRuntimeState.STOPPED, false, null, null, null, null, 0, 0, false, null);
+          appId,
+          AppRuntimeState.STOPPED,
+          false,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          false,
+          null,
+          network.crypta.platform.apphost.sandbox.AppSandboxProviders.inactiveStatus(
+              snapshot.manifest().sandboxPolicy()),
+          new AppQuotaStatus(
+              AppQuotaPolicy.fromManifest(snapshot.manifest()),
+              new AppQuotaUsage(12L, 34L, null),
+              List.of()),
+          List.of());
     }
 
     @Override

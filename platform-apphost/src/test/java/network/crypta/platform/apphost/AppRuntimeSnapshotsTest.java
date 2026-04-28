@@ -1,6 +1,7 @@
 package network.crypta.platform.apphost;
 
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -96,6 +97,140 @@ class AppRuntimeSnapshotsTest {
     assertEquals(3, snapshot.currentRestartAttempt());
     assertTrue(snapshot.logAvailable());
     assertEquals(4096L, snapshot.logSizeBytes());
+    assertEquals(AppQuotaStatus.unlimited(), snapshot.quotaStatus());
+    assertTrue(snapshot.warnings().isEmpty());
+  }
+
+  @Test
+  void appQuotaPolicy_whenZeroOrAbsentQuotas_expectUnlimited() {
+    AppQuotaPolicy policy = new AppQuotaPolicy(0L, null, 1024L);
+
+    assertEquals(Long.valueOf(0L), policy.dataQuotaBytes());
+    assertNull(policy.effectiveDataQuotaBytes());
+    assertNull(policy.effectiveCacheQuotaBytes());
+    assertFalse(policy.dataQuotaEnforced());
+    assertFalse(policy.cacheQuotaEnforced());
+    assertEquals(1024L, policy.processLogMaxBytes());
+  }
+
+  @Test
+  void appQuotaPolicy_whenPositiveQuotas_expectEnforced() {
+    AppQuotaPolicy policy = new AppQuotaPolicy(128L, 256L, 1024L);
+
+    assertEquals(Long.valueOf(128L), policy.effectiveDataQuotaBytes());
+    assertEquals(Long.valueOf(256L), policy.effectiveCacheQuotaBytes());
+    assertTrue(policy.dataQuotaEnforced());
+    assertTrue(policy.cacheQuotaEnforced());
+  }
+
+  @Test
+  void appQuotaPolicy_whenNegativeQuota_expectFailure() {
+    IllegalArgumentException exception =
+        assertThrows(IllegalArgumentException.class, () -> new AppQuotaPolicy(-1L, null, 1024L));
+
+    assertEquals("dataQuotaBytes must be non-negative when present", exception.getMessage());
+  }
+
+  @Test
+  void appQuotaPolicy_whenProcessLogLimitIsNonPositive_expectFailure() {
+    IllegalArgumentException exception =
+        assertThrows(IllegalArgumentException.class, () -> new AppQuotaPolicy(null, null, 0L));
+
+    assertEquals("processLogMaxBytes must be positive", exception.getMessage());
+  }
+
+  @Test
+  void appQuotaUsage_whenNegativeUsage_expectFailure() {
+    IllegalArgumentException exception =
+        assertThrows(IllegalArgumentException.class, () -> new AppQuotaUsage(0L, -1L, null));
+
+    assertEquals("cacheUsageBytes must be non-negative", exception.getMessage());
+  }
+
+  @Test
+  void appQuotaStatus_whenUsageExceedsPositiveQuota_expectOverLimitAndImmutableWarnings() {
+    AppQuotaStatus status =
+        new AppQuotaStatus(
+            new AppQuotaPolicy(10L, 0L, 1024L),
+            new AppQuotaUsage(11L, 500L, 2048L),
+            List.of(AppQuotaWarning.dataQuotaExceeded()));
+
+    assertTrue(status.dataQuotaEnforced());
+    assertFalse(status.cacheQuotaEnforced());
+    assertTrue(status.dataOverLimit());
+    assertFalse(status.cacheOverLimit());
+    assertEquals(List.of("Data usage exceeds the configured app quota."), status.warningMessages());
+    List<AppQuotaWarning> warnings = status.warnings();
+    AppQuotaWarning cacheQuotaExceeded = AppQuotaWarning.cacheQuotaExceeded();
+
+    assertThrows(UnsupportedOperationException.class, () -> warnings.add(cacheQuotaExceeded));
+  }
+
+  @Test
+  void appQuotaStatus_whenCacheUsageExceedsPositiveQuota_expectCacheOverLimit() {
+    AppQuotaStatus status =
+        new AppQuotaStatus(
+            new AppQuotaPolicy(0L, 10L, 1024L),
+            new AppQuotaUsage(500L, 11L, null),
+            List.of(AppQuotaWarning.cacheQuotaExceeded()));
+
+    assertFalse(status.dataQuotaEnforced());
+    assertTrue(status.cacheQuotaEnforced());
+    assertFalse(status.dataOverLimit());
+    assertTrue(status.cacheOverLimit());
+    assertEquals(
+        List.of("Cache usage exceeds the configured app quota."), status.warningMessages());
+  }
+
+  @Test
+  void appQuotaWarning_whenAreaNamesVary_expectNormalizedPathFreeWarnings() {
+    AppQuotaWarning symlinkWarning = AppQuotaWarning.symlinkSkipped("Cache");
+    AppQuotaWarning scanWarning = AppQuotaWarning.scanIncomplete("DATA");
+
+    assertEquals("cache_symlink_skipped", symlinkWarning.code());
+    assertEquals("Cache usage ignores symlink entries.", symlinkWarning.message());
+    assertEquals("data_scan_incomplete", scanWarning.code());
+    assertEquals(
+        "Data usage may be incomplete because some entries could not be inspected.",
+        scanWarning.message());
+  }
+
+  @Test
+  void appQuotaWarning_whenAreaIsInvalid_expectFailure() {
+    IllegalArgumentException exception =
+        assertThrows(IllegalArgumentException.class, () -> AppQuotaWarning.scanIncomplete("logs"));
+
+    assertEquals("area must be data or cache", exception.getMessage());
+  }
+
+  @Test
+  void appRuntimeStatusSnapshot_whenQuotaAndWarningsProvided_expectStoredPathFreeValues() {
+    AppQuotaStatus quotaStatus =
+        new AppQuotaStatus(
+            new AppQuotaPolicy(1024L, 0L, 2048L), new AppQuotaUsage(128L, 64L, 512L), List.of());
+    AppRuntimeStatusSnapshot snapshot =
+        new AppRuntimeStatusSnapshot(
+            "sample-app",
+            AppRuntimeState.RUNNING,
+            true,
+            42L,
+            STARTED_AT,
+            null,
+            null,
+            0,
+            0,
+            true,
+            512L,
+            network.crypta.platform.apphost.sandbox.AppSandboxProviders.inactiveStatus(
+                network.crypta.platform.apphost.sandbox.AppSandboxPolicy.defaults()),
+            quotaStatus,
+            List.of("Automatic restart suppressed after 5 attempts within 300000 ms."));
+
+    assertEquals(quotaStatus, snapshot.quotaStatus());
+    assertEquals(
+        List.of("Automatic restart suppressed after 5 attempts within 300000 ms."),
+        snapshot.warnings());
+    assertFalse(snapshot.toString().contains("/"));
   }
 
   @Test

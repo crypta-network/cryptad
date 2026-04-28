@@ -183,8 +183,9 @@ GET /api/v1/apps/{appId}/audit
 ```
 
 The runtime endpoint reports process state, PID, start time, last exit metadata, restart attempt
-counts, and process-log availability. The logs endpoint returns a bounded, token-redacted tail of
-the app's combined stdout/stderr log. Neither endpoint exposes `CRYPTAD_APP_TOKEN` or absolute
+counts, quota status for AppHost-managed data/cache/log resources, runtime warnings, and
+process-log availability. The logs endpoint returns a bounded, token-redacted tail of the app's
+combined stdout/stderr log. Neither endpoint exposes `CRYPTAD_APP_TOKEN` or absolute
 installed/data/cache/run filesystem paths.
 
 The Web Shell uses those endpoints for operator visibility. Static app UIs must not treat the
@@ -209,6 +210,8 @@ app.exec=bin/launch.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
 app.permissions=queue.read,queue.write
+quota.data.bytes=0
+quota.cache.bytes=0
 ```
 
 First-party Publisher bundle:
@@ -222,6 +225,8 @@ app.exec=bin/launch.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
 app.permissions=queue.read,queue.write,content.insert
+quota.data.bytes=0
+quota.cache.bytes=0
 ```
 
 Transitional shell-panel bundle:

@@ -49,6 +49,7 @@ import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
+import network.crypta.platform.apphost.AppHostTokenRedactor;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
 import network.crypta.platform.apphost.AppRuntimeState;
@@ -88,6 +89,9 @@ class LocalProcessAppHostTest {
   private static final String APP_VERSION = "2.0.0";
   private static final String UPDATED_APP_VERSION = "3.0.0";
   private static final String DEFAULT_TOKEN = "token";
+  private static final String APP_TOKEN_ENV_NAME = "CRYPTAD_APP_TOKEN";
+  private static final String APP_TOKEN_ENV_ASSIGNMENT_PREFIX = APP_TOKEN_ENV_NAME + "=";
+  private static final String REDACTION_PROBE_VALUE = "0123456789abcdef".repeat(4);
   private static final String CACHE_DIR_NAME = "cache";
   private static final String INSTALLED_DIR_NAME = "installed";
   private static final String STAGE_UPDATE_DIR_NAME = "stage-update";
@@ -101,6 +105,8 @@ class LocalProcessAppHostTest {
       "signed app bundle verification is required";
   private static final String POSIX_LAUNCH_PATH = "bin/launch";
   private static final String STARTUP_EXIT_MESSAGE_PREFIX = "app exited during startup: ";
+  private static final String RESTART_STORM_WARNING =
+      "Automatic restart suppressed after 1 attempts within 300000 ms.";
   private static final String WINDOWS_11 = "Windows 11";
   private static final String LINUX_OS_NAME = "Linux";
   private static final String PYTHON3_COMMAND = "python3";
@@ -110,6 +116,8 @@ class LocalProcessAppHostTest {
   private static final String WINDOWS_CHILD_EXECUTABLE = "child.exe";
   private static final String POSIX_START_PATH = "bin/start";
   private static final String STAGE_DIR_NAME = "stage";
+  private static final String ZERO_QUOTA_APP_ID = "zero-quota-app";
+  private static final String ABSENT_QUOTA_APP_ID = "absent-quota-app";
   private static final String MANIFEST_FILE_NAME = "cryptad-app.properties";
   private static final String MKFIFO_COMMAND = "mkfifo";
   private static final String NETWORK_ACCESS_PERMISSION = "network.access";
@@ -357,6 +365,20 @@ class LocalProcessAppHostTest {
       done
       """
           .formatted(TEST_LOOP_SLEEP_SECONDS);
+  private static final String RESTART_STORM_SCRIPT =
+      """
+      #!/bin/sh
+      set -eu
+      count_file="$CRYPTAD_APP_RUN_DIR/restart-storm-count.txt"
+      count=0
+      if [ -f "$count_file" ]; then
+        count="$(cat "$count_file")"
+      fi
+      count=$((count + 1))
+      printf '%s\\n' "$count" > "$count_file"
+      sleep 0.500
+      exit 7
+      """;
   private static final String WAITING_WRAPPER_CLEAN_EXIT_SCRIPT =
       """
       #!/bin/sh
@@ -1289,8 +1311,8 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppHost host = allowUnsignedHost();
     InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
-    String token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    String assignment = "CRYPTAD_APP_TOKEN" + " ".repeat(16) + ":" + " ".repeat(16) + token;
+    String assignment =
+        APP_TOKEN_ENV_NAME + " ".repeat(16) + ":" + " ".repeat(16) + REDACTION_PROBE_VALUE;
     Files.writeString(installation.paths().processLogFile(), assignment, StandardCharsets.UTF_8);
 
     AppProcessLogSnapshot logTail = host.readProcessLogTail(RUNNER_APP_ID, 32);
@@ -1298,8 +1320,41 @@ class LocalProcessAppHostTest {
     assertTrue(logTail.available());
     assertTrue(logTail.truncated());
     assertTrue(logTail.text().contains("[REDACTED]"));
-    assertFalse(logTail.text().contains(token.substring(token.length() - 32)));
+    assertFalse(
+        logTail
+            .text()
+            .contains(REDACTION_PROBE_VALUE.substring(REDACTION_PROBE_VALUE.length() - 32)));
     assertFalse(logTail.text().matches("(?s).*[0-9a-f]{8}.*"));
+  }
+
+  @Test
+  void processLogTail_whenLogLimitWouldSplitTokenAssignment_expectOverlapRetainedAndRedacted()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    String assignment = APP_TOKEN_ENV_ASSIGNMENT_PREFIX + REDACTION_PROBE_VALUE;
+    int cutOffset = APP_TOKEN_ENV_ASSIGNMENT_PREFIX.length() + 8;
+    int overlapBytes = AppHostTokenRedactor.redactionOverlapBytes(null, installation.paths());
+    String prefix = "p".repeat(overlapBytes + 50);
+    int tailBytes =
+        Math.toIntExact(
+            AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES
+                - assignment.getBytes(StandardCharsets.UTF_8).length
+                + cutOffset);
+    Files.writeString(
+        installation.paths().processLogFile(),
+        prefix + assignment + "z".repeat(tailBytes),
+        StandardCharsets.UTF_8);
+
+    AppProcessLogSnapshot logTail =
+        host.readProcessLogTail(RUNNER_APP_ID, AppHost.MAX_PROCESS_LOG_TAIL_BYTES);
+
+    assertTrue(logTail.available());
+    assertTrue(logTail.truncated());
+    assertEquals(processLogRetainedBytes(installation.paths()), logTail.sizeBytes());
+    assertTrue(logTail.text().contains(APP_TOKEN_ENV_ASSIGNMENT_PREFIX + "[REDACTED]"));
+    assertFalse(logTail.text().contains(REDACTION_PROBE_VALUE.substring(8)));
+    assertFalse(logTail.text().matches("(?s).*[0-9a-f]{16}.*"));
   }
 
   @Test
@@ -1320,6 +1375,126 @@ class LocalProcessAppHostTest {
     assertFalse(logTail.text().contains(running.token()));
     assertTrue(logTail.text().length() <= 64);
     assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void start_whenDataUsageExceedsPositiveQuota_expectLaunchBlockedAndStatusWarns()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    Files.writeString(
+        installation.paths().dataDir().resolve("too-large.dat"),
+        "x".repeat(4097),
+        StandardCharsets.UTF_8);
+
+    AppHostException exception =
+        assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertEquals("app data quota exceeded: " + RUNNER_APP_ID, exception.getMessage());
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertTrue(status.quotaStatus().dataOverLimit());
+    assertFalse(status.toString().contains(installation.paths().dataDir().toString()));
+  }
+
+  @Test
+  void start_whenCacheUsageExceedsPositiveQuota_expectLaunchBlockedAndStatusWarns()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    Files.writeString(
+        installation.paths().cacheDir().resolve("too-large.dat"),
+        "x".repeat(1025),
+        StandardCharsets.UTF_8);
+
+    AppHostException exception =
+        assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertEquals("app cache quota exceeded: " + RUNNER_APP_ID, exception.getMessage());
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertTrue(status.quotaStatus().cacheOverLimit());
+    assertFalse(status.toString().contains(installation.paths().cacheDir().toString()));
+  }
+
+  @Test
+  void start_whenQuotaIsZeroOrAbsent_expectLaunchAllowed() throws IOException {
+    AppHost zeroQuotaHost = allowUnsignedHost();
+    Path zeroQuotaApp = stageInstalledApp(ZERO_QUOTA_APP_ID);
+    replaceManifestQuotasWithZero(zeroQuotaApp);
+    InstalledAppSnapshot zeroQuotaInstallation = zeroQuotaHost.installFromDirectory(zeroQuotaApp);
+    Files.writeString(
+        zeroQuotaInstallation.paths().dataDir().resolve("large.dat"),
+        "x".repeat(8192),
+        StandardCharsets.UTF_8);
+
+    RunningAppSnapshot zeroQuotaRunning = zeroQuotaHost.start(ZERO_QUOTA_APP_ID);
+    assertEquals(ZERO_QUOTA_APP_ID, zeroQuotaRunning.appId());
+    assertFalse(zeroQuotaHost.runtimeStatus(ZERO_QUOTA_APP_ID).quotaStatus().dataQuotaEnforced());
+    assertTrue(zeroQuotaHost.stop(ZERO_QUOTA_APP_ID));
+
+    AppHost absentQuotaHost = allowUnsignedHost();
+    Path absentQuotaApp = stageInstalledApp(ABSENT_QUOTA_APP_ID);
+    removeManifestQuotas(absentQuotaApp);
+    InstalledAppSnapshot absentQuotaInstallation =
+        absentQuotaHost.installFromDirectory(absentQuotaApp);
+    Files.writeString(
+        absentQuotaInstallation.paths().cacheDir().resolve("large.dat"),
+        "x".repeat(8192),
+        StandardCharsets.UTF_8);
+
+    RunningAppSnapshot absentQuotaRunning = absentQuotaHost.start(ABSENT_QUOTA_APP_ID);
+    assertEquals(ABSENT_QUOTA_APP_ID, absentQuotaRunning.appId());
+    assertFalse(
+        absentQuotaHost.runtimeStatus(ABSENT_QUOTA_APP_ID).quotaStatus().cacheQuotaEnforced());
+    assertTrue(absentQuotaHost.stop(ABSENT_QUOTA_APP_ID));
+  }
+
+  @Test
+  void runtimeStatus_whenProcessLogExceedsHostLimit_expectTailTruncatedAndWarning()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    String tail = "tail-marker\n";
+    long retainedBytes = processLogRetainedBytes(installation.paths());
+    Files.writeString(
+        installation.paths().processLogFile(),
+        "x".repeat(Math.toIntExact(retainedBytes + 128L)) + tail,
+        StandardCharsets.UTF_8);
+
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+
+    assertEquals(retainedBytes, Files.size(installation.paths().processLogFile()));
+    assertTrue(Files.readString(installation.paths().processLogFile()).endsWith(tail));
+    assertEquals(retainedBytes, status.quotaStatus().usage().processLogSizeBytes());
+    assertTrue(
+        status
+            .quotaStatus()
+            .warningMessages()
+            .contains("Process log exceeded the host limit and was truncated to its tail."));
+  }
+
+  @Test
+  void stop_whenProcessLogExceedsHostLimit_expectTruncationWarningPreserved() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    host.start(RUNNER_APP_ID);
+    String tail = "stop-tail-marker\n";
+    long retainedBytes = processLogRetainedBytes(installation.paths());
+    Files.writeString(
+        installation.paths().processLogFile(),
+        "x".repeat(Math.toIntExact(retainedBytes + 128L)) + tail,
+        StandardCharsets.UTF_8);
+
+    assertTrue(host.stop(RUNNER_APP_ID));
+
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppRuntimeState.STOPPED, status.state());
+    assertEquals(retainedBytes, Files.size(installation.paths().processLogFile()));
+    assertTrue(
+        status
+            .warnings()
+            .contains("Process log exceeded the host limit and was truncated to its tail."));
   }
 
   @Test
@@ -1437,6 +1612,27 @@ class LocalProcessAppHostTest {
     assertEquals(9, status.lastExitCode());
     assertEquals(1, status.currentRestartAttempt());
     assertEquals(1, status.restartCount());
+  }
+
+  @Test
+  void restartPolicy_whenFailuresExceedRollingWindow_expectRestartStormGuardWarning()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHostWithSingleRestartStormLimit();
+    Path stagedApp = stageInstalledRunnerApp(RESTART_STORM_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 1, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("restart-storm-count.txt");
+    AppRuntimeStatusSnapshot status = waitForRestartStormWarning(host);
+    assertEquals(AppRuntimeState.CRASHED, status.state());
+    assertTrue(status.currentRestartAttempt() >= 1);
+    assertTrue(status.restartCount() >= 1);
+    assertTrue(
+        Integer.parseInt(Files.readString(runCountFile, StandardCharsets.UTF_8).trim()) >= 2);
   }
 
   @Test
@@ -2274,7 +2470,7 @@ class LocalProcessAppHostTest {
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin",
         environment.get("PATH"));
-    assertEquals(DEFAULT_TOKEN, environment.get("CRYPTAD_APP_TOKEN"));
+    assertEquals(DEFAULT_TOKEN, environment.get(APP_TOKEN_ENV_NAME));
     assertEquals(RUNNER_APP_ID, environment.get("CRYPTAD_APP_ID"));
     assertEquals("shell-panel", environment.get("CRYPTAD_APP_UI_MODE"));
   }
@@ -2553,7 +2749,7 @@ class LocalProcessAppHostTest {
 
     assertEquals("unsupported_sandbox", exception.errorCode());
     assertTrue(exception.getMessage().contains("wasm-preview"));
-    assertFalse(exception.getMessage().contains("CRYPTAD_APP_TOKEN"));
+    assertFalse(exception.getMessage().contains(APP_TOKEN_ENV_NAME));
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
     AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
     assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.sandboxStatus().supportLevel());
@@ -2699,6 +2895,17 @@ class LocalProcessAppHostTest {
         AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
   }
 
+  private LocalProcessAppHost allowUnsignedHostWithSingleRestartStormLimit() {
+    return new LocalProcessAppHost(
+        layout(),
+        Duration.ofSeconds(1),
+        new java.security.SecureRandom(),
+        new AppEnv(),
+        TEST_TIMING,
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(),
+        new LocalProcessAppHost.RestartStormPolicy(Duration.ofMinutes(5), 1));
+  }
+
   private LocalProcessAppHost allowUnsignedHost(
       Duration stopTimeout,
       AppEnv appEnv,
@@ -2753,6 +2960,11 @@ class LocalProcessAppHostTest {
 
   private static void appendOnFailureRestartPolicy(Path stagedApp, long backoffMillis)
       throws IOException {
+    appendOnFailureRestartPolicy(stagedApp, backoffMillis, 1);
+  }
+
+  private static void appendOnFailureRestartPolicy(
+      Path stagedApp, long backoffMillis, int maxAttempts) throws IOException {
     Files.writeString(
         stagedApp.resolve(MANIFEST_FILE_NAME),
         """
@@ -2760,9 +2972,28 @@ class LocalProcessAppHostTest {
         app.restart.maxAttempts=%d
         app.restart.backoff.ms=%d
         """
-            .formatted("on-failure", 1, backoffMillis),
+            .formatted("on-failure", maxAttempts, backoffMillis),
         StandardCharsets.UTF_8,
         java.nio.file.StandardOpenOption.APPEND);
+  }
+
+  private static void replaceManifestQuotasWithZero(Path stagedApp) throws IOException {
+    Path manifestFile = stagedApp.resolve(MANIFEST_FILE_NAME);
+    String manifest = Files.readString(manifestFile, StandardCharsets.UTF_8);
+    manifest =
+        manifest
+            .replace("quota.data.bytes=4096", "quota.data.bytes=0")
+            .replace("quota.cache.bytes=1024", "quota.cache.bytes=0");
+    Files.writeString(manifestFile, manifest, StandardCharsets.UTF_8);
+  }
+
+  private static void removeManifestQuotas(Path stagedApp) throws IOException {
+    Path manifestFile = stagedApp.resolve(MANIFEST_FILE_NAME);
+    String manifest =
+        Files.readString(manifestFile, StandardCharsets.UTF_8)
+            .replace("quota.data.bytes=4096\n", "")
+            .replace("quota.cache.bytes=1024\n", "");
+    Files.writeString(manifestFile, manifest, StandardCharsets.UTF_8);
   }
 
   private Path stageInstalledApp(String appId, String scriptContent, Map<String, String> extraFiles)
@@ -3058,10 +3289,15 @@ class LocalProcessAppHostTest {
     assertTrue(capture.contains("CRYPTAD_APP_DATA_DIR=" + installation.paths().dataDir()));
     assertTrue(capture.contains("CRYPTAD_APP_CACHE_DIR=" + installation.paths().cacheDir()));
     assertTrue(capture.contains("CRYPTAD_APP_RUN_DIR=" + installation.paths().runDir()));
-    assertTrue(capture.contains("CRYPTAD_APP_TOKEN=" + running.token()));
+    assertTrue(capture.contains(APP_TOKEN_ENV_ASSIGNMENT_PREFIX + running.token()));
     assertTrue(capture.contains("CRYPTAD_APP_PERMISSIONS=" + STANDARD_PERMISSIONS_TEXT));
     assertTrue(capture.contains("CRYPTAD_APP_UI_MODE=shell-panel"));
     assertTrue(capture.contains("CRYPTAD_APP_UI_ENTRY=/"));
+  }
+
+  private static long processLogRetainedBytes(InstalledAppPaths paths) {
+    return AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES
+        + AppHostTokenRedactor.redactionOverlapBytes(null, paths);
   }
 
   private static void assertInstallationPathsRemoved(InstalledAppSnapshot installation) {
@@ -3135,6 +3371,22 @@ class LocalProcessAppHostTest {
       pausePolling("interrupted while waiting for app runtime state: " + RUNNER_APP_ID);
     }
     throw new AssertionError("timed out waiting for app runtime state: " + RUNNER_APP_ID);
+  }
+
+  private static AppRuntimeStatusSnapshot waitForRestartStormWarning(AppHost host)
+      throws IOException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(12).toNanos();
+    AppRuntimeStatusSnapshot lastStatus = null;
+    while (System.nanoTime() < deadline) {
+      AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+      lastStatus = status;
+      if (status.warnings().contains(RESTART_STORM_WARNING)) {
+        return status;
+      }
+      pausePolling("interrupted while waiting for app runtime warning: " + RUNNER_APP_ID);
+    }
+    throw new AssertionError(
+        "timed out waiting for app runtime warning: " + RUNNER_APP_ID + " last=" + lastStatus);
   }
 
   private static void waitForNotRunning(AppHost host) {

@@ -10,12 +10,14 @@ import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.apphost.AppQuotaPolicy;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +78,36 @@ class AppManifestParserTest {
     assertEquals(AppRestartPolicy.ON_FAILURE, manifest.restartPolicy());
     assertEquals(2, manifest.restartMaxAttempts());
     assertEquals(50L, manifest.restartBackoffMillis());
+  }
+
+  @Test
+  void parseContent_whenQuotaAbsent_expectPolicyUnlimited() throws Exception {
+    AppManifest manifest =
+        AppManifestParser.parseContent(
+            minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT));
+
+    AppQuotaPolicy policy = AppQuotaPolicy.fromManifest(manifest);
+
+    assertNull(manifest.dataQuotaBytes());
+    assertNull(manifest.cacheQuotaBytes());
+    assertFalse(policy.dataQuotaEnforced());
+    assertFalse(policy.cacheQuotaEnforced());
+  }
+
+  @Test
+  void parseContent_whenQuotaZero_expectRawMetadataPreservedAndPolicyUnlimited() throws Exception {
+    AppManifest manifest =
+        AppManifestParser.parseContent(
+            minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+                + "quota.data.bytes=0\n"
+                + "quota.cache.bytes=0\n");
+
+    AppQuotaPolicy policy = AppQuotaPolicy.fromManifest(manifest);
+
+    assertEquals(Long.valueOf(0L), manifest.dataQuotaBytes());
+    assertEquals(Long.valueOf(0L), manifest.cacheQuotaBytes());
+    assertFalse(policy.dataQuotaEnforced());
+    assertFalse(policy.cacheQuotaEnforced());
   }
 
   @Test

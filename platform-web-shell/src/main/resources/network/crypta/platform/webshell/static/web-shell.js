@@ -1000,6 +1000,69 @@
     return status.warnings.map((warning) => scalar(warning)).join("; ");
   }
 
+  function appQuotaStatus(app, runtime) {
+    if (runtime && runtime.quota && typeof runtime.quota === "object") {
+      return runtime.quota;
+    }
+    if (app && app.quota && typeof app.quota === "object") {
+      return app.quota;
+    }
+    return null;
+  }
+
+  function formatBytes(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return "Unavailable";
+    }
+    const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+    let scaled = value;
+    let unitIndex = 0;
+    while (scaled >= 1024 && unitIndex < units.length - 1) {
+      scaled /= 1024;
+      unitIndex += 1;
+    }
+    if (unitIndex === 0) {
+      return `${value} bytes`;
+    }
+    return `${scaled.toFixed(scaled >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+  }
+
+  function formatQuotaLimit(quota, effectiveKey, enforcedKey) {
+    if (!quota || typeof quota !== "object") {
+      return "Unavailable";
+    }
+    if (!quota[enforcedKey]) {
+      return "Unlimited";
+    }
+    return formatBytes(quota[effectiveKey]);
+  }
+
+  function formatQuotaUsage(quota, usageKey, effectiveKey, enforcedKey) {
+    if (!quota || typeof quota !== "object") {
+      return "Unavailable";
+    }
+    const usage = formatBytes(quota[usageKey]);
+    if (usage === "Unavailable") {
+      return usage;
+    }
+    if (!quota[enforcedKey]) {
+      return `${usage} of unlimited`;
+    }
+    return `${usage} of ${formatBytes(quota[effectiveKey])}`;
+  }
+
+  function quotaWarnings(quota, runtime) {
+    const warnings = [];
+    if (quota && Array.isArray(quota.warnings)) {
+      quota.warnings.forEach((warning) => warnings.push(scalar(warning)));
+    }
+    if (runtime && Array.isArray(runtime.warnings)) {
+      runtime.warnings.forEach((warning) => warnings.push(scalar(warning)));
+    }
+    const safeWarnings = warnings.filter((warning) => warning && warning !== "Unavailable");
+    return safeWarnings.length ? safeWarnings.join("; ") : "Unavailable";
+  }
+
   function buildAppActionForm(app, action, label) {
     const appId = typeof app.appId === "string" ? app.appId : "";
     const path = appMutationPath(appId, action);
@@ -1058,6 +1121,7 @@
     const runtimePid = runtime ? runtime.pid : app.pid;
     const runtimeStartedAt = runtime ? runtime.startedAt : app.startedAt;
     const sandbox = appSandboxStatus(app, runtime);
+    const quota = appQuotaStatus(app, runtime);
 
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -1084,6 +1148,14 @@
     if (deniedCount > 0) {
       pills.append(createPill(`${deniedCount} denied`, "is-error"));
     }
+    if (quota && (quota.dataOverLimit || quota.cacheOverLimit)) {
+      pills.append(createPill("Quota exceeded", "is-error"));
+    } else if (
+      (quota && Array.isArray(quota.warnings) && quota.warnings.length)
+      || (runtime && Array.isArray(runtime.warnings) && runtime.warnings.length)
+    ) {
+      pills.append(createPill("Quota warning", "is-warning"));
+    }
     header.append(heading, pills);
     card.append(header);
 
@@ -1099,6 +1171,11 @@
       ["Sandbox required", sandbox && sandbox.required ? "Yes" : "No"],
       ["Sandbox provider", sandbox ? scalar(sandbox.provider) : "Unavailable"],
       ["Sandbox warnings", sandboxWarnings(sandbox)],
+      ["Data usage", formatQuotaUsage(quota, "dataUsageBytes", "effectiveDataBytes", "dataQuotaEnforced")],
+      ["Cache usage", formatQuotaUsage(quota, "cacheUsageBytes", "effectiveCacheBytes", "cacheQuotaEnforced")],
+      ["Data limit", formatQuotaLimit(quota, "effectiveDataBytes", "dataQuotaEnforced")],
+      ["Cache limit", formatQuotaLimit(quota, "effectiveCacheBytes", "cacheQuotaEnforced")],
+      ["Quota warnings", quotaWarnings(quota, runtime)],
       ["Runtime state", runtimeState],
       ["Running", runtimeRunning ? "Yes" : "No"],
       ["PID", runtimeRunning ? scalar(runtimePid) : "Unavailable"],
@@ -1107,7 +1184,10 @@
       ["Last exit at", runtime ? formatIsoTimestamp(runtime.lastExitAt) : "Unavailable"],
       ["Restart attempts", runtime ? scalar(runtime.currentRestartAttempt) : "Unavailable"],
       ["Denied app calls", scalar(deniedCount)],
-      ["Process log", logs && logs.available ? `${scalar(logs.sizeBytes)} bytes` : "Unavailable"],
+      ["Process log size", logs && logs.available ? formatBytes(logs.sizeBytes) : formatBytes(runtime && runtime.logSizeBytes)],
+      ["Process log limit", quota ? formatBytes(quota.processLogMaxBytes) : "Unavailable"],
+      ["Process log tail limit", logs ? formatBytes(logs.maxBytes) : "Unavailable"],
+      ["Process log truncated", logs && logs.truncated ? "Yes" : "No"],
       ["Runtime detail", runtimeError || (runtime ? "Available" : "Unavailable")],
     ];
     card.append(definitionList(entries));

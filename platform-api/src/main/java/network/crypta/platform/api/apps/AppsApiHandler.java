@@ -18,6 +18,8 @@ import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppQuotaPolicy;
+import network.crypta.platform.apphost.AppQuotaStatus;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -61,11 +63,15 @@ public final class AppsApiHandler {
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
   private static final String FIELD_APP_ID = "appId";
+  private static final String FIELD_CACHE_BYTES = "cacheBytes";
+  private static final String FIELD_DATA_BYTES = "dataBytes";
   private static final String FIELD_PERMISSIONS = "permissions";
+  private static final String FIELD_QUOTA = "quota";
   private static final String FIELD_RECENT_DENIED_COUNT = "recentDeniedCount";
   private static final String FIELD_RUNNING = "running";
   private static final String FIELD_SANDBOX = "sandbox";
   private static final String FIELD_STARTED_AT = "startedAt";
+  private static final String FIELD_WARNINGS = "warnings";
   private static final String MAX_BYTES_POSITIVE_INTEGER_MESSAGE =
       "Query parameter 'maxBytes' must be a positive integer.";
   private static final String SIGNED_BUNDLE_FAILURE_MESSAGE =
@@ -115,10 +121,16 @@ public final class AppsApiHandler {
   public List<Map<String, Object>> list() {
     try {
       Map<String, RunningAppSnapshot> runningByAppId = runningByAppId(appHost.listRunning());
-      return appHost.listInstalled().stream()
+      List<InstalledAppSnapshot> installedApps = appHost.listInstalled();
+      Map<String, AppQuotaStatus> quotaByAppId = quotaByAppId(installedApps);
+      return installedApps.stream()
           .map(
               snapshot ->
-                  summarize(snapshot.manifest(), true, runningByAppId.get(snapshot.appId())))
+                  summarize(
+                      snapshot.manifest(),
+                      true,
+                      runningByAppId.get(snapshot.appId()),
+                      quotaByAppId.get(snapshot.appId())))
           .toList();
     } catch (IOException _) {
       throw internalError("Failed to list installed apps.");
@@ -138,7 +150,11 @@ public final class AppsApiHandler {
   public Map<String, Object> get(String appId) {
     String normalizedAppId = normalizeAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
-    return summarize(installed.manifest(), true, appHost.status(normalizedAppId).orElse(null));
+    return summarize(
+        installed.manifest(),
+        true,
+        appHost.status(normalizedAppId).orElse(null),
+        quotaStatusForSummary(normalizedAppId));
   }
 
   /**
@@ -233,7 +249,7 @@ public final class AppsApiHandler {
 
     try {
       InstalledAppSnapshot installed = appHost.installFromDirectory(stagedDir);
-      return summarize(installed.manifest(), true, null);
+      return summarize(installed.manifest(), true, null, quotaStatusForSummary(installed.appId()));
     } catch (AppHostException e) {
       throw installFailure(manifest.appId(), e);
     } catch (IOException _) {
@@ -272,7 +288,7 @@ public final class AppsApiHandler {
 
     try {
       InstalledAppSnapshot updated = appHost.updateFromDirectory(normalizedAppId, stagedDir);
-      return summarize(updated.manifest(), true, null);
+      return summarize(updated.manifest(), true, null, quotaStatusForSummary(updated.appId()));
     } catch (AppHostException e) {
       throw updateFailure(normalizedAppId, e);
     } catch (IOException _) {
@@ -301,7 +317,7 @@ public final class AppsApiHandler {
 
     try {
       RunningAppSnapshot running = appHost.start(normalizedAppId);
-      return summarize(running.manifest(), true, running);
+      return summarize(running.manifest(), true, running, quotaStatusForSummary(running.appId()));
     } catch (AppHostException e) {
       throw startFailure(normalizedAppId, e);
     } catch (IOException _) {
@@ -335,12 +351,12 @@ public final class AppsApiHandler {
       throw internalError("Failed to stop app.");
     }
     if (running != null) {
-      return summarize(running.manifest(), true, null);
+      return summarize(running.manifest(), true, null, quotaStatusForSummary(running.appId()));
     }
     InstalledAppSnapshot installed = describeForStopSummary(normalizedAppId);
     return installed == null
         ? summarizeUnknown(normalizedAppId, true)
-        : summarize(installed.manifest(), true, null);
+        : summarize(installed.manifest(), true, null, quotaStatusForSummary(installed.appId()));
   }
 
   /**
@@ -365,7 +381,7 @@ public final class AppsApiHandler {
     try {
       appHost.uninstall(normalizedAppId);
       return installed != null
-          ? summarize(installed.manifest(), false, null)
+          ? summarize(installed.manifest(), false, null, null)
           : summarizeUnknown(normalizedAppId, false);
     } catch (AppHostException e) {
       throw uninstallFailure(normalizedAppId, e);
@@ -453,6 +469,28 @@ public final class AppsApiHandler {
     return runningByAppId;
   }
 
+  private Map<String, AppQuotaStatus> quotaByAppId(List<InstalledAppSnapshot> installedApps) {
+    LinkedHashMap<String, AppQuotaStatus> quotaByAppId =
+        LinkedHashMap.newLinkedHashMap(installedApps.size());
+    for (InstalledAppSnapshot snapshot : installedApps) {
+      quotaByAppId.put(snapshot.appId(), quotaStatusForSummary(snapshot.appId()));
+    }
+    return quotaByAppId;
+  }
+
+  private AppQuotaStatus quotaStatusForSummary(String appId) {
+    try {
+      return appHost.runtimeStatus(appId).quotaStatus();
+    } catch (AppHostException e) {
+      if (isMissingAppFailure(e)) {
+        return null;
+      }
+      throw internalError("Failed to read app quota status.");
+    } catch (IOException _) {
+      throw internalError("Failed to read app quota status.");
+    }
+  }
+
   /**
    * Extracts and validates the local staging directory from the request query.
    *
@@ -499,7 +537,10 @@ public final class AppsApiHandler {
    * @return ordered JSON-compatible summary map
    */
   private Map<String, Object> summarize(
-      AppManifest manifest, boolean installed, RunningAppSnapshot running) {
+      AppManifest manifest,
+      boolean installed,
+      RunningAppSnapshot running,
+      AppQuotaStatus quotaStatus) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
     json.put(FIELD_APP_ID, manifest.appId());
     json.put("name", manifest.appName());
@@ -508,7 +549,7 @@ public final class AppsApiHandler {
     json.put("uiEntry", manifest.uiEntry());
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put(FIELD_PERMISSIONS, manifest.permissions());
-    json.put("quota", quota(manifest));
+    json.put(FIELD_QUOTA, quota(manifest, quotaStatus));
     json.put(FIELD_SANDBOX, summarizeSandbox(sandboxStatus(manifest, running)));
     json.put("installed", installed);
     json.put(FIELD_RUNNING, running != null);
@@ -539,6 +580,8 @@ public final class AppsApiHandler {
     json.put("logAvailable", snapshot.logAvailable());
     json.put("logSizeBytes", snapshot.logSizeBytes());
     json.put(FIELD_SANDBOX, summarizeSandbox(snapshot.sandboxStatus()));
+    json.put(FIELD_QUOTA, quota(snapshot.quotaStatus()));
+    json.put(FIELD_WARNINGS, snapshot.warnings());
     return json;
   }
 
@@ -582,7 +625,7 @@ public final class AppsApiHandler {
     json.put("uiEntry", null);
     json.put("uiUrl", null);
     json.put(FIELD_PERMISSIONS, List.of());
-    json.put("quota", unknownQuota());
+    json.put(FIELD_QUOTA, unknownQuota());
     json.put(
         FIELD_SANDBOX,
         summarizeSandbox(AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults())));
@@ -626,17 +669,54 @@ public final class AppsApiHandler {
    * @param manifest normalized application manifest
    * @return ordered JSON-compatible quota map
    */
-  private static Map<String, Object> quota(AppManifest manifest) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
-    json.put("dataBytes", manifest.dataQuotaBytes());
-    json.put("cacheBytes", manifest.cacheQuotaBytes());
+  private static Map<String, Object> quota(AppManifest manifest, AppQuotaStatus quotaStatus) {
+    AppQuotaPolicy policy =
+        quotaStatus == null ? AppQuotaPolicy.fromManifest(manifest) : quotaStatus.policy();
+    LinkedHashMap<String, Object> json = new LinkedHashMap<>(quota(policy, quotaStatus));
+    json.put(FIELD_DATA_BYTES, manifest.dataQuotaBytes());
+    json.put(FIELD_CACHE_BYTES, manifest.cacheQuotaBytes());
     return json;
   }
 
   private static Map<String, Object> unknownQuota() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
-    json.put("dataBytes", null);
-    json.put("cacheBytes", null);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
+    json.put(FIELD_DATA_BYTES, null);
+    json.put(FIELD_CACHE_BYTES, null);
+    json.put("effectiveDataBytes", null);
+    json.put("effectiveCacheBytes", null);
+    json.put("dataUsageBytes", null);
+    json.put("cacheUsageBytes", null);
+    json.put("dataQuotaEnforced", false);
+    json.put("cacheQuotaEnforced", false);
+    json.put("dataOverLimit", false);
+    json.put("cacheOverLimit", false);
+    json.put("processLogMaxBytes", AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES);
+    json.put("processLogSizeBytes", null);
+    json.put(FIELD_WARNINGS, List.of());
+    return json;
+  }
+
+  private static Map<String, Object> quota(AppQuotaStatus quotaStatus) {
+    return quota(quotaStatus.policy(), quotaStatus);
+  }
+
+  private static Map<String, Object> quota(AppQuotaPolicy policy, AppQuotaStatus quotaStatus) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
+    json.put(FIELD_DATA_BYTES, policy.dataQuotaBytes());
+    json.put(FIELD_CACHE_BYTES, policy.cacheQuotaBytes());
+    json.put("effectiveDataBytes", policy.effectiveDataQuotaBytes());
+    json.put("effectiveCacheBytes", policy.effectiveCacheQuotaBytes());
+    json.put("dataUsageBytes", quotaStatus == null ? null : quotaStatus.usage().dataUsageBytes());
+    json.put("cacheUsageBytes", quotaStatus == null ? null : quotaStatus.usage().cacheUsageBytes());
+    json.put("dataQuotaEnforced", policy.dataQuotaEnforced());
+    json.put("cacheQuotaEnforced", policy.cacheQuotaEnforced());
+    json.put("dataOverLimit", quotaStatus != null && quotaStatus.dataOverLimit());
+    json.put("cacheOverLimit", quotaStatus != null && quotaStatus.cacheOverLimit());
+    json.put("processLogMaxBytes", policy.processLogMaxBytes());
+    json.put(
+        "processLogSizeBytes",
+        quotaStatus == null ? null : quotaStatus.usage().processLogSizeBytes());
+    json.put(FIELD_WARNINGS, quotaStatus == null ? List.of() : quotaStatus.warningMessages());
     return json;
   }
 
@@ -654,7 +734,7 @@ public final class AppsApiHandler {
     json.put("provider", status.providerName());
     json.put("active", status.active());
     json.put("reason", status.reason());
-    json.put("warnings", status.warnings());
+    json.put(FIELD_WARNINGS, status.warnings());
     return json;
   }
 
@@ -865,7 +945,19 @@ public final class AppsApiHandler {
     if (!installed(appId)) {
       return appNotFound();
     }
+    if (isQuotaFailure(failure)) {
+      return conflict(messageOrDefault(failure, "App quota exceeded."));
+    }
     return internalError(messageOrDefault(failure, "Failed to start app."));
+  }
+
+  private static boolean isQuotaFailure(AppHostException failure) {
+    String message = failure.getMessage();
+    return message != null
+        && (message.startsWith("app data quota exceeded: ")
+            || message.startsWith("app cache quota exceeded: ")
+            || message.startsWith("app data quota scan incomplete: ")
+            || message.startsWith("app cache quota scan incomplete: "));
   }
 
   /**

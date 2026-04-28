@@ -99,6 +99,44 @@ class AppBundleManifestParserTest {
   }
 
   @Test
+  void parseContent_whenQuotaDeclared_expectQuotaFields() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                quota.data.bytes=1024
+                quota.cache.bytes=512
+                """));
+
+    assertEquals(Long.valueOf(1024L), manifest.dataQuotaBytes());
+    assertEquals(Long.valueOf(512L), manifest.cacheQuotaBytes());
+  }
+
+  @Test
+  void parseContent_whenQuotaIsZero_expectRawMetadataPreservedForCompatibility() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                quota.data.bytes=0
+                quota.cache.bytes=0
+                """));
+
+    assertEquals(Long.valueOf(0L), manifest.dataQuotaBytes());
+    assertEquals(Long.valueOf(0L), manifest.cacheQuotaBytes());
+  }
+
+  @Test
+  void parseContent_whenQuotaIsNegative_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleManifestParser.parseContent(minimalManifest("quota.cache.bytes=-1\n")));
+
+    assertEquals("quota.cache.bytes must be >= 0", exception.getMessage());
+  }
+
+  @Test
   void parseContent_whenRestartAttemptsNegative_expectFailure() {
     AppDistributionException exception =
         assertThrows(

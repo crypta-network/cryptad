@@ -91,6 +91,35 @@ provider. It preserves the existing sanitized environment, explicit working dire
 app-scoped mutable directories, but it is not a hard OS sandbox. The `wasm-preview` mode is reserved
 for a future provider and is unsupported by the default runtime.
 
+## Quota Manifest Fields
+
+App bundles can declare data and cache quota metadata:
+
+```properties
+quota.data.bytes=0
+quota.cache.bytes=0
+```
+
+Both fields are optional non-negative byte counts. AppHost enforces a data or cache quota only when
+the value is positive. A missing field and an explicit `0` both mean unlimited or no explicit app
+quota. This preserves compatibility with the first-party Queue Manager and Publisher staged
+manifests, which currently declare `quota.data.bytes=0` and
+`quota.cache.bytes=0`.
+
+Quota enforcement is scoped to AppHost-managed app data and cache directories. It does not apply to
+the immutable installed bundle, catalog scratch space, daemon datastore files, or arbitrary host
+paths. AppHost measures regular files without following symlinks and reports path-free warnings
+when a scan is incomplete. If a positive quota is active for that area, incomplete measurement blocks
+launch and automatic restart because AppHost cannot enforce the quota from a partial byte count.
+Runtime status and app summaries include measured data/cache usage, effective limits, over-limit
+flags, process-log size/limit metadata, and warning text that is safe for operator display.
+
+Process-log size is controlled by host policy rather than signed manifest metadata. AppHost keeps
+`process.log` bounded on a best-effort basis at lifecycle and status checkpoints while preserving
+the tail of the file for diagnostics. AppHost may retain a small additional redaction overlap beyond
+the displayed process-log limit so bounded log reads can still redact tokens and known AppHost paths
+when the display tail begins inside a sensitive value.
+
 ## Runtime Manifest Fields
 
 App bundles can declare a minimal restart policy:

@@ -1,6 +1,7 @@
 package network.crypta.platform.apphost;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
@@ -40,6 +41,8 @@ import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
  * @param logAvailable whether the process log can currently be read as a regular file
  * @param logSizeBytes process log size in bytes, if known without exposing the path
  * @param sandboxStatus token-free sandbox status for this runtime snapshot
+ * @param quotaStatus token-free quota status for AppHost-managed app resources
+ * @param warnings display-safe runtime warnings that are not specific to the sandbox provider
  */
 public record AppRuntimeStatusSnapshot(
     String appId,
@@ -53,7 +56,9 @@ public record AppRuntimeStatusSnapshot(
     int currentRestartAttempt,
     boolean logAvailable,
     Long logSizeBytes,
-    AppSandboxStatus sandboxStatus) {
+    AppSandboxStatus sandboxStatus,
+    AppQuotaStatus quotaStatus,
+    List<String> warnings) {
   /**
    * Creates a validated runtime status snapshot.
    *
@@ -74,11 +79,15 @@ public record AppRuntimeStatusSnapshot(
    * @param logAvailable whether the process log can currently be read as a regular file
    * @param logSizeBytes process log size in bytes, if known without exposing the path
    * @param sandboxStatus token-free sandbox status for this runtime snapshot
+   * @param quotaStatus token-free quota status for AppHost-managed app resources
+   * @param warnings display-safe runtime warnings that are not specific to the sandbox provider
    */
   public AppRuntimeStatusSnapshot {
     appId = InstalledAppPaths.normalizeAppId(appId);
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(sandboxStatus, "sandboxStatus");
+    Objects.requireNonNull(quotaStatus, "quotaStatus");
+    warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
     if (pid != null && pid <= 0L) {
       throw new IllegalArgumentException("pid must be positive when present");
     }
@@ -135,6 +144,57 @@ public record AppRuntimeStatusSnapshot(
         currentRestartAttempt,
         logAvailable,
         logSizeBytes,
-        AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults()));
+        AppSandboxProviders.inactiveStatus(AppSandboxPolicy.defaults()),
+        AppQuotaStatus.unlimited(),
+        List.of());
+  }
+
+  /**
+   * Creates a runtime snapshot with explicit sandbox status and default quota status.
+   *
+   * <p>This overload preserves source compatibility for callers that started passing sandbox status
+   * before quota status became part of the runtime model.
+   *
+   * @param appId stable application identifier accepted by AppHost path normalization
+   * @param state current host-observed runtime state for the installed app
+   * @param running whether a managed process is currently live according to AppHost
+   * @param pid representative process id when running, otherwise {@code null}
+   * @param startedAt process start time when running, otherwise {@code null}
+   * @param lastExitAt last managed process exit time retained by this daemon, if known
+   * @param lastExitCode last managed process exit code retained by this daemon, if known
+   * @param restartCount completed automatic restart launches in this daemon-managed run
+   * @param currentRestartAttempt current or pending automatic restart attempt number
+   * @param logAvailable whether the process log can currently be read as a regular file
+   * @param logSizeBytes process log size in bytes, if known without exposing the path
+   * @param sandboxStatus token-free sandbox status for this runtime snapshot
+   */
+  public AppRuntimeStatusSnapshot(
+      String appId,
+      AppRuntimeState state,
+      boolean running,
+      Long pid,
+      Instant startedAt,
+      Instant lastExitAt,
+      Integer lastExitCode,
+      int restartCount,
+      int currentRestartAttempt,
+      boolean logAvailable,
+      Long logSizeBytes,
+      AppSandboxStatus sandboxStatus) {
+    this(
+        appId,
+        state,
+        running,
+        pid,
+        startedAt,
+        lastExitAt,
+        lastExitCode,
+        restartCount,
+        currentRestartAttempt,
+        logAvailable,
+        logSizeBytes,
+        sandboxStatus,
+        AppQuotaStatus.unlimited(),
+        List.of());
   }
 }
