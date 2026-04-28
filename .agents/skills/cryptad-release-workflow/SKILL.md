@@ -28,6 +28,10 @@ Build: 2
 - Merge `release/*` into `main` and back-merge into `develop` using **no squash** and `--no-ff`.
 - Stabilization only: allow critical fixes/docs/release tasks; avoid large refactors.
 - Do not rebase/squash release merges.
+- Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
+  truth. Current release gates include first-party app staging/signing/verification, catalog and
+  app-owned UI smoke when those surfaces ship, Hyphanet interop smoke/soak evidence, and the
+  packaged-node performance smoke.
 
 ---
 
@@ -40,6 +44,9 @@ git checkout -b release/<build-number>
 ```
 
 2) Set the build number in `build.gradle.kts` (e.g., `version = <build-number>`), and run CI/tests per repo conventions.
+   Follow the release gates in `docs/cryptad-release-workflow-and-runbook.md`; load
+   `$cryptad-build-test`, `$cryptad-platform-apps`, and `$cryptad-interop-performance-gates` when
+   those areas are involved.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
@@ -73,6 +80,11 @@ git push origin v<build-number>
 ## Checklist
 - [ ] `build.gradle.kts` version is the intended integer build number.
 - [ ] CI green on `release/<build-number>`.
+- [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
+- [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
+      compatibility-sensitive behavior changed.
+- [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
+      performance-sensitive changes require it.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

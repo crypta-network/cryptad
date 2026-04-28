@@ -25,7 +25,7 @@ Use this skill when working on:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -48,6 +48,8 @@ Use this skill when working on:
   trusted-key, and distribution-tool classes used by first-party app tasks and AppHost validation.
 - The `:platform-appcatalog` JAR contributes signed catalog source parsing, verification,
   artifact download, safe ZIP extraction, and verified staging support.
+- The `:platform-sdk-js` JAR contributes the browser SDK resource staged into first-party static
+  app bundles and loaded by app-owned UIs under `/apps/{appId}/`.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
   JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
 - The `:runtime-alerts` JAR contributes the detached alert/feed model subset, including the
@@ -72,7 +74,8 @@ Use this skill when working on:
 - First-party app projects such as `:apps:queue-manager` and `:apps:publisher` provide staged app
   bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
   artifacts and AppHost install inputs; they are not daemon entrypoints inside
-  `build/cryptad-dist`.
+  `build/cryptad-dist`. Their static UI staging copies the current `:platform-sdk-js` browser
+  resource into each bundle's `static/` assets.
 
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.
