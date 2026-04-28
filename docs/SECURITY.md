@@ -75,7 +75,7 @@ AppHost process launches are process isolation, not sandboxing. AppHost starts a
 process with the installed bundle root as its working directory, a minimal environment, per-app
 data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-originated Platform API
 authentication. It does not currently provide containers, WASM isolation, seccomp, chroot, jails,
-Windows Job Object restrictions, network isolation, or browser-scoped app sessions.
+Windows Job Object restrictions, network isolation, or browser origin isolation.
 
 App-originated Platform API calls authenticate with the launch token in `X-Crypta-App-Token`.
 `Authorization: Bearer` is accepted only when the Bearer value matches a live app token; unrelated
@@ -85,6 +85,14 @@ principals are denied by default unless the route is covered by manifest-declare
 as `queue.read`, `queue.write`, or `content.insert`. Invalid or stale `X-Crypta-App-Token` values
 fail authentication, and missing capabilities fail authorization without echoing the token.
 
+App-owned static browser UI uses a separate browser app session. The dynamic bootstrap at
+`/apps/{appId}/.well-known/cryptad-bootstrap.json` returns route metadata, an opaque
+`browserSessionToken`, and an expiry timestamp. Static UI sends that token as
+`X-Crypta-App-Session`; the Platform API treats the request as an app browser principal and applies
+the same manifest capability matrix. Browser sessions are distinct from `CRYPTAD_APP_TOKEN`, are
+bound to one installed static app, and must not be persisted by app JavaScript. Invalid browser
+sessions fail with `401 invalid_app_browser_session`.
+
 Runtime status and process-log Platform API responses must remain token-free and path-free. Log
 tail responses redact the current launch token and obvious `CRYPTAD_APP_TOKEN=...` text before
 returning app output to the Web Shell. This is defense in depth for operator visibility; it is not a
@@ -92,19 +100,20 @@ general secret scanner for arbitrary app output.
 
 App-originated allowed and denied Platform API decisions are recorded in a bounded process-local
 audit log. Audit events keep route family, action, required capabilities, decision, status, and a
-short reason code. They must not include raw launch tokens, query strings, request bodies, form
-passwords, or filesystem paths.
+short reason code. They also include the token-free authentication source so operators can
+distinguish process-token requests from browser-session requests. They must not include raw launch
+tokens, raw browser session tokens, query strings, request bodies, form passwords, or filesystem
+paths.
 
-First-party static app UIs can fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` to discover
-local route roots and the existing local-admin form password used for mutating Platform API calls.
-That bootstrap is host/operator scoped. It must not contain `CRYPTAD_APP_TOKEN`, AppHost launch
-tokens, trusted key material, or installed-bundle/data/cache/run filesystem paths. Static UI code
-still runs in the local admin origin until stronger isolation exists, so treat untrusted static UI
-JavaScript as having local admin browser-origin access.
+Static UI code still runs in the local admin origin until stronger isolation exists. Browser app
+sessions improve server-side attribution and capability enforcement for SDK/API calls, but they are
+not a browser-enforced origin sandbox. Treat untrusted static UI JavaScript as having local admin
+browser-origin access.
 
 Treat a bypass that serves host files, follows symlink escapes, executes JavaScript while the admin
-UI has JavaScript disabled, exposes AppHost launch tokens to browser code, or allows bundled UI to
-exfiltrate operator-entered data off-node as security-relevant.
+UI has JavaScript disabled, exposes AppHost launch tokens or browser session tokens to the wrong
+surface, authenticates app browser requests as host/operator requests, bypasses app capability
+checks, or allows bundled UI to exfiltrate operator-entered data off-node as security-relevant.
 
 For the detailed runtime boundary, exposed environment variables, restart policy semantics,
 permission matrix, audit model, and remaining limitations, see

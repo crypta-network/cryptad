@@ -122,6 +122,7 @@ public final class AppAuditLog {
             action.endpointFamily(),
             action.label(),
             action.requiredCapabilities(),
+            request.principal().authSource(),
             decision,
             statusCode,
             reasonCode));

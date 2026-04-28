@@ -2,10 +2,12 @@ package network.crypta.platform.appui;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -26,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class AppUiBootstrapServiceTest {
   private static final String APP_ID = "demo-app";
+  private static final Instant EXPIRES_AT = Instant.parse("2026-04-28T12:00:00Z");
 
   @TempDir private Path tempDir;
 
@@ -35,11 +38,7 @@ class AppUiBootstrapServiceTest {
 
     AppUiBootstrap bootstrap =
         service
-            .resolve(
-                "/apps/demo-app/.well-known/cryptad-bootstrap.json",
-                "/api/v1/",
-                "/app/node/",
-                "form-secret")
+            .resolve("/apps/demo-app/.well-known/cryptad-bootstrap.json", "/api/v1/", "/app/node/")
             .orElseThrow();
 
     assertEquals(APP_ID, bootstrap.appId());
@@ -48,7 +47,8 @@ class AppUiBootstrapServiceTest {
     assertEquals("/apps/demo-app/static/", bootstrap.assetRoot());
     assertEquals("/api/v1/", bootstrap.platformApiRoot());
     assertEquals("/app/node/", bootstrap.shellRoot());
-    assertEquals("form-secret", bootstrap.formPassword());
+    assertEquals("browser-token", bootstrap.browserSessionToken());
+    assertEquals(EXPIRES_AT, bootstrap.browserSessionExpiresAt());
   }
 
   @Test
@@ -56,7 +56,7 @@ class AppUiBootstrapServiceTest {
     AppUiBootstrapService service = service(app(AppUiMode.STATIC, "static/index.html"));
 
     Optional<AppUiBootstrap> bootstrap =
-        service.resolve("/apps/demo-app/static/app.js", "/api/v1/", "/app/node/", "form-secret");
+        service.resolve("/apps/demo-app/static/app.js", "/api/v1/", "/app/node/");
 
     assertTrue(bootstrap.isEmpty());
   }
@@ -67,10 +67,7 @@ class AppUiBootstrapServiceTest {
 
     Optional<AppUiBootstrap> bootstrap =
         service.resolve(
-            "/apps/demo-app/.well-known/cryptad-bootstrap.json",
-            "/api/v1/",
-            "/app/node/",
-            "form-secret");
+            "/apps/demo-app/.well-known/cryptad-bootstrap.json", "/api/v1/", "/app/node/");
 
     assertTrue(bootstrap.isEmpty());
   }
@@ -81,12 +78,25 @@ class AppUiBootstrapServiceTest {
 
     Optional<AppUiBootstrap> bootstrap =
         service.resolve(
-            "/apps/demo-app/.well-known/cryptad-bootstrap.json",
-            "/api/v1/",
-            "/app/node/",
-            "form-secret");
+            "/apps/demo-app/.well-known/cryptad-bootstrap.json", "/api/v1/", "/app/node/");
 
     assertTrue(bootstrap.isEmpty());
+  }
+
+  @Test
+  void isAvailable_whenStaticAppBootstrapRequested_expectTrueWithoutIssuingSession()
+      throws Exception {
+    AtomicInteger issuedSessions = new AtomicInteger();
+    AppUiBootstrapService service =
+        new AppUiBootstrapService(
+            new InMemoryAppHost(app(AppUiMode.STATIC, "static/index.html")),
+            _ -> {
+              issuedSessions.incrementAndGet();
+              return new AppBrowserSessionIssue("browser-token", EXPIRES_AT);
+            });
+
+    assertTrue(service.isAvailable("/apps/demo-app/.well-known/cryptad-bootstrap.json"));
+    assertEquals(0, issuedSessions.get());
   }
 
   @Test
@@ -109,7 +119,9 @@ class AppUiBootstrapServiceTest {
   }
 
   private AppUiBootstrapService service(InstalledAppSnapshot... snapshots) {
-    return new AppUiBootstrapService(new InMemoryAppHost(snapshots));
+    return new AppUiBootstrapService(
+        new InMemoryAppHost(snapshots),
+        _ -> new AppBrowserSessionIssue("browser-token", EXPIRES_AT));
   }
 
   private InstalledAppSnapshot app(AppUiMode uiMode, String uiEntry) {

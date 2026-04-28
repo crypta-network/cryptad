@@ -6,8 +6,9 @@ recent app decisions.
 ## Scope
 
 The app permission boundary applies to local AppHost child processes that authenticate with their
-current launch token. It does not add containers, WASM isolation, seccomp, chroot, browser-scoped
-app sessions, FCP changes, wire-protocol changes, or persistent compliance-grade audit storage.
+current launch token and to app-owned static browser UIs that authenticate with browser app
+sessions. It does not add containers, WASM isolation, seccomp, chroot, browser origin isolation,
+FCP changes, wire-protocol changes, or persistent compliance-grade audit storage.
 
 Host/operator Web Shell requests keep the existing local-admin model. They do not need app
 permissions, and they are not recorded in the app audit log.
@@ -37,23 +38,48 @@ Tokens are not read from query parameters. Static app UI bootstrap JSON, Web She
 app summaries, runtime status, process-log responses, audit entries, diagnostic strings, and
 `toString()` output must not expose raw launch tokens.
 
+## Browser session authentication
+
+Installed static app UIs fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` after the normal
+full-access check for app-owned UI routes. The bootstrap contains an opaque `browserSessionToken`
+and a `browserSessionExpiresAt` timestamp. It does not contain `CRYPTAD_APP_TOKEN`, a raw process
+launch token, local-admin `formPassword`, filesystem paths, signing keys, or trusted-key material.
+
+Browser apps present the token to Platform API v1 with:
+
+```text
+X-Crypta-App-Session: <token>
+```
+
+The session is bound to one installed static app and its manifest permissions. Blank, unknown,
+expired, uninstalled-app, non-static-app, or stale manifest sessions fail with
+`401 invalid_app_browser_session`. The raw browser session token is not recorded in audit,
+diagnostics, summaries, logs, errors, or `toString()` output.
+
 ## App principals
 
-When a token authenticates, the Platform API receives a token-free app principal:
+When a process token authenticates, the Platform API receives a token-free app principal:
 
 - app id;
 - manifest-declared permissions;
 - authentication source `APP_TOKEN`.
 
-The principal does not carry the raw token. The permission list is immutable and sorted before the
+When a browser session authenticates, the Platform API receives a token-free app browser principal:
+
+- app id;
+- manifest-declared permissions bound to the verified browser session;
+- authentication source `APP_BROWSER_SESSION`.
+
+Neither principal carries the raw credential. The permission list is immutable and sorted before the
 router checks it.
 
 ## Capability checks
 
 App principals are denied by default. A request must match the central route-to-capability matrix,
-and the app principal must include every required capability. A valid app token without the
-required capability receives `403 Forbidden`. An invalid or stale app token receives
-`401 Unauthorized`.
+and the app principal must include every required capability. A valid app token or browser session
+without the required capability receives `403 Forbidden`. An invalid or stale app token receives
+`401 invalid_app_token`; an invalid or stale browser session receives
+`401 invalid_app_browser_session`.
 
 The current capabilities are intentionally conservative:
 
@@ -96,13 +122,14 @@ Each event records:
 - endpoint family;
 - route/action label;
 - required capability names;
+- authentication source (`APP_TOKEN` or `APP_BROWSER_SESSION`);
 - decision;
 - HTTP status;
 - short reason code.
 
-Audit entries do not record raw launch tokens, full query strings, request bodies, form passwords,
-local filesystem paths, or large payloads. The log is useful for operator visibility and debugging;
-it is not durable evidence storage.
+Audit entries do not record raw launch tokens, browser session tokens, full query strings, request
+bodies, form passwords, local filesystem paths, or large payloads. The log is useful for operator
+visibility and debugging; it is not durable evidence storage.
 
 ## Operator surfaces
 
@@ -115,4 +142,5 @@ GET /api/v1/apps/{appId}/audit
 
 Installed app summaries also include a small audit object and a retained denied-count snapshot.
 The Web Shell displays declared permissions, recent app-originated audit events, and denied-call
-counts on installed app cards.
+counts on installed app cards. Audit entries include the auth source so operators can distinguish
+AppHost process-token calls from browser-session calls.

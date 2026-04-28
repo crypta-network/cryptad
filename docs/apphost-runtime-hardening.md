@@ -18,7 +18,7 @@ The current boundary provides:
 - bounded in-session restart attempts when a manifest opts in to `on-failure`.
 
 The current boundary does not provide containers, WASM isolation, seccomp, chroot, jails, Windows
-Job Object restrictions, per-app browser sessions, or network isolation. A third-party app still
+Job Object restrictions, browser origin isolation, or network isolation. A third-party app still
 runs as a local process under the same operating-system user as the daemon.
 
 ## Launch environment
@@ -53,6 +53,10 @@ The token authenticates only the currently running app instance. A stopped app o
 token does not authenticate. The verified app principal contains the app id and manifest
 permissions, never the token itself. See [app-permissions-and-audit.md](app-permissions-and-audit.md)
 for the capability matrix and audit surface.
+
+Static browser UI uses a separate app browser session issued by the app-owned UI bootstrap route.
+That session is not an AppHost launch token, is not injected into the child process environment,
+and does not change process-token behavior.
 
 AppHost does not inject daemon datastore paths, trusted-key files, catalog roots, signing material,
 or the daemon's current working directory. The child process working directory is the installed app
@@ -98,7 +102,8 @@ metadata only; they do not include the runtime log path.
 
 App-originated Platform API decisions are recorded separately in a bounded process-local audit log.
 The Apps API exposes recent entries through `GET /api/v1/apps/{appId}/audit`; those entries omit
-tokens, query strings, request bodies, form passwords, and filesystem paths.
+launch tokens, browser session tokens, query strings, request bodies, form passwords, and
+filesystem paths.
 
 Before returning process-log text, AppHost redacts:
 
@@ -134,5 +139,5 @@ resources available to the daemon user unless the operating system or operator e
 them outside AppHost.
 
 Future sandbox work may add stronger platform-specific controls such as process containment,
-network restrictions, syscall filters, browser isolation, or capability-specific app sessions.
-Those are out of scope for the current runtime hardening layer.
+network restrictions, syscall filters, or browser origin isolation. Those are out of scope for the
+current runtime hardening layer.

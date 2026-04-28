@@ -4,8 +4,8 @@ package network.crypta.platform.api;
  * Transport-side mechanism that established a Platform API principal.
  *
  * <p>The source is recorded separately from the principal type so tests and diagnostics can
- * distinguish legacy local host access from launch-token based app access without carrying raw
- * credentials through the transport-neutral API layer.
+ * distinguish legacy local host access, launch-token based app access, and browser app sessions
+ * without carrying raw credentials through the transport-neutral API layer.
  *
  * <p>This enum describes how trust was established, not which authorization policy applies. The
  * policy still follows the principal type: host/operator requests keep the existing local
@@ -32,11 +32,20 @@ public enum PlatformApiAuthSource {
   APP_TOKEN,
 
   /**
+   * Opaque app browser session verified by the transport bridge.
+   *
+   * <p>Requests with this source must carry only a token-free app browser principal after
+   * authentication. The raw browser session token remains in the transport layer and must not
+   * appear in router state, audit events, JSON responses, Web Shell bootstrap data, or diagnostics.
+   */
+  APP_BROWSER_SESSION,
+
+  /**
    * No authenticated identity was established.
    *
    * <p>This value is available for tests and failure paths that need to model authentication before
-   * the bridge can construct a usable principal. Normal routed requests should use either
-   * host-local or app-token sources.
+   * the bridge can construct a usable principal. Normal routed requests should use host-local,
+   * app-token, or app-browser-session sources.
    */
   UNAUTHENTICATED
 }

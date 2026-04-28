@@ -4,6 +4,7 @@ import java.util.Arrays;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.platform.appui.AppBrowserSessionStore;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -305,12 +306,17 @@ final class FProxyRegistrar {
             true,
             ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot())));
 
-    AppUiToadlet appUiToadlet = new AppUiToadlet(dependencies.appHost());
+    AppBrowserSessionStore appBrowserSessionStore =
+        new AppBrowserSessionStore(dependencies.appHost());
+    AppUiToadlet appUiToadlet = new AppUiToadlet(dependencies.appHost(), appBrowserSessionStore);
     server.register(appUiToadlet, ToadletRegistration.basic(null, appUiToadlet.path(), true, true));
 
     PlatformApiToadlet platformApiToadlet =
         new PlatformApiToadlet(
-            runtimePorts, dependencies.appHost(), dependencies.appCatalogManager());
+            runtimePorts,
+            dependencies.appHost(),
+            dependencies.appCatalogManager(),
+            appBrowserSessionStore);
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));

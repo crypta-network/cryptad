@@ -72,8 +72,8 @@ The bundle intentionally stays narrow in PR-198:
 - Local signed staged bundles and catalog-backed installs use the shared first-party app workflow.
 - The primary UI lives under `/apps/publisher/static/`.
 - `static/index.html` fetches `/apps/publisher/.well-known/cryptad-bootstrap.json` before calling
-  Platform API v1, then uses the operator-scoped `platformApiRoot` and `formPassword` from that
-  bootstrap for publisher queue actions.
+  Platform API v1, then uses `platformApiRoot` plus the in-memory browser app session for
+  publisher queue actions.
 - The launcher is a POSIX shell script; Windows-specific first-party app launch packaging remains deferred.
 
 See [docs/app-distribution.md](../../docs/app-distribution.md) for the exact signing inputs and the shared first-party app workflow.

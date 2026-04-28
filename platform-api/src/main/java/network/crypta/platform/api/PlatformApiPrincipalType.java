@@ -4,8 +4,9 @@ package network.crypta.platform.api;
  * Identity category used for Platform API authorization decisions.
  *
  * <p>The current Platform API distinguishes trusted local host/operator requests from
- * app-originated process requests. Host/operator authorization remains the legacy local-management
- * model, while app principals are capability checked against manifest-declared permissions.
+ * app-originated process requests and app-owned browser UI requests. Host/operator authorization
+ * remains the legacy local-management model, while app principals are capability checked against
+ * manifest-declared permissions.
  *
  * <p>The type is intentionally independent of the transport source. A bridge can record how a
  * principal was established with {@link PlatformApiAuthSource}, while the router uses this enum to
@@ -28,5 +29,14 @@ public enum PlatformApiPrincipalType {
    * principal. They are denied by default when a route is not mapped or the required capability is
    * absent.
    */
-  APP
+  APP,
+
+  /**
+   * Request authenticated as a browser-scoped session issued to an installed static app UI.
+   *
+   * <p>Browser app principals are authorized against the immutable manifest permissions attached to
+   * the verified browser session. They are denied by default when a route is not mapped or the
+   * required capability is absent.
+   */
+  APP_BROWSER
 }

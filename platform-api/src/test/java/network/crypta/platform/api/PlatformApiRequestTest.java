@@ -39,6 +39,18 @@ class PlatformApiRequestTest {
   }
 
   @Test
+  void appBrowserSession_whenProvided_expectDistinctAuthSourceAndSortedPermissions() {
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession("demo-app", List.of("queue.write", "queue.read"));
+
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, principal.type());
+    assertEquals(PlatformApiAuthSource.APP_BROWSER_SESSION, principal.authSource());
+    assertEquals("demo-app", principal.appId());
+    assertEquals(List.of("queue.read", "queue.write"), principal.permissions());
+    assertTrue(principal.isApp());
+  }
+
+  @Test
   void constructor_whenMutableInputsChange_expectRequestKeepsImmutableCopies() {
     ArrayList<String> segments = new ArrayList<>(List.of("queue"));
     ArrayList<String> values = new ArrayList<>(List.of("downloads"));
@@ -67,6 +79,22 @@ class PlatformApiRequestTest {
             new PlatformApiPrincipal(
                 PlatformApiPrincipalType.APP,
                 PlatformApiAuthSource.HOST_LOCAL,
+                "demo-app",
+                permissions));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new PlatformApiPrincipal(
+                PlatformApiPrincipalType.APP,
+                PlatformApiAuthSource.APP_BROWSER_SESSION,
+                "demo-app",
+                permissions));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new PlatformApiPrincipal(
+                PlatformApiPrincipalType.APP_BROWSER,
+                PlatformApiAuthSource.APP_TOKEN,
                 "demo-app",
                 permissions));
     assertThrows(
@@ -105,6 +133,14 @@ class PlatformApiRequestTest {
                 PlatformApiAuthSource.APP_TOKEN,
                 null,
                 noPermissions));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new PlatformApiPrincipal(
+                PlatformApiPrincipalType.HOST_OPERATOR,
+                PlatformApiAuthSource.APP_BROWSER_SESSION,
+                null,
+                noPermissions));
   }
 
   @Test
@@ -114,5 +150,14 @@ class PlatformApiRequestTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> PlatformApiPrincipal.appToken("demo-app", permissions));
+  }
+
+  @Test
+  void appBrowserSession_whenPermissionIsBlank_expectIllegalArgumentException() {
+    List<String> permissions = List.of("queue.read", " ");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> PlatformApiPrincipal.appBrowserSession("demo-app", permissions));
   }
 }

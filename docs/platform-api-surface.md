@@ -20,9 +20,9 @@ continues to own the JSON lifecycle/control plane under `/api/v1/apps`; it only 
 `uiMode`, `uiEntry`, and `uiUrl` so shells can open the correct app UI route.
 
 Static first-party app UIs use `/apps/{appId}/.well-known/cryptad-bootstrap.json` for route
-metadata and the existing local-admin form password needed by mutating Platform API calls. That
-bootstrap is served by the app UI route, not by `/api/v1/apps`, and it does not expose
-`CRYPTAD_APP_TOKEN` or AppHost filesystem paths.
+metadata and an opaque browser app session token for Platform API calls. That bootstrap is served
+by the app UI route, not by `/api/v1/apps`, and it does not expose `CRYPTAD_APP_TOKEN`, local-admin
+`formPassword`, or AppHost filesystem paths.
 
 The [Platform JavaScript SDK](platform-sdk-js.md) is a browser convenience layer over that
 bootstrap and the same-origin Platform API. It does not create a new authority boundary; server-side
@@ -44,7 +44,7 @@ Current error handling uses HTTP-style status codes:
 | Status | Current use |
 | --- | --- |
 | `400 Bad Request` | Malformed paths, malformed percent-encoding, or invalid query/form values. |
-| `401 Unauthorized` | App-token authentication failed because a supplied launch token is invalid, blank, stale, or unavailable. |
+| `401 Unauthorized` | App-token or app browser-session authentication failed because a supplied credential is invalid, blank, stale, or unavailable. |
 | `403 Forbidden` | The legacy bridge rejects a caller without full access. |
 | `404 Not Found` | Unknown routes or missing resources. |
 | `405 Method Not Allowed` | A known route was called with the wrong method; the response includes `Allow`. |
@@ -61,6 +61,11 @@ are ignored for token authentication, and unrelated Bearer credentials remain ho
 requests. Authenticated app requests are checked against manifest-declared capabilities before
 routing and are denied by default. See [app-permissions-and-audit.md](app-permissions-and-audit.md)
 for the matrix and audit model.
+
+Static app-owned browser UI authenticates with `X-Crypta-App-Session`, which carries the opaque
+browser session token from app UI bootstrap. Browser app sessions are bound to one installed static
+app and its manifest permissions; they are not AppHost process launch tokens and do not grant
+host/operator authority.
 
 ## Endpoint families
 

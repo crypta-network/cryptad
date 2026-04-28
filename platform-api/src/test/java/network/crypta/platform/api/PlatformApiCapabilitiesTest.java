@@ -31,6 +31,27 @@ class PlatformApiCapabilitiesTest {
   }
 
   @Test
+  void authorize_whenBrowserAppHasReadCapability_expectRepresentativeReadAllowed() {
+    PlatformApiAuthorizationDecision decision =
+        PlatformApiCapabilities.authorize(
+            browserAppRequest("GET", List.of("queue"), List.of("queue.read")));
+
+    assertTrue(decision.allowed());
+    assertEquals(List.of("queue.read"), decision.action().requiredCapabilities());
+  }
+
+  @Test
+  void authorize_whenBrowserAppLacksPeerWriteCapability_expectDenied() {
+    PlatformApiAuthorizationDecision decision =
+        PlatformApiCapabilities.authorize(
+            browserAppRequest("POST", List.of("peers", "add"), List.of("peers.read")));
+
+    assertFalse(decision.allowed());
+    assertEquals("missing_capability", decision.reasonCode());
+    assertEquals(List.of("peers.write"), decision.action().requiredCapabilities());
+  }
+
+  @Test
   void authorize_whenAppHasRequiredCapabilities_expectAllowed() {
     for (RouteCase routeCase : allowedRoutes()) {
       PlatformApiAuthorizationDecision decision =
@@ -246,6 +267,15 @@ class PlatformApiCapabilitiesTest {
       String method, List<String> segments, List<String> permissions) {
     return new PlatformApiRequest(
         method, segments, Map.of(), PlatformApiPrincipal.appToken("demo-app", permissions));
+  }
+
+  private static PlatformApiRequest browserAppRequest(
+      String method, List<String> segments, List<String> permissions) {
+    return new PlatformApiRequest(
+        method,
+        segments,
+        Map.of(),
+        PlatformApiPrincipal.appBrowserSession("demo-app", permissions));
   }
 
   private record RouteCase(

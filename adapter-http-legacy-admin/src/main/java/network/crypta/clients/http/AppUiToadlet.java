@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.Optional;
 import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.appui.AppBrowserSessionIssuer;
+import network.crypta.platform.appui.AppBrowserSessionStore;
 import network.crypta.platform.appui.AppStaticAsset;
 import network.crypta.platform.appui.AppStaticAssetException;
 import network.crypta.platform.appui.AppStaticAssetService;
@@ -48,6 +50,9 @@ public final class AppUiToadlet extends Toadlet {
   /** Reason phrase used when raw app UI paths contain traversal, encoded separators, or bad ids. */
   private static final String BAD_REQUEST_REASON = "Bad Request";
 
+  /** Filesystem-neutral message used when the reserved app UI bootstrap resource is unavailable. */
+  private static final String BOOTSTRAP_NOT_FOUND_MESSAGE = "App UI bootstrap not found.";
+
   /** JSON media type used for dynamic first-party static UI bootstrap metadata. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
@@ -68,7 +73,11 @@ public final class AppUiToadlet extends Toadlet {
    * @param appHost AppHost used to describe installed applications and their bundle roots
    */
   public AppUiToadlet(AppHost appHost) {
-    this(new AppStaticAssetService(appHost), new AppUiBootstrapService(appHost));
+    this(appHost, new AppBrowserSessionStore(appHost));
+  }
+
+  AppUiToadlet(AppHost appHost, AppBrowserSessionIssuer sessionIssuer) {
+    this(new AppStaticAssetService(appHost), new AppUiBootstrapService(appHost, sessionIssuer));
   }
 
   /**
@@ -192,9 +201,9 @@ public final class AppUiToadlet extends Toadlet {
   /**
    * Writes the reserved dynamic app UI bootstrap resource.
    *
-   * <p>The bootstrap exposes route roots and the existing local-admin form password for same-origin
-   * first-party static UIs. It deliberately does not expose AppHost launch tokens or installed
-   * filesystem paths.
+   * <p>The bootstrap exposes route roots and a browser-scoped app session token for same-origin
+   * first-party static UIs. It deliberately does not expose AppHost launch tokens, local-admin form
+   * passwords, or installed filesystem paths.
    *
    * @param ctx response context that receives headers and body bytes
    * @param requestPath raw app UI request path
@@ -205,17 +214,18 @@ public final class AppUiToadlet extends Toadlet {
   private void writeBootstrap(ToadletContext ctx, String requestPath, boolean includeBody)
       throws ToadletContextClosedException, IOException, AppStaticAssetException {
     if (bootstrapService == null) {
-      sendError(ctx, 404, NOT_FOUND_REASON, "App UI bootstrap not found.", includeBody);
+      sendError(ctx, 404, NOT_FOUND_REASON, BOOTSTRAP_NOT_FOUND_MESSAGE, includeBody);
+      return;
+    }
+    if (!includeBody) {
+      writeBootstrapHeadersOnly(ctx, requestPath);
       return;
     }
     Optional<AppUiBootstrap> bootstrap =
         bootstrapService.resolve(
-            requestPath,
-            PlatformApiPaths.API_V1_PREFIX,
-            WebShellPaths.SHELL_ROOT,
-            ctx.getFormPassword());
+            requestPath, PlatformApiPaths.API_V1_PREFIX, WebShellPaths.SHELL_ROOT);
     if (bootstrap.isEmpty()) {
-      sendError(ctx, 404, NOT_FOUND_REASON, "App UI bootstrap not found.", includeBody);
+      sendError(ctx, 404, NOT_FOUND_REASON, BOOTSTRAP_NOT_FOUND_MESSAGE, true);
       return;
     }
 
@@ -227,9 +237,22 @@ public final class AppUiToadlet extends Toadlet {
         JSON_CONTENT_TYPE,
         body.length,
         true);
-    if (includeBody) {
-      ctx.writeData(body, 0, body.length);
+    ctx.writeData(body, 0, body.length);
+  }
+
+  private void writeBootstrapHeadersOnly(ToadletContext ctx, String requestPath)
+      throws ToadletContextClosedException, IOException, AppStaticAssetException {
+    if (!bootstrapService.isAvailable(requestPath)) {
+      sendError(ctx, 404, NOT_FOUND_REASON, BOOTSTRAP_NOT_FOUND_MESSAGE, false);
+      return;
     }
+    ctx.sendReplyHeaders(
+        200,
+        "OK",
+        bootstrapResponseHeaders(ctx.getContainer().isFProxyJavascriptEnabled()),
+        JSON_CONTENT_TYPE,
+        0L,
+        true);
   }
 
   /**

@@ -7,10 +7,10 @@ import java.util.Objects;
 /**
  * Token-free audit record for one app-originated Platform API decision.
  *
- * <p>Events deliberately keep only route-family metadata and capability names. Query parameters,
- * request bodies, launch tokens, local filesystem paths, and peer/request identifiers are excluded
- * so the process-local audit trail is useful for operators without becoming a secondary secret
- * store.
+ * <p>Events deliberately keep only route-family metadata, capability names, and token-free
+ * authentication source labels. Query parameters, request bodies, launch tokens, browser session
+ * tokens, local filesystem paths, and peer/request identifiers are excluded so the process-local
+ * audit trail is useful for operators without becoming a secondary secret store.
  *
  * <p>The record is a snapshot value. Its capability list is copied on construction, and callers
  * receive the record through bounded log snapshots rather than a mutable live view. Keep the fields
@@ -23,6 +23,7 @@ import java.util.Objects;
  * @param endpointFamily top-level Platform API endpoint family used for grouping
  * @param action short deterministic route label selected by the capability matrix
  * @param requiredCapabilities immutable capabilities required for the selected action
+ * @param authSource token-free authentication source used for app-originated attribution
  * @param decision authorization outcome recorded for operator-facing audit summaries
  * @param statusCode HTTP-style status returned for the decision or completed request
  * @param reasonCode stable machine-readable reason such as {@code missing_capability}
@@ -34,6 +35,7 @@ public record AppAuditEvent(
     String endpointFamily,
     String action,
     List<String> requiredCapabilities,
+    PlatformApiAuthSource authSource,
     AppAuditDecision decision,
     int statusCode,
     String reasonCode) {
@@ -55,6 +57,7 @@ public record AppAuditEvent(
     Objects.requireNonNull(action, "action");
     requiredCapabilities =
         List.copyOf(Objects.requireNonNull(requiredCapabilities, "requiredCapabilities"));
+    Objects.requireNonNull(authSource, "authSource");
     Objects.requireNonNull(decision, "decision");
     Objects.requireNonNull(reasonCode, "reasonCode");
   }

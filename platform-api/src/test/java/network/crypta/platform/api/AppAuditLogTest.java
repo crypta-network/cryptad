@@ -79,6 +79,44 @@ class AppAuditLogTest {
     assertTrue(log.recentForApp("demo-app", 10).isEmpty());
   }
 
+  @Test
+  void appendDecision_whenRequestIsBrowserAppSession_expectAuthSourceRecorded() {
+    AppAuditLog log =
+        new AppAuditLog(3, Clock.fixed(Instant.parse("2026-04-27T00:00:00Z"), ZoneOffset.UTC));
+    PlatformApiRequest request =
+        new PlatformApiRequest(
+            "GET",
+            List.of("queue"),
+            java.util.Map.of(),
+            PlatformApiPrincipal.appBrowserSession("demo-app", List.of("queue.read")));
+    PlatformApiAuthorizationDecision authorization = PlatformApiCapabilities.authorize(request);
+
+    log.appendDecision(request, authorization, AppAuditDecision.ALLOWED, 200, "route_completed");
+
+    List<AppAuditEvent> events = log.recentForApp("demo-app", 10);
+    assertEquals(1, events.size());
+    assertEquals(PlatformApiAuthSource.APP_BROWSER_SESSION, events.getFirst().authSource());
+  }
+
+  @Test
+  void appendDecision_whenRequestIsProcessAppToken_expectAuthSourceRecorded() {
+    AppAuditLog log =
+        new AppAuditLog(3, Clock.fixed(Instant.parse("2026-04-27T00:00:00Z"), ZoneOffset.UTC));
+    PlatformApiRequest request =
+        new PlatformApiRequest(
+            "GET",
+            List.of("queue"),
+            java.util.Map.of(),
+            PlatformApiPrincipal.appToken("demo-app", List.of("queue.read")));
+    PlatformApiAuthorizationDecision authorization = PlatformApiCapabilities.authorize(request);
+
+    log.appendDecision(request, authorization, AppAuditDecision.ALLOWED, 200, "route_completed");
+
+    List<AppAuditEvent> events = log.recentForApp("demo-app", 10);
+    assertEquals(1, events.size());
+    assertEquals(PlatformApiAuthSource.APP_TOKEN, events.getFirst().authSource());
+  }
+
   private static AppAuditEvent event(
       String appId, String action, AppAuditDecision decision, int statusCode) {
     return new AppAuditEvent(
@@ -88,6 +126,7 @@ class AppAuditLogTest {
         "queue",
         action,
         List.of("queue.read"),
+        PlatformApiAuthSource.APP_TOKEN,
         decision,
         statusCode,
         decision.name().toLowerCase(java.util.Locale.ROOT));

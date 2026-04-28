@@ -25,8 +25,20 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("content:"));
     assertTrue(script.contains("dom:"));
     assertTrue(script.contains("sanitizeFragment"));
-    assertTrue(script.contains("formPassword"));
+    assertTrue(script.contains("browserSessionToken"));
+    assertTrue(script.contains("X-Crypta-App-Session"));
+    assertTrue(script.contains("invalid_app_browser_session"));
+    assertTrue(script.contains("sessionRefreshRequired"));
+    assertTrue(script.contains("function fetchApiGet"));
+    assertTrue(script.contains("function refreshBootstrap(options)"));
+    assertTrue(script.contains("function refreshBootstrapForMutation"));
+    assertTrue(script.contains("await refreshBootstrap(requestOptions);"));
+    assertTrue(script.contains("return fetchApiGet(path, requestOptions);"));
+    assertTrue(script.contains("await refreshBootstrapForMutation(requestOptions);"));
+    assertFalse(script.contains("formPassword"));
     assertFalse(script.contains("CRYPTAD_APP_TOKEN"));
+    assertFalse(script.contains("localStorage"));
+    assertFalse(script.contains("sessionStorage"));
   }
 
   @Test

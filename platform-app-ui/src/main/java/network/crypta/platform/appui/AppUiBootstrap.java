@@ -1,8 +1,10 @@
 package network.crypta.platform.appui;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Objects;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Browser bootstrap metadata for an installed static app UI.
@@ -14,11 +16,10 @@ import network.crypta.platform.apphost.manifest.AppManifest;
  * route-oriented rather than runtime-oriented. It describes local browser entry points, not the
  * AppHost process launch environment.
  *
- * <p>The payload is host/operator scoped. It may carry the existing local-admin form password so a
- * first-party static UI can submit the same mutation requests as other same-origin admin pages. It
- * must not carry AppHost launch tokens, app process credentials, trusted signing material, or
- * installed bundle filesystem paths. Instances are immutable after construction except for the
- * compact constructor's normalization of blank form passwords to {@code null}.
+ * <p>The payload carries a browser-scoped app session token for Platform API calls from the static
+ * app UI. The token is distinct from AppHost launch tokens and local-admin form passwords. It must
+ * not carry AppHost launch tokens, app process credentials, trusted signing material, or installed
+ * bundle filesystem paths. The diagnostic string redacts the browser session token.
  *
  * @param appId normalized application identifier from the installed manifest
  * @param name human-readable application name shown in browser-owned UI chrome
@@ -26,7 +27,8 @@ import network.crypta.platform.apphost.manifest.AppManifest;
  * @param assetRoot canonical directory URL for the static entry and sibling assets
  * @param platformApiRoot Platform API v1 root ending in {@code /}
  * @param shellRoot Web Shell root ending in {@code /}
- * @param formPassword legacy local-admin mutation token, or {@code null} for read-only contexts
+ * @param browserSessionToken opaque app browser session token for {@code X-Crypta-App-Session}
+ * @param browserSessionExpiresAt UTC timestamp after which the browser session must be refreshed
  * @see AppUiBootstrapService
  * @see AppUiPaths
  */
@@ -37,7 +39,8 @@ public record AppUiBootstrap(
     String assetRoot,
     String platformApiRoot,
     String shellRoot,
-    String formPassword) {
+    String browserSessionToken,
+    Instant browserSessionExpiresAt) {
   /**
    * Reserved bundle-relative route used for dynamic app UI bootstrap JSON.
    *
@@ -54,21 +57,25 @@ public record AppUiBootstrap(
    *
    * <p>The factory derives app-specific browser routes from the same manifest fields used by app
    * summaries and static asset resolution. That keeps links published through Platform API, the Web
-   * Shell, and the app UI bootstrap aligned. The caller supplies host-level roots and the current
-   * form password because those values come from the serving HTTP context, not from the installed
-   * bundle.
+   * Shell, and the app UI bootstrap aligned. The caller supplies host-level roots and an already
+   * issued browser session because those values come from the serving HTTP context, not from the
+   * installed bundle.
    *
    * @param manifest installed app manifest currently being served
    * @param platformApiRoot absolute local Platform API root ending in {@code /}
    * @param shellRoot absolute local Web Shell root ending in {@code /}
-   * @param formPassword current local-admin mutation token, or {@code null}
+   * @param browserSession issued app browser session metadata
    * @return immutable bootstrap metadata ready for deterministic JSON serialization
    * @throws NullPointerException if {@code manifest} or any required route root is {@code null}
    * @throws IllegalArgumentException if a derived or supplied route root is not valid
    */
   public static AppUiBootstrap forManifest(
-      AppManifest manifest, String platformApiRoot, String shellRoot, String formPassword) {
+      AppManifest manifest,
+      String platformApiRoot,
+      String shellRoot,
+      AppBrowserSessionIssue browserSession) {
     Objects.requireNonNull(manifest, "manifest");
+    Objects.requireNonNull(browserSession, "browserSession");
     return new AppUiBootstrap(
         manifest.appId(),
         manifest.appName(),
@@ -76,7 +83,8 @@ public record AppUiBootstrap(
         AppUiPaths.uiUrl(manifest),
         platformApiRoot,
         shellRoot,
-        formPassword);
+        browserSession.token(),
+        browserSession.expiresAt());
   }
 
   /**
@@ -99,8 +107,9 @@ public record AppUiBootstrap(
    *
    * <p>Required text fields must be non-blank. Route roots must be same-origin absolute paths that
    * begin with a single {@code /}, contain no query or fragment, and end with {@code /}. The
-   * constructor accepts a blank form password but normalizes it to {@code null}; that prevents
-   * browser code from treating whitespace as a usable mutation credential.
+   * browser session token text must be non-blank. The expiry timestamp must be present but is not
+   * required to be in the future at construction time because serializers and tests may inspect
+   * already-expired values.
    *
    * @throws NullPointerException if any required field is {@code null}
    * @throws IllegalArgumentException if a required text field is blank or a route root is invalid
@@ -112,9 +121,27 @@ public record AppUiBootstrap(
     requireRootPath(assetRoot, "assetRoot");
     requireRootPath(platformApiRoot, "platformApiRoot");
     requireRootPath(shellRoot, "shellRoot");
-    if (formPassword != null && formPassword.isBlank()) {
-      formPassword = null;
-    }
+    requireText(browserSessionToken, "browserSessionToken");
+    Objects.requireNonNull(browserSessionExpiresAt, "browserSessionExpiresAt");
+  }
+
+  @Override
+  public @NotNull String toString() {
+    return "AppUiBootstrap[appId="
+        + appId
+        + ", name="
+        + name
+        + ", uiRoot="
+        + uiRoot
+        + ", assetRoot="
+        + assetRoot
+        + ", platformApiRoot="
+        + platformApiRoot
+        + ", shellRoot="
+        + shellRoot
+        + ", browserSessionToken=[REDACTED], browserSessionExpiresAt="
+        + browserSessionExpiresAt
+        + "]";
   }
 
   private static String requireText(String value, String label) {
