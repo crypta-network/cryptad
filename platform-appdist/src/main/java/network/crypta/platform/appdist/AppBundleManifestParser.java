@@ -266,6 +266,8 @@ public final class AppBundleManifestParser {
     List<String> permissions = parsePermissions(optional(properties, "app.permissions"));
     Long dataQuotaBytes = parseOptionalLong(properties, "quota.data.bytes");
     Long cacheQuotaBytes = parseOptionalLong(properties, "quota.cache.bytes");
+    AppSandboxMode sandboxMode = parseSandboxMode(optional(properties, "sandbox.mode"));
+    boolean sandboxRequired = parseSandboxRequired(properties);
     AppRestartPolicy restartPolicy = parseRestartPolicy(optional(properties, "app.restart.policy"));
     int restartMaxAttempts = parseRestartMaxAttempts(properties);
     long restartBackoffMillis = parseRestartBackoffMillis(properties);
@@ -281,6 +283,8 @@ public final class AppBundleManifestParser {
           permissions,
           dataQuotaBytes,
           cacheQuotaBytes,
+          sandboxMode,
+          sandboxRequired,
           restartPolicy,
           restartMaxAttempts,
           restartBackoffMillis);
@@ -301,6 +305,14 @@ public final class AppBundleManifestParser {
   private static AppUiMode parseUiMode(String rawValue) throws AppDistributionException {
     try {
       return AppUiMode.parseManifestValue(rawValue);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static AppSandboxMode parseSandboxMode(String rawValue) throws AppDistributionException {
+    try {
+      return AppSandboxMode.parseManifestValue(rawValue);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -447,6 +459,23 @@ public final class AppBundleManifestParser {
     } catch (NumberFormatException exception) {
       throw new AppDistributionException("invalid " + key + ": " + value, exception);
     }
+  }
+
+  private static boolean parseSandboxRequired(Properties properties)
+      throws AppDistributionException {
+    String key = "sandbox.required";
+    String value = optional(properties, key);
+    if (value == null) {
+      return false;
+    }
+    String normalized = value.toLowerCase(Locale.ROOT);
+    if (normalized.equals("true")) {
+      return true;
+    }
+    if (normalized.equals("false")) {
+      return false;
+    }
+    throw new AppDistributionException("invalid " + key + ": " + value);
   }
 
   private static String required(Properties properties, String key)

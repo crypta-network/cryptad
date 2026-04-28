@@ -8,13 +8,16 @@ import java.nio.file.Path;
 import java.util.Properties;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppRestartPolicy;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppManifestParserTest {
   private static final String MANIFEST_VERSION_PROPERTY = "manifest.version";
@@ -68,9 +71,49 @@ class AppManifestParserTest {
     assertEquals(java.util.List.of("network.read", "ui.open"), manifest.permissions());
     assertEquals(Long.valueOf(1048576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2048L), manifest.cacheQuotaBytes());
+    assertEquals(AppSandboxMode.NONE, manifest.sandboxPolicy().mode());
+    assertFalse(manifest.sandboxPolicy().required());
     assertEquals(AppRestartPolicy.ON_FAILURE, manifest.restartPolicy());
     assertEquals(2, manifest.restartMaxAttempts());
     assertEquals(50L, manifest.restartBackoffMillis());
+  }
+
+  @Test
+  void parseContent_whenRestrictedSandboxDeclared_expectSandboxPolicy() throws Exception {
+    AppManifest manifest =
+        AppManifestParser.parseContent(
+            minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+                + "sandbox.mode=restricted-process\n"
+                + "sandbox.required=true\n");
+
+    assertEquals(AppSandboxMode.RESTRICTED_PROCESS, manifest.sandboxPolicy().mode());
+    assertTrue(manifest.sandboxPolicy().required());
+  }
+
+  @Test
+  void parseContent_whenSandboxModeIsUnsupported_expectFailure() {
+    String invalidManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+            + "sandbox.mode=docker\n";
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+
+    assertEquals("unsupported sandbox.mode: docker", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenSandboxRequiredIsMalformed_expectFailure() {
+    String invalidManifest =
+        minimalManifest(MANIFEST_VERSION, SAMPLE_APP_ID, SAMPLE_APP_NAME, START_SCRIPT)
+            + "sandbox.required=maybe\n";
+
+    AppManifestException exception =
+        assertThrows(
+            AppManifestException.class, () -> AppManifestParser.parseContent(invalidManifest));
+
+    assertEquals("invalid sandbox.required: maybe", exception.getMessage());
   }
 
   @Test

@@ -86,7 +86,9 @@ Remote fetches use the JDK HTTP client with finite timeouts, no automatic redire
 for catalog, signature, and artifact downloads. Artifact bytes are written to catalog-owned scratch
 storage, checked against the catalog size and SHA-256, then extracted into a separate staging
 directory. The extractor rejects absolute ZIP paths, `..`, Windows drive prefixes, backslash path
-separators, duplicate normalized entries, and rootless bundles.
+separators, duplicate normalized entries, and rootless bundles. It drops macOS archive metadata
+entries such as `__MACOSX/**` and AppleDouble `._*` files before signed-bundle verification, so
+those files are not installed as app payload.
 
 ## Platform API flow
 

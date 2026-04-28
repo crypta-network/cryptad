@@ -73,6 +73,24 @@ bootstrap JSON, static asset security boundary, and API summary fields. See
 [platform-sdk-js.md](platform-sdk-js.md) for the staged browser SDK used by first-party static UI
 bundles.
 
+## Sandbox Manifest Fields
+
+App bundles can declare the requested AppHost sandbox mode:
+
+```properties
+sandbox.mode=none|restricted-process|wasm-preview
+sandbox.required=false
+```
+
+Both fields are optional. Missing `sandbox.mode` defaults to `none`, and missing
+`sandbox.required` defaults to `false`. Unknown modes and malformed booleans fail manifest
+validation before a bundle is installed or launched.
+
+The `restricted-process` mode currently maps to AppHost's best-effort restricted local process
+provider. It preserves the existing sanitized environment, explicit working directory, and
+app-scoped mutable directories, but it is not a hard OS sandbox. The `wasm-preview` mode is reserved
+for a future provider and is unsupported by the default runtime.
+
 ## Runtime Manifest Fields
 
 App bundles can declare a minimal restart policy:

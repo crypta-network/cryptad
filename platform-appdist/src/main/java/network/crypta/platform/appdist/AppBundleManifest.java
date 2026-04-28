@@ -32,6 +32,8 @@ import java.util.regex.Pattern;
  * @param permissions normalized permission strings declared by the app manifest
  * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
  * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+ * @param sandboxMode requested process sandbox mode
+ * @param sandboxRequired whether launch must fail when the requested sandbox mode is unsupported
  * @param restartPolicy normalized process restart policy
  * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
  * @param restartBackoffMillis delay before an automatic restart attempt
@@ -47,6 +49,8 @@ public record AppBundleManifest(
     List<String> permissions,
     Long dataQuotaBytes,
     Long cacheQuotaBytes,
+    AppSandboxMode sandboxMode,
+    boolean sandboxRequired,
     AppRestartPolicy restartPolicy,
     int restartMaxAttempts,
     long restartBackoffMillis) {
@@ -73,6 +77,8 @@ public record AppBundleManifest(
    * @param permissions normalized permission strings declared by the app manifest
    * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
    * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   * @param sandboxMode requested process sandbox mode
+   * @param sandboxRequired whether launch must fail when the requested sandbox mode is unsupported
    * @param restartPolicy normalized process restart policy
    * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
    * @param restartBackoffMillis delay before an automatic restart attempt
@@ -92,9 +98,63 @@ public record AppBundleManifest(
     permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
     dataQuotaBytes = normalizeQuota(dataQuotaBytes, "quota.data.bytes");
     cacheQuotaBytes = normalizeQuota(cacheQuotaBytes, "quota.cache.bytes");
+    sandboxMode = Objects.requireNonNullElse(sandboxMode, AppSandboxMode.NONE);
     Objects.requireNonNull(restartPolicy, "restartPolicy");
     requireValidRestartMaxAttempts(restartMaxAttempts);
     requireValidRestartBackoffMillis(restartBackoffMillis);
+  }
+
+  /**
+   * Creates a manifest with the default sandbox policy and explicit restart policy.
+   *
+   * <p>This overload preserves source compatibility for callers that construct signed-bundle
+   * manifests directly. Parsed manifests normally supply the sandbox fields explicitly.
+   *
+   * @param manifestVersion manifest schema version, currently required to be {@code 1}
+   * @param appId stable lower-case application identifier safe for managed bundle paths
+   * @param appName human-readable application name shown by host and API surfaces
+   * @param appVersion display version string recorded in installed app summaries
+   * @param execPathText executable path relative to the bundle root, using normalized separators
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
+   * @param permissions normalized permission strings declared by the app manifest
+   * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
+   * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
+   */
+  @SuppressWarnings("unused")
+  public AppBundleManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes,
+      AppRestartPolicy restartPolicy,
+      int restartMaxAttempts,
+      long restartBackoffMillis) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        AppSandboxMode.NONE,
+        false,
+        restartPolicy,
+        restartMaxAttempts,
+        restartBackoffMillis);
   }
 
   /**
@@ -134,6 +194,8 @@ public record AppBundleManifest(
         permissions,
         dataQuotaBytes,
         cacheQuotaBytes,
+        AppSandboxMode.NONE,
+        false,
         AppRestartPolicy.NEVER,
         0,
         0L);
@@ -176,6 +238,8 @@ public record AppBundleManifest(
         permissions,
         dataQuotaBytes,
         cacheQuotaBytes,
+        AppSandboxMode.NONE,
+        false,
         AppRestartPolicy.NEVER,
         0,
         0L);

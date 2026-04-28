@@ -3,6 +3,8 @@ package network.crypta.platform.apphost;
 import java.time.Instant;
 import java.util.Objects;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -22,9 +24,15 @@ import org.jetbrains.annotations.NotNull;
  * @param token opaque per-start launch token
  * @param pid child-process id
  * @param startedAt launch timestamp
+ * @param sandboxStatus token-free sandbox status for this launch
  */
 public record RunningAppSnapshot(
-    AppManifest manifest, InstalledAppPaths paths, String token, long pid, Instant startedAt) {
+    AppManifest manifest,
+    InstalledAppPaths paths,
+    String token,
+    long pid,
+    Instant startedAt,
+    AppSandboxStatus sandboxStatus) {
   /**
    * Creates a validated running-app snapshot.
    *
@@ -33,18 +41,43 @@ public record RunningAppSnapshot(
    * @param token opaque per-start launch token
    * @param pid child-process id
    * @param startedAt launch timestamp
+   * @param sandboxStatus token-free sandbox status for this launch
    */
   public RunningAppSnapshot {
     Objects.requireNonNull(manifest, "manifest");
     Objects.requireNonNull(paths, "paths");
     Objects.requireNonNull(token, "token");
     Objects.requireNonNull(startedAt, "startedAt");
+    Objects.requireNonNull(sandboxStatus, "sandboxStatus");
     if (token.isBlank()) {
       throw new IllegalArgumentException("token must not be blank");
     }
     if (pid <= 0) {
       throw new IllegalArgumentException("pid must be positive");
     }
+  }
+
+  /**
+   * Creates a running snapshot with an inactive manifest-derived sandbox status.
+   *
+   * <p>This overload preserves compatibility for tests and embeddings that construct running
+   * snapshots directly without exercising the provider launch path.
+   *
+   * @param manifest parsed application manifest
+   * @param paths derived filesystem paths for the installed app
+   * @param token opaque per-start launch token
+   * @param pid child-process id
+   * @param startedAt launch timestamp
+   */
+  public RunningAppSnapshot(
+      AppManifest manifest, InstalledAppPaths paths, String token, long pid, Instant startedAt) {
+    this(
+        manifest,
+        paths,
+        token,
+        pid,
+        startedAt,
+        AppSandboxProviders.inactiveStatus(manifest.sandboxPolicy()));
   }
 
   /**

@@ -60,6 +60,8 @@ import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.apphost.sandbox.AppSandboxSupportLevel;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -2529,6 +2531,33 @@ class LocalProcessAppHostTest {
     assertTrue(exception.getMessage().contains("runDir must not be a symlink"));
     assertFalse(
         Files.exists(externalRunAppsDir.resolve(RUNNER_APP_ID).resolve(PROCESS_LOG_FILE_NAME)));
+  }
+
+  @Test
+  void start_whenRequiredWasmSandboxUnsupported_expectClearFailureAndUnsupportedStatus()
+      throws Exception {
+    LocalProcessAppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    Files.writeString(
+        stagedApp.resolve(MANIFEST_FILE_NAME),
+        """
+        sandbox.mode=wasm-preview
+        sandbox.required=true
+        """,
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+    host.installFromDirectory(stagedApp);
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertTrue(exception.getMessage().contains("wasm-preview"));
+    assertFalse(exception.getMessage().contains("CRYPTAD_APP_TOKEN"));
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.sandboxStatus().supportLevel());
+    assertTrue(status.sandboxStatus().required());
   }
 
   @Test

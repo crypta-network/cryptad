@@ -21,6 +21,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
+import network.crypta.platform.apphost.sandbox.AppSandboxException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -156,6 +157,10 @@ class AppsApiHandlerTest {
     assertEquals("static", summary.get(FIELD_UI_MODE));
     assertEquals("static/index.html", summary.get(FIELD_UI_ENTRY));
     assertEquals("/apps/demo-app/static/", summary.get(FIELD_UI_URL));
+    Map<?, ?> sandbox = (Map<?, ?>) summary.get("sandbox");
+    assertEquals("none", sandbox.get("mode"));
+    assertEquals("none", sandbox.get("supportLevel"));
+    assertEquals("no-sandbox", sandbox.get("provider"));
   }
 
   @Test
@@ -205,7 +210,28 @@ class AppsApiHandlerTest {
     assertEquals(true, runtime.get(FIELD_RUNNING));
     assertEquals(4242L, runtime.get("pid"));
     assertEquals(SAMPLE_INSTANT_TEXT, runtime.get("startedAt"));
+    Map<?, ?> sandbox = (Map<?, ?>) runtime.get("sandbox");
+    assertEquals("none", sandbox.get("mode"));
+    assertEquals(false, sandbox.get("active"));
     org.junit.jupiter.api.Assertions.assertFalse(runtime.toString().contains("token"));
+  }
+
+  @Test
+  void start_whenRequiredSandboxUnsupported_expectUnsupportedSandboxError() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.startFailure =
+        new AppSandboxException(
+            "unsupported_sandbox",
+            "App requires sandbox mode wasm-preview, but no provider can support it on this host");
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    PlatformApiException exception =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            PlatformApiException.class, () -> handler.start(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    org.junit.jupiter.api.Assertions.assertFalse(exception.getMessage().contains("secret-token"));
   }
 
   @Test
@@ -390,6 +416,7 @@ class AppsApiHandlerTest {
     private AppRuntimeStatusSnapshot runtimeStatus;
     private AppProcessLogSnapshot processLog;
     private IOException describeFailure;
+    private IOException startFailure;
     private boolean stopResult;
     private int stopCalls;
 
@@ -426,7 +453,10 @@ class AppsApiHandlerTest {
     }
 
     @Override
-    public RunningAppSnapshot start(String appId) {
+    public RunningAppSnapshot start(String appId) throws IOException {
+      if (startFailure != null) {
+        throw startFailure;
+      }
       throw new UnsupportedOperationException();
     }
 
