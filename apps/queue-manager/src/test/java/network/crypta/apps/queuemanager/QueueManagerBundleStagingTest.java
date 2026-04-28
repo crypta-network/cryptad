@@ -122,8 +122,10 @@ class QueueManagerBundleStagingTest {
         "queue:",
         "content:",
         "dom:",
-        "formPassword");
-    verifyContainsNone(sdkScript, "CRYPTAD_APP_TOKEN");
+        "browserSessionToken",
+        "X-Crypta-App-Session");
+    verifyContainsNone(
+        sdkScript, "formPassword", "CRYPTAD_APP_TOKEN", "localStorage", "sessionStorage");
   }
 
   private static void verifyQueueManagerAppScript(String appScript) {

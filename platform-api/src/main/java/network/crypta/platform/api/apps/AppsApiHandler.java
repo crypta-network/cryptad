@@ -596,13 +596,14 @@ public final class AppsApiHandler {
   }
 
   private static Map<String, Object> summarizeAuditEvent(AppAuditEvent event) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put("timestamp", event.timestamp().toString());
     json.put(FIELD_APP_ID, event.appId());
     json.put("method", event.method());
     json.put("endpointFamily", event.endpointFamily());
     json.put("action", event.action());
     json.put("requiredCapabilities", event.requiredCapabilities());
+    json.put("authSource", event.authSource().name());
     json.put("decision", event.decision().name());
     json.put("statusCode", event.statusCode());
     json.put("reasonCode", event.reasonCode());

@@ -1,5 +1,6 @@
 package network.crypta.platform.appui;
 
+import java.time.Instant;
 import java.util.List;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.manifest.AppManifest;
@@ -7,16 +8,21 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class AppUiBootstrapTest {
+  private static final Instant EXPIRES_AT = Instant.parse("2026-04-28T12:00:00Z");
+
   @Test
-  void forManifest_whenStaticAppProvided_expectRouteMetadataOnly() {
+  void forManifest_whenStaticAppProvided_expectRouteMetadataAndBrowserSession() {
     AppUiBootstrap bootstrap =
-        AppUiBootstrap.forManifest(manifest(), "/api/v1/", "/app/node/", "form-secret");
+        AppUiBootstrap.forManifest(
+            manifest(),
+            "/api/v1/",
+            "/app/node/",
+            new AppBrowserSessionIssue("session-token", EXPIRES_AT));
 
     assertEquals("demo-app", bootstrap.appId());
     assertEquals("Demo App", bootstrap.name());
@@ -24,22 +30,24 @@ class AppUiBootstrapTest {
     assertEquals("/apps/demo-app/static/", bootstrap.assetRoot());
     assertEquals("/api/v1/", bootstrap.platformApiRoot());
     assertEquals("/app/node/", bootstrap.shellRoot());
-    assertEquals("form-secret", bootstrap.formPassword());
+    assertEquals("session-token", bootstrap.browserSessionToken());
+    assertEquals(EXPIRES_AT, bootstrap.browserSessionExpiresAt());
   }
 
   @Test
-  void constructor_whenBlankFormPasswordProvided_expectReadOnlyBootstrap() {
-    AppUiBootstrap bootstrap =
-        new AppUiBootstrap(
-            "demo-app",
-            "Demo App",
-            "/apps/demo-app/",
-            "/apps/demo-app/static/",
-            "/api/v1/",
-            "/app/node/",
-            " ");
-
-    assertNull(bootstrap.formPassword());
+  void constructor_whenBlankBrowserSessionTokenProvided_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new AppUiBootstrap(
+                "demo-app",
+                "Demo App",
+                "/apps/demo-app/",
+                "/apps/demo-app/static/",
+                "/api/v1/",
+                "/app/node/",
+                " ",
+                EXPIRES_AT));
   }
 
   @Test
@@ -54,7 +62,8 @@ class AppUiBootstrapTest {
                 "/apps/demo-app/static/",
                 "/api/v1",
                 "/app/node/",
-                null));
+                "session-token",
+                EXPIRES_AT));
   }
 
   @Test
@@ -67,7 +76,8 @@ class AppUiBootstrapTest {
             "/apps/demo-app/static/",
             "/api/v1/",
             "/app/node/",
-            "secret&value");
+            "secret&value",
+            EXPIRES_AT);
 
     String json = AppUiBootstrapJson.serialize(bootstrap);
 
@@ -78,16 +88,18 @@ class AppUiBootstrapTest {
             + "\"assetRoot\":\"/apps/demo-app/static/\","
             + "\"platformApiRoot\":\"/api/v1/\","
             + "\"shellRoot\":\"/app/node/\","
-            + "\"formPassword\":\"secret\\u0026value\"}",
+            + "\"browserSessionToken\":\"secret\\u0026value\","
+            + "\"browserSessionExpiresAt\":\"2026-04-28T12:00:00Z\"}",
         json);
     assertTrue(json.contains("\"name\":\"Demo \\u003cApp\\u003e\""));
-    assertTrue(json.contains("\"formPassword\":\"secret\\u0026value\""));
+    assertTrue(json.contains("\"browserSessionToken\":\"secret\\u0026value\""));
     assertFalse(json.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(json.contains("launchToken"));
+    assertFalse(json.contains("formPassword"));
   }
 
   @Test
-  void serialize_whenFormPasswordIsNull_expectNullJsonField() {
+  void toString_whenBrowserSessionPresent_expectTokenRedacted() {
     AppUiBootstrap bootstrap =
         new AppUiBootstrap(
             "demo-app",
@@ -96,11 +108,13 @@ class AppUiBootstrapTest {
             "/apps/demo-app/static/",
             "/api/v1/",
             "/app/node/",
-            null);
+            "secret-token",
+            EXPIRES_AT);
 
-    String json = AppUiBootstrapJson.serialize(bootstrap);
+    String text = bootstrap.toString();
 
-    assertTrue(json.contains("\"formPassword\":null"));
+    assertTrue(text.contains("browserSessionToken=[REDACTED]"));
+    assertFalse(text.contains("secret-token"));
   }
 
   @Test

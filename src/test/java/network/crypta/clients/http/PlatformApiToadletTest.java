@@ -2,16 +2,21 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import network.crypta.platform.api.PlatformApiAuthSource;
+import network.crypta.platform.api.PlatformApiPrincipalType;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
+import network.crypta.platform.appui.AppBrowserSession;
+import network.crypta.platform.appui.AppBrowserSessionVerifier;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
@@ -40,6 +45,7 @@ class PlatformApiToadletTest {
 
   @Mock private PlatformApiRouter router;
   @Mock private AppHost appHost;
+  @Mock private AppBrowserSessionVerifier appBrowserSessionVerifier;
   @Mock private ToadletContext ctx;
   @Mock private HTTPRequest request;
   @Mock private Bucket requestBody;
@@ -50,6 +56,7 @@ class PlatformApiToadletTest {
   void setUp() {
     toadlet = new PlatformApiToadlet(router);
     lenient().when(request.getHeader("x-crypta-app-token")).thenReturn(null);
+    lenient().when(request.getHeader("x-crypta-app-session")).thenReturn(null);
     lenient().when(request.getHeader("authorization")).thenReturn(null);
   }
 
@@ -92,6 +99,28 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodGET_whenBearerTokenAndBrowserSessionProvided_routesProcessTokenPrincipal()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("authorization")).thenReturn("Bearer process-token");
+    lenient().when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appHost.authenticateLaunchToken("process-token"))
+        .thenReturn(Optional.of(new AppTokenPrincipal("alpha", List.of("node.read"))));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP, captor.getValue().principal().type());
+    assertEquals(PlatformApiAuthSource.APP_TOKEN, captor.getValue().principal().authSource());
+    assertEquals("alpha", captor.getValue().principal().appId());
+    verifyNoInteractions(appBrowserSessionVerifier);
+  }
+
+  @Test
   void handleMethodGET_whenBearerTokenDoesNotAuthenticate_routesHostOperatorRequest()
       throws Exception {
     toadlet = new PlatformApiToadlet(router, appHost);
@@ -108,6 +137,139 @@ class PlatformApiToadletTest {
     verify(router).route(captor.capture());
     assertEquals("HOST_OPERATOR", captor.getValue().principal().type().name());
     verify(ctx).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenAppBrowserSessionHeaderAuthenticates_routesBrowserPrincipalRequest()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.read"))));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, captor.getValue().principal().type());
+    assertEquals(
+        PlatformApiAuthSource.APP_BROWSER_SESSION, captor.getValue().principal().authSource());
+    assertEquals("alpha", captor.getValue().principal().appId());
+    assertEquals(List.of("queue.read"), captor.getValue().principal().permissions());
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodPOST_whenAppBrowserSessionAndUnrelatedBearer_routesBrowserPrincipalRequest()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("authorization")).thenReturn("Bearer proxy-token");
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appHost.authenticateLaunchToken("proxy-token")).thenReturn(Optional.empty());
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.write"))));
+    when(request.getParameterNames()).thenReturn(List.of("identifier"));
+    when(request.getMultipleParam("identifier")).thenReturn(new String[] {"download-1"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, captor.getValue().principal().type());
+    assertEquals(
+        PlatformApiAuthSource.APP_BROWSER_SESSION, captor.getValue().principal().authSource());
+    assertEquals("alpha", captor.getValue().principal().appId());
+    assertEquals(List.of("queue.write"), captor.getValue().principal().permissions());
+    verify(ctx, never()).isAllowedFullAccess();
+    verify(ctx, never()).hasFormPassword(request);
+  }
+
+  @Test
+  void handleMethodGET_whenAppBrowserSessionInvalid_expect401WithoutTokenLeak() throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session")).thenReturn(Optional.empty());
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    assertEquals("Unauthorized", replyHeaders.reasonPhrase());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_browser_session\",\"message\":\"Invalid app browser"
+            + " session.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("browser-session"));
+  }
+
+  @Test
+  void handleMethodGET_whenAppBrowserSessionVerifierUnavailable_expect401WithoutHostFallback()
+      throws Exception {
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_browser_session\",\"message\":\"App browser session"
+            + " authentication is unavailable.\"}}",
+        bodyWrite.bodyText());
+    assertFalse(bodyWrite.bodyText().contains("browser-session"));
+  }
+
+  @Test
+  void handleMethodPOST_whenAppBrowserSessionAuthenticates_skipsHostFormPassword()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.write"))));
+    when(request.getParameterNames()).thenReturn(List.of("identifier"));
+    when(request.getMultipleParam("identifier")).thenReturn(new String[] {"download-1"});
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/queue/requests/remove"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, captor.getValue().principal().type());
+    assertEquals(List.of("queue.write"), captor.getValue().principal().permissions());
+    verify(ctx, never()).isAllowedFullAccess();
+    verify(ctx, never()).hasFormPassword(request);
+  }
+
+  @Test
+  void handleMethodGET_whenAppTokenAndBrowserSessionProvided_routesProcessTokenPrincipal()
+      throws Exception {
+    toadlet = new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier);
+    when(request.getHeader("x-crypta-app-token")).thenReturn("process-token");
+    lenient().when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appHost.authenticateLaunchToken("process-token"))
+        .thenReturn(Optional.of(new AppTokenPrincipal("alpha", List.of("node.read"))));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/node/greeting"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP, captor.getValue().principal().type());
+    assertEquals(PlatformApiAuthSource.APP_TOKEN, captor.getValue().principal().authSource());
+    verifyNoInteractions(appBrowserSessionVerifier);
   }
 
   @Test
@@ -933,6 +1095,11 @@ End
     assertEquals(
         "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
         bodyWrite.bodyText());
+  }
+
+  private static AppBrowserSession alphaBrowserSession(List<String> permissions) {
+    Instant issuedAt = Instant.parse("2026-04-28T10:00:00Z");
+    return new AppBrowserSession("alpha", permissions, issuedAt, issuedAt.plusSeconds(3600));
   }
 
   private record ReplyHeadersCapture(

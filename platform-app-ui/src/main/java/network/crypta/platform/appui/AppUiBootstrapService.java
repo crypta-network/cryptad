@@ -28,6 +28,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
  */
 public final class AppUiBootstrapService {
   private final AppHost appHost;
+  private final AppBrowserSessionIssuer sessionIssuer;
 
   /**
    * Creates a bootstrap resolver backed by one AppHost instance.
@@ -39,8 +40,21 @@ public final class AppUiBootstrapService {
    * @param appHost AppHost used to describe installed applications and their manifests
    * @throws NullPointerException if {@code appHost} is {@code null}
    */
+  @SuppressWarnings("unused")
   public AppUiBootstrapService(AppHost appHost) {
+    this(appHost, new AppBrowserSessionStore(appHost));
+  }
+
+  /**
+   * Creates a bootstrap resolver with an explicit browser session issuer.
+   *
+   * @param appHost AppHost used to describe installed applications and their manifests
+   * @param sessionIssuer issuer used to create browser-scoped app sessions for bootstrap JSON
+   * @throws NullPointerException if either dependency is {@code null}
+   */
+  public AppUiBootstrapService(AppHost appHost, AppBrowserSessionIssuer sessionIssuer) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
+    this.sessionIssuer = Objects.requireNonNull(sessionIssuer, "sessionIssuer");
   }
 
   /**
@@ -51,41 +65,54 @@ public final class AppUiBootstrapService {
    * AppHost is queried. When the route is valid but does not name the reserved bootstrap resource,
    * the method returns empty and leaves ordinary asset handling to {@link AppStaticAssetService}.
    *
-   * <p>The caller supplies host-level route roots and the current form password because those
-   * values come from the serving HTTP context. This method only combines them with manifest-derived
-   * app metadata after verifying that the app is installed and static.
+   * <p>The caller supplies host-level route roots because those values come from the serving HTTP
+   * context. This method only combines them with manifest-derived app metadata and an opaque
+   * browser session after verifying that the app is installed and static.
    *
    * @param rawRequestPath raw URI path such as {@code
    *     /apps/demo-app/.well-known/cryptad-bootstrap.json}
    * @param platformApiRoot absolute local Platform API root to expose to browser code
    * @param shellRoot absolute local Web Shell root to expose for fallback navigation
-   * @param formPassword current local-admin mutation token, or {@code null}
    * @return bootstrap metadata, or empty when the path is not the bootstrap resource or the app is
    *     not an installed static UI app
    * @throws IOException if AppHost metadata cannot be read for the requested app id
    * @throws AppStaticAssetException if the raw app UI route path is malformed or unsafe
    */
   public Optional<AppUiBootstrap> resolve(
-      String rawRequestPath, String platformApiRoot, String shellRoot, String formPassword)
+      String rawRequestPath, String platformApiRoot, String shellRoot)
       throws IOException, AppStaticAssetException {
-    AppUiRoute route = AppUiRoute.parse(rawRequestPath);
-    if (!AppUiBootstrap.isBootstrapAssetPath(route.assetPath())) {
+    Optional<InstalledAppSnapshot> snapshot = staticBootstrapSnapshot(rawRequestPath);
+    if (snapshot.isEmpty()) {
       return Optional.empty();
     }
-    Optional<InstalledAppSnapshot> snapshot = appHost.describe(route.appId());
-    if (snapshot.isEmpty() || snapshot.get().manifest().uiMode() != AppUiMode.STATIC) {
-      return Optional.empty();
-    }
+    AppBrowserSessionIssue session = sessionIssuer.issue(snapshot.get());
     return Optional.of(
-        AppUiBootstrap.forManifest(
-            snapshot.get().manifest(), platformApiRoot, shellRoot, formPassword));
+        AppUiBootstrap.forManifest(snapshot.get().manifest(), platformApiRoot, shellRoot, session));
+  }
+
+  /**
+   * Returns whether one raw HTTP path names bootstrap metadata for an installed static app.
+   *
+   * <p>This check performs the same route parsing and AppHost lookup as {@link #resolve(String,
+   * String, String)}, but it deliberately does not issue a browser session token. HTTP adapters use
+   * it for header-only requests where the caller never receives the bootstrap body and therefore
+   * cannot use a newly minted session.
+   *
+   * @param rawRequestPath raw URI path such as {@code
+   *     /apps/demo-app/.well-known/cryptad-bootstrap.json}
+   * @return {@code true} when the route names the bootstrap resource for an installed static UI app
+   * @throws IOException if AppHost metadata cannot be read for the requested app id
+   * @throws AppStaticAssetException if the raw app UI route path is malformed or unsafe
+   */
+  public boolean isAvailable(String rawRequestPath) throws IOException, AppStaticAssetException {
+    return staticBootstrapSnapshot(rawRequestPath).isPresent();
   }
 
   /**
    * Returns whether one raw request path names the reserved bootstrap route.
    *
    * <p>HTTP adapters use this as an early dispatch check before static asset resolution. It applies
-   * the same raw-path parsing as {@link #resolve(String, String, String, String)}, which means a
+   * the same raw-path parsing as {@link #resolve(String, String, String)}, which means a
    * syntactically unsafe bootstrap-looking URL fails as a bad app UI route instead of falling
    * through to filesystem lookup.
    *
@@ -96,5 +123,16 @@ public final class AppUiBootstrapService {
   public static boolean isBootstrapRequest(String rawRequestPath) throws AppStaticAssetException {
     AppUiRoute route = AppUiRoute.parse(rawRequestPath);
     return AppUiBootstrap.isBootstrapAssetPath(route.assetPath());
+  }
+
+  private Optional<InstalledAppSnapshot> staticBootstrapSnapshot(String rawRequestPath)
+      throws IOException, AppStaticAssetException {
+    AppUiRoute route = AppUiRoute.parse(rawRequestPath);
+    if (!AppUiBootstrap.isBootstrapAssetPath(route.assetPath())) {
+      return Optional.empty();
+    }
+    return appHost
+        .describe(route.appId())
+        .filter(snapshot -> snapshot.manifest().uiMode() == AppUiMode.STATIC);
   }
 }

@@ -42,10 +42,8 @@ public final class AppUiBootstrapJson {
    * Serializes one app UI bootstrap payload as deterministic JSON.
    *
    * <p>The output schema is the browser contract for first-party static app UI bootstrap. It
-   * contains route roots and the optional local-admin form password from {@link AppUiBootstrap}; it
-   * does not synthesize or add AppHost launch credentials. A {@code null} form password is emitted
-   * as the JSON literal {@code null}, which lets browser code distinguish a read-only bootstrap
-   * context from an empty string.
+   * contains route roots and an opaque browser app session token from {@link AppUiBootstrap}; it
+   * does not synthesize or add AppHost launch credentials or local-admin form passwords.
    *
    * @param bootstrap bootstrap model whose fields should be written in a stable order
    * @return compact JSON text safe to serve as {@code application/json}
@@ -60,22 +58,15 @@ public final class AppUiBootstrapJson {
     appendStringField(out, "assetRoot", bootstrap.assetRoot());
     appendStringField(out, "platformApiRoot", bootstrap.platformApiRoot());
     appendStringField(out, "shellRoot", bootstrap.shellRoot());
-    appendNullableStringField(out, "formPassword", bootstrap.formPassword());
+    appendStringField(out, "browserSessionToken", bootstrap.browserSessionToken());
+    appendStringField(
+        out, "browserSessionExpiresAt", bootstrap.browserSessionExpiresAt().toString());
     return out.append('}').toString();
   }
 
   private static void appendStringField(StringBuilder out, String name, String value) {
     appendFieldName(out, name);
     appendJsonString(out, value);
-  }
-
-  private static void appendNullableStringField(StringBuilder out, String name, String value) {
-    appendFieldName(out, name);
-    if (value == null) {
-      out.append("null");
-    } else {
-      appendJsonString(out, value);
-    }
   }
 
   private static void appendFieldName(StringBuilder out, String name) {

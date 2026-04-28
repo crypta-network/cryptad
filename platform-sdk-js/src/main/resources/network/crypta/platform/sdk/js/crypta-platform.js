@@ -14,6 +14,7 @@
 
   let currentBootstrap = null;
   let currentAppId = null;
+  let currentBrowserSessionToken = "";
   let loadingAppId = null;
   let loadingBootstrap = null;
 
@@ -66,6 +67,7 @@
       throw new Error(responseErrorMessage(data, response));
     }
     const bootstrap = sanitizeBootstrap(data);
+    const browserSessionToken = sessionTokenFromBootstrap(data);
     if (bootstrap.appId) {
       bootstrap.appId = normalizeAppId(bootstrap.appId);
     }
@@ -75,6 +77,7 @@
     if (!bootstrap.appId) {
       bootstrap.appId = appId;
     }
+    currentBrowserSessionToken = browserSessionToken;
     return bootstrap;
   }
 
@@ -83,10 +86,23 @@
     if (requestOptions.bootstrap !== false) {
       await ensureBootstrap(requestOptions);
     }
+
+    try {
+      return await fetchApiGet(path, requestOptions);
+    } catch (error) {
+      if (!shouldRefreshAfterSessionError(error, requestOptions)) {
+        throw error;
+      }
+      await refreshBootstrap(requestOptions);
+      return fetchApiGet(path, requestOptions);
+    }
+  }
+
+  async function fetchApiGet(path, requestOptions) {
     const url = apiUrl(path);
     applySearchParams(url, requestOptions.params || requestOptions.searchParams || requestOptions.query);
 
-    const headers = jsonHeaders(requestOptions.headers);
+    const headers = appSessionHeaders(requestOptions.headers);
     const response = await fetch(url, {
       method: "GET",
       headers,
@@ -106,24 +122,13 @@
 
   async function submitFormMutation(method, path, formDataOrParams, options) {
     const requestOptions = options || {};
-    const bootstrap =
-      requestOptions.bootstrap === false
-        ? currentBootstrap || {}
-        : await refreshBootstrapForMutation(requestOptions);
-    const formPassword = requestOptions.formPassword || bootstrap.formPassword || "";
-    if (requestOptions.requireFormPassword !== false && !formPassword) {
-      throw new Error(
-        requestOptions.unavailableMessage ||
-          "Mutating Platform API calls require a bootstrap formPassword."
-      );
+    if (requestOptions.bootstrap !== false) {
+      await refreshBootstrapForMutation(requestOptions);
     }
 
     const body = toUrlSearchParams(formDataOrParams);
-    if (formPassword) {
-      body.set("formPassword", formPassword);
-    }
 
-    const headers = jsonHeaders(requestOptions.headers);
+    const headers = appSessionHeaders(requestOptions.headers);
     headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
     const response = await fetch(apiUrl(path), {
       method,
@@ -337,28 +342,44 @@
     return result;
   }
 
+  function appSessionHeaders(headers) {
+    const result = jsonHeaders(headers);
+    if (!currentBrowserSessionToken) {
+      throw new Error("App browser session is unavailable; reload the app UI.");
+    }
+    result.set("X-Crypta-App-Session", currentBrowserSessionToken);
+    return result;
+  }
+
   async function ensureBootstrap(options) {
-    if (currentBootstrap && !(options && options.force)) {
+    if (currentBootstrap && currentBrowserSessionToken && !(options && options.force)) {
       return currentBootstrap;
     }
+    if (currentBootstrap && !currentBrowserSessionToken && !(options && options.force)) {
+      return refreshBootstrap(options);
+    }
     return loadBootstrap(options);
+  }
+
+  async function refreshBootstrap(options) {
+    const appId = explicitAppId(options) || currentAppId || inferAppId();
+    if (!appId) {
+      return loadBootstrap(Object.assign({}, options, { force: true }));
+    }
+    return loadBootstrap(Object.assign({}, options, { appId, force: true }));
   }
 
   async function refreshBootstrapForMutation(options) {
     if (options && options.refreshBootstrap === false) {
       return ensureBootstrap(options);
     }
-    const appId = explicitAppId(options) || currentAppId || inferAppId();
-    if (!appId) {
-      return ensureBootstrap(options);
-    }
-    return loadBootstrap(Object.assign({}, options, { appId, force: true }));
+    return refreshBootstrap(options);
   }
 
   async function readJsonOrThrow(response) {
     const data = await readJson(response);
     if (!response.ok) {
-      throw new Error(responseErrorMessage(data, response));
+      throw responseError(data, response);
     }
     return data;
   }
@@ -377,6 +398,40 @@
       return response.statusText ? `${status} ${response.statusText}` : status;
     }
     return "Unknown error";
+  }
+
+  function responseError(data, response) {
+    const code = responseErrorCode(data);
+    const message =
+      code === "invalid_app_browser_session"
+        ? "App browser session expired; reload the app UI."
+        : responseErrorMessage(data, response);
+    if (code === "invalid_app_browser_session") {
+      currentBrowserSessionToken = "";
+    }
+    const error = new Error(message);
+    if (code) {
+      error.code = code;
+    }
+    if (code === "invalid_app_browser_session") {
+      error.sessionRefreshRequired = true;
+    }
+    return error;
+  }
+
+  function shouldRefreshAfterSessionError(error, options) {
+    return (
+      error &&
+      error.code === "invalid_app_browser_session" &&
+      !(options && options.bootstrap === false)
+    );
+  }
+
+  function responseErrorCode(data) {
+    if (data && typeof data === "object" && data.error && typeof data.error.code === "string") {
+      return data.error.code;
+    }
+    return "";
   }
 
   function responseBodyMessage(data) {
@@ -446,8 +501,14 @@
     copyStringField(source, bootstrap, "assetRoot");
     copyStringField(source, bootstrap, "platformApiRoot");
     copyStringField(source, bootstrap, "shellRoot");
-    copyStringField(source, bootstrap, "formPassword");
+    copyStringField(source, bootstrap, "browserSessionExpiresAt");
     return bootstrap;
+  }
+
+  function sessionTokenFromBootstrap(data) {
+    return data && typeof data.browserSessionToken === "string"
+      ? data.browserSessionToken.trim()
+      : "";
   }
 
   function copyStringField(source, target, name) {

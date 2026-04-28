@@ -12,11 +12,13 @@ import java.util.TreeSet;
  * permissions. Raw launch tokens, headers, and transport details remain outside this model so they
  * cannot appear in router JSON, audit entries, snapshots, or diagnostic strings by accident.
  *
- * <p>There are two valid shapes. A host/operator principal has no app id and no app permissions; it
- * represents the existing trusted local management path. An app principal has a normalized app id,
- * an {@link PlatformApiAuthSource#APP_TOKEN} source, and the manifest permissions from the
- * currently running app snapshot. The router uses that immutable permission list for default-deny
- * capability checks.
+ * <p>There are three valid shapes. A host/operator principal has no app id and no app permissions;
+ * it represents the existing trusted local management path. A process app principal has a
+ * normalized app id, an {@link PlatformApiAuthSource#APP_TOKEN} source, and the manifest
+ * permissions from the currently running app snapshot. A browser app principal has a normalized app
+ * id, an {@link PlatformApiAuthSource#APP_BROWSER_SESSION} source, and the manifest permissions
+ * captured by the verified browser session. The router uses that immutable permission list for
+ * default-deny capability checks.
  *
  * @param type principal category used by the router's authorization path
  * @param authSource transport-side authentication source that established the identity
@@ -31,10 +33,10 @@ public record PlatformApiPrincipal(
   /**
    * Creates a validated token-free principal.
    *
-   * <p>The constructor enforces the two supported principal shapes and normalizes app permissions
-   * into sorted immutable order. It trims app ids and permission strings, rejects blank app ids for
-   * app principals, and rejects any host/operator principal that accidentally carries app identity
-   * or capabilities.
+   * <p>The constructor enforces the supported principal shapes and normalizes app permissions into
+   * sorted immutable order. It trims app ids and permission strings, rejects blank app ids for app
+   * principals, and rejects any host/operator principal that accidentally carries app identity or
+   * capabilities.
    *
    * @throws IllegalArgumentException if the identity fields do not match the principal type
    * @throws NullPointerException if {@code type}, {@code authSource}, or {@code permissions} is
@@ -44,24 +46,10 @@ public record PlatformApiPrincipal(
     Objects.requireNonNull(type, "type");
     Objects.requireNonNull(authSource, "authSource");
     permissions = sortedPermissions(permissions);
-    if (type == PlatformApiPrincipalType.APP) {
-      if (appId == null || appId.isBlank()) {
-        throw new IllegalArgumentException("app principal requires an app id");
-      }
-      appId = appId.trim();
-      if (authSource != PlatformApiAuthSource.APP_TOKEN) {
-        throw new IllegalArgumentException("app principal requires APP_TOKEN auth source");
-      }
+    if (isAppPrincipalType(type)) {
+      appId = validateAppPrincipal(type, authSource, appId);
     } else {
-      if (appId != null) {
-        throw new IllegalArgumentException("host principal must not carry an app id");
-      }
-      if (!permissions.isEmpty()) {
-        throw new IllegalArgumentException("host principal must not carry app permissions");
-      }
-      if (authSource != PlatformApiAuthSource.HOST_LOCAL) {
-        throw new IllegalArgumentException("host principal requires HOST_LOCAL auth source");
-      }
+      validateHostPrincipal(authSource, appId, permissions);
     }
   }
 
@@ -99,24 +87,44 @@ public record PlatformApiPrincipal(
   }
 
   /**
-   * Returns whether this request was authenticated as an app process.
+   * Builds an app browser principal from a verified browser session identity.
+   *
+   * <p>The caller must verify the browser session token before invoking this factory. The raw token
+   * is deliberately absent from the resulting value; only the app id and manifest permission
+   * strings needed for authorization cross the transport-neutral boundary.
+   *
+   * @param appId normalized app id associated with the verified browser session
+   * @param permissions manifest-declared permissions bound to the browser session
+   * @return token-free app browser principal ready for Platform API capability checks
+   */
+  public static PlatformApiPrincipal appBrowserSession(
+      String appId, Collection<String> permissions) {
+    return new PlatformApiPrincipal(
+        PlatformApiPrincipalType.APP_BROWSER,
+        PlatformApiAuthSource.APP_BROWSER_SESSION,
+        appId,
+        List.copyOf(permissions));
+  }
+
+  /**
+   * Returns whether this request was authenticated as an app process or app browser session.
    *
    * <p>This convenience method is used by the router and audit log to separate app-originated
    * decisions from host/operator traffic. It does not re-check the authentication source; the
-   * constructor already enforces that app principals use the app-token source.
+   * constructor already enforces that app principal types use the matching auth source.
    *
    * @return {@code true} for app principals and {@code false} for host/operator principals
    */
   public boolean isApp() {
-    return type == PlatformApiPrincipalType.APP;
+    return type == PlatformApiPrincipalType.APP || type == PlatformApiPrincipalType.APP_BROWSER;
   }
 
   /**
    * Returns immutable sorted manifest permissions carried by this principal.
    *
    * <p>Host/operator principals always return an empty list. App principals return the permissions
-   * captured after launch-token authentication. A defensive copy is returned so callers cannot
-   * mutate the record's retained authorization view.
+   * captured after launch-token or browser-session authentication. A defensive copy is returned so
+   * callers cannot mutate the record's retained authorization view.
    *
    * @return immutable sorted permission strings for app principals, or an empty list for host
    *     principals
@@ -137,5 +145,49 @@ public record PlatformApiPrincipal(
       sorted.add(normalized);
     }
     return List.copyOf(sorted);
+  }
+
+  private static boolean isAppPrincipalType(PlatformApiPrincipalType type) {
+    return type == PlatformApiPrincipalType.APP || type == PlatformApiPrincipalType.APP_BROWSER;
+  }
+
+  private static String validateAppPrincipal(
+      PlatformApiPrincipalType type, PlatformApiAuthSource authSource, String appId) {
+    if (appId == null || appId.isBlank()) {
+      throw new IllegalArgumentException("app principal requires an app id");
+    }
+    if (authSource != expectedAppAuthSource(type)) {
+      throw new IllegalArgumentException(appAuthSourceMessage(type));
+    }
+    return appId.trim();
+  }
+
+  private static PlatformApiAuthSource expectedAppAuthSource(PlatformApiPrincipalType type) {
+    return switch (type) {
+      case APP -> PlatformApiAuthSource.APP_TOKEN;
+      case APP_BROWSER -> PlatformApiAuthSource.APP_BROWSER_SESSION;
+      case HOST_OPERATOR -> throw new IllegalArgumentException("app principal type required");
+    };
+  }
+
+  private static String appAuthSourceMessage(PlatformApiPrincipalType type) {
+    return switch (type) {
+      case APP -> "process app principal requires APP_TOKEN auth source";
+      case APP_BROWSER -> "browser app principal requires APP_BROWSER_SESSION auth source";
+      case HOST_OPERATOR -> "app principal type required";
+    };
+  }
+
+  private static void validateHostPrincipal(
+      PlatformApiAuthSource authSource, String appId, List<String> permissions) {
+    if (appId != null) {
+      throw new IllegalArgumentException("host principal must not carry an app id");
+    }
+    if (!permissions.isEmpty()) {
+      throw new IllegalArgumentException("host principal must not carry app permissions");
+    }
+    if (authSource != PlatformApiAuthSource.HOST_LOCAL) {
+      throw new IllegalArgumentException("host principal requires HOST_LOCAL auth source");
+    }
   }
 }

@@ -124,8 +124,10 @@ class PublisherBundleStagingTest {
         "queue:",
         "content:",
         "dom:",
-        "formPassword");
-    verifyContainsNone(sdkScript, "CRYPTAD_APP_TOKEN");
+        "browserSessionToken",
+        "X-Crypta-App-Session");
+    verifyContainsNone(
+        sdkScript, "formPassword", "CRYPTAD_APP_TOKEN", "localStorage", "sessionStorage");
   }
 
   private static void verifyPublisherAppScript(String appScript) {

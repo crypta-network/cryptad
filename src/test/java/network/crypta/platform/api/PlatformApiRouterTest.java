@@ -2070,6 +2070,7 @@ class PlatformApiRouterTest {
             "queue",
             "queue.requests.remove",
             List.of("queue.write"),
+            PlatformApiAuthSource.APP_TOKEN,
             AppAuditDecision.DENIED,
             403,
             "missing_capability"));
@@ -2098,6 +2099,19 @@ class PlatformApiRouterTest {
             "node",
             "node.read",
             List.of("node.read"),
+            PlatformApiAuthSource.APP_TOKEN,
+            AppAuditDecision.ALLOWED,
+            200,
+            "route_completed"));
+    auditLog.append(
+        new AppAuditEvent(
+            STARTED_AT.plusSeconds(1),
+            APP_ID,
+            "GET",
+            "queue",
+            "queue.read",
+            List.of("queue.read"),
+            PlatformApiAuthSource.APP_BROWSER_SESSION,
             AppAuditDecision.ALLOWED,
             200,
             "route_completed"));
@@ -2109,6 +2123,8 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"decision\":\"ALLOWED\""));
     assertTrue(response.body().contains("\"requiredCapabilities\":[\"node.read\"]"));
+    assertTrue(response.body().contains("\"authSource\":\"APP_TOKEN\""));
+    assertTrue(response.body().contains("\"authSource\":\"APP_BROWSER_SESSION\""));
     assertFalse(response.body().contains("token-"));
   }
 
@@ -2129,6 +2145,43 @@ class PlatformApiRouterTest {
     assertEquals(1, events.size());
     assertEquals(AppAuditDecision.ALLOWED, events.getFirst().decision());
     assertEquals("node.read", events.getFirst().action());
+  }
+
+  @Test
+  void route_whenBrowserAppPrincipalHasQueueRead_expectQueueReadDispatch() throws Exception {
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(true);
+    when(queuePagePort.renderPage(new QueuePageRequest(false, false, null, false)))
+        .thenReturn(new QueuePageSnapshot("Downloads", "<div>queue</div>"));
+
+    PlatformApiResponse response =
+        router.route(
+            browserAppRequest(
+                "GET",
+                List.of("queue"),
+                Map.of("page", List.of("downloads")),
+                List.of("queue.read")));
+
+    verify(queueCompletionPort).ensureTrackingStarted(false);
+    assertEquals(200, response.statusCode());
+    LinkedHashMap<String, Object> expected = LinkedHashMap.newLinkedHashMap(6);
+    expected.put("page", "downloads");
+    expected.put("pageTitle", "Downloads");
+    expected.put("contentHtml", "<div>queue</div>");
+    expected.put("advancedMode", false);
+    expected.put("sortBy", null);
+    expected.put("reversed", false);
+    assertEquals(PlatformApiJsonWriter.write(expected), response.body());
+  }
+
+  @Test
+  void route_whenBrowserAppPrincipalLacksPeersWrite_expectForbidden() {
+    PlatformApiResponse response =
+        router.route(
+            browserAppRequest("POST", List.of("peers", "add"), Map.of(), List.of("peers.read")));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(peerPort);
   }
 
   @Test
@@ -3070,6 +3123,18 @@ class PlatformApiRouterTest {
       List<String> permissions) {
     return new PlatformApiRequest(
         "GET", pathSegments, queryParameters, PlatformApiPrincipal.appToken(APP_ID, permissions));
+  }
+
+  private static PlatformApiRequest browserAppRequest(
+      String method,
+      List<String> pathSegments,
+      Map<String, List<String>> queryParameters,
+      List<String> permissions) {
+    return new PlatformApiRequest(
+        method,
+        pathSegments,
+        queryParameters,
+        PlatformApiPrincipal.appBrowserSession(APP_ID, permissions));
   }
 
   @SafeVarargs

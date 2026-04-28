@@ -18,6 +18,8 @@ import network.crypta.platform.api.PlatformApiRouter;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
+import network.crypta.platform.appui.AppBrowserSession;
+import network.crypta.platform.appui.AppBrowserSessionVerifier;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -55,6 +57,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String URL_ENCODED_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
   private static final String APP_TOKEN_HEADER = "x-crypta-app-token";
+  private static final String APP_SESSION_HEADER = "x-crypta-app-session";
   private static final String AUTHORIZATION_HEADER = "authorization";
   private static final String BEARER_PREFIX = "bearer";
   private static final String DELETE_METHOD = "DELETE";
@@ -77,6 +80,9 @@ public final class PlatformApiToadlet extends Toadlet {
   /** Optional AppHost used to authenticate process-originated app launch tokens. */
   private final AppHost appHost;
 
+  /** Optional verifier used to authenticate browser-originated app sessions. */
+  private final AppBrowserSessionVerifier appBrowserSessionVerifier;
+
   /**
    * Creates a platform API toadlet backed by the supplied runtime ports.
    *
@@ -85,6 +91,7 @@ public final class PlatformApiToadlet extends Toadlet {
   public PlatformApiToadlet(RuntimePorts runtimePorts) {
     this(
         new PlatformApiRouter(runtimePorts, null, null, LegacyAdminUsageRecorder.defaultRecorder()),
+        null,
         null);
   }
 
@@ -98,7 +105,8 @@ public final class PlatformApiToadlet extends Toadlet {
     this(
         new PlatformApiRouter(
             runtimePorts, appHost, null, LegacyAdminUsageRecorder.defaultRecorder()),
-        appHost);
+        appHost,
+        null);
   }
 
   /**
@@ -113,7 +121,29 @@ public final class PlatformApiToadlet extends Toadlet {
     this(
         new PlatformApiRouter(
             runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()),
-        appHost);
+        appHost,
+        null);
+  }
+
+  /**
+   * Creates a platform API toadlet backed by runtime ports, AppHost, signed catalogs, and browser
+   * app-session verification.
+   *
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
+   * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   * @param appBrowserSessionVerifier verifier shared with the app-owned UI bootstrap route
+   */
+  public PlatformApiToadlet(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppBrowserSessionVerifier appBrowserSessionVerifier) {
+    this(
+        new PlatformApiRouter(
+            runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()),
+        appHost,
+        appBrowserSessionVerifier);
   }
 
   /**
@@ -126,13 +156,21 @@ public final class PlatformApiToadlet extends Toadlet {
    * @param router transport-neutral router that handles request validation and response generation
    */
   PlatformApiToadlet(PlatformApiRouter router) {
-    this(router, null);
+    this(router, null, null);
   }
 
   PlatformApiToadlet(PlatformApiRouter router, AppHost appHost) {
+    this(router, appHost, null);
+  }
+
+  PlatformApiToadlet(
+      PlatformApiRouter router,
+      AppHost appHost,
+      AppBrowserSessionVerifier appBrowserSessionVerifier) {
     super();
     this.router = Objects.requireNonNull(router, "router");
     this.appHost = appHost;
+    this.appBrowserSessionVerifier = appBrowserSessionVerifier;
   }
 
   @Override
@@ -288,11 +326,11 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>Legacy HTTP integration keeps host/operator full-access enforcement at the bridge boundary.
    * Mutating host/operator requests then pass through the legacy form-password check before the
-   * bridge converts them into a transport-neutral {@link PlatformApiRequest}. App-token requests
-   * skip that host/operator form guard and carry a token-free app principal into the router, where
-   * manifest capability enforcement happens centrally. Unexpected runtime failures are converted
-   * into a structured {@code 500} response so callers keep the Platform API JSON contract even when
-   * the bridge logs the underlying error.
+   * bridge converts them into a transport-neutral {@link PlatformApiRequest}. App-token and app
+   * browser-session requests skip that host/operator form guard and carry a token-free app
+   * principal into the router, where manifest capability enforcement happens centrally. Unexpected
+   * runtime failures are converted into a structured {@code 500} response so callers keep the
+   * Platform API JSON contract even when the bridge logs the underlying error.
    *
    * @param method HTTP method name forwarded into the Platform API router
    * @param uri request target supplied by the legacy HTTP shell
@@ -675,15 +713,28 @@ public final class PlatformApiToadlet extends Toadlet {
     }
 
     String bearerToken = bearerTokenFromAuthorization(request);
-    if (bearerToken == null) {
-      return hostOperatorPrincipal();
+    if (bearerToken != null) {
+      PrincipalResolution bearerPrincipal = authenticateBearerToken(bearerToken);
+      if (bearerPrincipal != null) {
+        return bearerPrincipal;
+      }
     }
-    return authenticateBearerTokenOrHostOperator(bearerToken);
+
+    String browserSessionToken = appSessionFromHeader(request);
+    if (browserSessionToken != null) {
+      return authenticateBrowserSession(browserSessionToken);
+    }
+    return hostOperatorPrincipal();
   }
 
   private static PrincipalResolution unauthenticatedAppToken(String message) {
     return new PrincipalResolution(
         null, PlatformApiResponse.error(401, "invalid_app_token", message));
+  }
+
+  private static PrincipalResolution unauthenticatedAppBrowserSession(String message) {
+    return new PrincipalResolution(
+        null, PlatformApiResponse.error(401, "invalid_app_browser_session", message));
   }
 
   private static PrincipalResolution hostOperatorPrincipal() {
@@ -704,10 +755,9 @@ public final class PlatformApiToadlet extends Toadlet {
       return unauthenticatedAppToken("App token authentication is unavailable.");
     }
     Optional<AppTokenPrincipal> appPrincipal = appHost.authenticateLaunchToken(token);
-    if (appPrincipal.isEmpty()) {
-      return unauthenticatedAppToken("Invalid app token.");
-    }
-    return appTokenPrincipal(appPrincipal.get());
+    return appPrincipal
+        .map(PlatformApiToadlet::appTokenPrincipal)
+        .orElseGet(() -> unauthenticatedAppToken("Invalid app token."));
   }
 
   /**
@@ -716,23 +766,22 @@ public final class PlatformApiToadlet extends Toadlet {
    * <p>{@code Authorization: Bearer} is intentionally opportunistic because the same header is also
    * used by reverse proxies and shared HTTP client configurations for unrelated host/operator
    * credentials. A matching live AppHost token becomes an app principal. A non-matching Bearer
-   * value keeps the existing host/operator path instead of converting the request into a failed
-   * app-token attempt. Lookup failures are allowed to propagate to the guarded Platform API error
-   * path so a token-bearing request cannot silently widen into a host/operator principal when
-   * AppHost state is unavailable.
+   * value does not immediately become host/operator because the request may also carry an explicit
+   * app browser session. After that session gets a chance to authenticate, unmatched Bearer values
+   * keep the existing host/operator path instead of converting the request into a failed app-token
+   * attempt. Lookup failures are allowed to propagate to the guarded Platform API error path so a
+   * token-bearing request cannot silently widen into a host/operator principal when AppHost state
+   * is unavailable.
    *
    * @param token bearer token value after header normalization
-   * @return app principal for a live token, otherwise the host/operator principal
+   * @return app principal for a live token, otherwise {@code null}
    */
-  private PrincipalResolution authenticateBearerTokenOrHostOperator(String token) {
+  private PrincipalResolution authenticateBearerToken(String token) {
     if (appHost == null) {
-      return hostOperatorPrincipal();
+      return null;
     }
     Optional<AppTokenPrincipal> appPrincipal = appHost.authenticateLaunchToken(token);
-    if (appPrincipal.isEmpty()) {
-      return hostOperatorPrincipal();
-    }
-    return appTokenPrincipal(appPrincipal.get());
+    return appPrincipal.map(PlatformApiToadlet::appTokenPrincipal).orElse(null);
   }
 
   private static PrincipalResolution appTokenPrincipal(AppTokenPrincipal principal) {
@@ -740,9 +789,29 @@ public final class PlatformApiToadlet extends Toadlet {
         PlatformApiPrincipal.appToken(principal.appId(), principal.permissions()), null);
   }
 
+  private PrincipalResolution authenticateBrowserSession(String token) {
+    if (appBrowserSessionVerifier == null) {
+      return unauthenticatedAppBrowserSession("App browser session authentication is unavailable.");
+    }
+    Optional<AppBrowserSession> session = appBrowserSessionVerifier.verify(token);
+    return session
+        .map(PlatformApiToadlet::appBrowserSessionPrincipal)
+        .orElseGet(() -> unauthenticatedAppBrowserSession("Invalid app browser session."));
+  }
+
+  private static PrincipalResolution appBrowserSessionPrincipal(AppBrowserSession session) {
+    return new PrincipalResolution(
+        PlatformApiPrincipal.appBrowserSession(session.appId(), session.permissions()), null);
+  }
+
   private static String directAppTokenFromHeader(HTTPRequest request) {
     String directToken = request.getHeader(APP_TOKEN_HEADER);
     return directToken == null ? null : directToken.trim();
+  }
+
+  private static String appSessionFromHeader(HTTPRequest request) {
+    String token = request.getHeader(APP_SESSION_HEADER);
+    return token == null ? null : token.trim();
   }
 
   private static String bearerTokenFromAuthorization(HTTPRequest request) {

@@ -21,6 +21,7 @@ import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.appui.AppBrowserSessionIssuer;
 import network.crypta.platform.appui.AppUiSecurityHeaders;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -142,12 +143,11 @@ class AppUiToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenBootstrapRequested_expectOperatorScopedJsonWithoutAppToken()
+  void handleMethodGET_whenBootstrapRequested_expectBrowserSessionJsonWithoutHostCredentials()
       throws Exception {
     InstalledAppSnapshot snapshot = staticApp("static/index.html");
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
-    when(ctx.getFormPassword()).thenReturn("form-secret");
     enableJavascript(true);
 
     toadlet.handleMethodGET(
@@ -166,18 +166,21 @@ class AppUiToadletTest {
     assertTrue(body.contains("\"assetRoot\":\"/apps/demo-app/static/\""));
     assertTrue(body.contains("\"platformApiRoot\":\"/api/v1/\""));
     assertTrue(body.contains("\"shellRoot\":\"/app/node/\""));
-    assertTrue(body.contains("\"formPassword\":\"form-secret\""));
+    assertTrue(body.contains("\"browserSessionToken\":\""));
+    assertTrue(body.contains("\"browserSessionExpiresAt\":\""));
+    assertFalse(body.contains("formPassword"));
     assertFalse(body.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(body.contains("launchToken"));
+    assertFalse(body.contains(tempDir.toString()));
   }
 
   @Test
   void handleMethodHEAD_whenBootstrapRequestedForStaticApp_expectHeadersOnlyJson()
       throws Exception {
     InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
+    AppBrowserSessionIssuer sessionIssuer = mock(AppBrowserSessionIssuer.class);
+    AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot), sessionIssuer);
     when(ctx.isAllowedFullAccess()).thenReturn(true);
-    when(ctx.getFormPassword()).thenReturn("form-secret");
     enableJavascript(true);
 
     toadlet.handleMethodHEAD(
@@ -189,8 +192,9 @@ class AppUiToadletTest {
     assertEquals(200, reply.statusCode());
     assertEquals("application/json; charset=UTF-8", reply.mimeType());
     assertEquals("no-store", reply.headers().getFirst("cache-control"));
-    assertTrue(reply.length() > 0L);
+    assertEquals(0L, reply.length());
     verifyNoBodyWrites();
+    verify(sessionIssuer, never()).issue(any());
   }
 
   @Test
