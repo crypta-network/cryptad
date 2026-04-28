@@ -481,13 +481,8 @@ public final class AppsApiHandler {
   private AppQuotaStatus quotaStatusForSummary(String appId) {
     try {
       return appHost.runtimeStatus(appId).quotaStatus();
-    } catch (AppHostException e) {
-      if (isMissingAppFailure(e)) {
-        return null;
-      }
-      throw internalError("Failed to read app quota status.");
     } catch (IOException _) {
-      throw internalError("Failed to read app quota status.");
+      return null;
     }
   }
 

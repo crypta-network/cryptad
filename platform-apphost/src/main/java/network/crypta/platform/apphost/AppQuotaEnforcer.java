@@ -37,6 +37,8 @@ import network.crypta.platform.apphost.manifest.AppManifest;
 public final class AppQuotaEnforcer {
   private static final String DATA_SCAN_INCOMPLETE_CODE = "data_scan_incomplete";
   private static final String CACHE_SCAN_INCOMPLETE_CODE = "cache_scan_incomplete";
+  private static final String DATA_SYMLINK_SKIPPED_CODE = "data_symlink_skipped";
+  private static final String CACHE_SYMLINK_SKIPPED_CODE = "cache_symlink_skipped";
 
   private final AppDiskUsageScanner diskUsageScanner;
 
@@ -106,10 +108,12 @@ public final class AppQuotaEnforcer {
   public AppQuotaStatus enforceLaunch(AppManifest manifest, InstalledAppPaths paths)
       throws AppHostException {
     AppQuotaStatus status = status(manifest, paths);
-    if (status.dataQuotaEnforced() && hasWarning(status, DATA_SCAN_INCOMPLETE_CODE)) {
+    if (status.dataQuotaEnforced()
+        && hasAnyWarning(status, DATA_SCAN_INCOMPLETE_CODE, DATA_SYMLINK_SKIPPED_CODE)) {
       throw new AppHostException("app data quota scan incomplete: " + manifest.appId());
     }
-    if (status.cacheQuotaEnforced() && hasWarning(status, CACHE_SCAN_INCOMPLETE_CODE)) {
+    if (status.cacheQuotaEnforced()
+        && hasAnyWarning(status, CACHE_SCAN_INCOMPLETE_CODE, CACHE_SYMLINK_SKIPPED_CODE)) {
       throw new AppHostException("app cache quota scan incomplete: " + manifest.appId());
     }
     if (status.dataOverLimit()) {
@@ -121,8 +125,15 @@ public final class AppQuotaEnforcer {
     return status;
   }
 
-  private static boolean hasWarning(AppQuotaStatus status, String code) {
-    return status.warnings().stream().anyMatch(warning -> warning.code().equals(code));
+  private static boolean hasAnyWarning(AppQuotaStatus status, String... codes) {
+    for (AppQuotaWarning warning : status.warnings()) {
+      for (String code : codes) {
+        if (warning.code().equals(code)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**

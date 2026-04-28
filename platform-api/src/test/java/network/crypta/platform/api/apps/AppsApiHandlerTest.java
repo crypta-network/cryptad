@@ -229,6 +229,26 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  void start_whenQuotaStatusReadFailsAfterLaunch_expectManifestOnlyQuotaSummary()
+      throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null, 4096L, 1024L));
+    appHost.runtimeStatusFailure = new IOException("process log unavailable");
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.start(APP_ID);
+
+    assertEquals(true, summary.get(FIELD_RUNNING));
+    Map<?, ?> quota = (Map<?, ?>) summary.get("quota");
+    assertEquals(4096L, quota.get("dataBytes"));
+    assertEquals(1024L, quota.get("cacheBytes"));
+    assertEquals(4096L, quota.get("effectiveDataBytes"));
+    assertEquals(1024L, quota.get("effectiveCacheBytes"));
+    assertNull(quota.get("dataUsageBytes"));
+    assertNull(quota.get("cacheUsageBytes"));
+    assertNull(quota.get("processLogSizeBytes"));
+  }
+
+  @Test
   void runtime_whenAppRunning_expectTokenFreeRuntimeStatus() {
     SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
     appHost.runtimeStatus =
@@ -561,7 +581,15 @@ class AppsApiHandlerTest {
       if (startFailure != null) {
         throw startFailure;
       }
-      throw new UnsupportedOperationException();
+      if (!APP_ID.equals(appId)) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      return new RunningAppSnapshot(
+          snapshot.manifest(),
+          snapshot.paths(),
+          "secret-token",
+          4242L,
+          java.time.Instant.parse(SAMPLE_INSTANT_TEXT));
     }
 
     @Override

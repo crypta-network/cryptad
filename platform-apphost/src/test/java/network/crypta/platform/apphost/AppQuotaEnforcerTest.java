@@ -56,6 +56,50 @@ class AppQuotaEnforcerTest {
   }
 
   @Test
+  void enforceLaunch_whenPositiveDataQuotaSkipsSymlink_expectLaunchBlocked() throws IOException {
+    InstalledAppPaths paths = paths();
+    Files.createDirectories(paths.dataDir());
+    Files.createDirectories(paths.cacheDir());
+    Path external = tempDir.resolve("external-data.txt");
+    Files.writeString(external, "hidden data", StandardCharsets.UTF_8);
+    Files.createSymbolicLink(paths.dataDir().resolve("linked.txt"), external.toAbsolutePath());
+
+    AppHostException exception =
+        assertThrows(
+            AppHostException.class,
+            () -> new AppQuotaEnforcer().enforceLaunch(manifest(1024L, null), paths));
+
+    assertEquals("app data quota scan incomplete: " + SAMPLE_APP_ID, exception.getMessage());
+    AppQuotaStatus status = new AppQuotaEnforcer().status(manifest(1024L, null), paths);
+    assertTrue(status.dataQuotaEnforced());
+    assertTrue(hasWarning(status, "data_symlink_skipped"));
+    assertFalse(status.toString().contains(paths.dataDir().toString()));
+    assertFalse(status.toString().contains(external.toString()));
+  }
+
+  @Test
+  void enforceLaunch_whenPositiveCacheQuotaSkipsSymlink_expectLaunchBlocked() throws IOException {
+    InstalledAppPaths paths = paths();
+    Files.createDirectories(paths.dataDir());
+    Files.createDirectories(paths.cacheDir());
+    Path external = tempDir.resolve("external-cache.txt");
+    Files.writeString(external, "hidden cache", StandardCharsets.UTF_8);
+    Files.createSymbolicLink(paths.cacheDir().resolve("linked.txt"), external.toAbsolutePath());
+
+    AppHostException exception =
+        assertThrows(
+            AppHostException.class,
+            () -> new AppQuotaEnforcer().enforceLaunch(manifest(null, 1024L), paths));
+
+    assertEquals("app cache quota scan incomplete: " + SAMPLE_APP_ID, exception.getMessage());
+    AppQuotaStatus status = new AppQuotaEnforcer().status(manifest(null, 1024L), paths);
+    assertTrue(status.cacheQuotaEnforced());
+    assertTrue(hasWarning(status, "cache_symlink_skipped"));
+    assertFalse(status.toString().contains(paths.cacheDir().toString()));
+    assertFalse(status.toString().contains(external.toString()));
+  }
+
+  @Test
   void enforceLaunch_whenUnlimitedQuotaScanIncomplete_expectLaunchAllowedAndStatusWarns()
       throws IOException {
     InstalledAppPaths paths = paths();
