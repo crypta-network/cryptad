@@ -23,7 +23,7 @@ Use this skill when you need to:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -81,9 +81,10 @@ Use this skill when you need to:
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
   `AdapterFcpBoundaryTest`, `BridgeFcpRuntimeBoundaryTest`, `AppHostBoundaryTest`,
-  `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`, `LegacyHttpBrowseBoundaryTest`, and
-  `BridgeHttpRuntimeBoundaryTest` are the focused regression checks for leaf ownership/import
-  boundaries. The runtime, kernel, platform, FCP, and HTTP boundary suites also enforce
+  `CryptaPlatformSdkBoundaryTest`, `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`,
+  `LegacyHttpBrowseBoundaryTest`, and `BridgeHttpRuntimeBoundaryTest` are the focused regression
+  checks for leaf ownership/import boundaries. The runtime, kernel, platform, FCP, and HTTP
+  boundary suites also enforce
   `package-info.java` coverage for the production packages they own.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
@@ -98,6 +99,8 @@ Use this skill when you need to:
 - `:platform-appcatalog` owns signed catalog source parsing, verification, artifact download,
   safe ZIP extraction, and verified staging code plus focused tests under
   `platform-appcatalog/src/test/java`.
+- `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
+  tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
   `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
@@ -158,6 +161,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-app-ui:test`
   - `./gradlew :platform-appdist:test`
   - `./gradlew :platform-appcatalog:test`
+  - `./gradlew :platform-sdk-js:test`
   - `./gradlew :platform-web-shell:test`
   - `./gradlew :kernel-content:test`
   - `./gradlew :kernel-transport:test`
@@ -223,6 +227,9 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-appdist:compileJava`
 - Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
   - `./gradlew :platform-appcatalog:compileJava`
+- Process and test the Platform SDK resource leaf when you touched
+  `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`:
+  - `./gradlew :platform-sdk-js:processResources :platform-sdk-js:test`
 - Compile the Web Shell leaf when you touched `network.crypta.platform.webshell`:
   - `./gradlew :platform-web-shell:compileJava`
 - Compile the extracted runtime-alerts leaf when you touched `network.crypta.runtime.alerts`:
@@ -246,7 +253,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava compileTestJava`
 
 ## First-party app bundle checks
-- Stage first-party app bundles:
+- Stage first-party app bundles, especially after changing `:platform-sdk-js` because Queue
+  Manager and Publisher copy the SDK into staged static assets:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:
   - `./gradlew :apps:queue-manager:test`

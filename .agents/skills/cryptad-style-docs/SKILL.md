@@ -21,6 +21,8 @@ Use this skill when you:
   `:platform-web-shell`, and the adapter modules, keep `package-info.java` in each production
   package you add or move. Boundary tests currently enforce this for the runtime, kernel,
   platform, FCP, and HTTP leaves, and the adapter packages follow the same convention.
+- Resource-owned leaves such as `:platform-sdk-js` still keep Java tests under `src/test/java`.
+  Add `package-info.java` only when a production Java package is added.
 
 ## Style guides
 - Java: follow the Google Java Style Guide.

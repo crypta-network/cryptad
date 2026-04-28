@@ -1,7 +1,7 @@
 # Project Configuration
 
 ## Project Overview
-Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore. It is a fork of Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This repository contains the reference node implementation (the "Crypta reference daemon").
+Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore plus a local app platform. It is a fork of Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This repository contains the reference node implementation (the "Crypta reference daemon").
 
 ## Skills: load on demand
 
@@ -23,6 +23,8 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
+- **$cryptad-platform-apps** — Work on Platform API v1, AppHost, signed app bundles/catalogs, app-owned static UI, the browser SDK, app permissions/audit, and legacy admin retirement routing.
+- **$cryptad-interop-performance-gates** — Maintain the Hyphanet interop and performance regression gates under `tools/interop`, `tools/perf`, and CI/release readiness docs.
 - **$improve-unit-test-coverage-for-current-changes** — Improve unit test coverage for the current uncommitted Java changes with targeted Gradle runs and one final full-suite pass.
 - **$cryptad-runtime-debugging** — Debug live or reproducible Cryptad JVM failures on Windows, macOS, and Linux using `jcmd`, `jdb`, thread dumps, and the default JDWP listener on `127.0.0.1:5005`.
 - **$cryptad-write-release-notes** — Draft or review GitHub release notes and changelog artifacts for Cryptad builds, including `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
@@ -33,7 +35,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 
 ### Skill-first workflow
 
-1. Identify the task domain(s) (build/test, tooling, packaging, updater, platform detection, crypto formats, UI, git branching/release/hotfix workflows, etc.).
+1. Identify the task domain(s) (build/test, tooling, packaging, updater, app platform, compatibility/performance gates, platform detection, crypto formats, UI, git branching/release/hotfix workflows, etc.).
 2. Load the matching skill(s) via `skill(...)`.
 3. If relevant files are not already known, identify them with targeted local searches first, then inspect code (don’t guess).
 4. Make the smallest safe change.
@@ -51,6 +53,8 @@ Load only what you need. It’s normal to load multiple skills for one task.
   - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
+- **App platform:** For Platform API, AppHost, app catalogs/bundles, app-owned UI routes, the browser SDK, app permission/audit, or legacy admin retirement routing, load `$cryptad-platform-apps`.
+- **Interop/performance gates:** For `tools/interop`, `tools/perf`, related CI jobs, or release-gate evidence, load `$cryptad-interop-performance-gates`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
 - **Runtime debugging:** For live deadlocks, hangs, blocked threads, stalled requests, or JDWP debugging with `jcmd` / `jdb`, load `$cryptad-runtime-debugging`.
 - **Branch workflow questions:** For branch model/merge/tag/version policy questions, load `$cryptad-git-workflow`.

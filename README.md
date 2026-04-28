@@ -398,6 +398,9 @@ Key docs:
 - [Signed app catalogs](docs/app-catalogs.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
+- [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
+- [App permissions and audit](docs/app-permissions-and-audit.md)
+- [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
 
 ## Hyphanet Interop Gate
 
@@ -461,6 +464,10 @@ leaf ownership and import rules:
 ```bash
 ./gradlew :platform-api:test
 ./gradlew :platform-apphost:test
+./gradlew :platform-app-ui:test
+./gradlew :platform-appdist:test
+./gradlew :platform-appcatalog:test
+./gradlew :platform-sdk-js:test
 ./gradlew :platform-web-shell:test
 ./gradlew :kernel-content:test
 ./gradlew :kernel-transport:test
@@ -489,8 +496,8 @@ Additional root and mixed verification slices remain available:
 ./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest
 ```
 
-Platform boundary checks now live in `:platform-api`, `:platform-apphost`, and
-`:platform-web-shell`.
+Platform checks now live in `:platform-api`, `:platform-apphost`, `:platform-app-ui`,
+`:platform-appdist`, `:platform-appcatalog`, `:platform-sdk-js`, and `:platform-web-shell`.
 
 ## Code Quality
 
@@ -889,7 +896,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`,
-    `:platform-appcatalog`, `:platform-web-shell`, `:runtime-node`,
+    `:platform-appcatalog`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
     `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.

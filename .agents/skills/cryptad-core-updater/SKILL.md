@@ -50,6 +50,9 @@ Use this skill when working on:
 - Actions: `download`, `install`, `openStore`
 - UI: alerts panel shows progress percent when available.
   - Failures surface clear retry guidance (non-fatal errors relabel to “Retry”).
+- `NodeUpdater` intentionally delays retries for `FetchExceptionMode.RECENTLY_FAILED` instead of
+  rescheduling immediately while the key is still in the recently-failed table. Preserve that
+  throttle unless replacing it with an explicit, tested retry policy.
 - Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching now
   live in the HTTP adapter layer at `network.crypta.clients.http.updater.CoreActionToadlet`,
   currently packaged in `:adapter-http-legacy-admin`.

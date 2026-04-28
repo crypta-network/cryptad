@@ -69,6 +69,9 @@ Use this skill when you need to:
     AppHost core)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
     resolution helpers)
+  - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
+    transport helpers, mutation form handling, error parsing, and conservative fragment
+    sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
     signature, manifest, verifier, trusted-key, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
@@ -128,8 +131,9 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
   transport-neutral AppHost core, `:platform-app-ui` owns app-owned static UI route helpers,
-  `:platform-appdist` owns signed local bundle distribution, `:platform-appcatalog` owns signed
-  catalog sources and verified staging, `:platform-web-shell` owns the browser-facing
+  `:platform-sdk-js` owns the browser SDK resource, `:platform-appdist` owns signed local bundle
+  distribution, `:platform-appcatalog` owns signed catalog sources and verified staging,
+  `:platform-web-shell` owns the browser-facing
   node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
@@ -163,8 +167,9 @@ Use this skill when you need to:
   `RuntimeNodeKernelSplitPrepBoundaryTest`, `KernelContentBoundaryTest`,
   `KernelTransportBoundaryTest`, `KernelRoutingBoundaryTest`, `PlatformApiBoundaryTest`,
   `AdapterFcpBoundaryTest`, `BridgeFcpRuntimeBoundaryTest`, `AppHostBoundaryTest`,
-  `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`, `LegacyHttpBrowseBoundaryTest`, and
-  `BridgeHttpRuntimeBoundaryTest` guard leaf ownership/import rules. The runtime, kernel,
+  `CryptaPlatformSdkBoundaryTest`, `WebShellBoundaryTest`, `HttpLegacyAdminBoundaryTest`,
+  `LegacyHttpBrowseBoundaryTest`, and `BridgeHttpRuntimeBoundaryTest` guard leaf
+  ownership/import rules. The runtime, kernel,
   platform, FCP, and HTTP boundary suites also require `package-info.java` in the production
   packages they own.
 
@@ -290,6 +295,9 @@ Use this skill when you need to:
   - `SecurityLevelsToadlet` uses `SecurityLevelsPort` for detached page state, warning HTML, and
     master-password mutation flows.
   - `PageMaker` reads shared shell status through `PageChromePort`.
+  - `LegacyAdminRetirementRegistry` maps replaced legacy admin surfaces, and
+    `LegacyAdminUsageRecorder` feeds process-local legacy-page counters into Platform API
+    diagnostics without storing query strings, form bodies, tokens, or remote addresses.
   - `network.crypta.clients.http.updater.CoreActionToadlet` reaches updater availability,
     download triggers, and installer-path validation through `CoreUpdateActionPort`.
   - `FirstTimeWizardToadlet` and `FirstTimeWizardNewToadlet` use `FirstTimeWizardPort` for
@@ -316,15 +324,22 @@ Use this skill when you need to:
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
   apps, and app-catalog control-plane families and is currently mounted at `/api/v1/` by the
-  legacy HTTP adapter.
+  legacy HTTP adapter. It also owns the central app-token authorization matrix and bounded
+  process-local app audit log for AppHost-originated API requests.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
-  install/list/describe/start/stop/update/uninstall operations.
+  install/list/describe/start/stop/update/uninstall operations, per-launch app tokens, minimal
+  launch environments, token-redacted process-log snapshots, and in-session restart attempts for
+  manifests that opt in.
 - `:platform-app-ui` owns `network.crypta.platform.appui`, the transport-neutral app-owned static
   UI path layer. It maps installed static UI manifests to `/apps/{appId}/`, preserves nested entry
   base URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
   deterministic content-type and security-header helpers for HTTP adapters.
+- `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
+  app bundles. It wraps route bootstrap, same-origin Platform API reads, form-password mutations,
+  error parsing, and conservative legacy HTML fragment sanitization; it is not an authority or
+  isolation boundary.
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
   sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries, and
@@ -346,8 +361,8 @@ Use this skill when you need to:
   `QueueCompletionPort`, `QueuePagePort`, `QueueDownloadPort`, `QueueInsertPort`,
   `QueueMutationPort`, `StatisticsPort`, `SecurityLevelsPort`, `PageChromePort`,
   `CoreUpdateActionPort`, `FirstTimeWizardPort`, `ToadletSymlinkPort`, `WelcomePagePort`,
-  `WelcomeActionPort`, `AlertFeedPort`, `AlertMutationPort`, `RequestQueuePort`, `NodeInfoPort`,
-  and `PeerPort`
+  `WelcomeActionPort`, `AlertFeedPort`, `AlertMutationPort`, `LegacyAdminUsagePort`,
+  `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
 - Detached DTOs include config, connectivity, peer, darknet-friends, node-reference, queue,
   security-level, shared shell, first-time-wizard, symlinker, welcome-page, alert, and
   statistics/report snapshot types such as
@@ -356,7 +371,8 @@ Use this skill when you need to:
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, `WelcomePageSnapshot`,
-  `AlertListSnapshot`, `AlertSnapshot`, and `AlertSeverity`
+  `AlertListSnapshot`, `AlertSnapshot`, `AlertSeverity`, `LegacyAdminUsageSnapshot`, and
+  `LegacyAdminSurfaceUsage`
 - Daemon-backed adapters in `network.crypta.runtime.core` (currently in `:runtime-node`):
   `LegacyRuntimePorts`, `LegacyConfigPort`,
   `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`, `LegacyRequestQueuePort`,
@@ -453,6 +469,7 @@ Use this skill when you need to:
 - `:platform-api`: `network.crypta.platform.api`
 - `:platform-apphost`: `network.crypta.platform.apphost`
 - `:platform-app-ui`: `network.crypta.platform.appui`
+- `:platform-sdk-js`: browser SDK resource under `network/crypta/platform/sdk/js`
 - `:platform-appdist`: `network.crypta.platform.appdist`
 - `:platform-appcatalog`: `network.crypta.platform.appcatalog`
 - `:platform-web-shell`: `network.crypta.platform.webshell`
@@ -486,6 +503,9 @@ Use this skill when you need to:
 2. `RequestScheduler` manages queues and priorities
 3. `SendableRequest` implementations perform request types
 4. Routing uses location-based algorithms for discovery
+- `ClientRequestSelector` returns the earliest useful cooldown wakeup, and
+  `ClientRequestScheduler#scheduleWakeStarterAt` coalesces starter wakeup jobs. Selector code
+  should not queue duplicate ticker wakeups directly.
 
 ### Update system (high level)
 - `NodeUpdateManager` coordinates updates.
