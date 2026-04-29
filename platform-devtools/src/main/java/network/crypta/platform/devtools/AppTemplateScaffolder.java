@@ -2,10 +2,13 @@ package network.crypta.platform.devtools;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -75,27 +78,23 @@ final class AppTemplateScaffolder {
   static Path scaffold(ScaffoldRequest request) throws IOException {
     ScaffoldRequest checked = Objects.requireNonNull(request, "request").normalize();
     ensureWritableTarget(checked.directory(), checked.overwrite());
-    Files.createDirectories(checked.directory());
-    Files.createDirectories(checked.directory().resolve("bin"));
+    createTemplateDirectory(checked.directory(), "target directory");
+    createTemplateDirectory(checked.directory().resolve("bin"), "launcher directory");
     if (checked.uiMode() == UiMode.STATIC) {
-      Files.createDirectories(checked.directory().resolve(STATIC_TEMPLATE_NAME));
+      createTemplateDirectory(
+          checked.directory().resolve(STATIC_TEMPLATE_NAME), "static template directory");
     }
 
     String manifest = checked.manifestContent();
     AppBundleManifestParser.parseContent(manifest);
-    Files.writeString(
-        checked.directory().resolve(AppBundleManifestParser.MANIFEST_FILE_NAME),
-        manifest,
-        StandardCharsets.UTF_8);
-    Files.writeString(
-        checked.directory().resolve("bin").resolve("start.sh"),
-        launcherScript(checked.appId()),
-        StandardCharsets.UTF_8);
+    writeTemplateFile(
+        checked.directory().resolve(AppBundleManifestParser.MANIFEST_FILE_NAME), manifest);
+    writeTemplateFile(
+        checked.directory().resolve("bin").resolve("start.sh"), launcherScript(checked.appId()));
     if (checked.uiMode() == UiMode.STATIC) {
       writeStaticTemplate(checked);
     }
-    Files.writeString(
-        checked.directory().resolve("README.md"), readme(checked), StandardCharsets.UTF_8);
+    writeTemplateFile(checked.directory().resolve("README.md"), readme(checked));
     return checked.directory();
   }
 
@@ -107,16 +106,105 @@ final class AppTemplateScaffolder {
    * @throws IOException if the directory cannot be inspected
    */
   private static void ensureWritableTarget(Path directory, boolean overwrite) throws IOException {
-    if (!Files.exists(directory)) {
+    if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+      ensureExistingParentIsDirectory(directory);
       return;
     }
-    if (!Files.isDirectory(directory)) {
+    if (Files.isSymbolicLink(directory)) {
+      throw new AppDistributionException(
+          "target directory must not be a symbolic link: " + directory);
+    }
+    if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
       throw new AppDistributionException("target path is not a directory: " + directory);
     }
     if (overwrite || directoryIsEmpty(directory)) {
       return;
     }
     throw new AppDistributionException("target directory is not empty: " + directory);
+  }
+
+  /**
+   * Ensures that the nearest existing parent for a new scaffold target is a real directory.
+   *
+   * @param directory target directory that does not yet exist
+   * @throws IOException if parent inspection fails or finds an unsafe parent path
+   */
+  private static void ensureExistingParentIsDirectory(Path directory) throws IOException {
+    Path existingParent = directory.getParent();
+    while (existingParent != null && !Files.exists(existingParent, LinkOption.NOFOLLOW_LINKS)) {
+      existingParent = existingParent.getParent();
+    }
+    if (existingParent == null) {
+      return;
+    }
+    if (Files.isSymbolicLink(existingParent)
+        || !Files.isDirectory(existingParent, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppDistributionException(
+          "target directory parent must be a real directory: " + existingParent);
+    }
+  }
+
+  /**
+   * Creates a scaffold-managed directory without accepting a symbolic-link replacement.
+   *
+   * @param directory directory to create or reuse
+   * @param description directory role used in diagnostics
+   * @throws IOException if the path is unsafe or cannot be created
+   */
+  private static void createTemplateDirectory(Path directory, String description)
+      throws IOException {
+    if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+      requireRealDirectory(directory, description);
+      return;
+    }
+    Files.createDirectories(directory);
+    requireRealDirectory(directory, description);
+  }
+
+  private static void requireRealDirectory(Path directory, String description) throws IOException {
+    if (Files.isSymbolicLink(directory)) {
+      throw new AppDistributionException(
+          description + " must not be a symbolic link: " + directory);
+    }
+    if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppDistributionException(description + " must be a directory: " + directory);
+    }
+  }
+
+  /**
+   * Writes a scaffold-managed UTF-8 file while refusing symbolic-link destinations.
+   *
+   * @param file target file under the scaffold directory
+   * @param content UTF-8 text to write
+   * @throws IOException if the file path is unsafe or cannot be written
+   */
+  private static void writeTemplateFile(Path file, String content) throws IOException {
+    requireWritableTemplateFile(file);
+    Files.writeString(
+        file,
+        content,
+        StandardCharsets.UTF_8,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+        LinkOption.NOFOLLOW_LINKS);
+  }
+
+  private static void requireWritableTemplateFile(Path file) throws IOException {
+    Path parent = file.getParent();
+    if (parent == null) {
+      throw new AppDistributionException("template file must have a parent directory: " + file);
+    }
+    requireRealDirectory(parent, "template file parent");
+    if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    if (Files.isSymbolicLink(file)) {
+      throw new AppDistributionException("template file must not be a symbolic link: " + file);
+    }
+    if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppDistributionException("template file path must be a regular file: " + file);
+    }
   }
 
   /**
@@ -140,11 +228,9 @@ final class AppTemplateScaffolder {
    */
   private static void writeStaticTemplate(ScaffoldRequest request) throws IOException {
     Path staticDir = request.directory().resolve(STATIC_TEMPLATE_NAME);
-    Files.writeString(
-        staticDir.resolve("index.html"), staticIndex(request), StandardCharsets.UTF_8);
-    Files.writeString(
-        staticDir.resolve("app.js"), staticJavaScript(request), StandardCharsets.UTF_8);
-    Files.writeString(staticDir.resolve("app.css"), STATIC_CSS, StandardCharsets.UTF_8);
+    writeTemplateFile(staticDir.resolve("index.html"), staticIndex(request));
+    writeTemplateFile(staticDir.resolve("app.js"), staticJavaScript(request));
+    writeTemplateFile(staticDir.resolve("app.css"), STATIC_CSS);
     copySdk(staticDir.resolve("crypta-platform.js"));
   }
 
@@ -159,7 +245,16 @@ final class AppTemplateScaffolder {
       if (input == null) {
         throw new AppDistributionException("Crypta browser SDK resource is not on the classpath");
       }
-      Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+      requireWritableTemplateFile(target);
+      try (OutputStream output =
+          Files.newOutputStream(
+              target,
+              StandardOpenOption.CREATE,
+              StandardOpenOption.TRUNCATE_EXISTING,
+              StandardOpenOption.WRITE,
+              LinkOption.NOFOLLOW_LINKS)) {
+        input.transferTo(output);
+      }
     }
   }
 

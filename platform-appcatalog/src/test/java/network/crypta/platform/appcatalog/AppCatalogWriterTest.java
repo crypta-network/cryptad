@@ -16,6 +16,7 @@ import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
@@ -207,6 +208,33 @@ class AppCatalogWriterTest {
   }
 
   @Test
+  void write_whenOutputFileIsSymbolicLink_expectRejectsWithoutWritingThroughLink()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+    Path descriptor =
+        descriptor(
+            "queue.properties",
+            artifact,
+            "https://example.invalid/apps/queue-manager.zip",
+            "Manage local queues.",
+            "");
+    Path realCatalog = tempDir.resolve("external-catalog.properties");
+    Path linkedCatalog = tempDir.resolve("linked-catalog.properties");
+    Files.writeString(realCatalog, "unchanged", StandardCharsets.UTF_8);
+    Assumptions.assumeTrue(canCreateSymlink(linkedCatalog));
+    Files.createSymbolicLink(linkedCatalog, realCatalog);
+
+    IOException exception =
+        assertThrows(
+            IOException.class,
+            () ->
+                AppCatalogWriter.write(request(List.of(descriptor)).withOutputFile(linkedCatalog)));
+
+    assertTrue(exception.getMessage().contains("catalog output path must not be a symbolic link"));
+    assertEquals("unchanged", Files.readString(realCatalog, StandardCharsets.UTF_8));
+  }
+
+  @Test
   void verify_whenWrittenCatalogIsSigned_expectRoundTrip() throws Exception {
     KeyPair keyPair =
         KeyPairGenerator.getInstance(AppCatalogSignature.SIGNATURE_ALGORITHM).generateKeyPair();
@@ -305,6 +333,16 @@ class AppCatalogWriterTest {
   private static TrustedAppKeys trustedKeys(KeyPair keyPair) {
     return TrustedAppKeys.of(
         new TrustedAppKey(KEY_ID, AppCatalogSignature.SIGNATURE_ALGORITHM, keyPair.getPublic()));
+  }
+
+  private static boolean canCreateSymlink(Path symlink) {
+    try {
+      Files.createSymbolicLink(symlink, Path.of("missing-target"));
+      Files.deleteIfExists(symlink);
+      return true;
+    } catch (UnsupportedOperationException | IOException | SecurityException _) {
+      return false;
+    }
   }
 
   private static void assertInvalidEntry(Executable executable) {

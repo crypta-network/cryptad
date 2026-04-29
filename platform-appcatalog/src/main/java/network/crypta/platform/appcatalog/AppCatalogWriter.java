@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -282,11 +283,51 @@ public final class AppCatalogWriter {
   }
 
   private static void writeCatalogBytes(Path outputFile, byte[] catalogBytes) throws IOException {
-    Path parent = outputFile.getParent();
-    if (parent != null) {
-      Files.createDirectories(parent);
+    Path normalizedOutput =
+        Objects.requireNonNull(outputFile, "outputFile").toAbsolutePath().normalize();
+    if (normalizedOutput.getFileName() == null) {
+      throw new IOException("catalog output path must name a file");
     }
-    Files.write(outputFile, catalogBytes);
+    Path parent = normalizedOutput.getParent();
+    if (parent != null) {
+      createSafeCatalogOutputParent(parent);
+    }
+    requireWritableCatalogOutput(normalizedOutput);
+    Files.write(
+        normalizedOutput,
+        catalogBytes,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+        LinkOption.NOFOLLOW_LINKS);
+  }
+
+  private static void createSafeCatalogOutputParent(Path parent) throws IOException {
+    Path existingAncestor = parent;
+    while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+      existingAncestor = existingAncestor.getParent();
+    }
+    if (existingAncestor != null
+        && (Files.isSymbolicLink(existingAncestor)
+            || !Files.isDirectory(existingAncestor, LinkOption.NOFOLLOW_LINKS))) {
+      throw new IOException("catalog output parent must be a real directory: " + existingAncestor);
+    }
+    Files.createDirectories(parent);
+    if (Files.isSymbolicLink(parent) || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("catalog output parent must be a real directory: " + parent);
+    }
+  }
+
+  private static void requireWritableCatalogOutput(Path outputFile) throws IOException {
+    if (!Files.exists(outputFile, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    if (Files.isSymbolicLink(outputFile)) {
+      throw new IOException("catalog output path must not be a symbolic link: " + outputFile);
+    }
+    if (!Files.isRegularFile(outputFile, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("catalog output path must be a regular file: " + outputFile);
+    }
   }
 
   private static String joinAppIds(List<AppCatalogEntry> entries) {

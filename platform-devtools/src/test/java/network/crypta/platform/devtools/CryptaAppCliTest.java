@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -116,6 +117,33 @@ class CryptaAppCliTest {
 
     assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
     assertTrue(result.err().contains("target directory is not empty"));
+  }
+
+  @Test
+  void init_whenTargetDirectoryIsSymbolicLink_expectFailureWithoutWritingThroughLink()
+      throws Exception {
+    Path externalTarget = tempDir.resolve("external-target");
+    Path appDir = tempDir.resolve("linked-app");
+    Files.createDirectories(externalTarget);
+    Assumptions.assumeTrue(canCreateSymlink(appDir));
+    Files.createSymbolicLink(appDir, externalTarget);
+
+    CliResult result =
+        runCli(
+            "init",
+            "--dir",
+            appDir.toString(),
+            "--app-id",
+            "sample-app",
+            "--name",
+            "Sample App",
+            "--version",
+            "0.1.0",
+            "--overwrite");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("target directory must not be a symbolic link"));
+    assertFalse(Files.exists(externalTarget.resolve("cryptad-app.properties")));
   }
 
   @Test
@@ -443,6 +471,16 @@ class CryptaAppCliTest {
 
   private static String lines(String... values) {
     return String.join("\n", values) + "\n";
+  }
+
+  private static boolean canCreateSymlink(Path symlink) {
+    try {
+      Files.createSymbolicLink(symlink, Path.of("missing-target"));
+      Files.deleteIfExists(symlink);
+      return true;
+    } catch (UnsupportedOperationException | java.io.IOException | SecurityException _) {
+      return false;
+    }
   }
 
   private static CliResult runCli(String... arguments) {
