@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -31,6 +32,12 @@ class AppCatalogWriterTest {
   private static final String CATALOG_ID = "core";
   private static final String CATALOG_NAME = "Crypta Core Apps";
   private static final String QUEUE_APP_ID = "queue-manager";
+  private static final String QUEUE_APP_NAME = "Queue Manager";
+  private static final String QUEUE_APP_VERSION = "1.0.0";
+  private static final String QUEUE_BUNDLE_URI = "https://example.invalid/apps/queue-manager.zip";
+  private static final String QUEUE_DESCRIPTOR_FILE = "queue.properties";
+  private static final String QUEUE_READ_PERMISSION = "queue.read";
+  private static final String LOCAL_QUEUE_SUMMARY = "Manage local queues.";
   private static final String PUBLISHER_APP_ID = "publisher";
   private static final Instant GENERATED_AT = Instant.parse("2026-04-21T18:22:40Z");
 
@@ -39,20 +46,22 @@ class AppCatalogWriterTest {
   @Test
   void write_whenDescriptorUsesManifestAndDisplayOverrides_expectDeterministicCatalogProperties()
       throws Exception {
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read,queue.write");
-    String bundleUri = "https://example.invalid/apps/queue-manager.zip";
+    Path artifact =
+        appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, "queue.read,queue.write");
+    String bundleUri = QUEUE_BUNDLE_URI;
     Path descriptor =
         descriptor(
-            "queue.properties",
+            QUEUE_DESCRIPTOR_FILE,
             artifact,
             bundleUri,
             "Manage local Crypta transfer queues.",
             """
             app.id=Queue-Manager
             name=Catalog Queue Manager
-            version=1.0.0
+            version=%s
             permissions=queue.inspect,QUEUE.READ,queue.inspect
-            """);
+            """
+                .formatted(QUEUE_APP_VERSION));
     Path outputFile = tempDir.resolve("catalog").resolve(AppCatalogSignature.CATALOG_FILE_NAME);
 
     AppCatalogWriter.WriteResult result =
@@ -67,7 +76,7 @@ class AppCatalogWriterTest {
             "catalog.entries=queue-manager",
             "app.queue-manager.id=queue-manager",
             "app.queue-manager.name=Catalog Queue Manager",
-            "app.queue-manager.version=1.0.0",
+            "app.queue-manager.version=" + QUEUE_APP_VERSION,
             "app.queue-manager.summary=Manage local Crypta transfer queues.",
             "app.queue-manager.bundle.uri=" + bundleUri,
             "app.queue-manager.bundle.sha256=" + sha256(artifact),
@@ -85,7 +94,8 @@ class AppCatalogWriterTest {
   @Test
   void write_whenMultipleDescriptorFiles_expectEntriesInRequestOrder() throws Exception {
     Path publisherArtifact = appZip(PUBLISHER_APP_ID, "Publisher", "2.0.0", "publish.write");
-    Path queueArtifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+    Path queueArtifact =
+        appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
     Path publisherDescriptor =
         descriptor(
             "publisher.properties",
@@ -94,12 +104,7 @@ class AppCatalogWriterTest {
             "Publish local files.",
             "");
     Path queueDescriptor =
-        descriptor(
-            "queue.properties",
-            queueArtifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
-            "");
+        descriptor(QUEUE_DESCRIPTOR_FILE, queueArtifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
 
     AppCatalogWriter.WriteResult result =
         AppCatalogWriter.write(request(List.of(publisherDescriptor, queueDescriptor)));
@@ -114,10 +119,11 @@ class AppCatalogWriterTest {
 
   @Test
   void write_whenArtifactBytesAreRead_expectDigestAndSizeFromZip() throws Exception {
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read,queue.write");
+    Path artifact =
+        appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, "queue.read,queue.write");
     Path descriptor =
         descriptor(
-            "queue.properties", artifact, artifact.toUri().toString(), "Manage local queues.", "");
+            QUEUE_DESCRIPTOR_FILE, artifact, artifact.toUri().toString(), LOCAL_QUEUE_SUMMARY, "");
 
     AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
     AppCatalogEntry entry = result.catalog().entries().getFirst();
@@ -130,13 +136,13 @@ class AppCatalogWriterTest {
   @Test
   void write_whenDescriptorAppIdDiffersFromArtifactManifest_expectInvalidCatalogEntry()
       throws Exception {
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
     Path descriptor =
         descriptor(
-            "queue.properties",
+            QUEUE_DESCRIPTOR_FILE,
             artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
             "app.id=other-app");
 
     AppCatalogException exception =
@@ -148,13 +154,13 @@ class AppCatalogWriterTest {
   @Test
   void write_whenDescriptorVersionDiffersFromArtifactManifest_expectInvalidCatalogEntry()
       throws Exception {
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
     Path descriptor =
         descriptor(
-            "queue.properties",
+            QUEUE_DESCRIPTOR_FILE,
             artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
             "version=1.0.1");
 
     AppCatalogException exception =
@@ -164,28 +170,23 @@ class AppCatalogWriterTest {
   }
 
   @Test
-  void write_whenDescriptorIsMalformed_expectInvalidCatalogEntry() throws Exception {
+  void write_whenDescriptorIsMalformed_expectInvalidCatalogEntry() throws IOException {
     Path descriptor =
         Files.writeString(
             tempDir.resolve("missing-summary.properties"),
             lines(
                 "artifact.path=" + tempDir.resolve("missing.zip"),
-                "bundle.uri=https://example.invalid/apps/queue-manager.zip"),
+                "bundle.uri=" + QUEUE_BUNDLE_URI),
             StandardCharsets.UTF_8);
 
     assertInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
   }
 
   @Test
-  void write_whenArtifactIsMalformed_expectInvalidCatalogEntry() throws Exception {
+  void write_whenArtifactIsMalformed_expectInvalidCatalogEntry() throws IOException {
     Path artifact = Files.writeString(tempDir.resolve("not-a-zip.zip"), "not a zip");
     Path descriptor =
-        descriptor(
-            "queue.properties",
-            artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
-            "");
+        descriptor(QUEUE_DESCRIPTOR_FILE, artifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
 
     assertInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
   }
@@ -194,12 +195,7 @@ class AppCatalogWriterTest {
   void write_whenArtifactExceedsCatalogEntryCap_expectInvalidCatalogEntry() throws Exception {
     Path artifact = appZipExceedingCatalogEntryCap();
     Path descriptor =
-        descriptor(
-            "queue.properties",
-            artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
-            "");
+        descriptor(QUEUE_DESCRIPTOR_FILE, artifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
 
     AppCatalogException exception =
         captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
@@ -208,16 +204,27 @@ class AppCatalogWriterTest {
   }
 
   @Test
-  void write_whenOutputFileIsSymbolicLink_expectRejectsWithoutWritingThroughLink()
-      throws Exception {
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+  void write_whenArtifactPathIsSymbolicLink_expectInvalidCatalogEntry() throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    Path linkedArtifact = tempDir.resolve("linked-artifact.zip");
+    Assumptions.assumeTrue(canCreateSymlink(linkedArtifact));
+    Files.createSymbolicLink(linkedArtifact, artifact);
     Path descriptor =
         descriptor(
-            "queue.properties",
-            artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
-            "");
+            QUEUE_DESCRIPTOR_FILE, linkedArtifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(exception.getMessage().contains("artifact.path must not be a symbolic link"));
+  }
+
+  @Test
+  void write_whenOutputFileIsSymbolicLink_expectRejectsWithoutWritingThroughLink()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    Path descriptor =
+        descriptor(QUEUE_DESCRIPTOR_FILE, artifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
     Path realCatalog = tempDir.resolve("external-catalog.properties");
     Path linkedCatalog = tempDir.resolve("linked-catalog.properties");
     Files.writeString(realCatalog, "unchanged", StandardCharsets.UTF_8);
@@ -238,14 +245,9 @@ class AppCatalogWriterTest {
   void verify_whenWrittenCatalogIsSigned_expectRoundTrip() throws Exception {
     KeyPair keyPair =
         KeyPairGenerator.getInstance(AppCatalogSignature.SIGNATURE_ALGORITHM).generateKeyPair();
-    Path artifact = appZip(QUEUE_APP_ID, "Queue Manager", "1.0.0", "queue.read");
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
     Path descriptor =
-        descriptor(
-            "queue.properties",
-            artifact,
-            "https://example.invalid/apps/queue-manager.zip",
-            "Manage local queues.",
-            "");
+        descriptor(QUEUE_DESCRIPTOR_FILE, artifact, QUEUE_BUNDLE_URI, LOCAL_QUEUE_SUMMARY, "");
     Path catalogFile = tempDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     AppCatalogWriter.WriteResult result =
         AppCatalogWriter.write(request(List.of(descriptor)).withOutputFile(catalogFile));
@@ -301,8 +303,8 @@ class AppCatalogWriterTest {
           lines(
               "manifest.version=1",
               "app.id=" + QUEUE_APP_ID,
-              "app.name=Queue Manager",
-              "app.version=1.0.0",
+              "app.name=" + QUEUE_APP_NAME,
+              "app.version=" + QUEUE_APP_VERSION,
               "app.exec=bin/launch.sh"));
       for (int index = 0; index < AppBundlePackager.MAX_CATALOG_ZIP_ENTRIES; index++) {
         writeZipEntry(zip, "assets/file-" + index + ".txt", "asset " + index);
@@ -324,7 +326,7 @@ class AppCatalogWriterTest {
     zip.closeEntry();
   }
 
-  private static String sha256(Path file) throws Exception {
+  private static String sha256(Path file) throws IOException, NoSuchAlgorithmException {
     MessageDigest digest = MessageDigest.getInstance("SHA-256");
     digest.update(Files.readAllBytes(file));
     return HexFormat.of().formatHex(digest.digest());

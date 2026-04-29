@@ -202,7 +202,7 @@ public final class AppCatalogWriter {
     long sizeBytes = 0L;
     byte[] buffer = new byte[COPY_BUFFER_BYTES];
     Path snapshot = createSnapshotFile();
-    try (InputStream input = Files.newInputStream(artifactPath);
+    try (InputStream input = Files.newInputStream(artifactPath, LinkOption.NOFOLLOW_LINKS);
         OutputStream output =
             Files.newOutputStream(
                 snapshot, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
