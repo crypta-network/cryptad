@@ -18,6 +18,8 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -121,8 +123,10 @@ public final class AppBundlePackager {
     Path normalizedBundleRoot = AppDistributionSidecars.requireBundleRoot(bundleRoot);
     Path bundleRealRoot = normalizedBundleRoot.toRealPath();
     Path normalizedOutput = requireSafeOutputPath(outputZip, normalizedBundleRoot, bundleRealRoot);
-    AppBundleDigest bundleDigest = validateBundleForPackaging(normalizedBundleRoot);
+    PackagingValidation validation = validateBundleForPackaging(normalizedBundleRoot);
     ZipInventory inventory = collectZipInventory(normalizedBundleRoot, bundleRealRoot);
+    AppBundleDigest bundleDigest = createBundleDigest(inventory, validation.validatedBundle());
+    verifySignedDigestSnapshot(validation, bundleDigest);
     Path tempZip = createTemporaryZipPath(normalizedOutput);
     try {
       writeZip(tempZip, inventory.entries());
@@ -197,10 +201,11 @@ public final class AppBundlePackager {
     return candidate.equals(root) || candidate.startsWith(root);
   }
 
-  private static AppBundleDigest validateBundleForPackaging(Path normalizedBundleRoot)
+  private static PackagingValidation validateBundleForPackaging(Path normalizedBundleRoot)
       throws IOException {
     rejectNonCanonicalDistributionSidecars(normalizedBundleRoot);
-    AppBundleDigest bundleDigest = AppBundleDigestWriter.create(normalizedBundleRoot);
+    AppBundleStructureValidator.ValidatedBundle validatedBundle =
+        AppBundleStructureValidator.validate(normalizedBundleRoot);
     Path digestSidecar = normalizedBundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME);
     Path signatureSidecar = normalizedBundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME);
     boolean digestSidecarExists = Files.exists(digestSidecar, LinkOption.NOFOLLOW_LINKS);
@@ -218,11 +223,12 @@ public final class AppBundlePackager {
               + " and "
               + AppBundleSignature.SIGNATURE_FILE_NAME);
     }
+    AppBundleDigest signedDigest = null;
     if (digestSidecarExists) {
-      AppBundleDigestVerifier.verify(normalizedBundleRoot);
+      signedDigest = AppBundleDigestVerifier.read(digestSidecar);
       AppBundleVerifier.read(signatureSidecar);
     }
-    return bundleDigest;
+    return new PackagingValidation(validatedBundle, signedDigest);
   }
 
   private static void rejectNonCanonicalDistributionSidecars(Path normalizedBundleRoot)
@@ -259,6 +265,39 @@ public final class AppBundlePackager {
       unixModesByName.put(source.name(), source.unixMode());
     }
     return new ZipInventory(List.copyOf(entriesByName.values()), Map.copyOf(unixModesByName));
+  }
+
+  private static AppBundleDigest createBundleDigest(
+      ZipInventory inventory, AppBundleStructureValidator.ValidatedBundle validatedBundle)
+      throws AppDistributionException {
+    List<AppBundleDigestEntry> entries = new ArrayList<>();
+    for (ZipEntrySource source : inventory.entries()) {
+      if (!AppDistributionSidecars.isDistributionSidecar(source.name())) {
+        entries.add(toDigestEntry(source, validatedBundle));
+      }
+    }
+    try {
+      return new AppBundleDigest(
+          AppBundleDigest.DIGEST_VERSION, AppBundleDigest.DIGEST_ALGORITHM, entries);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static AppBundleDigestEntry toDigestEntry(
+      ZipEntrySource source, AppBundleStructureValidator.ValidatedBundle validatedBundle) {
+    String executablePath = validatedBundle.manifest().execPathText();
+    Boolean executable =
+        source.name().equals(executablePath) ? validatedBundle.authenticatedExecutableBit() : null;
+    return new AppBundleDigestEntry(source.name(), source.sha256(), executable);
+  }
+
+  private static void verifySignedDigestSnapshot(
+      PackagingValidation validation, AppBundleDigest bundleDigest)
+      throws AppDistributionException {
+    if (validation.signedDigest() != null && !validation.signedDigest().equals(bundleDigest)) {
+      throw new AppDistributionException("digest sidecar does not match bundle contents");
+    }
   }
 
   private static void writeZip(Path tempZip, List<ZipEntrySource> entries) throws IOException {
@@ -474,10 +513,14 @@ public final class AppBundlePackager {
 
   private record ZipInventory(List<ZipEntrySource> entries, Map<String, Integer> unixModesByName) {}
 
-  private record ZipEntrySource(String name, Path file, long size, long crc, int unixMode) {}
+  private record ZipEntrySource(
+      String name, Path file, long size, long crc, String sha256, int unixMode) {}
 
   private record EndOfCentralDirectory(
       int entryCount, long centralDirectoryOffset, long centralDirectorySize) {}
+
+  private record PackagingValidation(
+      AppBundleStructureValidator.ValidatedBundle validatedBundle, AppBundleDigest signedDigest) {}
 
   private static final class PackagingFileVisitor extends SimpleFileVisitor<Path> {
     private final Path normalizedBundleRoot;
@@ -519,7 +562,8 @@ public final class AppBundlePackager {
       rejectArchiveMetadataEntry(relativePath);
       FileStats stats = fileStats(file, relativePath);
       ZipEntrySource source =
-          new ZipEntrySource(relativePath, file, stats.size(), stats.crc(), unixMode(file));
+          new ZipEntrySource(
+              relativePath, file, stats.size(), stats.crc(), stats.sha256(), unixMode(file));
       ZipEntrySource previous = entriesByName.put(relativePath, source);
       if (previous != null) {
         throw new AppDistributionException(
@@ -564,6 +608,7 @@ public final class AppBundlePackager {
 
     private static FileStats fileStats(Path file, String relativePath) throws IOException {
       CRC32 crc = new CRC32();
+      MessageDigest digest = AppDistributionSidecars.newSha256Digest();
       long size = 0L;
       byte[] buffer = new byte[COPY_BUFFER_BYTES];
       try (InputStream input = Files.newInputStream(file)) {
@@ -571,6 +616,7 @@ public final class AppBundlePackager {
         while ((bytesRead = input.read(buffer)) >= 0) {
           if (bytesRead > 0) {
             crc.update(buffer, 0, bytesRead);
+            digest.update(buffer, 0, bytesRead);
             size += bytesRead;
           }
         }
@@ -579,7 +625,8 @@ public final class AppBundlePackager {
         throw new AppDistributionException(
             "bundle file is too large for a ZIP32 artifact: " + relativePath);
       }
-      return new FileStats(size, crc.getValue());
+      return new FileStats(
+          size, crc.getValue(), AppDistributionSidecars.lowercaseHex(digest.digest()));
     }
 
     private static int unixMode(Path file) throws IOException {
@@ -611,6 +658,6 @@ public final class AppBundlePackager {
       return bits;
     }
 
-    private record FileStats(long size, long crc) {}
+    private record FileStats(long size, long crc, String sha256) {}
   }
 }
