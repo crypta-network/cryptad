@@ -3,8 +3,9 @@
  *
  * <p>This package owns the signed-distribution sidecars for locally staged Crypta application
  * bundles. It defines the deterministic {@code cryptad-app.digests} format, the corresponding
- * {@code cryptad-app.signature} format, the JDK-only SHA-256 and Ed25519 helpers that write and
- * verify those sidecars, and the immutable trust model used by higher layers.
+ * {@code cryptad-app.signature} format, the deterministic bundle ZIP packager, the JDK-only SHA-256
+ * and Ed25519 helpers that write and verify those sidecars, and the immutable trust model used by
+ * higher layers.
  *
  * <p>The implementation intentionally stays below AppHost, HTTP adapters, shell code, and runtime
  * process orchestration. It works only with local bundle directories, regular files, and explicit

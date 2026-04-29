@@ -45,6 +45,56 @@ The parser rejects duplicate keys, missing required fields, unsupported versions
 artifact types, invalid app ids, blank names or versions, invalid SHA-256 text, negative sizes,
 unsafe artifact URIs, duplicate entries, and unknown properties.
 
+## Developer CLI catalog flow
+
+For standalone developer apps, `crypta-app catalog create` can generate
+`cryptad-app-catalog.properties` from one or more app entry descriptors. The descriptor is CLI
+input; the generated catalog still uses the runtime format shown above. The descriptor names the
+local ZIP artifact to inspect and the public URI that should be written to the catalog.
+
+Descriptor shape:
+
+```properties
+# catalog-entry.properties
+artifact.path=/abs/path/to/dist/apps/hello-queue-0.1.0.zip
+bundle.uri=https://example.invalid/apps/hello-queue-0.1.0.zip
+summary=Example static UI that reads the local queue.
+name=Hello Queue
+version=0.1.0
+permissions=queue.read,queue.write
+app.id=hello-queue
+```
+
+Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
+id and version from the artifact's root `cryptad-app.properties`; descriptor `app.id` and `version`
+values are optional consistency checks and must match the artifact manifest. The `name` and
+`permissions` fields can override the display metadata and permission hints written to the catalog.
+It computes `bundle.sha256` and `bundle.size.bytes` from the local artifact bytes.
+
+Create, sign, and verify a catalog with:
+
+```bash
+crypta-app catalog create \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-id dev \
+  --name "Development Apps" \
+  --entry catalog-entry.properties
+
+crypta-app catalog sign \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --key-id dev-local \
+  --private-key-file /abs/path/to/dev-app-signing-private.pem
+
+crypta-app catalog verify \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --trusted-key-id dev-local \
+  --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+```
+
+The catalog signature authenticates the exact bytes of `cryptad-app-catalog.properties`. Do not
+rewrite, sort, or reformat the catalog after signing. See
+[app-dev-cli.md](app-dev-cli.md) for the full standalone app CLI workflow.
+
 ## Catalog signatures
 
 Catalog signatures use Ed25519 and the same trusted-key registry shape as signed app bundles:
@@ -85,10 +135,10 @@ Supported catalog sources:
 Remote fetches use the JDK HTTP client with finite timeouts, no automatic redirects, and size caps
 for catalog, signature, and artifact downloads. Artifact bytes are written to catalog-owned scratch
 storage, checked against the catalog size and SHA-256, then extracted into a separate staging
-directory. The extractor rejects absolute ZIP paths, `..`, Windows drive prefixes, backslash path
-separators, duplicate normalized entries, and rootless bundles. It drops macOS archive metadata
-entries such as `__MACOSX/**` and AppleDouble `._*` files before signed-bundle verification, so
-those files are not installed as app payload.
+directory. The extractor rejects artifacts with more than 4096 ZIP entries, absolute ZIP paths,
+`..`, Windows drive prefixes, backslash path separators, duplicate normalized entries, and rootless
+bundles. It drops macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files
+before signed-bundle verification, so those files are not installed as app payload.
 
 ## Platform API flow
 

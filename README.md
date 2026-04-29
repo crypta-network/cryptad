@@ -58,6 +58,7 @@ data, and serves applications.
 - [Quick Start](#quick-start)
 - [Building](#building)
 - [Signed App Bundles](#signed-app-bundles)
+- [Developer App CLI](#developer-app-cli)
 - [Platform Closeout & API Surface](#platform-closeout--api-surface)
 - [Hyphanet Interop Gate](#hyphanet-interop-gate)
 - [Testing](#testing)
@@ -379,6 +380,51 @@ install/update endpoints are available now; background app-update scheduling rem
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
 inputs.
 
+## Developer App CLI
+
+Standalone app authors can use `crypta-app` for staged bundle scaffolding, validation, signing,
+packing, and catalog generation. The command is delivered by the `:platform-devtools` application
+plugin:
+
+```bash
+./gradlew :platform-devtools:installDist
+platform-devtools/build/install/crypta-app/bin/crypta-app --help
+```
+
+The common flow is:
+
+```bash
+crypta-app init \
+  --dir build/dev-apps/hello-queue \
+  --app-id hello-queue \
+  --name "Hello Queue" \
+  --version 0.1.0 \
+  --ui-mode static \
+  --permission queue.read
+crypta-app validate --bundle-dir build/dev-apps/hello-queue
+crypta-app sign \
+  --bundle-dir build/dev-apps/hello-queue \
+  --key-id dev-local \
+  --private-key-file /abs/path/to/dev-app-signing-private.pem
+crypta-app pack \
+  --bundle-dir build/dev-apps/hello-queue \
+  --output dist/apps/hello-queue-0.1.0.zip \
+  --overwrite
+crypta-app verify \
+  --bundle-dir build/dev-apps/hello-queue \
+  --trusted-key-id dev-local \
+  --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+```
+
+`crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
+scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available. The CLI is
+local developer tooling; it does not add a remote app-store UI, hot reload, or daemon-side install
+command.
+
+First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
+and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow
+and [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
+
 ## Platform Closeout & API Surface
 
 Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:platform-apphost` the
@@ -394,6 +440,7 @@ Key docs:
 
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
 - [Platform API and Web Shell surface](docs/platform-api-surface.md)
+- [Developer app CLI](docs/app-dev-cli.md)
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
 - [App-owned static UI](docs/app-owned-ui.md)

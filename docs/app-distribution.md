@@ -11,6 +11,7 @@ see [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md)
 
 Related but documented elsewhere:
 
+- Developer CLI workflow for standalone staged bundles: [app-dev-cli.md](app-dev-cli.md)
 - Signed catalog sources and remote/local catalog artifact install/update:
   [app-catalogs.md](app-catalogs.md)
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
@@ -140,6 +141,49 @@ not persist restart state across daemon restarts and does not run app-provided h
 
 See [apphost-runtime-hardening.md](apphost-runtime-hardening.md) for the process boundary, runtime
 status, process-log tailing, token redaction, and remaining sandbox limitations.
+
+## Developer CLI
+
+`crypta-app` is the developer-facing CLI for standalone AppHost bundles. It is delivered by the
+`:platform-devtools` application plugin and can be installed locally with:
+
+```bash
+./gradlew :platform-devtools:installDist
+```
+
+Use it when an app should be scaffolded, signed, packed, or cataloged outside the first-party
+`apps/*` Gradle projects:
+
+```bash
+crypta-app init \
+  --dir build/dev-apps/hello-queue \
+  --app-id hello-queue \
+  --name "Hello Queue" \
+  --version 0.1.0 \
+  --ui-mode static \
+  --permission queue.read
+
+crypta-app validate --bundle-dir build/dev-apps/hello-queue
+crypta-app sign \
+  --bundle-dir build/dev-apps/hello-queue \
+  --key-id dev-local \
+  --private-key-file /abs/path/to/dev-app-signing-private.pem
+crypta-app pack \
+  --bundle-dir build/dev-apps/hello-queue \
+  --output dist/apps/hello-queue-0.1.0.zip \
+  --overwrite
+crypta-app verify \
+  --bundle-dir build/dev-apps/hello-queue \
+  --trusted-key-id dev-local \
+  --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+```
+
+`crypta-app init` creates a standalone staged bundle directory, not a new Gradle subproject. The
+static template copies or vendors the browser SDK as `static/crypta-platform.js` when that resource
+is available. See [app-dev-cli.md](app-dev-cli.md) for the full scaffold, pack, and catalog flow.
+
+The CLI does not replace the first-party Gradle workflow. Queue Manager and Publisher can keep
+using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`, and `verifyApp` tasks.
 
 ## Gradle Tasks
 

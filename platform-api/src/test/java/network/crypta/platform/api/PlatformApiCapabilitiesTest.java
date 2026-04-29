@@ -1,11 +1,14 @@
 package network.crypta.platform.api;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -18,6 +21,44 @@ class PlatformApiCapabilitiesTest {
 
     assertTrue(decision.allowed());
     assertEquals("host_operator", decision.reasonCode());
+  }
+
+  @Test
+  void knownCapabilities_whenReadByDeveloperTooling_expectSortedRegistry() {
+    assertEquals(
+        List.of(
+            "alerts.read",
+            "alerts.write",
+            "apps.manage",
+            "apps.read",
+            "catalogs.manage",
+            "catalogs.read",
+            "config.read",
+            "config.write",
+            "connectivity.read",
+            "content.insert",
+            "diagnostics.read",
+            "node.read",
+            "peers.read",
+            "peers.write",
+            "queue.read",
+            "queue.write",
+            "security.read",
+            "security.write",
+            "updates.read",
+            "updates.write",
+            "wizard.read",
+            "wizard.write"),
+        List.copyOf(PlatformApiCapabilityRegistry.knownCapabilities()));
+  }
+
+  @Test
+  void knownCapabilities_whenCallerMutatesRegistry_expectUnsupportedOperation() {
+    Set<String> knownCapabilities = PlatformApiCapabilityRegistry.knownCapabilities();
+    Iterator<String> iterator = knownCapabilities.iterator();
+
+    assertTrue(iterator.hasNext());
+    assertThrows(UnsupportedOperationException.class, iterator::remove);
   }
 
   @Test

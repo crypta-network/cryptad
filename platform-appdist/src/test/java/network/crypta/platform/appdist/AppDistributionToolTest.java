@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.util.Base64;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -12,9 +13,39 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppDistributionToolTest {
   @TempDir Path tempDir;
+
+  @Test
+  void signAndVerify_whenCliRoundTripsSignedBundle_expectSuccess() throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+
+    AppDistributionTool.main(
+        new String[] {
+          "sign",
+          "--bundle-dir",
+          bundleRoot.toString(),
+          "--key-id",
+          "local-dev",
+          "--private-key-base64",
+          Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded())
+        });
+    assertTrue(Files.exists(bundleRoot.resolve(AppBundleDigest.DIGEST_FILE_NAME)));
+    assertTrue(Files.exists(bundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME)));
+    AppDistributionTool.main(
+        new String[] {
+          "verify",
+          "--bundle-dir",
+          bundleRoot.toString(),
+          "--trusted-key-id",
+          "local-dev",
+          "--trusted-public-key-base64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded())
+        });
+  }
 
   @Test
   void verify_whenAllowUnsignedAndBundleHasNoSidecars_expectTrustInputsIgnored() throws Exception {

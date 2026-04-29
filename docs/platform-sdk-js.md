@@ -20,6 +20,11 @@ The first-party Queue Manager and Publisher bundles receive `crypta-platform.js`
 Gradle `stageApp` tasks. The canonical source lives in
 `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
+The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
+static` can see the SDK resource, its template copies or vendors the file as
+`static/crypta-platform.js` in the staged bundle. The scaffolded HTML should still load it with the
+relative `./crypta-platform.js` path shown above.
+
 ## Bootstrap
 
 Call `CryptaPlatform.bootstrap.load()` before using API helpers:
