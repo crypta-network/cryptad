@@ -43,6 +43,10 @@ import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppHostTokenRedactor;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppQuotaEnforcer;
+import network.crypta.platform.apphost.AppQuotaPolicy;
+import network.crypta.platform.apphost.AppQuotaStatus;
+import network.crypta.platform.apphost.AppQuotaWarning;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
@@ -70,11 +74,15 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>The implementation keeps the runtime state in memory only. It is intended to be the reusable
  * local execution core beneath future shell and transport layers, not a full sandbox or persistent
- * supervisor. It therefore does not attempt to restart recovery across daemon restarts or hard
- * enforcement of manifest quota hints.
+ * supervisor. It therefore does not attempt to restart recovery across daemon restarts, inspect
+ * arbitrary descendant processes, or provide CPU, memory, and network isolation.
  */
 public final class LocalProcessAppHost implements AppHost {
   private static final Duration DEFAULT_STOP_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration DEFAULT_RESTART_STORM_WINDOW = Duration.ofMinutes(5);
+  private static final int DEFAULT_RESTART_STORM_MAX_IN_WINDOW = 5;
+  private static final RestartStormPolicy DEFAULT_RESTART_STORM_POLICY =
+      new RestartStormPolicy(DEFAULT_RESTART_STORM_WINDOW, DEFAULT_RESTART_STORM_MAX_IN_WINDOW);
   private static final String TEMP_INSTALL_PREFIX = "app-install-";
   private static final String TEMP_UPDATE_BACKUP_PREFIX = TEMP_INSTALL_PREFIX + "backup-";
   private static final String LOCAL_DIRECTORY_NAME = "local";
@@ -128,8 +136,12 @@ public final class LocalProcessAppHost implements AppHost {
   private final ManagedTreeDeleter managedTreeDeleter;
   private final AppInstallVerificationPolicy installVerificationPolicy;
   private final AppSandboxProviders sandboxProviders;
+  private final AppQuotaEnforcer quotaEnforcer;
+  private final Duration restartStormWindow;
+  private final int restartStormMaxInWindow;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
   private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
+  private final Map<String, Deque<Instant>> automaticRestartAttempts = new ConcurrentHashMap<>();
   private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
 
   /**
@@ -268,6 +280,27 @@ public final class LocalProcessAppHost implements AppHost {
         installVerificationPolicy);
   }
 
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
+      AppInstallVerificationPolicy installVerificationPolicy,
+      RestartStormPolicy restartStormPolicy) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        new HostDependencies(
+            LocalProcessAppHost::deleteRecursively,
+            installVerificationPolicy,
+            AppSandboxProviders.defaults(),
+            restartStormPolicy));
+  }
+
   @SuppressWarnings("unused")
   LocalProcessAppHost(
       AppHostLayout layout,
@@ -301,7 +334,10 @@ public final class LocalProcessAppHost implements AppHost {
         appEnv,
         timing,
         new HostDependencies(
-            managedTreeDeleter, installVerificationPolicy, AppSandboxProviders.defaults()));
+            managedTreeDeleter,
+            installVerificationPolicy,
+            AppSandboxProviders.defaults(),
+            DEFAULT_RESTART_STORM_POLICY));
   }
 
   private LocalProcessAppHost(
@@ -323,6 +359,11 @@ public final class LocalProcessAppHost implements AppHost {
         Objects.requireNonNull(normalized.installVerificationPolicy(), "installVerificationPolicy");
     this.sandboxProviders =
         Objects.requireNonNull(normalized.sandboxProviders(), "sandboxProviders");
+    this.quotaEnforcer = new AppQuotaEnforcer();
+    RestartStormPolicy restartStormPolicy =
+        Objects.requireNonNull(normalized.restartStormPolicy(), "restartStormPolicy");
+    this.restartStormWindow = restartStormPolicy.restartStormWindow();
+    this.restartStormMaxInWindow = restartStormPolicy.restartStormMaxInWindow();
     if (stopTimeout.isZero() || stopTimeout.isNegative()) {
       throw new IllegalArgumentException("stopTimeout must be positive");
     }
@@ -447,6 +488,7 @@ public final class LocalProcessAppHost implements AppHost {
     deleteRecursively(paths.cacheDir());
     deleteRecursively(paths.runDir());
     runtimeRecords.remove(paths.appId());
+    automaticRestartAttempts.remove(paths.appId());
     explicitStopRequests.remove(paths.appId());
   }
 
@@ -535,6 +577,7 @@ public final class LocalProcessAppHost implements AppHost {
     InstalledAppPaths paths = installation.paths();
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
+    quotaEnforcer.enforceLaunch(installation.manifest(), paths);
     prepareProcessLogFile(paths);
 
     Path executable =
@@ -588,7 +631,8 @@ public final class LocalProcessAppHost implements AppHost {
               currentRestartAttempt,
               token,
               launchPlan.sandboxStatus(),
-              false));
+              false,
+              List.of()));
       throw startupFailure(normalizedAppId, process);
     }
     RunningAppSnapshot snapshot =
@@ -662,7 +706,15 @@ public final class LocalProcessAppHost implements AppHost {
       return true;
     }
     completeStop(normalizedAppId, appId, trackedRunningProcess);
-    runtimeRecords.put(normalizedAppId, RuntimeRecord.stopped(trackedRunningProcess));
+    List<String> warnings = new ArrayList<>();
+    RuntimeRecord exitRecord = runtimeRecords.get(normalizedAppId);
+    if (exitRecord != null) {
+      warnings.addAll(exitRecord.warnings());
+    }
+    warnings.addAll(processLogWarningMessages(trackedRunningProcess.snapshot().paths()));
+    runtimeRecords.put(
+        normalizedAppId,
+        RuntimeRecord.stopped(trackedRunningProcess, warnings.stream().distinct().toList()));
     return true;
   }
 
@@ -741,7 +793,10 @@ public final class LocalProcessAppHost implements AppHost {
     RunningProcess runningProcess = liveRunningProcess(normalizedAppId);
     if (runningProcess != null) {
       RuntimeRecord previousRecord = runtimeRecords.get(normalizedAppId);
-      return statusSnapshot(normalizedAppId, RuntimeRecord.running(runningProcess, previousRecord));
+      return statusSnapshot(
+          normalizedAppId,
+          runningProcess.snapshot().manifest(),
+          RuntimeRecord.running(runningProcess, previousRecord));
     }
     InstalledAppSnapshot installed =
         describe(normalizedAppId)
@@ -755,6 +810,7 @@ public final class LocalProcessAppHost implements AppHost {
     }
     return statusSnapshot(
         normalizedAppId,
+        installed.manifest(),
         runtimeRecord.withoutRunningProcess(
             installed.paths(),
             AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy())));
@@ -789,18 +845,27 @@ public final class LocalProcessAppHost implements AppHost {
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     int boundedMaxBytes = boundedLogTailBytes(maxBytes);
     RunningProcess runningProcess = liveRunningProcess(normalizedAppId);
-    InstalledAppPaths paths =
-        runningProcess == null
-            ? describe(normalizedAppId)
-                .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId))
-                .paths()
-            : runningProcess.snapshot().paths();
-    String token = runningProcess == null ? null : runningProcess.snapshot().token();
+    InstalledAppPaths paths;
+    AppManifest manifest;
+    String token;
+    if (runningProcess == null) {
+      InstalledAppSnapshot installed =
+          describe(normalizedAppId)
+              .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
+      paths = installed.paths();
+      manifest = installed.manifest();
+      token = null;
+    } else {
+      paths = runningProcess.snapshot().paths();
+      manifest = runningProcess.snapshot().manifest();
+      token = runningProcess.snapshot().token();
+    }
     RuntimeRecord runtimeRecord =
         runningProcess == null ? runtimeRecords.get(normalizedAppId) : null;
     if (token == null && runtimeRecord != null) {
       token = runtimeRecord.lastLaunchToken();
     }
+    quotaEnforcer.enforceProcessLogLimit(paths, AppQuotaPolicy.fromManifest(manifest));
     return readProcessLogTail(normalizedAppId, paths, token, boundedMaxBytes);
   }
 
@@ -810,8 +875,9 @@ public final class LocalProcessAppHost implements AppHost {
     OwnerOnlyFilePermissions.hardenSensitiveFile(paths.processLogFile());
   }
 
-  private AppRuntimeStatusSnapshot statusSnapshot(String appId, RuntimeRecord runtimeRecord)
-      throws IOException {
+  private AppRuntimeStatusSnapshot statusSnapshot(
+      String appId, AppManifest manifest, RuntimeRecord runtimeRecord) throws IOException {
+    AppQuotaStatus quotaStatus = quotaEnforcer.status(manifest, runtimeRecord.paths());
     LogMetadata log = logMetadata(runtimeRecord.paths());
     return new AppRuntimeStatusSnapshot(
         appId,
@@ -825,7 +891,9 @@ public final class LocalProcessAppHost implements AppHost {
         runtimeRecord.currentRestartAttempt(),
         log.available(),
         log.sizeBytes(),
-        runtimeRecord.sandboxStatus());
+        runtimeRecord.sandboxStatus(),
+        quotaStatus,
+        runtimeRecord.warnings());
   }
 
   private static int boundedLogTailBytes(int maxBytes) {
@@ -903,6 +971,8 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private void recordProcessExit(String appId, ProcessExitRecord exitRecord) {
+    List<String> warnings = new ArrayList<>(exitRecord.warnings());
+    warnings.addAll(processLogWarningMessages(exitRecord.paths()));
     runtimeRecords.put(
         appId,
         new RuntimeRecord(
@@ -916,7 +986,8 @@ public final class LocalProcessAppHost implements AppHost {
             exitRecord.lastLaunchToken(),
             exitRecord.sandboxStatus(),
             exitRecord.restartCount(),
-            exitRecord.currentRestartAttempt()));
+            exitRecord.currentRestartAttempt(),
+            warnings.stream().distinct().toList()));
   }
 
   private static AppRuntimeState exitState(Integer exitCode, boolean explicitStop) {
@@ -1030,9 +1101,10 @@ public final class LocalProcessAppHost implements AppHost {
       runningApps.replace(appId, runningProcess, refreshedRunningProcess);
       return refreshedRunningProcess;
     }
-    recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
-    runningProcess.exitCleanup().join();
-    runningApps.remove(appId, runningProcess);
+    if (runningApps.remove(appId, runningProcess)) {
+      recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
+      runningProcess.exitCleanup().join();
+    }
     return null;
   }
 
@@ -1040,10 +1112,20 @@ public final class LocalProcessAppHost implements AppHost {
     boolean explicitStop = explicitStopRequests.contains(appId);
     Integer exitCode = trackedAppExitCode(runningProcess);
     Instant exitAt = Instant.now();
+    List<String> warnings = processLogWarningMessages(runningProcess.snapshot().paths());
     if (shouldRestart(runningProcess, exitCode, explicitStop)) {
       int nextAttempt = runningProcess.currentRestartAttempt() + 1;
+      if (!recordAutomaticRestartAttempt(appId, exitAt)) {
+        List<String> blockedWarnings = new ArrayList<>(warnings);
+        blockedWarnings.add(restartStormWarning().message());
+        recordProcessExit(
+            appId,
+            ProcessExitRecord.fromRunningProcess(
+                runningProcess, exitCode, exitAt, false, blockedWarnings));
+        return;
+      }
       runtimeRecords.put(
-          appId, RuntimeRecord.restarting(runningProcess, exitCode, exitAt, nextAttempt));
+          appId, RuntimeRecord.restarting(runningProcess, exitCode, exitAt, nextAttempt, warnings));
       scheduleRestart(
           appId,
           nextAttempt,
@@ -1052,7 +1134,8 @@ public final class LocalProcessAppHost implements AppHost {
     }
     recordProcessExit(
         appId,
-        ProcessExitRecord.fromRunningProcess(runningProcess, exitCode, exitAt, explicitStop));
+        ProcessExitRecord.fromRunningProcess(
+            runningProcess, exitCode, exitAt, explicitStop, warnings));
   }
 
   private void cancelPendingRestartAfterAcceptedUpdate(String appId) {
@@ -1073,6 +1156,54 @@ public final class LocalProcessAppHost implements AppHost {
 
   private static boolean isFailureExit(Integer exitCode) {
     return exitCode == null || exitCode != 0;
+  }
+
+  private boolean recordAutomaticRestartAttempt(String appId, Instant now) {
+    Deque<Instant> attempts =
+        automaticRestartAttempts.computeIfAbsent(appId, _ -> new ArrayDeque<>());
+    synchronized (attempts) {
+      pruneRestartAttempts(attempts, now);
+      if (attempts.size() >= restartStormMaxInWindow) {
+        return false;
+      }
+      attempts.addLast(now);
+      return true;
+    }
+  }
+
+  private void pruneRestartAttempts(Deque<Instant> attempts, Instant now) {
+    Instant earliestRetained = now.minus(restartStormWindow);
+    while (!attempts.isEmpty() && attempts.peekFirst().isBefore(earliestRetained)) {
+      attempts.removeFirst();
+    }
+  }
+
+  private AppQuotaWarning restartStormWarning() {
+    return AppQuotaWarning.restartStormBlocked(
+        restartStormMaxInWindow, restartStormWindow.toMillis());
+  }
+
+  private List<String> processLogWarningMessages(InstalledAppPaths paths) {
+    return quotaEnforcer
+        .enforceProcessLogLimit(paths, AppQuotaPolicy.unlimited())
+        .warnings()
+        .stream()
+        .map(AppQuotaWarning::message)
+        .toList();
+  }
+
+  private static List<String> restartFailureWarnings(IOException failure) {
+    String message = failure.getMessage();
+    if (message == null) {
+      return List.of();
+    }
+    if (message.startsWith("app data quota exceeded: ")) {
+      return List.of(AppQuotaWarning.dataQuotaExceeded().message());
+    }
+    if (message.startsWith("app cache quota exceeded: ")) {
+      return List.of(AppQuotaWarning.cacheQuotaExceeded().message());
+    }
+    return List.of();
   }
 
   private void scheduleRestart(String appId, int restartAttempt, Duration backoff) {
@@ -1126,15 +1257,16 @@ public final class LocalProcessAppHost implements AppHost {
       InstalledAppSnapshot installation =
           describe(appId).orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
       launchInstalledApp(installation, restartAttempt, restartAttempt);
-    } catch (IOException _) {
-      recordRestartLaunchFailureIfUnchanged(appId, scheduledRecord, Instant.now());
+    } catch (IOException e) {
+      recordRestartLaunchFailureIfUnchanged(appId, scheduledRecord, Instant.now(), e);
     }
   }
 
   private void recordRestartLaunchFailureIfUnchanged(
-      String appId, RuntimeRecord scheduledRecord, Instant failedAt) {
+      String appId, RuntimeRecord scheduledRecord, Instant failedAt, IOException failure) {
     if (scheduledRecord.equals(runtimeRecords.get(appId))) {
-      runtimeRecords.put(appId, scheduledRecord.failedRestart(failedAt));
+      runtimeRecords.put(
+          appId, scheduledRecord.failedRestart(failedAt, restartFailureWarnings(failure)));
     }
   }
 
@@ -2205,12 +2337,17 @@ public final class LocalProcessAppHost implements AppHost {
     List<ProcessHandle> processTree = runningProcess.processTree();
     RunningProcess trackedRunningProcess = runningProcess.tryWithProcessTree(processTree);
     if (trackedRunningProcess == null) {
-      recordProcessExit(
-          appId,
-          ProcessExitRecord.fromRunningProcess(
-              runningProcess, trackedAppExitCode(runningProcess), Instant.now(), true));
-      runningProcess.exitCleanup().join();
-      runningApps.remove(appId, runningProcess);
+      if (runningApps.remove(appId, runningProcess)) {
+        recordProcessExit(
+            appId,
+            ProcessExitRecord.fromRunningProcess(
+                runningProcess,
+                trackedAppExitCode(runningProcess),
+                Instant.now(),
+                true,
+                List.of()));
+        runningProcess.exitCleanup().join();
+      }
       return null;
     }
     runningApps.replace(appId, runningProcess, trackedRunningProcess);
@@ -2226,9 +2363,10 @@ public final class LocalProcessAppHost implements AppHost {
       runningApps.put(appId, refreshedRunningProcess);
       return refreshedRunningProcess;
     }
-    recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
-    runningProcess.exitCleanup().join();
-    runningApps.remove(appId, runningProcess);
+    if (runningApps.remove(appId, runningProcess)) {
+      recordExitAndScheduleRestartIfNeeded(appId, runningProcess);
+      runningProcess.exitCleanup().join();
+    }
     return null;
   }
 
@@ -2624,7 +2762,30 @@ public final class LocalProcessAppHost implements AppHost {
   private record HostDependencies(
       ManagedTreeDeleter managedTreeDeleter,
       AppInstallVerificationPolicy installVerificationPolicy,
-      AppSandboxProviders sandboxProviders) {}
+      AppSandboxProviders sandboxProviders,
+      RestartStormPolicy restartStormPolicy) {}
+
+  /**
+   * Rolling-window policy used to suppress repeated automatic restart attempts.
+   *
+   * <p>The policy is host-side runtime configuration, not manifest metadata. A positive window and
+   * positive restart count define how many automatic restarts may be attempted before AppHost
+   * leaves the app stopped and reports a restart-storm warning.
+   *
+   * @param restartStormWindow positive rolling window used to count automatic restart attempts
+   * @param restartStormMaxInWindow positive maximum attempts allowed within the rolling window
+   */
+  record RestartStormPolicy(Duration restartStormWindow, int restartStormMaxInWindow) {
+    RestartStormPolicy {
+      Objects.requireNonNull(restartStormWindow, "restartStormWindow");
+      if (restartStormWindow.isZero() || restartStormWindow.isNegative()) {
+        throw new IllegalArgumentException("restartStormWindow must be positive");
+      }
+      if (restartStormMaxInWindow <= 0) {
+        throw new IllegalArgumentException("restartStormMaxInWindow must be positive");
+      }
+    }
+  }
 
   record TimingConfig(
       Duration startupExitGracePeriod,
@@ -2681,9 +2842,18 @@ public final class LocalProcessAppHost implements AppHost {
       int currentRestartAttempt,
       String lastLaunchToken,
       AppSandboxStatus sandboxStatus,
-      boolean explicitStop) {
+      boolean explicitStop,
+      List<String> warnings) {
+    private ProcessExitRecord {
+      warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
+    }
+
     private static ProcessExitRecord fromRunningProcess(
-        RunningProcess runningProcess, Integer exitCode, Instant exitAt, boolean explicitStop) {
+        RunningProcess runningProcess,
+        Integer exitCode,
+        Instant exitAt,
+        boolean explicitStop,
+        List<String> warnings) {
       return new ProcessExitRecord(
           runningProcess.snapshot().paths(),
           exitCode,
@@ -2692,7 +2862,8 @@ public final class LocalProcessAppHost implements AppHost {
           runningProcess.currentRestartAttempt(),
           runningProcess.snapshot().token(),
           runningProcess.snapshot().sandboxStatus(),
-          explicitStop);
+          explicitStop,
+          warnings);
     }
   }
 
@@ -2709,7 +2880,12 @@ public final class LocalProcessAppHost implements AppHost {
       String lastLaunchToken,
       AppSandboxStatus sandboxStatus,
       int restartCount,
-      int currentRestartAttempt) {
+      int currentRestartAttempt,
+      List<String> warnings) {
+    private RuntimeRecord {
+      warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
+    }
+
     private static RuntimeRecord running(
         RunningProcess runningProcess, RuntimeRecord previousRecord) {
       return running(
@@ -2735,11 +2911,16 @@ public final class LocalProcessAppHost implements AppHost {
           snapshot.token(),
           snapshot.sandboxStatus(),
           restartCount,
-          currentRestartAttempt);
+          currentRestartAttempt,
+          List.of());
     }
 
     private static RuntimeRecord restarting(
-        RunningProcess runningProcess, Integer exitCode, Instant exitAt, int restartAttempt) {
+        RunningProcess runningProcess,
+        Integer exitCode,
+        Instant exitAt,
+        int restartAttempt,
+        List<String> warnings) {
       return new RuntimeRecord(
           runningProcess.snapshot().paths(),
           AppRuntimeState.RESTARTING,
@@ -2751,15 +2932,27 @@ public final class LocalProcessAppHost implements AppHost {
           runningProcess.snapshot().token(),
           runningProcess.snapshot().sandboxStatus(),
           runningProcess.restartCount(),
-          restartAttempt);
+          restartAttempt,
+          warnings);
     }
 
     private static RuntimeRecord stopped(InstalledAppPaths paths, AppSandboxStatus sandboxStatus) {
       return new RuntimeRecord(
-          paths, AppRuntimeState.STOPPED, false, null, null, null, null, null, sandboxStatus, 0, 0);
+          paths,
+          AppRuntimeState.STOPPED,
+          false,
+          null,
+          null,
+          null,
+          null,
+          null,
+          sandboxStatus,
+          0,
+          0,
+          List.of());
     }
 
-    private static RuntimeRecord stopped(RunningProcess runningProcess) {
+    private static RuntimeRecord stopped(RunningProcess runningProcess, List<String> warnings) {
       return new RuntimeRecord(
           runningProcess.snapshot().paths(),
           AppRuntimeState.STOPPED,
@@ -2771,7 +2964,8 @@ public final class LocalProcessAppHost implements AppHost {
           runningProcess.snapshot().token(),
           runningProcess.snapshot().sandboxStatus(),
           runningProcess.restartCount(),
-          runningProcess.currentRestartAttempt());
+          runningProcess.currentRestartAttempt(),
+          warnings);
     }
 
     private RuntimeRecord stopped() {
@@ -2786,10 +2980,13 @@ public final class LocalProcessAppHost implements AppHost {
           lastLaunchToken,
           sandboxStatus,
           restartCount,
-          currentRestartAttempt);
+          currentRestartAttempt,
+          warnings);
     }
 
-    private RuntimeRecord failedRestart(Instant failedAt) {
+    private RuntimeRecord failedRestart(Instant failedAt, List<String> additionalWarnings) {
+      List<String> mergedWarnings = new ArrayList<>(warnings);
+      mergedWarnings.addAll(additionalWarnings);
       return new RuntimeRecord(
           paths,
           AppRuntimeState.CRASHED,
@@ -2801,7 +2998,8 @@ public final class LocalProcessAppHost implements AppHost {
           lastLaunchToken,
           sandboxStatus,
           restartCount,
-          currentRestartAttempt);
+          currentRestartAttempt,
+          mergedWarnings.stream().distinct().toList());
     }
 
     private RuntimeRecord withoutRunningProcess(
@@ -2818,7 +3016,8 @@ public final class LocalProcessAppHost implements AppHost {
             lastLaunchToken,
             installedSandboxStatus,
             restartCount,
-            currentRestartAttempt);
+            currentRestartAttempt,
+            warnings);
       }
       return paths.equals(installedPaths) && sandboxStatus.equals(installedSandboxStatus)
           ? this
@@ -2838,7 +3037,8 @@ public final class LocalProcessAppHost implements AppHost {
           lastLaunchToken,
           installedSandboxStatus,
           restartCount,
-          currentRestartAttempt);
+          currentRestartAttempt,
+          warnings);
     }
 
     @Override
@@ -2865,6 +3065,8 @@ public final class LocalProcessAppHost implements AppHost {
           + restartCount
           + ", currentRestartAttempt="
           + currentRestartAttempt
+          + ", warnings="
+          + warnings
           + ']';
     }
   }

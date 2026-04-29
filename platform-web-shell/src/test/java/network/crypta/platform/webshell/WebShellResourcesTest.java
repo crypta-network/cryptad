@@ -330,6 +330,18 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function sandboxLabel(status)"));
     assertTrue(script.contains("Unsupported required sandbox"));
     assertTrue(script.contains("[\"Sandbox\", sandboxLabel(sandbox)]"));
+    assertTrue(script.contains("function appQuotaStatus(app, runtime)"));
+    assertTrue(script.contains("function formatBytes(value)"));
+    assertTrue(script.contains("function quotaWarnings(quota, runtime)"));
+    assertTrue(script.contains("[\"Data usage\", formatQuotaUsage("));
+    assertTrue(script.contains("[\"Cache usage\", formatQuotaUsage("));
+    assertTrue(script.contains("[\"Data limit\", formatQuotaLimit("));
+    assertTrue(script.contains("[\"Cache limit\", formatQuotaLimit("));
+    assertTrue(script.contains("[\"Quota warnings\", quotaWarnings(quota, runtime)]"));
+    assertTrue(script.contains("[\"Process log size\","));
+    assertTrue(script.contains("[\"Process log limit\","));
+    assertTrue(script.contains("[\"Process log tail limit\","));
+    assertTrue(script.contains("[\"Process log truncated\","));
     assertTrue(script.contains("function appRuntimePath(appId)"));
     assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
     assertTrue(script.contains("function appAuditPath(appId)"));
