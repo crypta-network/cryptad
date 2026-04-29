@@ -1,5 +1,7 @@
 package network.crypta.platform.appcatalog;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.Signature;
 import java.util.Map;
@@ -15,10 +17,10 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * a catalog model. This prevents a normalized or reparsed catalog from becoming the signed payload
  * and keeps remote catalog metadata fail-closed when sidecars are stale or tampered.
  *
- * <p>The verifier does not read files or fetch remote data. Callers pass the exact bytes retrieved
- * by {@link AppCatalogFetcher} or loaded from {@link AppCatalogSourceStore}. Trusted keys are
- * explicit inputs so runtime composition can choose whether catalog and bundle trust share the same
- * key set without introducing global mutable state.
+ * <p>The primary verifier accepts exact bytes retrieved by {@link AppCatalogFetcher} or loaded from
+ * {@link AppCatalogSourceStore}. A small path-based overload exists for CLI tooling that signs and
+ * verifies local sidecars. Trusted keys are explicit inputs so runtime composition can choose
+ * whether catalog and bundle trust share the same key set without introducing global mutable state.
  */
 public final class AppCatalogVerifier {
   private AppCatalogVerifier() {}
@@ -106,6 +108,38 @@ public final class AppCatalogVerifier {
     }
     verifySignature(catalogBytes, signature, trustedKey);
     return AppCatalogParser.parse(catalogBytes);
+  }
+
+  /**
+   * Verifies a catalog properties file with its sibling signature sidecar.
+   *
+   * <p>This overload is intended for CLI and developer-tooling paths that already operate on local
+   * files. It reads {@code catalogFile} as exact catalog bytes, reads {@code
+   * cryptad-app-catalog.signature} from the same directory, and then delegates to {@link
+   * #verify(byte[], byte[], TrustedAppKeys)} for signature and parser validation.
+   *
+   * @param catalogFile path to {@code cryptad-app-catalog.properties}
+   * @param trustedKeys explicit trusted Ed25519 public keys
+   * @return authenticated parsed catalog content
+   * @throws IOException if either sidecar cannot be read
+   * @throws AppCatalogException if signature, trust, or catalog parsing fails
+   */
+  public static AppCatalog verify(Path catalogFile, TrustedAppKeys trustedKeys) throws IOException {
+    Path normalizedCatalogFile =
+        Objects.requireNonNull(catalogFile, "catalogFile").toAbsolutePath().normalize();
+    byte[] catalogBytes =
+        AppCatalogSidecars.readRequiredBytes(
+            normalizedCatalogFile,
+            AppCatalogSidecars.MAX_CATALOG_BYTES,
+            "catalog properties",
+            AppCatalogSidecars.INVALID_CATALOG_ENTRY);
+    byte[] signatureBytes =
+        AppCatalogSidecars.readRequiredBytes(
+            normalizedCatalogFile.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME),
+            AppCatalogSidecars.MAX_SIGNATURE_BYTES,
+            "catalog signature",
+            AppCatalogSidecars.INVALID_CATALOG_SIGNATURE);
+    return verify(catalogBytes, signatureBytes, trustedKeys);
   }
 
   private static void verifySignature(

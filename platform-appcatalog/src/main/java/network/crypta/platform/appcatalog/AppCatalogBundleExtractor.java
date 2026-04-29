@@ -25,6 +25,7 @@ import java.util.zip.ZipException;
 import java.util.zip.ZipInputStream;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
+import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -46,7 +47,7 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  */
 public final class AppCatalogBundleExtractor {
   private static final int COPY_BUFFER_BYTES = 64 * 1024;
-  private static final int MAX_ZIP_ENTRIES = 4096;
+  private static final int MAX_ZIP_ENTRIES = AppBundlePackager.MAX_CATALOG_ZIP_ENTRIES;
   private static final long MAX_EXTRACTED_BYTES = AppCatalogSidecars.MAX_ARTIFACT_BYTES;
   private static final int END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054B50;
   private static final int CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014B50;

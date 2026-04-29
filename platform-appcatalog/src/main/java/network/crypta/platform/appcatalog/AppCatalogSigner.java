@@ -1,8 +1,11 @@
 package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.Signature;
@@ -54,7 +57,7 @@ public final class AppCatalogSigner {
             keyId,
             AppCatalogSignature.CATALOG_FILE_NAME,
             Base64.getEncoder().encodeToString(signBytes(catalogBytes, privateKey)));
-    Files.writeString(
+    writeSignatureSidecar(
         normalizedCatalogFile.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME),
         serialize(signature));
     return signature;
@@ -90,5 +93,28 @@ public final class AppCatalogSigner {
           "failed to sign catalog sidecar",
           exception);
     }
+  }
+
+  private static void writeSignatureSidecar(Path signatureFile, String content) throws IOException {
+    if (Files.exists(signatureFile, LinkOption.NOFOLLOW_LINKS)) {
+      if (Files.isSymbolicLink(signatureFile)) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+            "catalog signature sidecar must not be a symbolic link");
+      }
+      if (!Files.isRegularFile(signatureFile, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+            "catalog signature sidecar path must be a regular file");
+      }
+    }
+    Files.writeString(
+        signatureFile,
+        content,
+        StandardCharsets.UTF_8,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+        LinkOption.NOFOLLOW_LINKS);
   }
 }
