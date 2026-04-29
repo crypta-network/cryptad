@@ -106,33 +106,30 @@ final class BundleValidator {
    * @throws IOException if the root directory cannot be scanned
    */
   private static SidecarState scanReservedSidecars(Path bundleDir) throws IOException {
-    boolean digest = false;
-    boolean signature = false;
-    boolean catalog = false;
+    SidecarPresence sidecars = new SidecarPresence();
     try (DirectoryStream<Path> stream = Files.newDirectoryStream(bundleDir)) {
       for (Path entry : stream) {
-        if (Files.exists(entry, LinkOption.NOFOLLOW_LINKS)) {
-          Path entryFileName =
-              Objects.requireNonNull(entry.getFileName(), "bundle entry file name");
-          String fileName = entryFileName.toString();
-          String normalized = fileName.toLowerCase(Locale.ROOT);
-          if (RESERVED_SIDECARS.contains(normalized)) {
-            if (!fileName.equals(normalized)) {
-              throw new AppDistributionException(
-                  "reserved sidecar must use canonical lowercase name: " + fileName);
-            }
-            if (AppBundleDigest.DIGEST_FILE_NAME.equals(normalized)) {
-              digest = true;
-            } else if (AppBundleSignature.SIGNATURE_FILE_NAME.equals(normalized)) {
-              signature = true;
-            } else {
-              catalog = true;
-            }
-          }
-        }
+        scanReservedSidecar(entry, sidecars);
       }
     }
-    return new SidecarState(digest, signature, catalog);
+    return sidecars.toState();
+  }
+
+  private static void scanReservedSidecar(Path entry, SidecarPresence sidecars) throws IOException {
+    if (!Files.exists(entry, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    Path entryFileName = Objects.requireNonNull(entry.getFileName(), "bundle entry file name");
+    String fileName = entryFileName.toString();
+    String normalized = fileName.toLowerCase(Locale.ROOT);
+    if (!RESERVED_SIDECARS.contains(normalized)) {
+      return;
+    }
+    if (!fileName.equals(normalized)) {
+      throw new AppDistributionException(
+          "reserved sidecar must use canonical lowercase name: " + fileName);
+    }
+    sidecars.mark(normalized);
   }
 
   /**
@@ -150,6 +147,24 @@ final class BundleValidator {
      */
     boolean present() {
       return hasDigest || hasSignature || hasCatalogSidecar;
+    }
+  }
+
+  private static final class SidecarPresence {
+    private boolean digest;
+    private boolean signature;
+    private boolean catalog;
+
+    private void mark(String sidecarName) {
+      switch (sidecarName) {
+        case AppBundleDigest.DIGEST_FILE_NAME -> digest = true;
+        case AppBundleSignature.SIGNATURE_FILE_NAME -> signature = true;
+        default -> catalog = true;
+      }
+    }
+
+    private SidecarState toState() {
+      return new SidecarState(digest, signature, catalog);
     }
   }
 }
