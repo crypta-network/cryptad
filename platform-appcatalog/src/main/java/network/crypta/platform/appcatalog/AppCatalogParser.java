@@ -1,13 +1,18 @@
 package network.crypta.platform.appcatalog;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * Strict parser for {@code cryptad-app-catalog.properties}.
@@ -106,23 +111,32 @@ public final class AppCatalogParser {
       throw AppCatalogSidecars.invalidEntry(
           "catalog.entries id does not match app." + appId + ".id");
     }
-    try {
-      return new AppCatalogEntry(
-          declaredId,
-          removeRequired(properties, prefix + "name"),
-          removeRequired(properties, prefix + "version"),
-          removeRequired(properties, prefix + "summary"),
-          URI.create(removeRequired(properties, prefix + "bundle.uri")),
-          removeRequired(properties, prefix + "bundle.sha256"),
-          parseSize(removeRequired(properties, prefix + "bundle.size.bytes"), appId),
-          removeRequired(properties, prefix + "bundle.type"),
-          parsePermissions(removeRequired(properties, prefix + "permissions")));
-    } catch (IllegalArgumentException exception) {
-      throw new AppCatalogException(
-          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-          "invalid app." + appId + ".bundle.uri",
-          exception);
-    }
+    List<String> permissions = parsePermissions(removeRequired(properties, prefix + "permissions"));
+    return new AppCatalogEntry(
+        declaredId,
+        removeRequired(properties, prefix + "name"),
+        removeRequired(properties, prefix + "version"),
+        removeRequired(properties, prefix + "summary"),
+        removeOptional(properties, prefix + "homepage")
+            .map(value -> parseUri(value, prefix + "homepage")),
+        removeOptional(properties, prefix + "source")
+            .map(value -> parseUri(value, prefix + "source")),
+        removeOptional(properties, prefix + "license"),
+        parseCategories(removeOptional(properties, prefix + "categories").orElse(null)),
+        new AppCatalogCompatibilityMetadata(
+            removeOptional(properties, prefix + "minimumCryptaVersion")),
+        parseReview(properties, prefix),
+        new AppCatalogChangelog(
+            removeOptional(properties, prefix + "changelog.summary"),
+            removeOptional(properties, prefix + "changelog.uri")
+                .map(value -> parseUri(value, prefix + "changelog.uri"))),
+        parseScreenshots(properties, prefix),
+        parseUri(removeRequired(properties, prefix + "bundle.uri"), prefix + "bundle.uri"),
+        removeRequired(properties, prefix + "bundle.sha256"),
+        parseSize(removeRequired(properties, prefix + "bundle.size.bytes"), appId),
+        removeRequired(properties, prefix + "bundle.type"),
+        permissions,
+        parsePermissionRationales(properties, prefix));
   }
 
   private static long parseSize(String sizeText, String appId) throws AppCatalogException {
@@ -147,6 +161,115 @@ public final class AppCatalogParser {
     return permissions;
   }
 
+  private static List<String> parseCategories(String rawCategories) {
+    if (rawCategories == null || rawCategories.isBlank()) {
+      return List.of();
+    }
+    List<String> categories = new ArrayList<>();
+    for (String category : rawCategories.split(",", -1)) {
+      categories.add(category.trim());
+    }
+    return categories;
+  }
+
+  private static URI parseUri(String rawUri, String fieldName) {
+    String value =
+        AppCatalogSidecars.requireNonBlankSingleLine(
+            rawUri, fieldName, AppCatalogSidecars.INVALID_CATALOG_ENTRY);
+    try {
+      return new URI(value);
+    } catch (URISyntaxException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, "invalid " + fieldName, exception);
+    }
+  }
+
+  private static AppCatalogReviewMetadata parseReview(
+      Map<String, String> properties, String prefix) {
+    Optional<String> statusText = removeOptional(properties, prefix + "review.status");
+    AppCatalogReviewStatus status =
+        statusText
+            .map(value -> AppCatalogReviewStatus.parse(value, prefix + "review.status"))
+            .orElse(AppCatalogReviewStatus.UNREVIEWED);
+    return new AppCatalogReviewMetadata(status, removeOptional(properties, prefix + "review.note"));
+  }
+
+  private static List<URI> parseScreenshots(Map<String, String> properties, String prefix) {
+    String screenshotPrefix = prefix + "screenshot.";
+    List<String> keys =
+        properties.keySet().stream().filter(key -> key.startsWith(screenshotPrefix)).toList();
+    if (keys.isEmpty()) {
+      return List.of();
+    }
+    SortedMap<Integer, URI> indexed = new TreeMap<>();
+    for (String key : keys) {
+      String indexText = key.substring(screenshotPrefix.length());
+      if (!isPositiveDecimal(indexText)) {
+        throw AppCatalogSidecars.invalidEntry("invalid screenshot index: " + key);
+      }
+      int index = parsePositiveIndex(indexText, key);
+      URI previous = indexed.putIfAbsent(index, parseUri(properties.remove(key), key));
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate screenshot index: " + key);
+      }
+    }
+    List<URI> screenshots = new ArrayList<>(indexed.size());
+    int expected = 1;
+    for (Map.Entry<Integer, URI> entry : indexed.entrySet()) {
+      if (entry.getKey() != expected) {
+        throw AppCatalogSidecars.invalidEntry(
+            "missing "
+                + screenshotPrefix
+                + expected
+                + " before "
+                + screenshotPrefix
+                + entry.getKey());
+      }
+      screenshots.add(entry.getValue());
+      expected++;
+    }
+    return List.copyOf(screenshots);
+  }
+
+  private static Map<String, String> parsePermissionRationales(
+      Map<String, String> properties, String prefix) {
+    String rationalePrefix = prefix + "permissions.rationale.";
+    List<String> keys =
+        properties.keySet().stream().filter(key -> key.startsWith(rationalePrefix)).toList();
+    Map<String, String> rationales = new LinkedHashMap<>();
+    for (String key : keys) {
+      String rawPermission = key.substring(rationalePrefix.length());
+      String permission = AppCatalogEntry.normalizePermission(rawPermission, key);
+      String previous = rationales.putIfAbsent(permission, properties.remove(key));
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate permission rationale for " + permission);
+      }
+    }
+    return rationales;
+  }
+
+  private static boolean isPositiveDecimal(String value) {
+    if (value.isEmpty() || value.charAt(0) == '0') {
+      return false;
+    }
+    for (int i = 0; i < value.length(); i++) {
+      char digit = value.charAt(i);
+      if (digit < '0' || digit > '9') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static int parsePositiveIndex(String value, String key) {
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, "invalid screenshot index: " + key, exception);
+    }
+  }
+
   private static String removeRequired(Map<String, String> properties, String key)
       throws AppCatalogException {
     String value = properties.remove(key);
@@ -154,5 +277,9 @@ public final class AppCatalogParser {
       throw AppCatalogSidecars.invalidEntry("missing " + key);
     }
     return value;
+  }
+
+  private static Optional<String> removeOptional(Map<String, String> properties, String key) {
+    return Optional.ofNullable(properties.remove(key));
   }
 }

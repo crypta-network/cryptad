@@ -49,6 +49,18 @@ public final class NodeApiHandler {
   }
 
   /**
+   * Returns the raw greeting snapshot for other Platform API endpoint families.
+   *
+   * <p>This keeps shared display metadata, such as advisory app-catalog compatibility fields, on
+   * the same detached runtime port as the public {@code /node/greeting} response.
+   *
+   * @return current detached greeting snapshot
+   */
+  public NodeGreetingSnapshot rawGreeting() {
+    return nodeInfoPort.greeting();
+  }
+
+  /**
    * Returns one node-reference export as a nested JSON object.
    *
    * @param queryParameters decoded query parameters for the current request

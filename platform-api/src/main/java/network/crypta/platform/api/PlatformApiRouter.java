@@ -169,7 +169,7 @@ public final class PlatformApiRouter {
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
-            : new AppCatalogsApiHandler(appCatalogManager, appHost);
+            : new AppCatalogsApiHandler(appCatalogManager, appHost, this::currentCryptaVersion);
   }
 
   /**
@@ -274,6 +274,11 @@ public final class PlatformApiRouter {
     }
 
     return routeGetOnlyRequest(segments, request, firstSegment);
+  }
+
+  private String currentCryptaVersion() {
+    var greeting = nodeApiHandler.rawGreeting();
+    return greeting == null ? null : Integer.toString(greeting.buildNumber());
   }
 
   private PlatformApiResponse routeGetOnlyRequest(

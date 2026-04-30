@@ -1107,6 +1107,182 @@
     return form;
   }
 
+  function stringList(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((entry) => typeof entry === "string" && entry.length > 0);
+  }
+
+  function recordValue(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function normalizedStatus(value, fallback) {
+    const raw = typeof value === "string" && value.length > 0 ? value : fallback;
+    if (typeof raw !== "string" || raw.length === 0) {
+      return "Unavailable";
+    }
+    return raw
+      .replace(/[_-]+/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function safeMetadataUri(value) {
+    if (typeof value !== "string" || value.length === 0) {
+      return null;
+    }
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function metadataLinkNode(value, label) {
+    const href = safeMetadataUri(value);
+    if (!href) {
+      return scalar(value);
+    }
+    const link = document.createElement("a");
+    link.className = "metadata-link";
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = typeof label === "string" && label ? label : value;
+    return link;
+  }
+
+  function metadataLinkListNode(values) {
+    const links = stringList(values);
+    if (!links.length) {
+      return "Unavailable";
+    }
+    const list = document.createElement("ul");
+    list.className = "metadata-link-list";
+    links.forEach((value, index) => {
+      const item = document.createElement("li");
+      item.append(metadataLinkNode(value, `Screenshot ${index + 1}`));
+      list.append(item);
+    });
+    return list;
+  }
+
+  function chipListNode(values) {
+    const entries = stringList(values);
+    if (!entries.length) {
+      return "Unavailable";
+    }
+    const list = document.createElement("span");
+    list.className = "metadata-chip-list";
+    entries.forEach((entry) => {
+      list.append(text("span", "metadata-chip", entry));
+    });
+    return list;
+  }
+
+  function reviewTone(status) {
+    const normalized = typeof status === "string" ? status.toLowerCase().replace(/[-\s]+/g, "_") : "";
+    if (normalized.includes("reject") || normalized.includes("block") || normalized.includes("unsafe")) {
+      return "is-error";
+    }
+    if (normalized.includes("unreview") || normalized.includes("not_review") || normalized.includes("pending")) {
+      return "is-warning";
+    }
+    if (normalized.includes("review") || normalized.includes("approve") || normalized.includes("verified")) {
+      return "is-success";
+    }
+    return "is-warning";
+  }
+
+  function compatibilityTone(compatibility) {
+    if (!compatibility || Object.keys(compatibility).length === 0) {
+      return "is-warning";
+    }
+    if (compatibility.satisfied === false) {
+      return "is-error";
+    }
+    if (compatibility.satisfied === true) {
+      return "is-success";
+    }
+    const status = typeof compatibility.status === "string" ? compatibility.status.toLowerCase() : "";
+    return status.includes("unsatisfied") || status.includes("unsupported") ? "is-error" : "is-warning";
+  }
+
+  function compatibilityLabel(compatibility) {
+    if (!compatibility || Object.keys(compatibility).length === 0) {
+      return "Compatibility unknown";
+    }
+    if (compatibility.satisfied === false) {
+      return "Compatibility warning";
+    }
+    if (compatibility.satisfied === true) {
+      return "Compatible";
+    }
+    return normalizedStatus(compatibility.status, "Compatibility advisory");
+  }
+
+  function versionTone(app) {
+    if (app.updateAvailable || app.versionDifferent) {
+      return "is-warning";
+    }
+    return app.installed ? "is-success" : "";
+  }
+
+  function versionLabel(app) {
+    if (app.updateAvailable) {
+      return "Update available";
+    }
+    if (app.versionDifferent) {
+      return "Version differs";
+    }
+    if (app.installed) {
+      return "Installed version";
+    }
+    return "Available";
+  }
+
+  function versionSummary(app) {
+    const catalogVersion = typeof app.version === "string" && app.version ? app.version : "Unavailable";
+    const installedVersion =
+      typeof app.installedVersion === "string" && app.installedVersion ? app.installedVersion : "Unavailable";
+    if (!app.installed) {
+      return `Not installed; catalog version ${catalogVersion}`;
+    }
+    if (app.updateAvailable) {
+      return `Update available: installed ${installedVersion}, catalog ${catalogVersion}`;
+    }
+    if (app.versionDifferent) {
+      return `Installed ${installedVersion} differs from catalog ${catalogVersion}`;
+    }
+    if (typeof app.versionStatus === "string" && app.versionStatus.length > 0) {
+      return normalizedStatus(app.versionStatus);
+    }
+    return `Installed ${installedVersion}; catalog ${catalogVersion}`;
+  }
+
+  function permissionDeltaStatus(permission, delta) {
+    if (stringList(delta.added).includes(permission)) {
+      return ["Added on install/update", "is-warning"];
+    }
+    if (stringList(delta.removed).includes(permission)) {
+      return ["Removed by catalog version", "is-warning"];
+    }
+    if (stringList(delta.unchanged).includes(permission)) {
+      return ["Already granted", "is-success"];
+    }
+    return null;
+  }
+
+  function permissionRationale(permission, rationales) {
+    const value = rationales[permission];
+    return typeof value === "string" && value.length > 0
+      ? value
+      : "No permission rationale supplied.";
+  }
+
   function renderAppCard(app) {
     const card = document.createElement("article");
     card.className = "app-card";
@@ -1415,26 +1591,170 @@
     return card;
   }
 
+  function catalogReviewDetailsNode(app) {
+    const review = recordValue(app.review);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-review-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Review and trust";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Catalog trust", "Signed catalog metadata"],
+        ["Review status", normalizedStatus(review.status, "Unreviewed")],
+        ["Review note", scalar(review.note)],
+        ["Review semantics", "Advisory metadata; catalog and bundle verification still control installation."],
+      ]),
+    );
+    return details;
+  }
+
+  function catalogCompatibilityDetailsNode(app) {
+    const compatibility = recordValue(app.compatibility);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-compatibility-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Compatibility";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Minimum Crypta version", scalar(compatibility.minimumCryptaVersion)],
+        ["Current Crypta version", scalar(compatibility.currentCryptaVersion)],
+        ["Satisfied", compatibility.satisfied == null ? "Advisory" : compatibility.satisfied ? "Yes" : "No"],
+        ["Status", normalizedStatus(compatibility.status, "Advisory")],
+        ["Advisory", compatibility.advisory === false ? "No" : "Yes"],
+      ]),
+    );
+    return details;
+  }
+
+  function catalogPermissionReviewDetailsNode(app) {
+    const details = document.createElement("details");
+    details.className = "json-details catalog-permission-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Permission review";
+    details.append(summary);
+
+    const permissions = stringList(app.permissions);
+    const rationales = recordValue(app.permissionRationales);
+    const delta = recordValue(app.permissionDelta);
+    details.append(
+      definitionList([
+        ["Added", formatPermissions(delta.added)],
+        ["Removed", formatPermissions(delta.removed)],
+        ["Unchanged", formatPermissions(delta.unchanged)],
+      ]),
+    );
+
+    if (!permissions.length) {
+      details.append(text("p", "empty-state", "No permissions declared by this catalog version."));
+      return details;
+    }
+
+    const list = document.createElement("div");
+    list.className = "permission-review-list";
+    permissions.forEach((permission) => {
+      const item = document.createElement("div");
+      item.className = "permission-review-item";
+
+      const header = document.createElement("div");
+      header.className = "permission-review-header";
+      header.append(text("span", "permission-name", permission));
+      const deltaStatus = permissionDeltaStatus(permission, delta);
+      if (deltaStatus) {
+        header.append(createPill(deltaStatus[0], deltaStatus[1]));
+      }
+
+      item.append(header, text("p", "permission-rationale", permissionRationale(permission, rationales)));
+      list.append(item);
+    });
+    details.append(list);
+    return details;
+  }
+
+  function catalogReleaseDetailsNode(app) {
+    const changelog = recordValue(app.changelog);
+    const bundle = recordValue(app.bundle);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-release-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Release metadata";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Changelog summary", scalar(changelog.summary)],
+        ["Changelog link", metadataLinkNode(changelog.uri)],
+        ["Screenshot links", metadataLinkListNode(app.screenshots)],
+        ["Bundle URI", metadataLinkNode(bundle.uri)],
+        ["Bundle type", scalar(bundle.type)],
+        ["Bundle size", formatBytes(bundle.sizeBytes)],
+        ["Bundle SHA-256", scalar(bundle.sha256)],
+      ]),
+    );
+    return details;
+  }
+
   function renderCatalogAppCard(catalog, app) {
     const card = document.createElement("section");
     card.className = "catalog-app-card";
-    card.append(text("h4", "catalog-app-title", appDisplayName(app)));
+    if (app.updateAvailable) {
+      card.className += " is-update-available";
+    }
+
+    const review = recordValue(app.review);
+    const compatibility = recordValue(app.compatibility);
+    const header = document.createElement("div");
+    header.className = "catalog-app-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h4", "catalog-app-title", appDisplayName(app)),
+      text("p", "app-card-subtitle", typeof app.appId === "string" && app.appId ? app.appId : "Unavailable"),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill("Signed catalog"));
+    pills.append(createPill(normalizedStatus(review.status, "Unreviewed"), reviewTone(review.status)));
+    pills.append(createPill(versionLabel(app), versionTone(app)));
+    pills.append(createPill(compatibilityLabel(compatibility), compatibilityTone(compatibility)));
+    header.append(heading, pills);
+    card.append(header);
     card.append(
       definitionList([
         ["App ID", scalar(app.appId)],
-        ["Version", scalar(app.version)],
+        ["Catalog version", scalar(app.version)],
         ["Installed version", scalar(app.installedVersion)],
+        ["Version change", versionSummary(app)],
         ["Summary", scalar(app.summary)],
+        ["Homepage", metadataLinkNode(app.homepage)],
+        ["Source", metadataLinkNode(app.source)],
+        ["License", scalar(app.license)],
+        ["Categories", chipListNode(app.categories)],
+        ["Review status", normalizedStatus(review.status, "Unreviewed")],
+        ["Review note", scalar(review.note)],
         ["Permissions", formatPermissions(app.permissions)],
+        ["Permission changes", `+${stringList(recordValue(app.permissionDelta).added).length} / -${stringList(recordValue(app.permissionDelta).removed).length}`],
+        ["Compatibility", compatibilityLabel(compatibility)],
+        ["Minimum Crypta version", scalar(compatibility.minimumCryptaVersion)],
+        ["Changelog", scalar(recordValue(app.changelog).summary)],
         ["Installed", app.installed ? "Yes" : "No"],
         ["Running", app.running ? "Yes" : "No"],
       ]),
     );
+    card.append(catalogReviewDetailsNode(app));
+    card.append(catalogCompatibilityDetailsNode(app));
+    card.append(catalogPermissionReviewDetailsNode(app));
+    card.append(catalogReleaseDetailsNode(app));
     if (formPassword) {
       const actions = document.createElement("div");
       actions.className = "app-card-actions";
       const action = app.installed ? "update" : "install";
-      const form = buildCatalogActionForm(catalog, app, action, app.installed ? "Update" : "Install");
+      const label = app.installed
+        ? app.updateAvailable || app.versionDifferent
+          ? "Update from catalog"
+          : "Update installed app"
+        : "Install from catalog";
+      const form = buildCatalogActionForm(catalog, app, action, label);
       if (form) {
         actions.append(form);
         card.append(actions);

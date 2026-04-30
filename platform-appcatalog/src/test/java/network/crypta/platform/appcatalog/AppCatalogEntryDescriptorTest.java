@@ -34,7 +34,18 @@ class AppCatalogEntryDescriptorTest {
                 "app.id= Sample-App ",
                 "name= Sample App ",
                 "version= 0.1.0 ",
-                "permissions= "),
+                "homepage=https://example.invalid/app",
+                "source=https://example.invalid/repo",
+                "license= MIT ",
+                "categories=Productivity,network,productivity",
+                "minimumCryptaVersion= 0.1.0 ",
+                "review.status= reviewed ",
+                "review.note= Reviewed for local operator safety. ",
+                "permissions= ",
+                "permissions.rationale.queue.read= Reads the local transfer queue. ",
+                "screenshot.1=https://example.invalid/assets/shot-1.png",
+                "changelog.summary= Adds queue retry controls. ",
+                "changelog.uri=https://example.invalid/changelog.txt"),
             StandardCharsets.UTF_8);
 
     AppCatalogEntryDescriptor parsed = AppCatalogEntryDescriptor.parse(descriptor);
@@ -45,7 +56,45 @@ class AppCatalogEntryDescriptorTest {
     assertEquals(Optional.of("Sample-App"), parsed.appIdOverride());
     assertEquals(Optional.of("Sample App"), parsed.nameOverride());
     assertEquals(Optional.of("0.1.0"), parsed.versionOverride());
+    assertEquals("https://example.invalid/app", parsed.homepage().orElseThrow().toString());
+    assertEquals("https://example.invalid/repo", parsed.source().orElseThrow().toString());
+    assertEquals(Optional.of("MIT"), parsed.license());
+    assertEquals(List.of("productivity", "network"), parsed.categories());
+    assertEquals("0.1.0", parsed.compatibility().minimumCryptaVersion().orElseThrow());
+    assertEquals(AppCatalogReviewStatus.REVIEWED, parsed.review().status());
+    assertEquals("Reviewed for local operator safety.", parsed.review().note().orElseThrow());
     assertEquals(Optional.of(List.of()), parsed.permissionsOverride());
+    assertEquals(
+        "Reads the local transfer queue.", parsed.permissionRationales().get("queue.read"));
+    assertEquals(
+        List.of(URI.create("https://example.invalid/assets/shot-1.png")), parsed.screenshots());
+    assertEquals("Adds queue retry controls.", parsed.changelog().summary().orElseThrow());
+    assertEquals(
+        "https://example.invalid/changelog.txt", parsed.changelog().uri().orElseThrow().toString());
+  }
+
+  @Test
+  void parse_whenDescriptorOmitsStoreMetadata_expectEmptyMetadata() throws Exception {
+    Path artifact = tempDir.resolve("sample-app.zip").toAbsolutePath().normalize();
+    URI bundleUri = URI.create("https://example.invalid/apps/sample-app.zip");
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + artifact,
+            "bundle.uri=" + bundleUri,
+            "summary=Sample app catalog entry");
+
+    AppCatalogEntryDescriptor parsed = AppCatalogEntryDescriptor.parse(descriptor);
+
+    assertEquals(Optional.empty(), parsed.homepage());
+    assertEquals(Optional.empty(), parsed.source());
+    assertEquals(Optional.empty(), parsed.license());
+    assertEquals(List.of(), parsed.categories());
+    assertEquals(Optional.empty(), parsed.compatibility().minimumCryptaVersion());
+    assertEquals(AppCatalogReviewMetadata.EMPTY, parsed.review());
+    assertEquals(AppCatalogChangelog.EMPTY, parsed.changelog());
+    assertEquals(List.of(), parsed.screenshots());
+    assertEquals(Optional.empty(), parsed.permissionsOverride());
+    assertTrue(parsed.permissionRationales().isEmpty());
   }
 
   @Test
@@ -84,6 +133,58 @@ class AppCatalogEntryDescriptorTest {
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
     assertTrue(exception.getMessage().contains("unsupported catalog entry descriptor property"));
+  }
+
+  @Test
+  void parse_whenDescriptorMetadataUriUsesFileScheme_expectInvalidCatalogEntry() throws Exception {
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath().normalize(),
+            "bundle.uri=https://example.invalid/apps/sample-app.zip",
+            "summary=Sample app catalog entry",
+            "homepage=file:///tmp/sample-app");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void parse_whenDescriptorScreenshotIndexesHaveGap_expectInvalidCatalogEntry() throws Exception {
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath().normalize(),
+            "bundle.uri=https://example.invalid/apps/sample-app.zip",
+            "summary=Sample app catalog entry",
+            "screenshot.2=https://example.invalid/assets/shot-2.png");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void parse_whenPermissionRationaleKeysNormalizeToDuplicate_expectInvalidCatalogEntry()
+      throws Exception {
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath().normalize(),
+            "bundle.uri=https://example.invalid/apps/sample-app.zip",
+            "summary=Sample app catalog entry",
+            "permissions.rationale.queue.read=Reads queues.",
+            "permissions.rationale.QUEUE.READ=Reads queues again.");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  private Path descriptor(String... properties) throws Exception {
+    return Files.writeString(
+        tempDir.resolve("entry.properties"), lines(properties), StandardCharsets.UTF_8);
   }
 
   private static String lines(String... values) {

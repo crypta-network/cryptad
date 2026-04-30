@@ -1,16 +1,24 @@
 package network.crypta.platform.api.appcatalogs;
 
 import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.appcatalog.AppCatalogChangelog;
+import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -47,9 +55,19 @@ public final class AppCatalogsApiHandler {
   private static final String INVALID_APP_BUNDLE_ERROR_CODE = "invalid_app_bundle";
   private static final String APPHOST_BUNDLE_VALIDATION_MESSAGE =
       "Catalog app bundle failed AppHost validation.";
+  private static final String VERSION_STATUS_NOT_INSTALLED = "not_installed";
+  private static final String VERSION_STATUS_CURRENT = "current";
+  private static final String VERSION_STATUS_DIFFERENT = "different";
+  private static final String VERSION_STATUS_UNKNOWN = "unknown";
+  private static final String COMPATIBILITY_NOT_DECLARED = "not_declared";
+  private static final String COMPATIBILITY_SATISFIED = "satisfied";
+  private static final String COMPATIBILITY_NOT_SATISFIED = "not_satisfied";
+  private static final String COMPATIBILITY_UNKNOWN = "unknown";
+  private static final String SOURCE_FIELD = "source";
 
   private final AppCatalogManager catalogManager;
   private final AppHost appHost;
+  private final Supplier<String> currentCryptaVersionSupplier;
 
   /**
    * Creates a handler backed by a catalog manager and shared AppHost.
@@ -62,9 +80,30 @@ public final class AppCatalogsApiHandler {
    * @param catalogManager signed catalog manager owned by runtime composition
    * @param appHost shared AppHost used for final install and update operations
    */
+  @SuppressWarnings("unused")
   public AppCatalogsApiHandler(AppCatalogManager catalogManager, AppHost appHost) {
+    this(catalogManager, appHost, () -> null);
+  }
+
+  /**
+   * Creates a handler backed by a catalog manager, AppHost, and node-version supplier.
+   *
+   * <p>The version supplier is used only for advisory compatibility metadata in read responses. It
+   * is not involved in catalog signature verification, artifact staging, or install/update
+   * decisions.
+   *
+   * @param catalogManager signed catalog manager owned by runtime composition
+   * @param appHost shared AppHost used for final install and update operations
+   * @param currentCryptaVersionSupplier current node version supplier for compatibility display
+   */
+  public AppCatalogsApiHandler(
+      AppCatalogManager catalogManager,
+      AppHost appHost,
+      Supplier<String> currentCryptaVersionSupplier) {
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
+    this.currentCryptaVersionSupplier =
+        Objects.requireNonNull(currentCryptaVersionSupplier, "currentCryptaVersionSupplier");
   }
 
   /**
@@ -98,7 +137,7 @@ public final class AppCatalogsApiHandler {
    * @return JSON-compatible summary for the newly stored and verified catalog
    */
   public Map<String, Object> add(Map<String, List<String>> queryParameters) {
-    String source = PlatformApiParameters.requireString(queryParameters, "source");
+    String source = PlatformApiParameters.requireString(queryParameters, SOURCE_FIELD);
     try {
       return summarizeCatalog(catalogManager.addSource(source));
     } catch (AppCatalogException exception) {
@@ -302,7 +341,7 @@ public final class AppCatalogsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
     json.put("catalogId", snapshot.catalogId());
     json.put("name", snapshot.name());
-    json.put("source", snapshot.sourceUri().toString());
+    json.put(SOURCE_FIELD, snapshot.sourceUri().toString());
     json.put("generatedAt", snapshot.generatedAt().toString());
     json.put("appCount", snapshot.appCount());
     json.put("addedAt", snapshot.addedAt().toString());
@@ -313,15 +352,31 @@ public final class AppCatalogsApiHandler {
   private Map<String, Object> summarizeEntry(AppCatalogEntry entry) {
     InstalledAppSnapshot installed = installed(entry.appId());
     RunningAppSnapshot running = appHost.status(entry.appId()).orElse(null);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+    String installedVersion = installed == null ? null : installed.manifest().appVersion();
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(28);
     json.put("appId", entry.appId());
     json.put("name", entry.name());
     json.put("version", entry.version());
     json.put("summary", entry.summary());
+    json.put("homepage", entry.homepage().map(URI::toString).orElse(null));
+    json.put(SOURCE_FIELD, entry.source().map(URI::toString).orElse(null));
+    json.put("license", entry.license().orElse(null));
+    json.put("categories", entry.categories());
+    json.put("review", summarizeReview(entry.review()));
     json.put("permissions", entry.permissions());
+    json.put("permissionRationales", entry.permissionRationales());
+    json.put("compatibility", summarizeCompatibility(entry.compatibility()));
+    json.put("changelog", summarizeChangelog(entry.changelog()));
+    json.put("screenshots", entry.screenshots().stream().map(URI::toString).toList());
     json.put("bundle", summarizeBundle(entry));
     json.put("installed", installed != null);
-    json.put("installedVersion", installed == null ? null : installed.manifest().appVersion());
+    json.put("installedVersion", installedVersion);
+    json.put(
+        "versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
+    json.put(
+        "updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null));
+    json.put("versionStatus", versionStatus(entry.version(), installedVersion, installed != null));
+    json.put("permissionDelta", summarizePermissionDelta(entry.permissions(), installed));
     json.put("running", running != null);
     json.put("pid", running == null ? null : running.pid());
     json.put("startedAt", running == null ? null : running.startedAt().toString());
@@ -343,6 +398,153 @@ public final class AppCatalogsApiHandler {
     json.put("sizeBytes", entry.bundleSizeBytes());
     json.put("sha256", entry.bundleSha256());
     return json;
+  }
+
+  private static Map<String, Object> summarizeReview(AppCatalogReviewMetadata review) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put("status", review.status().catalogValue());
+    json.put("note", review.note().orElse(null));
+    json.put("advisory", true);
+    return json;
+  }
+
+  private Map<String, Object> summarizeCompatibility(
+      AppCatalogCompatibilityMetadata compatibility) {
+    String minimumVersion = compatibility.minimumCryptaVersion().orElse(null);
+    String currentVersion = currentCryptaVersion();
+    CompatibilityResult result = compatibilityResult(minimumVersion, currentVersion);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    json.put("minimumCryptaVersion", minimumVersion);
+    json.put("currentCryptaVersion", currentVersion);
+    json.put(COMPATIBILITY_SATISFIED, result.satisfied());
+    json.put("advisory", true);
+    json.put("status", result.status());
+    return json;
+  }
+
+  private static Map<String, Object> summarizeChangelog(AppCatalogChangelog changelog) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("summary", changelog.summary().orElse(null));
+    json.put("uri", changelog.uri().map(URI::toString).orElse(null));
+    return json;
+  }
+
+  private static Map<String, Object> summarizePermissionDelta(
+      List<String> catalogPermissions, InstalledAppSnapshot installed) {
+    Set<String> catalog = new LinkedHashSet<>(catalogPermissions);
+    Set<String> local =
+        installed == null ? Set.of() : new LinkedHashSet<>(installed.manifest().permissions());
+    List<String> added = new ArrayList<>();
+    List<String> removed = new ArrayList<>();
+    List<String> unchanged = new ArrayList<>();
+    for (String permission : catalog) {
+      if (local.contains(permission)) {
+        unchanged.add(permission);
+      } else {
+        added.add(permission);
+      }
+    }
+    for (String permission : local) {
+      if (!catalog.contains(permission)) {
+        removed.add(permission);
+      }
+    }
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put("added", List.copyOf(added));
+    json.put("removed", List.copyOf(removed));
+    json.put("unchanged", List.copyOf(unchanged));
+    return json;
+  }
+
+  private String currentCryptaVersion() {
+    try {
+      String value = currentCryptaVersionSupplier.get();
+      return value == null || value.isBlank() ? null : value;
+    } catch (RuntimeException _) {
+      return null;
+    }
+  }
+
+  private static boolean versionDifferent(
+      String catalogVersion, String installedVersion, boolean installed) {
+    if (!installed) {
+      return false;
+    }
+    if (catalogVersion == null || installedVersion == null) {
+      return false;
+    }
+    return !catalogVersion.equals(installedVersion);
+  }
+
+  private static boolean updateAvailable(
+      String catalogVersion, String installedVersion, boolean installed) {
+    return versionDifferent(catalogVersion, installedVersion, installed);
+  }
+
+  private static String versionStatus(
+      String catalogVersion, String installedVersion, boolean installed) {
+    if (!installed) {
+      return VERSION_STATUS_NOT_INSTALLED;
+    }
+    if (catalogVersion == null || installedVersion == null) {
+      return VERSION_STATUS_UNKNOWN;
+    }
+    return versionDifferent(catalogVersion, installedVersion, true)
+        ? VERSION_STATUS_DIFFERENT
+        : VERSION_STATUS_CURRENT;
+  }
+
+  private static CompatibilityResult compatibilityResult(
+      String minimumVersion, String currentVersion) {
+    if (minimumVersion == null) {
+      return new CompatibilityResult(true, COMPATIBILITY_NOT_DECLARED);
+    }
+    if (currentVersion == null) {
+      return new CompatibilityResult(null, COMPATIBILITY_UNKNOWN);
+    }
+    Integer comparison = compareDottedNumericVersions(currentVersion, minimumVersion);
+    if (comparison == null) {
+      return new CompatibilityResult(null, COMPATIBILITY_UNKNOWN);
+    }
+    boolean satisfied = comparison >= 0;
+    return new CompatibilityResult(
+        satisfied, satisfied ? COMPATIBILITY_SATISFIED : COMPATIBILITY_NOT_SATISFIED);
+  }
+
+  private static Integer compareDottedNumericVersions(String left, String right) {
+    List<Integer> leftParts = parseDottedNumericVersion(left);
+    List<Integer> rightParts = parseDottedNumericVersion(right);
+    if (leftParts.isEmpty() || rightParts.isEmpty()) {
+      return null;
+    }
+    int count = Math.max(leftParts.size(), rightParts.size());
+    for (int index = 0; index < count; index++) {
+      int leftPart = index < leftParts.size() ? leftParts.get(index) : 0;
+      int rightPart = index < rightParts.size() ? rightParts.get(index) : 0;
+      if (leftPart != rightPart) {
+        return Integer.compare(leftPart, rightPart);
+      }
+    }
+    return 0;
+  }
+
+  private static List<Integer> parseDottedNumericVersion(String version) {
+    if (version == null || version.isBlank()) {
+      return List.of();
+    }
+    String[] tokens = version.trim().split("\\.", -1);
+    List<Integer> parts = new ArrayList<>(tokens.length);
+    for (String token : tokens) {
+      if (token.isBlank() || !token.chars().allMatch(Character::isDigit)) {
+        return List.of();
+      }
+      try {
+        parts.add(Integer.parseInt(token));
+      } catch (NumberFormatException _) {
+        return List.of();
+      }
+    }
+    return List.copyOf(parts);
   }
 
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {
@@ -448,4 +650,6 @@ public final class AppCatalogsApiHandler {
     String message = failure.getMessage();
     return message == null || message.isBlank() ? "App already installed." : message;
   }
+
+  private record CompatibilityResult(Boolean satisfied, String status) {}
 }

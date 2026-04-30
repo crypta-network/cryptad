@@ -136,11 +136,20 @@ public final class AppCatalogWriter {
         descriptor.nameOverride().orElse(manifest.appName()),
         version,
         descriptor.summary(),
+        descriptor.homepage(),
+        descriptor.source(),
+        descriptor.license(),
+        descriptor.categories(),
+        descriptor.compatibility(),
+        descriptor.review(),
+        descriptor.changelog(),
+        descriptor.screenshots(),
         descriptor.bundleUri(),
         artifact.sha256(),
         artifact.sizeBytes(),
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        descriptor.permissionsOverride().orElse(manifest.permissions()));
+        descriptor.permissionsOverride().orElse(manifest.permissions()),
+        descriptor.permissionRationales());
   }
 
   private static void requireManifestAppIdMatch(
@@ -354,7 +363,8 @@ public final class AppCatalogWriter {
   }
 
   private static void createSafeCatalogOutputParent(Path parent) throws IOException {
-    Path existingAncestor = parent;
+    Path outputParent = Objects.requireNonNull(parent, "parent");
+    Path existingAncestor = outputParent;
     while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
       existingAncestor = existingAncestor.getParent();
     }
@@ -363,9 +373,10 @@ public final class AppCatalogWriter {
             || !Files.isDirectory(existingAncestor, LinkOption.NOFOLLOW_LINKS))) {
       throw new IOException("catalog output parent must be a real directory: " + existingAncestor);
     }
-    Files.createDirectories(parent);
-    if (Files.isSymbolicLink(parent) || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
-      throw new IOException("catalog output parent must be a real directory: " + parent);
+    Files.createDirectories(outputParent);
+    if (Files.isSymbolicLink(outputParent)
+        || !Files.isDirectory(outputParent, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("catalog output parent must be a real directory: " + outputParent);
     }
   }
 
@@ -395,17 +406,54 @@ public final class AppCatalogWriter {
     appendProperty(builder, prefix + "name", entry.name());
     appendProperty(builder, prefix + "version", entry.version());
     appendProperty(builder, prefix + "summary", entry.summary());
+    entry.homepage().ifPresent(uri -> appendProperty(builder, prefix + "homepage", uri.toString()));
+    entry.source().ifPresent(uri -> appendProperty(builder, prefix + "source", uri.toString()));
+    entry.license().ifPresent(value -> appendProperty(builder, prefix + "license", value));
+    if (!entry.categories().isEmpty()) {
+      appendProperty(builder, prefix + "categories", joinValues(entry.categories()));
+    }
+    entry
+        .compatibility()
+        .minimumCryptaVersion()
+        .ifPresent(value -> appendProperty(builder, prefix + "minimumCryptaVersion", value));
+    if (entry.review().hasCatalogFields()) {
+      appendProperty(builder, prefix + "review.status", entry.review().status().catalogValue());
+      entry
+          .review()
+          .note()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.note", value));
+    }
+    if (!entry.permissionRationales().isEmpty()) {
+      entry
+          .permissionRationales()
+          .forEach(
+              (permission, rationale) ->
+                  appendProperty(
+                      builder, prefix + "permissions.rationale." + permission, rationale));
+    }
+    for (int index = 0; index < entry.screenshots().size(); index++) {
+      appendProperty(
+          builder, prefix + "screenshot." + (index + 1), entry.screenshots().get(index).toString());
+    }
+    entry
+        .changelog()
+        .summary()
+        .ifPresent(value -> appendProperty(builder, prefix + "changelog.summary", value));
+    entry
+        .changelog()
+        .uri()
+        .ifPresent(uri -> appendProperty(builder, prefix + "changelog.uri", uri.toString()));
     appendProperty(builder, prefix + "bundle.uri", entry.bundleUri().toString());
     appendProperty(builder, prefix + "bundle.sha256", entry.bundleSha256());
     appendProperty(builder, prefix + "bundle.size.bytes", Long.toString(entry.bundleSizeBytes()));
     appendProperty(builder, prefix + "bundle.type", entry.bundleType());
-    appendProperty(builder, prefix + "permissions", joinPermissions(entry.permissions()));
+    appendProperty(builder, prefix + "permissions", joinValues(entry.permissions()));
   }
 
-  private static String joinPermissions(List<String> permissions) {
+  private static String joinValues(List<String> values) {
     StringJoiner joiner = new StringJoiner(",");
-    for (String permission : permissions) {
-      joiner.add(permission);
+    for (String value : values) {
+      joiner.add(value);
     }
     return joiner.toString();
   }

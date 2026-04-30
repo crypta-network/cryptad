@@ -16,8 +16,8 @@ Related but documented elsewhere:
   [app-catalogs.md](app-catalogs.md)
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
 - Browser SDK helpers for app-owned static UI: [platform-sdk-js.md](platform-sdk-js.md)
-- Public app store UI, browser-side bundle uploads, richer permission UX, and app sandboxing
-  remain future platform work.
+- Catalog distribution over Crypta keys, browser-side bundle uploads, and app sandboxing remain
+  future platform work.
 
 ## Bundle Files
 
@@ -185,6 +185,23 @@ is available. See [app-dev-cli.md](app-dev-cli.md) for the full scaffold, pack, 
 The CLI does not replace the first-party Gradle workflow. Queue Manager and Publisher can keep
 using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`, and `verifyApp` tasks.
 
+## Catalog Store Metadata
+
+Signed bundle manifests remain the source for installed app id, version, launch settings, UI
+entry, sandbox mode, quota metadata, and declared permissions. Signed catalogs can add optional
+store metadata around those bundles so the Web Shell can show a richer install/update review
+surface.
+
+Catalog entry descriptors accepted by `crypta-app catalog create` can include `homepage`,
+`source`, `license`, `categories`, `minimumCryptaVersion`, `review.status`, `review.note`,
+`permissions.rationale.<permission>`, `screenshot.N`, `changelog.summary`, and `changelog.uri`.
+The generated catalog writes those fields under `app.<id>.*`.
+
+These fields are display and review metadata. The catalog signature still authenticates the exact
+catalog bytes, and the app bundle signature still authenticates the bundle payload. Review notes,
+permission rationales, screenshot URLs, changelog URLs, and compatibility hints do not grant trust
+or bypass AppHost verification.
+
 ## Gradle Tasks
 
 Per app:
@@ -307,6 +324,7 @@ Preferred local patterns:
 
 ## Future Work
 
-Public catalog governance, background app-update scheduling, richer permission UX, and app
-sandboxing remain later platform work. Signed bundles now carry the manifest metadata and staged
-browser assets needed by app-owned static UI routes.
+Catalog distribution over Crypta keys, public catalog governance, background app-update
+scheduling, remote screenshot proxying, and app sandboxing remain later platform work. Signed
+bundles now carry the manifest metadata and staged browser assets needed by app-owned static UI
+routes.

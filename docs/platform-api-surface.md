@@ -85,7 +85,33 @@ parameter; check the handler and tests when adding or changing a specific contra
 | Alerts | `GET /api/v1/alerts` lists current alerts. `POST /api/v1/alerts/{alertId}/dismiss` dismisses one alert by detached identifier. |
 | Diagnostics | `GET /api/v1/diagnostics` exposes the ordered diagnostic snapshot and plain-text export. When served through the legacy HTTP bridge, it also includes process-local `legacyAdmin.surfaces[]` counters for legacy admin retirement planning. |
 | Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router, including path-free quota usage, effective limits, process-log size/limit metadata, sandbox status, and recent audit summary data. The family also covers local staged-bundle install, app lookup, start, stop, update, uninstall, declared permissions at `GET /api/v1/apps/{appId}/permissions`, recent app audit at `GET /api/v1/apps/{appId}/audit`, token-free runtime status at `GET /api/v1/apps/{appId}/runtime`, and bounded token-redacted process logs at `GET /api/v1/apps/{appId}/logs`. |
-| App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. The family also covers source add/remove, refresh, catalog app listing/detail, and install/update from a verified catalog artifact. |
+| App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. The family also covers source add/remove, refresh, catalog app listing/detail, install/update from a verified catalog artifact, and app-store metadata for install/update review. |
+
+## App catalog response metadata
+
+Catalog app listing and detail responses expose signed-catalog metadata for the Web Shell Apps
+section. The response shape includes the existing app id, name, version, summary, bundle metadata,
+installed state, running state, and installed version. It also includes optional v1 store metadata
+when a catalog entry provides it:
+
+- `homepage`, `source`, `license`, and `categories`.
+- `review.status` and `review.note`.
+- `permissionRationales`, keyed by normalized permission name.
+- `compatibility.minimumCryptaVersion`, the current comparable Cryptad build/version string,
+  advisory status, and whether the comparison is satisfied when it can be evaluated.
+- `screenshots` as URI strings.
+- `changelog.summary` and `changelog.uri`.
+- Installed-vs-catalog version-difference fields and an advisory `updateAvailable` summary.
+- `permissionDelta` for install/update review, with added, removed, and unchanged permissions.
+
+Signed catalog verification remains the source of trust. Review metadata is advisory and does not
+create cryptographic trust. Compatibility metadata is advisory and does not block install/update by
+itself when version comparison is unavailable or ambiguous.
+
+The API must not expose trusted-key material, catalog scratch paths, verified staging directories,
+or AppHost filesystem paths through catalog responses. Screenshot fields are URL metadata for the
+operator; the Web Shell should show them as links or behind an explicit preview control rather than
+silently fetching arbitrary remote images.
 
 ## Web Shell relationship
 
@@ -98,7 +124,8 @@ The shell currently includes these first-party panels and surfaces:
 
 - Overview and connectivity snapshots.
 - Alert queue and diagnostics.
-- Installed apps and signed catalog app discovery.
+- Installed apps and signed catalog app discovery, including catalog detail review before
+  install/update.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
 - Publisher and Queue Manager open as independent first-party app UIs when installed.

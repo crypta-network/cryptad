@@ -57,6 +57,62 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogHasOptionalStoreMetadata_expectMetadataNormalized() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                """
+                catalog.version=1
+                catalog.id=core
+                catalog.name=Crypta Core Apps
+                catalog.generatedAt=%s
+                catalog.entries=queue-manager
+                app.queue-manager.id=queue-manager
+                app.queue-manager.name=Queue Manager
+                app.queue-manager.version=1.2.0
+                app.queue-manager.summary=Manage transfer queues.
+                app.queue-manager.homepage=https://example.invalid/app
+                app.queue-manager.source=https://example.invalid/repo
+                app.queue-manager.license=MIT
+                app.queue-manager.categories=Productivity,network,productivity
+                app.queue-manager.minimumCryptaVersion=0.1.0
+                app.queue-manager.review.status=reviewed
+                app.queue-manager.review.note=Reviewed for local operator safety.
+                app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.
+                app.queue-manager.permissions.rationale.queue.write=Updates queue state.
+                app.queue-manager.screenshot.1=https://example.invalid/assets/shot-1.png
+                app.queue-manager.screenshot.2=https://example.invalid/assets/shot-2.png
+                app.queue-manager.changelog.summary=Adds queue retry controls.
+                app.queue-manager.changelog.uri=https://example.invalid/changelog.txt
+                app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+                app.queue-manager.bundle.sha256=%s
+                app.queue-manager.bundle.size.bytes=0
+                app.queue-manager.bundle.type=zip
+                app.queue-manager.permissions=queue.read,queue.write
+                """
+                    .formatted(GENERATED_AT, SHA256)));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+
+    assertEquals("https://example.invalid/app", entry.homepage().orElseThrow().toString());
+    assertEquals("https://example.invalid/repo", entry.source().orElseThrow().toString());
+    assertEquals("MIT", entry.license().orElseThrow());
+    assertEquals(List.of("productivity", "network"), entry.categories());
+    assertEquals("0.1.0", entry.compatibility().minimumCryptaVersion().orElseThrow());
+    assertEquals(AppCatalogReviewStatus.REVIEWED, entry.review().status());
+    assertEquals("Reviewed for local operator safety.", entry.review().note().orElseThrow());
+    assertEquals("Reads the local transfer queue.", entry.permissionRationales().get("queue.read"));
+    assertEquals(
+        List.of(
+            java.net.URI.create("https://example.invalid/assets/shot-1.png"),
+            java.net.URI.create("https://example.invalid/assets/shot-2.png")),
+        entry.screenshots());
+    assertEquals("Adds queue retry controls.", entry.changelog().summary().orElseThrow());
+    assertEquals(
+        "https://example.invalid/changelog.txt", entry.changelog().uri().orElseThrow().toString());
+  }
+
+  @Test
   void parse_whenEntriesAreBlank_expectCatalogWithoutEntries() {
     AppCatalog catalog =
         AppCatalogParser.parse(
@@ -114,6 +170,112 @@ class AppCatalogParserTest {
             .replace(
                 "app.queue-manager.bundle.size.bytes=0",
                 "app.queue-manager.bundle.size.bytes=NaN"));
+  }
+
+  @Test
+  void parse_whenReviewStatusIsMalformed_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.review.status=trusted\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenCategoryIsMalformed_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.categories=bad category\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenMetadataUriUsesUnsafeScheme_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.homepage=http://example.invalid/app\n"
+                    + "app.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenMetadataUriUsesLoopbackHttp_expectAccepted() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                validSingleEntryCatalog()
+                    .replace(
+                        "app.queue-manager.bundle.uri=",
+                        "app.queue-manager.homepage=http://localhost:8080/app\n"
+                            + "app.queue-manager.bundle.uri=")));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+
+    assertEquals("http://localhost:8080/app", entry.homepage().orElseThrow().toString());
+  }
+
+  @Test
+  void parse_whenPermissionRationaleDoesNotMatchDeclaredPermission_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.permissions.rationale.queue.write=Writes queues.\n"
+                    + "app.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenPermissionRationaleKeysNormalizeToDuplicate_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.permissions=queue.read",
+                """
+                app.queue-manager.permissions.rationale.queue.read=Reads queues.
+                app.queue-manager.permissions.rationale.QUEUE.READ=Reads queues again.
+                app.queue-manager.permissions=queue.read\
+                """));
+  }
+
+  @Test
+  void parse_whenScreenshotIndexesHaveGap_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.screenshot.2=https://example.invalid/assets/shot-2.png\n"
+                    + "app.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenScreenshotCountExceedsCap_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                """
+                app.queue-manager.screenshot.1=https://example.invalid/assets/shot-1.png
+                app.queue-manager.screenshot.2=https://example.invalid/assets/shot-2.png
+                app.queue-manager.screenshot.3=https://example.invalid/assets/shot-3.png
+                app.queue-manager.screenshot.4=https://example.invalid/assets/shot-4.png
+                app.queue-manager.screenshot.5=https://example.invalid/assets/shot-5.png
+                app.queue-manager.screenshot.6=https://example.invalid/assets/shot-6.png
+                app.queue-manager.screenshot.7=https://example.invalid/assets/shot-7.png
+                app.queue-manager.screenshot.8=https://example.invalid/assets/shot-8.png
+                app.queue-manager.screenshot.9=https://example.invalid/assets/shot-9.png
+                app.queue-manager.bundle.uri=\
+                """));
+  }
+
+  @Test
+  void parse_whenReviewNoteIsBlank_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSingleEntryCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.review.note=   \napp.queue-manager.bundle.uri="));
   }
 
   private static void assertInvalidEntry(String catalogText) {

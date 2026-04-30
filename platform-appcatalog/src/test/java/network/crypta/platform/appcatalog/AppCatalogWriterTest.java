@@ -60,6 +60,18 @@ class AppCatalogWriterTest {
             name=Catalog Queue Manager
             version=%s
             permissions=queue.inspect,QUEUE.READ,queue.inspect
+            homepage=https://example.invalid/apps/queue-manager
+            source=https://example.invalid/src/queue-manager
+            license=MIT
+            categories=Productivity,network,productivity
+            minimumCryptaVersion=0.1.0
+            review.status=reviewed
+            review.note=Reviewed for local operator safety.
+            permissions.rationale.queue.inspect=Inspects queue metadata.
+            permissions.rationale.queue.read=Reads the local transfer queue.
+            screenshot.1=https://example.invalid/assets/queue-1.png
+            changelog.summary=Adds queue retry controls.
+            changelog.uri=https://example.invalid/changelog.txt
             """
                 .formatted(QUEUE_APP_VERSION));
     Path outputFile = tempDir.resolve("catalog").resolve(AppCatalogSignature.CATALOG_FILE_NAME);
@@ -78,6 +90,18 @@ class AppCatalogWriterTest {
             "app.queue-manager.name=Catalog Queue Manager",
             "app.queue-manager.version=" + QUEUE_APP_VERSION,
             "app.queue-manager.summary=Manage local Crypta transfer queues.",
+            "app.queue-manager.homepage=https://example.invalid/apps/queue-manager",
+            "app.queue-manager.source=https://example.invalid/src/queue-manager",
+            "app.queue-manager.license=MIT",
+            "app.queue-manager.categories=productivity,network",
+            "app.queue-manager.minimumCryptaVersion=0.1.0",
+            "app.queue-manager.review.status=reviewed",
+            "app.queue-manager.review.note=Reviewed for local operator safety.",
+            "app.queue-manager.permissions.rationale.queue.inspect=Inspects queue metadata.",
+            "app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.",
+            "app.queue-manager.screenshot.1=https://example.invalid/assets/queue-1.png",
+            "app.queue-manager.changelog.summary=Adds queue retry controls.",
+            "app.queue-manager.changelog.uri=https://example.invalid/changelog.txt",
             "app.queue-manager.bundle.uri=" + bundleUri,
             "app.queue-manager.bundle.sha256=" + sha256(artifact),
             "app.queue-manager.bundle.size.bytes=" + Files.size(artifact),
