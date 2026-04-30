@@ -201,7 +201,7 @@ id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor
 and `permissions` fields can override the display metadata and permission hints written to the
 catalog.
 
-Descriptors can also author optional v1 app-store metadata:
+Descriptors can also author optional app-store metadata:
 
 | Descriptor property | Generated catalog property |
 | --- | --- |
@@ -217,12 +217,14 @@ Descriptors can also author optional v1 app-store metadata:
 | `changelog.summary` | `app.<id>.changelog.summary` |
 | `changelog.uri` | `app.<id>.changelog.uri` |
 
-These fields are optional and backward compatible. `homepage`, `source`, `screenshot.N`, and
-`changelog.uri` are URI metadata for operator display. `review.status` and `review.note` are
-advisory and do not replace signed catalog or signed bundle verification. `minimumCryptaVersion`
-is advisory and does not block install/update by itself; integer Cryptad build labels are the
-comparable form used by Platform API responses. Permission rationales explain declared permissions;
-they do not grant capabilities.
+These fields are optional. Descriptors that omit them generate a minimal `catalog.version=1`
+catalog; descriptors that include any app-store metadata generate `catalog.version=2` so strict v1
+catalog consumers reject the expanded schema cleanly instead of accepting unknown fields.
+`homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
+`review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
+verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
+integer Cryptad build labels are the comparable form used by Platform API responses. Permission
+rationales explain declared permissions; they do not grant capabilities.
 
 `artifact.path` is local authoring input and is not written to the public catalog. Do not change
 the ZIP after creating the catalog; the generated catalog records its size and lowercase SHA-256

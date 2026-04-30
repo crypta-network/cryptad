@@ -91,8 +91,8 @@ parameter; check the handler and tests when adding or changing a specific contra
 
 Catalog app listing and detail responses expose signed-catalog metadata for the Web Shell Apps
 section. The response shape includes the existing app id, name, version, summary, bundle metadata,
-installed state, running state, and installed version. It also includes optional v1 store metadata
-when a catalog entry provides it:
+installed state, running state, and installed version. It also includes optional store metadata
+when a metadata-capable catalog entry provides it:
 
 - `homepage`, `source`, `license`, and `categories`.
 - `review.status` and `review.note`.

@@ -27,7 +27,7 @@ import java.util.TreeMap;
  * ignored; all other lines must use {@code key=value}. Unknown keys are rejected because a typo in
  * a catalog descriptor should fail before the catalog is signed.
  *
- * <p>The supported v1 shape is:
+ * <p>The supported descriptor shape is:
  *
  * <pre>{@code
  * artifact.path=/abs/path/to/app.zip
@@ -278,7 +278,10 @@ public record AppCatalogEntryDescriptor(
               PERMISSION_RATIONALE_PREFIX + permission,
               AppCatalogSidecars.INVALID_CATALOG_ENTRY,
               MAX_PERMISSION_RATIONALE_CHARS);
-      normalized.put(permission, rationale);
+      String previous = normalized.putIfAbsent(permission, rationale);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate permission rationale for " + permission);
+      }
     }
     return Collections.unmodifiableMap(new LinkedHashMap<>(normalized));
   }

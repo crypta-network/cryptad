@@ -1,6 +1,7 @@
 package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,7 +11,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import network.crypta.platform.appdist.AppBundleManifestParser;
@@ -81,7 +85,7 @@ class AppCatalogWriterTest {
 
     String expected =
         lines(
-            "catalog.version=1",
+            "catalog.version=2",
             "catalog.id=core",
             "catalog.name=Crypta Core Apps",
             "catalog.generatedAt=2026-04-21T18:22:40Z",
@@ -108,6 +112,7 @@ class AppCatalogWriterTest {
             "app.queue-manager.bundle.type=zip",
             "app.queue-manager.permissions=queue.inspect,queue.read");
 
+    assertEquals(AppCatalog.VERSION_STORE_METADATA, result.catalog().version());
     assertEquals(expected, new String(result.catalogBytes(), StandardCharsets.UTF_8));
     assertEquals(expected, Files.readString(outputFile));
     assertEquals(outputFile.toAbsolutePath().normalize(), result.catalogFile().orElseThrow());
@@ -136,9 +141,49 @@ class AppCatalogWriterTest {
     assertEquals(
         List.of(PUBLISHER_APP_ID, QUEUE_APP_ID),
         result.catalog().entries().stream().map(AppCatalogEntry::appId).toList());
+    assertEquals(AppCatalog.VERSION_MINIMAL, result.catalog().version());
     assertTrue(
         new String(result.catalogBytes(), StandardCharsets.UTF_8)
             .contains("catalog.entries=publisher,queue-manager\n"));
+  }
+
+  @Test
+  void serialize_whenVersionOneCatalogHasStoreMetadata_expectInvalidCatalogEntry() {
+    AppCatalogEntry entry =
+        directEntryWithStoreMetadata(
+            Map.of(QUEUE_READ_PERMISSION, "Reads the local transfer queue."));
+    AppCatalog catalog =
+        new AppCatalog(
+            AppCatalog.VERSION_MINIMAL, CATALOG_ID, CATALOG_NAME, GENERATED_AT, List.of(entry));
+
+    AppCatalogException exception = captureInvalidEntry(() -> AppCatalogWriter.serialize(catalog));
+
+    assertTrue(exception.getMessage().contains("catalog.version 2 is required"));
+  }
+
+  @Test
+  void serialize_whenPermissionRationalesAreUnordered_expectDeclaredPermissionOrder() {
+    Map<String, String> rationales = new LinkedHashMap<>();
+    rationales.put("queue.write", "Writes queue state.");
+    rationales.put(QUEUE_READ_PERMISSION, "Reads queue state.");
+    AppCatalogEntry entry = directEntryWithStoreMetadata(rationales);
+    AppCatalog catalog =
+        new AppCatalog(
+            AppCatalog.VERSION_STORE_METADATA,
+            CATALOG_ID,
+            CATALOG_NAME,
+            GENERATED_AT,
+            List.of(entry));
+
+    String serialized = new String(AppCatalogWriter.serialize(catalog), StandardCharsets.UTF_8);
+    int readIndex =
+        serialized.indexOf("app.queue-manager.permissions.rationale.queue.read=Reads queue state.");
+    int writeIndex =
+        serialized.indexOf(
+            "app.queue-manager.permissions.rationale.queue.write=Writes queue state.");
+
+    assertTrue(readIndex >= 0);
+    assertTrue(writeIndex > readIndex);
   }
 
   @Test
@@ -284,6 +329,28 @@ class AppCatalogWriterTest {
 
   private AppCatalogBuildRequest request(List<Path> descriptors) {
     return new AppCatalogBuildRequest(CATALOG_ID, CATALOG_NAME, GENERATED_AT, descriptors);
+  }
+
+  private static AppCatalogEntry directEntryWithStoreMetadata(Map<String, String> rationales) {
+    return new AppCatalogEntry(
+        QUEUE_APP_ID,
+        QUEUE_APP_NAME,
+        QUEUE_APP_VERSION,
+        LOCAL_QUEUE_SUMMARY,
+        Optional.of(URI.create("https://example.invalid/apps/queue-manager")),
+        Optional.empty(),
+        Optional.empty(),
+        List.of(),
+        AppCatalogCompatibilityMetadata.EMPTY,
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
+        URI.create(QUEUE_BUNDLE_URI),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION, "queue.write"),
+        rationales);
   }
 
   private Path descriptor(

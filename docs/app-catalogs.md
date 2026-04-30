@@ -30,7 +30,7 @@ the sibling file `cryptad-app-catalog.signature`.
 Catalog properties use a deterministic `key=value` text sidecar:
 
 ```properties
-catalog.version=1
+catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
@@ -63,8 +63,13 @@ The parser rejects duplicate keys, missing required fields, unsupported versions
 artifact types, invalid app ids, blank names or versions, invalid SHA-256 text, negative sizes,
 unsafe artifact URIs, duplicate entries, and unknown properties.
 
-Minimal catalogs that only provide the required fields still parse and install. The app-store
-metadata fields are optional and additive.
+`catalog.version=1` is the minimal signed-catalog schema and contains only the required app,
+artifact, and permission fields. `catalog.version=2` adds the optional app-store metadata fields
+shown above. Current Cryptad nodes parse both versions. Older strict v1 nodes reject v2 catalogs
+rather than silently accepting unknown metadata fields.
+
+Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
+app-store metadata fields remain optional within the v2 schema.
 
 ## App-store metadata
 
@@ -132,6 +137,8 @@ values are optional consistency checks and must match the artifact manifest. The
 `permissions` fields can override the display metadata and permission hints written to the catalog.
 Optional descriptor metadata uses the same names as catalog metadata without the `app.<id>.`
 prefix. The writer computes `bundle.sha256` and `bundle.size.bytes` from the local artifact bytes.
+Descriptors that omit app-store metadata produce `catalog.version=1`; descriptors that include any
+app-store metadata produce `catalog.version=2`.
 
 Create, sign, and verify a catalog with:
 

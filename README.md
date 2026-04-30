@@ -424,8 +424,9 @@ local developer tooling; it does not add hot reload or a daemon-side install com
 
 `crypta-app catalog create` descriptors can author optional store metadata such as homepage,
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
-metadata, changelog metadata, and advisory minimum Cryptad version. See
-[docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
+metadata, changelog metadata, and advisory minimum Cryptad version. Descriptors without those
+fields generate minimal `catalog.version=1` catalogs; descriptors with store metadata generate
+`catalog.version=2`. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
 
 First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
 and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow

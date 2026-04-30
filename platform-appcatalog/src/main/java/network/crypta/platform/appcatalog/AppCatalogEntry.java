@@ -198,6 +198,18 @@ public record AppCatalogEntry(
         Map.of());
   }
 
+  boolean hasStoreMetadata() {
+    return homepage.isPresent()
+        || source.isPresent()
+        || license.isPresent()
+        || !categories.isEmpty()
+        || compatibility.minimumCryptaVersion().isPresent()
+        || review.hasCatalogFields()
+        || !changelog.isEmpty()
+        || !screenshots.isEmpty()
+        || !permissionRationales.isEmpty();
+  }
+
   /**
    * Normalizes an app id using the signed-bundle manifest rules.
    *
@@ -288,7 +300,7 @@ public record AppCatalogEntry(
       throws AppCatalogException {
     Objects.requireNonNull(permissionRationales, "permissionRationales");
     Set<String> declaredPermissions = new LinkedHashSet<>(permissions);
-    Map<String, String> normalized = new LinkedHashMap<>();
+    Map<String, String> byPermission = new LinkedHashMap<>();
     for (Map.Entry<String, String> entry : permissionRationales.entrySet()) {
       String permission =
           normalizePermission(entry.getKey(), "app." + appId + ".permissions.rationale permission");
@@ -306,8 +318,18 @@ public record AppCatalogEntry(
               "app." + appId + ".permissions.rationale." + permission,
               code(),
               MAX_PERMISSION_RATIONALE_CHARS);
-      normalized.put(permission, rationale);
+      String previous = byPermission.putIfAbsent(permission, rationale);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate permission rationale for " + permission);
+      }
     }
-    return Collections.unmodifiableMap(new LinkedHashMap<>(normalized));
+    Map<String, String> ordered = new LinkedHashMap<>();
+    for (String permission : permissions) {
+      String rationale = byPermission.get(permission);
+      if (rationale != null) {
+        ordered.put(permission, rationale);
+      }
+    }
+    return Collections.unmodifiableMap(new LinkedHashMap<>(ordered));
   }
 }

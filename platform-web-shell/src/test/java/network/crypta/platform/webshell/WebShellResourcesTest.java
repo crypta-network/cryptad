@@ -83,6 +83,7 @@ class WebShellResourcesTest {
     assertPeerLoadSequencing(script);
     assertAppsMarkersPresent(script);
     assertAppStoreMetadataMarkersPresent(script);
+    assertCompatibilityUndeclaredPrecedesSuccess(script);
     assertAppsSubmissionOrder(script);
     assertAppsLoadSequencing(script);
     assertPublisherMarkersPresent(script);
@@ -429,6 +430,21 @@ class WebShellResourcesTest {
     assertTrue(script.contains("No permission rationale supplied."));
     assertTrue(script.contains("Update from catalog"));
     assertTrue(script.contains("Install from catalog"));
+  }
+
+  private static void assertCompatibilityUndeclaredPrecedesSuccess(String script) {
+    int toneStart = script.indexOf("function compatibilityTone(compatibility)");
+    int toneUndeclaredIndex = script.indexOf("status === \"not_declared\"", toneStart);
+    int toneSuccessIndex = script.indexOf("compatibility.satisfied === true", toneStart);
+    assertTrue(toneUndeclaredIndex > toneStart);
+    assertTrue(toneSuccessIndex > toneUndeclaredIndex);
+
+    int labelStart = script.indexOf("function compatibilityLabel(compatibility)");
+    int labelUndeclaredIndex = script.indexOf("status === \"not_declared\"", labelStart);
+    int labelSuccessIndex = script.indexOf("compatibility.satisfied === true", labelStart);
+    assertTrue(labelUndeclaredIndex > labelStart);
+    assertTrue(labelSuccessIndex > labelUndeclaredIndex);
+    assertTrue(script.contains("Compatibility not declared"));
   }
 
   private static void assertAppsSubmissionOrder(String script) {

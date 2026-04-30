@@ -381,6 +381,7 @@ class CryptaAppCliTest {
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
+    assertTrue(catalog.contains("catalog.version=2\n"));
     assertTrue(catalog.contains("catalog.generatedAt=2026-04-29T00:00:00Z\n"));
     assertTrue(catalog.contains("app.sample-app.id=sample-app\n"));
     assertTrue(catalog.contains("app.sample-app.homepage=https://example.invalid/sample-app\n"));
@@ -447,7 +448,9 @@ class CryptaAppCliTest {
         "Development Apps",
         "--entry",
         descriptor.toString());
+    String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
 
+    assertTrue(catalog.contains("catalog.version=1\n"));
     CliResult signResult =
         runCli(
             "catalog",

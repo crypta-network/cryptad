@@ -73,7 +73,7 @@ public final class AppCatalogWriter {
     List<AppCatalogEntry> entries = buildEntries(checkedRequest.entryDescriptorFiles());
     AppCatalog catalog =
         new AppCatalog(
-            1,
+            catalogVersion(entries),
             checkedRequest.catalogId(),
             checkedRequest.catalogName(),
             checkedRequest.generatedAt(),
@@ -102,6 +102,7 @@ public final class AppCatalogWriter {
    */
   public static byte[] serialize(AppCatalog catalog) {
     AppCatalog checkedCatalog = Objects.requireNonNull(catalog, CATALOG_PARAMETER_NAME);
+    requireCatalogVersionMatchesEntries(checkedCatalog);
     StringBuilder builder = new StringBuilder();
     appendProperty(builder, "catalog.version", Integer.toString(checkedCatalog.version()));
     appendProperty(builder, "catalog.id", checkedCatalog.catalogId());
@@ -122,6 +123,27 @@ public final class AppCatalogWriter {
       entries.add(toEntry(descriptor, artifact));
     }
     return List.copyOf(entries);
+  }
+
+  private static int catalogVersion(List<AppCatalogEntry> entries) {
+    for (AppCatalogEntry entry : entries) {
+      if (entry.hasStoreMetadata()) {
+        return AppCatalog.VERSION_STORE_METADATA;
+      }
+    }
+    return AppCatalog.VERSION_MINIMAL;
+  }
+
+  private static void requireCatalogVersionMatchesEntries(AppCatalog catalog) {
+    if (catalog.version() == AppCatalog.VERSION_STORE_METADATA) {
+      return;
+    }
+    for (AppCatalogEntry entry : catalog.entries()) {
+      if (entry.hasStoreMetadata()) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 2 is required when app-store metadata is present");
+      }
+    }
   }
 
   private static AppCatalogEntry toEntry(

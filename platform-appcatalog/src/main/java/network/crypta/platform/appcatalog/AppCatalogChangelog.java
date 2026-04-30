@@ -70,7 +70,7 @@ public record AppCatalogChangelog(Optional<String> summary, Optional<URI> uri) {
    *
    * <p>This helper lets writers decide whether a descriptor produced any changelog fields without
    * inspecting the individual optionals at each call site. A summary-only or URI-only value is not
-   * empty; both shapes are valid for v1 catalogs.
+   * empty; both shapes are valid for metadata-capable catalogs.
    *
    * @return {@code true} when both optional changelog fields are absent
    */

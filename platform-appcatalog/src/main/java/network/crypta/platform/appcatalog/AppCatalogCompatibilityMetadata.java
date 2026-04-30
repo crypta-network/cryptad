@@ -6,11 +6,11 @@ import java.util.Optional;
 /**
  * Advisory compatibility metadata for a catalog app.
  *
- * <p>This record carries the v1 compatibility hint that a catalog publisher can attach to an app:
- * the minimum Cryptad build or version label the publisher expects operators to run. The field is
- * authenticated by the signed catalog sidecar, but it is not a trust decision, and it is not a
- * runtime gate. Install and update still depend on catalog signature verification, artifact digest
- * checks, signed-bundle verification, and AppHost validation.
+ * <p>This record carries the compatibility hint that a catalog publisher can attach to an app: the
+ * minimum Cryptad build or version label the publisher expects operators to run. The field is
+ * authenticated by the signed catalog sidecar when present, but it is not a trust decision, and it
+ * is not a runtime gate. Install and update still depend on catalog signature verification,
+ * artifact digest checks, signed-bundle verification, and AppHost validation.
  *
  * <p>Platform API responses compare this value with the local node's comparable version string when
  * the two values can be parsed safely. Integer Cryptad build labels are the preferred comparable

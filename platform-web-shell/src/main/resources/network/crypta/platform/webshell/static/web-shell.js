@@ -1201,19 +1201,26 @@
     if (!compatibility || Object.keys(compatibility).length === 0) {
       return "is-warning";
     }
+    const status = typeof compatibility.status === "string" ? compatibility.status.toLowerCase() : "";
+    if (status === "not_declared") {
+      return "is-warning";
+    }
     if (compatibility.satisfied === false) {
       return "is-error";
     }
     if (compatibility.satisfied === true) {
       return "is-success";
     }
-    const status = typeof compatibility.status === "string" ? compatibility.status.toLowerCase() : "";
     return status.includes("unsatisfied") || status.includes("unsupported") ? "is-error" : "is-warning";
   }
 
   function compatibilityLabel(compatibility) {
     if (!compatibility || Object.keys(compatibility).length === 0) {
       return "Compatibility unknown";
+    }
+    const status = typeof compatibility.status === "string" ? compatibility.status.toLowerCase() : "";
+    if (status === "not_declared") {
+      return "Compatibility not declared";
     }
     if (compatibility.satisfied === false) {
       return "Compatibility warning";

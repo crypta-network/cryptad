@@ -53,7 +53,7 @@ public final class AppCatalogParser {
     List<String> entryIds = parseEntryIds(removeRequired(properties, "catalog.entries"));
     List<AppCatalogEntry> entries = new ArrayList<>(entryIds.size());
     for (String appId : entryIds) {
-      entries.add(parseEntry(properties, appId));
+      entries.add(parseEntry(properties, appId, version));
     }
     if (!properties.isEmpty()) {
       throw AppCatalogSidecars.invalidEntry(
@@ -65,7 +65,7 @@ public final class AppCatalogParser {
   private static int parseVersion(String versionText) throws AppCatalogException {
     try {
       int version = Integer.parseInt(versionText);
-      if (version != 1) {
+      if (!AppCatalog.isSupportedVersion(version)) {
         throw AppCatalogSidecars.invalidEntry("unsupported catalog.version: " + version);
       }
       return version;
@@ -102,8 +102,8 @@ public final class AppCatalogParser {
     return List.copyOf(entryIds);
   }
 
-  private static AppCatalogEntry parseEntry(Map<String, String> properties, String appId)
-      throws AppCatalogException {
+  private static AppCatalogEntry parseEntry(
+      Map<String, String> properties, String appId, int version) throws AppCatalogException {
     String prefix = "app." + appId + ".";
     String declaredId = removeRequired(properties, prefix + "id");
     String normalizedDeclaredId = AppCatalogEntry.normalizeAppId(declaredId);
@@ -112,31 +112,39 @@ public final class AppCatalogParser {
           "catalog.entries id does not match app." + appId + ".id");
     }
     List<String> permissions = parsePermissions(removeRequired(properties, prefix + "permissions"));
+    boolean storeMetadataAllowed = version == AppCatalog.VERSION_STORE_METADATA;
     return new AppCatalogEntry(
         declaredId,
         removeRequired(properties, prefix + "name"),
         removeRequired(properties, prefix + "version"),
         removeRequired(properties, prefix + "summary"),
-        removeOptional(properties, prefix + "homepage")
-            .map(value -> parseUri(value, prefix + "homepage")),
-        removeOptional(properties, prefix + "source")
-            .map(value -> parseUri(value, prefix + "source")),
-        removeOptional(properties, prefix + "license"),
-        parseCategories(removeOptional(properties, prefix + "categories").orElse(null)),
-        new AppCatalogCompatibilityMetadata(
-            removeOptional(properties, prefix + "minimumCryptaVersion")),
-        parseReview(properties, prefix),
-        new AppCatalogChangelog(
-            removeOptional(properties, prefix + "changelog.summary"),
-            removeOptional(properties, prefix + "changelog.uri")
-                .map(value -> parseUri(value, prefix + "changelog.uri"))),
-        parseScreenshots(properties, prefix),
+        parseStoreMetadataUri(properties, prefix + "homepage", storeMetadataAllowed),
+        parseStoreMetadataUri(properties, prefix + "source", storeMetadataAllowed),
+        storeMetadataAllowed ? removeOptional(properties, prefix + "license") : Optional.empty(),
+        storeMetadataAllowed
+            ? parseCategories(removeOptional(properties, prefix + "categories").orElse(null))
+            : List.of(),
+        storeMetadataAllowed
+            ? new AppCatalogCompatibilityMetadata(
+                removeOptional(properties, prefix + "minimumCryptaVersion"))
+            : AppCatalogCompatibilityMetadata.EMPTY,
+        storeMetadataAllowed ? parseReview(properties, prefix) : AppCatalogReviewMetadata.EMPTY,
+        storeMetadataAllowed ? parseChangelog(properties, prefix) : AppCatalogChangelog.EMPTY,
+        storeMetadataAllowed ? parseScreenshots(properties, prefix) : List.of(),
         parseUri(removeRequired(properties, prefix + "bundle.uri"), prefix + "bundle.uri"),
         removeRequired(properties, prefix + "bundle.sha256"),
         parseSize(removeRequired(properties, prefix + "bundle.size.bytes"), appId),
         removeRequired(properties, prefix + "bundle.type"),
         permissions,
-        parsePermissionRationales(properties, prefix));
+        storeMetadataAllowed ? parsePermissionRationales(properties, prefix) : Map.of());
+  }
+
+  private static Optional<URI> parseStoreMetadataUri(
+      Map<String, String> properties, String fieldName, boolean storeMetadataAllowed) {
+    if (!storeMetadataAllowed) {
+      return Optional.empty();
+    }
+    return removeOptional(properties, fieldName).map(value -> parseUri(value, fieldName));
   }
 
   private static long parseSize(String sizeText, String appId) throws AppCatalogException {
@@ -192,6 +200,13 @@ public final class AppCatalogParser {
             .map(value -> AppCatalogReviewStatus.parse(value, prefix + "review.status"))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
     return new AppCatalogReviewMetadata(status, removeOptional(properties, prefix + "review.note"));
+  }
+
+  private static AppCatalogChangelog parseChangelog(Map<String, String> properties, String prefix) {
+    return new AppCatalogChangelog(
+        removeOptional(properties, prefix + "changelog.summary"),
+        removeOptional(properties, prefix + "changelog.uri")
+            .map(value -> parseUri(value, prefix + "changelog.uri")));
   }
 
   private static List<URI> parseScreenshots(Map<String, String> properties, String prefix) {
