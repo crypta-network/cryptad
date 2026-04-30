@@ -13,7 +13,12 @@ import java.time.Instant;
  * @param source validated source URI used for refresh operations
  * @param addedAt local timestamp when the source was first persisted
  * @param refreshedAt local timestamp when sidecars were last fetched and verified
+ * @param refreshMetadata latest fetch attempt metadata
  * @param fetchedCatalog exact catalog and signature bytes cached by the source store
  */
 record StoredCatalogSource(
-    AppCatalogSource source, Instant addedAt, Instant refreshedAt, FetchedCatalog fetchedCatalog) {}
+    AppCatalogSource source,
+    Instant addedAt,
+    Instant refreshedAt,
+    AppCatalogSourceRefreshMetadata refreshMetadata,
+    FetchedCatalog fetchedCatalog) {}

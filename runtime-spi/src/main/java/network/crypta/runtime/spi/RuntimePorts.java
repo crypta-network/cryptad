@@ -17,6 +17,7 @@ package network.crypta.runtime.spi;
  * @see ExecutionPort
  * @see RandomnessPort
  * @see TransferAccessPort
+ * @see ContentFetchPort
  * @see LifecyclePort
  * @see ConfigPort
  * @see ConnectivityPort
@@ -79,6 +80,18 @@ public interface RuntimePorts {
    */
   @SuppressWarnings("unused")
   TransferAccessPort transferAccess();
+
+  /**
+   * Returns the bounded runtime content-fetch capability exposed to infrastructure code.
+   *
+   * <p>This port lets higher layers fetch small runtime-owned documents, such as signed catalogs,
+   * without depending on daemon-only URI, client, bucket, or fetch exception types. Callers must
+   * supply byte and timeout bounds for each request, and implementations return detached byte
+   * arrays only after enforcing those bounds.
+   *
+   * @return bounded content-fetch runtime port for JDK-only fetch requests
+   */
+  ContentFetchPort contentFetch();
 
   /**
    * Returns the lifecycle capability exposed to infrastructure code.

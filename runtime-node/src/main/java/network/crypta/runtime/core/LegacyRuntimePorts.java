@@ -15,6 +15,7 @@ import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPagePort;
 import network.crypta.runtime.spi.ConnectionsSupportPort;
 import network.crypta.runtime.spi.ConnectivityPort;
+import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
 import network.crypta.runtime.spi.DarknetMessagingPort;
@@ -61,6 +62,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   private final ExecutionPort executionPort;
   private final RandomnessPort randomnessPort;
   private final TransferAccessPort transferAccessPort;
+  private final ContentFetchPort contentFetchPort;
   private final LifecyclePort lifecyclePort;
   private final ConfigPort configPort;
   private final ConnectivityPort connectivityPort;
@@ -151,6 +153,7 @@ public final class LegacyRuntimePorts implements RuntimePorts {
             return LegacyRuntimePorts.this.core.getAllowedDownloadDirs();
           }
         };
+    this.contentFetchPort = new LegacyContentFetchPort(core);
     this.lifecyclePort =
         new LifecyclePort() {
           @Override
@@ -239,6 +242,17 @@ public final class LegacyRuntimePorts implements RuntimePorts {
   @Override
   public TransferAccessPort transferAccess() {
     return transferAccessPort;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The returned port delegates to the daemon's existing high-level client fetch stack and keeps
+   * URI parsing, request cancellation, and bucket materialization inside runtime-node.
+   */
+  @Override
+  public ContentFetchPort contentFetch() {
+    return contentFetchPort;
   }
 
   /**

@@ -45,6 +45,12 @@ class AppCatalogSourceStoreTest {
     assertEquals(source, stored.source());
     assertEquals(ADDED_AT, stored.addedAt());
     assertEquals(REFRESHED_AT, stored.refreshedAt());
+    assertEquals(REFRESHED_AT, stored.refreshMetadata().lastAttemptAt());
+    assertEquals(REFRESHED_AT, stored.refreshMetadata().lastSuccessfulRefreshAt());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, stored.refreshMetadata().lastFetchStatus());
+    assertTrue(stored.refreshMetadata().lastFetchErrorCode().isEmpty());
+    assertEquals(
+        source.resolvedCatalogFetchUri(), stored.refreshMetadata().lastResolvedUri().orElseThrow());
     assertArrayEquals(fetchedCatalog.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(fetchedCatalog.signatureBytes(), stored.fetchedCatalog().signatureBytes());
   }
@@ -122,8 +128,60 @@ class AppCatalogSourceStoreTest {
 
     assertEquals("metadata write failed", exception.getMessage());
     assertEquals(REFRESHED_AT, stored.refreshedAt());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, stored.refreshMetadata().lastFetchStatus());
     assertArrayEquals(original.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(original.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
+  void recordRefreshFailure_whenRefreshFails_expectAttemptMetadataUpdatedOnly() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog original = fetchedCatalog("core");
+    AppCatalogSource source = source("core");
+    store.write(catalog("core"), source, original, ADDED_AT, REFRESHED_AT);
+    StoredCatalogSource beforeFailure = store.read("core");
+    Instant failedAt = REFRESHED_AT.plusSeconds(60);
+
+    store.recordRefreshFailure(
+        "core",
+        beforeFailure,
+        failedAt,
+        new AppCatalogException(AppCatalogSidecars.CATALOG_FETCH_FAILED, "fetch failed"));
+    StoredCatalogSource stored = store.read("core");
+
+    assertEquals(REFRESHED_AT, stored.refreshedAt());
+    assertEquals(failedAt, stored.refreshMetadata().lastAttemptAt());
+    assertEquals(REFRESHED_AT, stored.refreshMetadata().lastSuccessfulRefreshAt());
+    assertEquals(AppCatalogFetchStatus.FAILED, stored.refreshMetadata().lastFetchStatus());
+    assertEquals(
+        AppCatalogSidecars.CATALOG_FETCH_FAILED,
+        stored.refreshMetadata().lastFetchErrorCode().orElseThrow());
+    assertArrayEquals(original.catalogBytes(), stored.fetchedCatalog().catalogBytes());
+    assertArrayEquals(original.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
+  void recordRefreshFailure_whenMessageHasUnsafeText_expectStoredMessageIsSafeSingleLine()
+      throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog original = fetchedCatalog("core");
+    AppCatalogSource source = source("core");
+    store.write(catalog("core"), source, original, ADDED_AT, REFRESHED_AT);
+    StoredCatalogSource beforeFailure = store.read("core");
+    String unsafeMessage = "fetch failed\nwith\ttabs\r" + "x".repeat(600);
+
+    store.recordRefreshFailure(
+        "core",
+        beforeFailure,
+        REFRESHED_AT.plusSeconds(60),
+        new AppCatalogException(AppCatalogSidecars.CATALOG_FETCH_FAILED, unsafeMessage));
+    StoredCatalogSource stored = store.read("core");
+
+    String storedMessage = stored.refreshMetadata().lastFetchErrorMessage().orElseThrow();
+    assertFalse(storedMessage.contains("\n"));
+    assertFalse(storedMessage.contains("\r"));
+    assertFalse(storedMessage.contains("\t"));
+    assertTrue(storedMessage.length() <= 512);
   }
 
   @Test

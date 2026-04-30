@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.runtime.spi.ContentFetchPort;
 
 /**
  * Coordinates signed catalog sources, refreshes, artifact staging, and bundle verification.
@@ -46,6 +47,28 @@ public final class AppCatalogManager {
         sourceStore,
         trustedKeyProvider,
         new AppCatalogFetcher(),
+        new AppCatalogArtifactDownloader(),
+        new AppCatalogBundleExtractor());
+  }
+
+  /**
+   * Creates a manager with a runtime content fetch port for {@code crypta:} catalog sources.
+   *
+   * <p>The supplied port is used only as bounded content transport. Catalog signatures and trusted
+   * catalog keys remain the authentication boundary for fetched catalogs.
+   *
+   * @param sourceStore file-backed catalog source store
+   * @param trustedKeyProvider provider for the current trusted app/catalog keys
+   * @param contentFetchPort runtime content fetch port for {@code crypta:} sources
+   */
+  public AppCatalogManager(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedKeyProvider,
+      ContentFetchPort contentFetchPort) {
+    this(
+        sourceStore,
+        trustedKeyProvider,
+        new AppCatalogFetcher(contentFetchPort),
         new AppCatalogArtifactDownloader(),
         new AppCatalogBundleExtractor());
   }
@@ -118,7 +141,12 @@ public final class AppCatalogManager {
     }
     Instant now = Instant.now();
     sourceStore.write(catalog, source, fetched, now, now);
-    return AppCatalogSourceSnapshot.of(catalog, source, now, now);
+    return AppCatalogSourceSnapshot.of(
+        catalog,
+        source,
+        now,
+        now,
+        AppCatalogSourceRefreshMetadata.success(now, resolvedCatalogUri(fetched, source)));
   }
 
   /**
@@ -149,17 +177,57 @@ public final class AppCatalogManager {
     String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
     StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
-    FetchedCatalog fetched = fetcher.fetch(stored.source());
+    Instant attemptedAt = Instant.now();
+    FetchedCatalog fetched = fetchForRefresh(normalizedCatalogId, stored, attemptedAt);
     AppCatalog catalog =
-        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
-    if (!normalizedCatalogId.equals(catalog.catalogId())) {
-      throw new AppCatalogException(
-          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-          "refreshed catalog id does not match configured source: " + normalizedCatalogId);
+        verifyForRefresh(normalizedCatalogId, stored, attemptedAt, fetched, trustedKeys);
+    sourceStore.write(catalog, stored.source(), fetched, stored.addedAt(), attemptedAt);
+    return AppCatalogSourceSnapshot.of(
+        catalog,
+        stored.source(),
+        stored.addedAt(),
+        attemptedAt,
+        AppCatalogSourceRefreshMetadata.success(
+            attemptedAt, resolvedCatalogUri(fetched, stored.source())));
+  }
+
+  private FetchedCatalog fetchForRefresh(
+      String normalizedCatalogId, StoredCatalogSource stored, Instant attemptedAt) {
+    try {
+      return fetcher.fetch(stored.source());
+    } catch (AppCatalogException exception) {
+      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+      throw exception;
+    } catch (IOException exception) {
+      AppCatalogException catalogException =
+          new AppCatalogException(
+              AppCatalogSidecars.CATALOG_FETCH_FAILED,
+              "failed to refresh catalog source: " + normalizedCatalogId,
+              exception);
+      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, catalogException);
+      throw catalogException;
     }
-    Instant refreshedAt = Instant.now();
-    sourceStore.write(catalog, stored.source(), fetched, stored.addedAt(), refreshedAt);
-    return AppCatalogSourceSnapshot.of(catalog, stored.source(), stored.addedAt(), refreshedAt);
+  }
+
+  private AppCatalog verifyForRefresh(
+      String normalizedCatalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      FetchedCatalog fetched,
+      TrustedAppKeys trustedKeys) {
+    try {
+      AppCatalog catalog =
+          AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+      if (!normalizedCatalogId.equals(catalog.catalogId())) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+            "refreshed catalog id does not match configured source: " + normalizedCatalogId);
+      }
+      return catalog;
+    } catch (AppCatalogException exception) {
+      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+      throw exception;
+    }
   }
 
   /**
@@ -239,7 +307,19 @@ public final class AppCatalogManager {
       StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
     AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
     return AppCatalogSourceSnapshot.of(
-        catalog, stored.source(), stored.addedAt(), stored.refreshedAt());
+        catalog, stored.source(), stored.addedAt(), stored.refreshedAt(), stored.refreshMetadata());
+  }
+
+  private void recordRefreshFailure(
+      String normalizedCatalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      AppCatalogException exception) {
+    try {
+      sourceStore.recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+    } catch (IOException metadataException) {
+      exception.addSuppressed(metadataException);
+    }
   }
 
   private static AppCatalog verifyStoredCatalog(
@@ -256,6 +336,10 @@ public final class AppCatalogManager {
     } catch (AppCatalogException _) {
       throw new AppCatalogException(AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog not found.");
     }
+  }
+
+  private static String resolvedCatalogUri(FetchedCatalog fetched, AppCatalogSource source) {
+    return fetched.resolvedCatalogUri().orElseGet(source::resolvedCatalogFetchUri);
   }
 
   /**

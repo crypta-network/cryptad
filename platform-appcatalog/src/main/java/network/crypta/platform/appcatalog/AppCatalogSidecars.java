@@ -31,6 +31,18 @@ final class AppCatalogSidecars {
   /** Error code used when an operator-configured catalog source cannot be used safely. */
   static final String INVALID_CATALOG_SOURCE = "invalid_catalog_source";
 
+  /** Error code used when a catalog source transport is not supported by the runtime. */
+  static final String UNSUPPORTED_CATALOG_SOURCE = "unsupported_catalog_source";
+
+  /** Error code used when a Crypta catalog source cannot be fetched because no runtime is wired. */
+  static final String CATALOG_FETCH_UNAVAILABLE = "catalog_fetch_unavailable";
+
+  /** Error code used when a catalog source fetch fails after source validation. */
+  static final String CATALOG_FETCH_FAILED = "catalog_fetch_failed";
+
+  /** Error code used when a catalog signature sidecar is missing. */
+  static final String CATALOG_SIGNATURE_MISSING = "catalog_signature_missing";
+
   /** Error code used when catalog signature metadata or verification fails. */
   static final String INVALID_CATALOG_SIGNATURE = "invalid_catalog_signature";
 
@@ -66,6 +78,24 @@ final class AppCatalogSidecars {
 
   /** Optional UTF-8 byte-order mark accepted only at the start of text sidecars. */
   private static final char UTF_8_BOM = '\uFEFF';
+
+  /** Diagnostic field name used for operator-configured catalog source URIs. */
+  private static final String CATALOG_SOURCE_URI_FIELD = "catalog source URI";
+
+  /** Diagnostic field name used for authenticated app bundle artifact URIs. */
+  private static final String ARTIFACT_URI_FIELD = "artifact URI";
+
+  /** URI scheme for remote TLS-backed catalog and metadata sources. */
+  private static final String HTTPS_SCHEME = "https";
+
+  /** URI scheme for loopback-only plaintext development sources. */
+  private static final String HTTP_SCHEME = "http";
+
+  /** URI scheme for local filesystem sources. */
+  private static final String FILE_SCHEME = "file";
+
+  /** URI scheme for Crypta network content sources. */
+  private static final String CRYPTA_SCHEME = "crypta";
 
   /** Strict lowercase hexadecimal SHA-256 digest grammar for catalog artifact metadata. */
   private static final Pattern LOWERCASE_SHA256_PATTERN = Pattern.compile("[0-9a-f]{64}");
@@ -254,8 +284,8 @@ final class AppCatalogSidecars {
    * @throws AppCatalogException if the URI is not absolute or uses an unsupported scheme
    */
   static URI requireSafeCatalogSourceUri(URI uri) throws AppCatalogException {
-    URI normalized = normalizeUri(uri, INVALID_CATALOG_SOURCE, "catalog source URI");
-    requireSupportedScheme(normalized, INVALID_CATALOG_SOURCE, "catalog source URI");
+    URI normalized = normalizeUri(uri, INVALID_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD);
+    requireSupportedSourceScheme(normalized);
     return normalized;
   }
 
@@ -267,8 +297,11 @@ final class AppCatalogSidecars {
    * @throws AppCatalogException if the URI is not absolute or uses an unsupported scheme
    */
   static URI requireSafeArtifactUri(URI uri) throws AppCatalogException {
-    URI normalized = normalizeUri(uri, INVALID_CATALOG_ENTRY, "artifact URI");
-    requireSupportedScheme(normalized, INVALID_CATALOG_ENTRY, "artifact URI");
+    URI normalized = normalizeUri(uri, INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD);
+    if (CRYPTA_SCHEME.equalsIgnoreCase(normalized.getScheme())) {
+      throw unsupportedArtifactScheme(normalized.getScheme());
+    }
+    requireSupportedArtifactScheme(normalized);
     return normalized;
   }
 
@@ -293,11 +326,11 @@ final class AppCatalogSidecars {
     }
     String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
     switch (normalizedScheme) {
-      case "https" -> {
+      case HTTPS_SCHEME -> {
         requireRemoteHttpUri(normalized, INVALID_CATALOG_ENTRY, fieldName);
         return normalized;
       }
-      case "http" -> {
+      case HTTP_SCHEME -> {
         requireRemoteHttpUri(normalized, INVALID_CATALOG_ENTRY, fieldName);
         if (isLocalhost(normalized.getHost())) {
           return normalized;
@@ -383,38 +416,65 @@ final class AppCatalogSidecars {
   }
 
   /**
-   * Applies catalog transport scheme policy to a normalized URI.
+   * Applies authenticated bundle artifact transport policy to a normalized URI.
    *
-   * @param uri absolute URI to validate
-   * @param errorCode catalog error code for validation failures
-   * @param fieldName field name used in diagnostics
+   * @param uri absolute artifact URI to validate
    * @throws AppCatalogException if the URI scheme is unsupported or unsafe
    */
-  private static void requireSupportedScheme(URI uri, String errorCode, String fieldName)
-      throws AppCatalogException {
+  private static void requireSupportedArtifactScheme(URI uri) throws AppCatalogException {
     String scheme = uri.getScheme();
     if (scheme == null) {
-      throw new AppCatalogException(errorCode, fieldName + " must include a URI scheme");
+      throw new AppCatalogException(
+          INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD + " must include a URI scheme");
     }
     String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
     switch (normalizedScheme) {
-      case "https" -> {
-        requireRemoteHttpUri(uri, errorCode, fieldName);
+      case HTTPS_SCHEME -> {
+        requireRemoteHttpUri(uri, INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD);
         return;
       }
-      case "file" -> {
-        requireLocalFileUri(uri, errorCode, fieldName);
+      case FILE_SCHEME -> {
+        requireLocalFileUri(uri, INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD);
         return;
       }
-      case "http" -> {
-        requireRemoteHttpUri(uri, errorCode, fieldName);
+      case HTTP_SCHEME -> {
+        requireRemoteHttpUri(uri, INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD);
         if (isLocalhost(uri.getHost())) {
           return;
         }
       }
-      default -> throw unsupportedScheme(errorCode, fieldName, scheme);
+      default -> throw unsupportedArtifactScheme(scheme);
     }
-    throw unsupportedScheme(errorCode, fieldName, scheme);
+    throw unsupportedArtifactScheme(scheme);
+  }
+
+  private static void requireSupportedSourceScheme(URI uri) {
+    String scheme = uri.getScheme();
+    if (scheme == null) {
+      throw new AppCatalogException(
+          INVALID_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD + " must include a URI scheme");
+    }
+    String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
+    switch (normalizedScheme) {
+      case HTTPS_SCHEME ->
+          requireRemoteHttpUri(uri, INVALID_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD);
+      case FILE_SCHEME ->
+          requireLocalFileUri(uri, INVALID_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD);
+      case HTTP_SCHEME -> {
+        requireRemoteHttpUri(uri, INVALID_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD);
+        if (isLocalhost(uri.getHost())) {
+          return;
+        }
+        throw unsupportedScheme(UNSUPPORTED_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD, scheme);
+      }
+      case CRYPTA_SCHEME -> CryptaCatalogUri.parse(uri.toString());
+      default ->
+          throw unsupportedScheme(UNSUPPORTED_CATALOG_SOURCE, CATALOG_SOURCE_URI_FIELD, scheme);
+    }
+  }
+
+  private static AppCatalogException unsupportedArtifactScheme(String scheme) {
+    return unsupportedScheme(INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD, scheme);
   }
 
   private static AppCatalogException unsupportedScheme(

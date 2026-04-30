@@ -1546,10 +1546,78 @@
     sections.apps.append(list);
   }
 
+  function catalogSourceKind(catalog) {
+    const rawKind =
+      typeof catalog.sourceKind === "string" && catalog.sourceKind
+        ? catalog.sourceKind
+        : typeof catalog.sourceType === "string" && catalog.sourceType
+          ? catalog.sourceType
+          : "";
+    const normalizedKind = rawKind.trim().toLowerCase();
+    if (normalizedKind) {
+      return normalizedKind;
+    }
+    const source = typeof catalog.source === "string" ? catalog.source : "";
+    try {
+      const url = new URL(source, window.location.href);
+      const protocol = url.protocol.replace(":", "").toLowerCase();
+      return protocol || "unknown";
+    } catch (error) {
+      return "unknown";
+    }
+  }
+
+  function catalogLastSuccessfulRefreshAt(catalog) {
+    return typeof catalog.lastSuccessfulRefreshAt === "string" && catalog.lastSuccessfulRefreshAt
+      ? catalog.lastSuccessfulRefreshAt
+      : catalog.refreshedAt;
+  }
+
+  function catalogFetchStatus(catalog) {
+    return typeof catalog.lastFetchStatus === "string" && catalog.lastFetchStatus
+      ? catalog.lastFetchStatus.toLowerCase()
+      : "";
+  }
+
+  function catalogFetchFailed(catalog) {
+    const status = catalogFetchStatus(catalog);
+    if (status && status !== "success" && status !== "ok" && status !== "refreshed") {
+      return true;
+    }
+    return Boolean(catalog.lastFetchErrorCode || catalog.lastFetchErrorMessage);
+  }
+
+  function catalogLastFailedAttempt(catalog) {
+    if (!catalogFetchFailed(catalog)) {
+      return "Unavailable";
+    }
+    return formatIsoTimestamp(catalog.lastAttemptAt);
+  }
+
+  function catalogFetchWarningNode(catalog) {
+    if (catalogSourceKind(catalog) !== "crypta" || !catalogFetchFailed(catalog)) {
+      return null;
+    }
+    const details = [];
+    if (catalog.lastFetchErrorCode) {
+      details.push(scalar(catalog.lastFetchErrorCode));
+    }
+    if (catalog.lastFetchErrorMessage) {
+      details.push(scalar(catalog.lastFetchErrorMessage));
+    }
+    const suffix = details.length ? ` ${details.join(": ")}` : "";
+    return text(
+      "p",
+      "status-message is-warning",
+      `Crypta catalog refresh failed; showing last successful app listing.${suffix}`,
+    );
+  }
+
   function renderCatalogCard(catalog) {
     const card = document.createElement("article");
     card.className = "app-card";
     const title = typeof catalog.name === "string" && catalog.name ? catalog.name : scalar(catalog.catalogId);
+    const sourceKind = catalogSourceKind(catalog);
     const header = document.createElement("div");
     header.className = "app-card-header";
     const heading = document.createElement("div");
@@ -1558,16 +1626,30 @@
     const pills = document.createElement("div");
     pills.className = "app-card-pills";
     pills.append(createPill("Signed catalog"));
+    pills.append(createPill(sourceKind));
+    if (catalogFetchFailed(catalog)) {
+      pills.append(createPill("refresh failed", "is-warning"));
+    }
     pills.append(createPill(`${Array.isArray(catalog.apps) ? catalog.apps.length : 0} apps`));
     header.append(heading, pills);
     card.append(header);
     card.append(
       definitionList([
+        ["Source type", sourceKind],
         ["Source", scalar(catalog.source)],
+        ["Resolved source", scalar(catalog.lastResolvedUri)],
         ["Generated", formatIsoTimestamp(catalog.generatedAt)],
-        ["Refreshed", formatIsoTimestamp(catalog.refreshedAt)],
+        ["Last successful refresh", formatIsoTimestamp(catalogLastSuccessfulRefreshAt(catalog))],
+        ["Last failed attempt", catalogLastFailedAttempt(catalog)],
       ]),
     );
+    const fetchWarning = catalogFetchWarningNode(catalog);
+    if (fetchWarning) {
+      card.append(fetchWarning);
+    }
+    if (catalog.appsError) {
+      card.append(text("p", "error-state", `Catalog apps unavailable: ${catalog.appsError}`));
+    }
     if (formPassword) {
       const actions = document.createElement("div");
       actions.className = "app-card-actions";
@@ -2827,8 +2909,14 @@
     if (!catalog || typeof catalog !== "object" || typeof catalog.catalogId !== "string") {
       return catalog;
     }
-    const apps = await loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));
-    return { ...catalog, apps: apps && Array.isArray(apps.apps) ? apps.apps : [] };
+    try {
+      const apps = await loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));
+      return { ...catalog, apps: apps && Array.isArray(apps.apps) ? apps.apps : [] };
+    } catch (error) {
+      const appsError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+      return { ...catalog, apps: [], appsError };
+    }
   }
 
   async function dismissAlert(form) {

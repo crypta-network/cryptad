@@ -3,6 +3,7 @@ package network.crypta.platform.appcatalog;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * API-friendly snapshot of one configured catalog source.
@@ -23,6 +24,12 @@ import java.util.Objects;
  * @param appCount number of app entries currently available
  * @param addedAt timestamp when the source was first configured locally
  * @param refreshedAt timestamp when the stored catalog was last fetched and verified
+ * @param lastAttemptAt timestamp when the source was last refresh-attempted
+ * @param lastSuccessfulRefreshAt timestamp when the source was last successfully verified
+ * @param lastFetchStatus status of the most recent refresh attempt
+ * @param lastFetchErrorCode stable error code from the most recent failed refresh attempt
+ * @param lastFetchErrorMessage diagnostic message from the most recent failed refresh attempt
+ * @param lastResolvedUri source URI or Crypta key used by the last fetch attempt
  */
 public record AppCatalogSourceSnapshot(
     String catalogId,
@@ -31,7 +38,13 @@ public record AppCatalogSourceSnapshot(
     Instant generatedAt,
     int appCount,
     Instant addedAt,
-    Instant refreshedAt) {
+    Instant refreshedAt,
+    Instant lastAttemptAt,
+    Instant lastSuccessfulRefreshAt,
+    AppCatalogFetchStatus lastFetchStatus,
+    Optional<String> lastFetchErrorCode,
+    Optional<String> lastFetchErrorMessage,
+    Optional<String> lastResolvedUri) {
   /**
    * Creates a validated source snapshot.
    *
@@ -46,6 +59,12 @@ public record AppCatalogSourceSnapshot(
    * @param appCount number of app entries currently available
    * @param addedAt timestamp when the source was first configured locally
    * @param refreshedAt timestamp when the stored catalog was last fetched and verified
+   * @param lastAttemptAt timestamp when the source was last refresh-attempted
+   * @param lastSuccessfulRefreshAt timestamp when the source was last successfully verified
+   * @param lastFetchStatus status of the most recent refresh attempt
+   * @param lastFetchErrorCode stable error code from the most recent failed refresh attempt
+   * @param lastFetchErrorMessage diagnostic message from the most recent failed refresh attempt
+   * @param lastResolvedUri source URI or Crypta key used by the last fetch attempt
    */
   public AppCatalogSourceSnapshot {
     catalogId = AppCatalog.normalizeCatalogId(catalogId);
@@ -59,10 +78,20 @@ public record AppCatalogSourceSnapshot(
     }
     Objects.requireNonNull(addedAt, "addedAt");
     Objects.requireNonNull(refreshedAt, "refreshedAt");
+    Objects.requireNonNull(lastAttemptAt, "lastAttemptAt");
+    Objects.requireNonNull(lastSuccessfulRefreshAt, "lastSuccessfulRefreshAt");
+    Objects.requireNonNull(lastFetchStatus, "lastFetchStatus");
+    Objects.requireNonNull(lastFetchErrorCode, "lastFetchErrorCode");
+    Objects.requireNonNull(lastFetchErrorMessage, "lastFetchErrorMessage");
+    Objects.requireNonNull(lastResolvedUri, "lastResolvedUri");
   }
 
   static AppCatalogSourceSnapshot of(
-      AppCatalog catalog, AppCatalogSource source, Instant addedAt, Instant refreshedAt) {
+      AppCatalog catalog,
+      AppCatalogSource source,
+      Instant addedAt,
+      Instant refreshedAt,
+      AppCatalogSourceRefreshMetadata refreshMetadata) {
     return new AppCatalogSourceSnapshot(
         catalog.catalogId(),
         catalog.name(),
@@ -70,6 +99,22 @@ public record AppCatalogSourceSnapshot(
         catalog.generatedAt(),
         catalog.entries().size(),
         addedAt,
-        refreshedAt);
+        refreshedAt,
+        refreshMetadata.lastAttemptAt(),
+        refreshMetadata.lastSuccessfulRefreshAt(),
+        refreshMetadata.lastFetchStatus(),
+        refreshMetadata.lastFetchErrorCode(),
+        refreshMetadata.lastFetchErrorMessage(),
+        refreshMetadata.lastResolvedUri());
+  }
+
+  /**
+   * Returns the configured source transport family.
+   *
+   * @return normalized source kind derived from {@link #sourceUri()}
+   */
+  @SuppressWarnings("unused")
+  public AppCatalogSourceKind sourceKind() {
+    return new AppCatalogSource(sourceUri).kind();
   }
 }

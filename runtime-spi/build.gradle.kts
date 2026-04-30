@@ -4,3 +4,9 @@ plugins {
 }
 
 version = rootProject.version
+
+dependencies {
+  testImplementation(libs.junitJupiterApi)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
+}
