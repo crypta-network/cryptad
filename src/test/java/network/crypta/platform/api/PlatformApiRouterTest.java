@@ -1,6 +1,7 @@
 package network.crypta.platform.api;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -10,9 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.appcatalog.AppCatalogChangelog;
+import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
@@ -129,6 +133,7 @@ class PlatformApiRouterTest {
   private static final long APP_PID = 4242L;
   private static final long MANIFEST_DATA_QUOTA_BYTES = 4096L;
   private static final long MANIFEST_CACHE_QUOTA_BYTES = 8192L;
+  private static final String CATALOG_MINIMUM_CRYPTA_VERSION = "1400";
 
   @Mock private RuntimePorts runtimePorts;
   @Mock private NodeInfoPort nodeInfoPort;
@@ -2037,6 +2042,32 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenCatalogAppHasMinimumCryptaVersion_expectComparableBuildVersion() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(nodeInfoPort.greeting())
+        .thenReturn(
+            new NodeGreetingSnapshot(
+                "Cryptad", "Cryptad,1481,1.0,1481", 1481, "abc123", true, "gzip", "en"));
+    when(catalogManager.listApps("core"))
+        .thenReturn(List.of(catalogEntryWithMinimumCryptaVersion()));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        catalogRouter.route(request("GET", List.of("app-catalogs", "core", "apps"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"currentCryptaVersion\":\"1481\""));
+    assertTrue(
+        response
+            .body()
+            .contains("\"minimumCryptaVersion\":\"" + CATALOG_MINIMUM_CRYPTA_VERSION + "\""));
+    assertTrue(response.body().contains("\"status\":\"satisfied\""));
+    assertFalse(response.body().contains("Cryptad,1481,1.0,1481"));
+  }
+
+  @Test
   void route_whenAppsListRequested_expectAppsEnvelopeAndMergedRunningState() throws Exception {
     InstalledAppSnapshot installed = installedSnapshot();
     RunningAppSnapshot running = runningSnapshot();
@@ -3246,6 +3277,28 @@ class PlatformApiRouterTest {
         0L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of("network.access"));
+  }
+
+  private AppCatalogEntry catalogEntryWithMinimumCryptaVersion() {
+    return new AppCatalogEntry(
+        APP_ID,
+        APP_NAME,
+        APP_VERSION,
+        "Catalog app summary",
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        List.of(),
+        new AppCatalogCompatibilityMetadata(Optional.of(CATALOG_MINIMUM_CRYPTA_VERSION)),
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
+        URI.create("https://example.invalid/artifact.zip"),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of("network.access"),
+        Map.of());
   }
 
   private static Map<String, Object> summary(

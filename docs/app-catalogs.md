@@ -4,9 +4,11 @@ This document describes Cryptad's signed app catalog format and the local instal
 
 ## Scope
 
-Signed app catalogs are a Phase 4 app-platform control plane. They do not change peer protocols,
-wire formats, application sandboxing, or AppHost process launching. A catalog only tells the local
-node where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect.
+Signed app catalogs are a Phase 5 app-platform control plane. They do not change peer protocols,
+wire formats, application sandboxing, or AppHost process launching. A catalog tells the local node
+where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect. It
+can also carry optional app-store display metadata for review, compatibility, source, license,
+permissions, screenshots, and changelog links.
 
 The runtime verifies data in this order:
 
@@ -16,6 +18,10 @@ The runtime verifies data in this order:
    `AppBundleVerifier`.
 4. The extracted manifest `app.id` and `app.version` against the catalog entry.
 
+Catalog review metadata is advisory. Signed catalog verification and signed bundle verification
+remain the trust source. A `review.status` or `review.note` value does not create cryptographic
+trust and does not weaken artifact or bundle checks.
+
 ## Catalog files
 
 A catalog source points at `cryptad-app-catalog.properties`. The matching signature is read from
@@ -24,7 +30,7 @@ the sibling file `cryptad-app-catalog.signature`.
 Catalog properties use a deterministic `key=value` text sidecar:
 
 ```properties
-catalog.version=1
+catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
@@ -39,11 +45,59 @@ app.queue-manager.bundle.sha256=<lowercase-hex-sha256-of-zip>
 app.queue-manager.bundle.size.bytes=12345
 app.queue-manager.bundle.type=zip
 app.queue-manager.permissions=queue.read,queue.write
+app.queue-manager.homepage=https://example.invalid/apps/queue-manager
+app.queue-manager.source=https://example.invalid/src/queue-manager
+app.queue-manager.license=MIT
+app.queue-manager.categories=productivity,network
+app.queue-manager.minimumCryptaVersion=1481
+app.queue-manager.review.status=reviewed
+app.queue-manager.review.note=Reviewed for local operator safety.
+app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.
+app.queue-manager.permissions.rationale.queue.write=Lets the app cancel or reprioritize requests.
+app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.png
+app.queue-manager.changelog.summary=Adds queue retry controls.
+app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 ```
 
 The parser rejects duplicate keys, missing required fields, unsupported versions, unsupported
 artifact types, invalid app ids, blank names or versions, invalid SHA-256 text, negative sizes,
 unsafe artifact URIs, duplicate entries, and unknown properties.
+
+`catalog.version=1` is the minimal signed-catalog schema and contains only the required app,
+artifact, and permission fields. `catalog.version=2` adds the optional app-store metadata fields
+shown above. Current Cryptad nodes parse both versions. Older strict v1 nodes reject v2 catalogs
+rather than silently accepting unknown metadata fields.
+
+Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
+app-store metadata fields remain optional within the v2 schema.
+
+## App-store metadata
+
+Catalog entries can include these optional fields:
+
+| Catalog property | Meaning |
+| --- | --- |
+| `app.<id>.homepage` | Operator-facing homepage URI. |
+| `app.<id>.source` | Source repository or source archive URI. |
+| `app.<id>.license` | Single-line license label, such as `MIT` or `GPL-3.0-or-later`. |
+| `app.<id>.categories` | Comma-separated category labels, normalized and deduplicated for display. |
+| `app.<id>.minimumCryptaVersion` | Advisory minimum Cryptad build/version string. Integer build numbers are the comparable form used by Platform API responses. |
+| `app.<id>.review.status` | Advisory human review state. Supported values are `unreviewed`, `reviewed`, `caution`, and `rejected`. |
+| `app.<id>.review.note` | Single-line advisory review note for operators. |
+| `app.<id>.permissions.rationale.<permission>` | Explanation for a declared permission, keyed by the normalized permission name. |
+| `app.<id>.screenshot.N` | Screenshot URI metadata, where `N` is a positive deterministic index. |
+| `app.<id>.changelog.summary` | Single-line summary of changes for the catalog version. |
+| `app.<id>.changelog.uri` | URI for full changelog text or release notes. |
+
+URI fields are metadata only. The Web Shell should show screenshot URIs as links or behind an
+operator-explicit preview control; it should not silently auto-fetch arbitrary remote images from a
+catalog entry. `minimumCryptaVersion` is advisory and should not block install/update by itself
+when comparison is unavailable or ambiguous. Platform API compatibility summaries compare numeric
+Cryptad build labels when possible.
+
+Permission rationales explain why the catalog version declares a permission. They do not grant
+permissions and do not replace the signed bundle manifest's permission list or server-side
+Platform API authorization checks.
 
 ## Developer CLI catalog flow
 
@@ -63,13 +117,28 @@ name=Hello Queue
 version=0.1.0
 permissions=queue.read,queue.write
 app.id=hello-queue
+homepage=https://example.invalid/apps/hello-queue
+source=https://example.invalid/src/hello-queue
+license=MIT
+categories=productivity,network
+minimumCryptaVersion=1481
+review.status=reviewed
+review.note=Reviewed for local operator safety.
+permissions.rationale.queue.read=Reads the local transfer queue.
+permissions.rationale.queue.write=Lets the app cancel or reprioritize requests.
+screenshot.1=https://example.invalid/assets/hello-queue-1.png
+changelog.summary=Adds queue retry controls.
+changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
 ```
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the artifact's root `cryptad-app.properties`; descriptor `app.id` and `version`
 values are optional consistency checks and must match the artifact manifest. The `name` and
 `permissions` fields can override the display metadata and permission hints written to the catalog.
-It computes `bundle.sha256` and `bundle.size.bytes` from the local artifact bytes.
+Optional descriptor metadata uses the same names as catalog metadata without the `app.<id>.`
+prefix. The writer computes `bundle.sha256` and `bundle.size.bytes` from the local artifact bytes.
+Descriptors that omit app-store metadata produce `catalog.version=1`; descriptors that include any
+app-store metadata produce `catalog.version=2`.
 
 Create, sign, and verify a catalog with:
 
@@ -168,8 +237,19 @@ semantics as local staged apps: missing or `0` quota fields are unlimited, and p
 enforced only for AppHost-managed app data/cache directories. See
 [app-owned-ui.md](app-owned-ui.md) for the static UI route and security boundary.
 
+Catalog app listing and detail responses expose optional store metadata, installed/running state,
+installed version, catalog version, advisory version-difference/update information, permission
+rationales, and permission deltas for install/update review. Responses do not expose trusted-key
+material, catalog scratch paths, or verified staging directories.
+
+The Web Shell Apps section uses the same API to show catalog details before install or update:
+review status and note, source/homepage/license/category metadata, permission explanations,
+installed-vs-catalog version difference, advisory compatibility hints, and changelog metadata when
+present. Review metadata remains separate from signed catalog trust.
+
 ## Future work
 
 Manifest permissions are enforced for app-process Platform API calls as described in
-[app-permissions-and-audit.md](app-permissions-and-audit.md). Container or WASM sandboxing, public
-app-store governance, and background app update scheduling remain future work.
+[app-permissions-and-audit.md](app-permissions-and-audit.md). Catalog distribution over Crypta
+keys, public app-store governance, background app update scheduling, and remote screenshot proxying
+remain future work.

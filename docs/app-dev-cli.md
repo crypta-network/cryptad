@@ -10,9 +10,9 @@ projects. The command works on a staged bundle directory containing `cryptad-app
 launch files, and optional `static/` assets. The scaffold is a standalone staged bundle directory,
 not a new Gradle subproject.
 
-The CLI is offline filesystem tooling. It does not provide a remote app-store UI, hot reload, or a
-daemon-side install command. Install and update flows still go through the Platform API or signed
-catalog source handling described in [app-catalogs.md](app-catalogs.md).
+The CLI is offline filesystem tooling. It does not provide hot reload or a daemon-side install
+command. Install and update flows still go through the Platform API or signed catalog source
+handling described in [app-catalogs.md](app-catalogs.md).
 
 First-party repo apps can keep using their existing Gradle tasks. See
 [First-party Gradle workflow](#first-party-gradle-workflow).
@@ -181,15 +181,54 @@ name=Hello Queue
 version=0.1.0
 permissions=queue.read,queue.write
 app.id=hello-queue
+homepage=https://example.invalid/apps/hello-queue
+source=https://example.invalid/src/hello-queue
+license=MIT
+categories=productivity,network
+minimumCryptaVersion=1481
+review.status=reviewed
+review.note=Reviewed for local operator safety.
+permissions.rationale.queue.read=Reads the local transfer queue.
+permissions.rationale.queue.write=Lets the app cancel or reprioritize requests.
+screenshot.1=https://example.invalid/assets/hello-queue-1.png
+changelog.summary=Adds queue retry controls.
+changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
 ```
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and
 `version` values are optional consistency checks and must match the artifact manifest. The `name`
 and `permissions` fields can override the display metadata and permission hints written to the
-catalog. `artifact.path` is local authoring input and is not written to the public catalog. Do not
-change the ZIP after creating the catalog; the generated catalog records its size and lowercase
-SHA-256 digest.
+catalog.
+
+Descriptors can also author optional app-store metadata:
+
+| Descriptor property | Generated catalog property |
+| --- | --- |
+| `homepage` | `app.<id>.homepage` |
+| `source` | `app.<id>.source` |
+| `license` | `app.<id>.license` |
+| `categories` | `app.<id>.categories` |
+| `minimumCryptaVersion` | `app.<id>.minimumCryptaVersion` |
+| `review.status` | `app.<id>.review.status` |
+| `review.note` | `app.<id>.review.note` |
+| `permissions.rationale.<permission>` | `app.<id>.permissions.rationale.<permission>` |
+| `screenshot.N` | `app.<id>.screenshot.N` |
+| `changelog.summary` | `app.<id>.changelog.summary` |
+| `changelog.uri` | `app.<id>.changelog.uri` |
+
+These fields are optional. Descriptors that omit them generate a minimal `catalog.version=1`
+catalog; descriptors that include any app-store metadata generate `catalog.version=2` so strict v1
+catalog consumers reject the expanded schema cleanly instead of accepting unknown fields.
+`homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
+`review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
+verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
+integer Cryptad build labels are the comparable form used by Platform API responses. Permission
+rationales explain declared permissions; they do not grant capabilities.
+
+`artifact.path` is local authoring input and is not written to the public catalog. Do not change
+the ZIP after creating the catalog; the generated catalog records its size and lowercase SHA-256
+digest.
 
 Create the catalog properties file:
 

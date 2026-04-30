@@ -9,7 +9,7 @@ import java.util.Optional;
 import network.crypta.platform.appdist.AppBundleManifest;
 
 /**
- * Verified v1 app catalog content.
+ * Verified app catalog content.
  *
  * <p>The catalog preserves the deterministic entry order declared by {@code catalog.entries}. It is
  * immutable after construction, and every entry is keyed by the normalized AppHost app id used by
@@ -22,7 +22,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * directory names and API path segments. Entry lists are copied, duplicate app ids are rejected,
  * and no mutable collections from callers are retained.
  *
- * @param version catalog schema version, currently {@code 1}
+ * @param version catalog schema version
  * @param catalogId stable catalog identifier used by API paths and local storage
  * @param name human-readable catalog name
  * @param generatedAt timestamp declared by the catalog producer
@@ -34,6 +34,12 @@ public record AppCatalog(
     String name,
     Instant generatedAt,
     List<AppCatalogEntry> entries) {
+  /** Minimal signed-catalog schema. */
+  public static final int VERSION_MINIMAL = 1;
+
+  /** Signed-catalog schema that can carry optional app-store metadata. */
+  public static final int VERSION_STORE_METADATA = 2;
+
   /**
    * Creates a validated immutable catalog.
    *
@@ -42,7 +48,7 @@ public record AppCatalog(
    * signatures or artifact metadata; callers must only construct instances from already
    * authenticated bytes or from trusted test/tooling fixtures.
    *
-   * @param version catalog schema version, currently {@code 1}
+   * @param version catalog schema version
    * @param catalogId stable catalog identifier used by API paths and local storage
    * @param name human-readable catalog name shown to operators
    * @param generatedAt timestamp declared by the catalog producer
@@ -50,7 +56,7 @@ public record AppCatalog(
    * @throws AppCatalogException if the catalog header or entry set is invalid
    */
   public AppCatalog {
-    if (version != 1) {
+    if (!isSupportedVersion(version)) {
       throw AppCatalogSidecars.invalidEntry("unsupported catalog.version: " + version);
     }
     catalogId = normalizeCatalogId(catalogId);
@@ -60,6 +66,10 @@ public record AppCatalog(
     Objects.requireNonNull(generatedAt, "generatedAt");
     entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
     rejectDuplicateEntries(entries);
+  }
+
+  static boolean isSupportedVersion(int version) {
+    return version == VERSION_MINIMAL || version == VERSION_STORE_METADATA;
   }
 
   /**

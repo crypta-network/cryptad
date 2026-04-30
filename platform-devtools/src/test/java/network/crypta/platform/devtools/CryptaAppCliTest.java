@@ -349,7 +349,18 @@ class CryptaAppCliTest {
         lines(
             "artifact.path=" + outputZip.toAbsolutePath().normalize(),
             "bundle.uri=" + outputZip.toUri(),
-            "summary=Sample catalog entry."),
+            "summary=Sample catalog entry.",
+            "homepage=https://example.invalid/sample-app",
+            "source=https://example.invalid/sample-app/source",
+            "license=MIT",
+            "categories=Productivity,network",
+            "minimumCryptaVersion=0.1.0",
+            "review.status=reviewed",
+            "review.note=Reviewed for local operator safety.",
+            "permissions.rationale.queue.read=Reads the local transfer queue.",
+            "screenshot.1=https://example.invalid/sample-app/shot-1.png",
+            "changelog.summary=Adds queue retry controls.",
+            "changelog.uri=https://example.invalid/sample-app/changelog.txt"),
         StandardCharsets.UTF_8);
 
     CliResult result =
@@ -370,8 +381,28 @@ class CryptaAppCliTest {
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
+    assertTrue(catalog.contains("catalog.version=2\n"));
     assertTrue(catalog.contains("catalog.generatedAt=2026-04-29T00:00:00Z\n"));
     assertTrue(catalog.contains("app.sample-app.id=sample-app\n"));
+    assertTrue(catalog.contains("app.sample-app.homepage=https://example.invalid/sample-app\n"));
+    assertTrue(
+        catalog.contains("app.sample-app.source=https://example.invalid/sample-app/source\n"));
+    assertTrue(catalog.contains("app.sample-app.license=MIT\n"));
+    assertTrue(catalog.contains("app.sample-app.categories=productivity,network\n"));
+    assertTrue(catalog.contains("app.sample-app.minimumCryptaVersion=0.1.0\n"));
+    assertTrue(catalog.contains("app.sample-app.review.status=reviewed\n"));
+    assertTrue(
+        catalog.contains("app.sample-app.review.note=Reviewed for local operator safety.\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.permissions.rationale.queue.read=Reads the local transfer queue.\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.screenshot.1=https://example.invalid/sample-app/shot-1.png\n"));
+    assertTrue(catalog.contains("app.sample-app.changelog.summary=Adds queue retry controls.\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.changelog.uri=https://example.invalid/sample-app/changelog.txt\n"));
     assertTrue(catalog.contains("app.sample-app.permissions=queue.read\n"));
     assertTrue(catalog.contains("app.sample-app.bundle.size.bytes=" + Files.size(outputZip)));
     assertTrue(catalog.contains("app.sample-app.bundle.sha256=" + sha256Hex(outputZip)));
@@ -417,7 +448,9 @@ class CryptaAppCliTest {
         "Development Apps",
         "--entry",
         descriptor.toString());
+    String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
 
+    assertTrue(catalog.contains("catalog.version=1\n"));
     CliResult signResult =
         runCli(
             "catalog",

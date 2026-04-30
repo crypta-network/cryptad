@@ -257,8 +257,8 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
   staged AppHost bundles.
 - `:platform-appcatalog` owns signed app catalog parsing, signature verification, remote/local
-  catalog fetching, artifact digest checks, safe ZIP extraction, and verified staging for AppHost
-  install/update flows.
+  catalog fetching, app-store metadata parsing, artifact digest checks, safe ZIP extraction, and
+  verified staging for AppHost install/update flows.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -358,7 +358,9 @@ Signed staged bundles add `cryptad-app.digests` and `cryptad-app.signature` at t
 
 Signed app catalogs add a verified source layer above signed bundles. See
 [`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
-catalog signatures, trusted-key configuration, and `/api/v1/app-catalogs` install/update flow.
+catalog signatures, trusted-key configuration, optional app-store metadata, and
+`/api/v1/app-catalogs` install/update flow. Catalog review metadata is advisory; signed catalog
+and signed bundle verification remain the trust source.
 
 Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
 Static UI bundles open at `/apps/{appId}/`; shell-panel bundles keep existing local links such as
@@ -418,8 +420,13 @@ crypta-app verify \
 
 `crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
 scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available. The CLI is
-local developer tooling; it does not add a remote app-store UI, hot reload, or daemon-side install
-command.
+local developer tooling; it does not add hot reload or a daemon-side install command.
+
+`crypta-app catalog create` descriptors can author optional store metadata such as homepage,
+source, license, categories, advisory review status/note, permission rationales, screenshot URL
+metadata, changelog metadata, and advisory minimum Cryptad version. Descriptors without those
+fields generate minimal `catalog.version=1` catalogs; descriptors with store metadata generate
+`catalog.version=2`. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
 
 First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
 and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow
@@ -431,10 +438,13 @@ Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:pla
 primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
 compatibility, bridge, debug, and fallback surfaces.
 
-Current Phase 4 app-platform work extends that path with signed catalog sources, app-owned static
-UI routes, and independent first-party Queue Manager and Publisher UIs. Installed apps can be
-launched through `/app/node/` shell-panel links or through stable `/apps/{appId}/` routes when the
-signed bundle declares `app.ui.mode=static`.
+Current Phase 5 app-platform work extends that path with signed catalog sources, app-owned static
+UI routes, richer catalog review metadata, and independent first-party Queue Manager and Publisher
+UIs. Installed apps can be launched through `/app/node/` shell-panel links or through stable
+`/apps/{appId}/` routes when the signed bundle declares `app.ui.mode=static`. The Web Shell Apps
+section uses `/api/v1/app-catalogs` metadata to show source, license, category, review,
+permission-rationale, version-difference, compatibility, and changelog details before install or
+update.
 
 Key docs:
 
@@ -845,8 +855,9 @@ Root build also includes:
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
   signatures, trusted-key verification, and the signing/verification CLI used by first-party app
   Gradle tasks.
-- `:platform-appcatalog`: signed catalog source parsing, signature verification, artifact digest
-  checks, safe ZIP extraction, and verified staging for AppHost install/update flows.
+- `:platform-appcatalog`: signed catalog source parsing, signature verification, app-store
+  metadata parsing, artifact digest checks, safe ZIP extraction, and verified staging for AppHost
+  install/update flows.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -1091,8 +1102,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route and
   asset-resolution helpers; `:platform-sdk-js` provides the browser SDK resource for app-owned
   static UI; `:platform-appdist` provides the local app bundle digest, signing, and verification
-  tooling; `:platform-appcatalog` provides signed catalog source,
-  artifact verification, and safe ZIP staging support;
+  tooling; `:platform-appcatalog` provides signed catalog source, app-store metadata, artifact
+  verification, and safe ZIP staging support;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

@@ -82,6 +82,8 @@ class WebShellResourcesTest {
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
     assertAppsMarkersPresent(script);
+    assertAppStoreMetadataMarkersPresent(script);
+    assertCompatibilityUndeclaredPrecedesSuccess(script);
     assertAppsSubmissionOrder(script);
     assertAppsLoadSequencing(script);
     assertPublisherMarkersPresent(script);
@@ -103,6 +105,9 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".permission-list {"));
     assertTrue(stylesheet.contains(".app-audit-event.is-denied {"));
     assertTrue(stylesheet.contains(".catalog-app-card {"));
+    assertTrue(stylesheet.contains(".catalog-app-card.is-update-available {"));
+    assertTrue(stylesheet.contains(".metadata-link-list {"));
+    assertTrue(stylesheet.contains(".permission-review-list {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
@@ -395,6 +400,52 @@ class WebShellResourcesTest {
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
     assertTrue(script.contains("Catalog actions unavailable in read-only mode."));
+  }
+
+  private static void assertAppStoreMetadataMarkersPresent(String script) {
+    assertTrue(script.contains("function safeMetadataUri(value)"));
+    assertTrue(script.contains("function metadataLinkNode(value, label)"));
+    assertTrue(script.contains("function metadataLinkListNode(values)"));
+    assertTrue(script.contains("function catalogReviewDetailsNode(app)"));
+    assertTrue(script.contains("function catalogCompatibilityDetailsNode(app)"));
+    assertTrue(script.contains("function catalogPermissionReviewDetailsNode(app)"));
+    assertTrue(script.contains("function catalogReleaseDetailsNode(app)"));
+    assertTrue(script.contains("Review and trust"));
+    assertTrue(
+        script.contains(
+            "Advisory metadata; catalog and bundle verification still control installation."));
+    assertTrue(script.contains("Permission review"));
+    assertTrue(script.contains("Release metadata"));
+    assertTrue(script.contains("[\"Homepage\", metadataLinkNode(app.homepage)]"));
+    assertTrue(script.contains("[\"Source\", metadataLinkNode(app.source)]"));
+    assertTrue(script.contains("[\"Categories\", chipListNode(app.categories)]"));
+    assertTrue(script.contains("[\"Permission changes\","));
+    assertTrue(script.contains("[\"Screenshot links\", metadataLinkListNode(app.screenshots)]"));
+    assertTrue(script.contains("link.rel = \"noopener noreferrer\";"));
+    assertTrue(
+        script.contains(
+            "link.textContent = typeof label === \"string\" && label ? label : value;"));
+    assertTrue(script.contains("pills.append(createPill(\"Signed catalog\"));"));
+    assertTrue(script.contains("pills.append(createPill(versionLabel(app), versionTone(app)));"));
+    assertTrue(script.contains("No permission rationale supplied."));
+    assertTrue(script.contains("Update from catalog"));
+    assertTrue(script.contains("Apply catalog version"));
+    assertTrue(script.contains("Install from catalog"));
+  }
+
+  private static void assertCompatibilityUndeclaredPrecedesSuccess(String script) {
+    int toneStart = script.indexOf("function compatibilityTone(compatibility)");
+    int toneUndeclaredIndex = script.indexOf("status === \"not_declared\"", toneStart);
+    int toneSuccessIndex = script.indexOf("compatibility.satisfied === true", toneStart);
+    assertTrue(toneUndeclaredIndex > toneStart);
+    assertTrue(toneSuccessIndex > toneUndeclaredIndex);
+
+    int labelStart = script.indexOf("function compatibilityLabel(compatibility)");
+    int labelUndeclaredIndex = script.indexOf("status === \"not_declared\"", labelStart);
+    int labelSuccessIndex = script.indexOf("compatibility.satisfied === true", labelStart);
+    assertTrue(labelUndeclaredIndex > labelStart);
+    assertTrue(labelSuccessIndex > labelUndeclaredIndex);
+    assertTrue(script.contains("Compatibility not declared"));
   }
 
   private static void assertAppsSubmissionOrder(String script) {

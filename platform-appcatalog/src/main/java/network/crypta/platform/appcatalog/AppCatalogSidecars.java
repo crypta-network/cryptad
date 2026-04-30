@@ -212,6 +212,25 @@ final class AppCatalogSidecars {
   }
 
   /**
+   * Requires a non-blank single-line value that fits a caller-defined display bound.
+   *
+   * @param value raw metadata value
+   * @param fieldName field name used in diagnostics
+   * @param errorCode catalog error code to attach to validation failures
+   * @param maxChars maximum accepted character count after trimming
+   * @return trimmed single-line value
+   * @throws AppCatalogException if the value is blank, multi-line, or too long
+   */
+  static String requireBoundedSingleLine(
+      String value, String fieldName, String errorCode, int maxChars) throws AppCatalogException {
+    String normalized = requireNonBlankSingleLine(value, fieldName, errorCode);
+    if (normalized.length() > maxChars) {
+      throw new AppCatalogException(errorCode, fieldName + " exceeds the allowed length");
+    }
+    return normalized;
+  }
+
+  /**
    * Requires a lowercase SHA-256 digest string.
    *
    * @param value raw digest text from catalog metadata
@@ -251,6 +270,42 @@ final class AppCatalogSidecars {
     URI normalized = normalizeUri(uri, INVALID_CATALOG_ENTRY, "artifact URI");
     requireSupportedScheme(normalized, INVALID_CATALOG_ENTRY, "artifact URI");
     return normalized;
+  }
+
+  /**
+   * Validates and normalizes an operator-facing metadata URI.
+   *
+   * <p>Display metadata is never fetched by the catalog installer. The policy still rejects
+   * user-info, fragments, local file paths, and non-HTTPS remote schemes except explicit loopback
+   * HTTP for local development.
+   *
+   * @param uri URI from optional catalog display metadata
+   * @param fieldName field name used in diagnostics
+   * @return normalized metadata URI
+   * @throws AppCatalogException if the URI is not safe to expose through the catalog API
+   */
+  static URI requireSafeMetadataUri(URI uri, String fieldName) throws AppCatalogException {
+    URI normalized = normalizeUri(uri, INVALID_CATALOG_ENTRY, fieldName);
+    String scheme = normalized.getScheme();
+    if (scheme == null) {
+      throw new AppCatalogException(
+          INVALID_CATALOG_ENTRY, fieldName + " must include a URI scheme");
+    }
+    String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
+    switch (normalizedScheme) {
+      case "https" -> {
+        requireRemoteHttpUri(normalized, INVALID_CATALOG_ENTRY, fieldName);
+        return normalized;
+      }
+      case "http" -> {
+        requireRemoteHttpUri(normalized, INVALID_CATALOG_ENTRY, fieldName);
+        if (isLocalhost(normalized.getHost())) {
+          return normalized;
+        }
+      }
+      default -> throw unsupportedScheme(INVALID_CATALOG_ENTRY, fieldName, scheme);
+    }
+    throw unsupportedScheme(INVALID_CATALOG_ENTRY, fieldName, scheme);
   }
 
   /**
