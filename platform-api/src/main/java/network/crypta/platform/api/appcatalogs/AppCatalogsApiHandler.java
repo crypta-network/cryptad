@@ -476,9 +476,19 @@ public final class AppCatalogsApiHandler {
     return !catalogVersion.equals(installedVersion);
   }
 
-  private static boolean updateAvailable(
+  private static Boolean updateAvailable(
       String catalogVersion, String installedVersion, boolean installed) {
-    return versionDifferent(catalogVersion, installedVersion, installed);
+    if (!installed) {
+      return false;
+    }
+    if (catalogVersion == null || installedVersion == null) {
+      return null;
+    }
+    if (catalogVersion.equals(installedVersion)) {
+      return false;
+    }
+    Integer comparison = compareDottedNumericVersions(catalogVersion, installedVersion);
+    return comparison == null ? null : comparison > 0;
   }
 
   private static String versionStatus(

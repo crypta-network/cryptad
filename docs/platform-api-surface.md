@@ -101,7 +101,10 @@ when a metadata-capable catalog entry provides it:
   advisory status, and whether the comparison is satisfied when it can be evaluated.
 - `screenshots` as URI strings.
 - `changelog.summary` and `changelog.uri`.
-- Installed-vs-catalog version-difference fields and an advisory `updateAvailable` summary.
+- Installed-vs-catalog version-difference fields and an advisory `updateAvailable` summary. A
+  version mismatch is reported separately through `versionDifferent`; `updateAvailable` is `true`
+  only when the catalog version compares newer than the installed version and is `null` when
+  ordering cannot be evaluated safely.
 - `permissionDelta` for install/update review, with added, removed, and unchanged permissions.
 
 Signed catalog verification remains the source of trust. Review metadata is advisory and does not

@@ -142,6 +142,38 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void listApps_whenInstalledVersionIsNewerThanCatalog_expectDifferenceWithoutUpdateAvailable()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.listApps("core")).thenReturn(List.of(catalogEntryWithVersion("1.2.0")));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installedSnapshot("1.3.0", List.of("queue.read"))));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    assertEquals(true, app.get("versionDifferent"));
+    assertEquals(false, app.get("updateAvailable"));
+    assertEquals("different", app.get("versionStatus"));
+  }
+
+  @Test
+  void listApps_whenDifferingVersionsAreNotComparable_expectUnknownUpdateAvailable()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.listApps("core")).thenReturn(List.of(catalogEntryWithVersion("1.2-beta")));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installedSnapshot("1.1.0", List.of("queue.read"))));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    assertEquals(true, app.get("versionDifferent"));
+    assertNull(app.get("updateAvailable"));
+    assertEquals("different", app.get("versionStatus"));
+  }
+
+  @Test
   void listApps_whenMinimumVersionExceedsCurrentVersion_expectNotSatisfiedCompatibility()
       throws Exception {
     AppCatalogsApiHandler handler =
@@ -223,10 +255,14 @@ class AppCatalogsApiHandlerTest {
   }
 
   private AppCatalogEntry minimalCatalogEntry() {
+    return catalogEntryWithVersion("1.2.0");
+  }
+
+  private AppCatalogEntry catalogEntryWithVersion(String version) {
     return new AppCatalogEntry(
         APP_ID,
         "Queue Manager",
-        "1.2.0",
+        version,
         "Manage local Crypta transfer queues.",
         URI.create("https://example.invalid/apps/queue-manager.zip"),
         "0".repeat(64),

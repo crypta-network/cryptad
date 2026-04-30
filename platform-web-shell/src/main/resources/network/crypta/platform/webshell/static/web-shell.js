@@ -1757,9 +1757,11 @@
       actions.className = "app-card-actions";
       const action = app.installed ? "update" : "install";
       const label = app.installed
-        ? app.updateAvailable || app.versionDifferent
+        ? app.updateAvailable
           ? "Update from catalog"
-          : "Update installed app"
+          : app.versionDifferent
+            ? "Apply catalog version"
+            : "Update installed app"
         : "Install from catalog";
       const form = buildCatalogActionForm(catalog, app, action, label);
       if (form) {

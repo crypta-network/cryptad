@@ -429,6 +429,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("pills.append(createPill(versionLabel(app), versionTone(app)));"));
     assertTrue(script.contains("No permission rationale supplied."));
     assertTrue(script.contains("Update from catalog"));
+    assertTrue(script.contains("Apply catalog version"));
     assertTrue(script.contains("Install from catalog"));
   }
 
