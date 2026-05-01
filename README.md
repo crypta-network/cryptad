@@ -246,19 +246,22 @@ Cryptad now uses a partial multi-project Gradle build.
   `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
-  lifecycle, and per-start launch-token plumbing for local apps.
+  lifecycle, per-start launch-token plumbing, sandbox status reporting, data/cache quota checks,
+  and bounded process-log handling for local apps.
 - `:platform-app-ui` owns app-owned static UI route helpers under
   `network.crypta.platform.appui`. It maps static app UI metadata to `/apps/{appId}/`, resolves
-  installed-bundle assets, and enforces traversal, symlink, and content-type boundaries before the
-  HTTP adapter streams files.
+  installed-bundle assets, issues short-lived browser sessions for static app API calls, and
+  enforces traversal, symlink, and content-type boundaries before the HTTP adapter streams files.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource used by app-owned static UI
   bundles. First-party app staging copies this SDK into staged `static/` assets so pages can use
   the same bootstrap, Platform API, mutation, error, and fragment-sanitization helpers.
-- `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
-  staged AppHost bundles.
-- `:platform-appcatalog` owns signed app catalog parsing, signature verification, remote/local
-  catalog fetching, app-store metadata parsing, artifact digest checks, safe ZIP extraction, and
-  verified staging for AppHost install/update flows.
+- `:platform-appdist` owns the local app distribution tooling used to digest, sign, package, and
+  verify staged AppHost bundles.
+- `:platform-appcatalog` owns signed app catalog parsing, catalog writing, signature verification,
+  remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
+  ZIP extraction, and verified staging for AppHost install/update flows.
+- `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
+  signing, packaging, verifying, and catalog-authoring standalone staged bundles.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -438,11 +441,13 @@ Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:pla
 primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
 compatibility, bridge, debug, and fallback surfaces.
 
-Current Phase 5 app-platform work extends that path with signed catalog sources, app-owned static
-UI routes, richer catalog review metadata, and independent first-party Queue Manager and Publisher
-UIs. Installed apps can be launched through `/app/node/` shell-panel links or through stable
-`/apps/{appId}/` routes when the signed bundle declares `app.ui.mode=static`. The Web Shell Apps
-section uses `/api/v1/app-catalogs` metadata to show source, license, category, review,
+Current Phase 5 app-platform work extends that path with signed catalog sources, Crypta catalog
+transport, app-owned static UI routes, browser sessions for static app API calls, richer catalog
+review metadata, AppHost sandbox/quota visibility, the `crypta-app` developer CLI, and independent
+first-party Queue Manager and Publisher UIs. Installed apps can be launched through `/app/node/`
+shell-panel links or through stable `/apps/{appId}/` routes when the signed bundle declares
+`app.ui.mode=static`. The Web Shell Apps section uses `/api/v1/app-catalogs` metadata to show
+source, license, category, review,
 permission-rationale, version-difference, compatibility, and changelog details before install or
 update.
 
@@ -524,6 +529,7 @@ leaf ownership and import rules:
 ./gradlew :platform-app-ui:test
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
+./gradlew :platform-devtools:test
 ./gradlew :platform-sdk-js:test
 ./gradlew :platform-web-shell:test
 ./gradlew :kernel-content:test
@@ -554,7 +560,8 @@ Additional root and mixed verification slices remain available:
 ```
 
 Platform checks now live in `:platform-api`, `:platform-apphost`, `:platform-app-ui`,
-`:platform-appdist`, `:platform-appcatalog`, `:platform-sdk-js`, and `:platform-web-shell`.
+`:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`, and
+`:platform-web-shell`.
 
 ## Code Quality
 
@@ -845,19 +852,22 @@ Root build also includes:
   Its current family-level surface covers node, connectivity, queue, peers, config, security
   levels, updates, wizard/welcome, alerts, diagnostics, apps, and app catalogs.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
-  Local staged and verified catalog app updates now flow through this core; background remote
-  update-channel work remains separate and later.
+  Local staged and verified catalog app updates now flow through this core. It also reports sandbox
+  provider status, enforces positive AppHost-managed data/cache quotas at launch and restart
+  boundaries, and bounds managed process logs.
 - `:platform-app-ui`: app-owned static UI route and asset-resolution helpers used by the legacy
   HTTP admin adapter to serve `/apps/{appId}/` without exposing data/cache/run directories or
-  traversal paths.
+  traversal paths. It also owns browser session issuance and verification for static app API calls.
 - `:platform-sdk-js`: browser-native SDK resource for app-owned static UI bootstrap, Platform API
   form/JSON helpers, error handling, and conservative legacy-fragment sanitization.
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
-  signatures, trusted-key verification, and the signing/verification CLI used by first-party app
-  Gradle tasks.
-- `:platform-appcatalog`: signed catalog source parsing, signature verification, app-store
-  metadata parsing, artifact digest checks, safe ZIP extraction, and verified staging for AppHost
-  install/update flows.
+  signatures, trusted-key verification, bundle packaging, and the signing/verification helpers used
+  by first-party app Gradle tasks.
+- `:platform-appcatalog`: signed catalog source parsing, catalog writing, signature verification,
+  app-store metadata parsing, Crypta catalog source fetching, artifact digest checks, safe ZIP
+  extraction, and verified staging for AppHost install/update flows.
+- `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating, signing,
+  packaging, verifying, and catalog-authoring standalone staged bundles.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -954,7 +964,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`,
-    `:platform-appcatalog`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-node`,
+    `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
+    `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
     `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
     `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -1099,11 +1110,12 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
   control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
-  v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route and
-  asset-resolution helpers; `:platform-sdk-js` provides the browser SDK resource for app-owned
-  static UI; `:platform-appdist` provides the local app bundle digest, signing, and verification
-  tooling; `:platform-appcatalog` provides signed catalog source, app-store metadata, artifact
-  verification, and safe ZIP staging support;
+  v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route,
+  asset-resolution, and browser-session helpers; `:platform-sdk-js` provides the browser SDK
+  resource for app-owned static UI; `:platform-appdist` provides the local app bundle digest,
+  signing, packaging, and verification tooling; `:platform-appcatalog` provides signed catalog
+  source, app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP staging
+  support; `:platform-devtools` provides the standalone `crypta-app` developer CLI;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

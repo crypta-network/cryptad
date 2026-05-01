@@ -45,9 +45,14 @@ Use this skill when working on:
 - The `:platform-app-ui` JAR contributes app-owned static UI route helpers used by the legacy HTTP
   admin adapter to serve installed bundle files under `/apps/{appId}/`.
 - The `:platform-appdist` JAR contributes signed local app bundle digest, signature, verifier,
-  trusted-key, and distribution-tool classes used by first-party app tasks and AppHost validation.
-- The `:platform-appcatalog` JAR contributes signed catalog source parsing, verification,
-  artifact download, safe ZIP extraction, and verified staging support.
+  trusted-key, packager, and distribution-tool classes used by first-party app tasks, developer
+  tooling, and AppHost validation.
+- The `:platform-appcatalog` JAR contributes signed catalog source parsing, catalog writing,
+  verification, Crypta catalog source fetching, artifact download, safe ZIP extraction, and
+  verified staging support.
+- The `:platform-devtools` application builds the standalone `crypta-app` developer CLI
+  distribution with its own `installDist` output. It is developer tooling, not a daemon entrypoint
+  inside `build/cryptad-dist`.
 - The `:platform-sdk-js` JAR contributes the browser SDK resource staged into first-party static
   app bundles and loaded by app-owned UIs under `/apps/{appId}/`.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,

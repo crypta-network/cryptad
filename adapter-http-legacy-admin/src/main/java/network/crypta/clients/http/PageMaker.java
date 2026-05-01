@@ -11,6 +11,7 @@ import java.util.Optional;
 import network.crypta.clients.http.utils.ClientSideLocalizationScript;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.PageChromePort;
 import network.crypta.runtime.spi.PageChromeSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
@@ -66,6 +67,8 @@ public final class PageMaker {
   private static final String TAG_DIV = "div";
   private static final String TAG_UL = "ul";
   private static final String TAG_LI = "li";
+  private static final String SHELL_SECURITY_URL = WebShellPaths.SHELL_ROOT + "#security";
+  private static final String LEGACY_LANGUAGE_URL = "/config/node#l10n";
 
   /** Mode value that renders the UI without advanced controls, suited for first-time users. */
   public static final int MODE_SIMPLE = 1;
@@ -219,10 +222,93 @@ public final class PageMaker {
    *
    * @param link default navigation target when the category itself is clicked
    * @param name menu label used for both CSS identifiers and the visible link text
-   * @param title tooltip text describing the category’s purpose
+   * @param title tooltip text describing the category's purpose
    */
   public synchronized void addNavigationCategory(String link, String name, String title) {
     SubMenu menu = new SubMenu(link, name, title);
+    subMenus.put(name, menu);
+    menuList.add(menu);
+  }
+
+  /**
+   * Adds a navigation category whose default target can fall back at render time.
+   *
+   * <p>The primary {@code link} is used while {@code primaryLinkEnabled} returns {@code true} for
+   * the current request. When it returns {@code false}, the category root uses {@code fallbackLink}
+   * instead. This keeps top-level categories visible while avoiding primary routes that are not
+   * usable for a specific client configuration.
+   *
+   * @param link default navigation target when the category itself is clicked
+   * @param name menu label used for both CSS identifiers and the visible link text
+   * @param title tooltip text describing the category's purpose
+   * @param fallbackLink alternate target when the primary link is disabled; {@code null} reuses
+   *     {@code link}
+   * @param primaryLinkEnabled callback that decides whether {@code link} is usable for the request;
+   *     {@code null} always uses {@code link}
+   */
+  public synchronized void addNavigationCategory(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      LinkEnabledCallback primaryLinkEnabled) {
+    addNavigationCategory(link, name, title, fallbackLink, true, primaryLinkEnabled);
+  }
+
+  /**
+   * Adds a navigation category whose default target can fall back with explicit access scoping.
+   *
+   * <p>The access flag applies only when the category has no visible child links and would
+   * otherwise be hidden. Categories with visible child links keep the existing per-link access
+   * behavior.
+   *
+   * @param link default navigation target when the category itself is clicked
+   * @param name menu label used for both CSS identifiers and the visible link text
+   * @param title tooltip text describing the category's purpose
+   * @param fallbackLink alternate target when the primary link is disabled; {@code null} reuses
+   *     {@code link}
+   * @param fullOnly whether a root-only category requires full-access permission
+   * @param primaryLinkEnabled callback that decides whether {@code link} is usable for the request;
+   *     {@code null} always uses {@code link}
+   */
+  public synchronized void addNavigationCategory(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      boolean fullOnly,
+      LinkEnabledCallback primaryLinkEnabled) {
+    addNavigationCategory(link, name, title, fallbackLink, fullOnly, primaryLinkEnabled, null);
+  }
+
+  /**
+   * Adds a navigation category whose root can fall back and be hidden at render time.
+   *
+   * <p>{@code rootLinkEnabled} decides whether a root-only category should be rendered at all.
+   * {@code primaryLinkEnabled} decides whether that rendered root should use {@code link} or {@code
+   * fallbackLink}.
+   *
+   * @param link default navigation target when the category itself is clicked
+   * @param name menu label used for both CSS identifiers and the visible link text
+   * @param title tooltip text describing the category's purpose
+   * @param fallbackLink alternate target when the primary link is disabled; {@code null} reuses
+   *     {@code link}
+   * @param fullOnly whether a root-only category requires full-access permission
+   * @param primaryLinkEnabled callback that decides whether {@code link} is usable for the request;
+   *     {@code null} always uses {@code link}
+   * @param rootLinkEnabled callback that decides whether a root-only category should render; {@code
+   *     null} always allows rendering
+   */
+  public synchronized void addNavigationCategory(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      boolean fullOnly,
+      LinkEnabledCallback primaryLinkEnabled,
+      LinkEnabledCallback rootLinkEnabled) {
+    SubMenu menu =
+        new SubMenu(link, name, title, fallbackLink, fullOnly, primaryLinkEnabled, rootLinkEnabled);
     subMenus.put(name, menu);
     menuList.add(menu);
   }
@@ -637,7 +723,7 @@ public final class PageMaker {
     addAlerts(statusBarDiv, ctx);
     addLanguageSelector(statusBarDiv);
     addModeSwitch(statusBarDiv, ctx, renderParameters);
-    addSecurityLevels(statusBarDiv, chromeSnapshot);
+    addSecurityLevels(statusBarDiv, ctx, chromeSnapshot);
     addPeerStatus(statusBarDiv, chromeSnapshot);
   }
 
@@ -656,7 +742,7 @@ public final class PageMaker {
     statusBarDiv
         .addChild(TAG_DIV, "id", "statusbar-language")
         .addChild(
-            TAG_A, "href", "/config/node#l10n", NodeL10n.getBase().getSelectedLanguage().fullName);
+            TAG_A, "href", LEGACY_LANGUAGE_URL, NodeL10n.getBase().getSelectedLanguage().fullName);
   }
 
   private void addModeSwitch(
@@ -683,8 +769,10 @@ public final class PageMaker {
             : NodeL10n.getBase().getString("StatusBar.switchToAdvancedMode"));
   }
 
-  private void addSecurityLevels(HTMLNode statusBarDiv, PageChromeSnapshot chromeSnapshot) {
+  private void addSecurityLevels(
+      HTMLNode statusBarDiv, ToadletContext ctx, PageChromeSnapshot chromeSnapshot) {
     addSeparator(statusBarDiv);
+    String securityLevelsUrl = securityLevelsUrl(ctx);
     HTMLNode secLevels =
         statusBarDiv.addChild(
             TAG_DIV,
@@ -696,7 +784,7 @@ public final class PageMaker {
         secLevels.addChild(
             TAG_A,
             "href",
-            "/seclevels/",
+            securityLevelsUrl,
             localiseNetworkThreatLevel(chromeSnapshot.networkThreatLevel()) + "\u00a0");
     network.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.networkThreatLevelShort"));
@@ -707,7 +795,7 @@ public final class PageMaker {
         secLevels.addChild(
             TAG_A,
             "href",
-            "/seclevels/",
+            securityLevelsUrl,
             localisePhysicalThreatLevel(chromeSnapshot.physicalThreatLevel()));
     physical.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.physicalThreatLevelShort"));
@@ -843,11 +931,20 @@ public final class PageMaker {
       nonEmpty = true;
       isSelected = renderNavigationItem(subnavlist, activePath, navigationLink, menu) || isSelected;
     }
-    if (nonEmpty) {
-      HTMLNode listItem = createMenuListItem(menu, subnavlist, isSelected);
+    if (nonEmpty || shouldRenderCategoryRoot(fullAccess, ctx, menu)) {
+      HTMLNode listItem = createMenuListItem(ctx, menu, subnavlist, isSelected);
       navbarUl.addChild(listItem);
     }
     return isSelected;
+  }
+
+  private static boolean shouldRenderCategoryRoot(
+      boolean fullAccess, ToadletContext ctx, SubMenu menu) {
+    String defaultLink = menu.defaultNavigationLink(ctx);
+    return (fullAccess || !menu.isDefaultNavigationFullOnly())
+        && menu.isDefaultNavigationEnabled(ctx)
+        && defaultLink != null
+        && !defaultLink.isBlank();
   }
 
   private boolean renderNavigationItem(
@@ -903,7 +1000,8 @@ public final class PageMaker {
     }
   }
 
-  private HTMLNode createMenuListItem(SubMenu menu, HTMLNode subnavlist, boolean isSelected) {
+  private HTMLNode createMenuListItem(
+      ToadletContext ctx, SubMenu menu, HTMLNode subnavlist, boolean isSelected) {
     HTMLNode listItem;
     if (isSelected) {
       subnavlist.addAttribute(ATTR_CLASS, "subnavlist-selected");
@@ -921,7 +1019,7 @@ public final class PageMaker {
     listItem.addChild(
         TAG_A,
         new String[] {"href", ATTR_TITLE},
-        new String[] {menu.defaultNavigationLink, menuItemTitle},
+        new String[] {menu.defaultNavigationLink(ctx), menuItemTitle},
         text);
     listItem.addChild(subnavlist);
     return listItem;
@@ -985,6 +1083,10 @@ public final class PageMaker {
 
   private boolean isJavascriptEnabled(ToadletContext ctx) {
     return ctx != null && ctx.getContainer().isFProxyJavascriptEnabled();
+  }
+
+  private String securityLevelsUrl(ToadletContext ctx) {
+    return isJavascriptEnabled(ctx) ? SHELL_SECURITY_URL : SecurityLevelsToadlet.PATH;
   }
 
   private boolean isWebPushingEnabled(ToadletContext ctx) {
@@ -1378,8 +1480,23 @@ public final class PageMaker {
   private static class SubMenu {
 
     public SubMenu(String link, String name, String title) {
+      this(link, name, title, null, true, null, null);
+    }
+
+    public SubMenu(
+        String link,
+        String name,
+        String title,
+        String fallbackLink,
+        boolean fullOnly,
+        LinkEnabledCallback primaryLinkEnabled,
+        LinkEnabledCallback rootLinkEnabled) {
       this.navigationLinkText = name;
       this.defaultNavigationLink = link;
+      this.fallbackNavigationLink = fallbackLink;
+      this.defaultNavigationFullOnly = fullOnly;
+      this.primaryLinkEnabled = primaryLinkEnabled;
+      this.rootLinkEnabled = rootLinkEnabled;
       this.defaultNavigationLinkTitle = title;
     }
 
@@ -1405,11 +1522,38 @@ public final class PageMaker {
       navigationLinkCallbacks.remove(name);
     }
 
+    private String defaultNavigationLink(ToadletContext ctx) {
+      if (primaryLinkEnabled == null || primaryLinkEnabled.isEnabled(ctx)) {
+        return defaultNavigationLink;
+      }
+      return fallbackNavigationLink == null ? defaultNavigationLink : fallbackNavigationLink;
+    }
+
+    private boolean isDefaultNavigationFullOnly() {
+      return defaultNavigationFullOnly;
+    }
+
+    private boolean isDefaultNavigationEnabled(ToadletContext ctx) {
+      return rootLinkEnabled == null || rootLinkEnabled.isEnabled(ctx);
+    }
+
     /** Name of the submenu */
     private final String navigationLinkText;
 
     /** Link if the user clicks on the submenu itself */
     private final String defaultNavigationLink;
+
+    /** Fallback link if the default target is disabled for a request. */
+    private final String fallbackNavigationLink;
+
+    /** Whether a root-only category requires full-access permission. */
+    private final boolean defaultNavigationFullOnly;
+
+    /** Runtime check for whether the default target should be used. */
+    private final LinkEnabledCallback primaryLinkEnabled;
+
+    /** Runtime check for whether the category root should be rendered. */
+    private final LinkEnabledCallback rootLinkEnabled;
 
     /** Tooltip */
     private final String defaultNavigationLinkTitle;

@@ -59,4 +59,18 @@ class LegacyAdminRetirementRegistryTest {
     assertFalse(fallbackIds.contains("friends"));
     assertFalse(fallbackIds.contains("alerts"));
   }
+
+  @Test
+  void shouldPromoteInLegacyNavigation_whenRequested_expectPrimaryReplacedHiddenOnly() {
+    assertFalse(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/alerts/"));
+    assertFalse(
+        LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation(
+            LegacyHttpPaths.CONFIG_PATH + "node"));
+    assertFalse(
+        LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation(QueueToadlet.PATH_DOWNLOADS));
+
+    assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/chat/"));
+    assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/send_n2ntm/"));
+    assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/not-in-map/"));
+  }
 }

@@ -8,8 +8,10 @@ import java.nio.file.Path;
 import java.util.Optional;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
+import network.crypta.clients.http.ToadletContainer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.updater.UpdaterPaths;
 import network.crypta.support.HTMLNode;
@@ -39,6 +41,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings({"java:S100", "unchecked"})
 class CoreActionToadletTest {
+  private static final String SHELL_UPDATES_URL = WebShellPaths.SHELL_ROOT + "#updates";
+  private static final String LEGACY_UPDATES_URL = "/alerts/";
+
   @TempDir Path tempDir;
 
   @Test
@@ -49,8 +54,8 @@ class CoreActionToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenCalled_expectRedirectToAlerts() throws Exception {
-    ToadletContext ctx = mock(ToadletContext.class);
+  void handleMethodGET_whenCalled_expectRedirectToWebShellUpdates() throws Exception {
+    ToadletContext ctx = contextWithJavascript(true);
     HTTPRequest request = mock(HTTPRequest.class);
     CoreActionToadlet toadlet = new CoreActionToadlet(mock(CoreUpdateActionPort.class));
 
@@ -62,7 +67,24 @@ class CoreActionToadletTest {
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
-    assertEquals("/alerts/", headersCaptor.getValue().getFirst("Location"));
+    assertEquals(SHELL_UPDATES_URL, headersCaptor.getValue().getFirst("Location"));
+  }
+
+  @Test
+  void handleMethodGET_whenJavascriptDisabled_expectRedirectToLegacyUpdates() throws Exception {
+    ToadletContext ctx = contextWithJavascript(false);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(mock(CoreUpdateActionPort.class));
+
+    doNothing().when(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/core-update/"), request, ctx);
+
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        (ArgumentCaptor<MultiValueTable<String, String>>)
+            (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
+    assertEquals(LEGACY_UPDATES_URL, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test
@@ -83,7 +105,7 @@ class CoreActionToadletTest {
   @Test
   void handleMethodPOST_whenCoreUpdaterMissing_expectRedirect() throws Exception {
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
-    ToadletContext ctx = mock(ToadletContext.class);
+    ToadletContext ctx = contextWithJavascript(true);
     HTTPRequest request = mock(HTTPRequest.class);
     CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
@@ -97,14 +119,14 @@ class CoreActionToadletTest {
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
-    assertEquals("/alerts/", headersCaptor.getValue().getFirst("Location"));
+    assertEquals(SHELL_UPDATES_URL, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test
   void handleMethodPOST_whenActionUnknownAndCoreUpdaterAvailable_expectRedirect() throws Exception {
     // Arrange
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
-    ToadletContext ctx = mock(ToadletContext.class);
+    ToadletContext ctx = contextWithJavascript(true);
     HTTPRequest request = mock(HTTPRequest.class);
     CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
@@ -121,13 +143,13 @@ class CoreActionToadletTest {
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
-    assertEquals("/alerts/", headersCaptor.getValue().getFirst("Location"));
+    assertEquals(SHELL_UPDATES_URL, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test
   void handleMethodPOST_whenDownloadAction_expectStartDownloadAndRedirect() throws Exception {
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
-    ToadletContext ctx = mock(ToadletContext.class);
+    ToadletContext ctx = contextWithJavascript(true);
     HTTPRequest request = mock(HTTPRequest.class);
     CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
 
@@ -143,7 +165,7 @@ class CoreActionToadletTest {
         (ArgumentCaptor<MultiValueTable<String, String>>)
             (ArgumentCaptor<?>) ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
-    assertEquals("/alerts/", headersCaptor.getValue().getFirst("Location"));
+    assertEquals(SHELL_UPDATES_URL, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test
@@ -305,6 +327,14 @@ class CoreActionToadletTest {
     String html = captureWrittenHtml(ctx);
     assertTrue(html.contains("cannot perform snap installs"));
     assertTrue(html.contains("sudo snap install network.crypta"));
+  }
+
+  private static ToadletContext contextWithJavascript(boolean javascriptEnabled) {
+    ToadletContext ctx = mock(ToadletContext.class);
+    ToadletContainer container = mock(ToadletContainer.class);
+    when(ctx.getContainer()).thenReturn(container);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(javascriptEnabled);
+    return ctx;
   }
 
   private static void stubHtmlContext(ToadletContext ctx) throws Exception {

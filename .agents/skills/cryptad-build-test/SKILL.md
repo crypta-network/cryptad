@@ -23,7 +23,8 @@ Use this skill when you need to:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`,
+  `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -90,15 +91,19 @@ Use this skill when you need to:
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1. Its focused leaf tests now live
   under `platform-api/src/test/java`.
-- `:platform-apphost` owns the transport-neutral out-of-process AppHost core plus its focused leaf
-  tests under `platform-apphost/src/test/java`.
-- `:platform-app-ui` owns app-owned static UI route, path, content-type, header, and asset
-  resolver helpers plus focused tests under `platform-app-ui/src/test/java`.
-- `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest, and
-  distribution-tool code plus focused tests under `platform-appdist/src/test/java`.
-- `:platform-appcatalog` owns signed catalog source parsing, verification, artifact download,
-  safe ZIP extraction, and verified staging code plus focused tests under
-  `platform-appcatalog/src/test/java`.
+- `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
+  policy/status reporting, data/cache quota enforcement, and focused leaf tests under
+  `platform-apphost/src/test/java`.
+- `:platform-app-ui` owns app-owned static UI route, path, content-type, header, asset resolver,
+  and browser-session helpers plus focused tests under `platform-app-ui/src/test/java`.
+- `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest,
+  deterministic packager, and distribution-tool code plus focused tests under
+  `platform-appdist/src/test/java`.
+- `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
+  verification, `crypta:` catalog source fetching, artifact download, safe ZIP extraction, and
+  verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
+- `:platform-devtools` owns the standalone `crypta-app` developer CLI plus focused CLI tests under
+  `platform-devtools/src/test/java`.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
@@ -161,6 +166,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-app-ui:test`
   - `./gradlew :platform-appdist:test`
   - `./gradlew :platform-appcatalog:test`
+  - `./gradlew :platform-devtools:test`
   - `./gradlew :platform-sdk-js:test`
   - `./gradlew :platform-web-shell:test`
   - `./gradlew :kernel-content:test`
@@ -227,6 +233,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-appdist:compileJava`
 - Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
   - `./gradlew :platform-appcatalog:compileJava`
+- Compile the developer app CLI leaf when you touched `network.crypta.platform.devtools`:
+  - `./gradlew :platform-devtools:compileJava`
 - Process and test the Platform SDK resource leaf when you touched
   `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`:
   - `./gradlew :platform-sdk-js:processResources :platform-sdk-js:test`

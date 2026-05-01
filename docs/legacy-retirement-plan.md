@@ -5,12 +5,18 @@ first-party app replacements.
 
 ## Scope
 
-PR-200 creates a retirement map. It does not delete legacy pages, remove FProxy browse, change FCP,
-or change network compatibility. Legacy admin pages remain reachable for fallback, debug, and deep
-links until later PRs prove that removal is safe.
+PR-200 created the replacement map. PR-211 uses that existing map to hide `PRIMARY_REPLACED`
+admin pages from legacy navigation, but it does not create a new retirement model and does not
+delete legacy pages, remove FProxy browse, change FCP, or change network compatibility. Direct
+legacy URLs remain reachable for fallback, debug, and deep links until later PRs prove that removal
+is safe.
 
 FProxy browse and content-rendering surfaces are explicitly retained. The browse split under
 `:adapter-http-legacy-browse` remains outside deletion scope for this plan.
+
+Pending routes also remain pending in this batch. They stay reachable through direct URLs and any
+explicit fallback entry points until their Web Shell or app replacements are complete enough to
+retire the legacy path.
 
 ## Retirement states
 
@@ -56,7 +62,7 @@ The authoritative code map for admin pages lives in
 `LegacyAdminRetirementRegistry` under `:adapter-http-legacy-admin`. Browse-only routes remain owned
 by `:adapter-http-legacy-browse`.
 
-## Current Phase 4 status
+## Current execution status
 
 Web Shell is the primary local operator UI for node status, peers, queue and transfers, config,
 updates, alerts, diagnostics, installed apps, and first-time setup controls where startup state
@@ -66,8 +72,23 @@ allows it. Queue Manager and Publisher are app-owned static UIs under `/apps/que
 Replaced legacy admin pages render a non-blocking notice that says the page remains available as a
 fallback/debug view and links to the Web Shell or first-party app replacement.
 
-Web Shell no longer treats replaced legacy admin pages as primary fallback links. Its legacy link
-panel is limited to retained or pending pages that still need a direct entry point.
+PR-211 no longer treats replaced legacy admin pages as legacy navigation targets. `PRIMARY_REPLACED`
+pages are omitted from the Web Shell legacy-link panel and from legacy page-chrome entry points
+when a Web Shell or first-party app path is now primary. The underlying legacy routes still exist,
+so bookmarked or manually entered fallback/debug URLs continue to render the legacy page and its
+replacement notice.
+
+The legacy top-level Queue, Friends, Status, and Config category roots prefer
+`/apps/queue-manager/`, `/app/node/#peers`, `/app/node/`, and `/app/node/#config` instead of
+legacy primary-replaced pages. The Queue root falls back to `/downloads/` when Queue Manager is not
+installed or the app route is not usable for the current client, but only for clients that would
+already see legacy queue navigation. Public-gateway non-full sessions keep the Queue category
+hidden. Shell-backed category roots still render direct legacy fallback URLs when Web Shell is not
+the advertised primary UI, such as JavaScript-disabled FProxy sessions.
+
+Retained browse/FProxy surfaces and `PENDING` admin routes are unchanged by this batch. They remain
+available as legacy entry points until a later PR proves a complete replacement and documents the
+deletion path.
 
 ## Diagnostics
 

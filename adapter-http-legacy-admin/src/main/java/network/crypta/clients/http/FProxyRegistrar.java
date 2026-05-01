@@ -1,9 +1,13 @@
 package network.crypta.clients.http;
 
+import java.io.IOException;
 import java.util.Arrays;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.appui.AppBrowserSessionStore;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -35,6 +39,14 @@ import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
  * is retained after setup. Mutability is limited to injecting constructed toadlets into the server.
  */
 final class FProxyRegistrar {
+  private static final String QUEUE_MANAGER_APP_ID = "queue-manager";
+  private static final String QUEUE_MANAGER_URL =
+      LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl();
+  private static final String SHELL_PEERS_URL =
+      LegacyAdminRetirementRegistry.require("friends").replacementUrl();
+  private static final String SHELL_CONFIG_URL =
+      LegacyAdminRetirementRegistry.require("config").replacementUrl();
+  private static final String LEGACY_STATUS_URL = "/alerts/";
 
   private FProxyRegistrar() {}
 
@@ -62,19 +74,34 @@ final class FProxyRegistrar {
 
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU, browseContext, server);
+    LinkEnabledCallback webShellPrimary = webShellPrimary(server);
     server.registerMenu(
-        LegacyHttpPaths.DOWNLOADS_PATH,
+        QUEUE_MANAGER_URL,
         LegacyHttpCategories.CATEGORY_QUEUE,
-        "FProxyToadlet.categoryTitleQueue");
+        "FProxyToadlet.categoryTitleQueue",
+        QueueToadlet.PATH_DOWNLOADS,
+        false,
+        queueManagerAvailable(dependencies.appHost()),
+        legacyQueueNavigationAvailable());
     server.registerMenu(
-        LegacyHttpPaths.FRIENDS_PATH,
+        SHELL_PEERS_URL,
         LegacyHttpCategories.CATEGORY_FRIENDS,
-        "FProxyToadlet.categoryTitleFriends");
+        "FProxyToadlet.categoryTitleFriends",
+        LegacyHttpPaths.FRIENDS_PATH,
+        webShellPrimary);
     server.registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     server.registerMenu(
-        "/alerts/", LegacyHttpCategories.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
+        WebShellPaths.SHELL_ROOT,
+        LegacyHttpCategories.CATEGORY_STATUS,
+        "FProxyToadlet.categoryTitleStatus",
+        LEGACY_STATUS_URL,
+        webShellPrimary);
     server.registerMenu(
-        "/seclevels/", LegacyHttpCategories.CATEGORY_CONFIG, "FProxyToadlet.categoryTitleConfig");
+        SHELL_CONFIG_URL,
+        LegacyHttpCategories.CATEGORY_CONFIG,
+        "FProxyToadlet.categoryTitleConfig",
+        SecurityLevelsToadlet.PATH,
+        webShellPrimary);
 
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.INTRO_ROUTES, browseContext, server);
@@ -82,10 +109,9 @@ final class FProxyRegistrar {
     UserAlertsToadlet alerts = new UserAlertsToadlet();
     server.register(
         alerts,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
-            "/alerts/",
-            true,
+            LEGACY_STATUS_URL,
             "FProxyToadlet.alertsTitle",
             "FProxyToadlet.alerts",
             true,
@@ -107,10 +133,9 @@ final class FProxyRegistrar {
                 insertCompatibilityModes));
     server.register(
         downloadToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_QUEUE,
             QueueToadlet.PATH_DOWNLOADS,
-            true,
             "FProxyToadlet.downloadsTitle",
             "FProxyToadlet.downloads",
             false,
@@ -136,10 +161,9 @@ final class FProxyRegistrar {
                 insertCompatibilityModes));
     server.register(
         uploadToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_QUEUE,
             QueueToadlet.PATH_UPLOADS,
-            true,
             "FProxyToadlet.uploadsTitle",
             "FProxyToadlet.uploads",
             false,
@@ -151,10 +175,9 @@ final class FProxyRegistrar {
                 runtimePorts.securityLevels(), insertCompatibilityModes));
     server.register(
         fiw,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_QUEUE,
             FileInsertWizardToadlet.PATH,
-            true,
             "FProxyToadlet.uploadFileWizardTitle",
             "FProxyToadlet.uploadFileWizard",
             false,
@@ -177,10 +200,9 @@ final class FProxyRegistrar {
     SecurityLevelsToadlet seclevels = new SecurityLevelsToadlet(securityLevelsToadletRuntimePorts);
     server.register(
         seclevels,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_CONFIG,
-            "/seclevels/",
-            true,
+            SecurityLevelsToadlet.PATH,
             "FProxyToadlet.seclevelsTitle",
             "FProxyToadlet.seclevels",
             true,
@@ -202,10 +224,9 @@ final class FProxyRegistrar {
               localDirectoryConfigToadlet.path(), config, cfg, configToadletRuntimePorts);
       server.register(
           configtoadlet,
-          ToadletRegistration.menuLink(
+          legacyNavigationRegistration(
               LegacyHttpCategories.CATEGORY_CONFIG,
               LegacyHttpPaths.CONFIG_PATH + prefix,
-              true,
               "ConfigToadlet." + prefix,
               "ConfigToadlet.title." + prefix,
               true,
@@ -236,10 +257,9 @@ final class FProxyRegistrar {
             connectionsToadletRuntimePorts, runtimePorts.darknetConnections());
     server.register(
         friendsToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_FRIENDS,
             LegacyHttpPaths.FRIENDS_PATH,
-            true,
             "FProxyToadlet.friendsTitle",
             "FProxyToadlet.friends",
             true,
@@ -250,10 +270,9 @@ final class FProxyRegistrar {
             runtimePorts.connectionsSupport(), runtimePorts.nodeInfo(), friendsToadlet);
     server.register(
         addRefToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_FRIENDS,
             "/addfriend/",
-            true,
             "FProxyToadlet.addFriendTitle",
             "FProxyToadlet.addFriend",
             true,
@@ -263,10 +282,9 @@ final class FProxyRegistrar {
         new OpennetConnectionsToadlet(connectionsToadletRuntimePorts);
     server.register(
         opennetToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
             "/strangers/",
-            true,
             "FProxyToadlet.opennetTitle",
             "FProxyToadlet.opennet",
             true,
@@ -275,10 +293,9 @@ final class FProxyRegistrar {
     ChatForumsToadlet chatForumsToadlet = new ChatForumsToadlet();
     server.register(
         chatForumsToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             "FProxyToadlet.categoryChat",
             "/chat/",
-            true,
             "FProxyToadlet.chatForumsTitle",
             "FProxyToadlet.chatForums",
             true,
@@ -297,14 +314,13 @@ final class FProxyRegistrar {
     WebShellToadlet webShellToadlet = new WebShellToadlet();
     server.register(
         webShellToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
             WebShellPaths.SHELL_ROOT,
-            true,
             "FProxyToadlet.webShellTitle",
             "FProxyToadlet.webShell",
             true,
-            ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot())));
+            webShellPrimary));
 
     AppBrowserSessionStore appBrowserSessionStore =
         new AppBrowserSessionStore(dependencies.appHost());
@@ -327,10 +343,9 @@ final class FProxyRegistrar {
     StatisticsToadlet statisticsToadlet = new StatisticsToadlet(runtimePorts.statistics());
     server.register(
         statisticsToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
             "/stats/",
-            true,
             "FProxyToadlet.statsTitle",
             "FProxyToadlet.stats",
             true,
@@ -339,10 +354,9 @@ final class FProxyRegistrar {
     DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(runtimePorts.diagnostic());
     server.register(
         diagnosticToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
             "/diagnostic/",
-            true,
             "FProxyToadlet.diagnosticTitle",
             "FProxyToadlet.diagnostic",
             true,
@@ -351,10 +365,9 @@ final class FProxyRegistrar {
     ConnectivityToadlet connectivityToadlet = new ConnectivityToadlet(runtimePorts.connectivity());
     server.register(
         connectivityToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_STATUS,
-            "/connectivity/",
-            true,
+            ConnectivityToadlet.CONNECTIVITY_PATH,
             "ConnectivityToadlet.connectivityTitle",
             "ConnectivityToadlet.connectivity",
             true,
@@ -363,10 +376,9 @@ final class FProxyRegistrar {
     TranslationToadlet translationToadlet = new TranslationToadlet();
     server.register(
         translationToadlet,
-        ToadletRegistration.menuLink(
+        legacyNavigationRegistration(
             LegacyHttpCategories.CATEGORY_CONFIG,
             TranslationToadlet.TOADLET_URL,
-            true,
             "TranslationToadlet.title",
             "TranslationToadlet.titleLong",
             true,
@@ -390,5 +402,46 @@ final class FProxyRegistrar {
 
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES, browseContext, server);
+  }
+
+  private static ToadletRegistration legacyNavigationRegistration(
+      String menu,
+      String urlPrefix,
+      String name,
+      String title,
+      boolean fullOnly,
+      LinkEnabledCallback callback) {
+    if (LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation(urlPrefix)) {
+      return ToadletRegistration.menuLink(menu, urlPrefix, true, name, title, fullOnly, callback);
+    }
+    return ToadletRegistration.basic(null, urlPrefix, true, fullOnly);
+  }
+
+  private static LinkEnabledCallback webShellPrimary(SimpleToadletServer server) {
+    return ignored -> WebShellPaths.SHELL_ROOT.equals(server.primaryUiRoot());
+  }
+
+  private static LinkEnabledCallback queueManagerAvailable(AppHost appHost) {
+    return ctx -> {
+      if (ctx == null
+          || !ctx.isAllowedFullAccess()
+          || !ctx.getContainer().isFProxyJavascriptEnabled()) {
+        return false;
+      }
+      try {
+        return appHost
+            .describe(QUEUE_MANAGER_APP_ID)
+            .map(InstalledAppSnapshot::manifest)
+            .map(manifest -> manifest.uiMode() == AppUiMode.STATIC)
+            .orElse(false);
+      } catch (IOException _) {
+        return false;
+      }
+    };
+  }
+
+  private static LinkEnabledCallback legacyQueueNavigationAvailable() {
+    return ctx ->
+        ctx != null && (!ctx.getContainer().publicGatewayMode() || ctx.isAllowedFullAccess());
   }
 }
