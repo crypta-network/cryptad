@@ -147,6 +147,29 @@ public record CryptaCatalogUri(
   }
 
   /**
+   * Resolves the signature fetch key that matches a fetched catalog result.
+   *
+   * <p>CHK catalog sources use an explicit immutable signature companion, so the companion from the
+   * original source is always returned. USK and SSK sources use sibling sidecars. When the runtime
+   * fetch layer reports a resolved catalog key, such as a newer concrete USK edition, the signature
+   * sibling is derived from that resolved catalog key so catalog properties and signature bytes
+   * come from the same edition. If the runtime cannot report a resolved key, the original sibling
+   * signature key is used.
+   *
+   * @param resolvedCatalogFetchKey final catalog key reported by the runtime fetch layer, or {@code
+   *     null} when unavailable
+   * @return bare Crypta key to fetch for the catalog signature sidecar
+   */
+  String signatureFetchKeyForResolvedCatalog(String resolvedCatalogFetchKey) {
+    if (!usesSiblingSignatureSidecar() || resolvedCatalogFetchKey == null) {
+      return signatureFetchKey;
+    }
+    String resolvedKey = normalizeResolvedCatalogFetchKey(resolvedCatalogFetchKey);
+    requireCompatibleResolvedKeyKind(resolvedKey);
+    return siblingSignatureKey(resolvedKey);
+  }
+
+  /**
    * Rejects unsupported query shapes before deriving fetch keys.
    *
    * @param catalogKey parsed catalog key portion before any signature companion
@@ -181,6 +204,54 @@ public record CryptaCatalogUri(
           "crypta USK/SSK catalog source must include a path-like key");
     }
     return catalogKey.substring(0, slashIndex + 1) + AppCatalogSignature.SIGNATURE_FILE_NAME;
+  }
+
+  /**
+   * Reports whether this catalog source derives its signature from a sibling path.
+   *
+   * @return {@code true} for path-like USK and SSK sources
+   */
+  private boolean usesSiblingSignatureSidecar() {
+    return catalogFetchKey.startsWith(USK_PREFIX) || catalogFetchKey.startsWith(SSK_PREFIX);
+  }
+
+  /**
+   * Normalizes the resolved catalog key reported by the runtime fetch layer.
+   *
+   * <p>Runtime implementations normally return bare Crypta keys, but accepting a redundant {@code
+   * crypta:} prefix keeps the catalog layer tolerant of future adapters while still rejecting
+   * queries, fragments, blank values, multiline values, and invalid URI syntax.
+   *
+   * @param resolvedCatalogFetchKey raw resolved key reported for the catalog fetch
+   * @return bare resolved Crypta key
+   */
+  private static String normalizeResolvedCatalogFetchKey(String resolvedCatalogFetchKey) {
+    String normalized =
+        AppCatalogSidecars.requireNonBlankSingleLine(
+            Objects.requireNonNull(resolvedCatalogFetchKey, "resolvedCatalogFetchKey"),
+            "resolved catalog Crypta key",
+            AppCatalogSidecars.INVALID_CATALOG_SOURCE);
+    if (normalized.toLowerCase(Locale.ROOT).startsWith(SCHEME_PREFIX)) {
+      normalized = normalized.substring(SCHEME_PREFIX.length());
+    }
+    normalized = requireKey(normalized, "resolved catalog Crypta key");
+    requireUriSyntax(SCHEME_PREFIX + normalized, "resolved crypta catalog source");
+    return normalized;
+  }
+
+  /**
+   * Ensures a resolved sibling source keeps the same mutable key family as the requested source.
+   *
+   * @param resolvedKey normalized bare resolved catalog key
+   */
+  private void requireCompatibleResolvedKeyKind(String resolvedKey) {
+    if ((catalogFetchKey.startsWith(USK_PREFIX) && resolvedKey.startsWith(USK_PREFIX))
+        || (catalogFetchKey.startsWith(SSK_PREFIX) && resolvedKey.startsWith(SSK_PREFIX))) {
+      return;
+    }
+    throw new AppCatalogException(
+        AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+        "resolved crypta catalog source must keep the original key kind");
   }
 
   /**

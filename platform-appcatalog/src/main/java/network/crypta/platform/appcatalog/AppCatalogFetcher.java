@@ -16,14 +16,17 @@ import network.crypta.runtime.spi.ContentFetchException;
 import network.crypta.runtime.spi.ContentFetchPort;
 
 /**
- * Fetches catalog properties and signature sidecars from local files or HTTP(S).
+ * Fetches catalog properties and signature sidecars from local files, HTTP(S), or Crypta content.
  *
  * <p>The fetcher uses finite JDK {@link HttpClient} timeouts, disables automatic redirects, and
  * enforces separate byte limits for catalog and signature payloads. Plain HTTP is accepted only for
  * loopback hosts by the source validation layer; non-local remote catalogs must use HTTPS.
  *
  * <p>A source points at {@code cryptad-app-catalog.properties}; the matching signature URI is
- * resolved as its sibling {@code cryptad-app-catalog.signature}. This class fetches bytes only. It
+ * resolved as its sibling {@code cryptad-app-catalog.signature}, except for CHK-backed Crypta
+ * sources that must declare an explicit immutable signature companion. When a Crypta catalog fetch
+ * reports a resolved USK or SSK key, the signature sidecar is fetched from the matching resolved
+ * sibling so both sidecars come from the same edition. This class fetches bytes only. It
  * deliberately does not parse or verify the sidecars so callers can preserve the exact catalog
  * bytes for signature verification and persistence.
  */
@@ -110,7 +113,7 @@ public final class AppCatalogFetcher {
               CATALOG_PROPERTIES_DESCRIPTION);
       FetchedBytes signatureBytes =
           fetchCryptaBytes(
-              cryptaUri.signatureFetchKey(),
+              cryptaUri.signatureFetchKeyForResolvedCatalog(catalogBytes.resolvedUri()),
               AppCatalogSidecars.MAX_SIGNATURE_BYTES,
               CATALOG_SIGNATURE_DESCRIPTION);
       return new FetchedCatalog(

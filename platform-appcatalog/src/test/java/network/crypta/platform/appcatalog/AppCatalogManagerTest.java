@@ -64,8 +64,22 @@ class AppCatalogManagerTest {
   private static final String STAGING_CATALOG_ID = "staging";
   private static final String APP_ID = "queue-manager";
   private static final String APP_VERSION = "1.0.0";
+  private static final String APP_NAME = "Queue Manager";
+  private static final String APP_SUMMARY = "Manage local Crypta transfer queues.";
   private static final String ARTIFACT_ZIP = "queue-manager.zip";
   private static final String EXECUTABLE_PATH = "bin/tool";
+  private static final String QUEUE_READ_PERMISSION = "queue.read";
+  private static final String QUEUE_WRITE_PERMISSION = "queue.write";
+  private static final String CRYPTA_CATALOG_KEY =
+      "USK@example/catalog/cryptad-app-catalog.properties";
+  private static final String CRYPTA_SIGNATURE_KEY =
+      "USK@example/catalog/cryptad-app-catalog.signature";
+  private static final String CRYPTA_CATALOG_SOURCE = "crypta:" + CRYPTA_CATALOG_KEY;
+  private static final String BASIC_CATALOG_PROPERTIES = "catalog.version=1\n";
+  private static final String BASIC_CATALOG_SIGNATURE = "catalog.signature.version=1\n";
+  private static final String CATALOG_SOURCE_STORE_DIRECTORY = "store";
+  private static final String FINDER_METADATA = "finder metadata";
+  private static final String UNEXPECTED_HTTP_FETCH = "unexpected HTTP fetch";
   private static final int LOCAL_FILE_HEADER_SIGNATURE = 0x04034B50;
   private static final int CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014B50;
   private static final int END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054B50;
@@ -412,40 +426,56 @@ class AppCatalogManagerTest {
   @Test
   void fetch_whenCryptaSourceUsesContentFetchPort_expectCatalogAndSignatureBytes()
       throws Exception {
-    byte[] catalogBytes = "catalog.version=1\n".getBytes(StandardCharsets.UTF_8);
-    byte[] signatureBytes = "catalog.signature.version=1\n".getBytes(StandardCharsets.UTF_8);
+    byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
+    byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
-            Map.of(
-                "USK@example/catalog/cryptad-app-catalog.properties",
-                catalogBytes,
-                "USK@example/catalog/cryptad-app-catalog.signature",
-                signatureBytes));
+            Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes));
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")),
-            contentFetchPort);
-    AppCatalogSource source =
-        AppCatalogSource.parse("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
 
     FetchedCatalog fetched = fetcher.fetch(source);
 
     assertEquals(
-        List.of(
-            "USK@example/catalog/cryptad-app-catalog.properties",
-            "USK@example/catalog/cryptad-app-catalog.signature"),
-        contentFetchPort.requestedKeys());
+        List.of(CRYPTA_CATALOG_KEY, CRYPTA_SIGNATURE_KEY), contentFetchPort.requestedKeys());
     org.junit.jupiter.api.Assertions.assertArrayEquals(catalogBytes, fetched.catalogBytes());
     org.junit.jupiter.api.Assertions.assertArrayEquals(signatureBytes, fetched.signatureBytes());
+  }
+
+  @Test
+  void fetch_whenCryptaCatalogResolvesToUskEdition_expectSignatureFetchedFromResolvedEdition()
+      throws Exception {
+    byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
+    byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
+    String requestedCatalogKey = "USK@example/catalog/41/cryptad-app-catalog.properties";
+    String resolvedCatalogKey = "USK@example/catalog/42/cryptad-app-catalog.properties";
+    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(requestedCatalogKey, catalogBytes, resolvedSignatureKey, signatureBytes),
+            Map.of(requestedCatalogKey, resolvedCatalogKey));
+    AppCatalogFetcher fetcher =
+        new AppCatalogFetcher(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+
+    FetchedCatalog fetched = fetcher.fetch(source);
+
+    assertEquals(
+        List.of(requestedCatalogKey, resolvedSignatureKey), contentFetchPort.requestedKeys());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(catalogBytes, fetched.catalogBytes());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(signatureBytes, fetched.signatureBytes());
+    assertEquals(Optional.of(resolvedCatalogKey), fetched.resolvedCatalogUri());
   }
 
   @Test
   void fetch_whenCryptaRuntimeIsUnavailable_expectCatalogFetchUnavailable() {
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")), null);
-    AppCatalogSource source =
-        AppCatalogSource.parse("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), null);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
@@ -462,10 +492,8 @@ class AppCatalogManagerTest {
         };
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")),
-            contentFetchPort);
-    AppCatalogSource source =
-        AppCatalogSource.parse("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
@@ -480,15 +508,13 @@ class AppCatalogManagerTest {
           byte[] bytes =
               "catalog signature".equals(request.purpose())
                   ? new byte[(int) AppCatalogSidecars.MAX_SIGNATURE_BYTES + 1]
-                  : "catalog.version=1\n".getBytes(StandardCharsets.UTF_8);
+                  : BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
           return new BoundedContentFetchResult(bytes, request.uri(), null, null);
         };
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")),
-            contentFetchPort);
-    AppCatalogSource source =
-        AppCatalogSource.parse("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
@@ -500,15 +526,11 @@ class AppCatalogManagerTest {
   void fetch_whenCryptaSignatureIsMissing_expectCatalogSignatureMissing() {
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
-            Map.of(
-                "USK@example/catalog/cryptad-app-catalog.properties",
-                "catalog.version=1\n".getBytes(StandardCharsets.UTF_8)));
+            Map.of(CRYPTA_CATALOG_KEY, BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8)));
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")),
-            contentFetchPort);
-    AppCatalogSource source =
-        AppCatalogSource.parse("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
@@ -525,16 +547,14 @@ class AppCatalogManagerTest {
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(
-                "USK@example/catalog/cryptad-app-catalog.properties",
+                CRYPTA_CATALOG_KEY,
                 Files.readAllBytes(catalog),
-                "USK@example/catalog/cryptad-app-catalog.signature",
+                CRYPTA_SIGNATURE_KEY,
                 "not-a-key-value-line\n".getBytes(StandardCharsets.UTF_8)));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
 
     AppCatalogException exception =
-        assertThrows(
-            AppCatalogException.class,
-            () -> manager.addSource("crypta:USK@example/catalog/cryptad-app-catalog.properties"));
+        assertThrows(AppCatalogException.class, () -> manager.addSource(CRYPTA_CATALOG_SOURCE));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
   }
@@ -547,14 +567,14 @@ class AppCatalogManagerTest {
     Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
     Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
     String sourceKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
-    String signatureKey = "USK@example/catalog/latest/cryptad-app-catalog.signature";
     String resolvedUri = "USK@example/catalog/42/cryptad-app-catalog.properties";
+    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(
                 sourceKey,
                 Files.readAllBytes(catalog),
-                signatureKey,
+                resolvedSignatureKey,
                 Files.readAllBytes(
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
             Map.of(sourceKey, resolvedUri));
@@ -577,13 +597,13 @@ class AppCatalogManagerTest {
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(
-                "USK@example/catalog/cryptad-app-catalog.properties",
+                CRYPTA_CATALOG_KEY,
                 Files.readAllBytes(catalog),
-                "USK@example/catalog/cryptad-app-catalog.signature",
+                CRYPTA_SIGNATURE_KEY,
                 Files.readAllBytes(
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
-    manager.addSource("crypta:USK@example/catalog/cryptad-app-catalog.properties");
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
     contentFetchPort.failWith(new IOException("content fetch failed"));
 
     AppCatalogException exception =
@@ -607,7 +627,8 @@ class AppCatalogManagerTest {
     Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
     Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
     TrustedAppKeys trustedKeys = trustedKeys(keyPair);
-    AppCatalogSourceStore sourceStore = new AppCatalogSourceStore(tempDir.resolve("store"));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
     AppCatalogManager manager = new AppCatalogManager(sourceStore, () -> trustedKeys);
     manager.addSource(catalog.toString());
     AppCatalogSourceSnapshot beforeRefresh = manager.listCatalogs().getFirst();
@@ -633,7 +654,7 @@ class AppCatalogManagerTest {
   void entry_whenArtifactUriIsCrypta_expectInvalidCatalogEntry() {
     URI artifactUri = URI.create("crypta:CHK@bundle-key?signature=CHK@signature-key");
     String artifactDigest = "0".repeat(64);
-    List<String> permissions = List.of("queue.read");
+    List<String> permissions = List.of(QUEUE_READ_PERMISSION);
 
     AppCatalogException exception =
         assertThrows(
@@ -641,9 +662,9 @@ class AppCatalogManagerTest {
             () ->
                 new AppCatalogEntry(
                     APP_ID,
-                    "Queue Manager",
+                    APP_NAME,
                     APP_VERSION,
-                    "Manage local Crypta transfer queues.",
+                    APP_SUMMARY,
                     artifactUri,
                     artifactDigest,
                     1L,
@@ -788,7 +809,8 @@ class AppCatalogManagerTest {
     Path catalog =
         signedCatalog(
             STAGING_CATALOG_ID, artifact, keyPair, sha256(artifact), Files.size(artifact));
-    AppCatalogSourceStore sourceStore = new AppCatalogSourceStore(tempDir.resolve("store"));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
     AppCatalogManager manager = new AppCatalogManager(sourceStore, () -> trustedKeys);
 
     manager.addSource(catalog.toString());
@@ -803,17 +825,17 @@ class AppCatalogManagerTest {
 
   private AppCatalogManager manager(TrustedAppKeys trustedKeys) {
     return new AppCatalogManager(
-        new AppCatalogSourceStore(tempDir.resolve("store")), () -> trustedKeys);
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+        () -> trustedKeys);
   }
 
   private AppCatalogManager manager(
       TrustedAppKeys trustedKeys, FakeContentFetchPort contentFetchPort) {
     return new AppCatalogManager(
-        new AppCatalogSourceStore(tempDir.resolve("store")),
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
         () -> trustedKeys,
         new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException("unexpected HTTP fetch")),
-            contentFetchPort),
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort),
         new AppCatalogArtifactDownloader(),
         new AppCatalogBundleExtractor());
   }
@@ -827,12 +849,13 @@ class AppCatalogManagerTest {
         """
         manifest.version=1
         app.id=%s
-        app.name=Queue Manager
+        app.name=%s
         app.version=%s
         app.exec=bin/launch.sh
-        app.permissions=queue.read,queue.write
+        app.permissions=%s,%s
         """
-            .formatted(APP_ID, APP_VERSION),
+            .formatted(
+                APP_ID, APP_NAME, APP_VERSION, QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
     AppBundleSigner.sign(root, KEY_ID, keyPair.getPrivate());
     return root;
@@ -849,12 +872,18 @@ class AppCatalogManagerTest {
         """
         manifest.version=1
         app.id=%s
-        app.name=Queue Manager
+        app.name=%s
         app.version=%s
         app.exec=%s
-        app.permissions=queue.read,queue.write
+        app.permissions=%s,%s
         """
-            .formatted(APP_ID, APP_VERSION, EXECUTABLE_PATH),
+            .formatted(
+                APP_ID,
+                APP_NAME,
+                APP_VERSION,
+                EXECUTABLE_PATH,
+                QUEUE_READ_PERMISSION,
+                QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
     AppBundleSigner.sign(root, KEY_ID, keyPair.getPrivate());
     return root;
@@ -879,14 +908,14 @@ class AppCatalogManagerTest {
         catalog.generatedAt=%s
         catalog.entries=%s
         app.%s.id=%s
-        app.%s.name=Queue Manager
+        app.%s.name=%s
         app.%s.version=%s
-        app.%s.summary=Manage local Crypta transfer queues.
+        app.%s.summary=%s
         app.%s.bundle.uri=%s
         app.%s.bundle.sha256=%s
         app.%s.bundle.size.bytes=%d
         app.%s.bundle.type=zip
-        app.%s.permissions=queue.read,queue.write
+        app.%s.permissions=%s,%s
         """
             .formatted(
                 catalogId,
@@ -895,9 +924,11 @@ class AppCatalogManagerTest {
                 APP_ID,
                 APP_ID,
                 APP_ID,
+                APP_NAME,
                 APP_ID,
                 APP_VERSION,
                 APP_ID,
+                APP_SUMMARY,
                 APP_ID,
                 artifact.toUri(),
                 APP_ID,
@@ -905,7 +936,9 @@ class AppCatalogManagerTest {
                 APP_ID,
                 artifactSize,
                 APP_ID,
-                APP_ID),
+                APP_ID,
+                QUEUE_READ_PERMISSION,
+                QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
     AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
     return catalog;
@@ -941,15 +974,15 @@ class AppCatalogManagerTest {
         zip.closeEntry();
       }
       zip.putNextEntry(new ZipEntry("._cryptad-app.properties"));
-      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
       zip.putNextEntry(new ZipEntry("__MACOSX/"));
       zip.closeEntry();
       zip.putNextEntry(new ZipEntry("__MACOSX/._cryptad-app.properties"));
-      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
       zip.putNextEntry(new ZipEntry("bin/._launch.sh"));
-      zip.write("finder metadata".getBytes(StandardCharsets.UTF_8));
+      zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
     }
     return targetZip;
@@ -1080,27 +1113,27 @@ class AppCatalogManagerTest {
   private static AppCatalogEntry remoteEntry() {
     return new AppCatalogEntry(
         APP_ID,
-        "Queue Manager",
+        APP_NAME,
         APP_VERSION,
-        "Manage local Crypta transfer queues.",
+        APP_SUMMARY,
         URI.create("http://localhost/queue-manager.zip"),
         "0".repeat(64),
         1L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of("queue.read"));
+        List.of(QUEUE_READ_PERMISSION));
   }
 
   private static AppCatalogEntry localEntry(Path artifact) {
     return new AppCatalogEntry(
         APP_ID,
-        "Queue Manager",
+        APP_NAME,
         APP_VERSION,
-        "Manage local Crypta transfer queues.",
+        APP_SUMMARY,
         artifact.toUri(),
         "0".repeat(64),
         1L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of("queue.read"));
+        List.of(QUEUE_READ_PERMISSION));
   }
 
   private static HttpHeaders contentLength(String value) {
