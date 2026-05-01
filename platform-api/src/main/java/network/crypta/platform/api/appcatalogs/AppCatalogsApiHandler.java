@@ -1,13 +1,17 @@
 package network.crypta.platform.api.appcatalogs;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import network.crypta.platform.api.PlatformApiException;
@@ -64,6 +68,15 @@ public final class AppCatalogsApiHandler {
   private static final String COMPATIBILITY_NOT_SATISFIED = "not_satisfied";
   private static final String COMPATIBILITY_UNKNOWN = "unknown";
   private static final String SOURCE_FIELD = "source";
+  private static final String SOURCE_TYPE_FIELD = "sourceType";
+  private static final String SOURCE_KIND_FIELD = "sourceKind";
+  private static final String LAST_ATTEMPT_AT_FIELD = "lastAttemptAt";
+  private static final String LAST_SUCCESSFUL_REFRESH_AT_FIELD = "lastSuccessfulRefreshAt";
+  private static final String LAST_FETCH_STATUS_FIELD = "lastFetchStatus";
+  private static final String LAST_FETCH_ERROR_CODE_FIELD = "lastFetchErrorCode";
+  private static final String LAST_FETCH_ERROR_MESSAGE_FIELD = "lastFetchErrorMessage";
+  private static final String LAST_RESOLVED_URI_FIELD = "lastResolvedUri";
+  private static final String FETCH_STATUS_SUCCESS = "success";
 
   private final AppCatalogManager catalogManager;
   private final AppHost appHost;
@@ -338,15 +351,85 @@ public final class AppCatalogsApiHandler {
   }
 
   private Map<String, Object> summarizeCatalog(AppCatalogSourceSnapshot snapshot) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    String sourceKind = sourceKind(snapshot);
+    String refreshedAt = snapshot.refreshedAt().toString();
+    String lastSuccessfulRefreshAt =
+        timestampField(snapshot, LAST_SUCCESSFUL_REFRESH_AT_FIELD, refreshedAt);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
     json.put("catalogId", snapshot.catalogId());
     json.put("name", snapshot.name());
     json.put(SOURCE_FIELD, snapshot.sourceUri().toString());
+    json.put(SOURCE_TYPE_FIELD, sourceKind);
+    json.put(SOURCE_KIND_FIELD, sourceKind);
     json.put("generatedAt", snapshot.generatedAt().toString());
     json.put("appCount", snapshot.appCount());
     json.put("addedAt", snapshot.addedAt().toString());
-    json.put("refreshedAt", snapshot.refreshedAt().toString());
+    json.put("refreshedAt", refreshedAt);
+    json.put(LAST_ATTEMPT_AT_FIELD, timestampField(snapshot, LAST_ATTEMPT_AT_FIELD, refreshedAt));
+    json.put(LAST_SUCCESSFUL_REFRESH_AT_FIELD, lastSuccessfulRefreshAt);
+    json.put(LAST_FETCH_STATUS_FIELD, lastFetchStatus(snapshot));
+    json.put(LAST_FETCH_ERROR_CODE_FIELD, stringField(snapshot, LAST_FETCH_ERROR_CODE_FIELD, null));
+    json.put(
+        LAST_FETCH_ERROR_MESSAGE_FIELD,
+        stringField(snapshot, LAST_FETCH_ERROR_MESSAGE_FIELD, null));
+    json.put(
+        LAST_RESOLVED_URI_FIELD,
+        stringField(snapshot, LAST_RESOLVED_URI_FIELD, snapshot.sourceUri().toString()));
     return json;
+  }
+
+  private static String sourceKind(AppCatalogSourceSnapshot snapshot) {
+    String explicitKind = stringField(snapshot, SOURCE_KIND_FIELD, null);
+    if (explicitKind != null) {
+      return explicitKind.toLowerCase(Locale.ROOT);
+    }
+    String scheme = snapshot.sourceUri().getScheme();
+    return scheme == null || scheme.isBlank()
+        ? VERSION_STATUS_UNKNOWN
+        : scheme.toLowerCase(Locale.ROOT);
+  }
+
+  private static String timestampField(
+      AppCatalogSourceSnapshot snapshot, String accessorName, String fallback) {
+    Object value = snapshotAccessorValue(snapshot, accessorName);
+    if (value == null) {
+      return fallback;
+    }
+    if (value instanceof Instant instant) {
+      return instant.toString();
+    }
+    String text = value.toString();
+    return text.isBlank() ? fallback : text;
+  }
+
+  private static String stringField(
+      AppCatalogSourceSnapshot snapshot, String accessorName, String fallback) {
+    Object value = snapshotAccessorValue(snapshot, accessorName);
+    if (value == null) {
+      return fallback;
+    }
+    String text = value instanceof Enum<?> enumValue ? enumValue.name() : value.toString();
+    text = text.trim();
+    return text.isEmpty() ? fallback : text;
+  }
+
+  private static String lastFetchStatus(AppCatalogSourceSnapshot snapshot) {
+    return stringField(snapshot, LAST_FETCH_STATUS_FIELD, FETCH_STATUS_SUCCESS)
+        .toLowerCase(Locale.ROOT);
+  }
+
+  private static Object snapshotAccessorValue(
+      AppCatalogSourceSnapshot snapshot, String accessorName) {
+    try {
+      Method method = snapshot.getClass().getMethod(accessorName);
+      Object value = method.invoke(snapshot);
+      if (value instanceof Optional<?> optional) {
+        return optional.orElse(null);
+      }
+      return value;
+    } catch (ReflectiveOperationException | SecurityException _) {
+      return null;
+    }
   }
 
   private Map<String, Object> summarizeEntry(AppCatalogEntry entry) {
@@ -374,7 +457,8 @@ public final class AppCatalogsApiHandler {
     json.put(
         "versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put(
-        "updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null));
+        "updateAvailable",
+        updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
     json.put("versionStatus", versionStatus(entry.version(), installedVersion, installed != null));
     json.put("permissionDelta", summarizePermissionDelta(entry.permissions(), installed));
     json.put("running", running != null);
@@ -476,19 +560,19 @@ public final class AppCatalogsApiHandler {
     return !catalogVersion.equals(installedVersion);
   }
 
-  private static Boolean updateAvailable(
+  private static Optional<Boolean> updateAvailable(
       String catalogVersion, String installedVersion, boolean installed) {
     if (!installed) {
-      return false;
+      return Optional.of(false);
     }
     if (catalogVersion == null || installedVersion == null) {
-      return null;
+      return Optional.empty();
     }
     if (catalogVersion.equals(installedVersion)) {
-      return false;
+      return Optional.of(false);
     }
     Integer comparison = compareDottedNumericVersions(catalogVersion, installedVersion);
-    return comparison == null ? null : comparison > 0;
+    return comparison == null ? Optional.empty() : Optional.of(comparison > 0);
   }
 
   private static String versionStatus(
@@ -579,6 +663,10 @@ public final class AppCatalogsApiHandler {
           new PlatformApiException(404, exception.errorCode(), exception.getMessage());
       case "catalog_conflict" ->
           new PlatformApiException(409, exception.errorCode(), exception.getMessage());
+      case "catalog_fetch_unavailable" ->
+          new PlatformApiException(503, exception.errorCode(), exception.getMessage());
+      case "catalog_fetch_failed" ->
+          new PlatformApiException(502, exception.errorCode(), exception.getMessage());
       default -> new PlatformApiException(400, exception.errorCode(), exception.getMessage());
     };
   }

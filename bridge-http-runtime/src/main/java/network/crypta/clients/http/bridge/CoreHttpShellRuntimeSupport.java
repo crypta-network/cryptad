@@ -27,6 +27,7 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
 import network.crypta.platform.appdist.AppBundleVerifier;
@@ -292,10 +293,34 @@ public record CoreHttpShellRuntimeSupport(
     AppHost appHost =
         new LocalProcessAppHost(layout, createInstallVerificationPolicy(trustConfiguration));
     AppCatalogManager appCatalogManager =
-        new AppCatalogManager(
-            new AppCatalogSourceStore(layout.dataDir().resolve("apps").resolve("catalogs")),
-            () -> loadTrustedAppKeys(trustConfiguration));
+        createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
     return new AppPlatformServices(appHost, appCatalogManager);
+  }
+
+  /**
+   * Creates the signed app-catalog manager for the current node layout.
+   *
+   * <p>The catalog store is kept under the AppHost data tree so catalog source metadata follows the
+   * same node-specific storage root as installed apps. Runtime content fetch support is optional
+   * for tests and older bridge wiring; when it is unavailable the manager still supports local and
+   * HTTP catalog sources and reports Crypta fetch unavailability through its own error path.
+   *
+   * @param layout node-specific AppHost directory layout
+   * @param trustConfiguration configured catalog and bundle trust inputs
+   * @param runtimePorts runtime service ports, or {@code null} when not available
+   * @return app-catalog manager wired to the current node storage and runtime fetch port
+   */
+  private static AppCatalogManager createAppCatalogManager(
+      AppHostLayout layout,
+      AppHostTrustConfiguration trustConfiguration,
+      RuntimePorts runtimePorts) {
+    AppCatalogSourceStore catalogSourceStore =
+        new AppCatalogSourceStore(layout.dataDir().resolve("apps").resolve("catalogs"));
+    TrustedKeyProvider trustedCatalogKeys = () -> loadTrustedAppKeys(trustConfiguration);
+    return runtimePorts == null
+        ? new AppCatalogManager(catalogSourceStore, trustedCatalogKeys)
+        : new AppCatalogManager(
+            catalogSourceStore, trustedCatalogKeys, runtimePorts.contentFetch());
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(

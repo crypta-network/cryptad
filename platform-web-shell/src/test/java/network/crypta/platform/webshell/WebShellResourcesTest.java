@@ -369,6 +369,10 @@ class WebShellResourcesTest {
     assertTrue(script.contains("app-log-tail"));
     assertTrue(script.contains("function renderApps(data)"));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
+    assertTrue(script.contains("function catalogSourceKind(catalog)"));
+    assertTrue(script.contains("function catalogLastSuccessfulRefreshAt(catalog)"));
+    assertTrue(script.contains("function catalogFetchFailed(catalog)"));
+    assertTrue(script.contains("function catalogFetchWarningNode(catalog)"));
     assertTrue(script.contains("Catalogs unavailable: ${catalogError}"));
     assertTrue(script.contains("function renderCatalogCard(catalog)"));
     assertTrue(script.contains("function renderCatalogAppCard(catalog, app)"));
@@ -384,6 +388,20 @@ class WebShellResourcesTest {
     assertTrue(script.contains("installedSnapshot.apps.map(loadAppRuntimeDetails)"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
+    assertTrue(script.contains("typeof catalog.sourceKind === \"string\" && catalog.sourceKind"));
+    assertTrue(script.contains("typeof catalog.sourceType === \"string\" && catalog.sourceType"));
+    assertTrue(script.contains("pills.append(createPill(sourceKind));"));
+    assertTrue(script.contains("pills.append(createPill(\"refresh failed\", \"is-warning\"));"));
+    assertTrue(script.contains("[\"Source type\", sourceKind]"));
+    assertTrue(script.contains("[\"Resolved source\", scalar(catalog.lastResolvedUri)]"));
+    assertTrue(
+        script.contains(
+            "[\"Last successful refresh\","
+                + " formatIsoTimestamp(catalogLastSuccessfulRefreshAt(catalog))]"));
+    assertTrue(script.contains("[\"Last failed attempt\", catalogLastFailedAttempt(catalog)]"));
+    assertTrue(
+        script.contains("Crypta catalog refresh failed; showing last successful app listing."));
+    assertTrue(script.contains("catalog.appsError"));
     assertTrue(
         script.contains(
             "const apps = await"

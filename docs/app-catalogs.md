@@ -200,6 +200,24 @@ Supported catalog sources:
 - Absolute local paths or `file:` URIs to `cryptad-app-catalog.properties`.
 - `https:` URIs.
 - `http:` URIs only for loopback hosts such as `localhost` or `127.0.0.1`.
+- `crypta:` URIs for public catalog-over-Crypta sources.
+
+`crypta:` catalog sources use these forms:
+
+- Mutable/path-like catalog keys:
+  `crypta:USK@<catalog-key>/<catalog-path>/cryptad-app-catalog.properties` or
+  `crypta:SSK@<catalog-key>/<catalog-path>/cryptad-app-catalog.properties`.
+  The signature sidecar is the sibling
+  `crypta:USK@<catalog-key>/<catalog-path>/cryptad-app-catalog.signature` or
+  `crypta:SSK@<catalog-key>/<catalog-path>/cryptad-app-catalog.signature`.
+- Immutable CHK v1 catalogs:
+  `crypta:CHK@<catalog-key>?signature=CHK@<signature-key>`. The catalog CHK contains
+  `cryptad-app-catalog.properties` bytes, and the `signature` companion CHK contains the matching
+  `cryptad-app-catalog.signature` bytes.
+
+`crypta:` is a catalog transport, not a trust boundary. The catalog signature must still verify
+against a configured trusted catalog key. Install and update flows still verify the catalog entry's
+artifact size and SHA-256, then verify the extracted signed bundle before AppHost receives it.
 
 Remote fetches use the JDK HTTP client with finite timeouts, no automatic redirects, and size caps
 for catalog, signature, and artifact downloads. Artifact bytes are written to catalog-owned scratch
@@ -208,6 +226,11 @@ directory. The extractor rejects artifacts with more than 4096 ZIP entries, abso
 `..`, Windows drive prefixes, backslash path separators, duplicate normalized entries, and rootless
 bundles. It drops macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files
 before signed-bundle verification, so those files are not installed as app payload.
+
+PR-210 supports `crypta:` for catalog sources only. Catalog entry artifact URIs still use `file:`,
+`https:`, or loopback `http:` sources. A catalog entry with
+`app.<id>.bundle.uri=crypta:...` is rejected with a stable unsupported artifact URI scheme error
+unless `platform-appcatalog` adds explicit Crypta artifact fetching in a later change.
 
 ## Platform API flow
 
@@ -223,6 +246,12 @@ GET    /api/v1/app-catalogs/{catalogId}/apps/{appId}
 POST   /api/v1/app-catalogs/{catalogId}/apps/{appId}/install
 POST   /api/v1/app-catalogs/{catalogId}/apps/{appId}/update
 ```
+
+Refresh failures update the catalog source's last-attempt and last-failure status, but they do not
+replace or delete the last successfully verified catalog sidecars. Catalog listing, detail,
+install, and update operations continue to use the last verified catalog until a later refresh
+verifies a replacement. Already installed apps are not removed or rolled back because a catalog
+refresh failed.
 
 Install and update endpoints prepare a verified temporary staged bundle, then delegate to
 `AppHost.installFromDirectory(...)` or `AppHost.updateFromDirectory(...)`. Existing local
@@ -250,6 +279,6 @@ present. Review metadata remains separate from signed catalog trust.
 ## Future work
 
 Manifest permissions are enforced for app-process Platform API calls as described in
-[app-permissions-and-audit.md](app-permissions-and-audit.md). Catalog distribution over Crypta
-keys, public app-store governance, background app update scheduling, and remote screenshot proxying
-remain future work.
+[app-permissions-and-audit.md](app-permissions-and-audit.md). Public app-store governance,
+background app update scheduling, Crypta artifact fetching, and remote screenshot proxying remain
+future work.

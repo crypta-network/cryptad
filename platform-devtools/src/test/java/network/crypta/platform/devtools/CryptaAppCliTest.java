@@ -409,6 +409,49 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void catalogCreate_whenDescriptorUsesCryptaBundleUri_expectUnsupportedArtifactSchemeFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    Path catalogFile = tempDir.resolve("cryptad-app-catalog.properties");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=crypta:CHK@sample-bundle?signature=CHK@sample-signature",
+            "summary=Sample catalog entry."),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            catalogFile.toString(),
+            "--catalog-id",
+            "dev",
+            "--name",
+            "Development Apps",
+            "--entry",
+            descriptor.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("unsupported artifact URI scheme: crypta"));
+  }
+
+  @Test
   void catalogSignAndVerify_whenCatalogCliRoundTrips_expectSuccess() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");

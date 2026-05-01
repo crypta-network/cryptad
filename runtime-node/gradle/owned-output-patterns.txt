@@ -387,6 +387,7 @@ network/crypta/runtime/alerts/UserAlertManager*
 network/crypta/runtime/core/package-info*
 network/crypta/runtime/core/LegacyConfigPort*
 network/crypta/runtime/core/LegacyConnectivityPort*
+network/crypta/runtime/core/LegacyContentFetchPort*
 network/crypta/runtime/core/LegacyCoreUpdateActionPort*
 network/crypta/runtime/core/LegacyNodeInfoPort*
 network/crypta/runtime/core/LegacyPeerPort*

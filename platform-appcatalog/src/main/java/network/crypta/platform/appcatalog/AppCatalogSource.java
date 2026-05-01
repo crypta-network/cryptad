@@ -13,12 +13,13 @@ import java.util.regex.Pattern;
  * <p>A source identifies the catalog properties file. The matching signature is resolved as a
  * sibling named {@code cryptad-app-catalog.signature}. Local filesystem paths are converted to
  * {@code file:} URIs at construction time so the fetcher can apply one scheme-based policy for
- * local, HTTPS, and loopback-HTTP sources.
+ * local, HTTPS, loopback-HTTP, and Crypta sources.
  *
  * <p>The source model stores a URI, not raw operator input. Parsing accepts common local path
  * forms, including Windows drive-letter paths, before falling back to URI handling. Remote
  * non-loopback sources must use HTTPS. Plain HTTP is reserved for explicit loopback development and
- * test sources after host validation in {@link AppCatalogSidecars}.
+ * test sources after host validation in {@link AppCatalogSidecars}. Crypta sources are accepted as
+ * {@code crypta:USK@...}, {@code crypta:SSK@...}, or {@code crypta:CHK@...?signature=CHK@...}.
  *
  * @param uri absolute source URI for {@code cryptad-app-catalog.properties}
  */
@@ -56,6 +57,9 @@ public record AppCatalogSource(URI uri) {
     String value =
         AppCatalogSidecars.requireNonBlankSingleLine(
             rawSource, "source", AppCatalogSidecars.INVALID_CATALOG_SOURCE);
+    if (value.toLowerCase(java.util.Locale.ROOT).startsWith("crypta:")) {
+      return new AppCatalogSource(CryptaCatalogUri.parse(value).toUri());
+    }
     if (WINDOWS_DRIVE_PATH_PATTERN.matcher(value).matches()) {
       return parseLocalPathSource(value, null);
     }
@@ -97,7 +101,51 @@ public record AppCatalogSource(URI uri) {
    * @return sibling signature URI for this source
    */
   public URI signatureUri() {
+    if (kind() == AppCatalogSourceKind.CRYPTA) {
+      return cryptaCatalogUri().signatureUri();
+    }
     return uri.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME);
+  }
+
+  /**
+   * Returns the source transport family.
+   *
+   * @return normalized source kind for fetch and API status metadata
+   */
+  public AppCatalogSourceKind kind() {
+    return switch (uri.getScheme().toLowerCase(java.util.Locale.ROOT)) {
+      case "file" -> AppCatalogSourceKind.FILE;
+      case "http" -> AppCatalogSourceKind.HTTP;
+      case "https" -> AppCatalogSourceKind.HTTPS;
+      case "crypta" -> AppCatalogSourceKind.CRYPTA;
+      default ->
+          throw new AppCatalogException(
+              AppCatalogSidecars.UNSUPPORTED_CATALOG_SOURCE,
+              "unsupported catalog source URI scheme: " + uri.getScheme());
+    };
+  }
+
+  /**
+   * Returns the URI or Crypta key used by the runtime fetch layer for the catalog sidecar.
+   *
+   * <p>For Crypta sources this strips the {@code crypta:} scheme and any CHK signature companion
+   * query. For existing file, HTTP, and HTTPS sources it is the normalized source URI string.
+   *
+   * @return resolved fetch target for diagnostic metadata
+   */
+  public String resolvedCatalogFetchUri() {
+    if (kind() == AppCatalogSourceKind.CRYPTA) {
+      return cryptaCatalogUri().catalogFetchKey();
+    }
+    return uri.toString();
+  }
+
+  CryptaCatalogUri cryptaCatalogUri() {
+    if (kind() != AppCatalogSourceKind.CRYPTA) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE, "catalog source is not a crypta URI");
+    }
+    return CryptaCatalogUri.parse(uri.toString());
   }
 
   /**

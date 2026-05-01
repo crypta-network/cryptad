@@ -2,15 +2,20 @@ package network.crypta.platform.api.appcatalogs;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogException;
+import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
+import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -25,7 +30,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +44,59 @@ class AppCatalogsApiHandlerTest {
   @Mock private AppHost appHost;
 
   @TempDir private Path tempDir;
+
+  @Test
+  void listCatalogs_whenSnapshotHasSourceUri_expectSourceKindAndSyncFields() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse("2026-04-24T12:00:00Z");
+    Instant addedAt = Instant.parse("2026-04-24T12:01:00Z");
+    Instant refreshedAt = Instant.parse("2026-04-24T12:02:00Z");
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            "Core Apps",
+            URI.create("https://example.invalid/cryptad-app-catalog.properties"),
+            generatedAt,
+            2,
+            addedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
+
+    Map<String, Object> catalog = handler.listCatalogs().getFirst();
+
+    assertEquals("core", catalog.get("catalogId"));
+    assertEquals("Core Apps", catalog.get("name"));
+    assertEquals("https://example.invalid/cryptad-app-catalog.properties", catalog.get("source"));
+    assertEquals("https", catalog.get("sourceType"));
+    assertEquals("https", catalog.get("sourceKind"));
+    assertEquals(generatedAt.toString(), catalog.get("generatedAt"));
+    assertEquals(2, catalog.get("appCount"));
+    assertEquals(addedAt.toString(), catalog.get("addedAt"));
+    assertEquals(refreshedAt.toString(), catalog.get("refreshedAt"));
+    assertEquals(refreshedAt.toString(), catalog.get("lastAttemptAt"));
+    assertEquals(refreshedAt.toString(), catalog.get("lastSuccessfulRefreshAt"));
+    assertEquals("success", catalog.get("lastFetchStatus"));
+    assertNull(catalog.get("lastFetchErrorCode"));
+    assertNull(catalog.get("lastFetchErrorMessage"));
+    assertEquals(
+        "https://example.invalid/cryptad-app-catalog.properties", catalog.get("lastResolvedUri"));
+  }
+
+  @Test
+  void listCatalogs_whenCatalogSourceOrFetchFails_expectStableStatusCodes() throws Exception {
+    assertCatalogFailureStatus("unsupported_catalog_source", 400);
+    assertCatalogFailureStatus("invalid_catalog_source", 400);
+    assertCatalogFailureStatus("catalog_fetch_unavailable", 503);
+    assertCatalogFailureStatus("catalog_fetch_failed", 502);
+    assertCatalogFailureStatus("invalid_catalog_signature", 400);
+    assertCatalogFailureStatus("catalog_signature_missing", 400);
+  }
 
   @Test
   void listApps_whenEntryHasStoreMetadataAndInstalledAppDiffers_expectReviewMetadata()
@@ -223,6 +283,19 @@ class AppCatalogsApiHandlerTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     return handler.listApps("core").getFirst();
+  }
+
+  private void assertCatalogFailureStatus(String code, int statusCode) throws Exception {
+    reset(catalogManager);
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.listCatalogs()).thenThrow(new AppCatalogException(code, "catalog failed"));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, handler::listCatalogs);
+
+    assertEquals(statusCode, exception.statusCode());
+    assertEquals(code, exception.errorCode());
+    assertEquals("catalog failed", exception.getMessage());
   }
 
   private AppCatalogEntry richCatalogEntry() {

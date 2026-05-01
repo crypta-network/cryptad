@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * File-backed store for configured app catalog sources and their verified sidecars.
@@ -36,6 +37,12 @@ public final class AppCatalogSourceStore {
   private static final String SOURCE_URI_KEY = "source.uri";
   private static final String ADDED_AT_KEY = "source.addedAt";
   private static final String REFRESHED_AT_KEY = "source.refreshedAt";
+  private static final String LAST_ATTEMPT_AT_KEY = "source.lastAttemptAt";
+  private static final String LAST_SUCCESSFUL_REFRESH_AT_KEY = "source.lastSuccessfulRefreshAt";
+  private static final String LAST_FETCH_STATUS_KEY = "source.lastFetchStatus";
+  private static final String LAST_FETCH_ERROR_CODE_KEY = "source.lastFetchErrorCode";
+  private static final String LAST_FETCH_ERROR_MESSAGE_KEY = "source.lastFetchErrorMessage";
+  private static final String LAST_RESOLVED_URI_KEY = "source.lastResolvedUri";
 
   private final Path rootDirectory;
   private final SourceMetadataWriter sourceMetadataWriter;
@@ -188,7 +195,13 @@ public final class AppCatalogSourceStore {
       sourceMetadataWriter.write(
           directory,
           sourceFile,
-          serializeSource(catalog.catalogId(), source, addedAt, refreshedAt));
+          serializeSource(
+              catalog.catalogId(),
+              source,
+              addedAt,
+              refreshedAt,
+              AppCatalogSourceRefreshMetadata.success(
+                  refreshedAt, resolvedCatalogUri(fetchedCatalog, source))));
     } catch (IOException exception) {
       if (previousFetchedCatalog == null) {
         cleanupIncompleteAdd(directory, exception);
@@ -197,6 +210,38 @@ public final class AppCatalogSourceStore {
       }
       throw exception;
     }
+  }
+
+  void recordRefreshFailure(
+      String catalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      AppCatalogException exception)
+      throws IOException {
+    recordRefreshFailure(
+        catalogId, stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
+  }
+
+  void recordRefreshFailure(
+      String catalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      AppCatalogException exception,
+      String resolvedUri)
+      throws IOException {
+    String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+    AppCatalogSourceRefreshMetadata metadata =
+        stored.refreshMetadata().failedAttempt(attemptedAt, exception, resolvedUri);
+    Path directory = catalogDirectory(normalizedCatalogId);
+    sourceMetadataWriter.write(
+        directory,
+        directory.resolve(SOURCE_FILE_NAME),
+        serializeSource(
+            normalizedCatalogId,
+            stored.source(),
+            stored.addedAt(),
+            stored.refreshedAt(),
+            metadata));
   }
 
   /**
@@ -231,12 +276,46 @@ public final class AppCatalogSourceStore {
     Instant addedAt = parseInstant(removeRequired(properties, ADDED_AT_KEY), ADDED_AT_KEY);
     Instant refreshedAt =
         parseInstant(removeRequired(properties, REFRESHED_AT_KEY), REFRESHED_AT_KEY);
+    AppCatalogSourceRefreshMetadata refreshMetadata =
+        parseRefreshMetadata(properties, refreshedAt, source);
     if (!properties.isEmpty()) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_SOURCE,
           "unsupported catalog source property: " + properties.keySet().iterator().next());
     }
-    return new StoredCatalogSource(source, addedAt, refreshedAt, readFetchedCatalog(directory));
+    return new StoredCatalogSource(
+        source, addedAt, refreshedAt, refreshMetadata, readFetchedCatalog(directory));
+  }
+
+  private static AppCatalogSourceRefreshMetadata parseRefreshMetadata(
+      Map<String, String> properties, Instant refreshedAt, AppCatalogSource source) {
+    Optional<String> lastAttemptAtText = removeOptional(properties, LAST_ATTEMPT_AT_KEY);
+    Instant lastAttemptAt =
+        lastAttemptAtText
+            .map(value -> parseInstant(value, LAST_ATTEMPT_AT_KEY))
+            .orElse(refreshedAt);
+    Optional<String> lastSuccessfulRefreshAtText =
+        removeOptional(properties, LAST_SUCCESSFUL_REFRESH_AT_KEY);
+    Instant lastSuccessfulRefreshAt =
+        lastSuccessfulRefreshAtText
+            .map(value -> parseInstant(value, LAST_SUCCESSFUL_REFRESH_AT_KEY))
+            .orElse(refreshedAt);
+    AppCatalogFetchStatus lastFetchStatus =
+        removeOptional(properties, LAST_FETCH_STATUS_KEY)
+            .map(AppCatalogFetchStatus::parse)
+            .orElse(AppCatalogFetchStatus.SUCCESS);
+    Optional<String> errorCode = removeOptional(properties, LAST_FETCH_ERROR_CODE_KEY);
+    Optional<String> errorMessage = removeOptional(properties, LAST_FETCH_ERROR_MESSAGE_KEY);
+    Optional<String> lastResolvedUri =
+        removeOptional(properties, LAST_RESOLVED_URI_KEY)
+            .or(() -> Optional.of(source.resolvedCatalogFetchUri()));
+    return new AppCatalogSourceRefreshMetadata(
+        lastAttemptAt,
+        lastSuccessfulRefreshAt,
+        lastFetchStatus,
+        errorCode,
+        errorMessage,
+        lastResolvedUri);
   }
 
   private FetchedCatalog readFetchedCatalog(Path directory) throws IOException {
@@ -368,25 +447,65 @@ public final class AppCatalogSourceStore {
     return value;
   }
 
+  private static Optional<String> removeOptional(Map<String, String> properties, String key) {
+    return Optional.ofNullable(properties.remove(key));
+  }
+
   private static String serializeSource(
-      String catalogId, AppCatalogSource source, Instant addedAt, Instant refreshedAt) {
-    return SOURCE_VERSION_KEY
-        + "=1\n"
-        + CATALOG_ID_KEY
-        + "="
-        + catalogId
-        + "\n"
-        + SOURCE_URI_KEY
-        + "="
-        + source.displayUri()
-        + "\n"
-        + ADDED_AT_KEY
-        + "="
-        + addedAt
-        + "\n"
-        + REFRESHED_AT_KEY
-        + "="
-        + refreshedAt
-        + "\n";
+      String catalogId,
+      AppCatalogSource source,
+      Instant addedAt,
+      Instant refreshedAt,
+      AppCatalogSourceRefreshMetadata refreshMetadata) {
+    StringBuilder builder =
+        new StringBuilder()
+            .append(SOURCE_VERSION_KEY)
+            .append("=1\n")
+            .append(CATALOG_ID_KEY)
+            .append('=')
+            .append(catalogId)
+            .append('\n')
+            .append(SOURCE_URI_KEY)
+            .append('=')
+            .append(source.displayUri())
+            .append('\n')
+            .append(ADDED_AT_KEY)
+            .append('=')
+            .append(addedAt)
+            .append('\n')
+            .append(REFRESHED_AT_KEY)
+            .append('=')
+            .append(refreshedAt)
+            .append('\n')
+            .append(LAST_ATTEMPT_AT_KEY)
+            .append('=')
+            .append(refreshMetadata.lastAttemptAt())
+            .append('\n')
+            .append(LAST_SUCCESSFUL_REFRESH_AT_KEY)
+            .append('=')
+            .append(refreshMetadata.lastSuccessfulRefreshAt())
+            .append('\n')
+            .append(LAST_FETCH_STATUS_KEY)
+            .append('=')
+            .append(refreshMetadata.lastFetchStatus().metadataValue())
+            .append('\n');
+    refreshMetadata
+        .lastFetchErrorCode()
+        .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_CODE_KEY, value));
+    refreshMetadata
+        .lastFetchErrorMessage()
+        .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_MESSAGE_KEY, value));
+    refreshMetadata
+        .lastResolvedUri()
+        .ifPresent(value -> appendProperty(builder, LAST_RESOLVED_URI_KEY, value));
+    return builder.toString();
+  }
+
+  private static void appendProperty(StringBuilder builder, String key, String value) {
+    builder.append(key).append('=').append(value).append('\n');
+  }
+
+  private static String resolvedCatalogUri(FetchedCatalog fetchedCatalog, AppCatalogSource source) {
+    return fetchedCatalog.resolvedCatalogUri().orElseGet(source::resolvedCatalogFetchUri);
   }
 }

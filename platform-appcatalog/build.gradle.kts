@@ -10,6 +10,7 @@ val mainSourceSet = sourceSets.named("main")
 
 dependencies {
   api(project(":platform-appdist"))
+  api(project(":runtime-spi"))
 
   compileOnly(libs.jetbrainsAnnotations)
 

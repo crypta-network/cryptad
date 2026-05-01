@@ -151,6 +151,30 @@ class RuntimeNodeKernelSplitPrepBoundaryTest {
   }
 
   @Test
+  void runtimeNodeContentFetch_whenCheckingRuntimePortsWiring_expectLegacyAdapterRegistered()
+      throws IOException {
+    Path repoRoot = repoRoot();
+    String runtimePortsSource =
+        Files.readString(
+            repoRoot.resolve(
+                Path.of(
+                    "runtime-node",
+                    "src",
+                    "main",
+                    "java",
+                    "network",
+                    "crypta",
+                    "runtime",
+                    "core",
+                    "LegacyRuntimePorts.java")));
+
+    assertTrue(runtimePortsSource.contains("private final ContentFetchPort contentFetchPort;"));
+    assertTrue(
+        runtimePortsSource.contains("this.contentFetchPort = new LegacyContentFetchPort(core);"));
+    assertTrue(runtimePortsSource.contains("public ContentFetchPort contentFetch()"));
+  }
+
+  @Test
   void runtimeNodePhaseTwo_whenCheckingMovedLeafOwnership_expectMovedLeafTypesAbsent()
       throws IOException {
     Path repoRoot = repoRoot();

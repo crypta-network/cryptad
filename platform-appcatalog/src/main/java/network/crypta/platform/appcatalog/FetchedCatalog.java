@@ -1,6 +1,7 @@
 package network.crypta.platform.appcatalog;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Holds the exact catalog sidecar bytes retrieved from one catalog source.
@@ -14,10 +15,10 @@ import java.util.Objects;
  * accessor methods return fresh copies and its constructor clones inputs immediately. That keeps
  * cached sidecar bytes stable even when test fixtures or fetch buffers are reused by callers.
  */
-@SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
 public final class FetchedCatalog {
   private final byte[] catalogBytes;
   private final byte[] signatureBytes;
+  private final String resolvedCatalogUri;
 
   /**
    * Creates a fetched catalog sidecar pair.
@@ -29,8 +30,30 @@ public final class FetchedCatalog {
    * @param signatureBytes exact bytes of {@code cryptad-app-catalog.signature}
    */
   public FetchedCatalog(byte[] catalogBytes, byte[] signatureBytes) {
+    this(catalogBytes, signatureBytes, null);
+  }
+
+  /**
+   * Creates a fetched catalog sidecar pair with optional resolved source metadata.
+   *
+   * <p>The resolved URI is diagnostic metadata reported by a transport implementation, for example
+   * the latest URI observed while fetching a mutable Crypta source. It is not used for trust
+   * decisions.
+   *
+   * @param catalogBytes exact bytes of {@code cryptad-app-catalog.properties}
+   * @param signatureBytes exact bytes of {@code cryptad-app-catalog.signature}
+   * @param resolvedCatalogUri transport-reported resolved catalog URI, or {@code null}
+   */
+  public FetchedCatalog(byte[] catalogBytes, byte[] signatureBytes, String resolvedCatalogUri) {
     this.catalogBytes = Objects.requireNonNull(catalogBytes, "catalogBytes").clone();
     this.signatureBytes = Objects.requireNonNull(signatureBytes, "signatureBytes").clone();
+    this.resolvedCatalogUri =
+        resolvedCatalogUri == null
+            ? null
+            : AppCatalogSidecars.requireNonBlankSingleLine(
+                resolvedCatalogUri,
+                "resolved catalog URI",
+                AppCatalogSidecars.INVALID_CATALOG_SOURCE);
   }
 
   /**
@@ -55,5 +78,14 @@ public final class FetchedCatalog {
    */
   public byte[] signatureBytes() {
     return signatureBytes.clone();
+  }
+
+  /**
+   * Returns transport-reported resolved catalog URI metadata, when available.
+   *
+   * @return optional resolved catalog URI
+   */
+  public Optional<String> resolvedCatalogUri() {
+    return Optional.ofNullable(resolvedCatalogUri);
   }
 }
