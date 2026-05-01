@@ -77,6 +77,7 @@ class AppCatalogManagerTest {
   private static final String CRYPTA_CATALOG_SOURCE = "crypta:" + CRYPTA_CATALOG_KEY;
   private static final String BASIC_CATALOG_PROPERTIES = "catalog.version=1\n";
   private static final String BASIC_CATALOG_SIGNATURE = "catalog.signature.version=1\n";
+  private static final String MALFORMED_KEY_VALUE_LINE = "not-a-key-value-line\n";
   private static final String CATALOG_SOURCE_STORE_DIRECTORY = "store";
   private static final String FINDER_METADATA = "finder metadata";
   private static final String UNEXPECTED_HTTP_FETCH = "unexpected HTTP fetch";
@@ -155,7 +156,7 @@ class AppCatalogManagerTest {
     Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
     Files.writeString(
         catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME),
-        "not-a-key-value-line\n",
+        MALFORMED_KEY_VALUE_LINE,
         StandardCharsets.UTF_8);
     AppCatalogManager manager = manager(trustedKeys(keyPair));
     String catalogSource = catalog.toString();
@@ -550,7 +551,7 @@ class AppCatalogManagerTest {
                 CRYPTA_CATALOG_KEY,
                 Files.readAllBytes(catalog),
                 CRYPTA_SIGNATURE_KEY,
-                "not-a-key-value-line\n".getBytes(StandardCharsets.UTF_8)));
+                MALFORMED_KEY_VALUE_LINE.getBytes(StandardCharsets.UTF_8)));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
 
     AppCatalogException exception =
@@ -617,6 +618,42 @@ class AppCatalogManagerTest {
     assertEquals(
         Optional.of(AppCatalogSidecars.CATALOG_FETCH_FAILED), snapshot.lastFetchErrorCode());
     assertEquals(snapshot.refreshedAt(), snapshot.lastSuccessfulRefreshAt());
+  }
+
+  @Test
+  void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    byte[] catalogBytes = Files.readAllBytes(catalog);
+    byte[] validSignatureBytes =
+        Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    String resolvedCatalogKey = "USK@example/catalog/99/cryptad-app-catalog.properties";
+    String resolvedSignatureKey = "USK@example/catalog/99/cryptad-app-catalog.signature";
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, validSignatureBytes));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            catalogBytes,
+            resolvedSignatureKey,
+            MALFORMED_KEY_VALUE_LINE.getBytes(StandardCharsets.UTF_8)),
+        Map.of(CRYPTA_CATALOG_KEY, resolvedCatalogKey));
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    AppCatalogSourceSnapshot snapshot = manager.listCatalogs().getFirst();
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+    assertEquals(AppCatalogFetchStatus.FAILED, snapshot.lastFetchStatus());
+    assertEquals(
+        Optional.of(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE), snapshot.lastFetchErrorCode());
+    assertEquals(Optional.of(resolvedCatalogKey), snapshot.lastResolvedUri());
   }
 
   @Test
@@ -1156,8 +1193,8 @@ class AppCatalogManagerTest {
   }
 
   private static final class FakeContentFetchPort implements ContentFetchPort {
-    private final Map<String, byte[]> content;
-    private final Map<String, String> resolvedUris;
+    private final Map<String, byte[]> content = new java.util.LinkedHashMap<>();
+    private final Map<String, String> resolvedUris = new java.util.LinkedHashMap<>();
     private final java.util.ArrayList<String> requestedKeys = new java.util.ArrayList<>();
     private ContentFetchException failure;
 
@@ -1166,8 +1203,7 @@ class AppCatalogManagerTest {
     }
 
     private FakeContentFetchPort(Map<String, byte[]> content, Map<String, String> resolvedUris) {
-      this.content = Map.copyOf(content);
-      this.resolvedUris = Map.copyOf(resolvedUris);
+      replaceContent(content, resolvedUris);
     }
 
     @Override
@@ -1197,6 +1233,15 @@ class AppCatalogManagerTest {
       this.failure =
           new ContentFetchException(
               ContentFetchException.CATALOG_FETCH_FAILED, "content fetch failed", failure);
+    }
+
+    private void replaceContent(Map<String, byte[]> content, Map<String, String> resolvedUris) {
+      this.content.clear();
+      this.content.putAll(content);
+      this.resolvedUris.clear();
+      this.resolvedUris.putAll(resolvedUris);
+      failure = null;
+      requestedKeys.clear();
     }
 
     private List<String> requestedKeys() {

@@ -218,11 +218,20 @@ public final class AppCatalogSourceStore {
       Instant attemptedAt,
       AppCatalogException exception)
       throws IOException {
+    recordRefreshFailure(
+        catalogId, stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
+  }
+
+  void recordRefreshFailure(
+      String catalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      AppCatalogException exception,
+      String resolvedUri)
+      throws IOException {
     String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
     AppCatalogSourceRefreshMetadata metadata =
-        stored
-            .refreshMetadata()
-            .failedAttempt(attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
+        stored.refreshMetadata().failedAttempt(attemptedAt, exception, resolvedUri);
     Path directory = catalogDirectory(normalizedCatalogId);
     sourceMetadataWriter.write(
         directory,

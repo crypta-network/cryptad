@@ -225,7 +225,12 @@ public final class AppCatalogManager {
       }
       return catalog;
     } catch (AppCatalogException exception) {
-      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+      recordRefreshFailure(
+          normalizedCatalogId,
+          stored,
+          attemptedAt,
+          exception,
+          resolvedCatalogUri(fetched, stored.source()));
       throw exception;
     }
   }
@@ -315,8 +320,23 @@ public final class AppCatalogManager {
       StoredCatalogSource stored,
       Instant attemptedAt,
       AppCatalogException exception) {
+    recordRefreshFailure(
+        normalizedCatalogId,
+        stored,
+        attemptedAt,
+        exception,
+        stored.source().resolvedCatalogFetchUri());
+  }
+
+  private void recordRefreshFailure(
+      String normalizedCatalogId,
+      StoredCatalogSource stored,
+      Instant attemptedAt,
+      AppCatalogException exception,
+      String resolvedUri) {
     try {
-      sourceStore.recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+      sourceStore.recordRefreshFailure(
+          normalizedCatalogId, stored, attemptedAt, exception, resolvedUri);
     } catch (IOException metadataException) {
       exception.addSuppressed(metadataException);
     }
