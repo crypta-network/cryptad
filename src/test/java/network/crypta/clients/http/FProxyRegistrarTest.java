@@ -1,8 +1,11 @@
 package network.crypta.clients.http;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import network.crypta.clients.http.ajaxpush.DismissAlertToadlet;
 import network.crypta.clients.http.ajaxpush.LogWritebackToadlet;
@@ -17,7 +20,10 @@ import network.crypta.config.IntCallback;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.fs.readiness.LauncherReadinessInfo;
+import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -46,6 +52,7 @@ import org.mockito.quality.Strictness;
 import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,6 +61,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -123,24 +131,36 @@ class FProxyRegistrarTest {
             "/", LegacyHttpCategories.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing");
     verify(server)
         .registerMenu(
-            LegacyHttpPaths.DOWNLOADS_PATH,
-            LegacyHttpCategories.CATEGORY_QUEUE,
-            "FProxyToadlet.categoryTitleQueue");
+            eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_QUEUE),
+            eq("FProxyToadlet.categoryTitleQueue"),
+            eq(QueueToadlet.PATH_DOWNLOADS),
+            eq(false),
+            any(LinkEnabledCallback.class),
+            any(LinkEnabledCallback.class));
     verify(server)
         .registerMenu(
-            LegacyHttpPaths.FRIENDS_PATH,
-            LegacyHttpCategories.CATEGORY_FRIENDS,
-            "FProxyToadlet.categoryTitleFriends");
+            eq(LegacyAdminRetirementRegistry.require("friends").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_FRIENDS),
+            eq("FProxyToadlet.categoryTitleFriends"),
+            eq(LegacyHttpPaths.FRIENDS_PATH),
+            any(LinkEnabledCallback.class));
     verify(server)
         .registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     verify(server)
         .registerMenu(
-            "/alerts/", LegacyHttpCategories.CATEGORY_STATUS, "FProxyToadlet.categoryTitleStatus");
+            eq(WebShellPaths.SHELL_ROOT),
+            eq(LegacyHttpCategories.CATEGORY_STATUS),
+            eq("FProxyToadlet.categoryTitleStatus"),
+            eq("/alerts/"),
+            any(LinkEnabledCallback.class));
     verify(server)
         .registerMenu(
-            "/seclevels/",
-            LegacyHttpCategories.CATEGORY_CONFIG,
-            "FProxyToadlet.categoryTitleConfig");
+            eq(LegacyAdminRetirementRegistry.require("config").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_CONFIG),
+            eq("FProxyToadlet.categoryTitleConfig"),
+            eq(SecurityLevelsToadlet.PATH),
+            any(LinkEnabledCallback.class));
 
     InOrder queueCompletionOrder = inOrder(queueCompletionPort);
     queueCompletionOrder.verify(queueCompletionPort).ensureTrackingStarted(false);
@@ -264,6 +284,96 @@ class FProxyRegistrarTest {
   }
 
   @Test
+  void maybeCreateFProxyEtc_whenRegisteringShellCategoryRoots_providesLegacyFallbacks() {
+    AtomicReference<String> primaryRoot =
+        new AtomicReference<>(LauncherReadinessInfo.DEFAULT_UI_ROOT);
+    when(server.primaryUiRoot()).thenAnswer(ignored -> primaryRoot.get());
+
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
+
+    LinkEnabledCallback friendsCallback =
+        capturedCategoryRootCallback(
+            LegacyAdminRetirementRegistry.require("friends").replacementUrl(),
+            LegacyHttpCategories.CATEGORY_FRIENDS,
+            "FProxyToadlet.categoryTitleFriends",
+            LegacyHttpPaths.FRIENDS_PATH);
+    LinkEnabledCallback statusCallback =
+        capturedCategoryRootCallback(
+            WebShellPaths.SHELL_ROOT,
+            LegacyHttpCategories.CATEGORY_STATUS,
+            "FProxyToadlet.categoryTitleStatus",
+            "/alerts/");
+    LinkEnabledCallback configCallback =
+        capturedCategoryRootCallback(
+            LegacyAdminRetirementRegistry.require("config").replacementUrl(),
+            LegacyHttpCategories.CATEGORY_CONFIG,
+            "FProxyToadlet.categoryTitleConfig",
+            SecurityLevelsToadlet.PATH);
+
+    assertFalse(friendsCallback.isEnabled(null));
+    assertFalse(statusCallback.isEnabled(null));
+    assertFalse(configCallback.isEnabled(null));
+
+    primaryRoot.set(WebShellPaths.SHELL_ROOT);
+
+    assertTrue(friendsCallback.isEnabled(null));
+    assertTrue(statusCallback.isEnabled(null));
+    assertTrue(configCallback.isEnabled(null));
+  }
+
+  @Test
+  void maybeCreateFProxyEtc_whenRegisteringQueueCategoryRoot_usesAppOnlyWhenAvailable()
+      throws Exception {
+    AtomicReference<Boolean> installed = new AtomicReference<>(false);
+    InstalledAppSnapshot queueManager = installedApp(AppUiMode.STATIC);
+    when(appHost.describe("queue-manager"))
+        .thenAnswer(_ -> installed.get() ? Optional.of(queueManager) : Optional.empty());
+
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
+
+    CategoryRootCallbacks queueCallbacks = capturedQueueCategoryRootCallbacks();
+    ToadletContext ctx = mock(ToadletContext.class);
+    ToadletContainer container = mock(ToadletContainer.class);
+    when(ctx.getContainer()).thenReturn(container);
+
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    installed.set(true);
+    assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(false);
+    assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    installed.set(false);
+    assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    installed.set(true);
+    assertTrue(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    InstalledAppSnapshot queueManagerWithoutStaticUi = installedApp(AppUiMode.NONE);
+    when(appHost.describe("queue-manager")).thenReturn(Optional.of(queueManagerWithoutStaticUi));
+    assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    when(appHost.describe("queue-manager")).thenThrow(new IOException("boom"));
+    assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
+    when(container.publicGatewayMode()).thenReturn(true);
+    assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
+
+    when(container.publicGatewayMode()).thenReturn(false);
+    assertTrue(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
+
+    when(container.publicGatewayMode()).thenReturn(true);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    assertTrue(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
+  }
+
+  @Test
   void maybeCreateFProxyEtc_whenRegisteringAppUi_registersHiddenAppsPrefixAtFront() {
     FProxyRegistrar.maybeCreateFProxyEtc(
         dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
@@ -342,9 +452,13 @@ class FProxyRegistrarTest {
     inOrder
         .verify(server)
         .registerMenu(
-            LegacyHttpPaths.DOWNLOADS_PATH,
-            LegacyHttpCategories.CATEGORY_QUEUE,
-            "FProxyToadlet.categoryTitleQueue");
+            eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_QUEUE),
+            eq("FProxyToadlet.categoryTitleQueue"),
+            eq(QueueToadlet.PATH_DOWNLOADS),
+            eq(false),
+            any(LinkEnabledCallback.class),
+            any(LinkEnabledCallback.class));
     inOrder
         .verify(browseRouteRegistrar)
         .registerRoutes(
@@ -398,6 +512,43 @@ class FProxyRegistrarTest {
             eq(LegacyHttpBrowseRouteRegistrar.Phase.TAIL_ROUTES),
             any(LegacyHttpBrowseRouteRegistrarContext.class),
             same(server));
+  }
+
+  @Test
+  void maybeCreateFProxyEtc_whenPrimaryReplacedRoutesRegistered_hidesLegacyMenuEntries() {
+    FProxyRegistrar.maybeCreateFProxyEtc(
+        dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
+
+    List<RegisteredToadlet> registrations = capturedRegistrations();
+
+    assertRouteOnlyRegistration(registrations, "/alerts/");
+    assertRouteOnlyRegistration(registrations, QueueToadlet.PATH_DOWNLOADS);
+    assertRouteOnlyRegistration(registrations, QueueToadlet.PATH_UPLOADS);
+    assertRouteOnlyRegistration(registrations, FileInsertWizardToadlet.PATH);
+    assertRouteOnlyRegistration(registrations, LocalFileInsertToadlet.INSERT_BROWSE_PATH);
+    assertRouteOnlyRegistration(registrations, SecurityLevelsToadlet.PATH);
+    assertRouteOnlyRegistration(registrations, LegacyHttpPaths.CONFIG_PATH + "alpha");
+    assertRouteOnlyRegistration(registrations, LegacyHttpPaths.CONFIG_PATH + "node");
+    assertRouteOnlyRegistration(registrations, CORE_UPDATE_PATH);
+    assertRouteOnlyRegistration(registrations, LegacyHttpPaths.FRIENDS_PATH);
+    assertRouteOnlyRegistration(registrations, "/addfriend/");
+    assertRouteOnlyRegistration(registrations, "/strangers/");
+    assertRouteOnlyRegistration(registrations, "/stats/");
+    assertRouteOnlyRegistration(registrations, "/diagnostic/");
+    assertRouteOnlyRegistration(registrations, ConnectivityToadlet.CONNECTIVITY_PATH);
+
+    assertMenuRegistration(
+        registrations, "/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.chatForumsTitle");
+    assertMenuRegistration(
+        registrations,
+        TranslationToadlet.TOADLET_URL,
+        LegacyHttpCategories.CATEGORY_CONFIG,
+        "TranslationToadlet.title");
+    assertMenuRegistration(
+        registrations,
+        WebShellPaths.SHELL_ROOT,
+        LegacyHttpCategories.CATEGORY_STATUS,
+        "FProxyToadlet.webShellTitle");
   }
 
   @Test
@@ -476,6 +627,71 @@ class FProxyRegistrarTest {
         .verify(server)
         .register(
             argThat(toadletType::isInstance), argThat(reg -> urlPrefix.equals(reg.urlPrefix())));
+  }
+
+  private static void assertRouteOnlyRegistration(
+      List<RegisteredToadlet> registrations, String urlPrefix) {
+    ToadletRegistration registration = registrationFor(registrations, urlPrefix);
+
+    assertNull(registration.menu());
+    assertNull(registration.name());
+    assertEquals(urlPrefix, registration.urlPrefix());
+  }
+
+  private static void assertMenuRegistration(
+      List<RegisteredToadlet> registrations, String urlPrefix, String menu, String name) {
+    ToadletRegistration registration = registrationFor(registrations, urlPrefix);
+
+    assertEquals(menu, registration.menu());
+    assertEquals(name, registration.name());
+    assertEquals(urlPrefix, registration.urlPrefix());
+  }
+
+  private LinkEnabledCallback capturedCategoryRootCallback(
+      String link, String name, String title, String fallbackLink) {
+    ArgumentCaptor<LinkEnabledCallback> callbackCaptor =
+        ArgumentCaptor.forClass(LinkEnabledCallback.class);
+    verify(server)
+        .registerMenu(eq(link), eq(name), eq(title), eq(fallbackLink), callbackCaptor.capture());
+    return callbackCaptor.getValue();
+  }
+
+  private CategoryRootCallbacks capturedQueueCategoryRootCallbacks() {
+    ArgumentCaptor<LinkEnabledCallback> primaryCallbackCaptor =
+        ArgumentCaptor.forClass(LinkEnabledCallback.class);
+    ArgumentCaptor<LinkEnabledCallback> rootCallbackCaptor =
+        ArgumentCaptor.forClass(LinkEnabledCallback.class);
+    verify(server)
+        .registerMenu(
+            eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_QUEUE),
+            eq("FProxyToadlet.categoryTitleQueue"),
+            eq(QueueToadlet.PATH_DOWNLOADS),
+            eq(false),
+            primaryCallbackCaptor.capture(),
+            rootCallbackCaptor.capture());
+    return new CategoryRootCallbacks(
+        primaryCallbackCaptor.getValue(), rootCallbackCaptor.getValue());
+  }
+
+  private record CategoryRootCallbacks(
+      LinkEnabledCallback primaryLinkEnabled, LinkEnabledCallback rootLinkEnabled) {}
+
+  private static InstalledAppSnapshot installedApp(AppUiMode uiMode) {
+    InstalledAppSnapshot snapshot = mock(InstalledAppSnapshot.class);
+    AppManifest manifest = mock(AppManifest.class);
+    when(snapshot.manifest()).thenReturn(manifest);
+    when(manifest.uiMode()).thenReturn(uiMode);
+    return snapshot;
+  }
+
+  private static ToadletRegistration registrationFor(
+      List<RegisteredToadlet> registrations, String urlPrefix) {
+    return registrations.stream()
+        .map(RegisteredToadlet::registration)
+        .filter(registration -> urlPrefix.equals(registration.urlPrefix()))
+        .findFirst()
+        .orElseThrow();
   }
 
   private static boolean isTailRouteType(Class<?> toadletType) {

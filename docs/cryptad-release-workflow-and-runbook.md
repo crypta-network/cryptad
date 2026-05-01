@@ -55,29 +55,33 @@ Treat these as release blockers, in order:
    validates artifact size/SHA-256, extracts safely, and can install or update through
    `/api/v1/app-catalogs`. The catalog contract is documented in
    [app-catalogs.md](app-catalogs.md).
-5. **App-owned UI smoke, when static UI apps ship** - open the advertised `uiUrl` for at least one
+5. **Developer app CLI smoke, when `:platform-devtools` changes** - run
+   `./gradlew :platform-devtools:test` and `./gradlew :platform-devtools:installDist`, then verify
+   `platform-devtools/build/install/crypta-app/bin/crypta-app --help`. The CLI contract is
+   documented in [app-dev-cli.md](app-dev-cli.md).
+6. **App-owned UI smoke, when static UI apps ship** - open the advertised `uiUrl` for at least one
    static UI app, confirm nested-entry assets load under `/apps/{appId}/`, and verify no
    filesystem path leaks appear in error responses. The route contract is documented in
    [app-owned-ui.md](app-owned-ui.md).
-6. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
+7. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
    when the environment is prepared, or verify that the CI `interop-smoke` job passed for the
    release candidate. The gate is documented in
    [tools/interop/README.md](../tools/interop/README.md) and summarized in
    [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
-7. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
+8. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
    the scheduled/manual `interop-extended` job when the release changes FCP, peer handling,
    datastore persistence, restart behavior, USK/SSK request handling, packaging layout, or node
    startup. Record `SubscribeUSK` duration, persistent request replay identifier, opennet enabled
    status, timeout settings, host OS, baseline, and the final `summary.json` path in the release
    record.
-8. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
+9. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
    `build/interop-extended/` from the local run or CI uploaded artifact before rerunning or cleaning
    the workspace. Do not publish `artifacts/private-insert-uris.json`; CI uploads exclude it.
-9. **Performance regression smoke** - run the packaged performance smoke locally or verify the
+10. **Performance regression smoke** - run the packaged performance smoke locally or verify the
    scheduled/manual `performance-smoke` CI job when preparing a release candidate. The gate is
    documented in [tools/perf/README.md](../tools/perf/README.md). Treat deterministic asset-size
    failures as release blockers unless a maintainer records an accepted baseline update or waiver.
-10. **Performance evidence, when performance-sensitive behavior changed** - run or verify the
+11. **Performance evidence, when performance-sensitive behavior changed** - run or verify the
     performance smoke when the release changes startup, packaging layout, Platform API, Web Shell,
     SDK assets, first-party app bundles, FCP startup, storage, routing, persistence, or JVM/runtime
     packaging. Record the command, mode, host OS or runner label, Java version, baseline path,

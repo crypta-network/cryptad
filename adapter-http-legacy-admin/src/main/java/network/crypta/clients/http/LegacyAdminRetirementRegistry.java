@@ -275,6 +275,24 @@ public final class LegacyAdminRetirementRegistry {
   }
 
   /**
+   * Indicates whether a legacy route should still be promoted in the legacy navigation menus.
+   *
+   * <p>Primary-replaced routes remain registered as direct fallback and debug URLs, but normal
+   * navigation should lead operators to the Web Shell or first-party app replacement. Unknown
+   * routes are treated as visible because they are outside this retirement map and may belong to
+   * retained browse-owned surfaces.
+   *
+   * @param legacyPath legacy HTTP route prefix that would be used for a menu entry
+   * @return {@code false} for known {@link LegacyAdminRetirementState#PRIMARY_REPLACED} surfaces;
+   *     {@code true} for retained, pending, infrastructure, and unknown routes
+   */
+  public static boolean shouldPromoteInLegacyNavigation(String legacyPath) {
+    return findByLegacyPath(legacyPath)
+        .map(surface -> surface.state() != LegacyAdminRetirementState.PRIMARY_REPLACED)
+        .orElse(true);
+  }
+
+  /**
    * Resolves one surface by stable id.
    *
    * <p>Ids are stable machine-readable names used by diagnostics and tests. This method does not

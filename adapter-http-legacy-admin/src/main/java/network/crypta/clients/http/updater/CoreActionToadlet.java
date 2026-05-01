@@ -17,11 +17,13 @@ import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ReplyHeaders;
 import network.crypta.clients.http.Toadlet;
+import network.crypta.clients.http.ToadletContainer;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.fs.AppEnv;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.updater.UpdaterPaths;
 import network.crypta.support.HTMLNode;
@@ -87,6 +89,8 @@ public class CoreActionToadlet extends Toadlet {
   private static final String SCHEME_APPSTREAM = "appstream://";
   private static final String SCHEME_SNAP = "snap://";
   private static final String HTML_ATTR_CLASS = "class";
+  private static final String SHELL_UPDATES_URL = WebShellPaths.SHELL_ROOT + "#updates";
+  private static final String LEGACY_UPDATES_URL = "/alerts/";
   private static final List<String> TRUSTED_UNIX_BIN_DIRS =
       List.of("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin");
 
@@ -127,8 +131,8 @@ public class CoreActionToadlet extends Toadlet {
    * <p>Accepted actions include download start, local installer launch, and package-store opening.
    * Requests are rejected when form-password validation fails. Download requests are dispatched
    * directly through the runtime port, so updater lookup and start happen as one operation, while
-   * the remaining actions still redirect when no core updater is available. Unknown actions are
-   * redirected back to the updater path.
+   * the remaining actions still redirect when no core updater is available. Unknown actions return
+   * the operator to the updates status view that is usable for the current client.
    *
    * @param uri request URI for the POST action endpoint
    * @param request parsed HTTP form request containing action and payload fields
@@ -694,8 +698,17 @@ public class CoreActionToadlet extends Toadlet {
   }
 
   private void redirect(ToadletContext ctx) throws ToadletContextClosedException, IOException {
-    MultiValueTable<String, String> headers = MultiValueTable.from("Location", "/alerts/");
+    MultiValueTable<String, String> headers =
+        MultiValueTable.from("Location", updatesRedirectUrl(ctx));
     ctx.sendReplyHeaders(302, "Found", headers, null, 0);
+  }
+
+  private static String updatesRedirectUrl(ToadletContext ctx) {
+    ToadletContainer container = ctx == null ? null : ctx.getContainer();
+    if (container != null && container.isFProxyJavascriptEnabled()) {
+      return SHELL_UPDATES_URL;
+    }
+    return LEGACY_UPDATES_URL;
   }
 
   private void writeMessage(ToadletContext ctx, boolean success, String message)

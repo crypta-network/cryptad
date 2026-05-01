@@ -66,16 +66,19 @@ Use this skill when you need to:
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
-    AppHost core)
+    AppHost core, sandbox status, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
-    resolution helpers)
+    resolution helpers plus browser-session helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
     transport helpers, mutation form handling, error parsing, and conservative fragment
     sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
-    signature, manifest, verifier, trusted-key, and distribution tooling)
+    signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
-    artifact verification, safe ZIP extraction, and verified staging)
+    catalog writer/descriptors, Crypta catalog source handling, artifact verification, safe ZIP
+    extraction, and verified staging)
+  - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
+    CLI for staged-bundle and catalog-authoring workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
@@ -100,10 +103,10 @@ Use this skill when you need to:
   - `:launcher-desktop` → `network.crypta.launcher`, `com.jthemedetecor`, `oshi`, launcher
     resources
 - First-party app bundle subprojects:
-  - `:apps:queue-manager` → staged Queue Manager AppHost bundle that currently launches the shell
-    queue panel
-  - `:apps:publisher` → staged Publisher AppHost bundle that currently launches the shell
-    publisher panel
+  - `:apps:queue-manager` → staged Queue Manager AppHost bundle with a static UI under
+    `/apps/queue-manager/static/`
+  - `:apps:publisher` → staged Publisher AppHost bundle with a static UI under
+    `/apps/publisher/static/`
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -125,7 +128,8 @@ Use this skill when you need to:
   - The root project keeps application composition, packaging/runtime tasks, most broad tests,
     tools, and root-local bridge selection in
     `network.crypta.runtime.bootstrap.DefaultNodeRuntimeBridgeFactories`.
-- The daemon runtime body now spans extracted leaves plus a thin root composition layer:
+- The daemon runtime and app-platform build now span extracted leaves plus a thin root composition
+  layer:
   `:kernel-content` owns the compile-neutral phase-1 client/content slice,
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
@@ -133,6 +137,7 @@ Use this skill when you need to:
   transport-neutral AppHost core, `:platform-app-ui` owns app-owned static UI route helpers,
   `:platform-sdk-js` owns the browser SDK resource, `:platform-appdist` owns signed local bundle
   distribution, `:platform-appcatalog` owns signed catalog sources and verified staging,
+  `:platform-devtools` owns the standalone app developer CLI,
   `:platform-web-shell` owns the browser-facing
   node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
@@ -330,24 +335,32 @@ Use this skill when you need to:
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
   install/list/describe/start/stop/update/uninstall operations, per-launch app tokens, minimal
-  launch environments, token-redacted process-log snapshots, and in-session restart attempts for
-  manifests that opt in.
+  launch environments, token-redacted process-log snapshots, sandbox policy/status reporting,
+  AppHost-managed data/cache quota enforcement, bounded process logs, and in-session restart
+  attempts for manifests that opt in.
 - `:platform-app-ui` owns `network.crypta.platform.appui`, the transport-neutral app-owned static
   UI path layer. It maps installed static UI manifests to `/apps/{appId}/`, preserves nested entry
   base URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
-  deterministic content-type and security-header helpers for HTTP adapters.
+  deterministic content-type, security-header, bootstrap, and browser-session helpers for HTTP
+  adapters.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
   app bundles. It wraps route bootstrap, same-origin Platform API reads, form-password mutations,
   error parsing, and conservative legacy HTML fragment sanitization; it is not an authority or
   isolation boundary.
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
-  sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries, and
-  exposes the distribution tool used by first-party app Gradle tasks.
+  sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries,
+  carries sandbox/quota manifest fields, and exposes the packager/distribution tool used by
+  first-party app Gradle tasks and developer tooling.
 - `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
-  artifact staging layer. It verifies catalog signatures, enforces source/URI policy, validates
-  artifact size and SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to
-  AppHost install/update flows.
+  artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
+  enforces source/URI policy including `crypta:` catalog sources, validates artifact size and
+  SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to AppHost
+  install/update flows.
+- `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
+  wires app template scaffolding, bundle validation, signing, packaging, verification, permission
+  linting, and catalog create/sign/verify commands around the platform distribution and catalog
+  libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
@@ -362,12 +375,13 @@ Use this skill when you need to:
   `QueueMutationPort`, `StatisticsPort`, `SecurityLevelsPort`, `PageChromePort`,
   `CoreUpdateActionPort`, `FirstTimeWizardPort`, `ToadletSymlinkPort`, `WelcomePagePort`,
   `WelcomeActionPort`, `AlertFeedPort`, `AlertMutationPort`, `LegacyAdminUsagePort`,
-  `RequestQueuePort`, `NodeInfoPort`, and `PeerPort`
+  `RequestQueuePort`, `NodeInfoPort`, `PeerPort`, and `ContentFetchPort`
 - Detached DTOs include config, connectivity, peer, darknet-friends, node-reference, queue,
   security-level, shared shell, first-time-wizard, symlinker, welcome-page, alert, and
   statistics/report snapshot types such as
   `ConfigSnapshot`, `ConfigFieldSet`, `ConfigSection`, `PeerSnapshot`,
   `DarknetConnectionPeerSnapshot`, `DarknetUploadedFile`, `NodeReferenceSnapshot`,
+  `BoundedContentFetchRequest`, `BoundedContentFetchResult`, `ContentFetchException`,
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, `WelcomePageSnapshot`,
@@ -472,6 +486,7 @@ Use this skill when you need to:
 - `:platform-sdk-js`: browser SDK resource under `network/crypta/platform/sdk/js`
 - `:platform-appdist`: `network.crypta.platform.appdist`
 - `:platform-appcatalog`: `network.crypta.platform.appcatalog`
+- `:platform-devtools`: `network.crypta.platform.devtools`
 - `:platform-web-shell`: `network.crypta.platform.webshell`
 - `:runtime-alerts`: `network.crypta.runtime.alerts`, including the detached
   `UserAlertSurface`

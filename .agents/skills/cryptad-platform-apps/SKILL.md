@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1, AppHost runtime, signed app bundles/catalogs, app-owned static UI, the browser SDK, app permissions/audit, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1, AppHost runtime, signed app bundles/catalogs, app-owned static UI, browser sessions, the browser SDK, developer CLI, app permissions/audit, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -13,6 +13,7 @@ Load only the docs needed for the change:
 
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
+- Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
@@ -23,17 +24,23 @@ Load only the docs needed for the change:
 ## Ownership map
 
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families, app-token
-  authorization decisions, capabilities, and bounded app audit log.
+  authorization decisions, browser-session authorization decisions, capabilities, and bounded app
+  audit log.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
-  attempts.
-- `:platform-app-ui` owns static route/path/content-type/header helpers for `/apps/{appId}/`.
+  attempts, plus sandbox policy/status reporting and positive data/cache quota enforcement.
+- `:platform-app-ui` owns static route/path/content-type/header helpers for `/apps/{appId}/` and
+  short-lived browser session issuance/verification for static app Platform API calls.
 - `:platform-sdk-js` owns `crypta-platform.js`, the dependency-free browser helper staged into
   first-party static app bundles.
-- `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification, and
-  first-party signing/verification tooling.
-- `:platform-appcatalog` owns signed catalog parsing, source/artifact verification, safe ZIP
-  extraction, and verified staging into AppHost install/update flows.
+- `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
+  deterministic bundle packaging, manifest sandbox/quota fields, and first-party
+  signing/verification tooling.
+- `:platform-appcatalog` owns signed catalog parsing, catalog writing, catalog source/artifact
+  verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
+  into AppHost install/update flows.
+- `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
+  packaging, verifying, and catalog-authoring developer-owned staged bundles.
 - `:platform-web-shell` owns `/app/node/` browser shell assets and bootstrap.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, and `/apps/{appId}/`
   HTTP bridges plus legacy admin retirement notices and diagnostics counters.
@@ -43,8 +50,11 @@ Load only the docs needed for the change:
 
 - Never expose `CRYPTAD_APP_TOKEN` through browser bootstrap JSON, Web Shell bootstrap, app
   summaries, runtime/log/audit API responses, diagnostics, `toString()`, or error text.
-- Browser static UI is same-origin with the local admin UI. It is not a sandbox, an app session, or
-  app-token authority. Server-side Platform API permission checks remain authoritative.
+- Browser static UI is same-origin with the local admin UI. It is not a sandbox or app-token
+  authority. Server-side Platform API permission checks remain authoritative.
+- Static app browser session tokens are local browser credentials for installed static UI calls.
+  They are not AppHost launch tokens, must not expose `CRYPTAD_APP_TOKEN`, and should stay out of
+  persistent browser storage.
 - App-originated Platform API requests must authenticate with a live launch token and pass the
   central capability matrix. Deny app principals by default.
 - Audit entries are bounded and process-local. Do not add query strings, request bodies, form
@@ -53,6 +63,12 @@ Load only the docs needed for the change:
   separators, symlink/reparse escapes, reserved sidecars, and host-dependent MIME inference.
 - Signed catalogs and bundles must verify before install/update. Unsigned live-node installs require
   the explicit development-only escape hatch.
+- `crypta:` catalog sources still require signed catalog verification. They do not make catalog
+  artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
+  `docs/app-catalogs.md`.
+- Positive AppHost data/cache quotas must block launch or restart when usage is over limit or an
+  enforced area cannot be measured completely. Quotas and current sandbox providers are operational
+  controls, not hard OS isolation.
 - Legacy admin retirement changes must update both the code map
   (`LegacyAdminRetirementRegistry`) and `docs/legacy-retirement-plan.md`.
 
@@ -66,6 +82,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :platform-app-ui:test
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
+./gradlew :platform-devtools:test
 ./gradlew :platform-sdk-js:test
 ./gradlew :platform-web-shell:test
 ./gradlew :adapter-http-legacy-admin:test
@@ -76,3 +93,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
 with `./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiToadletTest`.
+
+When changing `crypta-app` command wiring or distribution behavior, also run
+`./gradlew :platform-devtools:installDist` and smoke the generated
+`platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.

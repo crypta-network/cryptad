@@ -45,6 +45,15 @@ Legacy admin retirement metadata also stays in `:adapter-http-legacy-admin`. The
 which admin pages are primary-replaced, pending, retained, or infrastructure, renders fallback
 notices for replaced pages, and feeds process-local usage counters into Platform API diagnostics.
 The retirement plan is documented in [legacy-retirement-plan.md](legacy-retirement-plan.md).
+PR-211 consumes the existing registry rather than replacing it: `PRIMARY_REPLACED` pages are hidden
+from legacy navigation, while their toadlets remain registered so direct fallback and debug URLs
+continue to work. `RETAINED` browse/FProxy surfaces and `PENDING` admin routes stay in their current
+legacy entry points until a later batch proves a complete replacement. Shell-backed category roots
+only use Web Shell targets while that shell is the advertised primary UI; JavaScript-disabled
+sessions keep direct legacy fallback roots. The app-backed Queue category uses the Queue Manager
+route only when the app UI is installed and usable for the current request; otherwise it keeps the
+legacy downloads root as the category fallback only for clients that would already see legacy queue
+navigation. Public-gateway non-full sessions keep the Queue category hidden.
 
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

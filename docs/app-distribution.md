@@ -17,8 +17,9 @@ Related but documented elsewhere:
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
 - Browser SDK helpers for app-owned static UI: [platform-sdk-js.md](platform-sdk-js.md)
 - Public catalog-over-Crypta source syntax and trust boundaries: [app-catalogs.md](app-catalogs.md)
-- Browser-side bundle uploads, Crypta artifact fetching, and app sandboxing remain future platform
-  work.
+- Browser-side bundle uploads, Crypta app-artifact fetching, and stronger sandbox providers remain
+  future platform work. Current sandbox metadata selects and reports provider support, but the
+  default providers do not create a hard operating-system sandbox.
 
 ## Bundle Files
 
@@ -326,6 +327,7 @@ Preferred local patterns:
 
 ## Future Work
 
-Public catalog governance, background app-update scheduling, Crypta artifact fetching, remote
-screenshot proxying, and app sandboxing remain later platform work. Signed bundles now carry the
-manifest metadata and staged browser assets needed by app-owned static UI routes.
+Public catalog governance, background app-update scheduling, Crypta app-artifact fetching, remote
+screenshot proxying, and stronger sandbox providers remain later platform work. Signed bundles now
+carry the manifest metadata, sandbox/quota declarations, and staged browser assets needed by
+app-owned static UI routes.

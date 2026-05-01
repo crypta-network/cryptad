@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import network.crypta.clients.http.utils.ClientSideLocalizationScript;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.spi.PageChromeSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
@@ -181,20 +182,12 @@ class PageMakerTest {
   }
 
   @Test
-  void getPageNode_whenPageChromeSnapshotProvided_rendersStatusBarShell() {
+  void
+      getPageNode_whenJavascriptEnabledAndPageChromeSnapshotProvided_rendersShellSecurityAndLegacyLanguageLinks() {
     PageMaker maker = newPageMaker();
     stubPageRenderingContext(true);
-    maker.setPageChromePort(
-        () ->
-            new PageChromeSnapshot(
-                SecurityNetworkThreatLevel.HIGH,
-                SecurityPhysicalThreatLevel.MAXIMUM,
-                4,
-                2,
-                2,
-                5,
-                true,
-                10));
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    maker.setPageChromePort(PageMakerTest::statusSnapshot);
 
     PageNode page =
         maker.getPageNode(
@@ -207,8 +200,32 @@ class PageMakerTest {
     assertTrue(html.contains("statusbar-container"));
     assertTrue(html.contains("statusbar-seclevels"));
     assertTrue(html.contains("progressbar-peers"));
-    assertTrue(html.contains("/seclevels/"));
+    assertTrue(html.contains("/config/node#l10n"));
+    assertTrue(html.contains(WebShellPaths.SHELL_ROOT + "#security"));
+    assertFalse(html.contains(WebShellPaths.SHELL_ROOT + "#config"));
+    assertFalse(html.contains("/seclevels/"));
     assertTrue(html.contains("4 / 10"));
+  }
+
+  @Test
+  void getPageNode_whenJavascriptDisabledAndPageChromeSnapshotProvided_rendersLegacyChromeLinks() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(true);
+    maker.setPageChromePort(PageMakerTest::statusSnapshot);
+
+    PageNode page =
+        maker.getPageNode(
+            "Status",
+            context,
+            new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("statusbar-seclevels"));
+    assertTrue(html.contains("/config/node#l10n"));
+    assertTrue(html.contains(SecurityLevelsToadlet.PATH));
+    assertFalse(html.contains(WebShellPaths.SHELL_ROOT + "#config"));
+    assertFalse(html.contains(WebShellPaths.SHELL_ROOT + "#security"));
   }
 
   @Test
@@ -304,6 +321,148 @@ class PageMakerTest {
     assertThrows(
         NullPointerException.class,
         () -> maker.addNavigationLink("missing", "/path", "name", "title", false, null));
+  }
+
+  @Test
+  void getPageNode_whenFullAccessCategoryHasNoVisibleLinks_rendersCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    maker.addNavigationCategory(
+        WebShellPaths.SHELL_ROOT + "#peers",
+        "FProxyToadlet.categoryFriends",
+        "FProxyToadlet.categoryTitleFriends");
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("href=\"" + WebShellPaths.SHELL_ROOT + "#peers\""));
+  }
+
+  @Test
+  void getPageNode_whenCategoryPrimaryLinkDisabled_rendersFallbackCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    maker.addNavigationCategory(
+        WebShellPaths.SHELL_ROOT + "#peers",
+        "FProxyToadlet.categoryFriends",
+        "FProxyToadlet.categoryTitleFriends",
+        LegacyHttpPaths.FRIENDS_PATH,
+        ignored -> false);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("href=\"" + LegacyHttpPaths.FRIENDS_PATH + "\""));
+    assertFalse(html.contains("href=\"" + WebShellPaths.SHELL_ROOT + "#peers\""));
+  }
+
+  @Test
+  void getPageNode_whenCategoryPrimaryLinkDisabledWithoutFallback_rendersPrimaryCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    maker.addNavigationCategory(
+        WebShellPaths.SHELL_ROOT + "#peers",
+        "FProxyToadlet.categoryFriends",
+        "FProxyToadlet.categoryTitleFriends",
+        null,
+        ignored -> false);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("href=\"" + WebShellPaths.SHELL_ROOT + "#peers\""));
+  }
+
+  @Test
+  void getPageNode_whenNonFullFullOnlyCategoryHasNoVisibleLinks_hidesCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(context.isAllowedFullAccess()).thenReturn(false);
+    maker.addNavigationCategory(
+        WebShellPaths.SHELL_ROOT + "#peers",
+        "FProxyToadlet.categoryFriends",
+        "FProxyToadlet.categoryTitleFriends");
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertFalse(html.contains("href=\"" + WebShellPaths.SHELL_ROOT + "#peers\""));
+  }
+
+  @Test
+  void getPageNode_whenNonFullCategoryFallbackIsAllowed_rendersFallbackCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(context.isAllowedFullAccess()).thenReturn(false);
+    maker.addNavigationCategory(
+        "/apps/queue-manager/",
+        "FProxyToadlet.categoryQueue",
+        "FProxyToadlet.categoryTitleQueue",
+        QueueToadlet.PATH_DOWNLOADS,
+        false,
+        ignored -> false);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("href=\"" + QueueToadlet.PATH_DOWNLOADS + "\""));
+    assertFalse(html.contains("href=\"/apps/queue-manager/\""));
+  }
+
+  @Test
+  void getPageNode_whenNonFullCategoryFallbackIsDisabled_hidesCategoryRoot() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(context.isAllowedFullAccess()).thenReturn(false);
+    maker.addNavigationCategory(
+        "/apps/queue-manager/",
+        "FProxyToadlet.categoryQueue",
+        "FProxyToadlet.categoryTitleQueue",
+        QueueToadlet.PATH_DOWNLOADS,
+        false,
+        ignored -> false,
+        ignored -> false);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertFalse(html.contains("href=\"" + QueueToadlet.PATH_DOWNLOADS + "\""));
+    assertFalse(html.contains("href=\"/apps/queue-manager/\""));
+  }
+
+  private static PageChromeSnapshot statusSnapshot() {
+    return new PageChromeSnapshot(
+        SecurityNetworkThreatLevel.HIGH, SecurityPhysicalThreatLevel.MAXIMUM, 4, 2, 2, 5, true, 10);
   }
 
   private void stubPageRenderingContext(boolean renderStatusBar) {

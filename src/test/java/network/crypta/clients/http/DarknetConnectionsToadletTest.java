@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -83,6 +84,7 @@ class DarknetConnectionsToadletTest {
   @Mock private NodeInfoPort nodeInfoPort;
   @Mock private ConfigPort configPort;
   @Mock private ToadletContext ctx;
+  @Mock private ToadletContainer container;
   @Mock private HTTPRequest request;
 
   private DarknetConnectionsToadlet toadlet;
@@ -99,6 +101,7 @@ class DarknetConnectionsToadletTest {
             lifecyclePort);
     toadlet = new DarknetConnectionsToadlet(runtimePorts, darknetConnectionsPort);
     Mockito.lenient().when(request.isPartSet(anyString())).thenReturn(false);
+    Mockito.lenient().when(ctx.getContainer()).thenReturn(container);
   }
 
   @Test
@@ -125,9 +128,10 @@ class DarknetConnectionsToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenUsingDisplayMessageTypes_buildsDarknetRequestAndRedirectsOnZeroPeers()
+  void handleMethodGET_whenUsingDisplayMessageTypesAndZeroPeers_writesShellPeerRedirect()
       throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
     when(ctx.isAdvancedModeEnabled()).thenReturn(true);
     when(request.getParam("sortBy", null)).thenReturn("name");
     when(request.isParameterSet("reversed")).thenReturn(true);
@@ -137,14 +141,10 @@ class DarknetConnectionsToadletTest {
     ArgumentCaptor<ConnectionsPageRequest> requestCaptor =
         ArgumentCaptor.forClass(ConnectionsPageRequest.class);
 
-    RedirectException redirect =
-        assertThrows(
-            RedirectException.class,
-            () ->
-                toadlet.handleMethodGET(
-                    URI.create("http://localhost/friends/displaymessagetypes.html"), request, ctx));
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/friends/displaymessagetypes.html"), request, ctx);
 
-    assertEquals(URI.create("/addfriend/"), redirect.getTarget());
+    assertTemporaryRedirect(WebShellPaths.SHELL_ROOT + "#peers");
     verify(connectionsPage).render(requestCaptor.capture());
     ConnectionsPageRequest pageRequest = requestCaptor.getValue();
     assertEquals(ConnectionsPageKind.DARKNET, pageRequest.kind());
@@ -152,6 +152,22 @@ class DarknetConnectionsToadletTest {
     assertTrue(pageRequest.drawMessageTypes());
     assertEquals("name", pageRequest.sortBy());
     assertTrue(pageRequest.reversed());
+  }
+
+  @Test
+  void handleMethodGET_whenJavascriptDisabledAndZeroPeers_writesLegacyAddFriendRedirect()
+      throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(container.isFProxyJavascriptEnabled()).thenReturn(false);
+    when(ctx.isAdvancedModeEnabled()).thenReturn(true);
+    when(request.getParam("sortBy", null)).thenReturn(null);
+    when(request.isParameterSet("reversed")).thenReturn(false);
+    when(connectionsPage.render(any()))
+        .thenReturn(new ConnectionsPageSnapshot("friends", 0, true, "", "", ""));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/friends/"), request, ctx);
+
+    assertTemporaryRedirect(DarknetAddRefToadlet.PATH);
   }
 
   @Test
@@ -442,9 +458,10 @@ class DarknetConnectionsToadletTest {
     when(connectionsSupportPort.readPeerReferenceText(locationText))
         .thenReturn(new StringBuilder(VALID_PEER_REFERENCE));
     when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("peer-added"));
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
     PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
     when(ctx.getPageMaker()).thenReturn(pageMaker);
-    captureBody(ctx);
+    ByteArrayOutputStream body = captureBody(ctx);
 
     toadlet.handleMethodPOST(URI.create("http://localhost/friends/"), request, ctx);
 
@@ -453,6 +470,9 @@ class DarknetConnectionsToadletTest {
     verify(peerPort).add(fieldSetCaptor.capture(), eq(PeerTrust.NORMAL), eq(PeerVisibility.NO));
     assertEquals("peer-identity", fieldSetCaptor.getValue().directValues().get("identity"));
     assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains(WebShellPaths.SHELL_ROOT + "#peers"));
+    assertFalse(html.contains("/addfriend/"));
   }
 
   @Test
@@ -470,6 +490,7 @@ class DarknetConnectionsToadletTest {
     when(request.getPartAsStringFailsafe("visibility", 10)).thenReturn(PeerVisibility.NO.name());
     when(connectionsSupportPort.readPeerReferenceText(locationText))
         .thenThrow(new IOException("boom"));
+    when(container.isFProxyJavascriptEnabled()).thenReturn(true);
     PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     ByteArrayOutputStream body = captureBody(ctx);
@@ -480,7 +501,8 @@ class DarknetConnectionsToadletTest {
     verifyNoInteractions(peerPort);
     String html = body.toString(StandardCharsets.UTF_8);
     assertTrue(html.contains(locationText));
-    assertTrue(html.contains("/addfriend/"));
+    assertTrue(html.contains(WebShellPaths.SHELL_ROOT + "#peers"));
+    assertFalse(html.contains("/addfriend/"));
   }
 
   @Test
@@ -500,7 +522,7 @@ class DarknetConnectionsToadletTest {
     when(peerPort.add(any(), any(), any())).thenReturn(peerSnapshot("peer-added"));
     PageMaker pageMaker = stubPageMaker(new HTMLNode("div"));
     when(ctx.getPageMaker()).thenReturn(pageMaker);
-    captureBody(ctx);
+    ByteArrayOutputStream body = captureBody(ctx);
 
     toadlet.handleMethodPOST(URI.create("http://localhost/friends/"), request, ctx);
 
@@ -510,6 +532,9 @@ class DarknetConnectionsToadletTest {
     verify(peerPort).writePrivateDarknetComment("peer-added", "private-note");
     assertEquals("peer-identity", fieldSetCaptor.getValue().directValues().get("identity"));
     assertEquals("1", fieldSetCaptor.getValue().directValues().get("lastGoodVersion"));
+    String html = body.toString(StandardCharsets.UTF_8);
+    assertTrue(html.contains(DarknetAddRefToadlet.PATH));
+    assertFalse(html.contains(WebShellPaths.SHELL_ROOT + "#peers"));
   }
 
   @Test
@@ -607,6 +632,20 @@ class DarknetConnectionsToadletTest {
         ArgumentCaptor.forClass(MultiValueTable.class);
     verify(ctx).sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
     assertEquals("/friends/", headersCaptor.getValue().getFirst("Location"));
+  }
+
+  private void assertTemporaryRedirect(String expectedLocation) throws Exception {
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<MultiValueTable<String, String>> headersCaptor =
+        ArgumentCaptor.forClass(MultiValueTable.class);
+    verify(ctx)
+        .sendReplyHeaders(
+            eq(302),
+            eq("Found"),
+            headersCaptor.capture(),
+            eq("text/html; charset=UTF-8"),
+            anyLong());
+    assertEquals(expectedLocation, headersCaptor.getValue().getFirst("Location"));
   }
 
   private PageMaker stubPageMaker(HTMLNode content) {

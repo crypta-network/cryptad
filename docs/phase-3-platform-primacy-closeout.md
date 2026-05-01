@@ -54,9 +54,17 @@ The Phase 3 platform path is split across focused modules:
 - `:platform-web-shell` owns the browser-facing Web Shell v1 page contract, bootstrap model, route
   constants, and static browser assets. The current shell is mounted at `/app/node/`.
 - `:platform-apphost` owns the transport-neutral local AppHost core: manifest parsing, installed
-  app layout, process lifecycle, running-state snapshots, and launch-token plumbing.
-- `:platform-appdist` owns the local app distribution tooling used to digest, sign, and verify
-  staged bundles.
+  app layout, process lifecycle, running-state snapshots, launch-token plumbing, sandbox status
+  reporting, data/cache quota checks, and bounded process-log handling.
+- `:platform-app-ui` owns app-owned static UI route helpers and short-lived browser sessions for
+  static app Platform API calls.
+- `:platform-sdk-js` owns the browser SDK resource staged into first-party static UI bundles.
+- `:platform-appdist` owns the local app distribution tooling used to digest, sign, package, and
+  verify staged bundles.
+- `:platform-appcatalog` owns signed catalog parsing, catalog writing, Crypta catalog source
+  fetching, artifact digest checks, safe ZIP extraction, and verified AppHost staging.
+- `:platform-devtools` owns the standalone `crypta-app` developer CLI for external staged-bundle
+  and catalog-authoring workflows.
 - `apps/queue-manager` owns the Queue Manager first-party app bundle. Current staged bundles
   declare `app.ui.mode=static` and open under `/apps/queue-manager/static/`.
 - `apps/publisher` owns the Publisher first-party app bundle. Current staged bundles declare
@@ -130,17 +138,22 @@ diagnostics, artifact layout, and summary fields are documented in
 
 ## Release gates
 
-Treat these gates as blockers before promoting a Phase 3 release:
+Treat these gates as blockers before promoting a release that ships the platform surface:
 
 1. Run the normal Gradle build/test gate for the release branch.
 2. Stage first-party apps.
 3. Sign first-party apps with the intended release or staging signing inputs.
 4. Verify first-party apps with the matching trusted public key inputs.
-5. Run the Linux Hyphanet interop Tier 1 smoke gate locally or verify the CI `interop-smoke` job
+5. Smoke signed app catalogs when catalog sources ship.
+6. Smoke the `crypta-app` CLI when `:platform-devtools` changes.
+7. Smoke app-owned static UI routes when static UI apps ship.
+8. Run the Linux Hyphanet interop Tier 1 smoke gate locally or verify the CI `interop-smoke` job
    passed.
-6. Run or verify the Tier 2 extended interop job when the release changes FCP, peer handling,
+9. Run or verify the Tier 2 extended interop job when the release changes FCP, peer handling,
    persistence, restart behavior, USK/SSK request handling, packaging layout, or node startup.
-7. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
+10. Run or verify the packaged-node performance smoke when release readiness or
+   performance-sensitive changes require it.
+11. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
    fails or when Tier 2 evidence is part of the release record. Shared diagnostics must exclude
    `artifacts/private-insert-uris.json`.
 
@@ -155,6 +168,8 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
   scheduling remains future work.
 - App-owned static UI routes have landed for installed static bundles; stronger isolation remains
   future work.
+- Standalone developer tooling has landed through the `crypta-app` CLI for scaffolding,
+  validation, signing, packaging, verification, and catalog authoring.
 - Broader first-party app catalog remains future work.
 - App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
   [app-permissions-and-audit.md](app-permissions-and-audit.md).

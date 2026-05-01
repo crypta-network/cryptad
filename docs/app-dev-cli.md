@@ -230,11 +230,11 @@ rationales explain declared permissions; they do not grant capabilities.
 the ZIP after creating the catalog; the generated catalog records its size and lowercase SHA-256
 digest.
 
-`bundle.uri` is the public ZIP artifact location written into the signed catalog entry. In PR-210,
+`bundle.uri` is the public ZIP artifact location written into the signed catalog entry. Current
 catalog entries can use `file:`, `https:`, or loopback `http:` artifact URIs. `crypta:` catalog
 sources are supported by the runtime catalog refresh flow, but `bundle.uri=crypta:...` is rejected
 unless `platform-appcatalog` adds explicit Crypta artifact fetching. Keep Crypta keys for the
-catalog properties and catalog signature sidecars, not for app bundle artifacts, in this PR.
+catalog properties and catalog signature sidecars, not for app bundle artifacts.
 
 Create the catalog properties file:
 
@@ -267,7 +267,7 @@ crypta-app catalog verify \
 The sign command writes `cryptad-app-catalog.signature` beside
 `cryptad-app-catalog.properties`. Do not rewrite, sort, or reformat the catalog after signing.
 
-`crypta-app` does not publish catalogs or signatures to Crypta in PR-210. To offer a public
+`crypta-app` does not publish catalogs or signatures to Crypta. To offer a public
 catalog-over-Crypta source, create and sign the catalog locally, then publish
 `cryptad-app-catalog.properties` and `cryptad-app-catalog.signature` with the existing Crypta
 publishing workflow. Runtime catalog sources can reference a path-like USK/SSK catalog location

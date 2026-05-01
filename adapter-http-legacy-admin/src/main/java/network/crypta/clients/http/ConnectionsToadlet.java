@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.StringTokenizer;
 import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.ConfigPort;
 import network.crypta.runtime.spi.ConnectionsPageKind;
 import network.crypta.runtime.spi.ConnectionsPagePort;
@@ -75,6 +76,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   private static final String REF_FILE = "reffile";
   private static final String PEER_PRIVATE_NOTE = "peerPrivateNote";
   private static final String REPORT_OF_NODE_ADDITION = "reportOfNodeAddition";
+  private static final String SHELL_PEERS_URL = WebShellPaths.SHELL_ROOT + "#peers";
 
   /** Page-oriented runtime port used for detached GET-only connections page rendering. */
   private final ConnectionsPagePort connectionsPage;
@@ -172,7 +174,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
                 request.isParameterSet("reversed")));
 
     if (snapshot.peerCount() == 0 && !isOpennet()) {
-      throw new RedirectException(URI.create("/addfriend/"));
+      writeTemporaryRedirect(ctx, "Redirecting to peer management.", peerManagementUrl(ctx));
+      return;
     }
 
     PageNode page = ctx.getPageMaker().getPageNode(snapshot.pageTitle(), ctx);
@@ -481,7 +484,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
                 INFOBOX_CLASS, l10n(REPORT_OF_NODE_ADDITION), contentNode, "node-added", true);
     infoboxContent.addChild(detailedStatusBox);
     if (!isOpennet())
-      infoboxContent.addChild("p").addChild("a", "href", "/addfriend/", l10n("addAnotherFriend"));
+      infoboxContent
+          .addChild("p")
+          .addChild("a", "href", peerManagementUrl(ctx), l10n("addAnotherFriend"));
     infoboxContent.addChild("p").addChild("a", "href", path(), l10n("goFriendConnectionStatus"));
     addHomepageLink(infoboxContent.addChild("p"));
 
@@ -838,6 +843,13 @@ public abstract class ConnectionsToadlet extends Toadlet {
     return NodeL10n.getBase().getString("DarknetConnectionsToadlet." + string);
   }
 
+  private static String peerManagementUrl(ToadletContext ctx) {
+    if (ctx != null && ctx.getContainer().isFProxyJavascriptEnabled()) {
+      return SHELL_PEERS_URL;
+    }
+    return DarknetAddRefToadlet.PATH;
+  }
+
   /**
    * Sends a simple error page with optional navigation hints.
    *
@@ -845,8 +857,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * @param code HTTP status code to return to the client.
    * @param desc short description used as the page title and infobox heading.
    * @param message localized body text explaining the failure to the user.
-   * @param returnToAddFriends whether to show a link back to the add-friend page or to the previous
-   *     page.
+   * @param returnToAddFriends whether to show a link back to peer-management replacement or to the
+   *     previous page.
    * @throws ToadletContextClosedException if the client connection is closed while sending output.
    * @throws IOException when writing the response fails.
    */
@@ -861,8 +873,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     infoboxContent.addChild("#", message);
     if (returnToAddFriends) {
       infoboxContent.addChild("br");
-      infoboxContent.addChild(
-          "a", "href", DarknetAddRefToadlet.PATH, l10n("returnToAddAFriendPage"));
+      infoboxContent.addChild("a", "href", peerManagementUrl(ctx), l10n("returnToAddAFriendPage"));
       infoboxContent.addChild("br");
     } else {
       infoboxContent.addChild("br");

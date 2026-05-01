@@ -30,8 +30,8 @@ Build: 2
 - Do not rebase/squash release merges.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include first-party app staging/signing/verification, catalog and
-  app-owned UI smoke when those surfaces ship, Hyphanet interop smoke/soak evidence, and the
-  packaged-node performance smoke.
+  app-owned UI smoke when those surfaces ship, `crypta-app` CLI smoke when developer tooling
+  changes, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -81,6 +81,7 @@ git push origin v<build-number>
 - [ ] `build.gradle.kts` version is the intended integer build number.
 - [ ] CI green on `release/<build-number>`.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
+- [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or

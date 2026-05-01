@@ -227,8 +227,8 @@ directory. The extractor rejects artifacts with more than 4096 ZIP entries, abso
 bundles. It drops macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files
 before signed-bundle verification, so those files are not installed as app payload.
 
-PR-210 supports `crypta:` for catalog sources only. Catalog entry artifact URIs still use `file:`,
-`https:`, or loopback `http:` sources. A catalog entry with
+Current catalog support accepts `crypta:` for catalog sources only. Catalog entry artifact URIs
+still use `file:`, `https:`, or loopback `http:` sources. A catalog entry with
 `app.<id>.bundle.uri=crypta:...` is rejected with a stable unsupported artifact URI scheme error
 unless `platform-appcatalog` adds explicit Crypta artifact fetching in a later change.
 

@@ -1430,6 +1430,78 @@ public final class SimpleToadletServer
     pageMaker.addNavigationCategory(link, name, title);
   }
 
+  /**
+   * Registers a navigation category with a runtime-selected fallback root.
+   *
+   * <p>The page maker uses {@code link} when {@code primaryLinkEnabled} allows it for the current
+   * request, otherwise it renders {@code fallbackLink}. This is useful for category roots that
+   * should prefer a script-backed primary UI only when that UI is currently advertised.
+   *
+   * @param link primary navigation target
+   * @param name short category name shown in menus; should be unique within its level
+   * @param title descriptive title used for tooltips or extended labels; may be {@code null}
+   * @param fallbackLink alternate navigation target when {@code link} is not enabled
+   * @param primaryLinkEnabled callback deciding whether the primary target is usable
+   */
+  public void registerMenu(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      LinkEnabledCallback primaryLinkEnabled) {
+    pageMaker.addNavigationCategory(link, name, title, fallbackLink, primaryLinkEnabled);
+  }
+
+  /**
+   * Registers a navigation category with a runtime-selected fallback root and access scoping.
+   *
+   * <p>The {@code fullOnly} flag is consulted only when the root would be rendered without visible
+   * child links.
+   *
+   * @param link primary navigation target
+   * @param name short category name shown in menus; should be unique within its level
+   * @param title descriptive title used for tooltips or extended labels; may be {@code null}
+   * @param fallbackLink alternate navigation target when {@code link} is not enabled
+   * @param fullOnly whether a root-only category requires full-access permission
+   * @param primaryLinkEnabled callback deciding whether the primary target is usable
+   */
+  @SuppressWarnings("unused")
+  public void registerMenu(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      boolean fullOnly,
+      LinkEnabledCallback primaryLinkEnabled) {
+    pageMaker.addNavigationCategory(link, name, title, fallbackLink, fullOnly, primaryLinkEnabled);
+  }
+
+  /**
+   * Registers a navigation category with runtime-selected target and visibility.
+   *
+   * <p>{@code primaryLinkEnabled} controls whether the primary or fallback target is rendered.
+   * {@code rootLinkEnabled} controls whether a root-only category is rendered at all.
+   *
+   * @param link primary navigation target
+   * @param name short category name shown in menus; should be unique within its level
+   * @param title descriptive title used for tooltips or extended labels; may be {@code null}
+   * @param fallbackLink alternate navigation target when {@code link} is not enabled
+   * @param fullOnly whether a root-only category requires full-access permission
+   * @param primaryLinkEnabled callback deciding whether the primary target is usable
+   * @param rootLinkEnabled callback deciding whether a root-only category should render
+   */
+  public void registerMenu(
+      String link,
+      String name,
+      String title,
+      String fallbackLink,
+      boolean fullOnly,
+      LinkEnabledCallback primaryLinkEnabled,
+      LinkEnabledCallback rootLinkEnabled) {
+    pageMaker.addNavigationCategory(
+        link, name, title, fallbackLink, fullOnly, primaryLinkEnabled, rootLinkEnabled);
+  }
+
   @Override
   public void unregister(Toadlet t) {
     ToadletElement e = null;
