@@ -167,6 +167,10 @@ Node working directories live under `build/perf-smoke/work/` during a run. CI up
 Logs under `artifacts/logs/` are sanitized before reports are written; token-like values,
 password-like values, private URIs, and local workspace or home-directory prefixes are redacted.
 
+The release certification workflow consumes `build/perf-smoke/summary.json` as required
+`performance.smoke` evidence and copies the sanitized `artifacts/perf-report.md` into
+`build/release-certification/artifacts/` when present.
+
 ## Baselines
 
 `tools/perf/baselines/performance-smoke.json` is a checked-in smoke baseline with conservative
@@ -200,6 +204,10 @@ CI has two jobs:
 
 Regular pull requests get the Python self-test without the full node smoke. That keeps the default
 PR path low-flake while preserving scheduled/manual evidence for release candidates.
+
+The separate `release-certification` workflow can run the performance smoke before generating
+`build/release-certification/release-certification-report.md` and
+`build/release-certification/release-certification-summary.json`.
 
 ## Interpreting results
 

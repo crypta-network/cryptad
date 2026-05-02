@@ -1,8 +1,8 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated April 25, 2026, to cover the CoreUpdater package-based distribution flow, signed
-> first-party app bundles, signed app catalogs, app-owned static UI routing, and the lightweight
-> performance regression gate.
+> Updated May 1, 2026, to cover the release certification report that aggregates interop,
+> performance, app-platform, catalog, app-owned UI, legacy-admin retirement, and CI evidence for a
+> release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -49,39 +49,56 @@
 Treat these as release blockers, in order:
 
 1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
-2. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
-3. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
-4. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
+2. **Release certification report** - generate the release-candidate report after the source gates
+   below have produced their summaries:
+   ```bash
+   tools/release-certification/run-release-certification.sh \
+     --mode release-candidate \
+     --out-dir build/release-certification
+   ```
+   Preserve `build/release-certification/release-certification-summary.json`,
+   `build/release-certification/release-certification-report.md`, and the sanitized
+   `build/release-certification/artifacts/` directory as release-candidate evidence. The workflow
+   is documented in [release-certification.md](release-certification.md).
+3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
+4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
+5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
    validates artifact size/SHA-256, extracts safely, and can install or update through
    `/api/v1/app-catalogs`. The catalog contract is documented in
    [app-catalogs.md](app-catalogs.md).
-5. **Developer app CLI smoke, when `:platform-devtools` changes** - run
+6. **Developer app CLI smoke, when `:platform-devtools` changes** - run
    `./gradlew :platform-devtools:test` and `./gradlew :platform-devtools:installDist`, then verify
    `platform-devtools/build/install/crypta-app/bin/crypta-app --help`. The CLI contract is
    documented in [app-dev-cli.md](app-dev-cli.md).
-6. **App-owned UI smoke, when static UI apps ship** - open the advertised `uiUrl` for at least one
+7. **App-owned UI smoke, when static UI apps ship** - open the advertised `uiUrl` for at least one
    static UI app, confirm nested-entry assets load under `/apps/{appId}/`, and verify no
    filesystem path leaks appear in error responses. The route contract is documented in
    [app-owned-ui.md](app-owned-ui.md).
-7. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
+8. **Legacy-admin retirement evidence** - record the current retirement map and diagnostics shape
+   before any release promotion. The certification report must include primary-replaced, retained,
+   and pending surface counts, confirm primary-replaced surfaces are absent from Web Shell fallback
+   navigation, and confirm direct fallback URLs remain documented. Optional live evidence may read
+   `GET /api/v1/diagnostics`; those counters are process-local and are not durable audit logs. The
+   retirement source of truth is [legacy-retirement-plan.md](legacy-retirement-plan.md).
+9. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
    when the environment is prepared, or verify that the CI `interop-smoke` job passed for the
    release candidate. The gate is documented in
    [tools/interop/README.md](../tools/interop/README.md) and summarized in
    [phase-3-platform-primacy-closeout.md](phase-3-platform-primacy-closeout.md).
-8. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
+10. **Interop Tier 2 extended soak, when compatibility-sensitive behavior changed** - run or verify
    the scheduled/manual `interop-extended` job when the release changes FCP, peer handling,
    datastore persistence, restart behavior, USK/SSK request handling, packaging layout, or node
    startup. Record `SubscribeUSK` duration, persistent request replay identifier, opennet enabled
    status, timeout settings, host OS, baseline, and the final `summary.json` path in the release
    record.
-9. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
+11. **Interop failure artifacts** - if an interop gate fails, preserve `build/interop-smoke/` or
    `build/interop-extended/` from the local run or CI uploaded artifact before rerunning or cleaning
    the workspace. Do not publish `artifacts/private-insert-uris.json`; CI uploads exclude it.
-10. **Performance regression smoke** - run the packaged performance smoke locally or verify the
+12. **Performance regression smoke** - run the packaged performance smoke locally or verify the
    scheduled/manual `performance-smoke` CI job when preparing a release candidate. The gate is
    documented in [tools/perf/README.md](../tools/perf/README.md). Treat deterministic asset-size
    failures as release blockers unless a maintainer records an accepted baseline update or waiver.
-11. **Performance evidence, when performance-sensitive behavior changed** - run or verify the
+13. **Performance evidence, when performance-sensitive behavior changed** - run or verify the
     performance smoke when the release changes startup, packaging layout, Platform API, Web Shell,
     SDK assets, first-party app bundles, FCP startup, storage, routing, persistence, or JVM/runtime
     packaging. Record the command, mode, host OS or runner label, Java version, baseline path,
@@ -195,6 +212,19 @@ Treat these as release blockers, in order:
   maintainer-reviewed baseline update. Environment-sensitive startup, FCP, and Platform API timing
   regressions should be investigated on comparable hardware before promotion. CI uploads
   `summary.json` and `artifacts/` from the scheduled/manual `performance-smoke` job.
+- Generate the release certification report after the interop, performance, and app-platform
+  evidence exists:
+  ```bash
+  tools/release-certification/run-release-certification.sh \
+    --mode release-candidate \
+    --out-dir build/release-certification
+  ```
+  Inspect `build/release-certification/release-certification-report.md` and
+  `build/release-certification/release-certification-summary.json`. Missing required evidence,
+  failed required evidence, or missing signed bundle/catalog evidence blocks release-candidate
+  promotion unless a release manager records an explicit waiver. Do not attach
+  `artifacts/private-insert-uris.json`, private signing keys, form passwords, app tokens, browser
+  session tokens, raw request bodies, or unsanitized local paths to the release record.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.

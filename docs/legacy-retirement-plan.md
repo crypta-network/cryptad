@@ -112,6 +112,7 @@ filesystem paths, request bodies, or remote addresses.
     "surfaces": [
       {
         "id": "queue-downloads",
+        "title": "Download queue",
         "path": "/downloads/",
         "state": "PRIMARY_REPLACED",
         "replacementUrl": "/apps/queue-manager/",
