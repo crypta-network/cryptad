@@ -21,6 +21,10 @@ Generate a quick local report without running expensive Gradle or node gates:
 tools/release-certification/run-release-certification.sh
 ```
 
+The wrapper can be run from any working directory. Relative `--out-dir` values are resolved under
+the repository root before shell cleanup, app-platform smoke generation, and certification
+aggregation run.
+
 Generate release-candidate evidence under the standard output directory:
 
 ```bash

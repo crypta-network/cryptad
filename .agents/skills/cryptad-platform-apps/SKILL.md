@@ -20,6 +20,7 @@ Load only the docs needed for the change:
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
+- App-platform release evidence: `docs/release-certification.md`
 
 ## Ownership map
 
@@ -71,6 +72,23 @@ Load only the docs needed for the change:
   controls, not hard OS isolation.
 - Legacy admin retirement changes must update both the code map
   (`LegacyAdminRetirementRegistry`) and `docs/legacy-retirement-plan.md`.
+- Release-certification evidence must not expose private signing keys, app process tokens,
+  browser-session tokens, form passwords, raw request bodies, private insert URIs, non-localhost
+  endpoint metadata, or unsanitized local paths. Optional live AppHost smoke reads the form password
+  from `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a command-line argument.
+
+## Release certification smoke
+
+- `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
+  release certification. It validates first-party staged bundles, static UI/SDK coherence,
+  `crypta-app init/validate/pack`, signed bundle evidence, signed catalog evidence,
+  legacy-admin retirement state, and optional localhost-only live AppHost lifecycle evidence.
+- `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
+  downloads, or production credentials.
+- `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
+  failing unless a release-manager waiver is recorded by the aggregator.
+- Keep app smoke self-tests Python-only and deterministic. Use fixtures or fake CLI helpers instead
+  of network or Java dependencies for regression coverage where possible.
 
 ## Validation
 
@@ -89,6 +107,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:queue-manager:test
 ./gradlew :apps:publisher:test
 ./gradlew stageFirstPartyApps
+python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -97,3 +116,11 @@ with `./gradlew :test --tests *PlatformApiRouterTest --tests *PlatformApiToadlet
 When changing `crypta-app` command wiring or distribution behavior, also run
 `./gradlew :platform-devtools:installDist` and smoke the generated
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
+
+When changing signed bundle/catalog, static UI, SDK, AppHost lifecycle, or legacy-admin retirement
+evidence behavior, also run:
+
+```bash
+python3 tools/release-certification/app_platform_smoke.py --self-test
+tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
+```

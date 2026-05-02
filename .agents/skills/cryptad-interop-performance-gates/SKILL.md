@@ -1,17 +1,19 @@
 ---
 name: cryptad-interop-performance-gates
-description: "Maintain Cryptad's Hyphanet interop and performance regression gates under tools/interop, tools/perf, CI jobs, and release-readiness documentation."
+description: "Maintain Cryptad's Hyphanet interop, performance regression, and release-certification evidence gates under tools/interop, tools/perf, tools/release-certification, CI jobs, and release-readiness documentation."
 ---
 
 # Cryptad interop and performance gates
 
-Use this skill before changing `tools/interop`, `tools/perf`, related CI jobs, or release-gate
-documentation.
+Use this skill before changing `tools/interop`, `tools/perf`, `tools/release-certification`,
+related CI jobs, or release-gate documentation.
 
 ## Read first
 
 - Hyphanet interop gate: `tools/interop/README.md`
 - Performance regression gate: `tools/perf/README.md`
+- Release certification workflow: `docs/release-certification.md`
+- Release certification tooling: `tools/release-certification/README.md`
 - Release readiness gates: `docs/cryptad-release-workflow-and-runbook.md`
 - Phase 3 platform closeout context: `docs/phase-3-platform-primacy-closeout.md`
 
@@ -57,10 +59,45 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 - Do not update `tools/perf/baselines/performance-smoke.json` only to silence a regression. Record
   before/after summaries, host or runner details, Java version, commit SHA, and the rationale.
 
+## Release certification gate
+
+- `tools/release-certification/release_certification.py` aggregates interop, performance,
+  app-platform, catalog, app-owned UI, legacy-admin retirement, and CI metadata into:
+
+```text
+build/release-certification/release-certification-summary.json
+build/release-certification/release-certification-report.md
+build/release-certification/artifacts/
+```
+
+- `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
+  the aggregator. It keeps `--self-test` offline and Python-only.
+- The wrapper resolves relative `--out-dir` values under the repository root, then runs the
+  app-platform smoke collector before aggregation.
+- Normal local commands:
+
+```bash
+python3 tools/release-certification/release_certification.py --self-test
+python3 tools/release-certification/app_platform_smoke.py --self-test
+tools/release-certification/run-release-certification.sh
+tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
+```
+
+- Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
+  or failing unless a release-manager waiver is recorded.
+- Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw
+  request bodies, private insert URIs, non-localhost endpoint metadata, or unsanitized local paths.
+  The aggregator filters `artifacts/private-insert-uris.json` even when interop summaries reference
+  it.
+
 ## CI and release notes
 
 - `.github/workflows/ci.yml` runs `interop-smoke` on push/PR, `interop-extended` on schedule/manual,
-  interop self-tests on the multi-OS matrix, performance self-tests on the multi-OS matrix, and
-  `performance-smoke` on schedule/manual.
-- Release notes should mention interop/performance gate changes only when they affect release
-  readiness, operator confidence, app/platform behavior, or packager workflows.
+  interop self-tests on the multi-OS matrix, performance self-tests on the multi-OS matrix,
+  release-certification self-tests on the multi-OS matrix, and `performance-smoke` on
+  schedule/manual.
+- `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
+  uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
+  branches and `v*` tags.
+- Release notes should mention interop, performance, or certification gate changes only when they
+  affect release readiness, operator confidence, app/platform behavior, or packager workflows.

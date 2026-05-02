@@ -41,6 +41,10 @@ Generate a lightweight local report:
 tools/release-certification/run-release-certification.sh
 ```
 
+The wrapper may be invoked from outside the repository. Relative `--out-dir` values are resolved
+under the repository root so shell cleanup, app-platform smoke output, and aggregation read the same
+evidence directory.
+
 Generate a release-candidate report:
 
 ```bash

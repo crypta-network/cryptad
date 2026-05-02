@@ -463,6 +463,7 @@ Key docs:
 - [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
 - [App permissions and audit](docs/app-permissions-and-audit.md)
 - [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
+- [Release certification](docs/release-certification.md)
 
 ## Hyphanet Interop Gate
 
@@ -499,6 +500,37 @@ Smoke run when the local environment is prepared:
 ```bash
 tools/perf/run-performance-smoke.sh
 ```
+
+## Release Certification
+
+Release-candidate evidence is aggregated by the release certification tooling under
+`tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
+app-owned UI, legacy-admin retirement, and CI summaries and writes a redacted report plus a stable
+JSON companion.
+
+Fast self-tests:
+
+```bash
+python3 tools/release-certification/release_certification.py --self-test
+python3 tools/release-certification/app_platform_smoke.py --self-test
+```
+
+Generate a local report:
+
+```bash
+tools/release-certification/run-release-certification.sh
+```
+
+Generate release-candidate evidence:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --out-dir build/release-certification
+```
+
+See [docs/release-certification.md](docs/release-certification.md) for required evidence,
+waivers, optional live-node evidence, and redaction rules.
 
 ## Testing
 
