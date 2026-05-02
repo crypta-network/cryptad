@@ -204,6 +204,71 @@ class AppUiToadletTest {
   }
 
   @Test
+  void loopbackOrigin_whenAppSnapshotChanges_expectPreviousLaunchProofRejected() throws Exception {
+    InstalledAppSnapshot original = staticApp("index.html");
+    InMemoryAppHost appHost = new InMemoryAppHost(original);
+
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+      String staleNonce =
+          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+
+      appHost.replace(staticAppWithName("Updated App", "index.html"));
+
+      HttpResponseCapture rejected =
+          httpGet(
+              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, staleNonce));
+      assertEquals(401, rejected.statusCode());
+      assertFalse(rejected.body().contains("browserSessionToken"));
+
+      String currentNonce =
+          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      HttpResponseCapture accepted =
+          httpGet(
+              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, currentNonce));
+      assertEquals(200, accepted.statusCode());
+      assertTrue(accepted.body().contains("\"name\":\"Updated App\""));
+      assertTrue(accepted.body().contains("\"browserSessionToken\":\""));
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenManyLaunchProofsIssued_expectOldestLaunchProofEvicted() throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
+
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+      String firstNonce =
+          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      String latestNonce = firstNonce;
+      for (int index = 0; index < AppUiLoopbackOriginServer.MAX_BOOTSTRAP_NONCES_PER_APP; index++) {
+        latestNonce = bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      }
+
+      HttpResponseCapture rejected =
+          httpGet(
+              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, firstNonce));
+      assertEquals(401, rejected.statusCode());
+      assertFalse(rejected.body().contains("browserSessionToken"));
+
+      HttpResponseCapture accepted =
+          httpGet(
+              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, latestNonce));
+      assertEquals(200, accepted.statusCode());
+      assertTrue(accepted.body().contains("\"browserSessionToken\":\""));
+    }
+  }
+
+  @Test
   void loopbackOrigin_whenJavascriptDisabled_expectScriptExecutionBlocked() throws Exception {
     InstalledAppSnapshot snapshot = staticApp("index.html");
     Files.createDirectories(snapshot.paths().installedRoot());
@@ -771,6 +836,10 @@ class AppUiToadletTest {
     return app(appId, AppUiMode.STATIC, uiEntry);
   }
 
+  private InstalledAppSnapshot staticAppWithName(String appName, String uiEntry) {
+    return app("demo-app", appName, AppUiMode.STATIC, uiEntry);
+  }
+
   private static AppUiOriginBinding isolatedBinding(InstalledAppSnapshot snapshot) {
     return AppUiOriginBinding.isolatedLoopback(
         snapshot.manifest(),
@@ -803,9 +872,13 @@ class AppUiToadletTest {
   }
 
   private InstalledAppSnapshot app(String appId, AppUiMode uiMode, String uiEntry) {
+    return app(appId, "Demo App", uiMode, uiEntry);
+  }
+
+  private InstalledAppSnapshot app(String appId, String appName, AppUiMode uiMode, String uiEntry) {
     AppManifest manifest =
         new AppManifest(
-            1, appId, "Demo App", "1.0.0", "bin/launch.sh", uiMode, uiEntry, List.of(), null, null);
+            1, appId, appName, "1.0.0", "bin/launch.sh", uiMode, uiEntry, List.of(), null, null);
     InstalledAppPaths paths =
         new InstalledAppPaths(
             appId,
@@ -847,6 +920,10 @@ class AppUiToadletTest {
       for (InstalledAppSnapshot snapshot : snapshots) {
         this.snapshots.put(snapshot.appId(), snapshot);
       }
+    }
+
+    private void replace(InstalledAppSnapshot snapshot) {
+      snapshots.put(snapshot.appId(), snapshot);
     }
 
     @Override

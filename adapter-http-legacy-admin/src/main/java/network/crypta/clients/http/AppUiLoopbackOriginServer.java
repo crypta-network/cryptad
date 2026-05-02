@@ -8,6 +8,10 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,6 +29,7 @@ import network.crypta.platform.api.PlatformApiPaths;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.appui.AppBrowserSessionIssuer;
 import network.crypta.platform.appui.AppStaticAsset;
 import network.crypta.platform.appui.AppStaticAssetException;
@@ -70,6 +75,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   private static final Logger LOG = LoggerFactory.getLogger(AppUiLoopbackOriginServer.class);
   private static final int BACKLOG = 16;
   private static final int BOOTSTRAP_NONCE_BYTES = 32;
+  static final int MAX_BOOTSTRAP_NONCES_PER_APP = 16;
   private static final Duration BOOTSTRAP_NONCE_LIFETIME = Duration.ofHours(1);
 
   /**
@@ -187,7 +193,12 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     if (!binding.get().isolatedAndActive()) {
       return Optional.ofNullable(binding.get().uiUrl());
     }
-    String nonce = bootstrapNonces.issue(binding.get().appId());
+    BindingServer bindingServer = byAppId.get(binding.get().appId());
+    if (bindingServer == null) {
+      return Optional.empty();
+    }
+    String nonce =
+        bootstrapNonces.issue(binding.get().appId(), bindingServer.snapshotFingerprint());
     return Optional.of(appendBootstrapNonceFragment(binding.get().uiUrl(), nonce));
   }
 
@@ -235,8 +246,9 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       AppUiOriginBinding binding =
           AppUiOriginBinding.isolatedLoopback(
               snapshot.manifest(), origin, platformApiRoot, shellRoot);
-      BindingServer bindingServer = new BindingServer(server, origin, binding);
-      server.createContext("/", exchange -> handle(exchange, bindingServer.binding()));
+      BindingServer bindingServer =
+          new BindingServer(server, origin, binding, SnapshotFingerprint.from(snapshot));
+      server.createContext("/", exchange -> handle(exchange, bindingServer));
       server.setExecutor(executor);
       server.start();
       byOrigin.put(binding.origin(), binding);
@@ -251,7 +263,12 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
         AppUiOriginBinding.isolatedLoopback(
             snapshot.manifest(), bindingServer.origin(), platformApiRoot, shellRoot);
     AppUiOriginBinding previous = bindingServer.binding();
-    bindingServer.update(refreshed);
+    SnapshotFingerprint previousFingerprint = bindingServer.snapshotFingerprint();
+    SnapshotFingerprint refreshedFingerprint = SnapshotFingerprint.from(snapshot);
+    bindingServer.update(refreshed, refreshedFingerprint);
+    if (!Objects.equals(previousFingerprint, refreshedFingerprint)) {
+      bootstrapNonces.clearApp(snapshot.appId());
+    }
     if (!Objects.equals(previous.origin(), refreshed.origin())) {
       byOrigin.remove(previous.origin());
     }
@@ -268,13 +285,19 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     bindingServer.stop();
   }
 
-  private void handle(HttpExchange exchange, AppUiOriginBinding binding) throws IOException {
+  private void handle(HttpExchange exchange, BindingServer bindingServer) throws IOException {
     String method = exchange.getRequestMethod();
     if (!"GET".equals(method) && !"HEAD".equals(method)) {
       sendText(exchange, 405, null, "Method not allowed.");
       return;
     }
     boolean includeBody = "GET".equals(method);
+    Optional<AppUiOriginBinding> refreshedBinding = refreshBindingForRequest(bindingServer);
+    if (refreshedBinding.isEmpty()) {
+      sendText(exchange, 404, null, "App UI is not available.", includeBody);
+      return;
+    }
+    AppUiOriginBinding binding = refreshedBinding.get();
     String adminPath = toAdminAppPath(binding.appId(), exchange.getRequestURI().getRawPath());
     try {
       if (AppUiBootstrapService.isBootstrapRequest(adminPath)) {
@@ -296,6 +319,19 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       int status = exception.statusCode() == 404 ? 404 : 400;
       sendText(exchange, status, null, "App UI path is not valid.", includeBody);
     }
+  }
+
+  private Optional<AppUiOriginBinding> refreshBindingForRequest(BindingServer bindingServer)
+      throws IOException {
+    String appId = bindingServer.binding().appId();
+    Optional<InstalledAppSnapshot> snapshot = appHost.describe(appId);
+    if (snapshot.isEmpty() || snapshot.get().manifest().uiMode() != AppUiMode.STATIC) {
+      byOrigin.remove(bindingServer.binding().origin());
+      bootstrapNonces.clearApp(appId);
+      return Optional.empty();
+    }
+    refreshBinding(bindingServer, snapshot.get());
+    return Optional.of(bindingServer.binding());
   }
 
   private void writeBootstrap(
@@ -353,7 +389,9 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
 
   private boolean validBootstrapProof(AppUiOriginBinding binding, HttpExchange exchange) {
     String nonce = exchange.getRequestHeaders().getFirst(BOOTSTRAP_NONCE_HEADER);
-    return bootstrapNonces.verify(binding.appId(), nonce);
+    BindingServer bindingServer = byAppId.get(binding.appId());
+    return bindingServer != null
+        && bootstrapNonces.verify(binding.appId(), bindingServer.snapshotFingerprint(), nonce);
   }
 
   private static void redirect(HttpExchange exchange, String location, boolean includeBody)
@@ -477,26 +515,35 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   private static final class BootstrapNonceStore {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, BootstrapNonce> nonces = new ConcurrentHashMap<>();
+    private long nextSequence;
 
-    private synchronized String issue(String appId) {
+    private synchronized String issue(String appId, SnapshotFingerprint snapshotFingerprint) {
       Instant now = Instant.now();
       pruneExpired(now);
+      evictOldestAppNonces(appId);
       String nonce = generateNonce();
       while (nonces.containsKey(nonce)) {
         nonce = generateNonce();
       }
-      nonces.put(nonce, new BootstrapNonce(appId, now.plus(BOOTSTRAP_NONCE_LIFETIME)));
+      nonces.put(
+          nonce,
+          new BootstrapNonce(
+              appId, snapshotFingerprint, nextSequence++, now.plus(BOOTSTRAP_NONCE_LIFETIME)));
       return nonce;
     }
 
-    private synchronized boolean verify(String appId, String nonce) {
+    private synchronized boolean verify(
+        String appId, SnapshotFingerprint snapshotFingerprint, String nonce) {
       if (nonce == null || nonce.isBlank()) {
         return false;
       }
       Instant now = Instant.now();
       pruneExpired(now);
       BootstrapNonce issued = nonces.get(nonce.trim());
-      return issued != null && issued.appId().equals(appId) && issued.expiresAt().isAfter(now);
+      return issued != null
+          && issued.appId().equals(appId)
+          && issued.snapshotFingerprint().equals(snapshotFingerprint)
+          && issued.expiresAt().isAfter(now);
     }
 
     private synchronized void clearApp(String appId) {
@@ -513,24 +560,100 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    private void evictOldestAppNonces(String appId) {
+      while (countAppNonces(appId) >= MAX_BOOTSTRAP_NONCES_PER_APP) {
+        String oldestNonce = oldestAppNonce(appId);
+        if (oldestNonce == null) {
+          return;
+        }
+        nonces.remove(oldestNonce);
+      }
+    }
+
+    private long countAppNonces(String appId) {
+      return nonces.values().stream().filter(nonce -> nonce.appId().equals(appId)).count();
+    }
+
+    private String oldestAppNonce(String appId) {
+      String oldestNonce = null;
+      long oldestSequence = Long.MAX_VALUE;
+      for (Map.Entry<String, BootstrapNonce> entry : nonces.entrySet()) {
+        BootstrapNonce nonce = entry.getValue();
+        if (nonce.appId().equals(appId) && nonce.sequence() < oldestSequence) {
+          oldestNonce = entry.getKey();
+          oldestSequence = nonce.sequence();
+        }
+      }
+      return oldestNonce;
+    }
+
     private void pruneExpired(Instant now) {
       nonces.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
     }
   }
 
-  /** Immutable association between a launch proof, its app id, and its expiration time. */
-  private record BootstrapNonce(String appId, Instant expiresAt) {}
+  /**
+   * Immutable association between a launch proof and the installed app snapshot that received it.
+   */
+  private record BootstrapNonce(
+      String appId, SnapshotFingerprint snapshotFingerprint, long sequence, Instant expiresAt) {}
+
+  /**
+   * Internal install-state fingerprint used to keep launch proofs scoped to one app snapshot.
+   *
+   * <p>The manifest is the semantic security boundary for browser-session permissions. Filesystem
+   * identities provide an additional install-generation signal for normal AppHost updates, where
+   * the copied bundle root or manifest file is replaced even if some manifest fields stay the same.
+   */
+  private record SnapshotFingerprint(
+      AppManifest manifest,
+      Path installedRoot,
+      FileIdentity installedRootIdentity,
+      FileIdentity manifestFileIdentity) {
+    private static SnapshotFingerprint from(InstalledAppSnapshot snapshot) {
+      return new SnapshotFingerprint(
+          snapshot.manifest(),
+          snapshot.paths().installedRoot(),
+          FileIdentity.from(snapshot.paths().installedRoot()),
+          FileIdentity.from(snapshot.paths().manifestFile()));
+    }
+  }
+
+  /** Display-free filesystem identity for one installed-bundle path. */
+  private record FileIdentity(String fileKey, long sizeBytes, long lastModifiedMillis) {
+    private static final FileIdentity UNAVAILABLE = new FileIdentity(null, -1L, -1L);
+
+    private static FileIdentity from(Path path) {
+      try {
+        BasicFileAttributes attributes =
+            Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        Object fileKey = attributes.fileKey();
+        return new FileIdentity(
+            fileKey == null ? null : fileKey.toString(),
+            attributes.size(),
+            attributes.lastModifiedTime().toMillis());
+      } catch (IOException e) {
+        return UNAVAILABLE;
+      }
+    }
+  }
 
   /** Holds the active HTTP listener and the latest app binding advertised for that listener. */
   private static final class BindingServer {
     private final HttpServer server;
     private final AppUiOrigin origin;
     private final AtomicReference<AppUiOriginBinding> binding;
+    private final AtomicReference<SnapshotFingerprint> snapshotFingerprint;
 
-    private BindingServer(HttpServer server, AppUiOrigin origin, AppUiOriginBinding binding) {
+    private BindingServer(
+        HttpServer server,
+        AppUiOrigin origin,
+        AppUiOriginBinding binding,
+        SnapshotFingerprint snapshotFingerprint) {
       this.server = server;
       this.origin = origin;
       this.binding = new AtomicReference<>(binding);
+      this.snapshotFingerprint = new AtomicReference<>(snapshotFingerprint);
     }
 
     private AppUiOrigin origin() {
@@ -541,8 +664,13 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       return binding.get();
     }
 
-    private void update(AppUiOriginBinding binding) {
+    private SnapshotFingerprint snapshotFingerprint() {
+      return snapshotFingerprint.get();
+    }
+
+    private void update(AppUiOriginBinding binding, SnapshotFingerprint snapshotFingerprint) {
       this.binding.set(binding);
+      this.snapshotFingerprint.set(snapshotFingerprint);
     }
 
     private void stop() {
