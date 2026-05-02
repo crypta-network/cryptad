@@ -292,12 +292,16 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       return;
     }
     boolean includeBody = "GET".equals(method);
-    Optional<AppUiOriginBinding> refreshedBinding = refreshBindingForRequest(bindingServer);
-    if (refreshedBinding.isEmpty()) {
-      sendText(exchange, 404, null, "App UI is not available.", includeBody);
+    BindingRefresh refreshed = refreshBindingForRequest(bindingServer);
+    if (refreshed.binding().isEmpty()) {
+      try {
+        sendText(exchange, 404, null, "App UI is not available.", includeBody);
+      } finally {
+        refreshed.stopRetiredServer();
+      }
       return;
     }
-    AppUiOriginBinding binding = refreshedBinding.get();
+    AppUiOriginBinding binding = refreshed.binding().get();
     String adminPath = toAdminAppPath(binding.appId(), exchange.getRequestURI().getRawPath());
     try {
       if (AppUiBootstrapService.isBootstrapRequest(adminPath)) {
@@ -321,17 +325,21 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     }
   }
 
-  private Optional<AppUiOriginBinding> refreshBindingForRequest(BindingServer bindingServer)
-      throws IOException {
+  private BindingRefresh refreshBindingForRequest(BindingServer bindingServer) throws IOException {
     String appId = bindingServer.binding().appId();
     Optional<InstalledAppSnapshot> snapshot = appHost.describe(appId);
     if (snapshot.isEmpty() || snapshot.get().manifest().uiMode() != AppUiMode.STATIC) {
-      byOrigin.remove(bindingServer.binding().origin());
-      bootstrapNonces.clearApp(appId);
-      return Optional.empty();
+      return retireBindingServerForRequest(appId, bindingServer);
     }
     refreshBinding(bindingServer, snapshot.get());
-    return Optional.of(bindingServer.binding());
+    return BindingRefresh.current(bindingServer.binding());
+  }
+
+  private BindingRefresh retireBindingServerForRequest(String appId, BindingServer bindingServer) {
+    BindingServer retiredServer = byAppId.remove(appId, bindingServer) ? bindingServer : null;
+    byOrigin.remove(bindingServer.binding().origin());
+    bootstrapNonces.clearApp(appId);
+    return BindingRefresh.retired(retiredServer);
   }
 
   private void writeBootstrap(
@@ -634,6 +642,23 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
             attributes.lastModifiedTime().toMillis());
       } catch (IOException e) {
         return UNAVAILABLE;
+      }
+    }
+  }
+
+  /** Result of refreshing a listener binding before serving one loopback request. */
+  private record BindingRefresh(Optional<AppUiOriginBinding> binding, BindingServer retiredServer) {
+    private static BindingRefresh current(AppUiOriginBinding binding) {
+      return new BindingRefresh(Optional.of(binding), null);
+    }
+
+    private static BindingRefresh retired(BindingServer retiredServer) {
+      return new BindingRefresh(Optional.empty(), retiredServer);
+    }
+
+    private void stopRetiredServer() {
+      if (retiredServer != null) {
+        retiredServer.stop();
       }
     }
   }

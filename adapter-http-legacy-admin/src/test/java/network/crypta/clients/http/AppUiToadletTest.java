@@ -269,6 +269,29 @@ class AppUiToadletTest {
   }
 
   @Test
+  void loopbackOrigin_whenStaleTabRequestsRemovedApp_expectLoopbackListenerStopped()
+      throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("index.html");
+    Files.createDirectories(snapshot.paths().installedRoot());
+    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
+
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+
+      appHost.remove("demo-app");
+
+      HttpResponseCapture staleTabResponse = httpGet(binding.uiUrl());
+      assertEquals(404, staleTabResponse.statusCode());
+      assertEquals("App UI is not available.", staleTabResponse.body());
+      assertHttpRequestEventuallyFails(binding.uiUrl());
+      assertTrue(originServer.bindingForOrigin(binding.origin()).isEmpty());
+    }
+  }
+
+  @Test
   void loopbackOrigin_whenJavascriptDisabled_expectScriptExecutionBlocked() throws Exception {
     InstalledAppSnapshot snapshot = staticApp("index.html");
     Files.createDirectories(snapshot.paths().installedRoot());
@@ -808,6 +831,19 @@ class AppUiToadletTest {
     return new HttpResponseCapture(statusCode, connection, body);
   }
 
+  private static void assertHttpRequestEventuallyFails(String url) throws InterruptedException {
+    long deadlineNanos = System.nanoTime() + 2_000_000_000L;
+    while (System.nanoTime() < deadlineNanos) {
+      try {
+        httpGet(url);
+      } catch (IOException expected) {
+        return;
+      }
+      Thread.sleep(25L);
+    }
+    throw new AssertionError("Expected loopback listener to stop: " + url);
+  }
+
   private static String bootstrapNonceFrom(String launchUrl) {
     String rawFragment = URI.create(launchUrl).getRawFragment();
     assertNotNull(rawFragment);
@@ -924,6 +960,10 @@ class AppUiToadletTest {
 
     private void replace(InstalledAppSnapshot snapshot) {
       snapshots.put(snapshot.appId(), snapshot);
+    }
+
+    private void remove(String appId) {
+      snapshots.remove(appId);
     }
 
     @Override
