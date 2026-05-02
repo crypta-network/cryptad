@@ -171,8 +171,9 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 
 - Remote signed app catalogs and verified artifact staging have landed; background update
   scheduling remains future work.
-- App-owned static UI routes have landed for installed static bundles; stronger isolation remains
-  future work.
+- App-owned static UI routes have landed for installed static bundles, and Phase 6 now provides
+  isolated per-app loopback browser origins with `/apps/{appId}/` retained as compatibility
+  fallback.
 - Standalone developer tooling has landed through the `crypta-app` CLI for scaffolding,
   validation, signing, packaging, verification, and catalog authoring.
 - Broader first-party app catalog remains future work.

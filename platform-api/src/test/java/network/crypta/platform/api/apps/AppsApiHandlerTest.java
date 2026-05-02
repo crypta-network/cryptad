@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.api.AppAuditLog;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
@@ -26,6 +27,9 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.appui.AppUiOrigin;
+import network.crypta.platform.appui.AppUiOriginBinding;
+import network.crypta.platform.appui.AppUiOriginRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -161,10 +165,33 @@ class AppsApiHandlerTest {
     assertEquals("static", summary.get(FIELD_UI_MODE));
     assertEquals("static/index.html", summary.get(FIELD_UI_ENTRY));
     assertEquals("/apps/demo-app/static/", summary.get(FIELD_UI_URL));
+    assertEquals("/apps/demo-app/", summary.get("sameOriginFallbackUrl"));
     Map<?, ?> sandbox = (Map<?, ?>) summary.get("sandbox");
     assertEquals("none", sandbox.get("mode"));
     assertEquals("none", sandbox.get("supportLevel"));
     assertEquals("no-sandbox", sandbox.get("provider"));
+  }
+
+  @Test
+  void get_whenStaticUiOriginBindingExists_expectIsolatedUiSummaryFields() {
+    InstalledAppSnapshot snapshot = snapshot(AppUiMode.STATIC, "static/index.html");
+    AppUiOriginBinding binding =
+        AppUiOriginBinding.isolatedLoopback(
+            snapshot.manifest(),
+            AppUiOrigin.loopback(APP_ID, 12345),
+            "http://127.0.0.1:8888/api/v1/",
+            "http://127.0.0.1:8888/app/node/");
+    AppsApiHandler handler =
+        new AppsApiHandler(new SingleAppHost(snapshot), new AppAuditLog(), registryWith(binding));
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    assertEquals("http://127.0.0.1:12345/static/", summary.get(FIELD_UI_URL));
+    assertEquals("http://127.0.0.1:12345", summary.get("uiOrigin"));
+    assertEquals("isolated-loopback", summary.get("uiOriginMode"));
+    assertEquals("active", summary.get("uiOriginStatus"));
+    assertEquals("/apps/demo-app/", summary.get("sameOriginFallbackUrl"));
+    org.junit.jupiter.api.Assertions.assertFalse(summary.toString().contains(tempDir.toString()));
   }
 
   @Test
@@ -229,8 +256,7 @@ class AppsApiHandlerTest {
   }
 
   @Test
-  void start_whenQuotaStatusReadFailsAfterLaunch_expectManifestOnlyQuotaSummary()
-      throws IOException {
+  void start_whenQuotaStatusReadFailsAfterLaunch_expectManifestOnlyQuotaSummary() {
     SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null, 4096L, 1024L));
     appHost.runtimeStatusFailure = new IOException("process log unavailable");
     AppsApiHandler handler = new AppsApiHandler(appHost);
@@ -466,6 +492,10 @@ class AppsApiHandlerTest {
             tempDir.resolve("cache").resolve(APP_ID),
             tempDir.resolve("run").resolve(APP_ID));
     return new InstalledAppSnapshot(manifest, paths);
+  }
+
+  private static AppUiOriginRegistry registryWith(AppUiOriginBinding binding) {
+    return appId -> binding.appId().equals(appId) ? Optional.of(binding) : Optional.empty();
   }
 
   private static final class ThrowingAppHost implements AppHost {

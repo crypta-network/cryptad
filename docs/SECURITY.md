@@ -67,10 +67,11 @@ files, `https:`, and loopback-only `http:` sources. Catalog ZIP extraction drops
 `__MACOSX/**` and AppleDouble `._*` metadata entries before verification; executable app payload
 still has to match the signed bundle digest.
 
-App-owned static UI routes serve files from the immutable installed bundle under `/apps/{appId}/`.
-They do not serve app data, cache, run directories, catalog scratch directories, or caller staging
-paths. Static UI remains same-origin with the local admin UI and Platform API, so external URL
-entries are rejected and route responses use conservative CSP, `nosniff`, no-referrer, and
+App-owned static UI routes serve files from the immutable installed bundle. Static apps prefer a
+distinct loopback-only browser origin per app, with `/apps/{appId}/` retained as a compatibility
+and diagnostics fallback. They do not serve app data, cache, run directories, catalog scratch
+directories, or caller staging paths. External URL entries are rejected, app UI listeners bind only
+to loopback addresses, and route responses use conservative CSP, `nosniff`, no-referrer, and
 non-public no-cache headers.
 
 AppHost process launches are process isolation, not hard sandboxing by default. AppHost starts a
@@ -80,7 +81,8 @@ Platform API authentication. App manifests can request `sandbox.mode=none`,
 `restricted-process`, or `wasm-preview`, and Platform API/Web Shell surfaces report the requested
 mode and actual support level. The default restricted-process provider is best-effort launch
 hygiene, not a container, WASM runtime, seccomp profile, chroot, jail, Windows Job Object policy,
-network isolation, or browser origin isolation.
+network isolation, or browser UI origin isolation. Browser UI origin isolation is provided by the
+app-owned UI loopback listener layer and does not make the child process sandboxed.
 
 AppHost enforces manifest data/cache quotas only when `quota.data.bytes` or `quota.cache.bytes` is
 positive. Missing quota fields and explicit `0` values mean unlimited or no explicit app quota for
@@ -101,13 +103,29 @@ principals are denied by default unless the route is covered by manifest-declare
 as `queue.read`, `queue.write`, or `content.insert`. Invalid or stale `X-Crypta-App-Token` values
 fail authentication, and missing capabilities fail authorization without echoing the token.
 
-App-owned static browser UI uses a separate browser app session. The dynamic bootstrap at
-`/apps/{appId}/.well-known/cryptad-bootstrap.json` returns route metadata, an opaque
-`browserSessionToken`, and an expiry timestamp. Static UI sends that token as
-`X-Crypta-App-Session`; the Platform API treats the request as an app browser principal and applies
-the same manifest capability matrix. Browser sessions are distinct from `CRYPTAD_APP_TOKEN`, are
-bound to one installed static app, and must not be persisted by app JavaScript. Invalid browser
-sessions fail with `401 invalid_app_browser_session`.
+App-owned static browser UI uses a separate browser app session. On isolated app origins, the
+dynamic bootstrap at `/.well-known/cryptad-bootstrap.json` returns route metadata, the absolute
+admin Platform API root, UI origin metadata, an opaque `browserSessionToken`, and an expiry
+timestamp. The compatibility `/apps/{appId}/.well-known/cryptad-bootstrap.json` route remains for
+explicit same-origin fallback. Static UI sends that token as `X-Crypta-App-Session`; the Platform
+API treats the request as an app browser principal and applies the same manifest capability matrix.
+Browser sessions are distinct from `CRYPTAD_APP_TOKEN`, are bound to one installed static app and
+the expected browser origin, and must not be persisted by app JavaScript. Invalid browser sessions
+fail with `401 invalid_app_browser_session`; mismatched isolated origins fail with
+`403 origin_mismatch`.
+
+Isolated bootstrap token issuance also requires an admin/Web Shell launch proof. The Web Shell opens
+static apps through the same-origin compatibility launch route, which redirects to the isolated
+origin with a short-lived nonce in the URL fragment. The SDK echoes that proof as
+`X-Crypta-App-Bootstrap-Nonce` before the loopback server returns a browser-session token. Public
+app-origin URLs and app summaries do not contain this proof and are not enough to mint browser
+sessions.
+
+Platform API CORS for app browsers is restricted to active registered app UI origins. It never uses
+wildcard `Access-Control-Allow-Origin`, never allows cookies or local-admin credentials, and does
+not allow `X-Crypta-App-Token` through app-browser preflight. Requests from registered app origins
+without `X-Crypta-App-Session` fail as app-browser requests and cannot silently fall back to
+host/operator authentication.
 
 Runtime status and process-log Platform API responses must remain token-free and path-free. Log
 tail responses redact the current launch token and obvious `CRYPTAD_APP_TOKEN=...` text before
@@ -122,15 +140,18 @@ distinguish process-token requests from browser-session requests. They must not 
 tokens, raw browser session tokens, query strings, request bodies, form passwords, or filesystem
 paths.
 
-Static UI code still runs in the local admin origin until stronger isolation exists. Browser app
-sessions improve server-side attribution and capability enforcement for SDK/API calls, but they are
-not a browser-enforced origin sandbox. Treat untrusted static UI JavaScript as having local admin
-browser-origin access.
+Static UI code should run on its isolated per-app loopback origin when available. Browser app
+sessions improve server-side attribution and capability enforcement for SDK/API calls, and the
+isolated origin separates app JavaScript from the Web Shell/admin origin. The compatibility
+same-origin `/apps/{appId}/` path is for fallback and diagnostics, not the preferred third-party
+app UI boundary.
 
 Treat a bypass that serves host files, follows symlink escapes, executes JavaScript while the admin
 UI has JavaScript disabled, exposes AppHost launch tokens or browser session tokens to the wrong
-surface, authenticates app browser requests as host/operator requests, bypasses app capability
-checks, or allows bundled UI to exfiltrate operator-entered data off-node as security-relevant.
+surface, binds app UI listeners to wildcard or LAN-visible interfaces, shares one browser origin
+across unrelated static apps, authenticates app browser requests as host/operator requests, bypasses
+app capability checks, or allows bundled UI to exfiltrate operator-entered data off-node as
+security-relevant.
 
 For the detailed runtime boundary, exposed environment variables, restart policy semantics,
 permission matrix, audit model, and remaining limitations, see

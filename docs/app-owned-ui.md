@@ -1,16 +1,18 @@
 # App-owned static UI
 
-This document describes how installed AppHost bundles declare and serve app-owned browser UI under
-`/apps/{appId}/`.
+This document describes how installed AppHost bundles declare and serve app-owned browser UI.
+Static app UIs prefer isolated per-app loopback origins, while the legacy `/apps/{appId}/` route
+remains as a compatibility and diagnostics fallback.
 
 ## Scope
 
 App-owned static UI is a local browser surface for installed apps. Static app pages receive a
 browser-scoped app session for Platform API calls, and the server authorizes those calls with the
-installed app's manifest permissions. This does not add sandboxing, container execution, browser
-origin isolation, or remote protocol changes. The [`CryptaPlatform` JavaScript SDK](platform-sdk-js.md)
-is a browser convenience wrapper around bootstrap and Platform API calls; permission enforcement
-remains server-side.
+installed app's manifest permissions. The preferred Phase 6 path serves each static app from a
+distinct loopback-only browser origin such as `http://127.0.0.1:<appUiPort>/`. This does not add
+process sandboxing, container execution, network isolation, or remote protocol changes. The
+[`CryptaPlatform` JavaScript SDK](platform-sdk-js.md) is a browser convenience wrapper around
+bootstrap and Platform API calls; permission enforcement remains server-side.
 
 The route serves immutable files from the installed app bundle only. It does not serve app data,
 cache, run directories, catalog scratch directories, or caller staging paths.
@@ -39,9 +41,45 @@ External URLs are not supported. Static entries reject absolute paths, Windows d
 empty segments, `.`, `..`, backslashes after normalization, reserved distribution sidecars, ISO
 control characters, and path segments with colons.
 
-## Static route behavior
+## Isolated app origins
 
-The legacy HTTP admin adapter mounts static app UI at app-owned paths such as:
+For static apps, Cryptad allocates a distinct loopback listener per installed app when isolation is
+available. The Web Shell and Platform API remain on the local admin origin, for example:
+
+```text
+http://127.0.0.1:<adminPort>/app/node/
+http://127.0.0.1:<adminPort>/api/v1/
+```
+
+Each static app UI opens on its own local origin:
+
+```text
+http://127.0.0.1:<appUiPort>/
+http://127.0.0.1:<anotherAppUiPort>/
+```
+
+App UI listeners bind only to loopback addresses and do not listen on wildcard or LAN-visible
+interfaces. Distinct ports create distinct browser origins; apps do not share one app-UI origin.
+
+An isolated app origin serves:
+
+```text
+GET /                         -> app entry or canonical entry-directory redirect
+GET /static/...               -> installed bundle static assets
+GET /.well-known/cryptad-bootstrap.json -> dynamic bootstrap JSON
+HEAD variants for those paths
+```
+
+The same installed-bundle confinement, traversal rejection, content-type mapping, no-store dynamic
+bootstrap policy, and static UI security headers apply on isolated origins.
+The bootstrap `GET` additionally requires a short-lived launch proof minted by the admin/Web Shell
+route and echoed by the SDK as `X-Crypta-App-Bootstrap-Nonce`. This keeps public app-origin route
+metadata from being enough for another local caller to mint an app browser-session token. Static
+assets remain readable from the app origin without that proof so the browser can load the page.
+
+## Compatibility route behavior
+
+The legacy HTTP admin adapter still mounts static app UI compatibility paths such as:
 
 ```text
 /apps/{appId}/
@@ -49,19 +87,26 @@ The legacy HTTP admin adapter mounts static app UI at app-owned paths such as:
 /apps/{appId}/.well-known/cryptad-bootstrap.json
 ```
 
-`GET /apps/{appId}/` serves the app's declared static `app.ui.entry` when that entry lives at the
-bundle root. `HEAD` returns the same headers without a body. `GET /apps/{appId}` redirects to
-`/apps/{appId}/`.
+When an isolated origin is active, `GET /apps/{appId}/` redirects to the app's isolated UI URL with
+a short-lived bootstrap nonce in the URL fragment. `GET /apps/{appId}` still redirects to
+`/apps/{appId}/` first. Static asset paths under `/apps/{appId}/static/...` remain available as an
+explicit same-origin fallback for compatibility and diagnostics.
 
-For nested entries such as `static/index.html`, `GET /apps/{appId}/` redirects to the entry
-directory, such as `/apps/{appId}/static/`. That preserves the browser base URL, so a page can use
-normal references such as `./app.js` and `../shared.js`. Explicit paths such as
-`/apps/{appId}/static/app.js` still resolve as bundle-relative paths. All served targets must
-resolve to regular files inside the immutable installed bundle root.
+When isolation is unavailable or an operator opens the explicit fallback path, a static entry at
+the bundle root can be served directly from `/apps/{appId}/`. For nested entries such as
+`static/index.html`, the fallback root redirects to the entry directory, such as
+`/apps/{appId}/static/`. That preserves the browser base URL, so a page can use normal references
+such as `./app.js` and `../shared.js`. Explicit paths such as `/apps/{appId}/static/app.js` still
+resolve as bundle-relative paths. All served targets must resolve to regular files inside the
+immutable installed bundle root.
 
 To preserve the browser base URL for nested entries, Platform API summaries publish `uiUrl` at the
-entry directory when needed. For `app.ui.entry=static/index.html`, `uiUrl` is
-`/apps/{appId}/static/`.
+entry directory when needed. With an isolated binding, `uiUrl` is an absolute app-origin URL such
+as `http://127.0.0.1:<appUiPort>/static/`. Without isolation, fallback summaries use the legacy
+same-origin path such as `/apps/{appId}/static/`.
+The isolated `uiUrl` is public route metadata, not a bearer credential and not the complete launch
+handshake. Web Shell opens isolated apps through the same-origin compatibility launch path so the
+admin adapter can mint a fresh bootstrap nonce before the browser reaches the isolated origin.
 
 Only installed apps with `uiMode=static` are served. Missing app ids, non-static apps, missing
 files, and directories return not found responses. Malformed paths, traversal attempts, encoded
@@ -84,29 +129,40 @@ Referrer-Policy: no-referrer
 If JavaScript is disabled for the legacy admin UI, Cryptad changes the app UI CSP to
 `script-src 'none'` for the same response.
 
+Isolated app-origin responses keep scripts local to the app origin and add `connect-src` for the
+admin Platform API root supplied in bootstrap. They do not allow remote scripts, objects, embeds,
+or `base` rewriting. Frame ancestry is limited to the Web Shell/admin origin when embedding is
+enabled by the host response.
+
 App-owned UI uses stable URLs across reinstall and update operations. Responses are therefore sent
 with non-public no-cache headers instead of the legacy admin adapter's long-lived static cache
 policy.
 
-The route remains same-origin with the local admin UI and Platform API. Static browser UI does not
-receive `CRYPTAD_APP_TOKEN` and cannot authenticate as the app process. Instead, app-owned bootstrap
-issues a browser session token for `X-Crypta-App-Session`. Platform API requests with that header
-become app browser principals and use the same central capability matrix as process app tokens.
-
-This is a server-side authorization boundary, not browser-enforced origin isolation. Same-origin
-JavaScript can still make same-origin requests. Until stronger browser isolation exists, install
-static UI bundles only from sources trusted to run JavaScript in the local admin origin.
+Static browser UI does not receive `CRYPTAD_APP_TOKEN` and cannot authenticate as the app process.
+Instead, app-owned bootstrap issues a browser session token for `X-Crypta-App-Session`. Platform
+API requests with that header become app browser principals and use the same central capability
+matrix as process app tokens.
 
 ## First-party app bootstrap
 
-First-party static app UIs can fetch:
+On an isolated app origin, static app UIs fetch bootstrap from their current origin:
+
+```text
+GET /.well-known/cryptad-bootstrap.json
+X-Crypta-App-Bootstrap-Nonce: <short-lived-launch-proof>
+```
+
+The same-origin compatibility route can also return a fallback bootstrap for explicit fallback UI
+loading:
 
 ```text
 GET /apps/{appId}/.well-known/cryptad-bootstrap.json
 ```
 
-The legacy HTTP admin adapter builds this JSON dynamically after the same full-access check used by
-app UI assets. The path is reserved by the host; it is not read from the installed bundle.
+The host builds this JSON dynamically. The isolated app origin serves it without exposing local
+admin form passwords; the same-origin compatibility route still applies the normal full-access
+check used by legacy app UI assets. The path is reserved by the host; it is not read from the
+installed bundle.
 
 The current payload is deliberately small:
 
@@ -118,15 +174,40 @@ The current payload is deliberately small:
   "assetRoot": "/apps/queue-manager/static/",
   "platformApiRoot": "/api/v1/",
   "shellRoot": "/app/node/",
+  "uiOrigin": null,
+  "uiOriginMode": "same-origin-fallback",
+  "uiOriginStatus": "fallback",
+  "sameOriginFallbackUrl": "/apps/queue-manager/",
+  "browserSessionToken": "<opaque-browser-session-token>",
+  "browserSessionExpiresAt": "2026-04-28T12:00:00Z"
+}
+```
+
+For isolated app origins, `uiRoot`, `assetRoot`, `platformApiRoot`, and `shellRoot` are absolute
+local URLs. For example:
+
+```json
+{
+  "appId": "queue-manager",
+  "uiRoot": "http://127.0.0.1:12345/",
+  "assetRoot": "http://127.0.0.1:12345/static/",
+  "platformApiRoot": "http://127.0.0.1:8888/api/v1/",
+  "shellRoot": "http://127.0.0.1:8888/app/node/",
+  "uiOrigin": "http://127.0.0.1:12345",
+  "uiOriginMode": "isolated-loopback",
+  "uiOriginStatus": "active",
+  "sameOriginFallbackUrl": "/apps/queue-manager/",
   "browserSessionToken": "<opaque-browser-session-token>",
   "browserSessionExpiresAt": "2026-04-28T12:00:00Z"
 }
 ```
 
 `browserSessionToken` is an opaque bearer value generated by the node for the installed static app.
-It is bound to the app id, the installed manifest permissions, the issue time, and an absolute
-expiry. The current in-memory implementation uses a one-hour lifetime and rejects blank, unknown,
-expired, uninstalled-app, non-static-app, or stale manifest sessions.
+It is bound to the app id, the installed manifest permissions, the expected browser origin, the
+origin mode, the issue time, and an absolute expiry. The current in-memory implementation uses a
+one-hour lifetime and rejects blank, unknown, expired, uninstalled-app, non-static-app, or stale
+manifest sessions. Isolated-loopback sessions also reject missing-origin or mismatched-origin
+Platform API calls.
 
 Static app UIs send the token as:
 
@@ -140,6 +221,28 @@ legacy local-admin `formPassword`. The browser session token is not an AppHost p
 token, and apps must not persist it in local storage or session storage. The
 [Platform JavaScript SDK](platform-sdk-js.md) keeps it in memory and adds `X-Crypta-App-Session` to
 Platform API calls.
+
+## Platform API CORS
+
+The Platform API remains on the local admin origin. Isolated app UIs call it cross-origin through
+restricted CORS and `X-Crypta-App-Session`.
+
+Only active registered app UI origins are allowed. Cryptad does not return
+`Access-Control-Allow-Origin: *`, does not allow credentials or cookies for app UI origins, and
+does not allow app process-token headers through CORS preflight. Allowed app-browser request
+headers are limited to:
+
+```text
+X-Crypta-App-Session
+Content-Type
+Accept
+```
+
+Actual app-origin requests must carry `Origin` matching the verified browser session. A session for
+one app cannot authenticate another app's origin. Requests from a registered app origin without
+`X-Crypta-App-Session` fail with `401 invalid_app_browser_session` and do not fall back to
+host/operator Web Shell authentication. Requests with a mismatched origin fail with
+`403 origin_mismatch`.
 
 Queue Manager and Publisher are also the primary replacements for the legacy queue and insert
 admin pages in the current retirement map. The full map is maintained in
@@ -156,7 +259,11 @@ Installed app summaries expose UI metadata:
   "version": "1.0.0",
   "uiMode": "static",
   "uiEntry": "static/index.html",
-  "uiUrl": "/apps/demo-app/static/",
+  "uiUrl": "http://127.0.0.1:12345/static/",
+  "uiOrigin": "http://127.0.0.1:12345",
+  "uiOriginMode": "isolated-loopback",
+  "uiOriginStatus": "active",
+  "sameOriginFallbackUrl": "/apps/demo-app/",
   "running": false
 }
 ```

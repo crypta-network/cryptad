@@ -17,6 +17,7 @@ import network.crypta.platform.api.updates.UpdatesApiHandler;
 import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -135,7 +136,38 @@ public final class PlatformApiRouter {
       AppHost appHost,
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage) {
-    this(runtimePorts, appHost, appCatalogManager, legacyAdminUsage, new AppAuditLog());
+    this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        legacyAdminUsage,
+        new AppAuditLog(),
+        AppUiOriginRegistry.sameOriginOnly());
+  }
+
+  /**
+   * Creates a router backed by runtime ports, AppHost, signed catalogs, diagnostics, and app UI
+   * origin metadata.
+   *
+   * @param runtimePorts detached runtime-port aggregate used to resolve API requests
+   * @param appHost detached AppHost used by app lifecycle and catalog install/update routes
+   * @param appCatalogManager signed catalog manager used by the catalog endpoint family
+   * @param legacyAdminUsage optional process-local legacy admin usage source
+   * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
+   */
+  public PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage,
+      AppUiOriginRegistry appUiOriginRegistry) {
+    this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        legacyAdminUsage,
+        new AppAuditLog(),
+        appUiOriginRegistry);
   }
 
   PlatformApiRouter(
@@ -144,8 +176,25 @@ public final class PlatformApiRouter {
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage,
       AppAuditLog appAuditLog) {
+    this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        legacyAdminUsage,
+        appAuditLog,
+        AppUiOriginRegistry.sameOriginOnly());
+  }
+
+  PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage,
+      AppAuditLog appAuditLog,
+      AppUiOriginRegistry appUiOriginRegistry) {
     Objects.requireNonNull(runtimePorts, "runtimePorts");
     this.appAuditLog = Objects.requireNonNull(appAuditLog, "appAuditLog");
+    Objects.requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
@@ -165,7 +214,8 @@ public final class PlatformApiRouter {
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
-    appsApiHandler = appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog);
+    appsApiHandler =
+        appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog, appUiOriginRegistry);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null

@@ -9,6 +9,7 @@ import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.appui.AppBrowserSessionStore;
+import network.crypta.platform.appui.AppUiOrigin;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.runtime.spi.TransferAccessPort;
@@ -324,7 +325,16 @@ final class FProxyRegistrar {
 
     AppBrowserSessionStore appBrowserSessionStore =
         new AppBrowserSessionStore(dependencies.appHost());
-    AppUiToadlet appUiToadlet = new AppUiToadlet(dependencies.appHost(), appBrowserSessionStore);
+    AppUiLoopbackOriginServer appUiOriginServer =
+        new AppUiLoopbackOriginServer(
+            dependencies.appHost(),
+            appBrowserSessionStore,
+            server.getURL(AppUiOrigin.LOOPBACK_HOST),
+            server::isFProxyJavascriptEnabled);
+    Runtime.getRuntime()
+        .addShutdownHook(new Thread(appUiOriginServer::close, "Cryptad-AppUi-Origin-Shutdown"));
+    AppUiToadlet appUiToadlet =
+        new AppUiToadlet(dependencies.appHost(), appBrowserSessionStore, appUiOriginServer);
     server.register(appUiToadlet, ToadletRegistration.basic(null, appUiToadlet.path(), true, true));
 
     PlatformApiToadlet platformApiToadlet =
@@ -332,7 +342,8 @@ final class FProxyRegistrar {
             runtimePorts,
             dependencies.appHost(),
             dependencies.appCatalogManager(),
-            appBrowserSessionStore);
+            appBrowserSessionStore,
+            appUiOriginServer);
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));

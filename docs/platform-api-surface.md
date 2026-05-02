@@ -15,18 +15,22 @@ declared stable remote public API.
 Web Shell v1 is mounted separately at `/app/node/`. Its static assets are served beneath
 `/app/node/static/`, and its bootstrap payload points the browser at the Platform API root.
 
-Installed apps with static browser UI are mounted separately at `/apps/{appId}/`. The Platform API
-continues to own the JSON lifecycle/control plane under `/api/v1/apps`; it only publishes
-`uiMode`, `uiEntry`, and `uiUrl` so shells can open the correct app UI route.
+Installed apps with static browser UI prefer isolated per-app loopback origins, with
+`/apps/{appId}/` retained as a compatibility route. The Platform API continues to own the JSON
+lifecycle/control plane under `/api/v1/apps`; it publishes `uiMode`, `uiEntry`, `uiUrl`,
+`uiOrigin`, `uiOriginMode`, `uiOriginStatus`, and `sameOriginFallbackUrl` so shells can open the
+correct app UI route.
 
-Static first-party app UIs use `/apps/{appId}/.well-known/cryptad-bootstrap.json` for route
-metadata and an opaque browser app session token for Platform API calls. That bootstrap is served
-by the app UI route, not by `/api/v1/apps`, and it does not expose `CRYPTAD_APP_TOKEN`, local-admin
-`formPassword`, or AppHost filesystem paths.
+Static first-party app UIs use `/.well-known/cryptad-bootstrap.json` on their app origin for route
+metadata, origin metadata, and an opaque browser app session token for Platform API calls. The
+compatibility `/apps/{appId}/.well-known/cryptad-bootstrap.json` path can return fallback
+bootstrap metadata. Bootstrap is served by the app UI route, not by `/api/v1/apps`, and it does not
+expose `CRYPTAD_APP_TOKEN`, local-admin `formPassword`, or AppHost filesystem paths.
 
 The [Platform JavaScript SDK](platform-sdk-js.md) is a browser convenience layer over that
-bootstrap and the same-origin Platform API. It does not create a new authority boundary; server-side
-Platform API permission checks and app-origin audit remain authoritative.
+bootstrap and Platform API calls. It does not create the authority boundary; server-side Platform
+API permission checks, origin-bound browser sessions, restricted CORS, and app-origin audit remain
+authoritative.
 
 ## Response contract
 

@@ -17,6 +17,10 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.appui.AppBrowserSession;
 import network.crypta.platform.appui.AppBrowserSessionVerifier;
+import network.crypta.platform.appui.AppUiOriginBinding;
+import network.crypta.platform.appui.AppUiOriginMode;
+import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appui.AppUiOriginStatus;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
@@ -58,6 +62,9 @@ class PlatformApiToadletTest {
     lenient().when(request.getHeader("x-crypta-app-token")).thenReturn(null);
     lenient().when(request.getHeader("x-crypta-app-session")).thenReturn(null);
     lenient().when(request.getHeader("authorization")).thenReturn(null);
+    lenient().when(request.getHeader("origin")).thenReturn(null);
+    lenient().when(request.getHeader("access-control-request-method")).thenReturn(null);
+    lenient().when(request.getHeader("access-control-request-headers")).thenReturn(null);
   }
 
   @Test
@@ -159,6 +166,108 @@ class PlatformApiToadletTest {
         PlatformApiAuthSource.APP_BROWSER_SESSION, captor.getValue().principal().authSource());
     assertEquals("alpha", captor.getValue().principal().appId());
     assertEquals(List.of("queue.read"), captor.getValue().principal().permissions());
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenOriginBoundAppSessionMatchesRegisteredOrigin_expectCorsPrincipal()
+      throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.read"), binding.origin())));
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    ArgumentCaptor<PlatformApiRequest> captor = ArgumentCaptor.forClass(PlatformApiRequest.class);
+    verify(router).route(captor.capture());
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, captor.getValue().principal().type());
+    assertEquals(binding.origin(), captor.getValue().principal().expectedOrigin());
+    assertEquals(AppUiOriginMode.ISOLATED_LOOPBACK, captor.getValue().principal().originMode());
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    assertEquals("Origin", replyHeaders.headers().getFirst("Vary"));
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenOriginBoundAppSessionMismatchesOrigin_expect403WithCors()
+      throws Exception {
+    AppUiOriginBinding alphaBinding = isolatedBinding("alpha", 12345);
+    AppUiOriginBinding betaBinding = isolatedBinding("beta", 12346);
+    toadlet =
+        new PlatformApiToadlet(
+            router, appHost, appBrowserSessionVerifier, registryWith(alphaBinding, betaBinding));
+    when(request.getHeader("origin")).thenReturn(betaBinding.origin());
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.read"), alphaBinding.origin())));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals(
+        betaBinding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"origin_mismatch\",\"message\":\"App browser session origin does"
+            + " not match the request origin.\"}}",
+        bodyWrite.bodyText());
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenFallbackSessionUsedFromRegisteredAppOrigin_expect403WithCors()
+      throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+    when(request.getHeader("x-crypta-app-session")).thenReturn("browser-session");
+    when(appBrowserSessionVerifier.verify("browser-session"))
+        .thenReturn(Optional.of(alphaBrowserSession(List.of("queue.read"))));
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"origin_mismatch\",\"message\":\"Same-origin fallback app browser"
+            + " session cannot be used from an isolated app origin.\"}}",
+        bodyWrite.bodyText());
+    verify(ctx, never()).isAllowedFullAccess();
+  }
+
+  @Test
+  void handleMethodGET_whenRegisteredAppOriginOmitsSession_expect401WithoutHostFallback()
+      throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+
+    toadlet.handleMethodGET(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(401, replyHeaders.statusCode());
+    assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"invalid_app_browser_session\",\"message\":\"App browser session"
+            + " is required for app-origin Platform API requests.\"}}",
+        bodyWrite.bodyText());
     verify(ctx, never()).isAllowedFullAccess();
   }
 
@@ -932,6 +1041,54 @@ End
   }
 
   @Test
+  void handleMethodOPTIONS_whenRegisteredAppOriginPreflightsSessionHeader_expectCors204()
+      throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+    when(request.getHeader("access-control-request-method")).thenReturn("POST");
+    when(request.getHeader("access-control-request-headers"))
+        .thenReturn("X-Crypta-App-Session, Content-Type");
+
+    toadlet.handleMethodOPTIONS(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureForcedReplyHeaders();
+    assertEquals(204, replyHeaders.statusCode());
+    assertEquals("No Content", replyHeaders.reasonPhrase());
+    assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    assertEquals(
+        "GET, POST, DELETE", replyHeaders.headers().getFirst("Access-Control-Allow-Methods"));
+    assertEquals(
+        "X-Crypta-App-Session, Accept, Content-Type",
+        replyHeaders.headers().getFirst("Access-Control-Allow-Headers"));
+    assertEquals("600", replyHeaders.headers().getFirst("Access-Control-Max-Age"));
+    verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
+  }
+
+  @Test
+  void handleMethodOPTIONS_whenPreflightRequestsAppProcessTokenHeader_expect403() throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+    when(request.getHeader("access-control-request-method")).thenReturn("POST");
+    when(request.getHeader("access-control-request-headers")).thenReturn("X-Crypta-App-Token");
+
+    toadlet.handleMethodOPTIONS(URI.create("http://localhost/api/v1/queue"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureReplyHeaders();
+    assertEquals(403, replyHeaders.statusCode());
+    BodyWriteCapture bodyWrite = captureBodyWrite();
+    assertEquals(
+        "{\"error\":{\"code\":\"origin_mismatch\",\"message\":\"App browser origin is not allowed"
+            + " for Platform API CORS.\"}}",
+        bodyWrite.bodyText());
+  }
+
+  @Test
   void handleMethodHEAD_whenUnsupportedVerb_expectHeaderOnly405() throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(request.getParameterNames()).thenReturn(List.of());
@@ -1069,6 +1226,31 @@ End
         length.getValue());
   }
 
+  private ReplyHeadersCapture captureForcedReplyHeaders() throws Exception {
+    ArgumentCaptor<Integer> statusCode = ArgumentCaptor.forClass(Integer.class);
+    ArgumentCaptor<String> reasonPhrase = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<MultiValueTable<String, String>> headers = multiValueTableCaptor();
+    ArgumentCaptor<String> mimeType = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Long> length = ArgumentCaptor.forClass(Long.class);
+    ArgumentCaptor<Boolean> forceDisableJavascript = ArgumentCaptor.forClass(Boolean.class);
+
+    verify(ctx)
+        .sendReplyHeaders(
+            statusCode.capture(),
+            reasonPhrase.capture(),
+            headers.capture(),
+            mimeType.capture(),
+            length.capture(),
+            forceDisableJavascript.capture());
+
+    return new ReplyHeadersCapture(
+        statusCode.getValue(),
+        reasonPhrase.getValue(),
+        headers.getValue(),
+        mimeType.getValue(),
+        length.getValue());
+  }
+
   @SuppressWarnings("unchecked")
   private static ArgumentCaptor<MultiValueTable<String, String>> multiValueTableCaptor() {
     return (ArgumentCaptor<MultiValueTable<String, String>>)
@@ -1100,6 +1282,50 @@ End
   private static AppBrowserSession alphaBrowserSession(List<String> permissions) {
     Instant issuedAt = Instant.parse("2026-04-28T10:00:00Z");
     return new AppBrowserSession("alpha", permissions, issuedAt, issuedAt.plusSeconds(3600));
+  }
+
+  private static AppBrowserSession alphaBrowserSession(
+      List<String> permissions, String expectedOrigin) {
+    Instant issuedAt = Instant.parse("2026-04-28T10:00:00Z");
+    return new AppBrowserSession(
+        "alpha",
+        permissions,
+        issuedAt,
+        issuedAt.plusSeconds(3600),
+        expectedOrigin,
+        AppUiOriginMode.ISOLATED_LOOPBACK);
+  }
+
+  private static AppUiOriginBinding isolatedBinding(String appId, int port) {
+    String origin = "http://127.0.0.1:" + port;
+    return new AppUiOriginBinding(
+        appId,
+        AppUiOriginMode.ISOLATED_LOOPBACK,
+        AppUiOriginStatus.ACTIVE,
+        origin,
+        origin + "/",
+        origin + "/static/",
+        origin + "/static/",
+        "http://127.0.0.1:8888/api/v1/",
+        "http://127.0.0.1:8888/app/node/",
+        "/apps/" + appId + "/",
+        null);
+  }
+
+  private static AppUiOriginRegistry registryWith(AppUiOriginBinding... bindings) {
+    return new AppUiOriginRegistry() {
+      @Override
+      public Optional<AppUiOriginBinding> bindingForApp(String appId) {
+        return Arrays.stream(bindings).filter(binding -> binding.appId().equals(appId)).findFirst();
+      }
+
+      @Override
+      public Optional<AppUiOriginBinding> bindingForOrigin(String origin) {
+        return Arrays.stream(bindings)
+            .filter(binding -> origin != null && origin.equals(binding.origin()))
+            .findFirst();
+      }
+    };
   }
 
   private record ReplyHeadersCapture(

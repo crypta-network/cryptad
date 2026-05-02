@@ -312,7 +312,7 @@ class WebShellResourcesTest {
   }
 
   private static void assertAppsMarkersPresent(String script) {
-    int appUiEntryHelperIndex = script.indexOf("function normalizeAppUiEntryHref(value)");
+    int appUiEntryHelperIndex = script.indexOf("function normalizeAppUiEntryHref(value, app)");
     int legacyLinkHelperIndex = script.indexOf("function normalizeLegacyLinkPath(value)");
     String appUiEntryHelper = script.substring(appUiEntryHelperIndex, legacyLinkHelperIndex);
 
@@ -326,11 +326,17 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const appsControls = {"));
     assertTrue(
         script.contains("catalogSourceForm: document.getElementById(\"catalog-source-form\")"));
-    assertTrue(script.contains("function normalizeAppUiEntryHref(value)"));
+    assertTrue(script.contains("function normalizeAppUiEntryHref(value, app)"));
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
-    assertTrue(script.contains("return `${url.pathname}${url.search}${url.hash}`;"));
+    assertTrue(script.contains("allowedAppUiOrigin(url, app)"));
+    assertTrue(script.contains("return url.origin === window.location.origin"));
+    assertTrue(script.contains(": url.href;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));
+    assertTrue(script.contains("const isolatedLaunchHref = isolatedAppUiLaunchHref(app);"));
+    assertTrue(script.contains("function isolatedAppUiLaunchHref(app)"));
+    assertTrue(script.contains("return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);"));
+    assertTrue(script.contains("function isolatedAppUiActive(app)"));
     assertTrue(script.contains("function appSandboxStatus(app, runtime)"));
     assertTrue(script.contains("function sandboxLabel(status)"));
     assertTrue(script.contains("Unsupported required sandbox"));
@@ -351,10 +357,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
     assertTrue(script.contains("function appAuditPath(appId)"));
     assertTrue(script.contains("async function loadAppRuntimeDetails(app)"));
-    assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl);"));
+    assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl, app);"));
     assertTrue(
         script.contains(
-            "return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);"));
+            "return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`, app);"));
+    assertTrue(script.contains("[\"UI origin mode\", scalar(app.uiOriginMode)]"));
     assertTrue(script.contains("function renderAppCard(app)"));
     assertTrue(
         script.contains(

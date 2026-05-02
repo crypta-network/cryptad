@@ -378,19 +378,36 @@
     }
   }
 
-  function normalizeAppUiEntryHref(value) {
+  function normalizeAppUiEntryHref(value, app) {
     if (typeof value !== "string" || value.length === 0) {
       return null;
     }
     try {
       const url = new URL(value, shellRootUrl);
-      if (url.origin !== window.location.origin) {
+      if (url.origin !== window.location.origin && !allowedAppUiOrigin(url, app)) {
         return null;
       }
-      return `${url.pathname}${url.search}${url.hash}`;
+      return url.origin === window.location.origin
+        ? `${url.pathname}${url.search}${url.hash}`
+        : url.href;
     } catch (error) {
       return null;
     }
+  }
+
+  function allowedAppUiOrigin(url, app) {
+    if (!app || app.uiOriginMode !== "isolated-loopback" || app.uiOriginStatus !== "active") {
+      return false;
+    }
+    if (typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+      return false;
+    }
+    const hostname = url.hostname.toLowerCase();
+    return (
+      url.origin === app.uiOrigin &&
+      url.protocol === "http:" &&
+      hostname === "127.0.0.1"
+    );
   }
 
   function normalizeLegacyLinkPath(value) {
@@ -923,14 +940,32 @@
   }
 
   function appUiHref(app) {
-    const explicitHref = normalizeAppUiEntryHref(app.uiUrl);
+    const isolatedLaunchHref = isolatedAppUiLaunchHref(app);
+    if (isolatedLaunchHref || isolatedAppUiActive(app)) {
+      return isolatedLaunchHref;
+    }
+    const explicitHref = normalizeAppUiEntryHref(app.uiUrl, app);
     if (explicitHref) {
       return explicitHref;
     }
-    if (app.uiMode === "static" && typeof app.appId === "string" && app.appId.length > 0) {
-      return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);
+    if (typeof app.uiUrl === "string" && app.uiUrl.length > 0) {
+      return null;
     }
-    return normalizeAppUiEntryHref(app.uiEntry);
+    if (app.uiMode === "static" && typeof app.appId === "string" && app.appId.length > 0) {
+      return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`, app);
+    }
+    return normalizeAppUiEntryHref(app.uiEntry, app);
+  }
+
+  function isolatedAppUiLaunchHref(app) {
+    if (!isolatedAppUiActive(app)) {
+      return null;
+    }
+    return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);
+  }
+
+  function isolatedAppUiActive(app) {
+    return app && app.uiOriginMode === "isolated-loopback" && app.uiOriginStatus === "active";
   }
 
   function appUiEntryNode(app) {
@@ -1323,6 +1358,11 @@
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
+    if (app.uiOriginMode === "isolated-loopback" && app.uiOriginStatus === "active") {
+      pills.append(createPill("Isolated origin", "is-success"));
+    } else if (app.uiOriginMode === "same-origin-fallback") {
+      pills.append(createPill("UI fallback", "is-warning"));
+    }
     const deniedCount = audit && typeof audit.recentDeniedCount === "number"
       ? audit.recentDeniedCount
       : typeof app.recentDeniedCount === "number"
@@ -1350,6 +1390,10 @@
       ["UI mode", scalar(app.uiMode)],
       ["UI", uiEntryNode || scalar(app.uiUrl)],
       ["UI entry", scalar(app.uiEntry)],
+      ["UI origin mode", scalar(app.uiOriginMode)],
+      ["UI origin status", scalar(app.uiOriginStatus)],
+      ["UI origin", scalar(app.uiOrigin)],
+      ["Same-origin fallback", scalar(app.sameOriginFallbackUrl)],
       ["Sandbox", sandboxLabel(sandbox)],
       ["Sandbox required", sandbox && sandbox.required ? "Yes" : "No"],
       ["Sandbox provider", sandbox ? scalar(sandbox.provider) : "Unavailable"],

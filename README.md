@@ -249,9 +249,10 @@ Cryptad now uses a partial multi-project Gradle build.
   lifecycle, per-start launch-token plumbing, sandbox status reporting, data/cache quota checks,
   and bounded process-log handling for local apps.
 - `:platform-app-ui` owns app-owned static UI route helpers under
-  `network.crypta.platform.appui`. It maps static app UI metadata to `/apps/{appId}/`, resolves
-  installed-bundle assets, issues short-lived browser sessions for static app API calls, and
-  enforces traversal, symlink, and content-type boundaries before the HTTP adapter streams files.
+  `network.crypta.platform.appui`. It maps static app UI metadata to isolated per-app loopback
+  origins with `/apps/{appId}/` as a compatibility fallback, resolves installed-bundle assets,
+  issues origin-bound short-lived browser sessions for static app API calls, and enforces
+  traversal, symlink, and content-type boundaries before the HTTP adapter streams files.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource used by app-owned static UI
   bundles. First-party app staging copies this SDK into staged `static/` assets so pages can use
   the same bootstrap, Platform API, mutation, error, and fragment-sanitization helpers.
@@ -366,11 +367,12 @@ catalog signatures, trusted-key configuration, optional app-store metadata, and
 and signed bundle verification remain the trust source.
 
 Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
-Static UI bundles open at `/apps/{appId}/`; shell-panel bundles keep existing local links such as
+Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` remains a
+compatibility fallback, and shell-panel bundles keep existing local links such as
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
-first-party bootstrap JSON, security headers, and static asset boundary. The repo-owned Queue
-Manager and Publisher bundles now stage static UIs at `/apps/queue-manager/static/` and
-`/apps/publisher/static/`, including the browser SDK described in
+origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
+asset boundary. The repo-owned Queue Manager and Publisher bundles now stage static UIs that open
+through the isolated app UI path when available, including the browser SDK described in
 [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md).
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
@@ -441,13 +443,14 @@ Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:pla
 primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
 compatibility, bridge, debug, and fallback surfaces.
 
-Current Phase 5 app-platform work extends that path with signed catalog sources, Crypta catalog
-transport, app-owned static UI routes, browser sessions for static app API calls, richer catalog
-review metadata, AppHost sandbox/quota visibility, the `crypta-app` developer CLI, and independent
-first-party Queue Manager and Publisher UIs. Installed apps can be launched through `/app/node/`
-shell-panel links or through stable `/apps/{appId}/` routes when the signed bundle declares
-`app.ui.mode=static`. The Web Shell Apps section uses `/api/v1/app-catalogs` metadata to show
-source, license, category, review,
+Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
+UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
+sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
+Manager and Publisher UIs. Phase 6 starts moving static app UIs onto isolated per-app loopback
+origins while retaining `/apps/{appId}/` as a compatibility fallback. Installed apps can be
+launched through `/app/node/` shell-panel links or through isolated app UI URLs when the signed
+bundle declares `app.ui.mode=static`. The Web Shell Apps section uses `/api/v1/app-catalogs`
+metadata to show source, license, category, review,
 permission-rationale, version-difference, compatibility, and changelog details before install or
 update.
 
@@ -671,7 +674,7 @@ build/cryptad-jlink-image/bin/cryptad-launcher    # Windows: cryptad-launcher.ba
 
 Notes
 - The jlink image includes `bin/cryptad-launcher` which prefers the embedded `bin/java` and uses `lib/*` for classpath.
-- We explicitly include key modules (e.g., `jdk.crypto.ec`, `java.net.http`, `jdk.unsupported`, `java.desktop`) and call `jlink` directly.
+- We explicitly include key modules (e.g., `jdk.crypto.ec`, `jdk.httpserver`, `java.net.http`, `jdk.unsupported`, `java.desktop`) and call `jlink` directly.
 - This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
 - `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
 
@@ -888,8 +891,9 @@ Root build also includes:
   provider status, enforces positive AppHost-managed data/cache quotas at launch and restart
   boundaries, and bounds managed process logs.
 - `:platform-app-ui`: app-owned static UI route and asset-resolution helpers used by the legacy
-  HTTP admin adapter to serve `/apps/{appId}/` without exposing data/cache/run directories or
-  traversal paths. It also owns browser session issuance and verification for static app API calls.
+  HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`
+  compatibility path without exposing data/cache/run directories or traversal paths. It also owns
+  origin-bound browser session issuance and verification for static app API calls.
 - `:platform-sdk-js`: browser-native SDK resource for app-owned static UI bootstrap, Platform API
   form/JSON helpers, error handling, and conservative legacy-fragment sanitization.
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
@@ -981,8 +985,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   stop, uninstall, and replace an installed app bundle from a caller-supplied local staged
   directory through `:platform-apphost` and the Platform API v1. Signed local staged bundles are
   supported. Signed local and HTTPS catalog sources can now install or update apps through the
-  same AppHost staged-directory semantics. Static app UI routes are served from the installed
-  bundle under `/apps/{appId}/`; background app-update fetching remains future work.
+  same AppHost staged-directory semantics. Static app UIs are served from the installed bundle on
+  isolated per-app loopback origins when available, with `/apps/{appId}/` retained as a
+  compatibility fallback; background app-update fetching remains future work.
 
 ## Architecture Overview
 

@@ -62,6 +62,28 @@ class AppBrowserSessionStoreTest {
   }
 
   @Test
+  void issue_whenIsolatedOriginBindingProvided_expectVerifiedSessionKeepsOriginMetadata() {
+    MutableAppHost appHost = new MutableAppHost(staticApp("demo-app", List.of("queue.read")));
+    MutableClock clock = new MutableClock(START);
+    AppBrowserSessionStore store =
+        new AppBrowserSessionStore(appHost, clock, new SecureRandom(), Duration.ofHours(1), 10);
+    InstalledAppSnapshot snapshot = appHost.describeUnchecked("demo-app");
+    AppUiOriginBinding binding =
+        AppUiOriginBinding.isolatedLoopback(
+            snapshot.manifest(),
+            AppUiOrigin.loopback("demo-app", 12345),
+            "http://127.0.0.1:8888/api/v1/",
+            "http://127.0.0.1:8888/app/node/");
+
+    AppBrowserSessionIssue issue = store.issue(snapshot, binding);
+    Optional<AppBrowserSession> verified = store.verify(issue.token());
+
+    assertTrue(verified.isPresent());
+    assertEquals("http://127.0.0.1:12345", verified.orElseThrow().expectedOrigin());
+    assertEquals(AppUiOriginMode.ISOLATED_LOOPBACK, verified.orElseThrow().originMode());
+  }
+
+  @Test
   void verify_whenSessionIsBlankUnknownOrExpired_expectEmpty() {
     MutableAppHost appHost = new MutableAppHost(staticApp("demo-app", List.of("queue.read")));
     MutableClock clock = new MutableClock(START);

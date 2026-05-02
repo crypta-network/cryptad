@@ -3,6 +3,7 @@
 # :adapter-http-legacy-browse owns the concrete browse/FProxy tree.
 
 network/crypta/clients/http/BadRequestException*.class
+network/crypta/clients/http/AppUiLoopbackOriginServer*.class
 network/crypta/clients/http/BookmarkManagerHandle*.class
 network/crypta/clients/http/ChatForumsToadlet*.class
 network/crypta/clients/http/ConfigToadlet*.class

@@ -24,6 +24,7 @@ import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.appui.AppUiOrigin;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DarknetConnectionsPort;
@@ -119,6 +120,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.toadletSymlinks()).thenReturn(toadletSymlinkPort);
     when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     when(toadletSymlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
+    when(server.getURL(AppUiOrigin.LOOPBACK_HOST)).thenReturn("http://127.0.0.1:8888/");
   }
 
   @Test

@@ -14,6 +14,7 @@ import network.crypta.platform.api.AppAuditEvent;
 import network.crypta.platform.api.AppAuditLog;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -29,6 +30,8 @@ import network.crypta.platform.apphost.sandbox.AppSandboxException;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
 import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
+import network.crypta.platform.appui.AppUiOriginBinding;
+import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appui.AppUiPaths;
 
 /**
@@ -83,6 +86,9 @@ public final class AppsApiHandler {
   /** Shared bounded audit log for app-originated Platform API decisions. */
   private final AppAuditLog auditLog;
 
+  /** Optional app UI origin registry used to publish isolated static UI links. */
+  private final AppUiOriginRegistry appUiOriginRegistry;
+
   /**
    * Creates an app-management handler backed by the supplied AppHost.
    *
@@ -104,8 +110,22 @@ public final class AppsApiHandler {
    * @param auditLog bounded process-local app audit log
    */
   public AppsApiHandler(AppHost appHost, AppAuditLog auditLog) {
+    this(appHost, auditLog, AppUiOriginRegistry.sameOriginOnly());
+  }
+
+  /**
+   * Creates an app-management handler backed by the supplied AppHost, audit log, and UI origin
+   * registry.
+   *
+   * @param appHost detached AppHost core used for app lifecycle operations
+   * @param auditLog bounded process-local app audit log
+   * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
+   */
+  public AppsApiHandler(
+      AppHost appHost, AppAuditLog auditLog, AppUiOriginRegistry appUiOriginRegistry) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
+    this.appUiOriginRegistry = Objects.requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
   }
 
   /**
@@ -542,7 +562,18 @@ public final class AppsApiHandler {
     json.put("version", manifest.appVersion());
     json.put("uiMode", manifest.uiMode().manifestValue());
     json.put("uiEntry", manifest.uiEntry());
-    json.put("uiUrl", AppUiPaths.uiUrl(manifest));
+    AppUiOriginBinding uiOriginBinding = uiOriginBinding(manifest);
+    json.put(
+        "uiUrl", uiOriginBinding == null ? AppUiPaths.uiUrl(manifest) : uiOriginBinding.uiUrl());
+    json.put("uiOrigin", uiOriginBinding == null ? null : uiOriginBinding.origin());
+    json.put("uiOriginMode", uiOriginBinding == null ? null : uiOriginBinding.mode().jsonValue());
+    json.put(
+        "uiOriginStatus", uiOriginBinding == null ? null : uiOriginBinding.status().jsonValue());
+    json.put(
+        "sameOriginFallbackUrl",
+        uiOriginBinding == null
+            ? sameOriginFallbackUrl(manifest)
+            : uiOriginBinding.sameOriginFallbackUrl());
     json.put(FIELD_PERMISSIONS, manifest.permissions());
     json.put(FIELD_QUOTA, quota(manifest, quotaStatus));
     json.put(FIELD_SANDBOX, summarizeSandbox(sandboxStatus(manifest, running)));
@@ -619,6 +650,10 @@ public final class AppsApiHandler {
     json.put("uiMode", "none");
     json.put("uiEntry", null);
     json.put("uiUrl", null);
+    json.put("uiOrigin", null);
+    json.put("uiOriginMode", null);
+    json.put("uiOriginStatus", null);
+    json.put("sameOriginFallbackUrl", null);
     json.put(FIELD_PERMISSIONS, List.of());
     json.put(FIELD_QUOTA, unknownQuota());
     json.put(
@@ -631,6 +666,20 @@ public final class AppsApiHandler {
     json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(appId));
     json.put("audit", auditSummary(appId));
     return json;
+  }
+
+  private AppUiOriginBinding uiOriginBinding(AppManifest manifest) {
+    if (manifest.uiMode() != AppUiMode.STATIC) {
+      return null;
+    }
+    return appUiOriginRegistry.bindingForApp(manifest.appId()).orElse(null);
+  }
+
+  private static String sameOriginFallbackUrl(AppManifest manifest) {
+    if (manifest.uiMode() == AppUiMode.STATIC) {
+      return AppUiPaths.appRoot(manifest.appId());
+    }
+    return AppUiPaths.uiUrl(manifest);
   }
 
   private Map<String, Object> auditSummary(String appId) {

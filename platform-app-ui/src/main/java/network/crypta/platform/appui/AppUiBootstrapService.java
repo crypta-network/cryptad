@@ -81,13 +81,37 @@ public final class AppUiBootstrapService {
   public Optional<AppUiBootstrap> resolve(
       String rawRequestPath, String platformApiRoot, String shellRoot)
       throws IOException, AppStaticAssetException {
+    return resolve(rawRequestPath, platformApiRoot, shellRoot, null);
+  }
+
+  /**
+   * Resolves one raw HTTP path to app UI bootstrap metadata using an explicit origin binding.
+   *
+   * <p>Callers use this overload when the bootstrap is being served from an isolated app origin or
+   * when the legacy same-origin route can determine its expected browser origin. The binding is
+   * passed to both the issued browser session and the serialized bootstrap metadata.
+   *
+   * @param rawRequestPath raw URI path such as {@code
+   *     /apps/demo-app/.well-known/cryptad-bootstrap.json}
+   * @param platformApiRoot fallback Platform API root used when {@code binding} is {@code null}
+   * @param shellRoot fallback Web Shell root used when {@code binding} is {@code null}
+   * @param binding app UI origin binding for this bootstrap response, or {@code null}
+   * @return bootstrap metadata, or empty when the path is not the bootstrap resource or the app is
+   *     not an installed static UI app
+   * @throws IOException if AppHost metadata cannot be read for the requested app id
+   * @throws AppStaticAssetException if the raw app UI route path is malformed or unsafe
+   */
+  public Optional<AppUiBootstrap> resolve(
+      String rawRequestPath, String platformApiRoot, String shellRoot, AppUiOriginBinding binding)
+      throws IOException, AppStaticAssetException {
     Optional<InstalledAppSnapshot> snapshot = staticBootstrapSnapshot(rawRequestPath);
     if (snapshot.isEmpty()) {
       return Optional.empty();
     }
-    AppBrowserSessionIssue session = sessionIssuer.issue(snapshot.get());
+    AppBrowserSessionIssue session = sessionIssuer.issue(snapshot.get(), binding);
     return Optional.of(
-        AppUiBootstrap.forManifest(snapshot.get().manifest(), platformApiRoot, shellRoot, session));
+        AppUiBootstrap.forManifest(
+            snapshot.get().manifest(), platformApiRoot, shellRoot, session, binding));
   }
 
   /**

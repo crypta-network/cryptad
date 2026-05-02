@@ -6,17 +6,19 @@ import java.util.Map;
 /**
  * Conservative response headers for app-owned static browser UI.
  *
- * <p>The headers keep static apps inside the same-origin local admin boundary while avoiding remote
+ * <p>The headers keep static app resources local to their serving origin while avoiding remote
  * scripts, object embedding, base tag rewrites, cross-origin form posts, referrer leakage, and MIME
  * sniffing. They are deliberately adapter-neutral: the app UI layer returns lowercase header names
  * and string values, and HTTP bridges convert them into their transport-specific header container.
  *
- * <p>This policy is not a sandbox and does not implement app permissions. It is a defensive default
- * for immutable installed-bundle UI assets until later platform phases add stronger isolation. When
- * the legacy admin surface has JavaScript disabled, the app UI CSP also disables script execution
- * so app-owned routes follow the same operator preference.
+ * <p>This policy is not an AppHost process sandbox and does not implement app permissions. It is a
+ * defensive default for immutable installed-bundle UI assets on both same-origin fallback routes
+ * and isolated loopback origins. When the legacy admin surface has JavaScript disabled, the app UI
+ * CSP also disables script execution so app-owned routes follow the same operator preference.
  */
 public final class AppUiSecurityHeaders {
+  private static final String SELF_SOURCE = "'self'";
+
   /**
    * Content Security Policy applied to static app UI responses when JavaScript is enabled.
    *
@@ -62,18 +64,78 @@ public final class AppUiSecurityHeaders {
    * @return immutable header name/value map suitable for adapter conversion
    */
   public static Map<String, String> headers(boolean javascriptEnabled) {
+    return headers(javascriptEnabled, null, null);
+  }
+
+  /**
+   * Returns app UI security headers for an isolated-origin response.
+   *
+   * <p>The CSP still limits scripts and resources to the app origin by default, but it permits
+   * Platform API fetches to the supplied admin API root and limits framing to the supplied Web
+   * Shell/admin origin. {@code X-Frame-Options} is intentionally omitted when a cross-origin frame
+   * ancestor is configured because the older header cannot express that policy.
+   *
+   * @param javascriptEnabled whether app scripts are allowed to execute
+   * @param platformApiRoot absolute Platform API root, or {@code null} for same-origin only
+   * @param shellRoot absolute Web Shell root, or {@code null} for same-origin frame ancestors
+   * @return immutable header name/value map suitable for adapter conversion
+   */
+  public static Map<String, String> headers(
+      boolean javascriptEnabled, String platformApiRoot, String shellRoot) {
     LinkedHashMap<String, String> headers = LinkedHashMap.newLinkedHashMap(4);
-    headers.put("content-security-policy", contentSecurityPolicy(javascriptEnabled));
+    String frameAncestor = originSource(shellRoot);
+    headers.put(
+        "content-security-policy",
+        contentSecurityPolicy(javascriptEnabled, originSource(platformApiRoot), frameAncestor));
     headers.put("x-content-type-options", "nosniff");
     headers.put("referrer-policy", "no-referrer");
-    headers.put("x-frame-options", "SAMEORIGIN");
+    if (frameAncestor == null) {
+      headers.put("x-frame-options", "SAMEORIGIN");
+    }
     return java.util.Collections.unmodifiableMap(headers);
   }
 
   private static String contentSecurityPolicy(boolean javascriptEnabled) {
-    String scriptSource = javascriptEnabled ? "'self'" : "'none'";
-    return "default-src 'self'; script-src "
+    return contentSecurityPolicy(javascriptEnabled, null, null);
+  }
+
+  private static String contentSecurityPolicy(
+      boolean javascriptEnabled, String platformApiOrigin, String frameAncestor) {
+    String scriptSource = javascriptEnabled ? SELF_SOURCE : "'none'";
+    String connectSource =
+        platformApiOrigin == null ? SELF_SOURCE : SELF_SOURCE + " " + platformApiOrigin;
+    String frameAncestors = frameAncestor == null ? SELF_SOURCE : SELF_SOURCE + " " + frameAncestor;
+    return "default-src "
+        + SELF_SOURCE
+        + "; script-src "
         + scriptSource
-        + "; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'self'";
+        + "; connect-src "
+        + connectSource
+        + "; base-uri 'none'; object-src 'none'; form-action "
+        + SELF_SOURCE
+        + "; frame-ancestors "
+        + frameAncestors;
+  }
+
+  private static String originSource(String rootUrl) {
+    if (rootUrl == null || rootUrl.startsWith("/")) {
+      return null;
+    }
+    try {
+      java.net.URI uri = java.net.URI.create(rootUrl);
+      if (uri.getScheme() == null || uri.getHost() == null) {
+        return null;
+      }
+      StringBuilder out = new StringBuilder();
+      out.append(uri.getScheme().toLowerCase(java.util.Locale.ROOT));
+      out.append("://");
+      out.append(uri.getHost().toLowerCase(java.util.Locale.ROOT));
+      if (uri.getPort() > 0) {
+        out.append(':').append(uri.getPort());
+      }
+      return out.toString();
+    } catch (IllegalArgumentException _) {
+      return null;
+    }
   }
 }

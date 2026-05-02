@@ -20,6 +20,9 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.appui.AppBrowserSession;
 import network.crypta.platform.appui.AppBrowserSessionVerifier;
+import network.crypta.platform.appui.AppUiOriginBinding;
+import network.crypta.platform.appui.AppUiOriginMode;
+import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -59,6 +62,20 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String APP_TOKEN_HEADER = "x-crypta-app-token";
   private static final String APP_SESSION_HEADER = "x-crypta-app-session";
   private static final String AUTHORIZATION_HEADER = "authorization";
+  private static final String ORIGIN_HEADER = "origin";
+  private static final String ACCESS_CONTROL_REQUEST_METHOD_HEADER =
+      "access-control-request-method";
+  private static final String ACCESS_CONTROL_REQUEST_HEADERS_HEADER =
+      "access-control-request-headers";
+  private static final String ACCESS_CONTROL_ALLOW_ORIGIN_HEADER = "Access-Control-Allow-Origin";
+  private static final String ACCESS_CONTROL_ALLOW_METHODS_HEADER = "Access-Control-Allow-Methods";
+  private static final String ACCESS_CONTROL_ALLOW_HEADERS_HEADER = "Access-Control-Allow-Headers";
+  private static final String ACCESS_CONTROL_MAX_AGE_HEADER = "Access-Control-Max-Age";
+  private static final String VARY_HEADER = "Vary";
+  private static final String ALLOWED_CORS_METHODS = "GET, POST, DELETE";
+  private static final String ALLOWED_CORS_HEADERS = "X-Crypta-App-Session, Accept, Content-Type";
+  private static final String CORS_VARY_VALUE =
+      "Origin, Access-Control-Request-Method, Access-Control-Request-Headers";
   private static final String BEARER_PREFIX = "bearer";
   private static final String DELETE_METHOD = "DELETE";
   private static final String ALERTS_SEGMENT = "alerts";
@@ -83,6 +100,9 @@ public final class PlatformApiToadlet extends Toadlet {
   /** Optional verifier used to authenticate browser-originated app sessions. */
   private final AppBrowserSessionVerifier appBrowserSessionVerifier;
 
+  /** Registry of isolated app UI origins allowed to use browser-session CORS. */
+  private final AppUiOriginRegistry appUiOriginRegistry;
+
   /**
    * Creates a platform API toadlet backed by the supplied runtime ports.
    *
@@ -92,7 +112,8 @@ public final class PlatformApiToadlet extends Toadlet {
     this(
         new PlatformApiRouter(runtimePorts, null, null, LegacyAdminUsageRecorder.defaultRecorder()),
         null,
-        null);
+        null,
+        AppUiOriginRegistry.sameOriginOnly());
   }
 
   /**
@@ -106,7 +127,8 @@ public final class PlatformApiToadlet extends Toadlet {
         new PlatformApiRouter(
             runtimePorts, appHost, null, LegacyAdminUsageRecorder.defaultRecorder()),
         appHost,
-        null);
+        null,
+        AppUiOriginRegistry.sameOriginOnly());
   }
 
   /**
@@ -122,7 +144,8 @@ public final class PlatformApiToadlet extends Toadlet {
         new PlatformApiRouter(
             runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()),
         appHost,
-        null);
+        null,
+        AppUiOriginRegistry.sameOriginOnly());
   }
 
   /**
@@ -140,10 +163,39 @@ public final class PlatformApiToadlet extends Toadlet {
       AppCatalogManager appCatalogManager,
       AppBrowserSessionVerifier appBrowserSessionVerifier) {
     this(
-        new PlatformApiRouter(
-            runtimePorts, appHost, appCatalogManager, LegacyAdminUsageRecorder.defaultRecorder()),
+        runtimePorts,
         appHost,
-        appBrowserSessionVerifier);
+        appCatalogManager,
+        appBrowserSessionVerifier,
+        AppUiOriginRegistry.sameOriginOnly());
+  }
+
+  /**
+   * Creates a platform API toadlet backed by runtime ports, AppHost, signed catalogs, browser
+   * sessions, and app UI origin metadata.
+   *
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
+   * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   * @param appBrowserSessionVerifier verifier shared with the app-owned UI bootstrap route
+   * @param appUiOriginRegistry registry of active isolated app UI origins
+   */
+  public PlatformApiToadlet(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppBrowserSessionVerifier appBrowserSessionVerifier,
+      AppUiOriginRegistry appUiOriginRegistry) {
+    this(
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            appCatalogManager,
+            LegacyAdminUsageRecorder.defaultRecorder(),
+            appUiOriginRegistry),
+        appHost,
+        appBrowserSessionVerifier,
+        appUiOriginRegistry);
   }
 
   /**
@@ -167,10 +219,19 @@ public final class PlatformApiToadlet extends Toadlet {
       PlatformApiRouter router,
       AppHost appHost,
       AppBrowserSessionVerifier appBrowserSessionVerifier) {
+    this(router, appHost, appBrowserSessionVerifier, AppUiOriginRegistry.sameOriginOnly());
+  }
+
+  PlatformApiToadlet(
+      PlatformApiRouter router,
+      AppHost appHost,
+      AppBrowserSessionVerifier appBrowserSessionVerifier,
+      AppUiOriginRegistry appUiOriginRegistry) {
     super();
     this.router = Objects.requireNonNull(router, "router");
     this.appHost = appHost;
     this.appBrowserSessionVerifier = appBrowserSessionVerifier;
+    this.appUiOriginRegistry = Objects.requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
   }
 
   @Override
@@ -226,6 +287,11 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public void handleMethodOPTIONS(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
+    CorsRequest cors = CorsRequest.from(request);
+    if (cors.preflight()) {
+      writeCorsPreflightResponse(cors, ctx);
+      return;
+    }
     writePlatformApiResponse("OPTIONS", uri, request, ctx);
   }
 
@@ -345,8 +411,9 @@ public final class PlatformApiToadlet extends Toadlet {
       String method, URI uri, HTTPRequest request, ToadletContext ctx, boolean includeBody)
       throws ToadletContextClosedException, IOException {
     PlatformApiResponse response;
+    CorsRequest cors = CorsRequest.from(request);
     try {
-      response = resolveAndRoutePlatformApiRequest(method, uri, request, ctx);
+      response = resolveAndRoutePlatformApiRequest(method, uri, request, ctx, cors);
     } catch (URLEncodedFormatException _) {
       response =
           PlatformApiResponse.error(
@@ -361,7 +428,7 @@ public final class PlatformApiToadlet extends Toadlet {
     if (response == null) {
       return;
     }
-    writeJsonReply(ctx, response, includeBody);
+    writeJsonReply(ctx, responseWithCors(response, cors), includeBody);
   }
 
   /**
@@ -382,9 +449,9 @@ public final class PlatformApiToadlet extends Toadlet {
    * @throws URLEncodedFormatException if the request path contains malformed percent-encoding
    */
   private PlatformApiResponse resolveAndRoutePlatformApiRequest(
-      String method, URI uri, HTTPRequest request, ToadletContext ctx)
+      String method, URI uri, HTTPRequest request, ToadletContext ctx, CorsRequest cors)
       throws ToadletContextClosedException, IOException, URLEncodedFormatException {
-    PrincipalResolution principalResolution = resolvePrincipal(request);
+    PrincipalResolution principalResolution = resolvePrincipal(request, cors);
     if (principalResolution.failureResponse() != null) {
       return principalResolution.failureResponse();
     }
@@ -706,7 +773,7 @@ public final class PlatformApiToadlet extends Toadlet {
         method, relativeApiPath(requestPath(uri)), queryParameters, principal);
   }
 
-  private PrincipalResolution resolvePrincipal(HTTPRequest request) {
+  private PrincipalResolution resolvePrincipal(HTTPRequest request, CorsRequest cors) {
     String directToken = directAppTokenFromHeader(request);
     if (directToken != null) {
       return authenticateExplicitAppToken(directToken);
@@ -722,7 +789,12 @@ public final class PlatformApiToadlet extends Toadlet {
 
     String browserSessionToken = appSessionFromHeader(request);
     if (browserSessionToken != null) {
-      return authenticateBrowserSession(browserSessionToken);
+      return authenticateBrowserSession(browserSessionToken, cors);
+    }
+    if (cors.fromRegisteredAppOrigin(appUiOriginRegistry)) {
+      cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+      return unauthenticatedAppBrowserSession(
+          "App browser session is required for app-origin Platform API requests.");
     }
     return hostOperatorPrincipal();
   }
@@ -789,19 +861,76 @@ public final class PlatformApiToadlet extends Toadlet {
         PlatformApiPrincipal.appToken(principal.appId(), principal.permissions()), null);
   }
 
-  private PrincipalResolution authenticateBrowserSession(String token) {
+  private PrincipalResolution authenticateBrowserSession(String token, CorsRequest cors) {
     if (appBrowserSessionVerifier == null) {
       return unauthenticatedAppBrowserSession("App browser session authentication is unavailable.");
     }
     Optional<AppBrowserSession> session = appBrowserSessionVerifier.verify(token);
+    if (session.isEmpty()) {
+      cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+      return unauthenticatedAppBrowserSession("Invalid app browser session.");
+    }
     return session
-        .map(PlatformApiToadlet::appBrowserSessionPrincipal)
+        .map(value -> appBrowserSessionPrincipal(value, cors))
         .orElseGet(() -> unauthenticatedAppBrowserSession("Invalid app browser session."));
   }
 
-  private static PrincipalResolution appBrowserSessionPrincipal(AppBrowserSession session) {
+  private PrincipalResolution appBrowserSessionPrincipal(
+      AppBrowserSession session, CorsRequest cors) {
+    PrincipalResolution originFailure = validateBrowserSessionOrigin(session, cors);
+    if (originFailure != null) {
+      return originFailure;
+    }
+    cors.allowIfRegistered(session.expectedOrigin(), appUiOriginRegistry);
     return new PrincipalResolution(
-        PlatformApiPrincipal.appBrowserSession(session.appId(), session.permissions()), null);
+        PlatformApiPrincipal.appBrowserSession(
+            session.appId(), session.permissions(), session.expectedOrigin(), session.originMode()),
+        null);
+  }
+
+  private PrincipalResolution validateBrowserSessionOrigin(
+      AppBrowserSession session, CorsRequest cors) {
+    if (session.originMode() == AppUiOriginMode.ISOLATED_LOOPBACK) {
+      if (requestOriginDiffersFromSession(session, cors)) {
+        cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+        return originMismatch("App browser session origin does not match the request origin.");
+      }
+      Optional<AppUiOriginBinding> binding = appUiOriginRegistry.bindingForOrigin(cors.origin());
+      if (binding.isEmpty()
+          || !binding.get().appId().equals(session.appId())
+          || !binding.get().isolatedAndActive()) {
+        cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+        return originMismatch("App browser origin is not currently registered for this app.");
+      }
+      return null;
+    }
+    if (cors.fromRegisteredAppOrigin(appUiOriginRegistry)) {
+      cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+      return originMismatch(
+          "Same-origin fallback app browser session cannot be used from an isolated app origin.");
+    }
+    if (requestOriginConflictsWithFallbackSession(session, cors)) {
+      cors.allowIfRegistered(cors.origin(), appUiOriginRegistry);
+      return originMismatch("App browser session origin does not match the request origin.");
+    }
+    return null;
+  }
+
+  private static boolean requestOriginDiffersFromSession(
+      AppBrowserSession session, CorsRequest cors) {
+    return cors.origin() == null || !cors.origin().equals(session.expectedOrigin());
+  }
+
+  private static boolean requestOriginConflictsWithFallbackSession(
+      AppBrowserSession session, CorsRequest cors) {
+    return cors.origin() != null
+        && session.expectedOrigin() != null
+        && requestOriginDiffersFromSession(session, cors);
+  }
+
+  private static PrincipalResolution originMismatch(String message) {
+    return new PrincipalResolution(
+        null, PlatformApiResponse.error(403, "origin_mismatch", message));
   }
 
   private static String directAppTokenFromHeader(HTTPRequest request) {
@@ -966,6 +1095,43 @@ public final class PlatformApiToadlet extends Toadlet {
     return rawPath != null ? rawPath : uri.getPath();
   }
 
+  private void writeCorsPreflightResponse(CorsRequest cors, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!cors.preflightAllowed(appUiOriginRegistry)) {
+      writeJsonReply(
+          ctx,
+          PlatformApiResponse.error(
+              403, "origin_mismatch", "App browser origin is not allowed for Platform API CORS."),
+          true);
+      return;
+    }
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
+    addCorsHeaders(headers, cors.origin());
+    headers.put(ACCESS_CONTROL_MAX_AGE_HEADER, "600");
+    ctx.sendReplyHeaders(204, "No Content", headers, null, 0L, true);
+  }
+
+  private static PlatformApiResponse responseWithCors(
+      PlatformApiResponse response, CorsRequest cors) {
+    if (cors.allowedResponseOrigin() == null) {
+      return response;
+    }
+    LinkedHashMap<String, String> headers =
+        LinkedHashMap.newLinkedHashMap(response.headers().size() + 3);
+    headers.putAll(response.headers());
+    headers.put(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER, cors.allowedResponseOrigin());
+    headers.put(VARY_HEADER, "Origin");
+    return new PlatformApiResponse(
+        response.statusCode(), response.reasonPhrase(), headers, response.body());
+  }
+
+  private static void addCorsHeaders(MultiValueTable<String, String> headers, String origin) {
+    headers.put(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER, origin);
+    headers.put(VARY_HEADER, CORS_VARY_VALUE);
+    headers.put(ACCESS_CONTROL_ALLOW_METHODS_HEADER, ALLOWED_CORS_METHODS);
+    headers.put(ACCESS_CONTROL_ALLOW_HEADERS_HEADER, ALLOWED_CORS_HEADERS);
+  }
+
   /**
    * Writes the Platform API response back through the legacy HTTP shell.
    *
@@ -1001,5 +1167,98 @@ public final class PlatformApiToadlet extends Toadlet {
         replyHeaders.headers(),
         replyHeaders.mimeType(),
         body.length);
+  }
+
+  private static final class CorsRequest {
+    private final String origin;
+    private final String requestedMethod;
+    private final String requestedHeaders;
+    private String allowedResponseOrigin;
+
+    private CorsRequest(String origin, String requestedMethod, String requestedHeaders) {
+      this.origin = normalizedHeader(origin);
+      this.requestedMethod = normalizedHeader(requestedMethod);
+      this.requestedHeaders = normalizedHeader(requestedHeaders);
+    }
+
+    private static CorsRequest from(HTTPRequest request) {
+      return new CorsRequest(
+          request.getHeader(ORIGIN_HEADER),
+          request.getHeader(ACCESS_CONTROL_REQUEST_METHOD_HEADER),
+          request.getHeader(ACCESS_CONTROL_REQUEST_HEADERS_HEADER));
+    }
+
+    private String origin() {
+      return origin;
+    }
+
+    private String allowedResponseOrigin() {
+      return allowedResponseOrigin;
+    }
+
+    private boolean preflight() {
+      return origin != null && requestedMethod != null;
+    }
+
+    private boolean preflightAllowed(AppUiOriginRegistry registry) {
+      return registry.isRegisteredOrigin(origin)
+          && allowedCorsMethod(requestedMethod)
+          && allowedCorsHeaders(requestedHeaders);
+    }
+
+    private boolean fromRegisteredAppOrigin(AppUiOriginRegistry registry) {
+      return origin != null && registry.isRegisteredOrigin(origin);
+    }
+
+    private void allowIfRegistered(String expectedOrigin, AppUiOriginRegistry registry) {
+      if (origin == null
+          || !origin.equals(expectedOrigin)
+          || !registry.isRegisteredOrigin(origin)) {
+        return;
+      }
+      allowedResponseOrigin = origin;
+    }
+
+    private static boolean allowedCorsMethod(String method) {
+      return "GET".equalsIgnoreCase(method)
+          || "POST".equalsIgnoreCase(method)
+          || DELETE_METHOD.equalsIgnoreCase(method);
+    }
+
+    private static boolean allowedCorsHeaders(String requestedHeaders) {
+      if (requestedHeaders == null || requestedHeaders.isBlank()) {
+        return true;
+      }
+      int start = 0;
+      while (start <= requestedHeaders.length()) {
+        int comma = requestedHeaders.indexOf(',', start);
+        String normalized =
+            (comma < 0
+                    ? requestedHeaders.substring(start)
+                    : requestedHeaders.substring(start, comma))
+                .trim();
+        if (!normalized.isEmpty() && !allowedCorsHeader(normalized)) {
+          return false;
+        }
+        if (comma < 0) {
+          break;
+        }
+        start = comma + 1;
+      }
+      return true;
+    }
+
+    private static boolean allowedCorsHeader(String header) {
+      return APP_SESSION_HEADER.equalsIgnoreCase(header)
+          || "accept".equalsIgnoreCase(header)
+          || "content-type".equalsIgnoreCase(header);
+    }
+
+    private static String normalizedHeader(String value) {
+      if (value == null || value.isBlank()) {
+        return null;
+      }
+      return value.trim();
+    }
   }
 }
