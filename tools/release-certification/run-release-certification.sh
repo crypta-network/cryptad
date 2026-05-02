@@ -112,8 +112,9 @@ if [[ ${#SKIP_GRADLE_ARG[@]} -eq 0 && "$MODE" == "pr" && "${CRYPTAD_CERT_RUN_GRA
   SKIP_GRADLE_ARG=(--skip-gradle)
 fi
 
+rm -f "$APP_SMOKE_SUMMARY" "$APP_SMOKE_OUT_DIR/app-platform-smoke-report.md"
+
 if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
-  rm -f "$APP_SMOKE_SUMMARY" "$APP_SMOKE_OUT_DIR/app-platform-smoke-report.md"
   set +e
   python3 "$ROOT_DIR/tools/release-certification/app_platform_smoke.py" \
     --workspace-root "$ROOT_DIR" \
@@ -126,6 +127,8 @@ if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
   if [[ "$APP_SMOKE_EXIT" -ne 0 ]]; then
     echo "App-platform smoke exited with $APP_SMOKE_EXIT; certification aggregation will record the evidence state." >&2
   fi
+else
+  rm -rf "$APP_SMOKE_OUT_DIR/artifacts"
 fi
 
 exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
