@@ -333,9 +333,18 @@ class WebShellResourcesTest {
     assertTrue(script.contains(": url.href;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));
-    assertTrue(script.contains("const isolatedLaunchHref = isolatedAppUiLaunchHref(app);"));
+    assertTrue(script.contains("const isolatedFallbackHref = isolatedAppUiFallbackHref(app);"));
     assertTrue(script.contains("function isolatedAppUiLaunchHref(app)"));
+    assertTrue(script.contains("url.searchParams.set(isolatedLaunchParameter, \"1\");"));
+    assertTrue(script.contains("function isolatedAppUiFallbackHref(app)"));
     assertTrue(script.contains("return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);"));
+    assertTrue(script.contains("function isolatedAppUiProbeHref(app)"));
+    assertTrue(
+        script.contains("async function isolatedAppOriginReachable(probeHref, expectedAppId)"));
+    assertTrue(script.contains("const probeOrigin = new URL(probeHref).origin;"));
+    assertTrue(script.contains("credentials: \"omit\""));
+    assertTrue(script.contains("mode: \"cors\""));
+    assertTrue(script.contains("data.uiOrigin === probeOrigin"));
     assertTrue(script.contains("function isolatedAppUiActive(app)"));
     assertTrue(script.contains("function appSandboxStatus(app, runtime)"));
     assertTrue(script.contains("function sandboxLabel(status)"));

@@ -29,13 +29,16 @@ import network.crypta.support.io.FileBucket;
 /**
  * Legacy HTTP bridge for app-owned static browser UI routes.
  *
- * <p>The toadlet preserves the legacy {@code /apps/{appId}/} compatibility route while redirecting
- * app roots to isolated loopback origins when a binding is active. It keeps the legacy HTTP
- * transport details out of the reusable app UI resolver and performs the checks that depend on the
- * current HTTP context, such as full-access authorization, method-specific body handling, redirect
- * responses, and conversion from platform security-header maps into the legacy {@link
- * MultiValueTable} representation. Filesystem confinement, AppHost lookup, manifest-mode filtering,
- * content-type selection, and symlink rejection stay in {@link AppStaticAssetService}.
+ * <p>The toadlet preserves the legacy {@code /apps/{appId}/} compatibility route as an explicit
+ * same-origin fallback. Web Shell can request an isolated launch after proving that the per-app
+ * loopback origin is reachable from the current browser, but ordinary compatibility links stay on
+ * the admin origin so remote, proxied, container-mapped, and tunneled sessions do not receive
+ * client-local {@code 127.0.0.1} redirects. The adapter keeps the legacy HTTP transport details out
+ * of the reusable app UI resolver and performs the checks that depend on the current HTTP context,
+ * such as full-access authorization, method-specific body handling, redirect responses, and
+ * conversion from platform security-header maps into the legacy {@link MultiValueTable}
+ * representation. Filesystem confinement, AppHost lookup, manifest-mode filtering, content-type
+ * selection, and symlink rejection stay in {@link AppStaticAssetService}.
  *
  * <p>Responses use the normal dynamic header path rather than the legacy public static-file helper.
  * The route is stable across app updates, so month-long public caching would otherwise leave
@@ -59,13 +62,16 @@ public final class AppUiToadlet extends Toadlet {
   /** JSON media type used for dynamic first-party static UI bootstrap metadata. */
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
 
+  /** Internal query parameter used by Web Shell after browser-side isolated-origin probing. */
+  private static final String ISOLATED_LAUNCH_PARAMETER = "cryptadIsolatedLaunch";
+
   /** Request-scoped resolver that keeps AppHost and filesystem validation outside this adapter. */
   private final AppStaticAssetService assetService;
 
   /** Request-scoped resolver for the reserved dynamic bootstrap resource. */
   private final AppUiBootstrapService bootstrapService;
 
-  /** Optional registry used to redirect static app roots to isolated loopback origins. */
+  /** Optional registry used for explicit isolated loopback launches. */
   private final AppUiOriginRegistry appUiOriginRegistry;
 
   /**
@@ -202,14 +208,19 @@ public final class AppUiToadlet extends Toadlet {
         return;
       }
       Optional<AppUiOriginBinding> isolatedBinding = isolatedBindingFor(requestPath);
-      if (isolatedBinding.isPresent() && AppUiRoute.parse(requestPath).assetPath() == null) {
+      if (isolatedBinding.isPresent()
+          && AppUiRoute.parse(requestPath).assetPath() == null
+          && isolatedLaunchRequested(uri)) {
         String launchUrl =
             includeBody
                 ? appUiOriginRegistry
                     .launchUrlForApp(isolatedBinding.get().appId())
                     .orElse(isolatedBinding.get().uiUrl())
                 : isolatedBinding.get().uiUrl();
-        writeRedirect(ctx, appendRawQuery(launchUrl, uri.getRawQuery()), includeBody);
+        writeRedirect(
+            ctx,
+            appendRawQuery(launchUrl, rawQueryWithoutIsolatedLaunch(uri.getRawQuery())),
+            includeBody);
         return;
       }
       Optional<String> canonicalRootRedirect = assetService.canonicalRootRedirect(requestPath);
@@ -423,6 +434,59 @@ public final class AppUiToadlet extends Toadlet {
     return appUiOriginRegistry
         .bindingForApp(route.appId())
         .filter(AppUiOriginBinding::isolatedAndActive);
+  }
+
+  private static boolean isolatedLaunchRequested(URI uri) {
+    return rawQueryContainsParameter(uri.getRawQuery(), ISOLATED_LAUNCH_PARAMETER);
+  }
+
+  private static boolean rawQueryContainsParameter(String rawQuery, String expectedParameterName) {
+    if (rawQuery == null || rawQuery.isBlank()) {
+      return false;
+    }
+    int start = 0;
+    while (start <= rawQuery.length()) {
+      int ampersand = rawQuery.indexOf('&', start);
+      String part =
+          ampersand < 0 ? rawQuery.substring(start) : rawQuery.substring(start, ampersand);
+      if (expectedParameterName.equals(parameterName(part))) {
+        return true;
+      }
+      if (ampersand < 0) {
+        return false;
+      }
+      start = ampersand + 1;
+    }
+    return false;
+  }
+
+  private static String rawQueryWithoutIsolatedLaunch(String rawQuery) {
+    if (rawQuery == null || rawQuery.isBlank()) {
+      return null;
+    }
+    StringBuilder kept = new StringBuilder();
+    int start = 0;
+    while (start <= rawQuery.length()) {
+      int ampersand = rawQuery.indexOf('&', start);
+      String part =
+          ampersand < 0 ? rawQuery.substring(start) : rawQuery.substring(start, ampersand);
+      if (!ISOLATED_LAUNCH_PARAMETER.equals(parameterName(part))) {
+        if (!kept.isEmpty()) {
+          kept.append('&');
+        }
+        kept.append(part);
+      }
+      if (ampersand < 0) {
+        break;
+      }
+      start = ampersand + 1;
+    }
+    return kept.isEmpty() ? null : kept.toString();
+  }
+
+  private static String parameterName(String rawQueryPart) {
+    int equals = rawQueryPart.indexOf('=');
+    return equals < 0 ? rawQueryPart : rawQueryPart.substring(0, equals);
   }
 
   private AppUiOriginBinding fallbackBinding(String requestPath) throws AppStaticAssetException {

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -16,6 +17,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,6 +28,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import network.crypta.platform.api.PlatformApiPaths;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
@@ -66,7 +69,9 @@ import org.slf4j.LoggerFactory;
  * <p>Bootstrap JSON is guarded by a short-lived launch nonce. The nonce is placed in the Web Shell
  * launch URL fragment and must be echoed in {@value #BOOTSTRAP_NONCE_HEADER}; ordinary local
  * processes that can reach the loopback port do not receive a browser-session token without that
- * launch proof.
+ * launch proof. A separate token-free origin probe allows Web Shell to check whether the current
+ * browser can actually reach the loopback listener before it asks the admin compatibility route for
+ * a nonce-bearing launch redirect.
  *
  * @see AppUiOriginRegistry
  * @see AppUiOriginBinding
@@ -94,6 +99,11 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
    */
   static final String BOOTSTRAP_NONCE_FRAGMENT_PARAMETER = "cryptadBootstrapNonce";
 
+  /**
+   * Token-free metadata endpoint used by Web Shell to confirm browser reachability before launch.
+   */
+  static final String ORIGIN_PROBE_PATH = "/.well-known/cryptad-origin.json";
+
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
   private static final String TEXT_CONTENT_TYPE = "text/plain";
 
@@ -101,6 +111,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   private final AppStaticAssetService assetService;
   private final AppUiBootstrapService bootstrapService;
   private final BootstrapNonceStore bootstrapNonces = new BootstrapNonceStore();
+  private final URI adminRootUri;
   private final String platformApiRoot;
   private final String shellRoot;
   private final BooleanSupplier javascriptEnabled;
@@ -131,6 +142,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     this.assetService = new AppStaticAssetService(appHost);
     this.bootstrapService = new AppUiBootstrapService(appHost, sessionIssuer);
     String normalizedAdminRoot = normalizeAdminRoot(adminRoot);
+    this.adminRootUri = parseAdminRoot(normalizedAdminRoot);
     this.platformApiRoot = appendRootPath(normalizedAdminRoot, PlatformApiPaths.API_V1_PREFIX);
     this.shellRoot = appendRootPath(normalizedAdminRoot, WebShellPaths.SHELL_ROOT);
     this.javascriptEnabled = Objects.requireNonNull(javascriptEnabled, "javascriptEnabled");
@@ -302,6 +314,10 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       return;
     }
     AppUiOriginBinding binding = refreshed.binding().get();
+    if (ORIGIN_PROBE_PATH.equals(exchange.getRequestURI().getRawPath())) {
+      writeOriginProbe(exchange, binding, includeBody);
+      return;
+    }
     String adminPath = toAdminAppPath(binding.appId(), exchange.getRequestURI().getRawPath());
     try {
       if (AppUiBootstrapService.isBootstrapRequest(adminPath)) {
@@ -367,6 +383,22 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     sendBytes(exchange, 200, appHeaders(binding), body, JSON_CONTENT_TYPE, true);
   }
 
+  private void writeOriginProbe(
+      HttpExchange exchange, AppUiOriginBinding binding, boolean includeBody) throws IOException {
+    Map<String, Object> body = LinkedHashMap.newLinkedHashMap(4);
+    body.put("appId", binding.appId());
+    body.put("uiOrigin", binding.origin());
+    body.put("uiOriginMode", binding.mode().jsonValue());
+    body.put("uiOriginStatus", binding.status().jsonValue());
+    sendBytes(
+        exchange,
+        200,
+        originProbeHeaders(exchange),
+        PlatformApiJsonWriter.write(body).getBytes(StandardCharsets.UTF_8),
+        JSON_CONTENT_TYPE,
+        includeBody);
+  }
+
   private void writeAsset(
       HttpExchange exchange, AppUiOriginBinding binding, AppStaticAsset asset, boolean includeBody)
       throws IOException {
@@ -393,6 +425,46 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     }
     headers.add("cache-control", "no-store");
     return headers;
+  }
+
+  private Headers originProbeHeaders(HttpExchange exchange) {
+    Headers headers = new Headers();
+    allowedAdminCorsOrigin(exchange)
+        .ifPresent(
+            origin -> {
+              headers.add("access-control-allow-origin", origin);
+              headers.add("vary", "Origin");
+            });
+    headers.add("cache-control", "no-store");
+    return headers;
+  }
+
+  private Optional<String> allowedAdminCorsOrigin(HttpExchange exchange) {
+    String origin = exchange.getRequestHeaders().getFirst("Origin");
+    if (origin == null || origin.isBlank()) {
+      return Optional.empty();
+    }
+    try {
+      URI originUri = URI.create(origin.trim());
+      String rawPath = originUri.getRawPath();
+      if ((rawPath != null && !rawPath.isEmpty())
+          || originUri.getRawQuery() != null
+          || originUri.getRawFragment() != null) {
+        return Optional.empty();
+      }
+      if (!Objects.equals(adminRootUri.getScheme(), originUri.getScheme())) {
+        return Optional.empty();
+      }
+      if (!localAdminHost(originUri.getHost())) {
+        return Optional.empty();
+      }
+      if (effectivePort(originUri) != effectivePort(adminRootUri)) {
+        return Optional.empty();
+      }
+      return Optional.of(origin.trim());
+    } catch (IllegalArgumentException exception) {
+      return Optional.empty();
+    }
   }
 
   private boolean validBootstrapProof(AppUiOriginBinding binding, HttpExchange exchange) {
@@ -505,6 +577,15 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     return value.endsWith("/") ? value : value + "/";
   }
 
+  private static URI parseAdminRoot(String adminRoot) {
+    URI uri = URI.create(adminRoot);
+    if (uri.getScheme() == null || uri.getHost() == null || effectivePort(uri) < 0) {
+      throw new IllegalArgumentException(
+          "adminRoot must include an HTTP(S) scheme, host, and port");
+    }
+    return uri;
+  }
+
   private static String appendRootPath(String root, String path) {
     String relativePath = path.startsWith("/") ? path.substring(1) : path;
     return root + relativePath;
@@ -512,6 +593,24 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
 
   private static InetAddress advertisedLoopbackAddress() throws IOException {
     return InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
+  }
+
+  private static boolean localAdminHost(String host) {
+    return AppUiOrigin.LOOPBACK_HOST.equals(host) || "localhost".equalsIgnoreCase(host);
+  }
+
+  private static int effectivePort(URI uri) {
+    int explicitPort = uri.getPort();
+    if (explicitPort >= 0) {
+      return explicitPort;
+    }
+    if ("http".equalsIgnoreCase(uri.getScheme())) {
+      return 80;
+    }
+    if ("https".equalsIgnoreCase(uri.getScheme())) {
+      return 443;
+    }
+    return -1;
   }
 
   private static String appendBootstrapNonceFragment(String url, String nonce) {

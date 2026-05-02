@@ -87,10 +87,13 @@ The legacy HTTP admin adapter still mounts static app UI compatibility paths suc
 /apps/{appId}/.well-known/cryptad-bootstrap.json
 ```
 
-When an isolated origin is active, `GET /apps/{appId}/` redirects to the app's isolated UI URL with
-a short-lived bootstrap nonce in the URL fragment. `GET /apps/{appId}` still redirects to
-`/apps/{appId}/` first. Static asset paths under `/apps/{appId}/static/...` remain available as an
-explicit same-origin fallback for compatibility and diagnostics.
+The compatibility route stays same-origin by default, even when an isolated origin is active.
+`GET /apps/{appId}` still redirects to `/apps/{appId}/` first, and the fallback root then serves a
+root entry directly or redirects to the static entry directory. Web Shell opens the isolated path
+only after the browser can read a token-free origin probe from the per-app loopback listener; that
+explicit launch request receives the short-lived bootstrap nonce in the isolated URL fragment.
+Static asset paths under `/apps/{appId}/static/...` remain available as an explicit same-origin
+fallback for compatibility and diagnostics.
 
 When isolation is unavailable or an operator opens the explicit fallback path, a static entry at
 the bundle root can be served directly from `/apps/{appId}/`. For nested entries such as

@@ -48,11 +48,13 @@ On isolated app origins, bootstrap data comes from the current origin:
 GET /.well-known/cryptad-bootstrap.json
 ```
 
-When Web Shell opens an isolated app, the admin compatibility route adds a short-lived launch proof
-to the app URL fragment. The SDK reads `cryptadBootstrapNonce` from that fragment, keeps it only in
-memory, and sends it to the same-origin bootstrap endpoint as
-`X-Crypta-App-Bootstrap-Nonce`. Directly opening a public isolated `uiUrl` without that launch
-proof can load static assets, but bootstrap will not issue an app browser-session token.
+When Web Shell opens an isolated app, it first checks a token-free origin probe on the app loopback
+listener from the current browser. If that probe is reachable, Web Shell sends an explicit launch
+request through the admin compatibility route, which adds a short-lived launch proof to the app URL
+fragment. The SDK reads `cryptadBootstrapNonce` from that fragment, keeps it only in memory, and
+sends it to the same-origin bootstrap endpoint as `X-Crypta-App-Bootstrap-Nonce`. Directly opening a
+public isolated `uiUrl` without that launch proof can load static assets, but bootstrap will not
+issue an app browser-session token.
 
 On the compatibility route, bootstrap data comes from:
 

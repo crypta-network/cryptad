@@ -23,6 +23,8 @@
     wizardSnapshot: null,
   };
   const directDownloadOperation = "create_direct_download";
+  const isolatedLaunchParameter = "cryptadIsolatedLaunch";
+  const isolatedOriginProbePath = "/.well-known/cryptad-origin.json";
   const publisherDefaultCompatibilityMode = "COMPAT_CURRENT";
   const queueState = {
     page: "downloads",
@@ -940,9 +942,9 @@
   }
 
   function appUiHref(app) {
-    const isolatedLaunchHref = isolatedAppUiLaunchHref(app);
-    if (isolatedLaunchHref || isolatedAppUiActive(app)) {
-      return isolatedLaunchHref;
+    const isolatedFallbackHref = isolatedAppUiFallbackHref(app);
+    if (isolatedFallbackHref || isolatedAppUiActive(app)) {
+      return isolatedFallbackHref;
     }
     const explicitHref = normalizeAppUiEntryHref(app.uiUrl, app);
     if (explicitHref) {
@@ -958,10 +960,35 @@
   }
 
   function isolatedAppUiLaunchHref(app) {
+    const fallbackHref = isolatedAppUiFallbackHref(app);
+    if (!fallbackHref) {
+      return null;
+    }
+    const url = new URL(fallbackHref, window.location.origin);
+    url.searchParams.set(isolatedLaunchParameter, "1");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function isolatedAppUiFallbackHref(app) {
     if (!isolatedAppUiActive(app)) {
       return null;
     }
     return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);
+  }
+
+  function isolatedAppUiProbeHref(app) {
+    if (!isolatedAppUiActive(app) || typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+      return null;
+    }
+    try {
+      const url = new URL(isolatedOriginProbePath, app.uiOrigin);
+      if (!allowedAppUiOrigin(url, app)) {
+        return null;
+      }
+      return url.href;
+    } catch (error) {
+      return null;
+    }
   }
 
   function isolatedAppUiActive(app) {
@@ -979,8 +1006,86 @@
     link.className = "button button-secondary";
     link.href = href;
     link.textContent = "Open";
+    const isolatedLaunchHref = isolatedAppUiLaunchHref(app);
+    const isolatedProbeHref = isolatedAppUiProbeHref(app);
+    if (
+      isolatedLaunchHref &&
+      isolatedProbeHref &&
+      typeof app.appId === "string" &&
+      app.appId.length > 0
+    ) {
+      link.dataset.isolatedLaunchHref = isolatedLaunchHref;
+      link.dataset.isolatedProbeHref = isolatedProbeHref;
+      link.dataset.isolatedAppId = app.appId;
+    }
     container.append(link);
     return container;
+  }
+
+  function appUiLaunchClickTarget(event) {
+    if (
+      !(event instanceof MouseEvent) ||
+      event.button !== 0 ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    ) {
+      return null;
+    }
+    const anchor = event.target instanceof Element
+      ? event.target.closest("a[data-isolated-launch-href]")
+      : null;
+    return anchor instanceof HTMLAnchorElement ? anchor : null;
+  }
+
+  async function launchAppUiFromLink(link) {
+    const fallbackHref = link.getAttribute("href") || "";
+    const isolatedLaunchHref = link.dataset.isolatedLaunchHref || "";
+    const probeHref = link.dataset.isolatedProbeHref || "";
+    const expectedAppId = link.dataset.isolatedAppId || "";
+    if (
+      isolatedLaunchHref &&
+      await isolatedAppOriginReachable(probeHref, expectedAppId)
+    ) {
+      window.location.assign(isolatedLaunchHref);
+      return;
+    }
+    window.location.assign(fallbackHref);
+  }
+
+  async function isolatedAppOriginReachable(probeHref, expectedAppId) {
+    if (!probeHref || !expectedAppId) {
+      return false;
+    }
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timeoutId = controller
+      ? window.setTimeout(() => controller.abort(), 1000)
+      : null;
+    try {
+      const probeOrigin = new URL(probeHref).origin;
+      const response = await fetch(probeHref, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "omit",
+        mode: "cors",
+        signal: controller ? controller.signal : undefined,
+      });
+      const data = await response.json().catch(() => ({}));
+      return (
+        response.ok &&
+        data &&
+        data.appId === expectedAppId &&
+        data.uiOrigin === probeOrigin &&
+        data.uiOriginStatus === "active"
+      );
+    } catch (error) {
+      return false;
+    } finally {
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+      }
+    }
   }
 
   function appSandboxStatus(app, runtime) {
@@ -3665,6 +3770,14 @@
     appsControls.refreshButton.addEventListener("click", () => {
       setAppsStatus("Refreshing installed apps and catalogs.");
       loadAppsSection();
+    });
+    sections.apps.addEventListener("click", async (event) => {
+      const link = appUiLaunchClickTarget(event);
+      if (!link) {
+        return;
+      }
+      event.preventDefault();
+      await launchAppUiFromLink(link);
     });
     sections.apps.addEventListener("submit", async (event) => {
       const form = event.target;

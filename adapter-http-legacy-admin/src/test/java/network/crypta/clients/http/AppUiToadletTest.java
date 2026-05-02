@@ -3,12 +3,15 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,6 +45,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -113,7 +117,26 @@ class AppUiToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenIsolatedOriginActive_expectRootRedirectToIsolatedLaunchUrl()
+  void handleMethodGET_whenIsolatedOriginActive_expectSameOriginFallbackByDefault()
+      throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    AppUiOriginBinding binding = isolatedBinding(snapshot);
+    AppUiToadlet toadlet =
+        spy(
+            new AppUiToadlet(
+                new InMemoryAppHost(snapshot),
+                mock(AppBrowserSessionIssuer.class),
+                registryWithLaunchUrl(binding, binding.uiUrl() + "#cryptadBootstrapNonce=test")));
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+
+    toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/?view=queue"), request, ctx);
+
+    verify(toadlet)
+        .writeTemporaryRedirect(ctx, "Redirecting to app UI.", "/apps/demo-app/static/?view=queue");
+  }
+
+  @Test
+  void handleMethodGET_whenIsolatedLaunchRequested_expectRootRedirectToIsolatedLaunchUrl()
       throws Exception {
     InstalledAppSnapshot snapshot = staticApp("static/index.html");
     AppUiOriginBinding binding = isolatedBinding(snapshot);
@@ -126,7 +149,10 @@ class AppUiToadletTest {
                 registryWithLaunchUrl(binding, launchUrl)));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
-    toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/?view=queue"), request, ctx);
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/apps/demo-app/?cryptadIsolatedLaunch=1&view=queue"),
+        request,
+        ctx);
 
     String expectedLaunchUrl = binding.uiUrl() + "?view=queue#cryptadBootstrapNonce=test-nonce";
     verify(toadlet).writeTemporaryRedirect(ctx, "Redirecting to app UI.", expectedLaunchUrl);
@@ -157,6 +183,35 @@ class AppUiToadletTest {
       assertTrue(
           response.body().contains("\"platformApiRoot\":\"https://127.0.0.1:9443/api/v1/\""));
       assertTrue(response.body().contains("\"shellRoot\":\"https://127.0.0.1:9443/app/node/\""));
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenOriginProbeRequestedFromLocalAdminOrigin_expectCorsMetadata()
+      throws Exception {
+    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
+
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+
+      String probeUrl = binding.uiRoot() + AppUiLoopbackOriginServer.ORIGIN_PROBE_PATH.substring(1);
+      RawHttpResponseCapture response =
+          rawHttpGet(
+              probeUrl, Map.of("Origin", "http://localhost:8888", "Accept", "application/json"));
+      RawHttpResponseCapture remoteOriginResponse =
+          rawHttpGet(
+              probeUrl,
+              Map.of("Origin", "http://admin.example:8888", "Accept", "application/json"));
+
+      assertEquals(200, response.statusCode());
+      assertEquals("http://localhost:8888", response.header("access-control-allow-origin"));
+      assertTrue(response.body().contains("\"appId\":\"demo-app\""));
+      assertTrue(response.body().contains("\"uiOrigin\":\"" + binding.origin() + "\""));
+      assertEquals(200, remoteOriginResponse.statusCode());
+      assertNull(remoteOriginResponse.header("access-control-allow-origin"));
     }
   }
 
@@ -810,6 +865,31 @@ class AppUiToadletTest {
     return httpRequest("HEAD", url, Map.of());
   }
 
+  private static RawHttpResponseCapture rawHttpGet(String url, Map<String, String> headers)
+      throws IOException {
+    URI uri = URI.create(url);
+    String target =
+        uri.getRawQuery() == null ? uri.getRawPath() : uri.getRawPath() + "?" + uri.getRawQuery();
+    try (Socket socket = new Socket(uri.getHost(), uri.getPort())) {
+      socket.setSoTimeout(2000);
+      StringBuilder request = new StringBuilder("GET ").append(target).append(" HTTP/1.1\r\n");
+      request
+          .append("Host: ")
+          .append(uri.getHost())
+          .append(':')
+          .append(uri.getPort())
+          .append("\r\n");
+      request.append("Connection: close\r\n");
+      headers.forEach(
+          (name, value) -> request.append(name).append(": ").append(value).append("\r\n"));
+      request.append("\r\n");
+      socket.getOutputStream().write(request.toString().getBytes(StandardCharsets.ISO_8859_1));
+      socket.getOutputStream().flush();
+      return RawHttpResponseCapture.parse(
+          new String(socket.getInputStream().readAllBytes(), StandardCharsets.ISO_8859_1));
+    }
+  }
+
   private static HttpResponseCapture httpRequest(
       String method, String url, Map<String, String> headers) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
@@ -940,6 +1020,37 @@ class AppUiToadletTest {
 
     private long contentLength() {
       return connection.getContentLengthLong();
+    }
+  }
+
+  private record RawHttpResponseCapture(int statusCode, Map<String, String> headers, String body) {
+    private static RawHttpResponseCapture parse(String response) {
+      int headerEnd = response.indexOf("\r\n\r\n");
+      String headerText = headerEnd < 0 ? response : response.substring(0, headerEnd);
+      String body = headerEnd < 0 ? "" : response.substring(headerEnd + 4);
+      List<String> headerLines = headerText.lines().toList();
+      int statusCode = parseStatusCode(headerLines.get(0));
+      Map<String, String> headers = new HashMap<>();
+      for (int i = 1; i < headerLines.size(); i++) {
+        String headerLine = headerLines.get(i);
+        int colon = headerLine.indexOf(':');
+        if (colon > 0) {
+          headers.put(
+              headerLine.substring(0, colon).toLowerCase(Locale.ROOT),
+              headerLine.substring(colon + 1).trim());
+        }
+      }
+      return new RawHttpResponseCapture(statusCode, headers, body);
+    }
+
+    private static int parseStatusCode(String statusLine) {
+      int firstSpace = statusLine.indexOf(' ');
+      int secondSpace = statusLine.indexOf(' ', firstSpace + 1);
+      return Integer.parseInt(statusLine.substring(firstSpace + 1, secondSpace));
+    }
+
+    private String header(String name) {
+      return headers.get(name.toLowerCase(Locale.ROOT));
     }
   }
 

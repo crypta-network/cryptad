@@ -114,12 +114,14 @@ the expected browser origin, and must not be persisted by app JavaScript. Invali
 fail with `401 invalid_app_browser_session`; mismatched isolated origins fail with
 `403 origin_mismatch`.
 
-Isolated bootstrap token issuance also requires an admin/Web Shell launch proof. The Web Shell opens
-static apps through the same-origin compatibility launch route, which redirects to the isolated
-origin with a short-lived nonce in the URL fragment. The SDK echoes that proof as
-`X-Crypta-App-Bootstrap-Nonce` before the loopback server returns a browser-session token. Public
-app-origin URLs and app summaries do not contain this proof and are not enough to mint browser
-sessions.
+Isolated bootstrap token issuance also requires an admin/Web Shell launch proof. Web Shell first
+checks that the current browser can read a token-free origin probe from the app loopback listener.
+Only then does it send an explicit same-origin compatibility launch request, which redirects to the
+isolated origin with a short-lived nonce in the URL fragment. If the probe is not reachable, such as
+from a remote browser or a single-port tunnel, the compatibility route remains a same-origin
+fallback. The SDK echoes the launch proof as `X-Crypta-App-Bootstrap-Nonce` before the loopback
+server returns a browser-session token. Public app-origin URLs and app summaries do not contain this
+proof and are not enough to mint browser sessions.
 
 Platform API CORS for app browsers is restricted to active registered app UI origins. It never uses
 wildcard `Access-Control-Allow-Origin`, never allows cookies or local-admin credentials, and does
