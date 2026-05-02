@@ -146,6 +146,17 @@ def utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def path_prefix_variants(path: Path | str) -> list[str]:
+    variants: list[str] = []
+    for candidate in (Path(path), Path(path).resolve()):
+        candidate_text = str(candidate)
+        for value in (candidate_text, candidate_text.replace("\\", "/")):
+            normalized = value.rstrip("/\\")
+            if normalized and normalized not in variants:
+                variants.append(normalized)
+    return variants
+
+
 def display_path(path: Path | str, workspace_root: Path, out_dir: Path | None = None) -> str:
     raw = str(path)
     if not raw:
@@ -242,9 +253,8 @@ def scrub_text(text: str, workspace_root: Path) -> str:
     redacted = URI_KEY_RE.sub("<redacted-uri>", redacted)
     redacted = FILE_URI_PATH_RE.sub(scrub_file_uri_match, redacted)
     redacted, protected_routes = protect_route_paths(redacted)
-    root_text = str(workspace_root.resolve())
-    redacted = redacted.replace(root_text, "<repo>")
-    redacted = redacted.replace(root_text.replace("\\", "/"), "<repo>")
+    for root_text in path_prefix_variants(workspace_root):
+        redacted = replace_absolute_path_prefix(redacted, root_text, "<repo>")
     home = str(Path.home())
     if home and home != "/":
         redacted = replace_absolute_path_prefix(redacted, home, "<home>")
@@ -1497,6 +1507,20 @@ def run_self_test(repo_root: Path) -> None:
         scrub_text(str(repo_tmp_path), repo_root)
         == "<repo>/build/tmp-release-certification/app-platform-smoke/summary.json"
     )
+    with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-symlink-target-") as target_name:
+        with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-symlink-parent-") as link_parent_name:
+            symlink_root = Path(link_parent_name) / "repo-link"
+            try:
+                symlink_root.symlink_to(Path(target_name), target_is_directory=True)
+            except (NotImplementedError, OSError):
+                symlink_root = None
+            if symlink_root is not None:
+                symlink_repo_root = symlink_root / "repo"
+                symlink_path = symlink_repo_root / "build/tmp-release-certification/app-platform-smoke/summary.json"
+                assert (
+                    scrub_text(str(symlink_path), symlink_repo_root)
+                    == "<repo>/build/tmp-release-certification/app-platform-smoke/summary.json"
+                )
     assert (
         normalize_redacted_separators(r"<repo>\build\tmp-release-certification\app-platform-smoke\summary.json")
         == "<repo>/build/tmp-release-certification/app-platform-smoke/summary.json"

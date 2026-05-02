@@ -140,6 +140,17 @@ def write_text(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8")
 
 
+def path_prefix_variants(path: Path | str) -> list[str]:
+    variants: list[str] = []
+    for candidate in (Path(path), Path(path).resolve()):
+        candidate_text = str(candidate)
+        for value in (candidate_text, candidate_text.replace("\\", "/")):
+            normalized = value.rstrip("/\\")
+            if normalized and normalized not in variants:
+                variants.append(normalized)
+    return variants
+
+
 def display_path(path: Path | str, workspace_root: Path, out_dir: Path | None = None) -> str:
     raw = str(path)
     if raw == "":
@@ -238,14 +249,12 @@ def scrub_text(text: str, workspace_root: Path, out_dir: Path | None = None) -> 
     redacted, protected_routes = protect_route_paths(redacted)
     for artifact_name in PRIVATE_ARTIFACT_NAMES:
         redacted = redacted.replace(artifact_name, "<redacted-private-artifact>")
-    root_text = str(workspace_root.resolve())
-    redacted = redacted.replace(root_text, "<repo>")
-    redacted = redacted.replace(root_text.replace("\\", "/"), "<repo>")
+    for root_text in path_prefix_variants(workspace_root):
+        redacted = replace_absolute_path_prefix(redacted, root_text, "<repo>")
     if out_dir is not None:
-        out_text = str(out_dir.resolve())
         out_display = display_path(out_dir, workspace_root)
-        redacted = redacted.replace(out_text, out_display)
-        redacted = redacted.replace(out_text.replace("\\", "/"), out_display)
+        for out_text in path_prefix_variants(out_dir):
+            redacted = replace_absolute_path_prefix(redacted, out_text, out_display)
     home = str(Path.home())
     if home and home != "/":
         redacted = replace_absolute_path_prefix(redacted, home, "<home>")
@@ -1101,6 +1110,23 @@ def run_self_test(repo_root: Path) -> None:
             scrub_text(str(repo_tmp_path), workspace, out_dir)
             == "<repo>/build/tmp-release-certification/release-certification-summary.json"
         )
+        with tempfile.TemporaryDirectory(prefix="cryptad-cert-symlink-target-") as target_name:
+            with tempfile.TemporaryDirectory(prefix="cryptad-cert-symlink-parent-") as link_parent_name:
+                symlink_root = Path(link_parent_name) / "repo-link"
+                try:
+                    symlink_root.symlink_to(Path(target_name), target_is_directory=True)
+                except (NotImplementedError, OSError):
+                    symlink_root = None
+                if symlink_root is not None:
+                    symlink_workspace = symlink_root / "repo"
+                    symlink_out_dir = symlink_workspace / "build/release-certification"
+                    symlink_path = (
+                        symlink_workspace / "build/tmp-release-certification/release-certification-summary.json"
+                    )
+                    assert (
+                        scrub_text(str(symlink_path), symlink_workspace, symlink_out_dir)
+                        == "<repo>/build/tmp-release-certification/release-certification-summary.json"
+                    )
         assert (
             normalize_redacted_separators(r"<repo>\build\tmp-release-certification\release-certification-summary.json")
             == "<repo>/build/tmp-release-certification/release-certification-summary.json"
