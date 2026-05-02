@@ -29,9 +29,10 @@ Build: 2
 - Stabilization only: allow critical fixes/docs/release tasks; avoid large refactors.
 - Do not rebase/squash release merges.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
-  truth. Current release gates include first-party app staging/signing/verification, catalog and
-  app-owned UI smoke when those surfaces ship, `crypta-app` CLI smoke when developer tooling
-  changes, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
+  truth. Current release gates include the release certification report, first-party app
+  staging/signing/verification, catalog and app-owned UI smoke, `crypta-app` CLI smoke, legacy-admin
+  retirement evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance
+  smoke.
 
 ---
 
@@ -47,6 +48,16 @@ git checkout -b release/<build-number>
    Follow the release gates in `docs/cryptad-release-workflow-and-runbook.md`; load
    `$cryptad-build-test`, `$cryptad-platform-apps`, and `$cryptad-interop-performance-gates` when
    those areas are involved.
+
+   Before promotion, generate or verify the release-candidate certification artifacts:
+   ```sh
+   tools/release-certification/run-release-certification.sh \
+     --mode release-candidate \
+     --out-dir build/release-certification
+   ```
+   Preserve `build/release-certification/release-certification-summary.json`,
+   `build/release-certification/release-certification-report.md`, and sanitized
+   `build/release-certification/artifacts/`.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
@@ -80,12 +91,19 @@ git push origin v<build-number>
 ## Checklist
 - [ ] `build.gradle.kts` version is the intended integer build number.
 - [ ] CI green on `release/<build-number>`.
+- [ ] Release certification report generated in `release-candidate` mode and required evidence
+      passed or has an explicit release-manager waiver.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
+- [ ] Signed catalog, app-owned UI, and legacy-admin retirement evidence are present in the
+      certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
       performance-sensitive changes require it.
+- [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, form
+      passwords, app tokens, browser-session tokens, raw request bodies, and unsanitized local
+      paths.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

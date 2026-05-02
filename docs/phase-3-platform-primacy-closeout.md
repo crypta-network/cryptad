@@ -2,9 +2,10 @@
 
 This document records the Phase 3 Platform Primacy state after PR-194: what landed, which modules
 owned the platform surfaces at closeout, which release gates must pass, and which work stayed
-deferred at that snapshot. Later Phase 4 app-platform work has since added signed app catalogs and
-app-owned static UI routes; those current contracts live in [app-catalogs.md](app-catalogs.md) and
-[app-owned-ui.md](app-owned-ui.md).
+deferred at that snapshot. Later app-platform work has since added signed app catalogs,
+app-owned static UI routes, and release-certification evidence aggregation. Current contracts live
+in [app-catalogs.md](app-catalogs.md), [app-owned-ui.md](app-owned-ui.md), and
+[release-certification.md](release-certification.md).
 
 ## Status
 
@@ -153,7 +154,11 @@ Treat these gates as blockers before promoting a release that ships the platform
    persistence, restart behavior, USK/SSK request handling, packaging layout, or node startup.
 10. Run or verify the packaged-node performance smoke when release readiness or
    performance-sensitive changes require it.
-11. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
+11. Generate `build/release-certification/release-certification-report.md` and
+   `build/release-certification/release-certification-summary.json` after the source gates have
+   produced their summaries. The report aggregates interop, performance, app-platform, catalog,
+   app-owned UI, legacy-admin retirement, and CI evidence for the release candidate.
+12. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
    fails or when Tier 2 evidence is part of the release record. Shared diagnostics must exclude
    `artifacts/private-insert-uris.json`.
 

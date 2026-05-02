@@ -1,0 +1,84 @@
+{
+  "evidence": [
+    {
+      "details": {
+        "apps": [
+          "queue-manager",
+          "publisher"
+        ]
+      },
+      "id": "app-platform.first-party",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party staged app manifests and static assets passed."
+    },
+    {
+      "details": {
+        "sampleAppId": "cert-smoke"
+      },
+      "id": "app-platform.devtools-cli",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "crypta-app init, validate, and pack passed."
+    },
+    {
+      "details": {
+        "keyId": "dev-local"
+      },
+      "id": "app-platform.signed-bundles",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party and sample bundle signing evidence passed."
+    },
+    {
+      "details": {
+        "catalogId": "cert-smoke"
+      },
+      "id": "catalog.smoke",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Catalog create, sign, and verify smoke passed."
+    },
+    {
+      "details": {
+        "sdkResource": "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+      },
+      "id": "app-ui.smoke",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-owned UI and SDK smoke passed."
+    },
+    {
+      "details": {
+        "pendingSurfaces": 2,
+        "primaryReplacedSurfaces": 14,
+        "retainedSurfaces": 4
+      },
+      "id": "legacy.retirement",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin retirement map is visible and stable."
+    },
+    {
+      "details": {
+        "enabled": false
+      },
+      "id": "apphost.live",
+      "requiredForReleaseCandidate": false,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "skip",
+      "summary": "Live AppHost lifecycle smoke was not requested."
+    }
+  ],
+  "generatedAt": "2026-05-01T00:00:00Z",
+  "mode": "release-candidate",
+  "schemaVersion": 1,
+  "status": "pass",
+  "tool": "app-platform-smoke"
+}

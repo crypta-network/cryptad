@@ -1,0 +1,41 @@
+final class LegacyAdminRetirementRegistry {
+  private static final List<LegacyAdminSurface> SURFACES =
+      List.of(
+          infrastructure("web-shell", "Web Shell", "/app/node/", "Shell."),
+          replaced("alerts", "Alerts", "/alerts/", "/app/node/#alerts", "Shell alerts", "Done."),
+          replaced("downloads", "Downloads", "/downloads/", "/apps/queue-manager/", "Queue Manager", "Done."),
+          pendingWizard("first-time-wizard", "First-time wizard", "/wizard/", "Pending."),
+          pending("node-to-node-message", "N2NTM", "/send_n2ntm/", null, null, "Pending.", true),
+          retained("help", "Help", "/help/", "Retained."));
+
+  private static final Map<String, LegacyAdminSurface> SURFACES_BY_ID = surfacesById();
+
+  public static List<LegacyAdminSurface> webShellFallbackSurfaces() {
+    return SURFACES.stream().filter(LegacyAdminSurface::includeInWebShellFallbackLinks).toList();
+  }
+
+  public static boolean shouldPromoteInLegacyNavigation(String legacyPath) {
+    return findByLegacyPath(legacyPath)
+        .map(surface -> surface.state() != LegacyAdminRetirementState.PRIMARY_REPLACED)
+        .orElse(true);
+  }
+
+  private static LegacyAdminSurface replaced(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        true,
+        false);
+  }
+}

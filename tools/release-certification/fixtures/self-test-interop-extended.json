@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    "artifacts/interop-report.md",
+    "artifacts/usk-subscribe-soak.json",
+    "artifacts/persistent-request-replay.json"
+  ],
+  "baseline": {
+    "kind": "fixture",
+    "name": "hyphanet",
+    "sha256": "0123456789abcdef",
+    "version": "1506"
+  },
+  "enabled_flows": [
+    "handshake",
+    "peer_exchange",
+    "chk_cross_fetch",
+    "ssk_cross_fetch",
+    "usk_smoke",
+    "usk_subscribe_soak",
+    "persistent_request_replay",
+    "restart_recovery"
+  ],
+  "flows": {
+    "chk_cross_fetch": {
+      "status": "passed"
+    },
+    "handshake": {
+      "status": "passed"
+    },
+    "peer_exchange": {
+      "status": "passed"
+    },
+    "persistent_request_replay": {
+      "status": "passed"
+    },
+    "restart_recovery": {
+      "status": "passed"
+    },
+    "ssk_cross_fetch": {
+      "status": "passed"
+    },
+    "usk_smoke": {
+      "status": "passed"
+    },
+    "usk_subscribe_soak": {
+      "status": "passed"
+    }
+  },
+  "mode": "extended",
+  "restart_recovery_checks": [
+    "cryptad_fcp_reconnected",
+    "cryptad_identity_stable",
+    "peer_relationship_reconnected"
+  ],
+  "restart_recovery_level": "restart-and-refetch",
+  "status": "success"
+}

@@ -213,6 +213,35 @@ jobs:
         shell: bash
         run: ${{ matrix.python_cmd }} tools/perf/perf_smoke.py --self-test
 
+  release-certification-self-test:
+    name: release certification self-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python_cmd: python3
+          - os: macos-latest
+            python_cmd: python3
+          - os: windows-latest
+            python_cmd: py -3
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Run release certification self-tests
+        shell: bash
+        run: |
+          ${{ matrix.python_cmd }} tools/release-certification/release_certification.py --self-test
+          ${{ matrix.python_cmd }} tools/release-certification/app_platform_smoke.py --self-test
+
   dependency-submission:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
 

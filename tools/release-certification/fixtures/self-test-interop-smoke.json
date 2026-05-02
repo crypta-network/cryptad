@@ -1,0 +1,56 @@
+{
+  "artifacts": [
+    "artifacts/interop-report.md",
+    "artifacts/private-insert-uris.json"
+  ],
+  "baseline": {
+    "kind": "fixture",
+    "name": "hyphanet",
+    "sha256": "0123456789abcdef",
+    "version": "1506"
+  },
+  "enabled_flows": [
+    "handshake",
+    "peer_exchange",
+    "chk_cross_fetch",
+    "ssk_cross_fetch",
+    "usk_smoke",
+    "restart_recovery"
+  ],
+  "flows": {
+    "chk_cross_fetch": {
+      "status": "passed"
+    },
+    "handshake": {
+      "status": "passed"
+    },
+    "peer_exchange": {
+      "status": "passed"
+    },
+    "restart_recovery": {
+      "status": "passed"
+    },
+    "ssk_cross_fetch": {
+      "status": "passed"
+    },
+    "usk_smoke": {
+      "status": "passed"
+    }
+  },
+  "mode": "smoke",
+  "restart_recovery_checks": [
+    "cryptad_fcp_reconnected",
+    "cryptad_identity_stable",
+    "peer_relationship_reconnected",
+    "persistent_requests_listed_before_and_after_restart",
+    "hyphanet_refetched_cryptad_chk_after_restart",
+    "hyphanet_refetched_cryptad_ssk_after_restart",
+    "hyphanet_refetched_cryptad_usk_after_restart"
+  ],
+  "restart_recovery_level": "restart-and-refetch",
+  "status": "success",
+  "uris": [
+    "USK@private/self-test"
+  ],
+  "workspace_root": "/tmp/private/workspace"
+}

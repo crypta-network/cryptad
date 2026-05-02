@@ -1,0 +1,40 @@
+{
+  "baseline": {
+    "path": "tools/perf/baselines/performance-smoke.json",
+    "updated": false,
+    "version": 1
+  },
+  "comparison": {
+    "not_compared": [],
+    "regressions": [],
+    "skipped": [],
+    "status": "pass",
+    "warnings": []
+  },
+  "duration_ms": 1234,
+  "environment": {
+    "os": "Linux",
+    "python": "3.12"
+  },
+  "finished_at": "2026-05-01T00:00:01Z",
+  "metrics": {
+    "apps.publisher_static_bytes": {
+      "status": "collected",
+      "unit": "bytes",
+      "value": 2048
+    },
+    "apps.queue_manager_static_bytes": {
+      "status": "collected",
+      "unit": "bytes",
+      "value": 2048
+    },
+    "distribution.exists": {
+      "status": "collected",
+      "unit": "boolean",
+      "value": true
+    }
+  },
+  "mode": "smoke",
+  "started_at": "2026-05-01T00:00:00Z",
+  "status": "success"
+}

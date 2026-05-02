@@ -301,6 +301,12 @@ Important files:
 - `artifacts/kept-processes.json` is written only when `INTEROP_KEEP_WORKDIR=1`.
 - `logs/*.stdout.log` and `logs/*.stderr.log` capture each launched process.
 
+The release certification workflow consumes `build/interop-smoke/summary.json` as required
+`interop.smoke` evidence and `build/interop-extended/summary.json` as optional
+`interop.extended` evidence unless compatibility-sensitive behavior makes Tier 2 mandatory under
+the release runbook. The certification aggregator filters `artifacts/private-insert-uris.json`
+even if a source summary references it.
+
 `summary.json` uses these top-level fields:
 
 | Field | Meaning |
@@ -395,7 +401,9 @@ blocked until the project pins a portable baseline artifact for those platforms.
 
 A release record should name the host OS, baseline, command line, timeout settings, whether opennet
 was enabled, the `SubscribeUSK` duration, persistent replay identifier, and the final
-`summary.json` path. Release records must not include `artifacts/private-insert-uris.json`.
+`summary.json` path. The release certification report copies sanitized interop summaries into
+`build/release-certification/artifacts/`. Release records must not include
+`artifacts/private-insert-uris.json`.
 
 ## Release-readiness expectations
 
