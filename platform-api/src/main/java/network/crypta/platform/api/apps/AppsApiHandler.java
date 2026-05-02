@@ -669,10 +669,11 @@ public final class AppsApiHandler {
   }
 
   private AppUiOriginBinding uiOriginBinding(AppManifest manifest) {
+    AppUiOriginBinding binding = appUiOriginRegistry.bindingForApp(manifest.appId()).orElse(null);
     if (manifest.uiMode() != AppUiMode.STATIC) {
       return null;
     }
-    return appUiOriginRegistry.bindingForApp(manifest.appId()).orElse(null);
+    return binding;
   }
 
   private static String sameOriginFallbackUrl(AppManifest manifest) {

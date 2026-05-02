@@ -207,6 +207,37 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  void update_whenUiModeStopsBeingStatic_expectOriginRegistryRefreshesStaleBinding()
+      throws IOException {
+    InstalledAppSnapshot staticSnapshot = snapshot(AppUiMode.STATIC, "static/index.html");
+    AppUiOriginBinding staleBinding =
+        AppUiOriginBinding.isolatedLoopback(
+            staticSnapshot.manifest(),
+            AppUiOrigin.loopback(APP_ID, 12345),
+            "http://127.0.0.1:8888/api/v1/",
+            "http://127.0.0.1:8888/app/node/");
+    RecordingOriginRegistry registry = new RecordingOriginRegistry(staleBinding);
+    InstalledAppSnapshot updatedSnapshot = snapshot(AppUiMode.SHELL_PANEL, SHELL_PANEL_ENTRY);
+    SingleAppHost appHost = new SingleAppHost(updatedSnapshot);
+    appHost.updateResult = updatedSnapshot;
+    AppsApiHandler handler = new AppsApiHandler(appHost, new AppAuditLog(), registry);
+    Path stagedDir = stageApp(tempDir.resolve("staged-shell-panel-update"));
+    Map<String, List<String>> updateParameters =
+        Map.of(STAGED_DIR_PARAMETER, List.of(stagedDir.toString()));
+
+    Map<String, Object> summary = handler.update(APP_ID, updateParameters);
+
+    assertEquals(1, appHost.updateCalls);
+    assertEquals(1, registry.bindingForAppCalls);
+    assertEquals(APP_ID, registry.lastAppId);
+    assertEquals("shell-panel", summary.get(FIELD_UI_MODE));
+    assertEquals(SHELL_PANEL_ENTRY, summary.get(FIELD_UI_URL));
+    assertNull(summary.get("uiOrigin"));
+    assertNull(summary.get("uiOriginMode"));
+    assertNull(summary.get("uiOriginStatus"));
+  }
+
+  @Test
   void get_whenNoUiAppInstalled_expectUiUrlIsNull() {
     AppsApiHandler handler = new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.NONE, null)));
 
@@ -498,6 +529,23 @@ class AppsApiHandlerTest {
     return appId -> binding.appId().equals(appId) ? Optional.of(binding) : Optional.empty();
   }
 
+  private static final class RecordingOriginRegistry implements AppUiOriginRegistry {
+    private final AppUiOriginBinding binding;
+    private int bindingForAppCalls;
+    private String lastAppId;
+
+    private RecordingOriginRegistry(AppUiOriginBinding binding) {
+      this.binding = binding;
+    }
+
+    @Override
+    public Optional<AppUiOriginBinding> bindingForApp(String appId) {
+      bindingForAppCalls++;
+      lastAppId = appId;
+      return binding.appId().equals(appId) ? Optional.of(binding) : Optional.empty();
+    }
+  }
+
   private static final class ThrowingAppHost implements AppHost {
     private IOException installFailure;
     private IOException updateFailure;
@@ -566,11 +614,13 @@ class AppsApiHandlerTest {
 
   private static final class SingleAppHost implements AppHost {
     private final InstalledAppSnapshot snapshot;
+    private InstalledAppSnapshot updateResult;
     private AppRuntimeStatusSnapshot runtimeStatus;
     private AppProcessLogSnapshot processLog;
     private IOException describeFailure;
     private IOException runtimeStatusFailure;
     private IOException startFailure;
+    private int updateCalls;
     private boolean stopResult;
     private int stopCalls;
 
@@ -584,8 +634,16 @@ class AppsApiHandlerTest {
     }
 
     @Override
-    public InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory) {
-      throw new UnsupportedOperationException();
+    public InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory)
+        throws IOException {
+      updateCalls++;
+      if (!APP_ID.equals(appId)) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      if (updateResult == null) {
+        throw new UnsupportedOperationException();
+      }
+      return updateResult;
     }
 
     @Override

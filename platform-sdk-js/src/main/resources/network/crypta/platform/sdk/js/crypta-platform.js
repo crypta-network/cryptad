@@ -182,7 +182,18 @@
     }
 
     const body = toUrlSearchParams(formDataOrParams);
+    try {
+      return await fetchFormMutation(method, path, body, requestOptions);
+    } catch (error) {
+      if (!shouldRefreshAfterSessionError(error, requestOptions)) {
+        throw error;
+      }
+      await refreshBootstrap(requestOptions);
+      return fetchFormMutation(method, path, body, requestOptions);
+    }
+  }
 
+  async function fetchFormMutation(method, path, body, requestOptions) {
     const headers = appSessionHeaders(requestOptions.headers);
     headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
     const response = await fetch(apiUrl(path), {

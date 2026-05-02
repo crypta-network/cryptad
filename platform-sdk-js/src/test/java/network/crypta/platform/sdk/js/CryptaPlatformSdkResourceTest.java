@@ -74,6 +74,10 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("await refreshBootstrap(requestOptions);"));
     assertTrue(script.contains("return fetchApiGet(path, requestOptions);"));
     assertTrue(script.contains("await refreshBootstrapForMutation(requestOptions);"));
+    assertTrue(script.contains("function fetchFormMutation(method, path, body, requestOptions)"));
+    assertTrue(
+        script.contains("return await fetchFormMutation(method, path, body, requestOptions);"));
+    assertTrue(script.contains("return fetchFormMutation(method, path, body, requestOptions);"));
   }
 
   @Test
