@@ -705,7 +705,10 @@ def determine_overall_status(mode: str, evidence: list[EvidenceItem]) -> tuple[s
         for item in evidence
         if item.required_for_release_candidate and item.status == "warn" and not item.details.get("waived")
     ]
-    any_warnish = any(item.status in {"warn", "missing", "skip", "fail"} for item in evidence)
+    any_warnish = any(
+        item.status in {"warn", "missing", "fail"} or (item.required_for_release_candidate and item.status == "skip")
+        for item in evidence
+    )
     if mode == "release-candidate":
         if required_bad:
             return "fail", False
@@ -1017,8 +1020,17 @@ def run_self_test(repo_root: Path) -> None:
         )
         summary, exit_code = run(settings)
         assert exit_code == 0, summary
-        assert summary["status"] in {"pass", "warn"}, summary
+        assert summary["status"] == "pass", summary
         assert summary["releaseCandidatePassed"] is True, summary
+        optional_skip_status, optional_skip_release_passed = determine_overall_status(
+            "release-candidate",
+            [
+                EvidenceItem("catalog.smoke", "pass", True, "passed", "<repo>/summary.json", {}),
+                EvidenceItem("apphost.live", "skip", False, "not requested", "<repo>/summary.json", {}),
+            ],
+        )
+        assert optional_skip_status == "pass", optional_skip_status
+        assert optional_skip_release_passed is True, optional_skip_release_passed
         report = (out_dir / REPORT_FILE_NAME).read_text(encoding="utf-8")
         assert "Release Certification Report" in report
         encoded = json.dumps(summary, sort_keys=True)

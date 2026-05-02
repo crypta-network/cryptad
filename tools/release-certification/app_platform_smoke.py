@@ -1297,7 +1297,10 @@ def overall_status(mode: str, evidence: list[EvidenceItem]) -> str:
         item.required_for_release_candidate and item.status in {"missing", "skip"} for item in evidence
     ):
         return "fail"
-    if any(item.status in {"warn", "skip", "missing", "fail"} for item in evidence):
+    if any(
+        item.status in {"warn", "missing", "fail"} or (item.required_for_release_candidate and item.status == "skip")
+        for item in evidence
+    ):
         return "warn"
     return "pass"
 
@@ -1646,6 +1649,23 @@ def run_self_test(repo_root: Path) -> None:
             [EvidenceItem("catalog.smoke", "missing", True, "missing", "<repo>/summary.json", {})],
         )
         == "warn"
+    )
+    assert (
+        overall_status(
+            "pr",
+            [EvidenceItem("apphost.live", "skip", False, "not requested", "<repo>/summary.json", {})],
+        )
+        == "pass"
+    )
+    assert (
+        overall_status(
+            "release-candidate",
+            [
+                EvidenceItem("catalog.smoke", "pass", True, "passed", "<repo>/summary.json", {}),
+                EvidenceItem("apphost.live", "skip", False, "not requested", "<repo>/summary.json", {}),
+            ],
+        )
+        == "pass"
     )
     with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
