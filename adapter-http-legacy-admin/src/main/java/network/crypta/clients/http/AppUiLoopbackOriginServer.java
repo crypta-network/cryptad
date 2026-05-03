@@ -308,7 +308,8 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     }
     boolean includeBody = "GET".equals(method);
     BindingRefresh refreshed = refreshBindingForRequest(bindingServer);
-    if (refreshed.binding().isEmpty()) {
+    Optional<AppUiOriginBinding> refreshedBinding = refreshed.binding();
+    if (refreshedBinding.isEmpty()) {
       try {
         sendText(exchange, 404, null, "App UI is not available.", includeBody);
       } finally {
@@ -316,7 +317,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       }
       return;
     }
-    AppUiOriginBinding binding = refreshed.binding().get();
+    AppUiOriginBinding binding = refreshedBinding.orElseThrow();
     if (ORIGIN_PROBE_PATH.equals(exchange.getRequestURI().getRawPath())) {
       writeOriginProbe(exchange, binding, includeBody);
       return;
@@ -465,7 +466,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
         return Optional.empty();
       }
       return Optional.of(origin.trim());
-    } catch (IllegalArgumentException exception) {
+    } catch (IllegalArgumentException _) {
       return Optional.empty();
     }
   }
@@ -757,7 +758,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
             fileKey == null ? null : fileKey.toString(),
             attributes.size(),
             attributes.lastModifiedTime().toMillis());
-      } catch (IOException e) {
+      } catch (IOException _) {
         return UNAVAILABLE;
       }
     }
