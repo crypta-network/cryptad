@@ -251,6 +251,14 @@ class AppUiToadletTest {
   }
 
   @Test
+  void loopbackOrigin_whenBrowserSessionExpires_expectLaunchProofStillCoversRenewal() {
+    assertTrue(
+        AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_LIFETIME.compareTo(
+                AppBrowserSessionStore.DEFAULT_LIFETIME)
+            > 0);
+  }
+
+  @Test
   void loopbackOrigin_whenBootstrapRequestedWithoutLaunchProof_expectUnauthorized()
       throws Exception {
     InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);

@@ -34,6 +34,7 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.appui.AppBrowserSessionIssuer;
+import network.crypta.platform.appui.AppBrowserSessionStore;
 import network.crypta.platform.appui.AppStaticAsset;
 import network.crypta.platform.appui.AppStaticAssetException;
 import network.crypta.platform.appui.AppStaticAssetService;
@@ -80,8 +81,11 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   private static final Logger LOG = LoggerFactory.getLogger(AppUiLoopbackOriginServer.class);
   private static final int BACKLOG = 16;
   private static final int BOOTSTRAP_NONCE_BYTES = 32;
+  // A launch proof must outlive one browser-session window so long-lived tabs can renew sessions.
+  private static final int BOOTSTRAP_NONCE_SESSION_WINDOWS = 8;
   static final int MAX_BOOTSTRAP_NONCES_PER_APP = 16;
-  private static final Duration BOOTSTRAP_NONCE_LIFETIME = Duration.ofHours(1);
+  static final Duration BOOTSTRAP_NONCE_LIFETIME =
+      AppBrowserSessionStore.DEFAULT_LIFETIME.multipliedBy(BOOTSTRAP_NONCE_SESSION_WINDOWS);
 
   /**
    * Request header that carries the Web Shell launch proof for isolated bootstrap fetches.
