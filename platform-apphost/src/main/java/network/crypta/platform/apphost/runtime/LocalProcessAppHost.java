@@ -57,8 +57,10 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
+import network.crypta.platform.apphost.sandbox.AppSandboxException;
 import network.crypta.platform.apphost.sandbox.AppSandboxLaunchContext;
 import network.crypta.platform.apphost.sandbox.AppSandboxLaunchPlan;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
 import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import org.jetbrains.annotations.NotNull;
@@ -297,7 +299,7 @@ public final class LocalProcessAppHost implements AppHost {
         new HostDependencies(
             LocalProcessAppHost::deleteRecursively,
             installVerificationPolicy,
-            AppSandboxProviders.defaults(),
+            AppSandboxProviders.defaults(appEnv),
             restartStormPolicy));
   }
 
@@ -336,7 +338,28 @@ public final class LocalProcessAppHost implements AppHost {
         new HostDependencies(
             managedTreeDeleter,
             installVerificationPolicy,
-            AppSandboxProviders.defaults(),
+            AppSandboxProviders.defaults(appEnv),
+            DEFAULT_RESTART_STORM_POLICY));
+  }
+
+  LocalProcessAppHost(
+      AppHostLayout layout,
+      Duration stopTimeout,
+      SecureRandom secureRandom,
+      AppEnv appEnv,
+      TimingConfig timing,
+      AppInstallVerificationPolicy installVerificationPolicy,
+      AppSandboxProviders sandboxProviders) {
+    this(
+        layout,
+        stopTimeout,
+        secureRandom,
+        appEnv,
+        timing,
+        new HostDependencies(
+            LocalProcessAppHost::deleteRecursively,
+            installVerificationPolicy,
+            sandboxProviders,
             DEFAULT_RESTART_STORM_POLICY));
   }
 
@@ -592,20 +615,31 @@ public final class LocalProcessAppHost implements AppHost {
     List<String> command = launchCommand(executable);
     Map<String, String> launchEnvironment = new LinkedHashMap<>();
     populateEnvironment(launchEnvironment, installation.manifest(), paths, token, appEnv);
-    AppSandboxLaunchPlan launchPlan =
-        sandboxProviders.prepareLaunch(
-            new AppSandboxLaunchContext(
-                normalizedAppId,
-                paths.installedRoot(),
-                paths.dataDir(),
-                paths.cacheDir(),
-                paths.runDir(),
-                paths.processLogFile().getParent(),
-                command,
-                launchEnvironment,
-                paths.installedRoot(),
-                installation.manifest().sandboxPolicy(),
-                appEnv));
+    AppSandboxLaunchPlan launchPlan;
+    try {
+      launchPlan =
+          sandboxProviders.prepareLaunch(
+              new AppSandboxLaunchContext(
+                  normalizedAppId,
+                  paths.installedRoot(),
+                  paths.dataDir(),
+                  paths.cacheDir(),
+                  paths.runDir(),
+                  paths.processLogFile().getParent(),
+                  command,
+                  launchEnvironment,
+                  paths.installedRoot(),
+                  installation.manifest().sandboxPolicy(),
+                  appEnv));
+    } catch (AppSandboxException exception) {
+      exception
+          .sandboxStatus()
+          .ifPresent(
+              status ->
+                  recordSandboxLaunchRejection(
+                      normalizedAppId, paths, currentRestartAttempt, status));
+      throw exception;
+    }
     ProcessBuilder builder = new ProcessBuilder(launchPlan.command());
     builder.directory(launchPlan.workingDirectory().toFile());
     builder.redirectErrorStream(true);
@@ -757,6 +791,17 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   /**
+   * Returns inactive sandbox status using this host's configured provider registry.
+   *
+   * @param policy requested sandbox policy from an installed manifest
+   * @return token-free inactive sandbox status for installed and stopped summaries
+   */
+  @Override
+  public AppSandboxStatus inactiveSandboxStatus(AppSandboxPolicy policy) {
+    return sandboxProviders.inactiveStatusFor(policy);
+  }
+
+  /**
    * Authenticates a launch token against refreshed live runtime state.
    *
    * @param token opaque launch token presented by an app process
@@ -802,18 +847,15 @@ public final class LocalProcessAppHost implements AppHost {
         describe(normalizedAppId)
             .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
     RuntimeRecord runtimeRecord = runtimeRecords.get(normalizedAppId);
+    AppSandboxStatus installedSandboxStatus =
+        inactiveSandboxStatus(installed.manifest().sandboxPolicy());
     if (runtimeRecord == null) {
-      runtimeRecord =
-          RuntimeRecord.stopped(
-              installed.paths(),
-              AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy()));
+      runtimeRecord = RuntimeRecord.stopped(installed.paths(), installedSandboxStatus);
     }
     return statusSnapshot(
         normalizedAppId,
         installed.manifest(),
-        runtimeRecord.withoutRunningProcess(
-            installed.paths(),
-            AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy())));
+        runtimeRecord.withoutRunningProcess(installed.paths(), installedSandboxStatus));
   }
 
   /**
@@ -1266,8 +1308,41 @@ public final class LocalProcessAppHost implements AppHost {
       String appId, RuntimeRecord scheduledRecord, Instant failedAt, IOException failure) {
     if (scheduledRecord.equals(runtimeRecords.get(appId))) {
       runtimeRecords.put(
-          appId, scheduledRecord.failedRestart(failedAt, restartFailureWarnings(failure)));
+          appId,
+          scheduledRecord.failedRestart(
+              failedAt,
+              restartFailureWarnings(failure),
+              sandboxStatusAfterLaunchFailure(scheduledRecord, failure)));
     }
+  }
+
+  private void recordSandboxLaunchRejection(
+      String appId,
+      InstalledAppPaths paths,
+      int currentRestartAttempt,
+      AppSandboxStatus sandboxStatus) {
+    if (hasScheduledRestartRecord(appId, currentRestartAttempt)) {
+      return;
+    }
+    runtimeRecords.put(appId, RuntimeRecord.stopped(paths, sandboxStatus));
+  }
+
+  private boolean hasScheduledRestartRecord(String appId, int currentRestartAttempt) {
+    if (currentRestartAttempt <= 0) {
+      return false;
+    }
+    RuntimeRecord runtimeRecord = runtimeRecords.get(appId);
+    return runtimeRecord != null
+        && runtimeRecord.state() == AppRuntimeState.RESTARTING
+        && runtimeRecord.currentRestartAttempt() == currentRestartAttempt;
+  }
+
+  private static AppSandboxStatus sandboxStatusAfterLaunchFailure(
+      RuntimeRecord scheduledRecord, IOException failure) {
+    if (failure instanceof AppSandboxException sandboxException) {
+      return sandboxException.sandboxStatus().orElse(scheduledRecord.sandboxStatus());
+    }
+    return scheduledRecord.sandboxStatus();
   }
 
   private static Path normalizeExistingDirectory(Path directory) throws IOException {
@@ -2978,13 +3053,14 @@ public final class LocalProcessAppHost implements AppHost {
           lastExitAt,
           lastExitCode,
           lastLaunchToken,
-          sandboxStatus,
+          inactiveSandboxStatus(sandboxStatus),
           restartCount,
           currentRestartAttempt,
           warnings);
     }
 
-    private RuntimeRecord failedRestart(Instant failedAt, List<String> additionalWarnings) {
+    private RuntimeRecord failedRestart(
+        Instant failedAt, List<String> additionalWarnings, AppSandboxStatus failedSandboxStatus) {
       List<String> mergedWarnings = new ArrayList<>(warnings);
       mergedWarnings.addAll(additionalWarnings);
       return new RuntimeRecord(
@@ -2996,7 +3072,7 @@ public final class LocalProcessAppHost implements AppHost {
           failedAt,
           lastExitCode,
           lastLaunchToken,
-          sandboxStatus,
+          inactiveSandboxStatus(failedSandboxStatus),
           restartCount,
           currentRestartAttempt,
           mergedWarnings.stream().distinct().toList());
@@ -3004,6 +3080,10 @@ public final class LocalProcessAppHost implements AppHost {
 
     private RuntimeRecord withoutRunningProcess(
         InstalledAppPaths installedPaths, AppSandboxStatus installedSandboxStatus) {
+      AppSandboxStatus refreshedSandboxStatus =
+          sandboxPolicyMatches(installedSandboxStatus)
+              ? inactiveSandboxStatus(sandboxStatus)
+              : installedSandboxStatus;
       if (running) {
         return new RuntimeRecord(
             installedPaths,
@@ -3014,14 +3094,19 @@ public final class LocalProcessAppHost implements AppHost {
             lastExitAt,
             lastExitCode,
             lastLaunchToken,
-            installedSandboxStatus,
+            refreshedSandboxStatus,
             restartCount,
             currentRestartAttempt,
             warnings);
       }
-      return paths.equals(installedPaths) && sandboxStatus.equals(installedSandboxStatus)
+      return paths.equals(installedPaths) && refreshedSandboxStatus.equals(sandboxStatus)
           ? this
-          : withPathsAndSandboxStatus(installedPaths, installedSandboxStatus);
+          : withPathsAndSandboxStatus(installedPaths, refreshedSandboxStatus);
+    }
+
+    private boolean sandboxPolicyMatches(AppSandboxStatus installedSandboxStatus) {
+      return sandboxStatus.mode() == installedSandboxStatus.mode()
+          && sandboxStatus.required() == installedSandboxStatus.required();
     }
 
     private RuntimeRecord withPathsAndSandboxStatus(
@@ -3035,10 +3120,43 @@ public final class LocalProcessAppHost implements AppHost {
           lastExitAt,
           lastExitCode,
           lastLaunchToken,
-          installedSandboxStatus,
+          running ? installedSandboxStatus : inactiveSandboxStatus(installedSandboxStatus),
           restartCount,
           currentRestartAttempt,
           warnings);
+    }
+
+    private static AppSandboxStatus inactiveSandboxStatus(AppSandboxStatus status) {
+      if (!status.active()) {
+        return status;
+      }
+      return new AppSandboxStatus(
+          status.mode(),
+          status.required(),
+          status.supportLevel(),
+          status.providerName(),
+          false,
+          "No sandbox restrictions are active because the app is not running; last launch provider"
+              + " was "
+              + status.providerName(),
+          inactiveSandboxWarnings(status));
+    }
+
+    private static List<String> inactiveSandboxWarnings(AppSandboxStatus status) {
+      ArrayList<String> inactiveWarnings = new ArrayList<>();
+      inactiveWarnings.add("Sandbox restrictions are not active because the app is not running");
+      for (String warning : status.warnings()) {
+        inactiveWarnings.add(inactiveSandboxWarning(warning));
+      }
+      return inactiveWarnings.stream().distinct().toList();
+    }
+
+    private static String inactiveSandboxWarning(String warning) {
+      return warning
+          .replace("Filesystem sandbox active", "Last launch used filesystem sandbox")
+          .replace(
+              "Best-effort restricted local process launch active",
+              "Last launch used best-effort restricted local process launch");
     }
 
     @Override

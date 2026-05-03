@@ -447,10 +447,11 @@ Phase 5 app-platform work added signed catalog sources, Crypta catalog transport
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
 sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
 Manager and Publisher UIs. Phase 6 starts moving static app UIs onto isolated per-app loopback
-origins while retaining `/apps/{appId}/` as a compatibility fallback. Installed apps can be
-launched through `/app/node/` shell-panel links or through isolated app UI URLs when the signed
-bundle declares `app.ui.mode=static`. The Web Shell Apps section uses `/api/v1/app-catalogs`
-metadata to show source, license, category, review,
+origins while retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced
+Linux AppHost process sandbox provider through bubblewrap for supported `restricted-process`
+launches. Installed apps can be launched through `/app/node/` shell-panel links or through isolated
+app UI URLs when the signed bundle declares `app.ui.mode=static`. The Web Shell Apps section uses
+`/api/v1/app-catalogs` metadata to show source, license, category, review,
 permission-rationale, version-difference, compatibility, and changelog details before install or
 update.
 
@@ -888,7 +889,8 @@ Root build also includes:
   levels, updates, wizard/welcome, alerts, diagnostics, apps, and app catalogs.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged and verified catalog app updates now flow through this core. It also reports sandbox
-  provider status, enforces positive AppHost-managed data/cache quotas at launch and restart
+  provider status, selects the Linux bubblewrap provider for enforced restricted-process launches
+  when available, enforces positive AppHost-managed data/cache quotas at launch and restart
   boundaries, and bounds managed process logs.
 - `:platform-app-ui`: app-owned static UI route and asset-resolution helpers used by the legacy
   HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`

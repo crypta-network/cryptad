@@ -89,10 +89,13 @@ Both fields are optional. Missing `sandbox.mode` defaults to `none`, and missing
 `sandbox.required` defaults to `false`. Unknown modes and malformed booleans fail manifest
 validation before a bundle is installed or launched.
 
-The `restricted-process` mode currently maps to AppHost's best-effort restricted local process
-provider. It preserves the existing sanitized environment, explicit working directory, and
-app-scoped mutable directories, but it is not a hard OS sandbox. The `wasm-preview` mode is reserved
-for a future provider and is unsupported by the default runtime.
+The `restricted-process` mode maps to AppHost's restricted-process provider selection. On Linux
+hosts with bubblewrap available, AppHost can launch through the `bubblewrap` provider and report
+`supportLevel=enforced`. On unsupported hosts, optional restricted-process apps fall back to
+best-effort launch hygiene with sanitized environment, explicit working directory, and app-scoped
+mutable directories. `sandbox.required=true` now requires an enforced restricted-process provider;
+best-effort support is not enough. The `wasm-preview` mode is reserved for a future provider and is
+unsupported by the default runtime.
 
 ## Quota Manifest Fields
 

@@ -67,6 +67,23 @@
     },
     {
       "details": {
+        "fixtureBacked": true,
+        "hostBubblewrapProbe": {
+          "enabled": false
+        },
+        "liveBubblewrapRequired": false,
+        "mode": "restricted-process",
+        "provider": "bubblewrap",
+        "supportLevel": "enforced"
+      },
+      "id": "apphost.sandbox-provider",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "AppHost sandbox provider contract passed using deterministic offline evidence."
+    },
+    {
+      "details": {
         "enabled": false
       },
       "id": "apphost.live",

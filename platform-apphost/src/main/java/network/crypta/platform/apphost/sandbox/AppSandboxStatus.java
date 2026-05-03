@@ -84,10 +84,10 @@ public record AppSandboxStatus(
    * Returns a default status for the requested policy before a process is launched.
    *
    * <p>Installed and stopped apps still need sandbox metadata in API and Shell summaries. This
-   * method reports the expected default support for the policy without claiming that a process is
-   * running or that restrictions are active. {@code restricted-process} reports best-effort because
-   * the default host has a conservative provider; {@code wasm-preview} reports unsupported because
-   * no default WASM provider exists.
+   * method reports conservative support for the policy without claiming that a process is running
+   * or that restrictions are active. {@code restricted-process} reports best-effort before launch
+   * because no enforced provider has been selected for a concrete launch plan; {@code wasm-preview}
+   * reports unsupported because no default WASM provider exists.
    *
    * @param policy requested manifest sandbox policy from an installed app
    * @return inactive status suitable for installed-but-stopped app summaries

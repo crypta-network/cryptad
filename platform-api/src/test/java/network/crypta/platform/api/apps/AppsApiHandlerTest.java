@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.api.AppAuditLog;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -27,6 +28,9 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
+import network.crypta.platform.apphost.sandbox.AppSandboxSupportLevel;
 import network.crypta.platform.appui.AppUiOrigin;
 import network.crypta.platform.appui.AppUiOriginBinding;
 import network.crypta.platform.appui.AppUiOriginRegistry;
@@ -34,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SuppressWarnings("java:S100")
@@ -192,6 +197,50 @@ class AppsApiHandlerTest {
     assertEquals("active", summary.get("uiOriginStatus"));
     assertEquals("/apps/demo-app/", summary.get("sameOriginFallbackUrl"));
     org.junit.jupiter.api.Assertions.assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void get_whenRunningAppHasEnforcedSandbox_expectSandboxSummaryIsTokenAndPathFree() {
+    InstalledAppSnapshot snapshot = snapshot(AppUiMode.NONE, null);
+    SingleAppHost appHost = new SingleAppHost(snapshot);
+    appHost.runningStatus =
+        new RunningAppSnapshot(
+            snapshot.manifest(),
+            snapshot.paths(),
+            "secret-token",
+            4242L,
+            java.time.Instant.parse(SAMPLE_INSTANT_TEXT),
+            enforcedSandboxStatus());
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    Map<?, ?> sandbox = (Map<?, ?>) summary.get("sandbox");
+    assertEquals("restricted-process", sandbox.get("mode"));
+    assertEquals("enforced", sandbox.get("supportLevel"));
+    assertEquals("bubblewrap", sandbox.get("provider"));
+    assertEquals(true, sandbox.get("active"));
+    assertFalse(summary.toString().contains("secret-token"));
+    assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void get_whenStoppedAppHostReportsProviderOverride_expectSandboxUsesInactiveHostStatus() {
+    SingleAppHost appHost = new SingleAppHost(optionalRestrictedSandboxSnapshot());
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+    appHost.inactiveSandboxStatus =
+        AppSandboxStatus.unsupported(
+            policy, "restricted-process sandbox is not available on this host");
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    Map<?, ?> sandbox = (Map<?, ?>) summary.get("sandbox");
+    assertEquals("restricted-process", sandbox.get("mode"));
+    assertEquals(false, sandbox.get("required"));
+    assertEquals("unsupported", sandbox.get("supportLevel"));
+    assertEquals("unsupported", sandbox.get("provider"));
+    assertEquals(false, sandbox.get("active"));
   }
 
   @Test
@@ -355,6 +404,41 @@ class AppsApiHandlerTest {
         List.of("Automatic restart suppressed after 5 attempts within 300000 ms."),
         runtime.get("warnings"));
     org.junit.jupiter.api.Assertions.assertFalse(runtime.toString().contains("token"));
+  }
+
+  @Test
+  void runtime_whenSandboxIsEnforced_expectSupportLevelAndProviderSerialized() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.runtimeStatus =
+        new AppRuntimeStatusSnapshot(
+            APP_ID,
+            AppRuntimeState.RUNNING,
+            true,
+            4242L,
+            java.time.Instant.parse(SAMPLE_INSTANT_TEXT),
+            null,
+            null,
+            0,
+            0,
+            true,
+            64L,
+            enforcedSandboxStatus(),
+            new AppQuotaStatus(
+                new AppQuotaPolicy(null, null, AppHost.DEFAULT_PROCESS_LOG_MAX_BYTES),
+                new AppQuotaUsage(0L, 0L, 64L),
+                List.of()),
+            List.of());
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> runtime = handler.runtime(APP_ID);
+
+    Map<?, ?> sandbox = (Map<?, ?>) runtime.get("sandbox");
+    assertEquals("restricted-process", sandbox.get("mode"));
+    assertEquals("enforced", sandbox.get("supportLevel"));
+    assertEquals("bubblewrap", sandbox.get("provider"));
+    assertEquals(true, sandbox.get("active"));
+    assertFalse(runtime.toString().contains("secret-token"));
+    assertFalse(runtime.toString().contains(tempDir.toString()));
   }
 
   @Test
@@ -525,6 +609,45 @@ class AppsApiHandlerTest {
     return new InstalledAppSnapshot(manifest, paths);
   }
 
+  private InstalledAppSnapshot optionalRestrictedSandboxSnapshot() {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            APP_ID,
+            "Demo App",
+            "1.0.0",
+            "bin/launch.sh",
+            AppUiMode.NONE,
+            null,
+            List.of(),
+            null,
+            null,
+            AppSandboxMode.RESTRICTED_PROCESS,
+            false);
+    InstalledAppPaths paths =
+        new InstalledAppPaths(
+            APP_ID,
+            tempDir.resolve("installed").resolve(APP_ID),
+            tempDir.resolve("data").resolve(APP_ID),
+            tempDir.resolve("cache").resolve(APP_ID),
+            tempDir.resolve("run").resolve(APP_ID));
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+
+  private static AppSandboxStatus enforcedSandboxStatus() {
+    return new AppSandboxStatus(
+        AppSandboxMode.RESTRICTED_PROCESS,
+        true,
+        AppSandboxSupportLevel.ENFORCED,
+        "bubblewrap",
+        true,
+        "Linux bubblewrap sandbox active",
+        List.of(
+            "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
+                + " directories",
+            "CPU, memory, and network restrictions are not enforced by this provider"));
+  }
+
   private static AppUiOriginRegistry registryWith(AppUiOriginBinding binding) {
     return appId -> binding.appId().equals(appId) ? Optional.of(binding) : Optional.empty();
   }
@@ -616,6 +739,8 @@ class AppsApiHandlerTest {
     private final InstalledAppSnapshot snapshot;
     private InstalledAppSnapshot updateResult;
     private AppRuntimeStatusSnapshot runtimeStatus;
+    private RunningAppSnapshot runningStatus;
+    private AppSandboxStatus inactiveSandboxStatus;
     private AppProcessLogSnapshot processLog;
     private IOException describeFailure;
     private IOException runtimeStatusFailure;
@@ -688,12 +813,19 @@ class AppsApiHandlerTest {
 
     @Override
     public Optional<RunningAppSnapshot> status(String appId) {
-      return Optional.empty();
+      return APP_ID.equals(appId) ? Optional.ofNullable(runningStatus) : Optional.empty();
     }
 
     @Override
     public List<RunningAppSnapshot> listRunning() {
-      return List.of();
+      return runningStatus == null ? List.of() : List.of(runningStatus);
+    }
+
+    @Override
+    public AppSandboxStatus inactiveSandboxStatus(AppSandboxPolicy policy) {
+      return inactiveSandboxStatus == null
+          ? AppHost.super.inactiveSandboxStatus(policy)
+          : inactiveSandboxStatus;
     }
 
     @Override

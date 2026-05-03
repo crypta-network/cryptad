@@ -181,6 +181,9 @@ class PlatformApiRouterTest {
     lenient()
         .when(appHost.runtimeStatus(any()))
         .thenAnswer(invocation -> stoppedRuntimeStatus(invocation.getArgument(0)));
+    lenient()
+        .when(appHost.inactiveSandboxStatus(any()))
+        .thenAnswer(invocation -> AppSandboxProviders.inactiveStatus(invocation.getArgument(0)));
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 

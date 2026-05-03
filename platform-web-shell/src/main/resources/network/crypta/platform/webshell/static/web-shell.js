@@ -1105,7 +1105,7 @@
     const mode = typeof status.mode === "string" ? status.mode : "";
     const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
     if (supportLevel === "enforced") {
-      return "Enforced sandbox";
+      return status.active === false ? inactiveEnforcedSandboxLabel(status) : "Enforced sandbox";
     }
     if (supportLevel === "best-effort") {
       return "Best-effort restricted process";
@@ -1119,13 +1119,22 @@
     return scalar(mode || supportLevel || "unknown");
   }
 
+  function inactiveEnforcedSandboxLabel(status) {
+    const reason = typeof status.reason === "string" ? status.reason : "";
+    const warnings = Array.isArray(status.warnings) ? status.warnings.join(" ") : "";
+    const statusText = `${reason} ${warnings}`.toLowerCase();
+    return statusText.includes("last launch")
+      ? "Last launch enforced sandbox"
+      : "Enforced sandbox available";
+  }
+
   function sandboxTone(status) {
     if (!status || typeof status !== "object") {
       return "is-warning";
     }
     const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
     if (supportLevel === "enforced") {
-      return "is-success";
+      return status.active === false ? "is-warning" : "is-success";
     }
     if (supportLevel === "unsupported" && status.required) {
       return "is-error";

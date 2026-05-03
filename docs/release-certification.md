@@ -85,10 +85,13 @@ Release-candidate mode requires these evidence ids:
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and direct fallback URLs remain documented. |
+| `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
-release changes compatibility-sensitive behavior.  `apphost.live` is optional stronger evidence
-because normal PR and scheduled CI must not require a live local node or operator form password.
+release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
+host-installed bubblewrap in normal CI; it uses source checks and fake/offline provider tests.
+`apphost.live` is optional stronger evidence because normal PR and scheduled CI must not require a
+live local node or operator form password.
 
 ## Waivers
 

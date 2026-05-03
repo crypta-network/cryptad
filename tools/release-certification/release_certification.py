@@ -556,6 +556,7 @@ def app_platform_evidence(
         "catalog.smoke",
         "app-ui.smoke",
         "legacy.retirement",
+        "apphost.sandbox-provider",
         "apphost.live",
     ]
     if summary is None:
@@ -846,6 +847,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-ui.smoke",
+        "apphost.sandbox-provider",
         "apphost.live",
     ):
         append_detail(lines, summary, evidence_id)

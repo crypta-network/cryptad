@@ -80,12 +80,14 @@ app-platform.signed-bundles
 catalog.smoke
 app-ui.smoke
 legacy.retirement
+apphost.sandbox-provider
 ```
 
-`interop.extended` and `apphost.live` are recorded as optional stronger evidence.  Extended interop
-is still required by the release runbook when compatibility-sensitive behavior changed.  Live
-AppHost lifecycle evidence is optional because normal PR CI must not require a running node or
-operator credentials.
+`apphost.sandbox-provider` uses deterministic source checks and fake/offline provider tests; it
+does not require host-installed bubblewrap in normal CI. `interop.extended` and `apphost.live` are
+recorded as optional stronger evidence. Extended interop is still required by the release runbook
+when compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
+normal PR CI must not require a running node or operator credentials.
 
 Record an explicit waiver when a release manager accepts missing optional or replacement evidence:
 

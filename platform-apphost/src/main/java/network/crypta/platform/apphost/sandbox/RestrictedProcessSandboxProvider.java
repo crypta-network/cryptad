@@ -63,6 +63,27 @@ public final class RestrictedProcessSandboxProvider implements AppSandboxProvide
   }
 
   /**
+   * Returns the inactive best-effort restricted-process status.
+   *
+   * <p>This status is used before a process has started or after provider selection chooses the
+   * compatibility restricted-process provider. It preserves the provider name and best-effort
+   * warnings while keeping {@code active=false}, so UI callers do not present launch hygiene as an
+   * active sandbox.
+   *
+   * @param policy requested sandbox policy from the app manifest
+   * @return token-free inactive best-effort status for installed and stopped summaries
+   */
+  @Override
+  public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+    AppSandboxPolicy checkedPolicy = Objects.requireNonNull(policy, "policy");
+    if (!supports(checkedPolicy)) {
+      return AppSandboxStatus.unsupported(
+          checkedPolicy, "restricted-process provider cannot handle requested sandbox mode");
+    }
+    return bestEffortStatus(checkedPolicy, false);
+  }
+
+  /**
    * Validates the AppHost launch context and returns a best-effort restricted launch plan.
    *
    * <p>The current provider does not rewrite the command or environment. Instead, it checks the
@@ -91,7 +112,7 @@ public final class RestrictedProcessSandboxProvider implements AppSandboxProvide
         checkedContext.command(),
         checkedContext.environment(),
         checkedContext.workingDirectory(),
-        bestEffortStatus(checkedContext.policy()));
+        bestEffortStatus(checkedContext.policy(), true));
   }
 
   private static void validateRestrictedLaunchContext(AppSandboxLaunchContext context)
@@ -125,19 +146,25 @@ public final class RestrictedProcessSandboxProvider implements AppSandboxProvide
     }
   }
 
-  private static AppSandboxStatus bestEffortStatus(AppSandboxPolicy policy) {
+  private static AppSandboxStatus bestEffortStatus(AppSandboxPolicy policy, boolean active) {
     ArrayList<String> warnings = new ArrayList<>();
     warnings.add(
         "restricted-process is best-effort in this host; it is not container, seccomp, chroot,"
             + " jail, or WASM isolation");
-    warnings.add("AppHost applied sanitized environment and app-scoped runtime directories");
+    if (active) {
+      warnings.add("AppHost applied sanitized environment and app-scoped runtime directories");
+    } else {
+      warnings.add("AppHost will apply sanitized environment and app-scoped runtime directories");
+    }
     return new AppSandboxStatus(
         policy.mode(),
         policy.required(),
         AppSandboxSupportLevel.BEST_EFFORT,
         PROVIDER_NAME,
-        true,
-        "Best-effort restricted local process launch active",
+        active,
+        active
+            ? "Best-effort restricted local process launch active"
+            : "Restricted-process sandbox will use AppHost best-effort launch hygiene on start",
         List.copyOf(warnings));
   }
 }

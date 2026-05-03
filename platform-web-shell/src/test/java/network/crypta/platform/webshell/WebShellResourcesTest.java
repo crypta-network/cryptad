@@ -348,8 +348,18 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function isolatedAppUiActive(app)"));
     assertTrue(script.contains("function appSandboxStatus(app, runtime)"));
     assertTrue(script.contains("function sandboxLabel(status)"));
+    assertTrue(script.contains("supportLevel === \"enforced\""));
+    assertTrue(script.contains("Enforced sandbox"));
+    assertTrue(script.contains("function inactiveEnforcedSandboxLabel(status)"));
+    assertTrue(script.contains("Enforced sandbox available"));
+    assertTrue(script.contains("Last launch enforced sandbox"));
+    assertTrue(script.contains("return \"is-success\""));
+    assertTrue(script.contains("status.active === false ? \"is-warning\" : \"is-success\""));
     assertTrue(script.contains("Unsupported required sandbox"));
     assertTrue(script.contains("[\"Sandbox\", sandboxLabel(sandbox)]"));
+    assertTrue(
+        script.contains(
+            "[\"Sandbox provider\", sandbox ? scalar(sandbox.provider) : \"Unavailable\"]"));
     assertTrue(script.contains("function appQuotaStatus(app, runtime)"));
     assertTrue(script.contains("function formatBytes(value)"));
     assertTrue(script.contains("function quotaWarnings(quota, runtime)"));

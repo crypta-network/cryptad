@@ -765,9 +765,9 @@ public final class AppsApiHandler {
     return json;
   }
 
-  private static AppSandboxStatus sandboxStatus(AppManifest manifest, RunningAppSnapshot running) {
+  private AppSandboxStatus sandboxStatus(AppManifest manifest, RunningAppSnapshot running) {
     return running == null
-        ? AppSandboxProviders.inactiveStatus(manifest.sandboxPolicy())
+        ? appHost.inactiveSandboxStatus(manifest.sandboxPolicy())
         : running.sandboxStatus();
   }
 
