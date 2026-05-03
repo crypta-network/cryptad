@@ -2792,6 +2792,51 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void runtimeStatus_whenProviderDisabledOptionalRestrictedProcessBeforeStart_expectUnsupported()
+      throws Exception {
+    AppEnv appEnv = new AppEnv(Map.of("PATH", "/usr/bin"), LINUX_OS_NAME);
+    LocalProcessAppHost host =
+        allowUnsignedHost(
+            Duration.ofSeconds(1),
+            appEnv,
+            AppSandboxProviders.fromHostConfiguration(
+                appEnv, Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "none")));
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    appendOptionalRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+
+    assertFalse(status.running());
+    assertEquals(AppSandboxMode.RESTRICTED_PROCESS, status.sandboxStatus().mode());
+    assertFalse(status.sandboxStatus().required());
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.sandboxStatus().supportLevel());
+    assertEquals("unsupported", status.sandboxStatus().providerName());
+    assertFalse(status.sandboxStatus().active());
+  }
+
+  @Test
+  void runtimeStatus_whenEnforcedProviderSelectedBeforeStart_expectProviderAwareInactiveStatus()
+      throws Exception {
+    AppEnv appEnv = new AppEnv();
+    LocalProcessAppHost host =
+        allowUnsignedHost(Duration.ofSeconds(1), appEnv, enforcedRestrictedProcessProviders());
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    appendRequiredRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+
+    assertFalse(status.running());
+    assertEquals(AppSandboxSupportLevel.ENFORCED, status.sandboxStatus().supportLevel());
+    assertEquals("bubblewrap", status.sandboxStatus().providerName());
+    assertFalse(status.sandboxStatus().active());
+    assertTrue(status.sandboxStatus().reason().contains("will be used on start"));
+    assertFalse(status.sandboxStatus().toString().contains(DEFAULT_TOKEN));
+    assertFalse(status.sandboxStatus().toString().contains(tempDir.toString()));
+  }
+
+  @Test
   void start_whenRequiredRestrictedProcessProviderEnforced_expectStatusRetainedAfterStop()
       throws Exception {
     AppEnv appEnv = new AppEnv();
@@ -3170,6 +3215,17 @@ class LocalProcessAppHostTest {
         java.nio.file.StandardOpenOption.APPEND);
   }
 
+  private static void appendOptionalRestrictedSandbox(Path stagedApp) throws IOException {
+    Files.writeString(
+        stagedApp.resolve(MANIFEST_FILE_NAME),
+        """
+        sandbox.mode=restricted-process
+        sandbox.required=false
+        """,
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+  }
+
   private static void replaceManifestQuotasWithZero(Path stagedApp) throws IOException {
     Path manifestFile = stagedApp.resolve(MANIFEST_FILE_NAME);
     String manifest = Files.readString(manifestFile, StandardCharsets.UTF_8);
@@ -3473,22 +3529,17 @@ class LocalProcessAppHostTest {
     }
 
     @Override
+    public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+      return enforcedRestrictedProcessStatus(policy, false);
+    }
+
+    @Override
     public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context) {
       return new AppSandboxLaunchPlan(
           context.command(),
           context.environment(),
           context.workingDirectory(),
-          new AppSandboxStatus(
-              context.policy().mode(),
-              context.policy().required(),
-              AppSandboxSupportLevel.ENFORCED,
-              "bubblewrap",
-              true,
-              "Linux bubblewrap sandbox active",
-              List.of(
-                  "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
-                      + " directories",
-                  "CPU, memory, and network restrictions are not enforced by this provider")));
+          enforcedRestrictedProcessStatus(context.policy(), true));
     }
   }
 
@@ -3507,6 +3558,11 @@ class LocalProcessAppHostTest {
     }
 
     @Override
+    public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+      return enforcedRestrictedProcessStatus(policy, false);
+    }
+
+    @Override
     public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context)
         throws AppSandboxException {
       if (launchAttempts.incrementAndGet() > 1) {
@@ -3518,18 +3574,28 @@ class LocalProcessAppHostTest {
           context.command(),
           context.environment(),
           context.workingDirectory(),
-          new AppSandboxStatus(
-              context.policy().mode(),
-              context.policy().required(),
-              AppSandboxSupportLevel.ENFORCED,
-              "bubblewrap",
-              true,
-              "Linux bubblewrap sandbox active",
-              List.of(
-                  "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
-                      + " directories",
-                  "CPU, memory, and network restrictions are not enforced by this provider")));
+          enforcedRestrictedProcessStatus(context.policy(), true));
     }
+  }
+
+  private static AppSandboxStatus enforcedRestrictedProcessStatus(
+      AppSandboxPolicy policy, boolean active) {
+    return new AppSandboxStatus(
+        policy.mode(),
+        policy.required(),
+        AppSandboxSupportLevel.ENFORCED,
+        "bubblewrap",
+        active,
+        active
+            ? "Linux bubblewrap sandbox active"
+            : "Linux bubblewrap sandbox will be used on start",
+        List.of(
+            active
+                ? "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
+                    + " directories"
+                : "Filesystem sandbox will cover installed bundle and AppHost-managed mutable"
+                    + " directories",
+            "CPU, memory, and network restrictions are not enforced by this provider"));
   }
 
   private static String immediateExitScriptContent(AppEnv appEnv) {

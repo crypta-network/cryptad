@@ -42,6 +42,23 @@ public interface AppSandboxProvider {
   boolean supports(AppSandboxPolicy policy);
 
   /**
+   * Returns this provider's public status before a process is launched.
+   *
+   * <p>Provider registries use this status for installed-but-stopped app summaries after the
+   * provider has been selected from host configuration, but before AppHost has sensitive launch
+   * context such as command arguments, environment values, tokens, or private paths.
+   * Implementations that can advertise a concrete support level from host probing should override
+   * this method and keep {@code active=false}. Providers that cannot make a selection-time claim
+   * inherit the conservative policy-only status.
+   *
+   * @param policy requested sandbox policy from the app manifest
+   * @return token-free inactive status safe for API and Web Shell summaries
+   */
+  default AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+    return AppSandboxStatus.inactive(policy);
+  }
+
+  /**
    * Prepares the final process launch plan.
    *
    * <p>The returned plan is the process-launch contract AppHost will use. Providers can leave the

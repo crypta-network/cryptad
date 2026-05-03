@@ -87,6 +87,31 @@ public final class BubblewrapSandboxProvider implements AppSandboxProvider {
   }
 
   /**
+   * Returns the inactive status for a selected bubblewrap provider.
+   *
+   * <p>The registry calls this only after {@link #supports(AppSandboxPolicy)} has accepted the
+   * host, so the status can report enforced restricted-process support while still keeping {@code
+   * active=false}. A later launch may still fail for app-specific validation, but this
+   * selection-time status accurately reflects the configured provider that AppHost will try first.
+   *
+   * @param policy requested sandbox policy from the app manifest
+   * @return token-free inactive bubblewrap status for installed and stopped summaries
+   */
+  @Override
+  public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+    AppSandboxPolicy checkedPolicy = Objects.requireNonNull(policy, "policy");
+    if (checkedPolicy.mode() != AppSandboxMode.RESTRICTED_PROCESS) {
+      return AppSandboxStatus.unsupported(
+          checkedPolicy, "bubblewrap provider cannot handle requested sandbox mode");
+    }
+    BubblewrapAvailability.Result result = availability.probe();
+    if (!result.available()) {
+      return AppSandboxStatus.unsupported(checkedPolicy, result.unavailableReason());
+    }
+    return enforcedStatus(checkedPolicy, false);
+  }
+
+  /**
    * Builds an enforced bubblewrap launch plan.
    *
    * <p>The method validates that AppHost supplied the installed bundle as the working directory,
@@ -124,7 +149,7 @@ public final class BubblewrapSandboxProvider implements AppSandboxProvider {
         commandPlan.command(),
         checkedContext.environment(),
         checkedContext.workingDirectory(),
-        enforcedStatus(checkedContext.policy()));
+        enforcedStatus(checkedContext.policy(), true));
   }
 
   private static void validateRestrictedLaunchContext(AppSandboxLaunchContext context)
@@ -162,17 +187,22 @@ public final class BubblewrapSandboxProvider implements AppSandboxProvider {
         context.policy(), "bubblewrap sandbox is unavailable for this launch");
   }
 
-  private static AppSandboxStatus enforcedStatus(AppSandboxPolicy policy) {
+  private static AppSandboxStatus enforcedStatus(AppSandboxPolicy policy, boolean active) {
     return new AppSandboxStatus(
         policy.mode(),
         policy.required(),
         AppSandboxSupportLevel.ENFORCED,
         PROVIDER_NAME,
-        true,
-        "Linux bubblewrap sandbox active",
+        active,
+        active
+            ? "Linux bubblewrap sandbox active"
+            : "Linux bubblewrap sandbox will be used on start",
         List.of(
-            "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
-                + " directories",
+            active
+                ? "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
+                    + " directories"
+                : "Filesystem sandbox will cover installed bundle and AppHost-managed mutable"
+                    + " directories",
             "CPU, memory, and network restrictions are not enforced by this provider"));
   }
 }

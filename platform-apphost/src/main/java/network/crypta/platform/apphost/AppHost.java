@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 
 /**
  * Transport-neutral host API for locally installed out-of-process applications.
@@ -162,6 +165,22 @@ public interface AppHost {
    * @return immutable list of running snapshots sorted by app id
    */
   List<RunningAppSnapshot> listRunning();
+
+  /**
+   * Returns the provider-aware inactive sandbox status for an installed manifest policy.
+   *
+   * <p>Inventory and app-detail summaries call this before a process has been launched, or after a
+   * process has stopped, so operator-facing status reflects the host's configured provider
+   * selection instead of a policy-only default. Implementations with explicit provider registries
+   * should override this method. The default remains conservative for tests and alternate
+   * embeddings that do not expose provider configuration.
+   *
+   * @param policy requested sandbox policy from an installed manifest
+   * @return token-free inactive sandbox status safe for public summaries
+   */
+  default AppSandboxStatus inactiveSandboxStatus(AppSandboxPolicy policy) {
+    return AppSandboxProviders.inactiveStatus(policy);
+  }
 
   /**
    * Authenticates a bearer launch token against the host's current live app state.

@@ -97,6 +97,26 @@ class AppSandboxProvidersTest {
   }
 
   @Test
+  void inactiveStatusFor_whenBubblewrapAvailable_expectEnforcedInactiveRestrictedStatus() {
+    AppSandboxProviders providers =
+        new AppSandboxProviders(
+            new NoSandboxProvider(),
+            List.of(availableBubblewrapProvider(), new RestrictedProcessSandboxProvider()),
+            false,
+            null);
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+
+    AppSandboxStatus status = providers.inactiveStatusFor(policy);
+
+    assertEquals(AppSandboxSupportLevel.ENFORCED, status.supportLevel());
+    assertEquals("bubblewrap", status.providerName());
+    assertFalse(status.active());
+    assertTrue(status.reason().contains("will be used on start"));
+    assertFalse(status.toString().contains("secret-token"));
+    assertFalse(status.toString().contains(tempDir.toString()));
+  }
+
+  @Test
   void providers_whenOptionalRestrictedProcessBubblewrapUnavailable_expectBestEffortFallback()
       throws Exception {
     AppSandboxProviders providers =
@@ -108,6 +128,20 @@ class AppSandboxProvidersTest {
 
     assertEquals(AppSandboxSupportLevel.BEST_EFFORT, plan.sandboxStatus().supportLevel());
     assertEquals("restricted-process", plan.sandboxStatus().providerName());
+  }
+
+  @Test
+  void inactiveStatusFor_whenAutoBubblewrapUnavailable_expectBestEffortInactiveRestrictedStatus() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(linuxWithoutPath(), Map.of());
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+
+    AppSandboxStatus status = providers.inactiveStatusFor(policy);
+
+    assertEquals(AppSandboxSupportLevel.BEST_EFFORT, status.supportLevel());
+    assertEquals("restricted-process", status.providerName());
+    assertFalse(status.active());
+    assertTrue(status.warnings().toString().contains("best-effort"));
   }
 
   @Test
@@ -165,6 +199,22 @@ class AppSandboxProvidersTest {
   }
 
   @Test
+  void inactiveStatusFor_whenForcedBestEffortRequired_expectUnsupportedRequiredRestrictedStatus() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "best-effort"));
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, true);
+
+    AppSandboxStatus status = providers.inactiveStatusFor(policy);
+
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.supportLevel());
+    assertEquals("unsupported", status.providerName());
+    assertTrue(status.required());
+    assertFalse(status.active());
+    assertTrue(status.reason().contains("requires an enforced provider"));
+  }
+
+  @Test
   void providers_whenForcedBubblewrapUnavailable_expectUnsupportedSandboxFailure() {
     AppSandboxProviders providers =
         AppSandboxProviders.fromHostConfiguration(
@@ -177,6 +227,21 @@ class AppSandboxProvidersTest {
 
     assertEquals("unsupported_sandbox", exception.errorCode());
     assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void inactiveStatusFor_whenForcedBubblewrapUnavailable_expectUnsupportedRestrictedStatus() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithoutPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "bubblewrap"));
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+
+    AppSandboxStatus status = providers.inactiveStatusFor(policy);
+
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.supportLevel());
+    assertEquals("unsupported", status.providerName());
+    assertFalse(status.active());
+    assertTrue(status.reason().contains("restricted-process"));
   }
 
   @Test
@@ -194,6 +259,21 @@ class AppSandboxProvidersTest {
     assertEquals(AppSandboxSupportLevel.UNSUPPORTED, plan.sandboxStatus().supportLevel());
     assertEquals("unsupported", plan.sandboxStatus().providerName());
     assertFalse(plan.sandboxStatus().active());
+  }
+
+  @Test
+  void inactiveStatusFor_whenForcedNoneOptionalRestrictedProcess_expectUnsupportedStatus() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "none"));
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+
+    AppSandboxStatus status = providers.inactiveStatusFor(policy);
+
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.supportLevel());
+    assertEquals("unsupported", status.providerName());
+    assertFalse(status.required());
+    assertFalse(status.active());
   }
 
   @Test

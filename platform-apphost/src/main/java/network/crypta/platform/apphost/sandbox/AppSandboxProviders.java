@@ -201,17 +201,44 @@ public final class AppSandboxProviders {
   }
 
   /**
-   * Returns an inactive status for a policy using the default registry semantics.
+   * Returns an inactive status for a policy using conservative policy-only semantics.
    *
    * <p>Installed-but-stopped app summaries need to describe the requested policy before any process
-   * has been launched. This helper mirrors default registry behavior without constructing a process
-   * launch context or exposing launch secrets.
+   * has been launched. This compatibility helper does not inspect host provider configuration;
+   * callers with a configured registry should use {@link #inactiveStatusFor(AppSandboxPolicy)} so
+   * forced provider settings and bubblewrap availability are reflected.
    *
    * @param policy requested sandbox policy from an installed manifest
    * @return token-free status safe for installed and stopped app summaries
    */
   public static AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
     return AppSandboxStatus.inactive(policy);
+  }
+
+  /**
+   * Returns an inactive status for a policy using this registry's configured provider selection.
+   *
+   * <p>This method is the provider-aware counterpart to {@link #prepareLaunch}. It is used for
+   * installed, stopped, and never-started summaries where AppHost must describe what the current
+   * host can provide without constructing a sensitive launch context. Restricted-process status
+   * follows the same deterministic provider chain as launch planning: bubblewrap can report
+   * inactive enforced support when selected, forced best-effort never reports enforced, and forced
+   * none or unavailable forced bubblewrap reports unsupported. Required restricted-process policies
+   * report unsupported unless the selected provider is enforced.
+   *
+   * @param policy requested sandbox policy from an installed manifest
+   * @return token-free status safe for public installed and stopped app summaries
+   */
+  public AppSandboxStatus inactiveStatusFor(AppSandboxPolicy policy) {
+    AppSandboxPolicy checkedPolicy = Objects.requireNonNull(policy, "policy");
+    if (checkedPolicy.mode() == AppSandboxMode.RESTRICTED_PROCESS) {
+      return inactiveRestrictedProcessStatus(checkedPolicy);
+    }
+    AppSandboxProvider provider = providerFor(checkedPolicy.mode());
+    if (provider != null && provider.supports(checkedPolicy)) {
+      return provider.inactiveStatus(checkedPolicy);
+    }
+    return unsupportedStatus(checkedPolicy);
   }
 
   private AppSandboxLaunchPlan prepareRestrictedProcessLaunch(AppSandboxLaunchContext context)
@@ -236,6 +263,20 @@ public final class AppSandboxProviders {
     }
     return new AppSandboxLaunchPlan(
         context.command(), context.environment(), context.workingDirectory(), unsupported);
+  }
+
+  private AppSandboxStatus inactiveRestrictedProcessStatus(AppSandboxPolicy policy) {
+    for (AppSandboxProvider provider : restrictedProcessProviders) {
+      if (!provider.supports(policy)) {
+        continue;
+      }
+      AppSandboxStatus status = provider.inactiveStatus(policy);
+      if (policy.required() && status.supportLevel() != AppSandboxSupportLevel.ENFORCED) {
+        return requiredEnforcedStatus(policy);
+      }
+      return status;
+    }
+    return unsupportedStatus(policy);
   }
 
   private AppSandboxProvider providerFor(AppSandboxMode mode) {

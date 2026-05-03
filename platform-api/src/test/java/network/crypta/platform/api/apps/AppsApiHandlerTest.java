@@ -28,6 +28,7 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import network.crypta.platform.apphost.sandbox.AppSandboxSupportLevel;
 import network.crypta.platform.appui.AppUiOrigin;
@@ -221,6 +222,25 @@ class AppsApiHandlerTest {
     assertEquals(true, sandbox.get("active"));
     assertFalse(summary.toString().contains("secret-token"));
     assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void get_whenStoppedAppHostReportsProviderOverride_expectSandboxUsesInactiveHostStatus() {
+    SingleAppHost appHost = new SingleAppHost(optionalRestrictedSandboxSnapshot());
+    AppSandboxPolicy policy = new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false);
+    appHost.inactiveSandboxStatus =
+        AppSandboxStatus.unsupported(
+            policy, "restricted-process sandbox is not available on this host");
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    Map<?, ?> sandbox = (Map<?, ?>) summary.get("sandbox");
+    assertEquals("restricted-process", sandbox.get("mode"));
+    assertEquals(false, sandbox.get("required"));
+    assertEquals("unsupported", sandbox.get("supportLevel"));
+    assertEquals("unsupported", sandbox.get("provider"));
+    assertEquals(false, sandbox.get("active"));
   }
 
   @Test
@@ -589,6 +609,31 @@ class AppsApiHandlerTest {
     return new InstalledAppSnapshot(manifest, paths);
   }
 
+  private InstalledAppSnapshot optionalRestrictedSandboxSnapshot() {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            APP_ID,
+            "Demo App",
+            "1.0.0",
+            "bin/launch.sh",
+            AppUiMode.NONE,
+            null,
+            List.of(),
+            null,
+            null,
+            AppSandboxMode.RESTRICTED_PROCESS,
+            false);
+    InstalledAppPaths paths =
+        new InstalledAppPaths(
+            APP_ID,
+            tempDir.resolve("installed").resolve(APP_ID),
+            tempDir.resolve("data").resolve(APP_ID),
+            tempDir.resolve("cache").resolve(APP_ID),
+            tempDir.resolve("run").resolve(APP_ID));
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+
   private static AppSandboxStatus enforcedSandboxStatus() {
     return new AppSandboxStatus(
         AppSandboxMode.RESTRICTED_PROCESS,
@@ -695,6 +740,7 @@ class AppsApiHandlerTest {
     private InstalledAppSnapshot updateResult;
     private AppRuntimeStatusSnapshot runtimeStatus;
     private RunningAppSnapshot runningStatus;
+    private AppSandboxStatus inactiveSandboxStatus;
     private AppProcessLogSnapshot processLog;
     private IOException describeFailure;
     private IOException runtimeStatusFailure;
@@ -773,6 +819,13 @@ class AppsApiHandlerTest {
     @Override
     public List<RunningAppSnapshot> listRunning() {
       return runningStatus == null ? List.of() : List.of(runningStatus);
+    }
+
+    @Override
+    public AppSandboxStatus inactiveSandboxStatus(AppSandboxPolicy policy) {
+      return inactiveSandboxStatus == null
+          ? AppHost.super.inactiveSandboxStatus(policy)
+          : inactiveSandboxStatus;
     }
 
     @Override

@@ -60,6 +60,7 @@ import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.sandbox.AppSandboxException;
 import network.crypta.platform.apphost.sandbox.AppSandboxLaunchContext;
 import network.crypta.platform.apphost.sandbox.AppSandboxLaunchPlan;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
 import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import org.jetbrains.annotations.NotNull;
@@ -790,6 +791,17 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   /**
+   * Returns inactive sandbox status using this host's configured provider registry.
+   *
+   * @param policy requested sandbox policy from an installed manifest
+   * @return token-free inactive sandbox status for installed and stopped summaries
+   */
+  @Override
+  public AppSandboxStatus inactiveSandboxStatus(AppSandboxPolicy policy) {
+    return sandboxProviders.inactiveStatusFor(policy);
+  }
+
+  /**
    * Authenticates a launch token against refreshed live runtime state.
    *
    * @param token opaque launch token presented by an app process
@@ -835,18 +847,15 @@ public final class LocalProcessAppHost implements AppHost {
         describe(normalizedAppId)
             .orElseThrow(() -> new AppHostException(APP_NOT_INSTALLED_PREFIX + appId));
     RuntimeRecord runtimeRecord = runtimeRecords.get(normalizedAppId);
+    AppSandboxStatus installedSandboxStatus =
+        inactiveSandboxStatus(installed.manifest().sandboxPolicy());
     if (runtimeRecord == null) {
-      runtimeRecord =
-          RuntimeRecord.stopped(
-              installed.paths(),
-              AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy()));
+      runtimeRecord = RuntimeRecord.stopped(installed.paths(), installedSandboxStatus);
     }
     return statusSnapshot(
         normalizedAppId,
         installed.manifest(),
-        runtimeRecord.withoutRunningProcess(
-            installed.paths(),
-            AppSandboxProviders.inactiveStatus(installed.manifest().sandboxPolicy())));
+        runtimeRecord.withoutRunningProcess(installed.paths(), installedSandboxStatus));
   }
 
   /**

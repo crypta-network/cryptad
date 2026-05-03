@@ -56,6 +56,22 @@ public final class NoSandboxProvider implements AppSandboxProvider {
   }
 
   /**
+   * Returns the inactive no-sandbox status used for installed and stopped summaries.
+   *
+   * @param policy requested sandbox policy from the app manifest
+   * @return token-free no-sandbox status with {@code active=false}
+   */
+  @Override
+  public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+    AppSandboxPolicy checkedPolicy = Objects.requireNonNull(policy, "policy");
+    if (!supports(checkedPolicy)) {
+      return AppSandboxStatus.unsupported(
+          checkedPolicy, "no-sandbox provider cannot handle requested sandbox mode");
+    }
+    return AppSandboxStatus.noSandbox(checkedPolicy, false);
+  }
+
+  /**
    * Returns the unmodified local process launch plan with no-sandbox status.
    *
    * <p>The command, environment, and working directory are copied from the context. The environment
