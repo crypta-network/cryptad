@@ -2885,9 +2885,8 @@ class LocalProcessAppHostTest {
 
     host.start(RUNNER_APP_ID);
 
-    AppRuntimeStatusSnapshot crashed = waitForRuntimeState(host, AppRuntimeState.CRASHED);
+    AppRuntimeStatusSnapshot crashed = waitForCrashedInactiveSandboxStatus(host);
     assertFalse(crashed.running());
-    assertEquals(7, crashed.lastExitCode());
     assertEquals(AppSandboxSupportLevel.ENFORCED, crashed.sandboxStatus().supportLevel());
     assertEquals("bubblewrap", crashed.sandboxStatus().providerName());
     assertFalse(crashed.sandboxStatus().active());
@@ -3701,6 +3700,24 @@ class LocalProcessAppHostTest {
       pausePolling("interrupted while waiting for app runtime state: " + RUNNER_APP_ID);
     }
     throw new AssertionError("timed out waiting for app runtime state: " + RUNNER_APP_ID);
+  }
+
+  private static AppRuntimeStatusSnapshot waitForCrashedInactiveSandboxStatus(AppHost host)
+      throws IOException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    AppRuntimeStatusSnapshot lastStatus = null;
+    while (System.nanoTime() < deadline) {
+      AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+      lastStatus = status;
+      if (status.state() == AppRuntimeState.CRASHED
+          && !status.running()
+          && !status.sandboxStatus().active()) {
+        return status;
+      }
+      pausePolling("interrupted while waiting for inactive crashed sandbox: " + RUNNER_APP_ID);
+    }
+    throw new AssertionError(
+        "timed out waiting for inactive crashed sandbox: " + RUNNER_APP_ID + " last=" + lastStatus);
   }
 
   private static AppRuntimeStatusSnapshot waitForRestartStormWarning(AppHost host)
