@@ -14,6 +14,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -87,6 +92,7 @@ class AppUiToadletTest {
   private static final String REDIRECTING_TO_APP_UI = "Redirecting to app UI.";
   private static final String STATIC_DIRECTORY = "static";
   private static final String STATIC_ENTRY = "static/index.html";
+  private static final String UPDATED_APP_NAME = "Updated App";
 
   @Mock private ToadletContext ctx;
   @Mock private ToadletContainer container;
@@ -234,14 +240,13 @@ class AppUiToadletTest {
               Map.of(ORIGIN_HEADER, "http://admin.example:8888", ACCEPT_HEADER, APPLICATION_JSON));
 
       assertEquals(200, response.statusCode());
-      assertEquals("http://localhost:8888", response.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
+      assertEquals("http://localhost:8888", response.accessControlAllowOrigin());
       assertEquals(200, ipv6LoopbackResponse.statusCode());
-      assertEquals(
-          "http://[::1]:8888", ipv6LoopbackResponse.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
+      assertEquals("http://[::1]:8888", ipv6LoopbackResponse.accessControlAllowOrigin());
       assertTrue(response.body().contains("\"appId\":\"demo-app\""));
       assertTrue(response.body().contains("\"uiOrigin\":\"" + binding.origin() + "\""));
       assertEquals(200, remoteOriginResponse.statusCode());
-      assertNull(remoteOriginResponse.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
+      assertNull(remoteOriginResponse.accessControlAllowOrigin());
     }
   }
 
@@ -297,7 +302,7 @@ class AppUiToadletTest {
       AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
       String staleNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
 
-      appHost.replace(staticAppWithName("Updated App", INDEX_ENTRY));
+      appHost.replace(updatedStaticApp());
 
       HttpResponseCapture rejected =
           httpGet(
@@ -312,7 +317,7 @@ class AppUiToadletTest {
               binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, currentNonce));
       assertEquals(200, accepted.statusCode());
-      assertTrue(accepted.body().contains("\"name\":\"Updated App\""));
+      assertTrue(accepted.body().contains("\"name\":\"" + UPDATED_APP_NAME + "\""));
       assertTrue(accepted.body().contains(BROWSER_SESSION_TOKEN_JSON));
     }
   }
@@ -361,7 +366,7 @@ class AppUiToadletTest {
             appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
       AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
-      appHost.remove(APP_ID);
+      appHost.removeDemoApp();
 
       HttpResponseCapture staleTabResponse = httpGet(binding.uiUrl());
       assertEquals(404, staleTabResponse.statusCode());
@@ -925,16 +930,41 @@ class AppUiToadletTest {
   }
 
   private static void assertHttpRequestEventuallyFails(String url) throws InterruptedException {
-    long deadlineNanos = System.nanoTime() + 2_000_000_000L;
-    while (System.nanoTime() < deadlineNanos) {
-      try {
-        httpGet(url);
-      } catch (IOException _) {
-        return;
+    CountDownLatch failureObserved = new CountDownLatch(1);
+    AtomicReference<RuntimeException> unexpectedFailure = new AtomicReference<>();
+    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    ScheduledFuture<?> scheduledProbe =
+        executor.scheduleWithFixedDelay(
+            () -> probeHttpRequestUntilFails(url, failureObserved, unexpectedFailure),
+            0L,
+            25L,
+            TimeUnit.MILLISECONDS);
+    try {
+      assertTrue(
+          failureObserved.await(2L, TimeUnit.SECONDS),
+          () -> "Expected loopback listener to stop: " + url);
+      RuntimeException failure = unexpectedFailure.get();
+      if (failure != null) {
+        throw failure;
       }
-      Thread.sleep(25L);
+    } finally {
+      scheduledProbe.cancel(true);
+      executor.shutdownNow();
     }
-    throw new AssertionError("Expected loopback listener to stop: " + url);
+  }
+
+  private static void probeHttpRequestUntilFails(
+      String url,
+      CountDownLatch failureObserved,
+      AtomicReference<RuntimeException> unexpectedFailure) {
+    try {
+      httpGet(url);
+    } catch (IOException _) {
+      failureObserved.countDown();
+    } catch (RuntimeException failure) {
+      unexpectedFailure.compareAndSet(null, failure);
+      failureObserved.countDown();
+    }
   }
 
   private static String bootstrapNonceFrom(String launchUrl) {
@@ -965,8 +995,8 @@ class AppUiToadletTest {
     return app(appId, AppUiMode.STATIC, uiEntry);
   }
 
-  private InstalledAppSnapshot staticAppWithName(String appName, String uiEntry) {
-    return app(APP_ID, appName, AppUiMode.STATIC, uiEntry);
+  private InstalledAppSnapshot updatedStaticApp() {
+    return app(APP_ID, UPDATED_APP_NAME, AppUiMode.STATIC, INDEX_ENTRY);
   }
 
   private static AppUiOriginBinding isolatedBinding(InstalledAppSnapshot snapshot) {
@@ -1042,7 +1072,7 @@ class AppUiToadletTest {
       String headerText = headerEnd < 0 ? response : response.substring(0, headerEnd);
       String body = headerEnd < 0 ? "" : response.substring(headerEnd + 4);
       List<String> headerLines = headerText.lines().toList();
-      int statusCode = parseStatusCode(headerLines.get(0));
+      int statusCode = parseStatusCode(headerLines.getFirst());
       Map<String, String> headers = new HashMap<>();
       for (int i = 1; i < headerLines.size(); i++) {
         String headerLine = headerLines.get(i);
@@ -1062,8 +1092,8 @@ class AppUiToadletTest {
       return Integer.parseInt(statusLine.substring(firstSpace + 1, secondSpace));
     }
 
-    private String header(String name) {
-      return headers.get(name.toLowerCase(Locale.ROOT));
+    private String accessControlAllowOrigin() {
+      return headers.get(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER);
     }
   }
 
@@ -1086,8 +1116,8 @@ class AppUiToadletTest {
       snapshots.put(snapshot.appId(), snapshot);
     }
 
-    private void remove(String appId) {
-      snapshots.remove(appId);
+    private void removeDemoApp() {
+      snapshots.remove(APP_ID);
     }
 
     @Override
