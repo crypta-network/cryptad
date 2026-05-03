@@ -1891,6 +1891,26 @@ def run_self_test(repo_root: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
+        python_fake_cli = workspace / "crypta-app-fake.py"
+        python_fake_cli.write_text(fake_cli_python_source(), encoding="utf-8")
+        python_contract = workspace / "python-fake-contract.json"
+        python_fake_result = subprocess.run(
+            [
+                sys.executable,
+                str(python_fake_cli),
+                "api",
+                "snapshot",
+                "--output",
+                str(python_contract),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert python_fake_result.returncode == 0, python_fake_result.stderr
+        assert json.loads(python_contract.read_text(encoding="utf-8"))["contract"][
+            "contractVersion"
+        ] == 2
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -2200,6 +2220,7 @@ def make_self_test_workspace(workspace: Path) -> None:
 
 def fake_cli_python_source() -> str:
     return r'''#!/usr/bin/env python3
+import json
 import os
 import sys
 from pathlib import Path
