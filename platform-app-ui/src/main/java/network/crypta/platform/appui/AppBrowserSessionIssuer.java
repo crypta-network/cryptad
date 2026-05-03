@@ -31,4 +31,19 @@ public interface AppBrowserSessionIssuer {
    * @throws IllegalArgumentException if the snapshot cannot receive a browser UI session
    */
   AppBrowserSessionIssue issue(InstalledAppSnapshot snapshot);
+
+  /**
+   * Issues a browser session for one installed static app snapshot and UI origin binding.
+   *
+   * <p>Implementations that understand origin isolation should bind the verified session metadata
+   * to {@code binding}. The default preserves same-origin fallback behavior for tests and
+   * compatibility implementations.
+   *
+   * @param snapshot installed static app snapshot whose manifest permissions bind the session
+   * @param binding app UI origin binding used for this bootstrap response
+   * @return issued browser session bearer token and absolute expiry metadata
+   */
+  default AppBrowserSessionIssue issue(InstalledAppSnapshot snapshot, AppUiOriginBinding binding) {
+    return issue(snapshot);
+  }
 }

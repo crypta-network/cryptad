@@ -22,10 +22,11 @@ The current boundary provides:
 - best-effort owner-only permissions on POSIX app data, cache, run, and process-log files;
 - bounded in-session restart attempts when a manifest opts in to `on-failure`.
 
-The current boundary does not provide containers, WASM isolation, seccomp, chroot, jails, Windows
-Job Object restrictions, browser origin isolation, or network isolation by default. A third-party
-app still runs as a local process under the same operating-system user as the daemon unless a future
-provider explicitly reports an enforced sandbox.
+The current process boundary does not provide containers, WASM isolation, seccomp, chroot, jails,
+Windows Job Object restrictions, or network isolation by default. A third-party app still runs as a
+local process under the same operating-system user as the daemon unless a future provider
+explicitly reports an enforced sandbox. Browser UI origin isolation is handled separately by the
+app-owned UI layer with per-app loopback origins; it does not change the AppHost process sandbox.
 
 ## Sandbox policy
 
@@ -91,8 +92,8 @@ permissions, never the token itself. See [app-permissions-and-audit.md](app-perm
 for the capability matrix and audit surface.
 
 Static browser UI uses a separate app browser session issued by the app-owned UI bootstrap route.
-That session is not an AppHost launch token, is not injected into the child process environment,
-and does not change process-token behavior.
+That session is bound to the app id and expected browser origin, is not an AppHost launch token, is
+not injected into the child process environment, and does not change process-token behavior.
 
 AppHost does not inject daemon datastore paths, trusted-key files, catalog roots, signing material,
 or the daemon's current working directory. The child process working directory is the installed app

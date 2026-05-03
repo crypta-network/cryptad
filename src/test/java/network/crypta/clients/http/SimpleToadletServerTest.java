@@ -531,6 +531,41 @@ class SimpleToadletServerTest {
   }
 
   @Test
+  void getLocalAdminURL_whenBindToDefault_prefersIpv4Loopback() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+
+    String url = server.getLocalAdminURL();
+
+    assertEquals("http://127.0.0.1:" + SimpleToadletServer.DEFAULT_FPROXY_PORT + "/", url);
+  }
+
+  @Test
+  void getLocalAdminURL_whenBindToIpv6Loopback_usesBracketedIpv6Loopback() throws Exception {
+    Config rootConfig = new Config();
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    SimpleToadletServer server = newServerWithDefaults(config);
+    config.finishedInitialization();
+    config.set("bindTo", "0:0:0:0:0:0:0:1");
+
+    String url = server.getLocalAdminURL();
+
+    assertEquals("http://[::1]:" + SimpleToadletServer.DEFAULT_FPROXY_PORT + "/", url);
+  }
+
+  @Test
+  void getLocalAdminURL_whenBindToIpv6Wildcard_usesBracketedIpv6Loopback() throws Exception {
+    Config rootConfig = new Config();
+    SubConfig config = rootConfig.createSubConfig("fproxy");
+    SimpleToadletServer server = newServerWithDefaults(config);
+    config.finishedInitialization();
+    config.set("bindTo", "::");
+
+    String url = server.getLocalAdminURL();
+
+    assertEquals("http://[::1]:" + SimpleToadletServer.DEFAULT_FPROXY_PORT + "/", url);
+  }
+
+  @Test
   void allowPosts_whenUsingArrayBucketFactory_returnsFalse() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
     server.setBucketFactory(new ArrayBucketFactory());

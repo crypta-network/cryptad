@@ -119,6 +119,7 @@ class FProxyRegistrarTest {
     when(runtimePorts.toadletSymlinks()).thenReturn(toadletSymlinkPort);
     when(runtimePorts.transferAccess()).thenReturn(transferAccess);
     when(toadletSymlinkPort.loadConfiguredSymlinks()).thenReturn(List.of());
+    when(server.getLocalAdminURL()).thenReturn("http://127.0.0.1:8888/");
   }
 
   @Test

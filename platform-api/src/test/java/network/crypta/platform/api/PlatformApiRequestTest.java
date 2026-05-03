@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import network.crypta.platform.appui.AppUiOriginMode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,6 +53,19 @@ class PlatformApiRequestTest {
   }
 
   @Test
+  void appBrowserSession_whenOriginMetadataProvided_expectPrincipalRetainsOriginBinding() {
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession(
+            "demo-app",
+            List.of("queue.read"),
+            "http://127.0.0.1:12345",
+            AppUiOriginMode.ISOLATED_LOOPBACK);
+
+    assertEquals("http://127.0.0.1:12345", principal.expectedOrigin());
+    assertEquals(AppUiOriginMode.ISOLATED_LOOPBACK, principal.originMode());
+  }
+
+  @Test
   void constructor_whenMutableInputsChange_expectRequestKeepsImmutableCopies() {
     ArrayList<String> segments = new ArrayList<>(List.of("queue"));
     ArrayList<String> values = new ArrayList<>(List.of("downloads"));
@@ -67,6 +82,23 @@ class PlatformApiRequestTest {
     Map<String, List<String>> copiedQuery = request.queryParameters();
     List<String> newValue = List.of("value");
     assertThrows(UnsupportedOperationException.class, () -> copiedQuery.put("new", newValue));
+  }
+
+  @Test
+  void constructor_whenFourArgAppBrowserPrincipalUsed_expectSameOriginFallbackMode() {
+    PlatformApiPrincipal principal =
+        new PlatformApiPrincipal(
+            PlatformApiPrincipalType.APP_BROWSER,
+            PlatformApiAuthSource.APP_BROWSER_SESSION,
+            "demo-app",
+            List.of("queue.read"));
+
+    assertEquals(PlatformApiPrincipalType.APP_BROWSER, principal.type());
+    assertEquals(PlatformApiAuthSource.APP_BROWSER_SESSION, principal.authSource());
+    assertEquals("demo-app", principal.appId());
+    assertEquals(List.of("queue.read"), principal.permissions());
+    assertNull(principal.expectedOrigin());
+    assertEquals(AppUiOriginMode.SAME_ORIGIN_FALLBACK, principal.originMode());
   }
 
   @Test
@@ -102,6 +134,16 @@ class PlatformApiRequestTest {
         () ->
             new PlatformApiPrincipal(
                 PlatformApiPrincipalType.APP, PlatformApiAuthSource.APP_TOKEN, " ", permissions));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new PlatformApiPrincipal(
+                PlatformApiPrincipalType.APP,
+                PlatformApiAuthSource.APP_TOKEN,
+                "demo-app",
+                permissions,
+                "http://127.0.0.1:12345",
+                AppUiOriginMode.ISOLATED_LOOPBACK));
   }
 
   @Test

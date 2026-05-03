@@ -149,6 +149,7 @@ val computeJlinkModules by
         "jdk.localedata",
         "jdk.unsupported",
         "jdk.zipfs",
+        "jdk.httpserver",
         "java.net.http",
         "java.desktop",
       )

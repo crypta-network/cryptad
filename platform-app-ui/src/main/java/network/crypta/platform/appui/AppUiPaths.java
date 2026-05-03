@@ -82,7 +82,7 @@ public final class AppUiPaths {
     return appRoot(manifest.appId()) + encodeRelativePath(entryDirectory) + "/";
   }
 
-  private static String encodeRelativePath(String relativePath) {
+  static String encodeRelativePath(String relativePath) {
     StringBuilder encoded = new StringBuilder(relativePath.length());
     int start = 0;
     while (start < relativePath.length()) {

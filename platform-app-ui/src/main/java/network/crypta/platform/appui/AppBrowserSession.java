@@ -32,9 +32,17 @@ import java.util.TreeSet;
  *     issued
  * @param issuedAt UTC timestamp when the session was issued
  * @param expiresAt UTC timestamp after which the session must not authenticate
+ * @param expectedOrigin serialized browser origin this session is bound to, or {@code null} for
+ *     legacy same-origin fallback sessions that still accept missing {@code Origin} headers
+ * @param originMode origin mode used when the session was issued
  */
 public record AppBrowserSession(
-    String appId, List<String> permissions, Instant issuedAt, Instant expiresAt) {
+    String appId,
+    List<String> permissions,
+    Instant issuedAt,
+    Instant expiresAt,
+    String expectedOrigin,
+    AppUiOriginMode originMode) {
   /**
    * Creates a token-free session identity.
    *
@@ -52,18 +60,52 @@ public record AppBrowserSession(
    *     expiry does not come after the issue time
    * @throws NullPointerException if a required field or permission value is {@code null}
    */
+  public AppBrowserSession(
+      String appId, List<String> permissions, Instant issuedAt, Instant expiresAt) {
+    this(appId, permissions, issuedAt, expiresAt, null, AppUiOriginMode.SAME_ORIGIN_FALLBACK);
+  }
+
+  /**
+   * Creates a token-free session identity using one app UI origin binding.
+   *
+   * @param appId app identifier associated with the verified browser session
+   * @param permissions manifest permissions captured when the session was issued
+   * @param issuedAt UTC timestamp when the browser session was issued
+   * @param expiresAt UTC timestamp after which the browser session is invalid
+   * @param binding app UI origin binding used for bootstrap
+   */
+  public AppBrowserSession(
+      String appId,
+      List<String> permissions,
+      Instant issuedAt,
+      Instant expiresAt,
+      AppUiOriginBinding binding) {
+    this(
+        appId,
+        permissions,
+        issuedAt,
+        expiresAt,
+        binding == null ? null : binding.origin(),
+        binding == null ? AppUiOriginMode.SAME_ORIGIN_FALLBACK : binding.mode());
+  }
+
   public AppBrowserSession {
     Objects.requireNonNull(appId, "appId");
     Objects.requireNonNull(issuedAt, "issuedAt");
     Objects.requireNonNull(expiresAt, "expiresAt");
+    Objects.requireNonNull(originMode, "originMode");
     if (appId.isBlank()) {
       throw new IllegalArgumentException("appId must not be blank");
     }
     if (!expiresAt.isAfter(issuedAt)) {
       throw new IllegalArgumentException("expiresAt must be after issuedAt");
     }
+    if (expectedOrigin != null && expectedOrigin.isBlank()) {
+      throw new IllegalArgumentException("expectedOrigin must not be blank");
+    }
     appId = appId.trim();
     permissions = sortedPermissions(permissions);
+    expectedOrigin = expectedOrigin == null ? null : expectedOrigin.trim();
   }
 
   /**

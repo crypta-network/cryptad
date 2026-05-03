@@ -15,7 +15,7 @@ class CryptaPlatformSdkResourceTest {
       "/network/crypta/platform/sdk/js/crypta-platform.js";
 
   @Test
-  void classpathResource_whenSdkRequested_expectReadableBrowserScript() throws IOException {
+  void classpathResource_whenSdkRequested_expectPublicBrowserSurface() throws IOException {
     String script = readSdkScript();
 
     assertTrue(script.contains("window.CryptaPlatform"));
@@ -28,13 +28,68 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("browserSessionToken"));
     assertTrue(script.contains("X-Crypta-App-Session"));
     assertTrue(script.contains("invalid_app_browser_session"));
+    assertTrue(script.contains("origin_mismatch"));
     assertTrue(script.contains("sessionRefreshRequired"));
+    assertTrue(script.contains("credentials: \"omit\""));
+  }
+
+  @Test
+  void classpathResource_whenBootstrapRequested_expectIsolatedOriginBootstrapFlow()
+      throws IOException {
+    String script = readSdkScript();
+
+    assertTrue(
+        script.contains("const bootstrapResourcePath = \".well-known/cryptad-bootstrap.json\";"));
+    assertTrue(script.contains("const bootstrapNonceHeader = \"X-Crypta-App-Bootstrap-Nonce\";"));
+    assertTrue(
+        script.contains("const bootstrapNonceFragmentParameter = \"cryptadBootstrapNonce\";"));
+    assertTrue(script.contains("function bootstrapHeaders()"));
+    assertTrue(script.contains("headers[bootstrapNonceHeader] = nonce;"));
+    assertTrue(script.contains("function bootstrapNonceFromHash(hash)"));
+    assertTrue(script.contains("function bootstrapUrls(appId)"));
+    assertTrue(script.contains("const rootBootstrapUrl = `/${bootstrapResourcePath}`;"));
+    assertTrue(script.contains("if (!appId || !legacyAdminAppPath(appId))"));
+    assertTrue(script.contains("function legacyAdminAppPath(appId)"));
+    assertTrue(script.contains("if (index + 1 >= urls.length)"));
+    assertTrue(
+        script.contains(
+            "throw new Error(\"Bootstrap response did not include a Cryptad app id.\")"));
+    assertTrue(script.contains("copyStringField(source, bootstrap, \"platformApiRoot\");"));
+    assertTrue(script.contains("copyStringField(source, bootstrap, \"uiOrigin\");"));
+  }
+
+  @Test
+  void classpathResource_whenApiRequested_expectAbsoluteApiRootAndSessionRefreshFlow()
+      throws IOException {
+    String script = readSdkScript();
+
     assertTrue(script.contains("function fetchApiGet"));
+    assertFalse(script.contains("return new URL(value, window.location.origin);"));
+    assertTrue(script.contains("return new URL(value, rootUrl);"));
     assertTrue(script.contains("function refreshBootstrap(options)"));
     assertTrue(script.contains("function refreshBootstrapForMutation"));
+    assertTrue(script.contains("currentBrowserSessionLive()"));
+    assertTrue(script.contains("function browserSessionExpiresAtMillis(bootstrap)"));
+    assertTrue(script.contains("Date.parse(value)"));
     assertTrue(script.contains("await refreshBootstrap(requestOptions);"));
     assertTrue(script.contains("return fetchApiGet(path, requestOptions);"));
     assertTrue(script.contains("await refreshBootstrapForMutation(requestOptions);"));
+    assertTrue(script.contains("function fetchFormMutation(method, path, body, requestOptions)"));
+    assertTrue(
+        script.contains("return await fetchFormMutation(method, path, body, requestOptions);"));
+    assertTrue(script.contains("return fetchFormMutation(method, path, body, requestOptions);"));
+    assertTrue(
+        script.contains(
+            "hostname.startsWith(\"[\") && hostname.endsWith(\"]\") ? hostname.slice(1, -1)"));
+    assertTrue(script.contains("normalizedHostname === \"::1\""));
+    assertTrue(script.contains("normalizedHostname === \"0:0:0:0:0:0:0:1\""));
+  }
+
+  @Test
+  void classpathResource_whenSdkRequested_expectNoHostCredentialsOrPersistentStorage()
+      throws IOException {
+    String script = readSdkScript();
+
     assertFalse(script.contains("formPassword"));
     assertFalse(script.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(script.contains("localStorage"));
@@ -46,15 +101,18 @@ class CryptaPlatformSdkResourceTest {
       throws IOException {
     String script = readSdkScript();
 
-    int requestedNormalization = script.indexOf("const requestedAppId = normalizeAppId(rawAppId);");
+    int requestedNormalization =
+        script.indexOf("const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;");
     int fetchWithNormalizedId = script.indexOf("fetchBootstrap(requestedAppId)");
     int bootstrapNormalization =
         script.indexOf("bootstrap.appId = normalizeAppId(bootstrap.appId);");
-    int normalizedComparison = script.indexOf("bootstrap.appId && bootstrap.appId !== appId");
+    int normalizedComparison =
+        script.indexOf("bootstrap.appId && appId && bootstrap.appId !== appId");
 
     assertTrue(script.contains("const appIdPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;"));
     assertTrue(script.contains("const normalized = appId.trim().toLowerCase();"));
-    assertTrue(script.contains("const requestedAppId = normalizeAppId(rawAppId);"));
+    assertTrue(
+        script.contains("const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;"));
     assertTrue(script.contains("bootstrap.appId = normalizeAppId(bootstrap.appId);"));
     assertTrue(requestedNormalization >= 0);
     assertTrue(fetchWithNormalizedId > requestedNormalization);

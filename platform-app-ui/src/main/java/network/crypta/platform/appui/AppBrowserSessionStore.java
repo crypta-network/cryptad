@@ -29,10 +29,12 @@ import network.crypta.platform.apphost.manifest.AppManifest;
  * manifest/install fingerprint captured at issue time.
  *
  * <p>This implementation is deliberately process-local and memory-backed. It does not survive node
- * restart, share state across processes, or provide browser origin isolation. All public entry
- * points are synchronized, and capacity trimming uses the access-ordered map to discard the least
- * recently used retained session after expired entries have been pruned. Raw tokens are retained
- * only as map keys and are never returned from verification or included in {@link #toString()}.
+ * restart or share state across processes. Browser origin isolation is supplied by the app UI
+ * origin binding recorded in the session metadata, while this store keeps the opaque token and
+ * verifies that metadata. All public entry points are synchronized, and capacity trimming uses the
+ * access-ordered map to discard the least recently used retained session after expired entries have
+ * been pruned. Raw tokens are retained only as map keys and are never returned from verification or
+ * included in {@link #toString()}.
  *
  * <ul>
  *   <li>{@link #issue(InstalledAppSnapshot)} is called by the app UI bootstrap path.
@@ -134,12 +136,25 @@ public final class AppBrowserSessionStore
    */
   @Override
   public synchronized AppBrowserSessionIssue issue(InstalledAppSnapshot snapshot) {
+    return issue(snapshot, null);
+  }
+
+  /**
+   * Issues a browser session for one installed static app snapshot and origin binding.
+   *
+   * <p>The origin binding becomes part of the token-free verified session metadata. Isolated
+   * loopback sessions therefore authenticate only when the HTTP bridge sees the expected browser
+   * {@code Origin} header.
+   */
+  @Override
+  public synchronized AppBrowserSessionIssue issue(
+      InstalledAppSnapshot snapshot, AppUiOriginBinding binding) {
     InstalledAppSnapshot checkedSnapshot = Objects.requireNonNull(snapshot, "snapshot");
     if (checkedSnapshot.manifest().uiMode() != AppUiMode.STATIC) {
       throw new IllegalArgumentException("browser sessions require static app UI");
     }
     pruneExpired(clock.instant());
-    AppBrowserSession session = newSession(checkedSnapshot.manifest());
+    AppBrowserSession session = newSession(checkedSnapshot.manifest(), binding);
     String token = generateUniqueToken();
     sessions.put(token, new StoredSession(session, manifestBinding(checkedSnapshot)));
     trimToCapacity();
@@ -198,10 +213,10 @@ public final class AppBrowserSessionStore
         + "]";
   }
 
-  private AppBrowserSession newSession(AppManifest manifest) {
+  private AppBrowserSession newSession(AppManifest manifest, AppUiOriginBinding binding) {
     Instant issuedAt = clock.instant();
     return new AppBrowserSession(
-        manifest.appId(), manifest.permissions(), issuedAt, issuedAt.plus(lifetime));
+        manifest.appId(), manifest.permissions(), issuedAt, issuedAt.plus(lifetime), binding);
   }
 
   private String generateUniqueToken() {

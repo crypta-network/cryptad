@@ -58,6 +58,10 @@ public final class AppUiBootstrapJson {
     appendStringField(out, "assetRoot", bootstrap.assetRoot());
     appendStringField(out, "platformApiRoot", bootstrap.platformApiRoot());
     appendStringField(out, "shellRoot", bootstrap.shellRoot());
+    appendNullableStringField(out, "uiOrigin", bootstrap.uiOrigin());
+    appendStringField(out, "uiOriginMode", bootstrap.uiOriginMode());
+    appendStringField(out, "uiOriginStatus", bootstrap.uiOriginStatus());
+    appendNullableStringField(out, "sameOriginFallbackUrl", bootstrap.sameOriginFallbackUrl());
     appendStringField(out, "browserSessionToken", bootstrap.browserSessionToken());
     appendStringField(
         out, "browserSessionExpiresAt", bootstrap.browserSessionExpiresAt().toString());
@@ -66,6 +70,15 @@ public final class AppUiBootstrapJson {
 
   private static void appendStringField(StringBuilder out, String name, String value) {
     appendFieldName(out, name);
+    appendJsonString(out, value);
+  }
+
+  private static void appendNullableStringField(StringBuilder out, String name, String value) {
+    appendFieldName(out, name);
+    if (value == null) {
+      out.append("null");
+      return;
+    }
     appendJsonString(out, value);
   }
 

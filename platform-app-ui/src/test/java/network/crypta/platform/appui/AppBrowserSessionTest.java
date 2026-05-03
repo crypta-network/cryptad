@@ -32,6 +32,29 @@ class AppBrowserSessionTest {
   }
 
   @Test
+  void constructor_whenOriginBindingProvided_expectExpectedOriginAndModeRetained() {
+    AppUiOriginBinding binding =
+        new AppUiOriginBinding(
+            "demo-app",
+            AppUiOriginMode.ISOLATED_LOOPBACK,
+            AppUiOriginStatus.ACTIVE,
+            "http://127.0.0.1:12345",
+            "http://127.0.0.1:12345/",
+            "http://127.0.0.1:12345/static/",
+            "http://127.0.0.1:12345/static/",
+            "http://127.0.0.1:8888/api/v1/",
+            "http://127.0.0.1:8888/app/node/",
+            "/apps/demo-app/",
+            null);
+
+    AppBrowserSession session =
+        new AppBrowserSession("demo-app", List.of("queue.read"), ISSUED_AT, EXPIRES_AT, binding);
+
+    assertEquals("http://127.0.0.1:12345", session.expectedOrigin());
+    assertEquals(AppUiOriginMode.ISOLATED_LOOPBACK, session.originMode());
+  }
+
+  @Test
   void constructor_whenIdentityOrExpiryInvalid_expectIllegalArgumentException() {
     List<String> permissions = List.of("queue.read");
     List<String> permissionsWithBlankValue = List.of("queue.read", " ");
@@ -45,6 +68,16 @@ class AppBrowserSessionTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> new AppBrowserSession("demo-app", permissions, ISSUED_AT, ISSUED_AT));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new AppBrowserSession(
+                "demo-app",
+                permissions,
+                ISSUED_AT,
+                EXPIRES_AT,
+                " ",
+                AppUiOriginMode.ISOLATED_LOOPBACK));
   }
 
   @Test

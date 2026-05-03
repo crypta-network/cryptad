@@ -7,6 +7,8 @@
 
   const defaultPlatformApiRoot = "/api/v1/";
   const bootstrapResourcePath = ".well-known/cryptad-bootstrap.json";
+  const bootstrapNonceHeader = "X-Crypta-App-Bootstrap-Nonce";
+  const bootstrapNonceFragmentParameter = "cryptadBootstrapNonce";
   const removedElementSelector =
     "script, style, template, iframe, frame, frameset, object, embed, link, meta, base";
   const urlAttributeNames = new Set(["href", "src", "action", "formaction"]);
@@ -15,36 +17,41 @@
   let currentBootstrap = null;
   let currentAppId = null;
   let currentBrowserSessionToken = "";
+  let currentBootstrapNonce = "";
   let loadingAppId = null;
   let loadingBootstrap = null;
 
   async function loadBootstrap(options) {
     const rawAppId = explicitAppId(options) || inferAppId();
-    if (!rawAppId) {
-      throw new Error("Unable to determine the current Cryptad app id.");
-    }
-    const requestedAppId = normalizeAppId(rawAppId);
+    const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;
 
     const force = !!(options && options.force);
-    if (!force && currentBootstrap && currentAppId === requestedAppId) {
+    if (!force && currentBootstrap && bootstrapMatchesRequest(currentBootstrap, requestedAppId)) {
       return copyBootstrap(currentBootstrap);
     }
-    if (!force && loadingBootstrap && loadingAppId === requestedAppId) {
+    if (
+      !force &&
+      loadingBootstrap &&
+      (requestedAppId === null || loadingAppId === requestedAppId)
+    ) {
       return loadingBootstrap.then(copyBootstrap);
     }
 
     loadingAppId = requestedAppId;
-    loadingBootstrap = fetchBootstrap(requestedAppId)
+    const inFlightBootstrap = fetchBootstrap(requestedAppId)
       .then((bootstrap) => {
         currentBootstrap = bootstrap;
-        currentAppId = bootstrap.appId || requestedAppId;
-        return copyBootstrap(bootstrap);
+        currentAppId = bootstrap.appId;
+        return bootstrap;
       })
       .finally(() => {
-        loadingAppId = null;
-        loadingBootstrap = null;
+        if (loadingBootstrap === inFlightBootstrap) {
+          loadingAppId = null;
+          loadingBootstrap = null;
+        }
       });
-    return loadingBootstrap;
+    loadingBootstrap = inFlightBootstrap;
+    return inFlightBootstrap.then(copyBootstrap);
   }
 
   function current() {
@@ -60,25 +67,73 @@
   }
 
   async function fetchBootstrap(appId) {
-    const path = `/apps/${encodeURIComponent(appId)}/${bootstrapResourcePath}`;
-    const response = await fetch(path, { headers: { Accept: "application/json" } });
-    const data = await readJson(response);
-    if (!response.ok) {
-      throw new Error(responseErrorMessage(data, response));
+    const urls = bootstrapUrls(appId);
+    const headers = bootstrapHeaders();
+    let lastResponse = null;
+    let lastData = {};
+    for (let index = 0; index < urls.length; index += 1) {
+      const response = await fetch(urls[index], {
+        headers,
+        credentials: "omit",
+      });
+      const data = await readJson(response);
+      if (response.ok) {
+        return finishBootstrap(appId, data);
+      }
+      lastResponse = response;
+      lastData = data;
+      if (index + 1 >= urls.length) {
+        break;
+      }
     }
+    throw new Error(responseErrorMessage(lastData, lastResponse));
+  }
+
+  function finishBootstrap(appId, data) {
     const bootstrap = sanitizeBootstrap(data);
     const browserSessionToken = sessionTokenFromBootstrap(data);
     if (bootstrap.appId) {
       bootstrap.appId = normalizeAppId(bootstrap.appId);
     }
-    if (bootstrap.appId && bootstrap.appId !== appId) {
+    if (bootstrap.appId && appId && bootstrap.appId !== appId) {
       throw new Error("Bootstrap app id does not match the requested app.");
     }
-    if (!bootstrap.appId) {
+    if (!bootstrap.appId && appId) {
       bootstrap.appId = appId;
+    }
+    if (!bootstrap.appId) {
+      throw new Error("Bootstrap response did not include a Cryptad app id.");
     }
     currentBrowserSessionToken = browserSessionToken;
     return bootstrap;
+  }
+
+  function bootstrapHeaders() {
+    const headers = { Accept: "application/json" };
+    const nonce = bootstrapNonce();
+    if (nonce) {
+      headers[bootstrapNonceHeader] = nonce;
+    }
+    return headers;
+  }
+
+  function bootstrapNonce() {
+    const nonce = bootstrapNonceFromHash(window.location.hash);
+    if (nonce) {
+      currentBootstrapNonce = nonce;
+      return nonce;
+    }
+    return currentBootstrapNonce;
+  }
+
+  function bootstrapNonceFromHash(hash) {
+    const value = typeof hash === "string" ? hash.trim() : "";
+    if (!value || value === "#") {
+      return "";
+    }
+    const params = new URLSearchParams(value.startsWith("#") ? value.substring(1) : value);
+    const nonce = params.get(bootstrapNonceFragmentParameter);
+    return typeof nonce === "string" ? nonce.trim() : "";
   }
 
   async function apiGet(path, options) {
@@ -107,7 +162,7 @@
       method: "GET",
       headers,
       signal: requestOptions.signal,
-      credentials: "same-origin",
+      credentials: "omit",
     });
     return readJsonOrThrow(response);
   }
@@ -127,7 +182,18 @@
     }
 
     const body = toUrlSearchParams(formDataOrParams);
+    try {
+      return await fetchFormMutation(method, path, body, requestOptions);
+    } catch (error) {
+      if (!shouldRefreshAfterSessionError(error, requestOptions)) {
+        throw error;
+      }
+      await refreshBootstrap(requestOptions);
+      return fetchFormMutation(method, path, body, requestOptions);
+    }
+  }
 
+  async function fetchFormMutation(method, path, body, requestOptions) {
     const headers = appSessionHeaders(requestOptions.headers);
     headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
     const response = await fetch(apiUrl(path), {
@@ -135,7 +201,7 @@
       headers,
       body: body.toString(),
       signal: requestOptions.signal,
-      credentials: "same-origin",
+      credentials: "omit",
     });
     return readJsonOrThrow(response);
   }
@@ -145,10 +211,10 @@
       currentBootstrap && currentBootstrap.platformApiRoot,
       defaultPlatformApiRoot
     );
-    const rootUrl = new URL(root, window.location.origin);
+    const rootUrl = new URL(root, window.location.href);
     const url = coerceApiUrl(path, rootUrl);
-    if (url.origin !== window.location.origin || !url.pathname.startsWith(rootUrl.pathname)) {
-      throw new Error("Platform API URL must stay under the same-origin API root.");
+    if (url.origin !== rootUrl.origin || !url.pathname.startsWith(rootUrl.pathname)) {
+      throw new Error("Platform API URL must stay under the bootstrap API root.");
     }
     return url;
   }
@@ -253,24 +319,38 @@
       return new URL(value);
     }
     if (value.startsWith("/")) {
-      return new URL(value, window.location.origin);
+      return new URL(value, rootUrl);
     }
     return new URL(value, rootUrl);
   }
 
   function normalizeLocalRoot(value, fallback) {
-    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    if (typeof value !== "string" || !value.trim() || value.trim().startsWith("//")) {
       return fallback;
     }
     try {
-      const url = new URL(value, window.location.origin);
-      if (url.origin !== window.location.origin || url.search || url.hash) {
+      const url = new URL(value.trim(), window.location.href);
+      if (!localHttpOrigin(url) || url.search || url.hash || !url.pathname.startsWith("/api/v1/")) {
         return fallback;
       }
-      return url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+      url.pathname = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+      return url.href;
     } catch (error) {
       return fallback;
     }
+  }
+
+  function localHttpOrigin(url) {
+    const hostname = url.hostname.toLowerCase();
+    const normalizedHostname =
+      hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (normalizedHostname === "127.0.0.1" ||
+        normalizedHostname === "localhost" ||
+        normalizedHostname === "::1" ||
+        normalizedHostname === "0:0:0:0:0:0:0:1")
+    );
   }
 
   function hasScheme(value) {
@@ -373,7 +453,30 @@
     if (options && options.refreshBootstrap === false) {
       return ensureBootstrap(options);
     }
+    if (!(options && options.force) && currentBrowserSessionLive()) {
+      return ensureBootstrap(options);
+    }
     return refreshBootstrap(options);
+  }
+
+  function currentBrowserSessionLive() {
+    if (!currentBootstrap || !currentBrowserSessionToken) {
+      return false;
+    }
+    const expiresAt = browserSessionExpiresAtMillis(currentBootstrap);
+    return expiresAt == null || expiresAt > Date.now();
+  }
+
+  function browserSessionExpiresAtMillis(bootstrap) {
+    const value =
+      bootstrap && typeof bootstrap.browserSessionExpiresAt === "string"
+        ? bootstrap.browserSessionExpiresAt.trim()
+        : "";
+    if (!value) {
+      return null;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
   }
 
   async function readJsonOrThrow(response) {
@@ -405,6 +508,8 @@
     const message =
       code === "invalid_app_browser_session"
         ? "App browser session expired; reload the app UI."
+        : code === "origin_mismatch"
+          ? "App browser session origin mismatch; reopen the app from Web Shell."
         : responseErrorMessage(data, response);
     if (code === "invalid_app_browser_session") {
       currentBrowserSessionToken = "";
@@ -481,6 +586,30 @@
     }
   }
 
+  function bootstrapUrls(appId) {
+    const rootBootstrapUrl = `/${bootstrapResourcePath}`;
+    if (!appId || !legacyAdminAppPath(appId)) {
+      return [rootBootstrapUrl];
+    }
+    return [rootBootstrapUrl, `/apps/${encodeURIComponent(appId)}/${bootstrapResourcePath}`];
+  }
+
+  function bootstrapMatchesRequest(bootstrap, appId) {
+    return !appId || (bootstrap && bootstrap.appId === appId);
+  }
+
+  function legacyAdminAppPath(appId) {
+    const segments = window.location.pathname.split("/");
+    if (segments.length < 3 || segments[1] !== "apps") {
+      return false;
+    }
+    try {
+      return normalizeAppId(decodeURIComponent(segments[2])) === appId;
+    } catch (error) {
+      return false;
+    }
+  }
+
   function normalizeAppId(appId) {
     if (typeof appId !== "string") {
       throw new Error("Cryptad app id must be a string.");
@@ -501,6 +630,10 @@
     copyStringField(source, bootstrap, "assetRoot");
     copyStringField(source, bootstrap, "platformApiRoot");
     copyStringField(source, bootstrap, "shellRoot");
+    copyStringField(source, bootstrap, "uiOrigin");
+    copyStringField(source, bootstrap, "uiOriginMode");
+    copyStringField(source, bootstrap, "uiOriginStatus");
+    copyStringField(source, bootstrap, "sameOriginFallbackUrl");
     copyStringField(source, bootstrap, "browserSessionExpiresAt");
     return bootstrap;
   }

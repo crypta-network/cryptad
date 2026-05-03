@@ -47,6 +47,8 @@ class AppUiBootstrapServiceTest {
     assertEquals("/apps/demo-app/static/", bootstrap.assetRoot());
     assertEquals("/api/v1/", bootstrap.platformApiRoot());
     assertEquals("/app/node/", bootstrap.shellRoot());
+    assertEquals("same-origin-fallback", bootstrap.uiOriginMode());
+    assertEquals("fallback", bootstrap.uiOriginStatus());
     assertEquals("browser-token", bootstrap.browserSessionToken());
     assertEquals(EXPIRES_AT, bootstrap.browserSessionExpiresAt());
   }

@@ -3368,13 +3368,17 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(19);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
     summary.put("uiMode", uiMode(appUiEntry));
     summary.put("uiEntry", appUiEntry);
     summary.put("uiUrl", uiUrl(appId, appUiEntry));
+    summary.put("uiOrigin", null);
+    summary.put("uiOriginMode", null);
+    summary.put("uiOriginStatus", null);
+    summary.put("sameOriginFallbackUrl", sameOriginFallbackUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
     summary.put("quota", manifestQuotaSummary(installed ? 0L : null, installed ? 0L : null));
     summary.put("sandbox", sandboxSummary());
@@ -3388,13 +3392,17 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(19);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
     summary.put("uiMode", "none");
     summary.put("uiEntry", null);
     summary.put("uiUrl", null);
+    summary.put("uiOrigin", null);
+    summary.put("uiOriginMode", null);
+    summary.put("uiOriginStatus", null);
+    summary.put("sameOriginFallbackUrl", null);
     summary.put("permissions", List.of());
     summary.put("quota", unknownQuotaSummary());
     summary.put("sandbox", sandboxSummary());
@@ -3510,6 +3518,15 @@ class PlatformApiRouterTest {
       case "none" -> null;
       case "shell-panel" -> appUiEntry;
       case "static" -> staticUiUrl(appId, appUiEntry);
+      default -> throw new IllegalArgumentException("unexpected UI mode");
+    };
+  }
+
+  private static String sameOriginFallbackUrl(String appId, String appUiEntry) {
+    return switch (uiMode(appUiEntry)) {
+      case "none" -> null;
+      case "shell-panel" -> appUiEntry;
+      case "static" -> "/apps/" + appId + "/";
       default -> throw new IllegalArgumentException("unexpected UI mode");
     };
   }

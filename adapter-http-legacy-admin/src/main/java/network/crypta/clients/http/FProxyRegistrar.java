@@ -324,7 +324,16 @@ final class FProxyRegistrar {
 
     AppBrowserSessionStore appBrowserSessionStore =
         new AppBrowserSessionStore(dependencies.appHost());
-    AppUiToadlet appUiToadlet = new AppUiToadlet(dependencies.appHost(), appBrowserSessionStore);
+    AppUiLoopbackOriginServer appUiOriginServer =
+        new AppUiLoopbackOriginServer(
+            dependencies.appHost(),
+            appBrowserSessionStore,
+            server.getLocalAdminURL(),
+            server::isFProxyJavascriptEnabled);
+    Runtime.getRuntime()
+        .addShutdownHook(new Thread(appUiOriginServer::close, "Cryptad-AppUi-Origin-Shutdown"));
+    AppUiToadlet appUiToadlet =
+        new AppUiToadlet(dependencies.appHost(), appBrowserSessionStore, appUiOriginServer);
     server.register(appUiToadlet, ToadletRegistration.basic(null, appUiToadlet.path(), true, true));
 
     PlatformApiToadlet platformApiToadlet =
@@ -332,7 +341,8 @@ final class FProxyRegistrar {
             runtimePorts,
             dependencies.appHost(),
             dependencies.appCatalogManager(),
-            appBrowserSessionStore);
+            appBrowserSessionStore,
+            appUiOriginServer);
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));

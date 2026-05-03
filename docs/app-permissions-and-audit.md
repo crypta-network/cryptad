@@ -8,8 +8,8 @@ recent app decisions.
 The app permission boundary applies to local AppHost child processes that authenticate with their
 current launch token and to app-owned static browser UIs that authenticate with browser app
 sessions. It is separate from AppHost sandbox status. Permission checks do not add containers, WASM
-isolation, seccomp, chroot, browser origin isolation, FCP changes, wire-protocol changes, or
-persistent compliance-grade audit storage.
+isolation, seccomp, chroot, FCP changes, wire-protocol changes, or persistent compliance-grade
+audit storage.
 
 Host/operator Web Shell requests keep the existing local-admin model. They do not need app
 permissions, and they are not recorded in the app audit log.
@@ -41,10 +41,24 @@ app summaries, runtime status, process-log responses, audit entries, diagnostic 
 
 ## Browser session authentication
 
-Installed static app UIs fetch `/apps/{appId}/.well-known/cryptad-bootstrap.json` after the normal
-full-access check for app-owned UI routes. The bootstrap contains an opaque `browserSessionToken`
-and a `browserSessionExpiresAt` timestamp. It does not contain `CRYPTAD_APP_TOKEN`, a raw process
-launch token, local-admin `formPassword`, filesystem paths, signing keys, or trusted-key material.
+Installed static app UIs prefer a per-app loopback browser origin and fetch
+`/.well-known/cryptad-bootstrap.json` from that origin. The legacy
+`/apps/{appId}/.well-known/cryptad-bootstrap.json` route remains as an explicit same-origin
+fallback. The bootstrap contains an opaque `browserSessionToken`, `browserSessionExpiresAt`, UI
+origin metadata, and the Platform API root the app should call. It does not contain
+`CRYPTAD_APP_TOKEN`, a raw process launch token, local-admin `formPassword`, filesystem paths,
+signing keys, or trusted-key material.
+
+On isolated origins, bootstrap `GET` must also include the short-lived launch proof minted by the
+admin/Web Shell compatibility launch route:
+
+```text
+X-Crypta-App-Bootstrap-Nonce: <short-lived-launch-proof>
+```
+
+App summaries may publish public `uiUrl` and `uiOrigin` metadata, but they do not publish this
+proof. A caller that only knows another app's loopback port cannot mint that app's browser-session
+token.
 
 Browser apps present the token to Platform API v1 with:
 
@@ -52,10 +66,18 @@ Browser apps present the token to Platform API v1 with:
 X-Crypta-App-Session: <token>
 ```
 
-The session is bound to one installed static app and its manifest permissions. Blank, unknown,
-expired, uninstalled-app, non-static-app, or stale manifest sessions fail with
-`401 invalid_app_browser_session`. The raw browser session token is not recorded in audit,
-diagnostics, summaries, logs, errors, or `toString()` output.
+The session is bound to one installed static app, its manifest permissions, the expected browser
+origin, and the origin mode. Blank, unknown, expired, uninstalled-app, non-static-app, or stale
+manifest sessions fail with `401 invalid_app_browser_session`. Isolated-loopback sessions also
+require an `Origin` header matching the session origin and an active registered app UI origin for
+that app. A mismatch fails with `403 origin_mismatch`. The raw browser session token is not
+recorded in audit, diagnostics, summaries, logs, errors, or `toString()` output.
+
+The Platform API accepts cross-origin app-browser requests only from currently registered app UI
+origins. CORS responses never use wildcard origins, never allow cookies or local-admin
+credentials, and do not allow `X-Crypta-App-Token` through app-browser preflight. Requests from a
+registered app origin without `X-Crypta-App-Session` fail as app-browser authentication failures
+and do not fall back to host/operator Web Shell authentication.
 
 ## App principals
 
@@ -69,6 +91,7 @@ When a browser session authenticates, the Platform API receives a token-free app
 
 - app id;
 - manifest-declared permissions bound to the verified browser session;
+- expected browser origin and origin mode;
 - authentication source `APP_BROWSER_SESSION`.
 
 Neither principal carries the raw credential. The permission list is immutable and sorted before the

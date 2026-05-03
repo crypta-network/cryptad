@@ -23,6 +23,8 @@
     wizardSnapshot: null,
   };
   const directDownloadOperation = "create_direct_download";
+  const isolatedLaunchParameter = "cryptadIsolatedLaunch";
+  const isolatedOriginProbePath = "/.well-known/cryptad-origin.json";
   const publisherDefaultCompatibilityMode = "COMPAT_CURRENT";
   const queueState = {
     page: "downloads",
@@ -378,19 +380,36 @@
     }
   }
 
-  function normalizeAppUiEntryHref(value) {
+  function normalizeAppUiEntryHref(value, app) {
     if (typeof value !== "string" || value.length === 0) {
       return null;
     }
     try {
       const url = new URL(value, shellRootUrl);
-      if (url.origin !== window.location.origin) {
+      if (url.origin !== window.location.origin && !allowedAppUiOrigin(url, app)) {
         return null;
       }
-      return `${url.pathname}${url.search}${url.hash}`;
+      return url.origin === window.location.origin
+        ? `${url.pathname}${url.search}${url.hash}`
+        : url.href;
     } catch (error) {
       return null;
     }
+  }
+
+  function allowedAppUiOrigin(url, app) {
+    if (!app || app.uiOriginMode !== "isolated-loopback" || app.uiOriginStatus !== "active") {
+      return false;
+    }
+    if (typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+      return false;
+    }
+    const hostname = url.hostname.toLowerCase();
+    return (
+      url.origin === app.uiOrigin &&
+      url.protocol === "http:" &&
+      hostname === "127.0.0.1"
+    );
   }
 
   function normalizeLegacyLinkPath(value) {
@@ -923,14 +942,57 @@
   }
 
   function appUiHref(app) {
-    const explicitHref = normalizeAppUiEntryHref(app.uiUrl);
+    const isolatedFallbackHref = isolatedAppUiFallbackHref(app);
+    if (isolatedFallbackHref || isolatedAppUiActive(app)) {
+      return isolatedFallbackHref;
+    }
+    const explicitHref = normalizeAppUiEntryHref(app.uiUrl, app);
     if (explicitHref) {
       return explicitHref;
     }
-    if (app.uiMode === "static" && typeof app.appId === "string" && app.appId.length > 0) {
-      return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`);
+    if (typeof app.uiUrl === "string" && app.uiUrl.length > 0) {
+      return null;
     }
-    return normalizeAppUiEntryHref(app.uiEntry);
+    if (app.uiMode === "static" && typeof app.appId === "string" && app.appId.length > 0) {
+      return normalizeAppUiEntryHref(`/apps/${encodeURIComponent(app.appId)}/`, app);
+    }
+    return normalizeAppUiEntryHref(app.uiEntry, app);
+  }
+
+  function isolatedAppUiLaunchHref(app) {
+    const fallbackHref = isolatedAppUiFallbackHref(app);
+    if (!fallbackHref) {
+      return null;
+    }
+    const url = new URL(fallbackHref, window.location.origin);
+    url.searchParams.set(isolatedLaunchParameter, "1");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function isolatedAppUiFallbackHref(app) {
+    if (!isolatedAppUiActive(app)) {
+      return null;
+    }
+    return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);
+  }
+
+  function isolatedAppUiProbeHref(app) {
+    if (!isolatedAppUiActive(app) || typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+      return null;
+    }
+    try {
+      const url = new URL(isolatedOriginProbePath, app.uiOrigin);
+      if (!allowedAppUiOrigin(url, app)) {
+        return null;
+      }
+      return url.href;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function isolatedAppUiActive(app) {
+    return app && app.uiOriginMode === "isolated-loopback" && app.uiOriginStatus === "active";
   }
 
   function appUiEntryNode(app) {
@@ -944,8 +1006,86 @@
     link.className = "button button-secondary";
     link.href = href;
     link.textContent = "Open";
+    const isolatedLaunchHref = isolatedAppUiLaunchHref(app);
+    const isolatedProbeHref = isolatedAppUiProbeHref(app);
+    if (
+      isolatedLaunchHref &&
+      isolatedProbeHref &&
+      typeof app.appId === "string" &&
+      app.appId.length > 0
+    ) {
+      link.dataset.isolatedLaunchHref = isolatedLaunchHref;
+      link.dataset.isolatedProbeHref = isolatedProbeHref;
+      link.dataset.isolatedAppId = app.appId;
+    }
     container.append(link);
     return container;
+  }
+
+  function appUiLaunchClickTarget(event) {
+    if (
+      !(event instanceof MouseEvent) ||
+      event.button !== 0 ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    ) {
+      return null;
+    }
+    const anchor = event.target instanceof Element
+      ? event.target.closest("a[data-isolated-launch-href]")
+      : null;
+    return anchor instanceof HTMLAnchorElement ? anchor : null;
+  }
+
+  async function launchAppUiFromLink(link) {
+    const fallbackHref = link.getAttribute("href") || "";
+    const isolatedLaunchHref = link.dataset.isolatedLaunchHref || "";
+    const probeHref = link.dataset.isolatedProbeHref || "";
+    const expectedAppId = link.dataset.isolatedAppId || "";
+    if (
+      isolatedLaunchHref &&
+      await isolatedAppOriginReachable(probeHref, expectedAppId)
+    ) {
+      window.location.assign(isolatedLaunchHref);
+      return;
+    }
+    window.location.assign(fallbackHref);
+  }
+
+  async function isolatedAppOriginReachable(probeHref, expectedAppId) {
+    if (!probeHref || !expectedAppId) {
+      return false;
+    }
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timeoutId = controller
+      ? window.setTimeout(() => controller.abort(), 1000)
+      : null;
+    try {
+      const probeOrigin = new URL(probeHref).origin;
+      const response = await fetch(probeHref, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "omit",
+        mode: "cors",
+        signal: controller ? controller.signal : undefined,
+      });
+      const data = await response.json().catch(() => ({}));
+      return (
+        response.ok &&
+        data &&
+        data.appId === expectedAppId &&
+        data.uiOrigin === probeOrigin &&
+        data.uiOriginStatus === "active"
+      );
+    } catch (error) {
+      return false;
+    } finally {
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+      }
+    }
   }
 
   function appSandboxStatus(app, runtime) {
@@ -1323,6 +1463,11 @@
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
     }
+    if (app.uiOriginMode === "isolated-loopback" && app.uiOriginStatus === "active") {
+      pills.append(createPill("Isolated origin", "is-success"));
+    } else if (app.uiOriginMode === "same-origin-fallback") {
+      pills.append(createPill("UI fallback", "is-warning"));
+    }
     const deniedCount = audit && typeof audit.recentDeniedCount === "number"
       ? audit.recentDeniedCount
       : typeof app.recentDeniedCount === "number"
@@ -1350,6 +1495,10 @@
       ["UI mode", scalar(app.uiMode)],
       ["UI", uiEntryNode || scalar(app.uiUrl)],
       ["UI entry", scalar(app.uiEntry)],
+      ["UI origin mode", scalar(app.uiOriginMode)],
+      ["UI origin status", scalar(app.uiOriginStatus)],
+      ["UI origin", scalar(app.uiOrigin)],
+      ["Same-origin fallback", scalar(app.sameOriginFallbackUrl)],
       ["Sandbox", sandboxLabel(sandbox)],
       ["Sandbox required", sandbox && sandbox.required ? "Yes" : "No"],
       ["Sandbox provider", sandbox ? scalar(sandbox.provider) : "Unavailable"],
@@ -3621,6 +3770,14 @@
     appsControls.refreshButton.addEventListener("click", () => {
       setAppsStatus("Refreshing installed apps and catalogs.");
       loadAppsSection();
+    });
+    sections.apps.addEventListener("click", async (event) => {
+      const link = appUiLaunchClickTarget(event);
+      if (!link) {
+        return;
+      }
+      event.preventDefault();
+      await launchAppUiFromLink(link);
     });
     sections.apps.addEventListener("submit", async (event) => {
       const form = event.target;

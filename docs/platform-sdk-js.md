@@ -4,10 +4,11 @@ This document describes the browser-side `CryptaPlatform` SDK for app-owned stat
 
 ## Scope
 
-The SDK is a small, dependency-free JavaScript file for static app pages served under
-`/apps/{appId}/`. It wraps the current same-origin bootstrap and Platform API conventions used by
-first-party apps. It carries the browser app session token issued by app-owned UI bootstrap, but it
-is not the server-side authorization boundary and it is not a sandbox or browser isolation layer.
+The SDK is a small, dependency-free JavaScript file for static app pages served from app-owned UI
+origins. The preferred runtime path is an isolated loopback origin per static app, with
+`/apps/{appId}/` retained as a same-origin compatibility fallback. The SDK carries the browser app
+session token issued by app-owned UI bootstrap, but it is not the server-side authorization
+boundary and it is not an AppHost process sandbox.
 
 Static app bundles should load the staged SDK before app-specific JavaScript:
 
@@ -33,33 +34,51 @@ Call `CryptaPlatform.bootstrap.load()` before using API helpers:
 await CryptaPlatform.bootstrap.load();
 ```
 
-The SDK infers the app id from paths such as `/apps/queue-manager/static/`. Tests and unusual local
-mounts can pass an explicit app id:
+On the same-origin compatibility route, the SDK infers the app id from paths such as
+`/apps/queue-manager/static/`. Isolated app origins normally pass or receive the app id through
+bootstrap, and first-party apps still pass it explicitly:
 
 ```js
 await CryptaPlatform.bootstrap.load({ appId: "queue-manager" });
 ```
 
-Bootstrap data comes from:
+On isolated app origins, bootstrap data comes from the current origin:
+
+```text
+GET /.well-known/cryptad-bootstrap.json
+```
+
+When Web Shell opens an isolated app, it first checks a token-free origin probe on the app loopback
+listener from the current browser. If that probe is reachable, Web Shell sends an explicit launch
+request through the admin compatibility route, which adds a short-lived launch proof to the app URL
+fragment. The SDK reads `cryptadBootstrapNonce` from that fragment, keeps it only in memory, and
+sends it to the same-origin bootstrap endpoint as `X-Crypta-App-Bootstrap-Nonce`. Directly opening a
+public isolated `uiUrl` without that launch proof can load static assets, but bootstrap will not
+issue an app browser-session token.
+
+On the compatibility route, bootstrap data comes from:
 
 ```text
 GET /apps/{appId}/.well-known/cryptad-bootstrap.json
 ```
 
 The SDK keeps a sanitized in-memory copy of the bootstrap fields used by browser apps: `appId`,
-`name`, `uiRoot`, `assetRoot`, `platformApiRoot`, `shellRoot`, and `browserSessionExpiresAt`.
-It reads `browserSessionToken` into private in-memory state and does not expose it through
+`name`, `uiRoot`, `assetRoot`, `platformApiRoot`, `shellRoot`, `uiOrigin`, `uiOriginMode`,
+`uiOriginStatus`, `sameOriginFallbackUrl`, and `browserSessionExpiresAt`. It reads
+`browserSessionToken` into private in-memory state and does not expose it through
 `CryptaPlatform.bootstrap.current()`. `CryptaPlatform.app.currentId()` returns the current app id
 when it can be inferred or has been loaded.
 
 The SDK does not write the browser session token to `localStorage`, `sessionStorage`, cookies, or
-query strings.
+query strings. It also does not expose the bootstrap launch nonce through public SDK state.
 
 ## Platform API reads
 
-`CryptaPlatform.api.url(path)` builds a same-origin URL beneath the bootstrap `platformApiRoot`,
-falling back to `/api/v1/` when the root is missing or invalid. Invalid roots such as external
-URLs, protocol-relative URLs, and roots with query strings or fragments are ignored.
+`CryptaPlatform.api.url(path)` builds a URL beneath the bootstrap `platformApiRoot`, falling back to
+`/api/v1/` when the root is missing or invalid. Isolated app bootstrap supplies an absolute local
+admin Platform API root such as `http://127.0.0.1:<adminPort>/api/v1/`. Invalid roots such as
+remote URLs, protocol-relative URLs, roots outside `/api/v1/`, and roots with query strings or
+fragments are ignored.
 
 Use `CryptaPlatform.api.get(path, options)` for JSON reads:
 
@@ -80,7 +99,9 @@ const snapshot = await CryptaPlatform.queue.snapshot({
 ```
 
 The SDK sends `Accept: application/json` and `X-Crypta-App-Session` with the in-memory browser
-session token. It normalizes common Platform API error bodies into readable `Error` messages.
+session token. Cross-origin API calls use `credentials: "omit"`; app-owned browser authentication
+uses only the session header, not cookies or local-admin form credentials. The SDK normalizes
+common Platform API error bodies into readable `Error` messages.
 
 ## Mutations
 
@@ -96,9 +117,12 @@ await CryptaPlatform.content.insertDirectory(formData);
 ```
 
 `CryptaPlatform.api.postForm(path, formDataOrParams)` and
-`CryptaPlatform.api.deleteForm(path, formDataOrParams)` are available for other same-origin
+`CryptaPlatform.api.deleteForm(path, formDataOrParams)` are available for other app-browser
 Platform API form mutations. If no browser session token is available, the SDK rejects the call
 before it sends a request.
+When an in-memory browser session is still live, mutation helpers reuse it instead of forcing a new
+bootstrap exchange. This avoids depending on the short-lived isolated-origin launch nonce after the
+app tab is already open.
 
 The helper accepts `FormData`, `URLSearchParams`, arrays of pairs, or plain objects. Non-string
 `FormData` entries such as `File` values are not submitted because the current Platform API bridge
@@ -133,6 +157,10 @@ or stale. The SDK clears the in-memory token and raises an error marked with
 `code="invalid_app_browser_session"` and `sessionRefreshRequired=true`. First-party apps should
 surface that as a reload or session-refresh condition.
 
+`403 origin_mismatch` means the Platform API rejected the browser session because the request
+origin did not match the origin bound into the session. Apps should tell the user to reopen the app
+from Web Shell instead of retrying with stored state.
+
 ## HTML fragments
 
 Some queue endpoints still return legacy HTML fragments in JSON. Use
@@ -155,17 +183,16 @@ HTML.
 
 ## Security boundary
 
-The SDK runs in the same local browser origin as the app-owned UI and Platform API. It preserves
-the current local-admin Web Shell path while making app-owned UI API calls use app browser
-principals. It does not isolate third-party JavaScript or authenticate an app as an AppHost process.
+The SDK runs in the app-owned browser origin. In the preferred Phase 6 path that origin is a
+per-app loopback origin distinct from the Web Shell/admin origin. The Platform API still lives on
+the admin origin and accepts app-browser calls only through restricted CORS plus
+`X-Crypta-App-Session`. The same-origin `/apps/{appId}/` route remains a compatibility fallback,
+not the preferred third-party app UI boundary.
 
 AppHost process launch tokens such as `CRYPTAD_APP_TOKEN` are not exposed to browser apps, SDK
 state, app summaries, or bootstrap JSON. Browser code receives route metadata and an app browser
-session token. Permission enforcement and audit for app-originated API calls remain server-side
-Platform API behavior, not a browser SDK guarantee.
-
-Install static UI bundles only from sources trusted to run JavaScript in the local admin origin
-until stronger browser isolation exists.
+session token bound to the expected app origin. Permission enforcement and audit for
+app-originated API calls remain server-side Platform API behavior, not a browser SDK guarantee.
 
 ## First-party examples
 
@@ -186,5 +213,5 @@ const result = await CryptaPlatform.content.insertFile(formData);
 ```
 
 Both apps keep their own UI state, sort handling, key export behavior, and legacy form filtering.
-The SDK owns only bootstrap, same-origin API transport, mutation form submission, error parsing,
+The SDK owns only bootstrap, app-browser API transport, mutation form submission, error parsing,
 and conservative fragment sanitization.
