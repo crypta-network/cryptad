@@ -64,7 +64,29 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class AppUiToadletTest {
+  private static final String ACCEPT_HEADER = "Accept";
+  private static final String ACCESS_CONTROL_ALLOW_ORIGIN_HEADER = "access-control-allow-origin";
+  private static final String ADMIN_ROOT = "http://127.0.0.1:8888/";
+  private static final String APP_BOOTSTRAP_URL =
+      "http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json";
+  private static final String APP_ID = "demo-app";
+  private static final String APP_ROOT_URL = "http://localhost/apps/demo-app/";
+  private static final String APPLICATION_JSON = "application/json";
+  private static final String BOOTSTRAP_RESOURCE = ".well-known/cryptad-bootstrap.json";
+  private static final String BROWSER_SESSION_TOKEN_FIELD = "browserSessionToken";
+  private static final String BROWSER_SESSION_TOKEN_JSON = "\"browserSessionToken\":\"";
   private static final String CONTENT_SECURITY_POLICY_HEADER = "content-security-policy";
+  private static final String GENERATED_PAGE = "generated-page";
+  private static final String HTML_BODY = "<html></html>";
+  private static final String INDEX_ENTRY = "index.html";
+  private static final String JAVASCRIPT_BODY = "export {};";
+  private static final String JAVASCRIPT_CONTENT_TYPE = "text/javascript; charset=UTF-8";
+  private static final String LOCATION_HEADER = "Location";
+  private static final String NOT_FOUND_REASON = "Not Found";
+  private static final String ORIGIN_HEADER = "Origin";
+  private static final String REDIRECTING_TO_APP_UI = "Redirecting to app UI.";
+  private static final String STATIC_DIRECTORY = "static";
+  private static final String STATIC_ENTRY = "static/index.html";
 
   @Mock private ToadletContext ctx;
   @Mock private ToadletContainer container;
@@ -81,14 +103,14 @@ class AppUiToadletTest {
 
   @Test
   void handleMethodGET_whenRootEntryRequested_expectDeclaredEntryHtml() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), HTML_BODY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(true);
 
-    toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/"), request, ctx);
+    toadlet.handleMethodGET(URI.create(APP_ROOT_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(200, reply.statusCode());
@@ -101,25 +123,25 @@ class AppUiToadletTest {
         AppUiSecurityHeaders.CONTENT_SECURITY_POLICY,
         reply.headers().getFirst(CONTENT_SECURITY_POLICY_HEADER));
     assertEquals(13L, reply.length());
-    assertEquals("<html></html>", captureBucketWriteText());
+    assertEquals(HTML_BODY, captureBucketWriteText());
   }
 
   @Test
   void handleMethodGET_whenNestedAppRootRequested_expectRedirectToEntryDirectory()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = spy(new AppUiToadlet(new InMemoryAppHost(snapshot)));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
 
-    toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/"), request, ctx);
+    toadlet.handleMethodGET(URI.create(APP_ROOT_URL), request, ctx);
 
-    verify(toadlet).writeTemporaryRedirect(ctx, "Redirecting to app UI.", "/apps/demo-app/static/");
+    verify(toadlet).writeTemporaryRedirect(ctx, REDIRECTING_TO_APP_UI, "/apps/demo-app/static/");
   }
 
   @Test
   void handleMethodGET_whenIsolatedOriginActive_expectSameOriginFallbackByDefault()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiOriginBinding binding = isolatedBinding(snapshot);
     AppUiToadlet toadlet =
         spy(
@@ -132,13 +154,13 @@ class AppUiToadletTest {
     toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/?view=queue"), request, ctx);
 
     verify(toadlet)
-        .writeTemporaryRedirect(ctx, "Redirecting to app UI.", "/apps/demo-app/static/?view=queue");
+        .writeTemporaryRedirect(ctx, REDIRECTING_TO_APP_UI, "/apps/demo-app/static/?view=queue");
   }
 
   @Test
   void handleMethodGET_whenIsolatedLaunchRequested_expectRootRedirectToIsolatedLaunchUrl()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiOriginBinding binding = isolatedBinding(snapshot);
     String launchUrl = binding.uiUrl() + "#cryptadBootstrapNonce=test-nonce";
     AppUiToadlet toadlet =
@@ -155,28 +177,28 @@ class AppUiToadletTest {
         ctx);
 
     String expectedLaunchUrl = binding.uiUrl() + "?view=queue#cryptadBootstrapNonce=test-nonce";
-    verify(toadlet).writeTemporaryRedirect(ctx, "Redirecting to app UI.", expectedLaunchUrl);
+    verify(toadlet).writeTemporaryRedirect(ctx, REDIRECTING_TO_APP_UI, expectedLaunchUrl);
   }
 
   @Test
   void loopbackOrigin_whenBootstrapRequested_expectConfiguredHttpsAdminRootsAndIpv4Origin()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
             appHost, new AppBrowserSessionStore(appHost), "https://127.0.0.1:9443/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       assertTrue(binding.origin().startsWith("http://127.0.0.1:"));
       assertEquals("https://127.0.0.1:9443/api/v1/", binding.platformApiRoot());
       assertEquals("https://127.0.0.1:9443/app/node/", binding.shellRoot());
 
-      String nonce = bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      String nonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
       HttpResponseCapture response =
           httpGet(
-              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, nonce));
 
       assertEquals(200, response.statusCode());
@@ -189,158 +211,157 @@ class AppUiToadletTest {
   @Test
   void loopbackOrigin_whenOriginProbeRequestedFromLocalAdminOrigin_expectCorsMetadata()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       String probeUrl = binding.uiRoot() + AppUiLoopbackOriginServer.ORIGIN_PROBE_PATH.substring(1);
       RawHttpResponseCapture response =
           rawHttpGet(
-              probeUrl, Map.of("Origin", "http://localhost:8888", "Accept", "application/json"));
+              probeUrl,
+              Map.of(ORIGIN_HEADER, "http://localhost:8888", ACCEPT_HEADER, APPLICATION_JSON));
       RawHttpResponseCapture ipv6LoopbackResponse =
-          rawHttpGet(probeUrl, Map.of("Origin", "http://[::1]:8888", "Accept", "application/json"));
+          rawHttpGet(
+              probeUrl,
+              Map.of(ORIGIN_HEADER, "http://[::1]:8888", ACCEPT_HEADER, APPLICATION_JSON));
       RawHttpResponseCapture remoteOriginResponse =
           rawHttpGet(
               probeUrl,
-              Map.of("Origin", "http://admin.example:8888", "Accept", "application/json"));
+              Map.of(ORIGIN_HEADER, "http://admin.example:8888", ACCEPT_HEADER, APPLICATION_JSON));
 
       assertEquals(200, response.statusCode());
-      assertEquals("http://localhost:8888", response.header("access-control-allow-origin"));
+      assertEquals("http://localhost:8888", response.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
       assertEquals(200, ipv6LoopbackResponse.statusCode());
-      assertEquals("http://[::1]:8888", ipv6LoopbackResponse.header("access-control-allow-origin"));
+      assertEquals(
+          "http://[::1]:8888", ipv6LoopbackResponse.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
       assertTrue(response.body().contains("\"appId\":\"demo-app\""));
       assertTrue(response.body().contains("\"uiOrigin\":\"" + binding.origin() + "\""));
       assertEquals(200, remoteOriginResponse.statusCode());
-      assertNull(remoteOriginResponse.header("access-control-allow-origin"));
+      assertNull(remoteOriginResponse.header(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER));
     }
   }
 
   @Test
   void loopbackOrigin_whenBootstrapRequestedWithoutLaunchProof_expectUnauthorized()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
-      HttpResponseCapture response =
-          httpGet(binding.uiRoot() + ".well-known/cryptad-bootstrap.json");
+      HttpResponseCapture response = httpGet(binding.uiRoot() + BOOTSTRAP_RESOURCE);
 
       assertEquals(401, response.statusCode());
-      assertFalse(response.body().contains("browserSessionToken"));
+      assertFalse(response.body().contains(BROWSER_SESSION_TOKEN_FIELD));
     }
   }
 
   @Test
   void loopbackOrigin_whenLaunchProofBelongsToDifferentApp_expectUnauthorized() throws Exception {
-    InstalledAppSnapshot firstApp = staticApp("demo-app", "index.html");
-    InstalledAppSnapshot secondApp = staticApp("other-app", "index.html");
+    InstalledAppSnapshot firstApp = staticApp(APP_ID, INDEX_ENTRY);
+    InstalledAppSnapshot secondApp = staticApp("other-app", INDEX_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(firstApp, secondApp);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
       AppUiOriginBinding secondBinding = originServer.bindingForApp("other-app").orElseThrow();
-      String firstNonce =
-          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      String firstNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
 
       HttpResponseCapture response =
           httpGet(
-              secondBinding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              secondBinding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, firstNonce));
 
       assertEquals(401, response.statusCode());
-      assertFalse(response.body().contains("browserSessionToken"));
+      assertFalse(response.body().contains(BROWSER_SESSION_TOKEN_FIELD));
       assertFalse(response.body().contains("\"appId\":\"other-app\""));
     }
   }
 
   @Test
   void loopbackOrigin_whenAppSnapshotChanges_expectPreviousLaunchProofRejected() throws Exception {
-    InstalledAppSnapshot original = staticApp("index.html");
+    InstalledAppSnapshot original = staticApp(INDEX_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(original);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
-      String staleNonce =
-          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+      String staleNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
 
-      appHost.replace(staticAppWithName("Updated App", "index.html"));
+      appHost.replace(staticAppWithName("Updated App", INDEX_ENTRY));
 
       HttpResponseCapture rejected =
           httpGet(
-              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, staleNonce));
       assertEquals(401, rejected.statusCode());
-      assertFalse(rejected.body().contains("browserSessionToken"));
+      assertFalse(rejected.body().contains(BROWSER_SESSION_TOKEN_FIELD));
 
-      String currentNonce =
-          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+      String currentNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
       HttpResponseCapture accepted =
           httpGet(
-              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, currentNonce));
       assertEquals(200, accepted.statusCode());
       assertTrue(accepted.body().contains("\"name\":\"Updated App\""));
-      assertTrue(accepted.body().contains("\"browserSessionToken\":\""));
+      assertTrue(accepted.body().contains(BROWSER_SESSION_TOKEN_JSON));
     }
   }
 
   @Test
   void loopbackOrigin_whenManyLaunchProofsIssued_expectOldestLaunchProofEvicted() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
-      String firstNonce =
-          bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+      String firstNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
       String latestNonce = firstNonce;
       for (int index = 0; index < AppUiLoopbackOriginServer.MAX_BOOTSTRAP_NONCES_PER_APP; index++) {
-        latestNonce = bootstrapNonceFrom(originServer.launchUrlForApp("demo-app").orElseThrow());
+        latestNonce = bootstrapNonceFrom(originServer.launchUrlForApp(APP_ID).orElseThrow());
       }
 
       HttpResponseCapture rejected =
           httpGet(
-              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, firstNonce));
       assertEquals(401, rejected.statusCode());
-      assertFalse(rejected.body().contains("browserSessionToken"));
+      assertFalse(rejected.body().contains(BROWSER_SESSION_TOKEN_FIELD));
 
       HttpResponseCapture accepted =
           httpGet(
-              binding.uiRoot() + ".well-known/cryptad-bootstrap.json",
+              binding.uiRoot() + BOOTSTRAP_RESOURCE,
               Map.of(AppUiLoopbackOriginServer.BOOTSTRAP_NONCE_HEADER, latestNonce));
       assertEquals(200, accepted.statusCode());
-      assertTrue(accepted.body().contains("\"browserSessionToken\":\""));
+      assertTrue(accepted.body().contains(BROWSER_SESSION_TOKEN_JSON));
     }
   }
 
   @Test
   void loopbackOrigin_whenStaleTabRequestsRemovedApp_expectLoopbackListenerStopped()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), HTML_BODY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
-      appHost.remove("demo-app");
+      appHost.remove(APP_ID);
 
       HttpResponseCapture staleTabResponse = httpGet(binding.uiUrl());
       assertEquals(404, staleTabResponse.statusCode());
@@ -352,15 +373,15 @@ class AppUiToadletTest {
 
   @Test
   void loopbackOrigin_whenJavascriptDisabled_expectScriptExecutionBlocked() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), HTML_BODY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> false)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       HttpResponseCapture response = httpGet(binding.uiUrl());
 
@@ -369,22 +390,22 @@ class AppUiToadletTest {
       assertTrue(contentSecurityPolicy.contains("script-src 'none'"));
       assertFalse(contentSecurityPolicy.contains("script-src 'self'"));
       assertTrue(contentSecurityPolicy.contains("connect-src 'self' http://127.0.0.1:8888"));
-      assertEquals("<html></html>", response.body());
+      assertEquals(HTML_BODY, response.body());
     }
   }
 
   @Test
   void loopbackOrigin_whenHeadAssetRequested_expectAssetLengthWithoutBody() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     String body = "<html>demo</html>";
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), body);
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), body);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       HttpResponseCapture response = httpHead(binding.uiUrl());
 
@@ -396,15 +417,15 @@ class AppUiToadletTest {
 
   @Test
   void loopbackOrigin_whenHeadMissingAssetRequested_expectNotFoundWithoutBody() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), HTML_BODY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       HttpResponseCapture response = httpHead(binding.uiRoot() + "missing.js");
 
@@ -415,15 +436,15 @@ class AppUiToadletTest {
 
   @Test
   void loopbackOrigin_whenHeadTraversalRequested_expectBadRequestWithoutBody() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("index.html");
+    InstalledAppSnapshot snapshot = staticApp(INDEX_ENTRY);
     Files.createDirectories(snapshot.paths().installedRoot());
-    Files.writeString(snapshot.paths().installedRoot().resolve("index.html"), "<html></html>");
+    Files.writeString(snapshot.paths().installedRoot().resolve(INDEX_ENTRY), HTML_BODY);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
 
     try (AppUiLoopbackOriginServer originServer =
         new AppUiLoopbackOriginServer(
-            appHost, new AppBrowserSessionStore(appHost), "http://127.0.0.1:8888/", () -> true)) {
-      AppUiOriginBinding binding = originServer.bindingForApp("demo-app").orElseThrow();
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> true)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
 
       HttpResponseCapture response = httpHead(binding.uiRoot() + "%2e%2e/secret");
 
@@ -434,10 +455,9 @@ class AppUiToadletTest {
 
   @Test
   void handleMethodGET_whenJavascriptDisabled_expectScriptExecutionBlocked() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    Files.createDirectories(snapshot.paths().installedRoot().resolve("static"));
-    Files.writeString(
-        snapshot.paths().installedRoot().resolve("static/index.html"), "<html></html>");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
+    Files.createDirectories(snapshot.paths().installedRoot().resolve(STATIC_DIRECTORY));
+    Files.writeString(snapshot.paths().installedRoot().resolve(STATIC_ENTRY), HTML_BODY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(false);
@@ -448,14 +468,14 @@ class AppUiToadletTest {
     assertEquals(
         AppUiSecurityHeaders.JAVASCRIPT_DISABLED_CONTENT_SECURITY_POLICY,
         reply.headers().getFirst(CONTENT_SECURITY_POLICY_HEADER));
-    assertEquals("<html></html>", captureBucketWriteText());
+    assertEquals(HTML_BODY, captureBucketWriteText());
   }
 
   @Test
   void handleMethodGET_whenStaticAssetRequested_expectJavascriptContentType() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    Files.createDirectories(snapshot.paths().installedRoot().resolve("static"));
-    Files.writeString(snapshot.paths().installedRoot().resolve("static/app.js"), "export {};");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
+    Files.createDirectories(snapshot.paths().installedRoot().resolve(STATIC_DIRECTORY));
+    Files.writeString(snapshot.paths().installedRoot().resolve("static/app.js"), JAVASCRIPT_BODY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(true);
@@ -464,23 +484,20 @@ class AppUiToadletTest {
         URI.create("http://localhost/apps/demo-app/static/app.js"), request, ctx);
 
     ReplyCapture reply = captureReply();
-    assertEquals("text/javascript; charset=UTF-8", reply.mimeType());
+    assertEquals(JAVASCRIPT_CONTENT_TYPE, reply.mimeType());
     assertEquals(10L, reply.length());
-    assertEquals("export {};", captureBucketWriteText());
+    assertEquals(JAVASCRIPT_BODY, captureBucketWriteText());
   }
 
   @Test
   void handleMethodGET_whenBootstrapRequested_expectBrowserSessionJsonWithoutHostCredentials()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(true);
 
-    toadlet.handleMethodGET(
-        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
-        request,
-        ctx);
+    toadlet.handleMethodGET(URI.create(APP_BOOTSTRAP_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(200, reply.statusCode());
@@ -497,7 +514,7 @@ class AppUiToadletTest {
     assertTrue(body.contains("\"uiOriginMode\":\"same-origin-fallback\""));
     assertTrue(body.contains("\"uiOriginStatus\":\"fallback\""));
     assertTrue(body.contains("\"sameOriginFallbackUrl\":\"/apps/demo-app/\""));
-    assertTrue(body.contains("\"browserSessionToken\":\""));
+    assertTrue(body.contains(BROWSER_SESSION_TOKEN_JSON));
     assertTrue(body.contains("\"browserSessionExpiresAt\":\""));
     assertFalse(body.contains("formPassword"));
     assertFalse(body.contains("CRYPTAD_APP_TOKEN"));
@@ -508,7 +525,7 @@ class AppUiToadletTest {
   @Test
   void handleMethodGET_whenIsolatedOriginActiveAndBootstrapRequested_expectFallbackBootstrap()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiOriginBinding binding = isolatedBinding(snapshot);
     InMemoryAppHost appHost = new InMemoryAppHost(snapshot);
     AppUiToadlet toadlet =
@@ -516,10 +533,7 @@ class AppUiToadletTest {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(true);
 
-    toadlet.handleMethodGET(
-        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
-        request,
-        ctx);
+    toadlet.handleMethodGET(URI.create(APP_BOOTSTRAP_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(200, reply.statusCode());
@@ -534,16 +548,13 @@ class AppUiToadletTest {
   @Test
   void handleMethodHEAD_whenBootstrapRequestedForStaticApp_expectHeadersOnlyJson()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppBrowserSessionIssuer sessionIssuer = mock(AppBrowserSessionIssuer.class);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot), sessionIssuer);
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     enableJavascript(true);
 
-    toadlet.handleMethodHEAD(
-        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
-        request,
-        ctx);
+    toadlet.handleMethodHEAD(URI.create(APP_BOOTSTRAP_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(200, reply.statusCode());
@@ -560,14 +571,11 @@ class AppUiToadletTest {
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.isAllowedFullAccess()).thenReturn(true);
 
-    toadlet.handleMethodHEAD(
-        URI.create("http://localhost/apps/demo-app/.well-known/cryptad-bootstrap.json"),
-        request,
-        ctx);
+    toadlet.handleMethodHEAD(URI.create(APP_BOOTSTRAP_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(404, reply.statusCode());
-    assertEquals("Not Found", reply.reasonPhrase());
+    assertEquals(NOT_FOUND_REASON, reply.reasonPhrase());
     assertEquals(0L, reply.length());
     verifyNoBodyWrites();
   }
@@ -575,8 +583,8 @@ class AppUiToadletTest {
   @Test
   void handleMethodGET_whenCanonicalParentRelativeAssetExistsAtBundleRoot_expectBundleRelativeBody()
       throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    Files.createDirectories(snapshot.paths().installedRoot().resolve("static"));
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
+    Files.createDirectories(snapshot.paths().installedRoot().resolve(STATIC_DIRECTORY));
     Files.writeString(snapshot.paths().installedRoot().resolve("static/shared.js"), "nested");
     Files.writeString(snapshot.paths().installedRoot().resolve("shared.js"), "root");
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
@@ -586,16 +594,16 @@ class AppUiToadletTest {
     toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/shared.js"), request, ctx);
 
     ReplyCapture reply = captureReply();
-    assertEquals("text/javascript; charset=UTF-8", reply.mimeType());
+    assertEquals(JAVASCRIPT_CONTENT_TYPE, reply.mimeType());
     assertEquals(4L, reply.length());
     assertEquals("root", captureBucketWriteText());
   }
 
   @Test
   void handleMethodHEAD_whenStaticAssetRequested_expectHeadersOnly() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    Files.createDirectories(snapshot.paths().installedRoot().resolve("static"));
-    Files.writeString(snapshot.paths().installedRoot().resolve("static/app.js"), "export {};");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
+    Files.createDirectories(snapshot.paths().installedRoot().resolve(STATIC_DIRECTORY));
+    Files.writeString(snapshot.paths().installedRoot().resolve("static/app.js"), JAVASCRIPT_BODY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     enableJavascript(true);
@@ -604,17 +612,16 @@ class AppUiToadletTest {
         URI.create("http://localhost/apps/demo-app/static/app.js"), request, ctx);
 
     ReplyCapture reply = captureReply();
-    assertEquals("text/javascript; charset=UTF-8", reply.mimeType());
+    assertEquals(JAVASCRIPT_CONTENT_TYPE, reply.mimeType());
     assertEquals(10L, reply.length());
     verifyNoBodyWrites();
   }
 
   @Test
   void handleMethodGET_whenEntryDirectoryRequested_expectDeclaredEntryHtml() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
-    Files.createDirectories(snapshot.paths().installedRoot().resolve("static"));
-    Files.writeString(
-        snapshot.paths().installedRoot().resolve("static/index.html"), "<html></html>");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
+    Files.createDirectories(snapshot.paths().installedRoot().resolve(STATIC_DIRECTORY));
+    Files.writeString(snapshot.paths().installedRoot().resolve(STATIC_ENTRY), HTML_BODY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     enableJavascript(true);
@@ -624,7 +631,7 @@ class AppUiToadletTest {
     ReplyCapture reply = captureReply();
     assertEquals(200, reply.statusCode());
     assertEquals("text/html; charset=UTF-8", reply.mimeType());
-    assertEquals("<html></html>", captureBucketWriteText());
+    assertEquals(HTML_BODY, captureBucketWriteText());
   }
 
   @Test
@@ -637,7 +644,7 @@ class AppUiToadletTest {
     ReplyCapture reply = captureReply();
     assertEquals(302, reply.statusCode());
     assertEquals("Found", reply.reasonPhrase());
-    assertEquals("/apps/demo-app/", reply.headers().getFirst("Location"));
+    assertEquals("/apps/demo-app/", reply.headers().getFirst(LOCATION_HEADER));
     assertEquals(0L, reply.length());
     verifyNoBodyWrites();
   }
@@ -652,13 +659,14 @@ class AppUiToadletTest {
         URI.create("http://localhost/apps/demo-app?view=queue&filter=a%2Fb"), request, ctx);
 
     ReplyCapture reply = captureReply();
-    assertEquals("/apps/demo-app/?view=queue&filter=a%2Fb", reply.headers().getFirst("Location"));
+    assertEquals(
+        "/apps/demo-app/?view=queue&filter=a%2Fb", reply.headers().getFirst(LOCATION_HEADER));
     verifyNoBodyWrites();
   }
 
   @Test
   void handleMethodHEAD_whenNestedAppRootHasQuery_expectRedirectPreservesQuery() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.isAllowedFullAccess()).thenReturn(true);
 
@@ -667,13 +675,14 @@ class AppUiToadletTest {
 
     ReplyCapture reply = captureReply();
     assertEquals(
-        "/apps/demo-app/static/?view=queue&filter=a%2Fb", reply.headers().getFirst("Location"));
+        "/apps/demo-app/static/?view=queue&filter=a%2Fb",
+        reply.headers().getFirst(LOCATION_HEADER));
     verifyNoBodyWrites();
   }
 
   @Test
   void handleMethodHEAD_whenStaticAssetMissing_expectHeaderOnlyNotFound() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = new AppUiToadlet(new InMemoryAppHost(snapshot));
     when(ctx.isAllowedFullAccess()).thenReturn(true);
 
@@ -682,7 +691,7 @@ class AppUiToadletTest {
 
     ReplyCapture reply = captureReply();
     assertEquals(404, reply.statusCode());
-    assertEquals("Not Found", reply.reasonPhrase());
+    assertEquals(NOT_FOUND_REASON, reply.reasonPhrase());
     assertEquals(0L, reply.length());
     verifyNoBodyWrites();
   }
@@ -708,7 +717,7 @@ class AppUiToadletTest {
     AppUiToadlet toadlet = new AppUiToadlet(appHost);
     when(ctx.isAllowedFullAccess()).thenReturn(false);
 
-    toadlet.handleMethodHEAD(URI.create("http://localhost/apps/demo-app/"), request, ctx);
+    toadlet.handleMethodHEAD(URI.create(APP_ROOT_URL), request, ctx);
 
     ReplyCapture reply = captureReply();
     assertEquals(403, reply.statusCode());
@@ -725,7 +734,7 @@ class AppUiToadletTest {
     AppUiToadlet toadlet = new AppUiToadlet(appHost);
     when(ctx.checkFullAccess(toadlet)).thenReturn(false);
 
-    toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/"), request, ctx);
+    toadlet.handleMethodGET(URI.create(APP_ROOT_URL), request, ctx);
 
     verify(ctx).checkFullAccess(toadlet);
     verifyNoInteractions(appHost);
@@ -733,7 +742,7 @@ class AppUiToadletTest {
 
   @Test
   void handleMethodGET_whenTraversalRequested_expectBadRequest() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = spy(new AppUiToadlet(new InMemoryAppHost(snapshot)));
     StubbedErrorPage errorPage = stubErrorPage(toadlet);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -743,12 +752,12 @@ class AppUiToadletTest {
 
     assertEquals(400, errorPage.statusCode.get());
     assertEquals("Bad Request", errorPage.reasonPhrase.get());
-    assertEquals("generated-page", errorPage.body.get());
+    assertEquals(GENERATED_PAGE, errorPage.body.get());
   }
 
   @Test
   void handleMethodGET_whenNonEntryDirectoryPathEndsWithSlash_expectNotFound() throws Exception {
-    InstalledAppSnapshot snapshot = staticApp("static/index.html");
+    InstalledAppSnapshot snapshot = staticApp(STATIC_ENTRY);
     AppUiToadlet toadlet = spy(new AppUiToadlet(new InMemoryAppHost(snapshot)));
     StubbedErrorPage errorPage = stubErrorPage(toadlet);
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
@@ -756,8 +765,8 @@ class AppUiToadletTest {
     toadlet.handleMethodGET(URI.create("http://localhost/apps/demo-app/assets/"), request, ctx);
 
     assertEquals(404, errorPage.statusCode.get());
-    assertEquals("Not Found", errorPage.reasonPhrase.get());
-    assertEquals("generated-page", errorPage.body.get());
+    assertEquals(NOT_FOUND_REASON, errorPage.reasonPhrase.get());
+    assertEquals(GENERATED_PAGE, errorPage.body.get());
   }
 
   private StubbedErrorPage stubErrorPage(AppUiToadlet toadlet) throws Exception {
@@ -770,7 +779,7 @@ class AppUiToadletTest {
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx))).thenReturn(pageNode);
     when(pageNode.getContentNode()).thenReturn(contentNode);
-    when(pageNode.generate()).thenReturn("generated-page");
+    when(pageNode.generate()).thenReturn(GENERATED_PAGE);
     when(pageMaker.getInfobox(anyString(), anyString(), eq(contentNode), isNull(), anyBoolean()))
         .thenReturn(infoboxNode);
     doAnswer(
@@ -920,7 +929,7 @@ class AppUiToadletTest {
     while (System.nanoTime() < deadlineNanos) {
       try {
         httpGet(url);
-      } catch (IOException expected) {
+      } catch (IOException _) {
         return;
       }
       Thread.sleep(25L);
@@ -949,7 +958,7 @@ class AppUiToadletTest {
   }
 
   private InstalledAppSnapshot staticApp(String uiEntry) {
-    return staticApp("demo-app", uiEntry);
+    return staticApp(APP_ID, uiEntry);
   }
 
   private InstalledAppSnapshot staticApp(String appId, String uiEntry) {
@@ -957,7 +966,7 @@ class AppUiToadletTest {
   }
 
   private InstalledAppSnapshot staticAppWithName(String appName, String uiEntry) {
-    return app("demo-app", appName, AppUiMode.STATIC, uiEntry);
+    return app(APP_ID, appName, AppUiMode.STATIC, uiEntry);
   }
 
   private static AppUiOriginBinding isolatedBinding(InstalledAppSnapshot snapshot) {
@@ -988,7 +997,7 @@ class AppUiToadletTest {
   }
 
   private InstalledAppSnapshot shellPanelApp() {
-    return app("demo-app", AppUiMode.SHELL_PANEL, "/app/node/#queue");
+    return app(APP_ID, AppUiMode.SHELL_PANEL, "/app/node/#queue");
   }
 
   private InstalledAppSnapshot app(String appId, AppUiMode uiMode, String uiEntry) {
