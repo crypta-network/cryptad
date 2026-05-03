@@ -27,7 +27,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 23,
-        "contractVersion": 1,
+        "contractVersion": 2,
         "endpointCount": 52,
         "flaggedStability": [],
         "stabilityCounts": {

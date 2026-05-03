@@ -896,14 +896,19 @@ def collect_platform_api_contract_evidence(
             stability_counts[stability] = stability_counts.get(stability, 0) + 1
             if stability != "stable":
                 flagged.append(f"{collection_name}:{entry.get('name') or entry.get('routeTemplate')}:{stability}")
-    details["contractVersion"] = contract.get("contractVersion") if isinstance(contract, dict) else None
-    details["apiVersion"] = contract.get("apiVersion") if isinstance(contract, dict) else None
+    contract_version = contract.get("contractVersion") if isinstance(contract, dict) else None
+    api_version = contract.get("apiVersion") if isinstance(contract, dict) else None
+    details["contractVersion"] = contract_version
+    details["apiVersion"] = api_version
     details["capabilityCount"] = len(capabilities)
     details["endpointCount"] = len(endpoints)
     details["stabilityCounts"] = stability_counts
     details["flaggedStability"] = flagged
-    if contract and details["contractVersion"] != 1:
-        errors.append("unexpected Platform API contract version")
+    if contract:
+        if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
+            errors.append("contractVersion must be a positive integer")
+        if not isinstance(api_version, str) or not api_version.strip():
+            errors.append("apiVersion must be a non-empty string")
     if not capabilities:
         errors.append("contract has no capability descriptors")
     if not endpoints:
@@ -2306,7 +2311,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 1,
+                    "contractVersion": 2,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import network.crypta.platform.api.PlatformApiContract;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -68,8 +69,12 @@ class CryptaAppCliTest {
         Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
 
     assertFalse(manifest.contains("app.permissions="));
-    assertTrue(manifest.contains("api.minimumVersion=1\n"));
-    assertTrue(manifest.contains("api.maximumTestedVersion=1\n"));
+    assertTrue(
+        manifest.contains(
+            "api.minimumVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION + "\n"));
+    assertTrue(
+        manifest.contains(
+            "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION + "\n"));
     assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
   }
 
@@ -220,17 +225,22 @@ class CryptaAppCliTest {
         "--version",
         "0.1.0");
     Path manifest = appDir.resolve("cryptad-app.properties");
+    int futureContractVersion = PlatformApiContract.CURRENT_CONTRACT_VERSION + 1;
     Files.writeString(
         manifest,
         Files.readString(manifest, StandardCharsets.UTF_8)
-            .replace("api.minimumVersion=1", "api.minimumVersion=2")
-            .replace("api.maximumTestedVersion=1", "api.maximumTestedVersion=2"),
+            .replace(
+                "api.minimumVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION,
+                "api.minimumVersion=" + futureContractVersion)
+            .replace(
+                "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION,
+                "api.maximumTestedVersion=" + futureContractVersion),
         StandardCharsets.UTF_8);
 
     CliResult result = runCli("compat", "verify", "--bundle-dir", appDir.toString(), "--strict");
 
     assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
-    assertTrue(result.err().contains("requires Platform API contract 2"));
+    assertTrue(result.err().contains("requires Platform API contract " + futureContractVersion));
   }
 
   @Test
@@ -456,8 +466,16 @@ class CryptaAppCliTest {
     assertTrue(catalog.contains("app.sample-app.license=MIT\n"));
     assertTrue(catalog.contains("app.sample-app.categories=productivity,network\n"));
     assertTrue(catalog.contains("app.sample-app.minimumCryptaVersion=0.1.0\n"));
-    assertTrue(catalog.contains("app.sample-app.api.minimumVersion=1\n"));
-    assertTrue(catalog.contains("app.sample-app.api.maximumTestedVersion=1\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.api.minimumVersion="
+                + PlatformApiContract.CURRENT_CONTRACT_VERSION
+                + "\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.api.maximumTestedVersion="
+                + PlatformApiContract.CURRENT_CONTRACT_VERSION
+                + "\n"));
     assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     assertTrue(catalog.contains("app.sample-app.review.status=reviewed\n"));
     assertTrue(
@@ -563,7 +581,11 @@ class CryptaAppCliTest {
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
 
     assertTrue(catalog.contains("catalog.version=2\n"));
-    assertTrue(catalog.contains("app.sample-app.api.minimumVersion=1\n"));
+    assertTrue(
+        catalog.contains(
+            "app.sample-app.api.minimumVersion="
+                + PlatformApiContract.CURRENT_CONTRACT_VERSION
+                + "\n"));
     assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     CliResult signResult =
         runCli(
