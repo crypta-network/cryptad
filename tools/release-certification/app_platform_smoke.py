@@ -1929,6 +1929,14 @@ def run_self_test(repo_root: Path) -> None:
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
+        contract_item = evidence_by_id["platform-api.contract"]
+        assert contract_item["status"] == "pass", contract_item
+        contract_details = contract_item["details"]
+        assert contract_details["contractVersion"] == 2, contract_item
+        assert contract_details["capabilityCount"] == 2, contract_item
+        assert contract_details["endpointCount"] == 1, contract_item
+        assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
+        assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
         assert evidence_by_id["apphost.sandbox-provider"]["status"] == "pass"
         assert evidence_by_id["apphost.sandbox-provider"]["details"]["liveBubblewrapRequired"] is False
@@ -2429,8 +2437,8 @@ exit /b %ERRORLEVEL%
         cli.write_text(
             """#!/usr/bin/env sh
 set -eu
-cmd="$1"
-shift
+cmd="${1:-}"
+if [ "$#" -gt 0 ]; then shift; fi
 case "$cmd" in
   init)
     dir=""
@@ -2438,7 +2446,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=1' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<script src="./crypta-platform.js"></script><script src="./app.js"></script>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -2488,6 +2496,106 @@ CATALOG
         ;;
       sign|verify)
         exit 0
+        ;;
+    esac
+    ;;
+  api)
+    sub="${1:-}"
+    if [ "$#" -gt 0 ]; then shift; fi
+    case "$sub" in
+      snapshot)
+        output=""
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = "--output" ]; then output="$2"; shift 2; else shift; fi
+        done
+        if [ -z "$output" ]; then
+          exit 2
+        fi
+        mkdir -p "$(dirname "$output")"
+        cat > "$output" <<'JSON'
+{
+  "contract": {
+    "apiVersion": "v1",
+    "contractVersion": 2,
+    "generatedBy": "cryptad",
+    "stabilityPolicy": "self-test",
+    "capabilities": [
+      {
+        "name": "queue.read",
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read queue state."
+      },
+      {
+        "name": "platform.contract.read",
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read contract snapshots."
+      }
+    ],
+    "endpoints": [
+      {
+        "routeFamily": "queue",
+        "method": "GET",
+        "routeTemplate": "/queue",
+        "actionLabel": "queue.read",
+        "requiredCapabilities": [
+          "queue.read"
+        ],
+        "hostOperatorBypassAllowed": true,
+        "appProcessPrincipalsAllowed": true,
+        "appBrowserPrincipalsAllowed": true,
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read queue state."
+      }
+    ]
+  }
+}
+JSON
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+    ;;
+  compat)
+    sub="${1:-}"
+    if [ "$#" -gt 0 ]; then shift; fi
+    case "$sub" in
+      verify)
+        contract=""
+        target=""
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --contract)
+              contract="$2"
+              shift 2
+              ;;
+            --bundle-dir|--catalog-entry)
+              target="$2"
+              shift 2
+              ;;
+            --strict)
+              shift
+              ;;
+            *)
+              shift
+              ;;
+          esac
+        done
+        if [ -z "$contract" ] || [ ! -f "$contract" ]; then
+          exit 2
+        fi
+        if [ -z "$target" ]; then
+          exit 2
+        fi
+        ;;
+      *)
+        exit 2
         ;;
     esac
     ;;
