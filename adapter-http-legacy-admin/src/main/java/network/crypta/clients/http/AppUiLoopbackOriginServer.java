@@ -105,6 +105,9 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   static final String ORIGIN_PROBE_PATH = "/.well-known/cryptad-origin.json";
 
   private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
+  private static final String IPV6_LOOPBACK_HOST = "::1";
+  private static final String IPV6_LOOPBACK_HOST_EXPANDED = "0:0:0:0:0:0:0:1";
+  private static final String LOCALHOST_HOST = "localhost";
   private static final String TEXT_CONTENT_TYPE = "text/plain";
 
   private final AppHost appHost;
@@ -596,7 +599,22 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
   }
 
   private static boolean localAdminHost(String host) {
-    return AppUiOrigin.LOOPBACK_HOST.equals(host) || "localhost".equalsIgnoreCase(host);
+    String normalizedHost = normalizeUriHost(host);
+    return AppUiOrigin.LOOPBACK_HOST.equals(normalizedHost)
+        || LOCALHOST_HOST.equalsIgnoreCase(normalizedHost)
+        || IPV6_LOOPBACK_HOST.equalsIgnoreCase(normalizedHost)
+        || IPV6_LOOPBACK_HOST_EXPANDED.equalsIgnoreCase(normalizedHost);
+  }
+
+  private static String normalizeUriHost(String host) {
+    if (host == null) {
+      return "";
+    }
+    String trimmed = host.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      return trimmed.substring(1, trimmed.length() - 1);
+    }
+    return trimmed;
   }
 
   private static int effectivePort(URI uri) {

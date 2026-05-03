@@ -201,6 +201,8 @@ class AppUiToadletTest {
       RawHttpResponseCapture response =
           rawHttpGet(
               probeUrl, Map.of("Origin", "http://localhost:8888", "Accept", "application/json"));
+      RawHttpResponseCapture ipv6LoopbackResponse =
+          rawHttpGet(probeUrl, Map.of("Origin", "http://[::1]:8888", "Accept", "application/json"));
       RawHttpResponseCapture remoteOriginResponse =
           rawHttpGet(
               probeUrl,
@@ -208,6 +210,8 @@ class AppUiToadletTest {
 
       assertEquals(200, response.statusCode());
       assertEquals("http://localhost:8888", response.header("access-control-allow-origin"));
+      assertEquals(200, ipv6LoopbackResponse.statusCode());
+      assertEquals("http://[::1]:8888", ipv6LoopbackResponse.header("access-control-allow-origin"));
       assertTrue(response.body().contains("\"appId\":\"demo-app\""));
       assertTrue(response.body().contains("\"uiOrigin\":\"" + binding.origin() + "\""));
       assertEquals(200, remoteOriginResponse.statusCode());
