@@ -348,7 +348,8 @@
       (url.protocol === "http:" || url.protocol === "https:") &&
       (normalizedHostname === "127.0.0.1" ||
         normalizedHostname === "localhost" ||
-        normalizedHostname === "::1")
+        normalizedHostname === "::1" ||
+        normalizedHostname === "0:0:0:0:0:0:0:1")
     );
   }
 

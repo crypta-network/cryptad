@@ -50,6 +50,11 @@ public record AppUiBootstrap(
     String sameOriginFallbackUrl,
     String browserSessionToken,
     Instant browserSessionExpiresAt) {
+  private static final String IPV4_LOOPBACK_HOST = "127.0.0.1";
+  private static final String IPV6_LOOPBACK_HOST = "::1";
+  private static final String IPV6_LOOPBACK_HOST_EXPANDED = "0:0:0:0:0:0:0:1";
+  private static final String LOCALHOST_HOST = "localhost";
+
   /**
    * Reserved bundle-relative route used for dynamic app UI bootstrap JSON.
    *
@@ -309,9 +314,10 @@ public record AppUiBootstrap(
 
   private static boolean hasNonLoopbackHost(String host) {
     String normalizedHost = normalizeBracketedIpv6Host(host);
-    return !"127.0.0.1".equals(normalizedHost)
-        && !"localhost".equalsIgnoreCase(normalizedHost)
-        && !"::1".equals(normalizedHost);
+    return !IPV4_LOOPBACK_HOST.equals(normalizedHost)
+        && !LOCALHOST_HOST.equalsIgnoreCase(normalizedHost)
+        && !IPV6_LOOPBACK_HOST.equalsIgnoreCase(normalizedHost)
+        && !IPV6_LOOPBACK_HOST_EXPANDED.equalsIgnoreCase(normalizedHost);
   }
 
   private static String normalizeBracketedIpv6Host(String host) {

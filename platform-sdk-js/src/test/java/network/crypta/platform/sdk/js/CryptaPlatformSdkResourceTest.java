@@ -82,6 +82,7 @@ class CryptaPlatformSdkResourceTest {
         script.contains(
             "hostname.startsWith(\"[\") && hostname.endsWith(\"]\") ? hostname.slice(1, -1)"));
     assertTrue(script.contains("normalizedHostname === \"::1\""));
+    assertTrue(script.contains("normalizedHostname === \"0:0:0:0:0:0:0:1\""));
   }
 
   @Test

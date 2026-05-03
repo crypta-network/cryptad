@@ -90,6 +90,30 @@ class AppUiBootstrapTest {
   }
 
   @Test
+  void constructor_whenExpandedIpv6LoopbackRootsProvided_expectAccepted() {
+    AppUiBootstrap bootstrap =
+        new AppUiBootstrap(
+            "demo-app",
+            "Demo App",
+            "http://[0:0:0:0:0:0:0:1]:12345/",
+            "http://[0:0:0:0:0:0:0:1]:12345/static/",
+            "http://[0:0:0:0:0:0:0:1]:8888/api/v1/",
+            "http://[0:0:0:0:0:0:0:1]:8888/app/node/",
+            "http://[0:0:0:0:0:0:0:1]:12345",
+            AppUiOriginMode.ISOLATED_LOOPBACK.jsonValue(),
+            AppUiOriginStatus.ACTIVE.jsonValue(),
+            "/apps/demo-app/",
+            "session-token",
+            EXPIRES_AT);
+
+    assertEquals("http://[0:0:0:0:0:0:0:1]:12345/", bootstrap.uiRoot());
+    assertEquals("http://[0:0:0:0:0:0:0:1]:12345/static/", bootstrap.assetRoot());
+    assertEquals("http://[0:0:0:0:0:0:0:1]:8888/api/v1/", bootstrap.platformApiRoot());
+    assertEquals("http://[0:0:0:0:0:0:0:1]:8888/app/node/", bootstrap.shellRoot());
+    assertEquals("http://[0:0:0:0:0:0:0:1]:12345", bootstrap.uiOrigin());
+  }
+
+  @Test
   void constructor_whenBlankBrowserSessionTokenProvided_expectIllegalArgumentException() {
     assertThrows(
         IllegalArgumentException.class,
