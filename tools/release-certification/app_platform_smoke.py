@@ -1148,6 +1148,90 @@ def collect_legacy_evidence(settings: Settings) -> EvidenceItem:
     return EvidenceItem("legacy.retirement", "pass", True, "Legacy-admin retirement map is visible and stable.", source, details)
 
 
+def collect_sandbox_provider_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    sandbox_dir = settings.workspace_root / "platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"
+    sandbox_test_dir = settings.workspace_root / "platform-apphost/src/test/java/network/crypta/platform/apphost/sandbox"
+    expected_files = {
+        "providerSource": sandbox_dir / "BubblewrapSandboxProvider.java",
+        "commandBuilderSource": sandbox_dir / "BubblewrapCommandBuilder.java",
+        "availabilitySource": sandbox_dir / "BubblewrapAvailability.java",
+        "registrySource": sandbox_dir / "AppSandboxProviders.java",
+        "providerTest": sandbox_test_dir / "BubblewrapSandboxProviderTest.java",
+    }
+    checks: dict[str, Any] = {}
+    errors: list[str] = []
+    for key, path in expected_files.items():
+        exists = path.is_file()
+        checks[key] = {
+            "present": exists,
+            "path": display_path(path, settings.workspace_root),
+        }
+        if not exists:
+            errors.append(f"{key} is missing")
+    provider_text = expected_files["providerSource"].read_text(encoding="utf-8") if expected_files["providerSource"].is_file() else ""
+    builder_text = expected_files["commandBuilderSource"].read_text(encoding="utf-8") if expected_files["commandBuilderSource"].is_file() else ""
+    registry_text = expected_files["registrySource"].read_text(encoding="utf-8") if expected_files["registrySource"].is_file() else ""
+    test_text = expected_files["providerTest"].read_text(encoding="utf-8") if expected_files["providerTest"].is_file() else ""
+    checks["enforcedSupportLevel"] = "AppSandboxSupportLevel.ENFORCED" in provider_text
+    checks["bubblewrapProviderName"] = 'PROVIDER_NAME = "bubblewrap"' in provider_text
+    checks["restrictedProcessRegistry"] = "BubblewrapSandboxProvider" in registry_text
+    checks["environmentPassThrough"] = "checkedContext.environment()" in provider_text
+    checks["noSetenvCommand"] = 'command.add("--setenv")' not in provider_text + builder_text
+    checks["offlineProviderTests"] = "BubblewrapSandboxProviderTest" in test_text
+    for key in (
+        "enforcedSupportLevel",
+        "bubblewrapProviderName",
+        "restrictedProcessRegistry",
+        "environmentPassThrough",
+        "noSetenvCommand",
+        "offlineProviderTests",
+    ):
+        if not checks[key]:
+            errors.append(f"{key} check failed")
+    gradle_result = gradle_command(
+        settings,
+        [
+            ":platform-apphost:test",
+            "--tests",
+            "*BubblewrapSandboxProviderTest",
+            "--tests",
+            "*AppSandboxProvidersTest",
+        ],
+        "gradle-apphost-sandbox-provider",
+    )
+    details: dict[str, Any] = {
+        "mode": "restricted-process",
+        "provider": "bubblewrap",
+        "supportLevel": "enforced",
+        "liveBubblewrapRequired": False,
+        "hostBubblewrapProbe": {"enabled": False},
+        "checks": checks,
+        "contractTestsCommand": command_details(gradle_result, settings),
+    }
+    if gradle_result is not None and gradle_result.exit_code != 0:
+        errors.append("platform-apphost sandbox provider tests failed")
+    if gradle_result is None and settings.mode == "release-candidate":
+        errors.append("platform-apphost sandbox provider tests were skipped")
+    if errors:
+        return EvidenceItem(
+            "apphost.sandbox-provider",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "AppHost sandbox provider evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "apphost.sandbox-provider",
+        "pass",
+        True,
+        "AppHost sandbox provider contract passed using deterministic offline evidence.",
+        source,
+        details,
+    )
+
+
 def build_http_request(
     method: str, url: str, form_password: str = "", data: dict[str, str] | None = None
 ) -> urllib.request.Request:
@@ -1358,6 +1442,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_catalog_evidence(settings, sample_paths),
         collect_app_ui_evidence(settings),
         collect_legacy_evidence(settings),
+        collect_sandbox_provider_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
     sanitized_evidence = [
@@ -1577,6 +1662,17 @@ def run_self_test(repo_root: Path) -> None:
     assert signing_metadata["privateKeyFile"] == "<redacted>", signing_metadata
     assert signing_metadata["token"] == "<redacted>", signing_metadata
     assert signing_metadata["path"] == "/apps/cert-smoke/runtime", signing_metadata
+    sandbox_check_metadata = sanitize_value(
+        {
+            "enforcedSupportLevel": True,
+            "noSetenvCommand": True,
+            "enforcedStatusToken": True,
+        },
+        repo_root,
+    )
+    assert sandbox_check_metadata["enforcedSupportLevel"] is True, sandbox_check_metadata
+    assert sandbox_check_metadata["noSetenvCommand"] is True, sandbox_check_metadata
+    assert sandbox_check_metadata["enforcedStatusToken"] == "<redacted>", sandbox_check_metadata
     credential_scrubbed = scrub_text(
         'Authorization: Bearer app-secret\n'
         'Cookie: session=abc; csrf=def\n'
@@ -1689,6 +1785,13 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
+        assert evidence_by_id["apphost.sandbox-provider"]["status"] == "pass"
+        assert evidence_by_id["apphost.sandbox-provider"]["details"]["liveBubblewrapRequired"] is False
+        sandbox_checks = evidence_by_id["apphost.sandbox-provider"]["details"]["checks"]
+        assert sandbox_checks["enforcedSupportLevel"] is True, sandbox_checks
+        assert sandbox_checks["noSetenvCommand"] is True, sandbox_checks
+        assert "enforcedStatusToken" not in sandbox_checks, sandbox_checks
+        assert "noTokenSetenvCommand" not in sandbox_checks, sandbox_checks
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
@@ -1946,6 +2049,28 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs = workspace / "docs/legacy-retirement-plan.md"
     docs.parent.mkdir(parents=True, exist_ok=True)
     docs.write_text("Direct legacy URLs remain reachable for fallback.\n", encoding="utf-8")
+    sandbox_dir = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"
+    sandbox_test_dir = workspace / "platform-apphost/src/test/java/network/crypta/platform/apphost/sandbox"
+    sandbox_dir.mkdir(parents=True, exist_ok=True)
+    sandbox_test_dir.mkdir(parents=True, exist_ok=True)
+    (sandbox_dir / "BubblewrapSandboxProvider.java").write_text(
+        'class BubblewrapSandboxProvider { static final String PROVIDER_NAME = "bubblewrap"; '
+        'Object level = AppSandboxSupportLevel.ENFORCED; Object env = checkedContext.environment(); }\n',
+        encoding="utf-8",
+    )
+    (sandbox_dir / "BubblewrapCommandBuilder.java").write_text(
+        'class BubblewrapCommandBuilder { void command() { command.add("--"); } }\n',
+        encoding="utf-8",
+    )
+    (sandbox_dir / "BubblewrapAvailability.java").write_text(
+        "class BubblewrapAvailability { }\n", encoding="utf-8"
+    )
+    (sandbox_dir / "AppSandboxProviders.java").write_text(
+        "class AppSandboxProviders { BubblewrapSandboxProvider provider; }\n", encoding="utf-8"
+    )
+    (sandbox_test_dir / "BubblewrapSandboxProviderTest.java").write_text(
+        "class BubblewrapSandboxProviderTest { }\n", encoding="utf-8"
+    )
 
 
 def fake_cli_python_source() -> str:

@@ -27,12 +27,14 @@
  * should report requested mode, provider name, support level, and warnings without exposing command
  * lines, environment values, browser session tokens, or private paths.
  *
- * <p>The default providers intentionally distinguish current behavior from future hardening. {@link
+ * <p>The default providers intentionally distinguish current behavior from hardening. {@link
  * network.crypta.platform.apphost.sandbox.NoSandboxProvider NoSandboxProvider} preserves the
  * existing local process launch path and reports no active sandbox isolation. {@link
  * network.crypta.platform.apphost.sandbox.RestrictedProcessSandboxProvider
- * RestrictedProcessSandboxProvider} reports best-effort AppHost launch hygiene only. Future
- * providers can add enforced OS or WASM isolation while reusing the same manifest and status
- * contracts.
+ * RestrictedProcessSandboxProvider} reports best-effort AppHost launch hygiene only. {@link
+ * network.crypta.platform.apphost.sandbox.BubblewrapSandboxProvider BubblewrapSandboxProvider} adds
+ * the first Linux-only enforced restricted-process provider while reusing the same manifest and
+ * status contracts. Future providers can add additional OS or WASM isolation without changing the
+ * public status model.
  */
 package network.crypta.platform.apphost.sandbox;

@@ -41,9 +41,9 @@ public enum AppSandboxSupportLevel {
   /**
    * A provider has applied real enforced sandbox controls.
    *
-   * <p>PR-206 does not use this value in the default providers. Future providers should set it only
-   * when they can enforce concrete operating-system or runtime restrictions and document those
-   * restrictions separately.
+   * <p>The Linux bubblewrap provider uses this value for wrapped restricted-process launch plans.
+   * Other providers should set it only when they can enforce concrete operating-system or runtime
+   * restrictions and document those restrictions separately.
    */
   ENFORCED("enforced");
 

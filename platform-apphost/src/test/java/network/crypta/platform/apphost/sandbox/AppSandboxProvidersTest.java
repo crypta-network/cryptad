@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +77,156 @@ class AppSandboxProvidersTest {
   }
 
   @Test
+  void providers_whenBubblewrapAvailable_expectRestrictedProcessUsesEnforcedProvider()
+      throws Exception {
+    AppSandboxProviders providers =
+        new AppSandboxProviders(
+            new NoSandboxProvider(),
+            List.of(availableBubblewrapProvider(), new RestrictedProcessSandboxProvider()),
+            false,
+            null);
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, true));
+
+    AppSandboxLaunchPlan plan = providers.prepareLaunch(context);
+
+    assertEquals(AppSandboxSupportLevel.ENFORCED, plan.sandboxStatus().supportLevel());
+    assertEquals("bubblewrap", plan.sandboxStatus().providerName());
+    assertTrue(plan.command().contains("--"));
+    assertFalse(plan.command().toString().contains("secret-token"));
+  }
+
+  @Test
+  void providers_whenOptionalRestrictedProcessBubblewrapUnavailable_expectBestEffortFallback()
+      throws Exception {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(linuxWithoutPath(), Map.of());
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    AppSandboxLaunchPlan plan = providers.prepareLaunch(context);
+
+    assertEquals(AppSandboxSupportLevel.BEST_EFFORT, plan.sandboxStatus().supportLevel());
+    assertEquals("restricted-process", plan.sandboxStatus().providerName());
+  }
+
+  @Test
+  void providers_whenBubblewrapPreflightFails_expectOptionalRestrictedProcessBestEffortFallback()
+      throws Exception {
+    AppSandboxProviders providers =
+        new AppSandboxProviders(
+            new NoSandboxProvider(),
+            List.of(
+                bubblewrapProviderWithNamespacePreflight(false),
+                new RestrictedProcessSandboxProvider()),
+            false,
+            null);
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    AppSandboxLaunchPlan plan = providers.prepareLaunch(context);
+
+    assertEquals(AppSandboxSupportLevel.BEST_EFFORT, plan.sandboxStatus().supportLevel());
+    assertEquals("restricted-process", plan.sandboxStatus().providerName());
+  }
+
+  @Test
+  void providers_whenRequiredRestrictedProcessBubblewrapUnavailable_expectFailClosed() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(linuxWithoutPath(), Map.of());
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, true));
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> providers.prepareLaunch(context));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertTrue(exception.getMessage().contains("restricted-process"));
+    assertFalse(exception.getMessage().contains("secret-token"));
+    assertFalse(exception.getMessage().contains(tempDir.toString()));
+    assertTrue(exception.sandboxStatus().isPresent());
+    assertEquals(
+        AppSandboxSupportLevel.UNSUPPORTED, exception.sandboxStatus().orElseThrow().supportLevel());
+  }
+
+  @Test
+  void providers_whenForcedBestEffort_expectRestrictedProcessNeverReportsEnforced()
+      throws Exception {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "best-effort"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    AppSandboxLaunchPlan plan = providers.prepareLaunch(context);
+
+    assertEquals(AppSandboxSupportLevel.BEST_EFFORT, plan.sandboxStatus().supportLevel());
+    assertEquals("restricted-process", plan.sandboxStatus().providerName());
+  }
+
+  @Test
+  void providers_whenForcedBubblewrapUnavailable_expectUnsupportedSandboxFailure() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithoutPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "bubblewrap"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> providers.prepareLaunch(context));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void providers_whenForcedNoneOptionalRestrictedProcess_expectUnsupportedLaunchPlan()
+      throws Exception {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "none"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    AppSandboxLaunchPlan plan = providers.prepareLaunch(context);
+
+    assertEquals(context.command(), plan.command());
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, plan.sandboxStatus().supportLevel());
+    assertEquals("unsupported", plan.sandboxStatus().providerName());
+    assertFalse(plan.sandboxStatus().active());
+  }
+
+  @Test
+  void providers_whenForcedNoneRequiredRestrictedProcess_expectFailClosed() {
+    AppSandboxProviders providers =
+        AppSandboxProviders.fromHostConfiguration(
+            linuxWithPath(), Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "none"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, true));
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> providers.prepareLaunch(context));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertTrue(exception.sandboxStatus().isPresent());
+    assertEquals(
+        AppSandboxSupportLevel.UNSUPPORTED, exception.sandboxStatus().orElseThrow().supportLevel());
+  }
+
+  @Test
+  void providers_whenMacOrWindowsHost_expectRestrictedProcessIsNotEnforced() throws Exception {
+    for (AppEnv appEnv :
+        List.of(new AppEnv(Map.of(), "Mac OS X"), new AppEnv(Map.of(), "Windows 11"))) {
+      AppSandboxProviders providers = AppSandboxProviders.fromHostConfiguration(appEnv, Map.of());
+      AppSandboxLaunchPlan plan =
+          providers.prepareLaunch(
+              context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false)));
+
+      assertNotSame(AppSandboxSupportLevel.ENFORCED, plan.sandboxStatus().supportLevel());
+    }
+  }
+
+  @Test
   void restrictedProvider_whenWorkingDirectoryDiffers_expectInvalidLaunchFailure() {
     AppSandboxLaunchContext context =
         context(
@@ -134,10 +285,47 @@ class AppSandboxProvidersTest {
         Map.of("CRYPTAD_APP_ID", "sample-app", "CRYPTAD_APP_TOKEN", "secret-token"),
         workingDirectory,
         policy,
-        new AppEnv());
+        linuxWithPath());
   }
 
   private Path appRoot() {
     return tempDir.resolve("installed").resolve("sample-app");
+  }
+
+  private static AppEnv linuxWithPath() {
+    return new AppEnv(Map.of("PATH", "/usr/bin"), "Linux");
+  }
+
+  private static AppEnv linuxWithoutPath() {
+    return new AppEnv(Map.of("PATH", ""), "Linux");
+  }
+
+  private static BubblewrapSandboxProvider availableBubblewrapProvider() {
+    return bubblewrapProviderWithNamespacePreflight(true);
+  }
+
+  private static BubblewrapSandboxProvider bubblewrapProviderWithNamespacePreflight(
+      boolean namespaceAvailable) {
+    BubblewrapAvailability availability =
+        new BubblewrapAvailability(
+            linuxWithPath(),
+            "",
+            new BubblewrapAvailability.ExecutableProbe() {
+              @Override
+              public boolean onPath(AppEnv appEnv, String command) {
+                return true;
+              }
+
+              @Override
+              public boolean isExecutable(Path executable) {
+                return true;
+              }
+
+              @Override
+              public boolean sandboxPreflightFails(String executable) {
+                return !namespaceAvailable;
+              }
+            });
+    return new BubblewrapSandboxProvider(availability);
   }
 }

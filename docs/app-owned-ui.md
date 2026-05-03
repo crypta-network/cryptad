@@ -294,9 +294,10 @@ GET /api/v1/apps/{appId}/audit
 
 The runtime endpoint reports process state, PID, start time, last exit metadata, restart attempt
 counts, quota status for AppHost-managed data/cache/log resources, runtime warnings, and
-process-log availability. The logs endpoint returns a bounded, token-redacted tail of the app's
-combined stdout/stderr log. Neither endpoint exposes `CRYPTAD_APP_TOKEN` or absolute
-installed/data/cache/run filesystem paths.
+process-log availability. It also reports process sandbox status such as `supportLevel` and
+`provider`; that status is separate from browser origin isolation. The logs endpoint returns a
+bounded, token-redacted tail of the app's combined stdout/stderr log. Neither endpoint exposes
+`CRYPTAD_APP_TOKEN` or absolute installed/data/cache/run filesystem paths.
 
 The Web Shell uses those endpoints for operator visibility. Static app UIs must not treat the
 runtime endpoint as proof of app-level health; it is process status only.

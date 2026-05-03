@@ -1105,7 +1105,7 @@
     const mode = typeof status.mode === "string" ? status.mode : "";
     const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
     if (supportLevel === "enforced") {
-      return "Enforced sandbox";
+      return status.active === false ? "Last launch enforced sandbox" : "Enforced sandbox";
     }
     if (supportLevel === "best-effort") {
       return "Best-effort restricted process";
@@ -1125,7 +1125,7 @@
     }
     const supportLevel = typeof status.supportLevel === "string" ? status.supportLevel : "";
     if (supportLevel === "enforced") {
-      return "is-success";
+      return status.active === false ? "is-warning" : "is-success";
     }
     if (supportLevel === "unsupported" && status.required) {
       return "is-error";

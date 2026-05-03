@@ -1,5 +1,6 @@
 package network.crypta.platform.apphost.sandbox;
 
+import java.util.Optional;
 import network.crypta.platform.apphost.AppHostException;
 
 /**
@@ -20,6 +21,9 @@ public class AppSandboxException extends AppHostException {
   /** Stable machine-readable error token carried separately from the display message. */
   private final String errorCode;
 
+  /** Optional public sandbox status associated with the in-memory launch rejection. */
+  private final transient AppSandboxStatus sandboxStatus;
+
   /**
    * Creates a sandbox exception with a stable API error code.
    *
@@ -31,8 +35,24 @@ public class AppSandboxException extends AppHostException {
    * @param message token-free failure message safe for API and Shell display
    */
   public AppSandboxException(String errorCode, String message) {
+    this(errorCode, message, null);
+  }
+
+  /**
+   * Creates a sandbox exception with a stable API error code and public status.
+   *
+   * <p>The optional status lets AppHost retain token-free failure context for runtime summaries
+   * when launch is rejected before a child process starts. The status must obey the same secrecy
+   * rules as ordinary {@link AppSandboxStatus} instances.
+   *
+   * @param errorCode machine-readable Platform API error code for this sandbox failure
+   * @param message token-free failure message safe for API and Shell display
+   * @param sandboxStatus optional public status associated with the failed launch
+   */
+  public AppSandboxException(String errorCode, String message, AppSandboxStatus sandboxStatus) {
     super(message);
     this.errorCode = errorCode;
+    this.sandboxStatus = sandboxStatus;
   }
 
   /**
@@ -45,6 +65,15 @@ public class AppSandboxException extends AppHostException {
    */
   public String errorCode() {
     return errorCode;
+  }
+
+  /**
+   * Returns the public status associated with this launch rejection, when available.
+   *
+   * @return optional token-free sandbox status safe for AppHost runtime records
+   */
+  public Optional<AppSandboxStatus> sandboxStatus() {
+    return Optional.ofNullable(sandboxStatus);
   }
 
   /**
@@ -63,6 +92,7 @@ public class AppSandboxException extends AppHostException {
         "unsupported_sandbox",
         "App requires sandbox mode "
             + status.mode().manifestValue()
-            + ", but no provider can support it on this host");
+            + ", but no enforced provider can support it on this host",
+        status);
   }
 }

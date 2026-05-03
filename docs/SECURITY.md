@@ -74,15 +74,19 @@ directories, or caller staging paths. External URL entries are rejected, app UI 
 to loopback addresses, and route responses use conservative CSP, `nosniff`, no-referrer, and
 non-public no-cache headers.
 
-AppHost process launches are process isolation, not hard sandboxing by default. AppHost starts a
-local child process with the installed bundle root as its working directory, a minimal environment,
+AppHost process launches are local child processes unless a sandbox provider is selected. AppHost
+starts each app with the installed bundle root as its working directory, a minimal environment,
 per-app data/cache/run directories, and a per-launch `CRYPTAD_APP_TOKEN` for app-originated
 Platform API authentication. App manifests can request `sandbox.mode=none`,
 `restricted-process`, or `wasm-preview`, and Platform API/Web Shell surfaces report the requested
-mode and actual support level. The default restricted-process provider is best-effort launch
-hygiene, not a container, WASM runtime, seccomp profile, chroot, jail, Windows Job Object policy,
-network isolation, or browser UI origin isolation. Browser UI origin isolation is provided by the
-app-owned UI loopback listener layer and does not make the child process sandboxed.
+mode and actual support level. On Linux hosts with bubblewrap available, `restricted-process` can
+run through the `bubblewrap` provider and report `supportLevel=enforced`. That provider enforces
+filesystem containment for the installed bundle and AppHost-managed mutable directories, but it
+does not enforce CPU, memory, or network limits. When bubblewrap is unavailable and the app does
+not require an enforced sandbox, the existing restricted-process provider remains best-effort
+launch hygiene, not a container, WASM runtime, seccomp profile, chroot, jail, Windows Job Object
+policy, network isolation, or browser UI origin isolation. Browser UI origin isolation is provided
+by the app-owned UI loopback listener layer and does not make the child process sandboxed.
 
 AppHost enforces manifest data/cache quotas only when `quota.data.bytes` or `quota.cache.bytes` is
 positive. Missing quota fields and explicit `0` values mean unlimited or no explicit app quota for

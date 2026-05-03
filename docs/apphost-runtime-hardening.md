@@ -5,8 +5,9 @@ This document describes the current AppHost runtime boundary for local out-of-pr
 ## Scope
 
 AppHost runs installed apps as local child processes. The current hardening layer makes launch
-behavior explicit and adds operator visibility. PR-206 adds a sandbox policy and reporting model,
-but the default providers still do not add a hard operating-system sandbox.
+behavior explicit and adds operator visibility. The sandbox policy and reporting model now include
+a Linux-only bubblewrap provider for `restricted-process` launches when `bwrap` is available, while
+unsupported hosts continue to report best-effort or unsupported status honestly.
 
 The current boundary provides:
 
@@ -22,11 +23,13 @@ The current boundary provides:
 - best-effort owner-only permissions on POSIX app data, cache, run, and process-log files;
 - bounded in-session restart attempts when a manifest opts in to `on-failure`.
 
-The current process boundary does not provide containers, WASM isolation, seccomp, chroot, jails,
-Windows Job Object restrictions, or network isolation by default. A third-party app still runs as a
-local process under the same operating-system user as the daemon unless a future provider
-explicitly reports an enforced sandbox. Browser UI origin isolation is handled separately by the
-app-owned UI layer with per-app loopback origins; it does not change the AppHost process sandbox.
+The current process boundary does not provide WASM isolation, seccomp filtering, Windows Job Object
+restrictions, CPU limits, memory limits, or network isolation. On supported Linux hosts, the
+bubblewrap provider enforces filesystem containment for the installed bundle and AppHost-managed
+mutable directories. On other hosts, or when bubblewrap is unavailable or disabled, a third-party
+app still runs as a local process under the same operating-system user as the daemon. Browser UI
+origin isolation is handled separately by the app-owned UI layer with per-app loopback origins; it
+does not change the AppHost process sandbox.
 
 ## Sandbox policy
 
@@ -43,20 +46,49 @@ Unknown modes and malformed booleans fail manifest validation.
 `sandbox.mode=none` is the backward-compatible launch path. The app runs as it did before PR-206,
 and API/Shell surfaces report that no OS sandbox isolation is active.
 
-`sandbox.mode=restricted-process` requests the v1 restricted-process provider. The default provider
-is intentionally best-effort: it verifies AppHost's sanitized environment, explicit installed-bundle
-working directory, and app-scoped data/cache/run directories. It does not create a container,
-seccomp profile, chroot, jail, Windows Job Object policy, or network/filesystem mediation layer.
-Runtime status therefore reports `supportLevel=best-effort`, not `enforced`.
+`sandbox.mode=restricted-process` requests an AppHost-managed restricted process. In `auto` mode,
+AppHost prefers the Linux bubblewrap provider when the host is Linux-family and a usable `bwrap`
+executable is available. A successful bubblewrap launch reports `supportLevel=enforced`,
+`provider=bubblewrap`, and `active=true`. The provider mounts the installed bundle read-only,
+mounts the app data/cache/run directories read-write, isolates `/tmp`, and does not mount host
+home, daemon config, datastore, catalog trust roots, signing keys, or unrelated workspace paths.
+
+When bubblewrap is unavailable and the app did not require a sandbox, AppHost falls back to the
+existing `restricted-process` best-effort provider. That provider verifies AppHost's sanitized
+environment, explicit installed-bundle working directory, and app-scoped data/cache/run directories.
+It does not create a container, seccomp profile, chroot, jail, Windows Job Object policy, or
+network/filesystem mediation layer, so runtime status reports `supportLevel=best-effort`, not
+`enforced`.
 
 `sandbox.mode=wasm-preview` is parsed as a reserved future mode. The default host has no WASM
 provider. If `sandbox.required=true`, starting such an app fails with `unsupported_sandbox`; if it
 is optional, AppHost may report the mode as unsupported instead of claiming isolation.
 
-`sandbox.required=true` means AppHost must reject launch when no provider can support the requested
-mode. It does not upgrade a best-effort provider into hard isolation. Operators should read the
-reported `supportLevel`, `provider`, `active`, and warnings fields to understand what actually
-happened on the current host.
+`sandbox.required=true` means AppHost must reject a `restricted-process` launch unless an enforced
+provider is selected for that launch. Best-effort restricted-process support is not enough for a
+required sandbox. Required `wasm-preview` still fails because no WASM provider exists. Operators
+should read the reported `supportLevel`, `provider`, `active`, and warnings fields to understand
+what actually happened on the current host.
+
+## Host sandbox controls
+
+Hosts can control restricted-process provider selection with environment variables or matching
+system properties:
+
+| Environment variable | System property | Values |
+| --- | --- | --- |
+| `CRYPTAD_APPHOST_SANDBOX_PROVIDER` | `cryptad.apphost.sandbox.provider` | `auto`, `bubblewrap`, `best-effort`, `none` |
+| `CRYPTAD_APPHOST_BWRAP` | `cryptad.apphost.bwrap` | absolute path to `bwrap` |
+
+The default is `auto`: use bubblewrap on supported Linux hosts, otherwise fall back to documented
+best-effort behavior for optional restricted-process apps. `bubblewrap` forces the enforced
+provider and fails closed when it is unavailable. `best-effort` forces the old best-effort provider
+and never reports `enforced`. `none` disables the restricted-process provider; it does not let an
+app with `sandbox.required=true` bypass the requirement.
+
+Configured executable paths are private host configuration. They are used only to build the
+process command and are not copied into public sandbox status, Web Shell text, release reports, or
+logs.
 
 ## Launch environment
 
@@ -211,10 +243,11 @@ state across daemon restarts, does not run app-provided health checks, and does 
 ## Remaining risks
 
 Third-party apps remain trusted local code. AppHost enforces positive data/cache quotas for its own
-managed mutable directories and bounds managed process logs, but it does not provide OS-level CPU,
-memory, network, or arbitrary filesystem isolation. Apps can still consume resources available to
-the daemon user unless the operating system or operator environment limits them outside AppHost.
+managed mutable directories and bounds managed process logs. On Linux hosts with bubblewrap, it can
+also enforce the filesystem containment described above. AppHost still does not provide OS-level
+CPU, memory, or network isolation. Apps can still consume resources available to the daemon user
+unless the operating system or operator environment limits them outside AppHost.
 
-Future sandbox work may add stronger platform-specific controls such as process containment,
-network restrictions, syscall filters, filesystem mediation, or real WASM execution. Those are out
-of scope for the current runtime hardening layer.
+Future sandbox work may add stronger platform-specific controls such as network restrictions,
+syscall filters, CPU/memory limits, or real WASM execution. Those are out of scope for the current
+runtime hardening layer.

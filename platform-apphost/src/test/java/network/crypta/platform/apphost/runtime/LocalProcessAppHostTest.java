@@ -43,6 +43,7 @@ import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.platform.apphost.AppBundleVerificationException;
@@ -62,6 +63,12 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
 import network.crypta.platform.apphost.sandbox.AppSandboxException;
+import network.crypta.platform.apphost.sandbox.AppSandboxLaunchContext;
+import network.crypta.platform.apphost.sandbox.AppSandboxLaunchPlan;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
+import network.crypta.platform.apphost.sandbox.AppSandboxProvider;
+import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import network.crypta.platform.apphost.sandbox.AppSandboxSupportLevel;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -1615,6 +1622,34 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void restartPolicy_whenSandboxRejectsRestart_expectRestartMetadataPreserved() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    LocalProcessAppHost host =
+        allowUnsignedHost(
+            Duration.ofSeconds(1), appEnv, restartRejectingRestrictedProcessProviders());
+    Path stagedApp = stageInstalledRunnerApp(RESTART_ON_FAILURE_SCRIPT);
+    appendRequiredRestrictedSandbox(stagedApp);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.CRASHED);
+    assertEquals(7, status.lastExitCode());
+    assertNotNull(status.lastExitAt());
+    assertEquals(1, status.currentRestartAttempt());
+    assertEquals(0, status.restartCount());
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.sandboxStatus().supportLevel());
+    assertTrue(status.sandboxStatus().required());
+    assertFalse(status.sandboxStatus().active());
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
+  }
+
+  @Test
   void restartPolicy_whenFailuresExceedRollingWindow_expectRestartStormGuardWarning()
       throws IOException {
     AppEnv appEnv = new AppEnv();
@@ -2757,6 +2792,127 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void start_whenRequiredRestrictedProcessProviderEnforced_expectStatusRetainedAfterStop()
+      throws Exception {
+    AppEnv appEnv = new AppEnv();
+    LocalProcessAppHost host =
+        allowUnsignedHost(Duration.ofSeconds(1), appEnv, enforcedRestrictedProcessProviders());
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    appendRequiredRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+    assertEquals(AppSandboxSupportLevel.ENFORCED, running.sandboxStatus().supportLevel());
+    assertEquals("bubblewrap", running.sandboxStatus().providerName());
+    assertTrue(host.stop(RUNNER_APP_ID));
+    AppRuntimeStatusSnapshot stopped = host.runtimeStatus(RUNNER_APP_ID);
+    assertFalse(stopped.running());
+    assertEquals(AppSandboxSupportLevel.ENFORCED, stopped.sandboxStatus().supportLevel());
+    assertEquals("bubblewrap", stopped.sandboxStatus().providerName());
+    assertFalse(stopped.sandboxStatus().active());
+    assertTrue(stopped.sandboxStatus().reason().contains("not running"));
+    assertFalse(stopped.sandboxStatus().reason().contains("sandbox active"));
+    assertTrue(
+        stopped
+            .sandboxStatus()
+            .warnings()
+            .contains("Sandbox restrictions are not active because the app is not running"));
+    assertFalse(stopped.sandboxStatus().toString().contains(DEFAULT_TOKEN));
+    assertFalse(stopped.sandboxStatus().toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void runtimeStatus_whenEnforcedLaunchCrashes_expectSandboxStatusInactive() throws Exception {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    LocalProcessAppHost host =
+        allowUnsignedHost(Duration.ofSeconds(1), appEnv, enforcedRestrictedProcessProviders());
+    Path stagedApp =
+        stageInstalledRunnerApp(
+            """
+            #!/bin/sh
+            sleep 0.500
+            exit 7
+            """);
+    appendRequiredRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    AppRuntimeStatusSnapshot crashed = waitForRuntimeState(host, AppRuntimeState.CRASHED);
+    assertFalse(crashed.running());
+    assertEquals(7, crashed.lastExitCode());
+    assertEquals(AppSandboxSupportLevel.ENFORCED, crashed.sandboxStatus().supportLevel());
+    assertEquals("bubblewrap", crashed.sandboxStatus().providerName());
+    assertFalse(crashed.sandboxStatus().active());
+    assertTrue(crashed.sandboxStatus().reason().contains("not running"));
+  }
+
+  @Test
+  void runtimeStatus_whenStoppedAppUpdatedToNoSandbox_expectSandboxStatusRefreshes()
+      throws Exception {
+    AppEnv appEnv = new AppEnv();
+    LocalProcessAppHost host =
+        allowUnsignedHost(Duration.ofSeconds(1), appEnv, enforcedRestrictedProcessProviders());
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    appendRequiredRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+    assertEquals(AppSandboxSupportLevel.ENFORCED, running.sandboxStatus().supportLevel());
+    assertTrue(host.stop(RUNNER_APP_ID));
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("sandbox-policy").resolve(RUNNER_APP_ID),
+            RUNNER_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(appEnv),
+            Map.of());
+
+    InstalledAppSnapshot updated = host.updateFromDirectory(RUNNER_APP_ID, updatedStage);
+
+    assertEquals(AppSandboxMode.NONE, updated.manifest().sandboxPolicy().mode());
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppSandboxMode.NONE, status.sandboxStatus().mode());
+    assertFalse(status.sandboxStatus().required());
+    assertEquals(AppSandboxSupportLevel.NONE, status.sandboxStatus().supportLevel());
+    assertEquals("no-sandbox", status.sandboxStatus().providerName());
+  }
+
+  @Test
+  void start_whenRequiredRestrictedProcessOnlyBestEffort_expectFailureBeforeProcessStart()
+      throws Exception {
+    AppEnv appEnv = new AppEnv(Map.of("PATH", ""), LINUX_OS_NAME);
+    LocalProcessAppHost host =
+        allowUnsignedHost(
+            Duration.ofSeconds(1),
+            appEnv,
+            AppSandboxProviders.fromHostConfiguration(
+                appEnv, Map.of(AppSandboxProviders.SANDBOX_PROVIDER_ENV, "best-effort")));
+    Path stagedApp = stageInstalledApp(RUNNER_APP_ID);
+    appendRequiredRestrictedSandbox(stagedApp);
+    host.installFromDirectory(stagedApp);
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertFalse(exception.getMessage().contains(APP_TOKEN_ENV_NAME));
+    assertFalse(exception.getMessage().contains(tempDir.toString()));
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    assertFalse(
+        Files.exists(
+            tempDir
+                .resolve("run")
+                .resolve("apps")
+                .resolve(RUNNER_APP_ID)
+                .resolve("captured-env.txt")));
+    AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppSandboxSupportLevel.UNSUPPORTED, status.sandboxStatus().supportLevel());
+    assertTrue(status.sandboxStatus().required());
+  }
+
+  @Test
   void installFromDirectory_whenStagingRootOverlapsInstalledTree_expectCleanFailure()
       throws IOException {
     AppHost host = allowUnsignedHost();
@@ -2895,6 +3051,18 @@ class LocalProcessAppHostTest {
         AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
   }
 
+  private LocalProcessAppHost allowUnsignedHost(
+      Duration stopTimeout, AppEnv appEnv, AppSandboxProviders sandboxProviders) {
+    return new LocalProcessAppHost(
+        layout(),
+        stopTimeout,
+        new java.security.SecureRandom(),
+        appEnv,
+        TEST_TIMING,
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(),
+        sandboxProviders);
+  }
+
   private LocalProcessAppHost allowUnsignedHostWithSingleRestartStormLimit() {
     return new LocalProcessAppHost(
         layout(),
@@ -2945,6 +3113,20 @@ class LocalProcessAppHostTest {
         tempDir.resolve("data"), tempDir.resolve(CACHE_DIR_NAME), tempDir.resolve("run"));
   }
 
+  private static AppSandboxProviders enforcedRestrictedProcessProviders() {
+    return new AppSandboxProviders(
+        new network.crypta.platform.apphost.sandbox.NoSandboxProvider(),
+        new EnforcedRestrictedProcessProvider(),
+        null);
+  }
+
+  private static AppSandboxProviders restartRejectingRestrictedProcessProviders() {
+    return new AppSandboxProviders(
+        new network.crypta.platform.apphost.sandbox.NoSandboxProvider(),
+        new RestartRejectingRestrictedProcessProvider(),
+        null);
+  }
+
   private Path stageInstalledApp(String appId) throws IOException {
     return stageInstalledApp(appId, scriptContent(new AppEnv()), Map.of());
   }
@@ -2973,6 +3155,17 @@ class LocalProcessAppHostTest {
         app.restart.backoff.ms=%d
         """
             .formatted("on-failure", maxAttempts, backoffMillis),
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+  }
+
+  private static void appendRequiredRestrictedSandbox(Path stagedApp) throws IOException {
+    Files.writeString(
+        stagedApp.resolve(MANIFEST_FILE_NAME),
+        """
+        sandbox.mode=restricted-process
+        sandbox.required=true
+        """,
         StandardCharsets.UTF_8,
         java.nio.file.StandardOpenOption.APPEND);
   }
@@ -3266,6 +3459,77 @@ class LocalProcessAppHostTest {
 
   private static String secondsLiteral(Duration duration) {
     return String.format(java.util.Locale.ROOT, "%.3f", duration.toNanos() / 1_000_000_000.0d);
+  }
+
+  private static final class EnforcedRestrictedProcessProvider implements AppSandboxProvider {
+    @Override
+    public String providerName() {
+      return "bubblewrap";
+    }
+
+    @Override
+    public boolean supports(AppSandboxPolicy policy) {
+      return policy.mode() == network.crypta.platform.appdist.AppSandboxMode.RESTRICTED_PROCESS;
+    }
+
+    @Override
+    public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context) {
+      return new AppSandboxLaunchPlan(
+          context.command(),
+          context.environment(),
+          context.workingDirectory(),
+          new AppSandboxStatus(
+              context.policy().mode(),
+              context.policy().required(),
+              AppSandboxSupportLevel.ENFORCED,
+              "bubblewrap",
+              true,
+              "Linux bubblewrap sandbox active",
+              List.of(
+                  "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
+                      + " directories",
+                  "CPU, memory, and network restrictions are not enforced by this provider")));
+    }
+  }
+
+  private static final class RestartRejectingRestrictedProcessProvider
+      implements AppSandboxProvider {
+    private final AtomicInteger launchAttempts = new AtomicInteger();
+
+    @Override
+    public String providerName() {
+      return "bubblewrap";
+    }
+
+    @Override
+    public boolean supports(AppSandboxPolicy policy) {
+      return policy.mode() == AppSandboxMode.RESTRICTED_PROCESS;
+    }
+
+    @Override
+    public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context)
+        throws AppSandboxException {
+      if (launchAttempts.incrementAndGet() > 1) {
+        throw AppSandboxException.unsupportedRequired(
+            AppSandboxStatus.unsupported(
+                context.policy(), "restricted-process sandbox is not available on this host"));
+      }
+      return new AppSandboxLaunchPlan(
+          context.command(),
+          context.environment(),
+          context.workingDirectory(),
+          new AppSandboxStatus(
+              context.policy().mode(),
+              context.policy().required(),
+              AppSandboxSupportLevel.ENFORCED,
+              "bubblewrap",
+              true,
+              "Linux bubblewrap sandbox active",
+              List.of(
+                  "Filesystem sandbox active for installed bundle and AppHost-managed mutable"
+                      + " directories",
+                  "CPU, memory, and network restrictions are not enforced by this provider")));
+    }
   }
 
   private static String immediateExitScriptContent(AppEnv appEnv) {
