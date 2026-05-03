@@ -197,6 +197,24 @@ class BubblewrapSandboxProviderTest {
   }
 
   @Test
+  void commandBuilder_whenLinuxbrewPrefixAvailable_expectReadOnlyMountWithoutHomeBind()
+      throws IOException {
+    Path linuxbrew = tempDir.resolve("home").resolve("linuxbrew").resolve(".linuxbrew");
+    Files.createDirectories(linuxbrew.resolve("bin"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    BubblewrapCommandBuilder.CommandPlan plan =
+        new BubblewrapCommandBuilder(List.of(linuxbrew)).build("bwrap", context);
+
+    assertMount(plan, linuxbrew, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertTrue(plan.directoryMounts().contains(linuxbrew.getParent()));
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(mount -> mount.source().equals(linuxbrew.getParent().getParent())));
+  }
+
+  @Test
   void commandBuilder_whenUsingDefaults_expectSystemResolverAndAlternativesConsidered() {
     assertTrue(
         BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
@@ -213,6 +231,9 @@ class BubblewrapSandboxProviderTest {
     assertTrue(
         BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
             BubblewrapCommandBuilder.ETC_SSL_CERTS));
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.LINUXBREW_PREFIX));
   }
 
   @Test

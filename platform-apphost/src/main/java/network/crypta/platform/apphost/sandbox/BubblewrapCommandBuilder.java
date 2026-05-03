@@ -40,6 +40,7 @@ public final class BubblewrapCommandBuilder {
   static final Path ETC_SSL_CERTS = Path.of("/etc/ssl/certs");
   static final Path ETC_PKI_CA_TRUST = Path.of("/etc/pki/ca-trust");
   static final Path ETC_PKI_TLS_CERTS = Path.of("/etc/pki/tls/certs");
+  static final Path LINUXBREW_PREFIX = Path.of("/home/linuxbrew/.linuxbrew");
   static final List<Path> DEFAULT_SYSTEM_READ_ONLY_PATHS =
       List.of(
           Path.of("/usr"),
@@ -52,7 +53,8 @@ public final class BubblewrapCommandBuilder {
           ETC_RESOLV_CONF,
           ETC_SSL_CERTS,
           ETC_PKI_CA_TRUST,
-          ETC_PKI_TLS_CERTS);
+          ETC_PKI_TLS_CERTS,
+          LINUXBREW_PREFIX);
 
   private final List<Path> systemReadOnlyPaths;
 
