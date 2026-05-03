@@ -350,6 +350,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function sandboxLabel(status)"));
     assertTrue(script.contains("supportLevel === \"enforced\""));
     assertTrue(script.contains("Enforced sandbox"));
+    assertTrue(script.contains("function inactiveEnforcedSandboxLabel(status)"));
+    assertTrue(script.contains("Enforced sandbox available"));
     assertTrue(script.contains("Last launch enforced sandbox"));
     assertTrue(script.contains("return \"is-success\""));
     assertTrue(script.contains("status.active === false ? \"is-warning\" : \"is-success\""));

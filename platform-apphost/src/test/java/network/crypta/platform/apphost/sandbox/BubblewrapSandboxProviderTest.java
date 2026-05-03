@@ -168,10 +168,51 @@ class BubblewrapSandboxProviderTest {
   }
 
   @Test
-  void commandBuilder_whenUsingDefaults_expectSystemAlternativesConsidered() {
+  void commandBuilder_whenResolverFilesAvailable_expectReadOnlyMountsWithoutEtcBind()
+      throws IOException {
+    Path etc = tempDir.resolve("etc");
+    Path hosts =
+        Files.writeString(Files.createDirectories(etc).resolve("hosts"), "127.0.0.1 localhost\n");
+    Path nsswitch = Files.writeString(etc.resolve("nsswitch.conf"), "hosts: files dns\n");
+    Path resolv = Files.writeString(etc.resolve("resolv.conf"), "nameserver 127.0.0.53\n");
+    Path certificates = Files.createDirectories(etc.resolve("ssl").resolve("certs"));
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    BubblewrapCommandBuilder.CommandPlan plan =
+        new BubblewrapCommandBuilder(List.of(hosts, nsswitch, resolv, certificates))
+            .build("bwrap", context);
+
+    assertMount(plan, hosts, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(plan, nsswitch, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(plan, resolv, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(plan, certificates, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertTrue(plan.directoryMounts().contains(etc.toAbsolutePath().normalize()));
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(
+                mount ->
+                    mount.source().equals(etc.toAbsolutePath().normalize())
+                        && mount.destination().equals(etc.toAbsolutePath().normalize())));
+  }
+
+  @Test
+  void commandBuilder_whenUsingDefaults_expectSystemResolverAndAlternativesConsidered() {
     assertTrue(
         BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
             BubblewrapCommandBuilder.ETC_ALTERNATIVES));
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.ETC_HOSTS));
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.ETC_NSSWITCH_CONF));
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.ETC_RESOLV_CONF));
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.ETC_SSL_CERTS));
   }
 
   @Test

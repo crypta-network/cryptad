@@ -51,7 +51,10 @@ AppHost prefers the Linux bubblewrap provider when the host is Linux-family and 
 executable is available. A successful bubblewrap launch reports `supportLevel=enforced`,
 `provider=bubblewrap`, and `active=true`. The provider mounts the installed bundle read-only,
 mounts the app data/cache/run directories read-write, isolates `/tmp`, and does not mount host
-home, daemon config, datastore, catalog trust roots, signing keys, or unrelated workspace paths.
+home, daemon config, datastore, catalog trust roots, signing keys, or unrelated workspace paths. It
+also mounts minimal read-only resolver configuration and public certificate trust inputs so
+shared-network hostname and TLS behavior remain consistent with the host. This does not provide
+network isolation.
 
 When bubblewrap is unavailable and the app did not require a sandbox, AppHost falls back to the
 existing `restricted-process` best-effort provider. That provider verifies AppHost's sanitized

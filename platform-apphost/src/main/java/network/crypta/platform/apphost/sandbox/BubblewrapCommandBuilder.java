@@ -24,9 +24,9 @@ import java.util.Set;
  * directories. That keeps existing app manifests and working-directory assumptions stable while the
  * namespace hides host paths that are not explicitly mounted. The class does not create
  * directories, inspect environment values, or execute bubblewrap; it only returns the command shape
- * that the provider can hand to AppHost. Debian-style {@code /etc/alternatives} command symlinks
- * are mounted narrowly when present so launchers can resolve common tools such as {@code java}
- * without exposing the rest of {@code /etc}.
+ * that the provider can hand to AppHost. Debian-style {@code /etc/alternatives} command symlinks,
+ * resolver configuration, and public certificate trust stores are mounted narrowly when present so
+ * launchers can resolve common tools and hostnames without exposing the rest of {@code /etc}.
  */
 public final class BubblewrapCommandBuilder {
   private static final Path ROOT = Path.of("/");
@@ -34,9 +34,25 @@ public final class BubblewrapCommandBuilder {
   // /tmp directory here.
   private static final String SANDBOX_TMPFS_DESTINATION = "/tmp";
   static final Path ETC_ALTERNATIVES = Path.of("/etc/alternatives");
+  static final Path ETC_HOSTS = Path.of("/etc/hosts");
+  static final Path ETC_NSSWITCH_CONF = Path.of("/etc/nsswitch.conf");
+  static final Path ETC_RESOLV_CONF = Path.of("/etc/resolv.conf");
+  static final Path ETC_SSL_CERTS = Path.of("/etc/ssl/certs");
+  static final Path ETC_PKI_CA_TRUST = Path.of("/etc/pki/ca-trust");
+  static final Path ETC_PKI_TLS_CERTS = Path.of("/etc/pki/tls/certs");
   static final List<Path> DEFAULT_SYSTEM_READ_ONLY_PATHS =
       List.of(
-          Path.of("/usr"), Path.of("/bin"), Path.of("/lib"), Path.of("/lib64"), ETC_ALTERNATIVES);
+          Path.of("/usr"),
+          Path.of("/bin"),
+          Path.of("/lib"),
+          Path.of("/lib64"),
+          ETC_ALTERNATIVES,
+          ETC_HOSTS,
+          ETC_NSSWITCH_CONF,
+          ETC_RESOLV_CONF,
+          ETC_SSL_CERTS,
+          ETC_PKI_CA_TRUST,
+          ETC_PKI_TLS_CERTS);
 
   private final List<Path> systemReadOnlyPaths;
 
