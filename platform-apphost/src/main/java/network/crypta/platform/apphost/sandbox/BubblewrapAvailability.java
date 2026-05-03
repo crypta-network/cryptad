@@ -3,6 +3,7 @@ package network.crypta.platform.apphost.sandbox;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -125,6 +126,27 @@ public final class BubblewrapAvailability {
     return appEnv.isLinux() && appEnv.osNameRaw().toLowerCase(Locale.ROOT).contains("linux");
   }
 
+  static List<String> sandboxPreflightCommand(String executable) {
+    return List.of(
+        executable,
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/tmp",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--",
+        "/proc/self/exe",
+        "--version");
+  }
+
   /**
    * Path-free bubblewrap availability result.
    *
@@ -221,23 +243,7 @@ public final class BubblewrapAvailability {
     }
 
     private static ProcessBuilder newPreflightProcess(String executable) {
-      return new ProcessBuilder(
-              executable,
-              "--die-with-parent",
-              "--new-session",
-              "--unshare-pid",
-              "--unshare-ipc",
-              "--ro-bind",
-              "/",
-              "/",
-              "--tmpfs",
-              "/tmp",
-              "--proc",
-              "/proc",
-              "--dev",
-              "/dev",
-              "--",
-              "/bin/true")
+      return new ProcessBuilder(sandboxPreflightCommand(executable))
           .redirectOutput(ProcessBuilder.Redirect.DISCARD)
           .redirectError(ProcessBuilder.Redirect.DISCARD);
     }
