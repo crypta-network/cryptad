@@ -12,6 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppDistributionException;
@@ -490,6 +491,7 @@ final class AppTemplateScaffolder {
      */
     String manifestContent() {
       StringBuilder builder = new StringBuilder();
+      int currentContractVersion = PlatformApiContract.CURRENT_CONTRACT_VERSION;
       builder
           .append("manifest.version=1\n")
           .append("app.id=")
@@ -501,6 +503,13 @@ final class AppTemplateScaffolder {
           .append("app.version=")
           .append(version)
           .append('\n')
+          .append("api.minimumVersion=")
+          .append(currentContractVersion)
+          .append('\n')
+          .append("api.maximumTestedVersion=")
+          .append(currentContractVersion)
+          .append('\n')
+          .append("api.experimentalCapabilitiesAccepted=false\n")
           .append("app.exec=bin/start.sh\n")
           .append("app.ui.mode=")
           .append(uiMode.value)

@@ -203,7 +203,8 @@ public record AppCatalogEntry(
         || source.isPresent()
         || license.isPresent()
         || !categories.isEmpty()
-        || compatibility.minimumCryptaVersion().isPresent()
+        || compatibility.minimumCryptaVersion() != null
+        || compatibility.apiCompatibility().declared()
         || review.hasCatalogFields()
         || !changelog.isEmpty()
         || !screenshots.isEmpty()

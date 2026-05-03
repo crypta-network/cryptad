@@ -841,6 +841,130 @@ def collect_cli_evidence(settings: Settings, cli: Path | None) -> tuple[Evidence
     )
 
 
+def collect_platform_api_contract_evidence(
+    settings: Settings, cli: Path | None, sample_paths: dict[str, Path]
+) -> EvidenceItem:
+    source = summary_source(settings)
+    artifact = settings.out_dir / "artifacts" / "platform-api-contract.json"
+    details: dict[str, Any] = {"artifactPath": display_path(artifact, settings.workspace_root, settings.out_dir)}
+    if cli is None or not cli.is_file():
+        return EvidenceItem(
+            "platform-api.contract",
+            root_consequence(settings, "missing"),
+            True,
+            "crypta-app CLI is unavailable for Platform API contract evidence.",
+            source,
+            details,
+        )
+
+    snapshot_result = run_cli(
+        cli,
+        ["api", "snapshot", "--output", str(artifact)],
+        settings,
+        "crypta-app-api-snapshot",
+    )
+    details["snapshotCommand"] = command_details(snapshot_result, settings)
+    errors: list[str] = []
+    if snapshot_result.exit_code != 0:
+        errors.append("contract snapshot generation failed")
+    if not artifact.is_file():
+        errors.append("contract snapshot file was not written")
+
+    contract: dict[str, Any] = {}
+    if artifact.is_file():
+        try:
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            contract = payload.get("contract", payload) if isinstance(payload, dict) else {}
+        except (json.JSONDecodeError, OSError) as exc:
+            errors.append(f"contract snapshot is not valid JSON: {exc}")
+
+    capabilities = contract.get("capabilities", []) if isinstance(contract, dict) else []
+    endpoints = contract.get("endpoints", []) if isinstance(contract, dict) else []
+    if not isinstance(capabilities, list):
+        errors.append("contract capabilities must be a list")
+        capabilities = []
+    if not isinstance(endpoints, list):
+        errors.append("contract endpoints must be a list")
+        endpoints = []
+    stability_counts: dict[str, int] = {}
+    flagged: list[str] = []
+    for collection_name, entries in (("capability", capabilities), ("endpoint", endpoints)):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            stability = str(entry.get("stability", "unknown"))
+            stability_counts[stability] = stability_counts.get(stability, 0) + 1
+            if stability != "stable":
+                flagged.append(f"{collection_name}:{entry.get('name') or entry.get('routeTemplate')}:{stability}")
+    contract_version = contract.get("contractVersion") if isinstance(contract, dict) else None
+    api_version = contract.get("apiVersion") if isinstance(contract, dict) else None
+    details["contractVersion"] = contract_version
+    details["apiVersion"] = api_version
+    details["capabilityCount"] = len(capabilities)
+    details["endpointCount"] = len(endpoints)
+    details["stabilityCounts"] = stability_counts
+    details["flaggedStability"] = flagged
+    if contract:
+        if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
+            errors.append("contractVersion must be a positive integer")
+        if not isinstance(api_version, str) or not api_version.strip():
+            errors.append("apiVersion must be a non-empty string")
+    if not capabilities:
+        errors.append("contract has no capability descriptors")
+    if not endpoints:
+        errors.append("contract has no endpoint descriptors")
+
+    verifier_args = ["compat", "verify"]
+    if settings.mode == "release-candidate":
+        verifier_args.append("--strict")
+    verifier_args.extend(["--contract", str(artifact)])
+    verification: dict[str, Any] = {}
+    for spec in first_party_app_specs(settings):
+        staged_dir = spec["stagedDir"]
+        if staged_dir.is_dir():
+            result = run_cli(
+                cli,
+                [*verifier_args, "--bundle-dir", str(staged_dir)],
+                settings,
+                f"crypta-app-compat-{spec['appId']}",
+            )
+            verification[spec["appId"]] = command_details(result, settings)
+            if result.exit_code != 0:
+                errors.append(f"compat verify failed for {spec['appId']}")
+        else:
+            verification[spec["appId"]] = {"skipped": True, "reason": "staged app directory missing"}
+    sample_dir = sample_paths.get("bundleDir")
+    if sample_dir is not None and sample_dir.is_dir():
+        result = run_cli(
+            cli,
+            [*verifier_args, "--bundle-dir", str(sample_dir)],
+            settings,
+            "crypta-app-compat-sample",
+        )
+        verification["cert-smoke"] = command_details(result, settings)
+        if result.exit_code != 0:
+            errors.append("compat verify failed for cert-smoke")
+    details["verifier"] = verification
+
+    if errors:
+        return EvidenceItem(
+            "platform-api.contract",
+            root_consequence(settings, "fail"),
+            True,
+            "Platform API contract evidence found compatibility risks.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "platform-api.contract",
+        "pass",
+        True,
+        "Platform API contract snapshot and offline compatibility checks passed.",
+        source,
+        details,
+    )
+
+
 def collect_signed_bundle_evidence(settings: Settings, sample_paths: dict[str, Path]) -> EvidenceItem:
     inputs = signing_inputs(os.environ)
     details: dict[str, Any] = {
@@ -1438,6 +1562,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
     evidence = [
         collect_first_party_evidence(settings, cli if isinstance(cli, Path) else None),
         cli_item,
+        collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
         collect_app_ui_evidence(settings),
@@ -1766,6 +1891,26 @@ def run_self_test(repo_root: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
+        python_fake_cli = workspace / "crypta-app-fake.py"
+        python_fake_cli.write_text(fake_cli_python_source(), encoding="utf-8")
+        python_contract = workspace / "python-fake-contract.json"
+        python_fake_result = subprocess.run(
+            [
+                sys.executable,
+                str(python_fake_cli),
+                "api",
+                "snapshot",
+                "--output",
+                str(python_contract),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert python_fake_result.returncode == 0, python_fake_result.stderr
+        assert json.loads(python_contract.read_text(encoding="utf-8"))["contract"][
+            "contractVersion"
+        ] == 2
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -1784,6 +1929,14 @@ def run_self_test(repo_root: Path) -> None:
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
+        contract_item = evidence_by_id["platform-api.contract"]
+        assert contract_item["status"] == "pass", contract_item
+        contract_details = contract_item["details"]
+        assert contract_details["contractVersion"] == 2, contract_item
+        assert contract_details["capabilityCount"] == 2, contract_item
+        assert contract_details["endpointCount"] == 1, contract_item
+        assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
+        assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
         assert evidence_by_id["apphost.sandbox-provider"]["status"] == "pass"
         assert evidence_by_id["apphost.sandbox-provider"]["details"]["liveBubblewrapRequired"] is False
@@ -2075,6 +2228,7 @@ def make_self_test_workspace(workspace: Path) -> None:
 
 def fake_cli_python_source() -> str:
     return r'''#!/usr/bin/env python3
+import json
 import os
 import sys
 from pathlib import Path
@@ -2108,6 +2262,9 @@ def init_app(args):
                 "app.name=Certification Smoke",
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
+                "api.minimumVersion=1",
+                "api.maximumTestedVersion=1",
+                "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
                 "app.permissions=queue.read",
@@ -2172,6 +2329,61 @@ app.cert-smoke.permissions=queue.read
     return 0
 
 
+def api_snapshot(args):
+    output_text = option_value(args, "--output")
+    if not output_text:
+        return 2
+    output = Path(output_text)
+    write_text(
+        output,
+        json.dumps(
+            {
+                "contract": {
+                    "apiVersion": "v1",
+                    "contractVersion": 2,
+                    "generatedBy": "cryptad",
+                    "stabilityPolicy": "self-test",
+                    "capabilities": [
+                        {
+                            "name": "queue.read",
+                            "stability": "stable",
+                            "sinceContractVersion": 1,
+                            "deprecation": None,
+                            "description": "Read queue state.",
+                        },
+                        {
+                            "name": "platform.contract.read",
+                            "stability": "stable",
+                            "sinceContractVersion": 1,
+                            "deprecation": None,
+                            "description": "Read contract snapshots.",
+                        },
+                    ],
+                    "endpoints": [
+                        {
+                            "routeFamily": "queue",
+                            "method": "GET",
+                            "routeTemplate": "/queue",
+                            "actionLabel": "queue.read",
+                            "requiredCapabilities": ["queue.read"],
+                            "hostOperatorBypassAllowed": True,
+                            "appProcessPrincipalsAllowed": True,
+                            "appBrowserPrincipalsAllowed": True,
+                            "stability": "stable",
+                            "sinceContractVersion": 1,
+                            "deprecation": None,
+                            "description": "Read queue state.",
+                        }
+                    ],
+                }
+            },
+            sort_keys=True,
+        )
+        + "\n",
+    )
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         return 0
@@ -2189,6 +2401,12 @@ def main():
             return create_catalog(args[1:])
         if subcommand in {"sign", "verify"}:
             return 0
+    if command == "api":
+        subcommand = args[0] if args else ""
+        if subcommand == "snapshot":
+            return api_snapshot(args[1:])
+    if command == "compat":
+        return 0
     if command in {"sign", "verify"}:
         return 0
     return 0
@@ -2219,8 +2437,8 @@ exit /b %ERRORLEVEL%
         cli.write_text(
             """#!/usr/bin/env sh
 set -eu
-cmd="$1"
-shift
+cmd="${1:-}"
+if [ "$#" -gt 0 ]; then shift; fi
 case "$cmd" in
   init)
     dir=""
@@ -2228,7 +2446,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=1' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<script src="./crypta-platform.js"></script><script src="./app.js"></script>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -2278,6 +2496,106 @@ CATALOG
         ;;
       sign|verify)
         exit 0
+        ;;
+    esac
+    ;;
+  api)
+    sub="${1:-}"
+    if [ "$#" -gt 0 ]; then shift; fi
+    case "$sub" in
+      snapshot)
+        output=""
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = "--output" ]; then output="$2"; shift 2; else shift; fi
+        done
+        if [ -z "$output" ]; then
+          exit 2
+        fi
+        mkdir -p "$(dirname "$output")"
+        cat > "$output" <<'JSON'
+{
+  "contract": {
+    "apiVersion": "v1",
+    "contractVersion": 2,
+    "generatedBy": "cryptad",
+    "stabilityPolicy": "self-test",
+    "capabilities": [
+      {
+        "name": "queue.read",
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read queue state."
+      },
+      {
+        "name": "platform.contract.read",
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read contract snapshots."
+      }
+    ],
+    "endpoints": [
+      {
+        "routeFamily": "queue",
+        "method": "GET",
+        "routeTemplate": "/queue",
+        "actionLabel": "queue.read",
+        "requiredCapabilities": [
+          "queue.read"
+        ],
+        "hostOperatorBypassAllowed": true,
+        "appProcessPrincipalsAllowed": true,
+        "appBrowserPrincipalsAllowed": true,
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Read queue state."
+      }
+    ]
+  }
+}
+JSON
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+    ;;
+  compat)
+    sub="${1:-}"
+    if [ "$#" -gt 0 ]; then shift; fi
+    case "$sub" in
+      verify)
+        contract=""
+        target=""
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            --contract)
+              contract="$2"
+              shift 2
+              ;;
+            --bundle-dir|--catalog-entry)
+              target="$2"
+              shift 2
+              ;;
+            --strict)
+              shift
+              ;;
+            *)
+              shift
+              ;;
+          esac
+        done
+        if [ -z "$contract" ] || [ ! -f "$contract" ]; then
+          exit 2
+        fi
+        if [ -z "$target" ]; then
+          exit 2
+        fi
+        ;;
+      *)
+        exit 2
         ;;
     esac
     ;;

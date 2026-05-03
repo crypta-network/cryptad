@@ -295,6 +295,9 @@ public final class PlatformApiRouter {
     }
 
     String firstSegment = segments.getFirst();
+    if ("platform".equals(firstSegment)) {
+      return routePlatformRequest(segments, request);
+    }
     if ("app-catalogs".equals(firstSegment)) {
       return routeAppCatalogsRequest(segments, request);
     }
@@ -324,6 +327,18 @@ public final class PlatformApiRouter {
     }
 
     return routeGetOnlyRequest(segments, request, firstSegment);
+  }
+
+  private PlatformApiResponse routePlatformRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (segments.size() == 2 && "contract".equals(segments.get(1))) {
+      if (!"GET".equals(request.method())) {
+        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          PlatformApiContractJson.envelope(PlatformApiContract.current()));
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 
   private String currentCryptaVersion() {

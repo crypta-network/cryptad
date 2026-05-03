@@ -432,6 +432,7 @@ class LocalProcessAppHostTest {
       """
       #!/bin/sh
       set -eu
+      trap '' HUP
       count_file="$CRYPTAD_APP_RUN_DIR/daemonized-restart-count.txt"
       count=0
       if [ -f "$count_file" ]; then

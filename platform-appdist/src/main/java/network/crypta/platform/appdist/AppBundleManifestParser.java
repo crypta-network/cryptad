@@ -264,6 +264,7 @@ public final class AppBundleManifestParser {
     AppUiMode uiMode = parseUiMode(optional(properties, "app.ui.mode"));
     String uiEntry = optionalUiEntry(properties);
     List<String> permissions = parsePermissions(optional(properties, "app.permissions"));
+    AppApiCompatibilityMetadata apiCompatibility = parseApiCompatibility(properties);
     Long dataQuotaBytes = parseOptionalLong(properties, "quota.data.bytes");
     Long cacheQuotaBytes = parseOptionalLong(properties, "quota.cache.bytes");
     AppSandboxMode sandboxMode = parseSandboxMode(optional(properties, "sandbox.mode"));
@@ -281,6 +282,7 @@ public final class AppBundleManifestParser {
           uiMode,
           uiEntry,
           permissions,
+          apiCompatibility,
           dataQuotaBytes,
           cacheQuotaBytes,
           sandboxMode,
@@ -288,6 +290,25 @@ public final class AppBundleManifestParser {
           restartPolicy,
           restartMaxAttempts,
           restartBackoffMillis);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static AppApiCompatibilityMetadata parseApiCompatibility(Properties properties)
+      throws AppDistributionException {
+    Integer minimumVersion = parseOptionalPositiveInteger(properties, "api.minimumVersion");
+    Integer maximumTestedVersion =
+        parseOptionalPositiveInteger(properties, "api.maximumTestedVersion");
+    List<String> optionalCapabilities =
+        parseOptionalCapabilities(optional(properties, "api.optionalCapabilities"));
+    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    try {
+      return new AppApiCompatibilityMetadata(
+          minimumVersion,
+          maximumTestedVersion,
+          optionalCapabilities,
+          experimentalCapabilitiesAccepted);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -387,6 +408,25 @@ public final class AppBundleManifestParser {
     return List.copyOf(normalized);
   }
 
+  private static List<String> parseOptionalCapabilities(String rawCapabilities)
+      throws AppDistributionException {
+    if (rawCapabilities == null) {
+      return List.of();
+    }
+    LinkedHashSet<String> normalized = new LinkedHashSet<>();
+    StringBuilder current = new StringBuilder();
+    for (int index = 0; index < rawCapabilities.length(); index++) {
+      char character = rawCapabilities.charAt(index);
+      if (character == ',') {
+        addOptionalCapability(normalized, current, rawCapabilities);
+      } else {
+        current.append(character);
+      }
+    }
+    addOptionalCapability(normalized, current, rawCapabilities);
+    return List.copyOf(normalized);
+  }
+
   private static void addExecSegment(
       List<String> normalizedSegments, StringBuilder current, String rawValue)
       throws AppDistributionException {
@@ -412,6 +452,21 @@ public final class AppBundleManifestParser {
     normalized.add(permission);
   }
 
+  private static void addOptionalCapability(
+      Set<String> normalized, StringBuilder current, String rawCapabilities)
+      throws AppDistributionException {
+    String capability = current.toString().trim().toLowerCase(Locale.ROOT);
+    current.setLength(0);
+    if (capability.isEmpty()) {
+      throw new AppDistributionException("api.optionalCapabilities must not contain blank entries");
+    }
+    if (!PERMISSION_PATTERN.matcher(capability).matches()) {
+      throw new AppDistributionException(
+          "invalid api.optionalCapabilities in manifest: " + rawCapabilities);
+    }
+    normalized.add(capability);
+  }
+
   private static Long parseOptionalLong(Properties properties, String key)
       throws AppDistributionException {
     String value = optional(properties, key);
@@ -423,6 +478,40 @@ public final class AppBundleManifestParser {
     } catch (NumberFormatException exception) {
       throw new AppDistributionException("invalid " + key + ": " + value, exception);
     }
+  }
+
+  private static Integer parseOptionalPositiveInteger(Properties properties, String key)
+      throws AppDistributionException {
+    String value = optional(properties, key);
+    if (value == null) {
+      return null;
+    }
+    try {
+      int parsed = Integer.parseInt(value);
+      if (parsed <= 0) {
+        throw new AppDistributionException(key + " must be a positive integer");
+      }
+      return parsed;
+    } catch (NumberFormatException exception) {
+      throw new AppDistributionException("invalid " + key + ": " + value, exception);
+    }
+  }
+
+  private static boolean parseExperimentalCapabilitiesAccepted(Properties properties)
+      throws AppDistributionException {
+    String key = "api.experimentalCapabilitiesAccepted";
+    String value = optional(properties, key);
+    if (value == null) {
+      return false;
+    }
+    String normalized = value.toLowerCase(Locale.ROOT);
+    if (normalized.equals("true")) {
+      return true;
+    }
+    if (normalized.equals("false")) {
+      return false;
+    }
+    throw new AppDistributionException("invalid " + key + ": " + value);
   }
 
   private static int parseRestartMaxAttempts(Properties properties)

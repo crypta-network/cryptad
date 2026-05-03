@@ -300,6 +300,37 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenPlatformContractRequest_expectContractJson() {
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("platform", "contract"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            PlatformApiContractJson.envelope(PlatformApiContract.current())),
+        response.body());
+  }
+
+  @Test
+  void route_whenAppPrincipalReadsContractWithCapability_expectContractJson() {
+    PlatformApiResponse response =
+        router.route(
+            appRequest(
+                List.of("platform", "contract"), Map.of(), List.of("platform.contract.read")));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"contractVersion\":1"));
+  }
+
+  @Test
+  void route_whenAppPrincipalReadsContractWithoutCapability_expectForbidden() {
+    PlatformApiResponse response =
+        router.route(appRequest(List.of("platform", "contract"), Map.of(), List.of("node.read")));
+
+    assertEquals(403, response.statusCode());
+  }
+
+  @Test
   void route_whenDiagnosticsRouterHasLegacyAdminUsage_expectLegacyAdminUsageJson() {
     PlatformApiRouter diagnosticsRouter =
         new PlatformApiRouter(
@@ -3292,7 +3323,7 @@ class PlatformApiRouterTest {
         Optional.empty(),
         Optional.empty(),
         List.of(),
-        new AppCatalogCompatibilityMetadata(Optional.of(CATALOG_MINIMUM_CRYPTA_VERSION)),
+        new AppCatalogCompatibilityMetadata(CATALOG_MINIMUM_CRYPTA_VERSION),
         AppCatalogReviewMetadata.EMPTY,
         AppCatalogChangelog.EMPTY,
         List.of(),
@@ -3311,7 +3342,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> catalogSummary(String appVersion) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(11);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(12);
     summary.put("appId", APP_ID);
     summary.put("name", APP_NAME);
     summary.put("version", appVersion);
@@ -3319,6 +3350,7 @@ class PlatformApiRouterTest {
     summary.put("uiEntry", APP_UI_ENTRY);
     summary.put("uiUrl", uiUrl(APP_ID, APP_UI_ENTRY));
     summary.put("permissions", List.of("network.access", "file.read"));
+    summary.put("apiCompatibility", undeclaredApiCompatibilityForLegacyPermissions());
     summary.put("installed", true);
     summary.put("running", false);
     summary.put("pid", null);
@@ -3371,7 +3403,7 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(19);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
@@ -3383,6 +3415,7 @@ class PlatformApiRouterTest {
     summary.put("uiOriginStatus", null);
     summary.put("sameOriginFallbackUrl", sameOriginFallbackUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
+    summary.put("apiCompatibility", undeclaredApiCompatibilityForLegacyPermissions());
     summary.put("quota", manifestQuotaSummary(installed ? 0L : null, installed ? 0L : null));
     summary.put("sandbox", sandboxSummary());
     summary.put("installed", installed);
@@ -3395,7 +3428,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(19);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
@@ -3407,6 +3440,7 @@ class PlatformApiRouterTest {
     summary.put("uiOriginStatus", null);
     summary.put("sameOriginFallbackUrl", null);
     summary.put("permissions", List.of());
+    summary.put("apiCompatibility", undeclaredApiCompatibility(List.of()));
     summary.put("quota", unknownQuotaSummary());
     summary.put("sandbox", sandboxSummary());
     summary.put("installed", false);
@@ -3416,6 +3450,26 @@ class PlatformApiRouterTest {
     summary.put("recentDeniedCount", 0L);
     summary.put("audit", emptyAuditSummary(APP_ID));
     return summary;
+  }
+
+  private static Map<String, Object> undeclaredApiCompatibilityForLegacyPermissions() {
+    return undeclaredApiCompatibility(
+        List.of(
+            "Unknown manifest permission: file.read.",
+            "Unknown manifest permission: network.access."));
+  }
+
+  private static Map<String, Object> undeclaredApiCompatibility(List<String> warnings) {
+    LinkedHashMap<String, Object> compatibility = LinkedHashMap.newLinkedHashMap(8);
+    compatibility.put("minimumVersion", null);
+    compatibility.put("maximumTestedVersion", null);
+    compatibility.put("currentVersion", PlatformApiContract.current().contractVersion());
+    compatibility.put("optionalCapabilities", List.of());
+    compatibility.put("experimentalCapabilitiesAccepted", false);
+    compatibility.put("declared", false);
+    compatibility.put("status", "unknown");
+    compatibility.put("warnings", warnings);
+    return compatibility;
   }
 
   private static Map<String, Object> emptyAuditSummary(String appId) {

@@ -1,54 +1,24 @@
 package network.crypta.platform.api;
 
-import java.util.Collections;
 import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Public read-only registry of manifest capabilities recognized by Platform API v1.
  *
- * <p>The authorization matrix remains owned by {@link PlatformApiCapabilities}; this class exposes
- * only the capability names so developer tooling can lint app manifests without copying the list
- * into another module. It is deliberately smaller than the authorization implementation: callers
- * can ask whether a manifest-declared name is known, but they cannot infer route permissions,
- * app-principal policy, or future compatibility guarantees from this registry alone.
+ * <p>The capability vocabulary is derived from {@link PlatformApiContract#current()} so developer
+ * tooling, contract snapshots, and runtime app-principal authorization use one shared source of
+ * truth. Callers can ask whether a manifest-declared name is known, but they should use the full
+ * contract when they need route permissions, app-principal policy, or stability metadata.
  *
  * <p>The registry is immutable, process-local, and safe to share across threads. Capability names
  * are returned in lexicographic order so command-line diagnostics, generated documentation, and
- * unit tests do not depend on declaration order inside {@link PlatformApiCapabilities}. When
- * Platform API v1 gains or retires a capability, update the authorization matrix and this registry
- * together so app developer tools continue to report the same vocabulary that runtime authorization
- * enforces.
+ * unit tests do not depend on descriptor declaration order.
  *
- * @see PlatformApiCapabilities
+ * @see PlatformApiContract
  */
 public final class PlatformApiCapabilityRegistry {
   private static final Set<String> KNOWN_CAPABILITIES =
-      Collections.unmodifiableSet(
-          new TreeSet<>(
-              Set.of(
-                  PlatformApiCapabilities.ALERTS_READ,
-                  PlatformApiCapabilities.ALERTS_WRITE,
-                  PlatformApiCapabilities.APPS_MANAGE,
-                  PlatformApiCapabilities.APPS_READ,
-                  PlatformApiCapabilities.CATALOGS_MANAGE,
-                  PlatformApiCapabilities.CATALOGS_READ,
-                  PlatformApiCapabilities.CONFIG_READ,
-                  PlatformApiCapabilities.CONFIG_WRITE,
-                  PlatformApiCapabilities.CONNECTIVITY_READ,
-                  PlatformApiCapabilities.CONTENT_INSERT,
-                  PlatformApiCapabilities.DIAGNOSTICS_READ,
-                  PlatformApiCapabilities.NODE_READ,
-                  PlatformApiCapabilities.PEERS_READ,
-                  PlatformApiCapabilities.PEERS_WRITE,
-                  PlatformApiCapabilities.QUEUE_READ,
-                  PlatformApiCapabilities.QUEUE_WRITE,
-                  PlatformApiCapabilities.SECURITY_READ,
-                  PlatformApiCapabilities.SECURITY_WRITE,
-                  PlatformApiCapabilities.UPDATES_READ,
-                  PlatformApiCapabilities.UPDATES_WRITE,
-                  PlatformApiCapabilities.WIZARD_READ,
-                  PlatformApiCapabilities.WIZARD_WRITE)));
+      PlatformApiContract.current().capabilityNames();
 
   private PlatformApiCapabilityRegistry() {}
 

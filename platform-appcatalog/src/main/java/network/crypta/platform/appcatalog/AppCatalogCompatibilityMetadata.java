@@ -1,16 +1,17 @@
 package network.crypta.platform.appcatalog;
 
 import java.util.Objects;
-import java.util.Optional;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 
 /**
  * Advisory compatibility metadata for a catalog app.
  *
  * <p>This record carries the compatibility hint that a catalog publisher can attach to an app: the
- * minimum Cryptad build or version label the publisher expects operators to run. The field is
- * authenticated by the signed catalog sidecar when present, but it is not a trust decision, and it
- * is not a runtime gate. Install and update still depend on catalog signature verification,
- * artifact digest checks, signed-bundle verification, and AppHost validation.
+ * minimum Cryptad build or version label the publisher expects operators to run plus optional
+ * Platform API contract hints. The fields are authenticated by the signed catalog sidecar when
+ * present, but they are not trust decisions, and they are not runtime gates. Install and update
+ * still depend on catalog signature verification, artifact digest checks, signed-bundle
+ * verification, and AppHost validation.
  *
  * <p>Platform API responses compare this value with the local node's comparable version string when
  * the two values can be parsed safely. Integer Cryptad build labels are the preferred comparable
@@ -22,11 +23,13 @@ import java.util.Optional;
  * values, and bounds the length so catalog metadata cannot smuggle long free-form review text into
  * the compatibility field.
  *
- * @param minimumCryptaVersion optional minimum Cryptad build or version label from the catalog
- *     publisher
+ * @param minimumCryptaVersion minimum Cryptad build or version label from the catalog publisher, or
+ *     {@code null} when the catalog does not declare one
+ * @param apiCompatibility optional Platform API contract metadata summarized by the catalog
  * @see AppCatalogEntry#compatibility()
  */
-public record AppCatalogCompatibilityMetadata(Optional<String> minimumCryptaVersion) {
+public record AppCatalogCompatibilityMetadata(
+    String minimumCryptaVersion, AppApiCompatibilityMetadata apiCompatibility) {
   private static final int MAX_VERSION_CHARS = 96;
 
   /**
@@ -37,7 +40,19 @@ public record AppCatalogCompatibilityMetadata(Optional<String> minimumCryptaVers
    * reviewed by the publisher.
    */
   public static final AppCatalogCompatibilityMetadata EMPTY =
-      new AppCatalogCompatibilityMetadata(Optional.empty());
+      new AppCatalogCompatibilityMetadata(null, AppApiCompatibilityMetadata.undeclared());
+
+  /**
+   * Creates metadata with only the original Cryptad build/version hint.
+   *
+   * <p>This overload preserves source compatibility for callers that predate Platform API contract
+   * hints in catalog metadata.
+   *
+   * @param minimumCryptaVersion minimum Cryptad build or version label to display, or {@code null}
+   */
+  public AppCatalogCompatibilityMetadata(String minimumCryptaVersion) {
+    this(minimumCryptaVersion, AppApiCompatibilityMetadata.undeclared());
+  }
 
   /**
    * Creates validated compatibility metadata.
@@ -47,19 +62,20 @@ public record AppCatalogCompatibilityMetadata(Optional<String> minimumCryptaVers
    * version and may remain unavailable for non-numeric publisher labels. A present value is stored
    * after trimming so writers and API responses use the same canonical text.
    *
-   * @param minimumCryptaVersion optional minimum Cryptad build or version label to display
-   * @throws NullPointerException if the optional wrapper is {@code null}
+   * @param minimumCryptaVersion minimum Cryptad build or version label to display, or {@code null}
+   * @param apiCompatibility optional Platform API contract metadata summarized by the catalog
    * @throws AppCatalogException if the value is blank, multi-line, or too long
    */
   public AppCatalogCompatibilityMetadata {
-    Objects.requireNonNull(minimumCryptaVersion, "minimumCryptaVersion");
-    minimumCryptaVersion =
-        minimumCryptaVersion.map(
-            rawVersion ->
-                AppCatalogSidecars.requireBoundedSingleLine(
-                    rawVersion,
-                    "minimumCryptaVersion",
-                    AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-                    MAX_VERSION_CHARS));
+    apiCompatibility =
+        Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
+    if (minimumCryptaVersion != null) {
+      minimumCryptaVersion =
+          AppCatalogSidecars.requireBoundedSingleLine(
+              minimumCryptaVersion,
+              "minimumCryptaVersion",
+              AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+              MAX_VERSION_CHARS);
+    }
   }
 }

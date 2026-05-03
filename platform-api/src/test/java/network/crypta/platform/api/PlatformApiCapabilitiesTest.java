@@ -41,6 +41,7 @@ class PlatformApiCapabilitiesTest {
             "node.read",
             "peers.read",
             "peers.write",
+            "platform.contract.read",
             "queue.read",
             "queue.write",
             "security.read",
@@ -235,6 +236,12 @@ class PlatformApiCapabilitiesTest {
         route("POST", List.of("apps", "install"), "apps", "apps.install", "apps.manage"),
         route("DELETE", List.of("apps", "alpha"), "apps", "apps.uninstall", "apps.manage"),
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
+        route(
+            "GET",
+            List.of("platform", "contract"),
+            "platform",
+            "platform.contract.read",
+            "platform.contract.read"),
         route(
             "GET",
             List.of("app-catalogs", "default", "apps"),

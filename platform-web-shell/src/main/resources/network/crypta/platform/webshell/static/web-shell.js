@@ -1380,6 +1380,38 @@
     return normalizedStatus(compatibility.status, "Compatibility advisory");
   }
 
+  function apiCompatibilityTone(apiCompatibility) {
+    const status =
+      apiCompatibility && typeof apiCompatibility.status === "string" ? apiCompatibility.status.toLowerCase() : "";
+    if (status === "compatible") {
+      return "is-success";
+    }
+    if (status === "below_minimum" || status === "incompatible") {
+      return "is-error";
+    }
+    return "is-warning";
+  }
+
+  function apiCompatibilityLabel(apiCompatibility) {
+    if (!apiCompatibility || Object.keys(apiCompatibility).length === 0) {
+      return "API contract unknown";
+    }
+    const status = typeof apiCompatibility.status === "string" ? apiCompatibility.status.toLowerCase() : "";
+    if (status === "compatible") {
+      return "API contract compatible";
+    }
+    if (status === "below_minimum") {
+      return "API contract too old";
+    }
+    if (status === "newer_than_tested") {
+      return "Newer API contract";
+    }
+    if (status === "incompatible") {
+      return "API contract warning";
+    }
+    return "API contract unknown";
+  }
+
   function versionTone(app) {
     if (app.updateAvailable || app.versionDifferent) {
       return "is-warning";
@@ -1468,6 +1500,9 @@
     pills.className = "app-card-pills";
     pills.append(createPill("Installed"));
     pills.append(createPill(runtimeState, runtimeRunning ? "is-success" : "is-warning"));
+    pills.append(
+      createPill(apiCompatibilityLabel(recordValue(app.apiCompatibility)), apiCompatibilityTone(recordValue(app.apiCompatibility))),
+    );
     pills.append(createPill(sandboxLabel(sandbox), sandboxTone(sandbox)));
     if (app.uiUrl || app.uiEntry) {
       pills.append(createPill(app.uiMode === "static" ? "Static UI" : "UI"));
@@ -1501,6 +1536,7 @@
       ["App ID", typeof app.appId === "string" && app.appId ? app.appId : "Unavailable"],
       ["Version", typeof app.version === "string" && app.version ? app.version : "Unavailable"],
       ["Permissions", formatPermissions(app.permissions)],
+      ["API contract", apiCompatibilityLabel(recordValue(app.apiCompatibility))],
       ["UI mode", scalar(app.uiMode)],
       ["UI", uiEntryNode || scalar(app.uiUrl)],
       ["UI entry", scalar(app.uiEntry)],
@@ -1532,6 +1568,7 @@
       ["Runtime detail", runtimeError || (runtime ? "Available" : "Unavailable")],
     ];
     card.append(definitionList(entries));
+    card.append(apiCompatibilityDetailsNode(app));
     card.append(appPermissionsDetailsNode(app));
     card.append(appAuditDetailsNode(audit, app.auditError));
     const logDetails = appLogDetailsNode(logs, app.logsError);
@@ -1875,6 +1912,27 @@
     return details;
   }
 
+  function apiCompatibilityDetailsNode(app) {
+    const compatibility = recordValue(app.apiCompatibility);
+    const details = document.createElement("details");
+    details.className = "json-details api-compatibility-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Platform API contract";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Current API contract version", scalar(compatibility.currentVersion)],
+        ["Minimum API contract version", scalar(compatibility.minimumVersion)],
+        ["Maximum tested API contract version", scalar(compatibility.maximumTestedVersion)],
+        ["Status", apiCompatibilityLabel(compatibility)],
+        ["Optional capabilities", formatPermissions(compatibility.optionalCapabilities)],
+        ["Experimental capabilities accepted", compatibility.experimentalCapabilitiesAccepted ? "Yes" : "No"],
+        ["Warnings", stringList(compatibility.warnings).join("; ") || "None"],
+      ]),
+    );
+    return details;
+  }
+
   function catalogPermissionReviewDetailsNode(app) {
     const details = document.createElement("details");
     details.className = "json-details catalog-permission-details";
@@ -1950,6 +2008,7 @@
 
     const review = recordValue(app.review);
     const compatibility = recordValue(app.compatibility);
+    const apiCompatibility = recordValue(app.apiCompatibility);
     const header = document.createElement("div");
     header.className = "catalog-app-header";
     const heading = document.createElement("div");
@@ -1964,6 +2023,7 @@
     pills.append(createPill(normalizedStatus(review.status, "Unreviewed"), reviewTone(review.status)));
     pills.append(createPill(versionLabel(app), versionTone(app)));
     pills.append(createPill(compatibilityLabel(compatibility), compatibilityTone(compatibility)));
+    pills.append(createPill(apiCompatibilityLabel(apiCompatibility), apiCompatibilityTone(apiCompatibility)));
     header.append(heading, pills);
     card.append(header);
     card.append(
@@ -1983,6 +2043,9 @@
         ["Permission changes", `+${stringList(recordValue(app.permissionDelta).added).length} / -${stringList(recordValue(app.permissionDelta).removed).length}`],
         ["Compatibility", compatibilityLabel(compatibility)],
         ["Minimum Crypta version", scalar(compatibility.minimumCryptaVersion)],
+        ["API contract", apiCompatibilityLabel(apiCompatibility)],
+        ["Minimum API contract version", scalar(apiCompatibility.minimumVersion)],
+        ["Maximum tested API contract version", scalar(apiCompatibility.maximumTestedVersion)],
         ["Changelog", scalar(recordValue(app.changelog).summary)],
         ["Installed", app.installed ? "Yes" : "No"],
         ["Running", app.running ? "Yes" : "No"],
@@ -1990,6 +2053,7 @@
     );
     card.append(catalogReviewDetailsNode(app));
     card.append(catalogCompatibilityDetailsNode(app));
+    card.append(apiCompatibilityDetailsNode(app));
     card.append(catalogPermissionReviewDetailsNode(app));
     card.append(catalogReleaseDetailsNode(app));
     if (formPassword) {

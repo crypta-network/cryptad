@@ -104,6 +104,9 @@ app.ui.entry=static/index.html
 sandbox.mode=none
 sandbox.required=false
 app.permissions=queue.read,queue.write
+api.minimumVersion=1
+api.maximumTestedVersion=1
+api.experimentalCapabilitiesAccepted=false
 quota.data.bytes=0
 quota.cache.bytes=0
 app.restart.policy=never
@@ -122,8 +125,8 @@ Validate the staged bundle before signing:
 crypta-app validate --bundle-dir build/dev-apps/hello-queue
 ```
 
-Add `--strict` when unknown manifest permissions should fail the command instead of producing a
-warning.
+Add `--strict` when unknown manifest permissions, compatibility warnings, or
+newer-than-tested contract targets should fail the command instead of producing a warning.
 
 Sign it with a local development key:
 
@@ -165,6 +168,35 @@ The catalog install path verifies the catalog signature, the ZIP artifact size a
 extracted bundle signature before AppHost installs or updates the app. Packing an unsigned bundle
 does not make it trusted.
 
+## API compatibility checks
+
+Generate the current offline Platform API compatibility snapshot:
+
+```bash
+crypta-app api snapshot --output build/platform-api-contract.json
+```
+
+Verify a staged bundle against the built-in current contract:
+
+```bash
+crypta-app compat verify --bundle-dir build/dev-apps/hello-queue
+```
+
+Verify against an explicit target contract, such as a release-candidate snapshot:
+
+```bash
+crypta-app compat verify \
+  --bundle-dir build/dev-apps/hello-queue \
+  --contract build/platform-api-contract.json
+```
+
+The verifier checks unknown manifest permissions, unknown optional capabilities, malformed
+`api.*` metadata, app-declared minimum contract versions above the target, target contract versions
+above the app's maximum-tested version, experimental capability use without
+`api.experimentalCapabilitiesAccepted=true`, and deprecated or scheduled capabilities. It also
+checks catalog entry descriptors against the referenced bundle when `--catalog-entry` is used.
+Warnings become failures with `--strict`.
+
 ## Catalog descriptor and flow
 
 `crypta-app catalog create` can build a `cryptad-app-catalog.properties` file from one or more app
@@ -193,6 +225,10 @@ permissions.rationale.queue.write=Lets the app cancel or reprioritize requests.
 screenshot.1=https://example.invalid/assets/hello-queue-1.png
 changelog.summary=Adds queue retry controls.
 changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
+api.minimumVersion=1
+api.maximumTestedVersion=1
+api.optionalCapabilities=alerts.read,diagnostics.read
+api.experimentalCapabilitiesAccepted=false
 ```
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
@@ -216,15 +252,24 @@ Descriptors can also author optional app-store metadata:
 | `screenshot.N` | `app.<id>.screenshot.N` |
 | `changelog.summary` | `app.<id>.changelog.summary` |
 | `changelog.uri` | `app.<id>.changelog.uri` |
+| `api.minimumVersion` | `app.<id>.api.minimumVersion` |
+| `api.maximumTestedVersion` | `app.<id>.api.maximumTestedVersion` |
+| `api.optionalCapabilities` | `app.<id>.api.optionalCapabilities` |
+| `api.experimentalCapabilitiesAccepted` | `app.<id>.api.experimentalCapabilitiesAccepted` |
 
-These fields are optional. Descriptors that omit them generate a minimal `catalog.version=1`
-catalog; descriptors that include any app-store metadata generate `catalog.version=2` so strict v1
-catalog consumers reject the expanded schema cleanly instead of accepting unknown fields.
+These fields are optional. A descriptor and artifact with no app-store metadata and no API
+compatibility metadata generate a minimal `catalog.version=1` catalog. Descriptors that include
+any app-store metadata, or descriptors/artifacts that declare API compatibility metadata, generate
+`catalog.version=2` so strict v1 catalog consumers reject the expanded schema cleanly instead of
+accepting unknown fields.
 `homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
 `review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
 integer Cryptad build labels are the comparable form used by Platform API responses. Permission
 rationales explain declared permissions; they do not grant capabilities.
+
+API compatibility metadata is advisory. The signed bundle manifest remains authoritative for the
+app artifact, and catalog-vs-bundle mismatches are reported by `crypta-app compat verify`.
 
 `artifact.path` is local authoring input and is not written to the public catalog. Do not change
 the ZIP after creating the catalog; the generated catalog records its size and lowercase SHA-256
@@ -304,3 +349,5 @@ apps together.
 - [platform-sdk-js.md](platform-sdk-js.md) describes the browser SDK used by app-owned static UI.
 - [app-permissions-and-audit.md](app-permissions-and-audit.md) lists the current Platform API
   capability names.
+- [platform-api-contract.md](platform-api-contract.md) explains contract versions, stability
+  levels, manifest `api.*` fields, and offline compatibility verification.

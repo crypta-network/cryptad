@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 
 /**
  * One developer-authored descriptor used to create a catalog entry.
@@ -42,6 +43,10 @@ import java.util.TreeMap;
  * license=MIT
  * categories=productivity,network
  * minimumCryptaVersion=0.1.0
+ * api.minimumVersion=1
+ * api.maximumTestedVersion=1
+ * api.optionalCapabilities=alerts.read,diagnostics.read
+ * api.experimentalCapabilitiesAccepted=false
  * review.status=reviewed
  * review.note=Reviewed for local operator safety.
  * permissions.rationale.queue.read=Reads the local transfer queue.
@@ -104,6 +109,11 @@ public record AppCatalogEntryDescriptor(
   private static final String LICENSE_PROPERTY = "license";
   private static final String CATEGORIES_PROPERTY = "categories";
   private static final String MINIMUM_CRYPTA_VERSION = "minimumCryptaVersion";
+  private static final String API_MINIMUM_VERSION = "api.minimumVersion";
+  private static final String API_MAXIMUM_TESTED_VERSION = "api.maximumTestedVersion";
+  private static final String API_OPTIONAL_CAPABILITIES = "api.optionalCapabilities";
+  private static final String API_EXPERIMENTAL_CAPABILITIES_ACCEPTED =
+      "api.experimentalCapabilitiesAccepted";
   private static final String REVIEW_STATUS = "review.status";
   private static final String REVIEW_NOTE = "review.note";
   private static final String CHANGELOG_SUMMARY = "changelog.summary";
@@ -210,7 +220,9 @@ public record AppCatalogEntryDescriptor(
                 .map(value -> parseUri(value, SOURCE_PROPERTY)),
             removeOptional(properties, LICENSE_PROPERTY),
             parseCategories(removeOptional(properties, CATEGORIES_PROPERTY).orElse(null)),
-            new AppCatalogCompatibilityMetadata(removeOptional(properties, MINIMUM_CRYPTA_VERSION)),
+            new AppCatalogCompatibilityMetadata(
+                removeOptional(properties, MINIMUM_CRYPTA_VERSION).orElse(null),
+                parseApiCompatibility(properties)),
             parseReview(properties),
             new AppCatalogChangelog(
                 removeOptional(properties, CHANGELOG_SUMMARY),
@@ -331,6 +343,72 @@ public record AppCatalogEntryDescriptor(
       categories.add(category.trim());
     }
     return categories;
+  }
+
+  private static AppApiCompatibilityMetadata parseApiCompatibility(Map<String, String> properties) {
+    Integer minimumVersion = parseOptionalPositiveInteger(properties, API_MINIMUM_VERSION);
+    Integer maximumTestedVersion =
+        parseOptionalPositiveInteger(properties, API_MAXIMUM_TESTED_VERSION);
+    List<String> optionalCapabilities =
+        parseOptionalCapabilities(
+            removeOptional(properties, API_OPTIONAL_CAPABILITIES).orElse(null));
+    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    try {
+      return new AppApiCompatibilityMetadata(
+          minimumVersion,
+          maximumTestedVersion,
+          optionalCapabilities,
+          experimentalCapabilitiesAccepted);
+    } catch (IllegalArgumentException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
+    }
+  }
+
+  private static Integer parseOptionalPositiveInteger(Map<String, String> properties, String key) {
+    Optional<String> value = removeOptional(properties, key);
+    if (value.isEmpty()) {
+      return null;
+    }
+    try {
+      int parsed = Integer.parseInt(value.get());
+      if (parsed <= 0) {
+        throw AppCatalogSidecars.invalidEntry(key + " must be a positive integer");
+      }
+      return parsed;
+    } catch (NumberFormatException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+          "invalid " + key + ": " + value.get(),
+          exception);
+    }
+  }
+
+  private static boolean parseExperimentalCapabilitiesAccepted(Map<String, String> properties) {
+    Optional<String> value = removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
+    if (value.isEmpty()) {
+      return false;
+    }
+    String normalized = value.get().toLowerCase(java.util.Locale.ROOT);
+    if (normalized.equals("true")) {
+      return true;
+    }
+    if (normalized.equals("false")) {
+      return false;
+    }
+    throw AppCatalogSidecars.invalidEntry(
+        "invalid " + API_EXPERIMENTAL_CAPABILITIES_ACCEPTED + ": " + value.get());
+  }
+
+  private static List<String> parseOptionalCapabilities(String rawCapabilities) {
+    if (rawCapabilities == null || rawCapabilities.isBlank()) {
+      return List.of();
+    }
+    List<String> capabilities = new ArrayList<>();
+    for (String capability : rawCapabilities.split(",", -1)) {
+      capabilities.add(capability.trim());
+    }
+    return capabilities;
   }
 
   private static AppCatalogReviewMetadata parseReview(Map<String, String> properties) {

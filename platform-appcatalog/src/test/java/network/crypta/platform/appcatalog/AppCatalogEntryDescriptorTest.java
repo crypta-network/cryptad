@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,6 +41,10 @@ class AppCatalogEntryDescriptorTest {
                 "license= MIT ",
                 "categories=Productivity,network,productivity",
                 "minimumCryptaVersion= 0.1.0 ",
+                "api.minimumVersion=1",
+                "api.maximumTestedVersion=2",
+                "api.optionalCapabilities=alerts.read,diagnostics.read",
+                "api.experimentalCapabilitiesAccepted=true",
                 "review.status= reviewed ",
                 "review.note= Reviewed for local operator safety. ",
                 "permissions= ",
@@ -60,7 +66,14 @@ class AppCatalogEntryDescriptorTest {
     assertEquals("https://example.invalid/repo", parsed.source().orElseThrow().toString());
     assertEquals(Optional.of("MIT"), parsed.license());
     assertEquals(List.of("productivity", "network"), parsed.categories());
-    assertEquals("0.1.0", parsed.compatibility().minimumCryptaVersion().orElseThrow());
+    assertEquals("0.1.0", parsed.compatibility().minimumCryptaVersion());
+    assertEquals(Integer.valueOf(1), parsed.compatibility().apiCompatibility().minimumVersion());
+    assertEquals(
+        Integer.valueOf(2), parsed.compatibility().apiCompatibility().maximumTestedVersion());
+    assertEquals(
+        List.of("alerts.read", "diagnostics.read"),
+        parsed.compatibility().apiCompatibility().optionalCapabilities());
+    assertTrue(parsed.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(AppCatalogReviewStatus.REVIEWED, parsed.review().status());
     assertEquals("Reviewed for local operator safety.", parsed.review().note().orElseThrow());
     assertEquals(Optional.of(List.of()), parsed.permissionsOverride());
@@ -89,7 +102,8 @@ class AppCatalogEntryDescriptorTest {
     assertEquals(Optional.empty(), parsed.source());
     assertEquals(Optional.empty(), parsed.license());
     assertEquals(List.of(), parsed.categories());
-    assertEquals(Optional.empty(), parsed.compatibility().minimumCryptaVersion());
+    assertNull(parsed.compatibility().minimumCryptaVersion());
+    assertFalse(parsed.compatibility().apiCompatibility().declared());
     assertEquals(AppCatalogReviewMetadata.EMPTY, parsed.review());
     assertEquals(AppCatalogChangelog.EMPTY, parsed.changelog());
     assertEquals(List.of(), parsed.screenshots());

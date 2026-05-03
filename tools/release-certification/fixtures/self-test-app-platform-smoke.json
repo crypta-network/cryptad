@@ -25,6 +25,23 @@
     },
     {
       "details": {
+        "apiVersion": "v1",
+        "capabilityCount": 23,
+        "contractVersion": 2,
+        "endpointCount": 52,
+        "flaggedStability": [],
+        "stabilityCounts": {
+          "stable": 75
+        }
+      },
+      "id": "platform-api.contract",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Platform API contract snapshot and offline compatibility checks passed."
+    },
+    {
+      "details": {
         "keyId": "dev-local"
       },
       "id": "app-platform.signed-bundles",

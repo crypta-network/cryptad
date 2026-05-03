@@ -12,8 +12,11 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.AppAuditEvent;
 import network.crypta.platform.api.AppAuditLog;
+import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -556,7 +559,7 @@ public final class AppsApiHandler {
       boolean installed,
       RunningAppSnapshot running,
       AppQuotaStatus quotaStatus) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(20);
     json.put(FIELD_APP_ID, manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
@@ -575,6 +578,8 @@ public final class AppsApiHandler {
             ? sameOriginFallbackUrl(manifest)
             : uiOriginBinding.sameOriginFallbackUrl());
     json.put(FIELD_PERMISSIONS, manifest.permissions());
+    json.put(
+        "apiCompatibility", apiCompatibility(manifest.apiCompatibility(), manifest.permissions()));
     json.put(FIELD_QUOTA, quota(manifest, quotaStatus));
     json.put(FIELD_SANDBOX, summarizeSandbox(sandboxStatus(manifest, running)));
     json.put("installed", installed);
@@ -643,7 +648,7 @@ public final class AppsApiHandler {
    * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
    */
   private Map<String, Object> summarizeUnknown(String appId, boolean installed) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(20);
     json.put(FIELD_APP_ID, appId);
     json.put("name", null);
     json.put("version", null);
@@ -655,6 +660,8 @@ public final class AppsApiHandler {
     json.put("uiOriginStatus", null);
     json.put("sameOriginFallbackUrl", null);
     json.put(FIELD_PERMISSIONS, List.of());
+    json.put(
+        "apiCompatibility", apiCompatibility(AppApiCompatibilityMetadata.undeclared(), List.of()));
     json.put(FIELD_QUOTA, unknownQuota());
     json.put(
         FIELD_SANDBOX,
@@ -674,6 +681,12 @@ public final class AppsApiHandler {
       return null;
     }
     return binding;
+  }
+
+  private static Map<String, Object> apiCompatibility(
+      AppApiCompatibilityMetadata metadata, List<String> permissions) {
+    return PlatformApiContractVerifier.summarize(
+        metadata, permissions, PlatformApiContract.current());
   }
 
   private static String sameOriginFallbackUrl(AppManifest manifest) {

@@ -57,6 +57,10 @@ app.queue-manager.permissions.rationale.queue.write=Lets the app cancel or repri
 app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.png
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
+app.queue-manager.api.minimumVersion=1
+app.queue-manager.api.maximumTestedVersion=1
+app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
+app.queue-manager.api.experimentalCapabilitiesAccepted=false
 ```
 
 The parser rejects duplicate keys, missing required fields, unsupported versions, unsupported
@@ -64,9 +68,9 @@ artifact types, invalid app ids, blank names or versions, invalid SHA-256 text, 
 unsafe artifact URIs, duplicate entries, and unknown properties.
 
 `catalog.version=1` is the minimal signed-catalog schema and contains only the required app,
-artifact, and permission fields. `catalog.version=2` adds the optional app-store metadata fields
-shown above. Current Cryptad nodes parse both versions. Older strict v1 nodes reject v2 catalogs
-rather than silently accepting unknown metadata fields.
+artifact, and permission fields. `catalog.version=2` adds the optional app-store and API
+compatibility metadata fields shown above. Current Cryptad nodes parse both versions. Older strict
+v1 nodes reject v2 catalogs rather than silently accepting unknown metadata fields.
 
 Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
 app-store metadata fields remain optional within the v2 schema.
@@ -88,12 +92,22 @@ Catalog entries can include these optional fields:
 | `app.<id>.screenshot.N` | Screenshot URI metadata, where `N` is a positive deterministic index. |
 | `app.<id>.changelog.summary` | Single-line summary of changes for the catalog version. |
 | `app.<id>.changelog.uri` | URI for full changelog text or release notes. |
+| `app.<id>.api.minimumVersion` | Advisory minimum Platform API compatibility contract version. |
+| `app.<id>.api.maximumTestedVersion` | Advisory maximum Platform API compatibility contract version tested by the app author. |
+| `app.<id>.api.optionalCapabilities` | Advisory comma-separated optional capability names used for verifier and review warnings. |
+| `app.<id>.api.experimentalCapabilitiesAccepted` | Whether the app author explicitly accepts experimental capability use. |
 
 URI fields are metadata only. The Web Shell should show screenshot URIs as links or behind an
 operator-explicit preview control; it should not silently auto-fetch arbitrary remote images from a
 catalog entry. `minimumCryptaVersion` is advisory and should not block install/update by itself
-when comparison is unavailable or ambiguous. Platform API compatibility summaries compare numeric
-Cryptad build labels when possible.
+when comparison is unavailable or ambiguous. Catalog compatibility summaries compare numeric
+Cryptad build labels when possible and compare API compatibility metadata against the current
+Platform API contract version.
+
+Platform API contract metadata is also advisory in catalogs. The signed bundle manifest remains
+authoritative for the app artifact. Developer tooling flags catalog-vs-bundle API metadata
+mismatches and permission mismatches before signing; old catalogs without API metadata still parse
+and display an `unknown` API compatibility status.
 
 Permission rationales explain why the catalog version declares a permission. They do not grant
 permissions and do not replace the signed bundle manifest's permission list or server-side
@@ -129,6 +143,10 @@ permissions.rationale.queue.write=Lets the app cancel or reprioritize requests.
 screenshot.1=https://example.invalid/assets/hello-queue-1.png
 changelog.summary=Adds queue retry controls.
 changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
+api.minimumVersion=1
+api.maximumTestedVersion=1
+api.optionalCapabilities=alerts.read,diagnostics.read
+api.experimentalCapabilitiesAccepted=false
 ```
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
@@ -137,8 +155,9 @@ values are optional consistency checks and must match the artifact manifest. The
 `permissions` fields can override the display metadata and permission hints written to the catalog.
 Optional descriptor metadata uses the same names as catalog metadata without the `app.<id>.`
 prefix. The writer computes `bundle.sha256` and `bundle.size.bytes` from the local artifact bytes.
-Descriptors that omit app-store metadata produce `catalog.version=1`; descriptors that include any
-app-store metadata produce `catalog.version=2`.
+A descriptor and artifact with no app-store metadata and no API compatibility metadata produce
+`catalog.version=1`; descriptors that include app-store metadata, or descriptors/artifacts that
+declare API compatibility metadata, produce `catalog.version=2`.
 
 Create, sign, and verify a catalog with:
 
@@ -267,9 +286,10 @@ enforced only for AppHost-managed app data/cache directories. See
 [app-owned-ui.md](app-owned-ui.md) for the static UI route and security boundary.
 
 Catalog app listing and detail responses expose optional store metadata, installed/running state,
-installed version, catalog version, advisory version-difference/update information, permission
-rationales, and permission deltas for install/update review. Responses do not expose trusted-key
-material, catalog scratch paths, or verified staging directories.
+installed version, catalog version, advisory version-difference/update information, API
+compatibility summaries, permission rationales, and permission deltas for install/update review.
+Responses do not expose trusted-key material, catalog scratch paths, or verified staging
+directories.
 
 The Web Shell Apps section uses the same API to show catalog details before install or update:
 review status and note, source/homepage/license/category metadata, permission explanations,
