@@ -24,15 +24,21 @@ import java.util.Set;
  * directories. That keeps existing app manifests and working-directory assumptions stable while the
  * namespace hides host paths that are not explicitly mounted. The class does not create
  * directories, inspect environment values, or execute bubblewrap; it only returns the command shape
- * that the provider can hand to AppHost.
+ * that the provider can hand to AppHost. Debian-style {@code /etc/alternatives} command symlinks
+ * are mounted narrowly when present so launchers can resolve common tools such as {@code java}
+ * without exposing the rest of {@code /etc}.
  */
 public final class BubblewrapCommandBuilder {
   private static final Path ROOT = Path.of("/");
   // Bubblewrap mounts an isolated tmpfs at this namespace destination; Java does not open the host
   // /tmp directory here.
   private static final String SANDBOX_TMPFS_DESTINATION = "/tmp";
-  private static final List<Path> SYSTEM_READ_ONLY_PATHS =
-      List.of(Path.of("/usr"), Path.of("/bin"), Path.of("/lib"), Path.of("/lib64"));
+  static final Path ETC_ALTERNATIVES = Path.of("/etc/alternatives");
+  static final List<Path> DEFAULT_SYSTEM_READ_ONLY_PATHS =
+      List.of(
+          Path.of("/usr"), Path.of("/bin"), Path.of("/lib"), Path.of("/lib64"), ETC_ALTERNATIVES);
+
+  private final List<Path> systemReadOnlyPaths;
 
   /**
    * Creates the stateless command builder.
@@ -42,7 +48,20 @@ public final class BubblewrapCommandBuilder {
    * retained launch state.
    */
   public BubblewrapCommandBuilder() {
-    // Stateless builder; each command is derived from the supplied launch context.
+    this(DEFAULT_SYSTEM_READ_ONLY_PATHS);
+  }
+
+  /**
+   * Creates a command builder with an explicit read-only system path list.
+   *
+   * <p>This constructor is package-private for deterministic tests that need to verify mount-plan
+   * behavior without relying on the CI host's filesystem layout.
+   *
+   * @param systemReadOnlyPaths host system paths considered for read-only bind mounts
+   */
+  BubblewrapCommandBuilder(Collection<Path> systemReadOnlyPaths) {
+    this.systemReadOnlyPaths =
+        List.copyOf(Objects.requireNonNull(systemReadOnlyPaths, "systemReadOnlyPaths"));
   }
 
   /**
@@ -85,9 +104,9 @@ public final class BubblewrapCommandBuilder {
     return new CommandPlan(command, bindMounts, directoryMounts);
   }
 
-  private static List<BindMount> bindMounts(AppSandboxLaunchContext context) {
+  private List<BindMount> bindMounts(AppSandboxLaunchContext context) {
     ArrayList<BindMount> mounts = new ArrayList<>();
-    for (Path systemPath : SYSTEM_READ_ONLY_PATHS) {
+    for (Path systemPath : systemReadOnlyPaths) {
       if (Files.exists(systemPath)) {
         mounts.add(BindMount.readOnly(systemPath, systemPath));
       }

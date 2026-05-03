@@ -1,5 +1,7 @@
 package network.crypta.platform.apphost.sandbox;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +146,32 @@ class BubblewrapSandboxProviderTest {
     int firstBindMount = Math.min(firstReadOnlyBind, firstReadWriteBind);
     assertTrue(firstDirectoryMount > 0);
     assertTrue(firstDirectoryMount < firstBindMount);
+  }
+
+  @Test
+  void commandBuilder_whenAlternativesDirectoryAvailable_expectReadOnlyMountWithoutEtcBind()
+      throws IOException {
+    Path alternatives = tempDir.resolve("etc").resolve("alternatives");
+    Files.createDirectories(alternatives);
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    BubblewrapCommandBuilder.CommandPlan plan =
+        new BubblewrapCommandBuilder(List.of(alternatives)).build("bwrap", context);
+
+    assertMount(plan, alternatives, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    Path etc = alternatives.getParent().toAbsolutePath().normalize();
+    assertTrue(plan.directoryMounts().contains(etc));
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(mount -> mount.source().equals(etc) && mount.destination().equals(etc)));
+  }
+
+  @Test
+  void commandBuilder_whenUsingDefaults_expectSystemAlternativesConsidered() {
+    assertTrue(
+        BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS.contains(
+            BubblewrapCommandBuilder.ETC_ALTERNATIVES));
   }
 
   @Test
