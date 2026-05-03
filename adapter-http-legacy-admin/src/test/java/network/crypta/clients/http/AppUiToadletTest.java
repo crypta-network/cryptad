@@ -932,24 +932,25 @@ class AppUiToadletTest {
   private static void assertHttpRequestEventuallyFails(String url) throws InterruptedException {
     CountDownLatch failureObserved = new CountDownLatch(1);
     AtomicReference<RuntimeException> unexpectedFailure = new AtomicReference<>();
-    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    ScheduledFuture<?> scheduledProbe =
-        executor.scheduleWithFixedDelay(
-            () -> probeHttpRequestUntilFails(url, failureObserved, unexpectedFailure),
-            0L,
-            25L,
-            TimeUnit.MILLISECONDS);
-    try {
-      assertTrue(
-          failureObserved.await(2L, TimeUnit.SECONDS),
-          () -> "Expected loopback listener to stop: " + url);
-      RuntimeException failure = unexpectedFailure.get();
-      if (failure != null) {
-        throw failure;
+    try (ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor()) {
+      ScheduledFuture<?> scheduledProbe =
+          executor.scheduleWithFixedDelay(
+              () -> probeHttpRequestUntilFails(url, failureObserved, unexpectedFailure),
+              0L,
+              25L,
+              TimeUnit.MILLISECONDS);
+      try {
+        assertTrue(
+            failureObserved.await(2L, TimeUnit.SECONDS),
+            () -> "Expected loopback listener to stop: " + url);
+        RuntimeException failure = unexpectedFailure.get();
+        if (failure != null) {
+          throw failure;
+        }
+      } finally {
+        scheduledProbe.cancel(true);
+        executor.shutdownNow();
       }
-    } finally {
-      scheduledProbe.cancel(true);
-      executor.shutdownNow();
     }
   }
 
