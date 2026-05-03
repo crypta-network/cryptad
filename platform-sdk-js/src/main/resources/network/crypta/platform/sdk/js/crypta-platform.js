@@ -342,9 +342,13 @@
 
   function localHttpOrigin(url) {
     const hostname = url.hostname.toLowerCase();
+    const normalizedHostname =
+      hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
     return (
       (url.protocol === "http:" || url.protocol === "https:") &&
-      (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1")
+      (normalizedHostname === "127.0.0.1" ||
+        normalizedHostname === "localhost" ||
+        normalizedHostname === "::1")
     );
   }
 

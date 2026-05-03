@@ -308,6 +308,16 @@ public record AppUiBootstrap(
   }
 
   private static boolean hasNonLoopbackHost(String host) {
-    return !"127.0.0.1".equals(host) && !"localhost".equalsIgnoreCase(host) && !"::1".equals(host);
+    String normalizedHost = normalizeBracketedIpv6Host(host);
+    return !"127.0.0.1".equals(normalizedHost)
+        && !"localhost".equalsIgnoreCase(normalizedHost)
+        && !"::1".equals(normalizedHost);
+  }
+
+  private static String normalizeBracketedIpv6Host(String host) {
+    if (host != null && host.startsWith("[") && host.endsWith("]")) {
+      return host.substring(1, host.length() - 1);
+    }
+    return host;
   }
 }

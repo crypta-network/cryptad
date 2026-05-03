@@ -78,6 +78,10 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(
         script.contains("return await fetchFormMutation(method, path, body, requestOptions);"));
     assertTrue(script.contains("return fetchFormMutation(method, path, body, requestOptions);"));
+    assertTrue(
+        script.contains(
+            "hostname.startsWith(\"[\") && hostname.endsWith(\"]\") ? hostname.slice(1, -1)"));
+    assertTrue(script.contains("normalizedHostname === \"::1\""));
   }
 
   @Test
