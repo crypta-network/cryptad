@@ -48,6 +48,29 @@ class PlatformApiContractVerifierTest {
   }
 
   @Test
+  void summarize_whenRangeWarningAndVerifierErrorExist_expectIncompatibleStatus() {
+    AppApiCompatibilityMetadata metadata = new AppApiCompatibilityMetadata(1, 1, List.of(), false);
+    PlatformApiContract targetContract =
+        new PlatformApiContract(
+            "v1",
+            2,
+            "test",
+            "test policy",
+            List.of(capability("internal.cap", PlatformApiStabilityLevel.INTERNAL)),
+            List.of());
+
+    Map<String, Object> summary =
+        PlatformApiContractVerifier.summarize(metadata, List.of("internal.cap"), targetContract);
+
+    assertEquals("incompatible", summary.get("status"));
+    assertEquals(
+        List.of(
+            "Target Platform API contract 2 is newer than the app's maximum tested contract 1.",
+            "Internal capability must not be declared by apps: internal.cap."),
+        summary.get("warnings"));
+  }
+
+  @Test
   void verify_whenStrictRangeAndUnknownCapabilities_expectErrorFindings() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(2, 2, List.of("future.optional"), false);

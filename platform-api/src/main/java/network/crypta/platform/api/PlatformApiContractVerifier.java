@@ -214,6 +214,9 @@ public final class PlatformApiContractVerifier {
       AppApiCompatibilityMetadata metadata,
       int targetContractVersion,
       CompatibilityVerificationResult result) {
+    if (result.hasErrors()) {
+      return STATUS_INCOMPATIBLE;
+    }
     if (!metadata.declared()) {
       return STATUS_UNKNOWN;
     }
@@ -224,9 +227,6 @@ public final class PlatformApiContractVerifier {
     Integer maximumTestedVersion = metadata.maximumTestedVersion();
     if (maximumTestedVersion != null && maximumTestedVersion < targetContractVersion) {
       return STATUS_NEWER_THAN_TESTED;
-    }
-    if (result.hasErrors()) {
-      return STATUS_INCOMPATIBLE;
     }
     return STATUS_COMPATIBLE;
   }
