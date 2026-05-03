@@ -10,6 +10,7 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import network.crypta.client.filter.HTMLFilterPolicy;
@@ -100,6 +101,14 @@ public final class SimpleToadletServer
   private static final String FILENAME_KEY = "filename";
   private static final String CSS_OVERRIDE_KEY = "CSSOverride";
   private static final String PASSTHROUGH_MAX_SIZE_PROGRESS_KEY = "passthroughMaxSizeProgress";
+  private static final String IPV4_LOOPBACK_HOST = "127.0.0.1";
+  private static final String IPV4_WILDCARD_HOST = "0.0.0.0";
+  private static final String IPV6_LOOPBACK_HOST = "::1";
+  private static final String IPV6_LOOPBACK_HOST_EXPANDED = "0:0:0:0:0:0:0:1";
+  private static final String IPV6_WILDCARD_HOST = "::";
+  private static final String IPV6_WILDCARD_HOST_EXPANDED = "0:0:0:0:0:0:0:0";
+  private static final String IPV6_LOOPBACK_URL_HOST = "[::1]";
+  private static final String LOCALHOST_HOST = "localhost";
 
   // Socket / Binding
   private final int port;
@@ -1998,18 +2007,72 @@ public final class SimpleToadletServer
     return getURL(null);
   }
 
+  String getLocalAdminURL() {
+    return getURL(localAdminUrlHost(bindTo));
+  }
+
   @Override
   public String getURL(String host) {
     StringBuilder sb = new StringBuilder();
     if (ssl) sb.append("https");
     else sb.append("http");
     sb.append("://");
-    if (host == null) host = "127.0.0.1";
+    if (host == null) host = IPV4_LOOPBACK_HOST;
     sb.append(host);
     sb.append(":");
     sb.append(this.port);
     sb.append("/");
     return sb.toString();
+  }
+
+  private static String localAdminUrlHost(String configuredBindTo) {
+    if (configuredBindTo == null || configuredBindTo.isBlank()) {
+      return IPV4_LOOPBACK_HOST;
+    }
+    StringTokenizer hosts = new StringTokenizer(configuredBindTo, ",");
+    boolean localhostBound = false;
+    boolean ipv6LoopbackBound = false;
+    while (hosts.hasMoreTokens()) {
+      String host = hosts.nextToken();
+      String normalizedHost = normalizeBindHost(host);
+      if (isIpv4LocalAdminBindHost(normalizedHost)) {
+        return IPV4_LOOPBACK_HOST;
+      }
+      if (LOCALHOST_HOST.equalsIgnoreCase(normalizedHost)) {
+        localhostBound = true;
+      }
+      if (isIpv6LocalAdminBindHost(normalizedHost)) {
+        ipv6LoopbackBound = true;
+      }
+    }
+    if (localhostBound) {
+      return LOCALHOST_HOST;
+    }
+    if (ipv6LoopbackBound) {
+      return IPV6_LOOPBACK_URL_HOST;
+    }
+    return IPV4_LOOPBACK_HOST;
+  }
+
+  private static String normalizeBindHost(String host) {
+    String trimmed = host == null ? "" : host.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      return trimmed.substring(1, trimmed.length() - 1);
+    }
+    return trimmed;
+  }
+
+  private static boolean isIpv4LocalAdminBindHost(String host) {
+    return IPV4_LOOPBACK_HOST.equals(host)
+        || host.startsWith("127.")
+        || IPV4_WILDCARD_HOST.equals(host);
+  }
+
+  private static boolean isIpv6LocalAdminBindHost(String host) {
+    return IPV6_LOOPBACK_HOST.equalsIgnoreCase(host)
+        || IPV6_LOOPBACK_HOST_EXPANDED.equalsIgnoreCase(host)
+        || IPV6_WILDCARD_HOST.equals(host)
+        || IPV6_WILDCARD_HOST_EXPANDED.equalsIgnoreCase(host);
   }
 
   @Override
