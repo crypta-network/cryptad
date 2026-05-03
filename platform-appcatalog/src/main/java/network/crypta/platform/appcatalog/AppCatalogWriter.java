@@ -22,6 +22,7 @@ import java.util.StringJoiner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundlePackager;
@@ -118,11 +119,29 @@ public final class AppCatalogWriter {
   private static List<AppCatalogEntry> buildEntries(List<Path> descriptorFiles) throws IOException {
     List<AppCatalogEntry> entries = new ArrayList<>(descriptorFiles.size());
     for (Path descriptorFile : descriptorFiles) {
-      AppCatalogEntryDescriptor descriptor = AppCatalogEntryDescriptor.parse(descriptorFile);
-      ArtifactMetadata artifact = inspectArtifact(descriptor.artifactPath());
-      entries.add(toEntry(descriptor, artifact));
+      entries.add(inspectEntryDescriptor(descriptorFile).entry());
     }
     return List.copyOf(entries);
+  }
+
+  /**
+   * Parses and inspects one catalog entry descriptor.
+   *
+   * <p>This helper is intended for developer tooling that needs to verify descriptor metadata
+   * against the referenced bundle before writing a full catalog. It applies the same artifact
+   * snapshot, manifest parsing, and descriptor consistency checks used by {@link #write}.
+   *
+   * @param descriptorFile descriptor sidecar to parse
+   * @return inspected descriptor, generated catalog entry, and artifact manifest
+   * @throws IOException if the descriptor or artifact cannot be read
+   * @throws AppCatalogException if descriptor metadata or artifact structure is malformed
+   */
+  public static CatalogEntryInspection inspectEntryDescriptor(Path descriptorFile)
+      throws IOException {
+    AppCatalogEntryDescriptor descriptor = AppCatalogEntryDescriptor.parse(descriptorFile);
+    ArtifactMetadata artifact = inspectArtifact(descriptor.artifactPath());
+    return new CatalogEntryInspection(
+        descriptor, toEntry(descriptor, artifact), artifact.manifest());
   }
 
   private static int catalogVersion(List<AppCatalogEntry> entries) {
@@ -141,7 +160,7 @@ public final class AppCatalogWriter {
     for (AppCatalogEntry entry : catalog.entries()) {
       if (entry.hasStoreMetadata()) {
         throw AppCatalogSidecars.invalidEntry(
-            "catalog.version 2 is required when app-store metadata is present");
+            "catalog.version 2 is required when app-store or API metadata is present");
       }
     }
   }
@@ -162,7 +181,7 @@ public final class AppCatalogWriter {
         descriptor.source(),
         descriptor.license(),
         descriptor.categories(),
-        descriptor.compatibility(),
+        compatibilityForCatalog(descriptor, manifest),
         descriptor.review(),
         descriptor.changelog(),
         descriptor.screenshots(),
@@ -172,6 +191,17 @@ public final class AppCatalogWriter {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         descriptor.permissionsOverride().orElse(manifest.permissions()),
         descriptor.permissionRationales());
+  }
+
+  private static AppCatalogCompatibilityMetadata compatibilityForCatalog(
+      AppCatalogEntryDescriptor descriptor, AppBundleManifest manifest) {
+    AppCatalogCompatibilityMetadata descriptorCompatibility = descriptor.compatibility();
+    AppApiCompatibilityMetadata apiCompatibility =
+        descriptorCompatibility.apiCompatibility().declared()
+            ? descriptorCompatibility.apiCompatibility()
+            : manifest.apiCompatibility();
+    return new AppCatalogCompatibilityMetadata(
+        descriptorCompatibility.minimumCryptaVersion(), apiCompatibility);
   }
 
   private static void requireManifestAppIdMatch(
@@ -434,10 +464,11 @@ public final class AppCatalogWriter {
     if (!entry.categories().isEmpty()) {
       appendProperty(builder, prefix + "categories", joinValues(entry.categories()));
     }
-    entry
-        .compatibility()
-        .minimumCryptaVersion()
-        .ifPresent(value -> appendProperty(builder, prefix + "minimumCryptaVersion", value));
+    String minimumCryptaVersion = entry.compatibility().minimumCryptaVersion();
+    if (minimumCryptaVersion != null) {
+      appendProperty(builder, prefix + "minimumCryptaVersion", minimumCryptaVersion);
+    }
+    appendApiCompatibility(builder, prefix, entry.compatibility());
     if (entry.review().hasCatalogFields()) {
       appendProperty(builder, prefix + "review.status", entry.review().status().catalogValue());
       entry
@@ -480,6 +511,28 @@ public final class AppCatalogWriter {
     return joiner.toString();
   }
 
+  private static void appendApiCompatibility(
+      StringBuilder builder, String prefix, AppCatalogCompatibilityMetadata compatibility) {
+    var api = compatibility.apiCompatibility();
+    if (api.minimumVersion() != null) {
+      appendProperty(builder, prefix + "api.minimumVersion", api.minimumVersion().toString());
+    }
+    if (api.maximumTestedVersion() != null) {
+      appendProperty(
+          builder, prefix + "api.maximumTestedVersion", api.maximumTestedVersion().toString());
+    }
+    if (!api.optionalCapabilities().isEmpty()) {
+      appendProperty(
+          builder, prefix + "api.optionalCapabilities", joinValues(api.optionalCapabilities()));
+    }
+    if (api.declared()) {
+      appendProperty(
+          builder,
+          prefix + "api.experimentalCapabilitiesAccepted",
+          Boolean.toString(api.experimentalCapabilitiesAccepted()));
+    }
+  }
+
   private static void appendProperty(StringBuilder builder, String key, String value) {
     builder.append(key).append('=').append(value).append('\n');
   }
@@ -487,6 +540,16 @@ public final class AppCatalogWriter {
   private record ArtifactSnapshot(Path file, String sha256, long sizeBytes) {}
 
   private record ArtifactMetadata(String sha256, long sizeBytes, AppBundleManifest manifest) {}
+
+  /**
+   * Descriptor inspection result used by offline compatibility tooling.
+   *
+   * @param descriptor parsed descriptor sidecar
+   * @param entry catalog entry that would be written for the descriptor
+   * @param manifest root manifest extracted from the referenced ZIP artifact
+   */
+  public record CatalogEntryInspection(
+      AppCatalogEntryDescriptor descriptor, AppCatalogEntry entry, AppBundleManifest manifest) {}
 
   /**
    * Result returned after writing or building catalog properties.

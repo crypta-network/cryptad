@@ -76,6 +76,10 @@ class AppCatalogParserTest {
                 app.queue-manager.license=MIT
                 app.queue-manager.categories=Productivity,network,productivity
                 app.queue-manager.minimumCryptaVersion=0.1.0
+                app.queue-manager.api.minimumVersion=1
+                app.queue-manager.api.maximumTestedVersion=1
+                app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
+                app.queue-manager.api.experimentalCapabilitiesAccepted=true
                 app.queue-manager.review.status=reviewed
                 app.queue-manager.review.note=Reviewed for local operator safety.
                 app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.
@@ -99,7 +103,14 @@ class AppCatalogParserTest {
     assertEquals("https://example.invalid/repo", entry.source().orElseThrow().toString());
     assertEquals("MIT", entry.license().orElseThrow());
     assertEquals(List.of("productivity", "network"), entry.categories());
-    assertEquals("0.1.0", entry.compatibility().minimumCryptaVersion().orElseThrow());
+    assertEquals("0.1.0", entry.compatibility().minimumCryptaVersion());
+    assertEquals(Integer.valueOf(1), entry.compatibility().apiCompatibility().minimumVersion());
+    assertEquals(
+        Integer.valueOf(1), entry.compatibility().apiCompatibility().maximumTestedVersion());
+    assertEquals(
+        List.of("alerts.read", "diagnostics.read"),
+        entry.compatibility().apiCompatibility().optionalCapabilities());
+    assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(AppCatalogReviewStatus.REVIEWED, entry.review().status());
     assertEquals("Reviewed for local operator safety.", entry.review().note().orElseThrow());
     assertEquals("Reads the local transfer queue.", entry.permissionRationales().get("queue.read"));

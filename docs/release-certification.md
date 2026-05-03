@@ -83,6 +83,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
+| `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and direct fallback URLs remain documented. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
@@ -92,6 +93,11 @@ release changes compatibility-sensitive behavior. `apphost.sandbox-provider` doe
 host-installed bubblewrap in normal CI; it uses source checks and fake/offline provider tests.
 `apphost.live` is optional stronger evidence because normal PR and scheduled CI must not require a
 live local node or operator form password.
+
+`platform-api.contract` is generated offline with `crypta-app api snapshot`. In
+release-candidate mode, snapshot generation failure, contract parse failure, missing contract
+evidence, or strict compatibility verifier failure is a blocker unless a release-manager waiver is
+recorded.
 
 ## Waivers
 

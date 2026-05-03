@@ -242,8 +242,9 @@ Cryptad now uses a partial multi-project Gradle build.
   and local AppHost control operations as JSON-oriented responses, and is currently mounted at
   `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The current Phase
   3 surface covers node, connectivity, queue, peers, config, security levels, updates,
-  wizard/welcome, alerts, diagnostics, and apps; `GET /api/v1/config` defaults to the effective
-  `CURRENT` section when `sections=` is omitted.
+  wizard/welcome, alerts, diagnostics, apps, app catalogs, and the deterministic
+  `/api/v1/platform/contract` compatibility snapshot; `GET /api/v1/config` defaults to the
+  effective `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
   lifecycle, per-start launch-token plumbing, sandbox status reporting, data/cache quota checks,
@@ -257,12 +258,13 @@ Cryptad now uses a partial multi-project Gradle build.
   bundles. First-party app staging copies this SDK into staged `static/` assets so pages can use
   the same bootstrap, Platform API, mutation, error, and fragment-sanitization helpers.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, package, and
-  verify staged AppHost bundles.
+  verify staged AppHost bundles, including optional manifest API compatibility metadata.
 - `:platform-appcatalog` owns signed app catalog parsing, catalog writing, signature verification,
   remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
   ZIP extraction, and verified staging for AppHost install/update flows.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
-  signing, packaging, verifying, and catalog-authoring standalone staged bundles.
+  signing, packaging, verifying, catalog-authoring, API contract snapshotting, and compatibility
+  verification for standalone staged bundles.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -362,7 +364,7 @@ Signed staged bundles add `cryptad-app.digests` and `cryptad-app.signature` at t
 
 Signed app catalogs add a verified source layer above signed bundles. See
 [`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
-catalog signatures, trusted-key configuration, optional app-store metadata, and
+catalog signatures, trusted-key configuration, optional app-store/API compatibility metadata, and
 `/api/v1/app-catalogs` install/update flow. Catalog review metadata is advisory; signed catalog
 and signed bundle verification remain the trust source.
 
@@ -421,6 +423,10 @@ crypta-app verify \
   --bundle-dir build/dev-apps/hello-queue \
   --trusted-key-id dev-local \
   --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+crypta-app api snapshot --output build/platform-api-contract.json
+crypta-app compat verify \
+  --bundle-dir build/dev-apps/hello-queue \
+  --contract build/platform-api-contract.json
 ```
 
 `crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
@@ -430,8 +436,9 @@ local developer tooling; it does not add hot reload or a daemon-side install com
 `crypta-app catalog create` descriptors can author optional store metadata such as homepage,
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
 metadata, changelog metadata, and advisory minimum Cryptad version. Descriptors without those
-fields generate minimal `catalog.version=1` catalogs; descriptors with store metadata generate
-`catalog.version=2`. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
+fields and without API compatibility metadata generate minimal `catalog.version=1` catalogs;
+descriptors or artifacts with store/API compatibility metadata generate `catalog.version=2`. See
+[docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
 
 First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
 and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow
@@ -450,15 +457,18 @@ Manager and Publisher UIs. Phase 6 starts moving static app UIs onto isolated pe
 origins while retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced
 Linux AppHost process sandbox provider through bubblewrap for supported `restricted-process`
 launches. Installed apps can be launched through `/app/node/` shell-panel links or through isolated
-app UI URLs when the signed bundle declares `app.ui.mode=static`. The Web Shell Apps section uses
-`/api/v1/app-catalogs` metadata to show source, license, category, review,
-permission-rationale, version-difference, compatibility, and changelog details before install or
-update.
+app UI URLs when the signed bundle declares `app.ui.mode=static`. Phase 6 also adds the
+deterministic Platform API compatibility contract so app manifests, signed catalogs, developer
+tooling, and release certification can compare API contract versions without changing endpoint
+behavior. The Web Shell Apps section uses `/api/v1/app-catalogs` metadata to show source, license,
+category, review, permission-rationale, version-difference, API compatibility, and changelog
+details before install or update.
 
 Key docs:
 
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
 - [Platform API and Web Shell surface](docs/platform-api-surface.md)
+- [Platform API compatibility contract](docs/platform-api-contract.md)
 - [Developer app CLI](docs/app-dev-cli.md)
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
@@ -509,8 +519,8 @@ tools/perf/run-performance-smoke.sh
 
 Release-candidate evidence is aggregated by the release certification tooling under
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
-app-owned UI, legacy-admin retirement, and CI summaries and writes a redacted report plus a stable
-JSON companion.
+Platform API contract, app-owned UI, legacy-admin retirement, and CI summaries and writes a
+redacted report plus a stable JSON companion.
 
 Fast self-tests:
 
@@ -886,7 +896,8 @@ Root build also includes:
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
   Its current family-level surface covers node, connectivity, queue, peers, config, security
-  levels, updates, wizard/welcome, alerts, diagnostics, apps, and app catalogs.
+  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, and the platform
+  compatibility contract.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged and verified catalog app updates now flow through this core. It also reports sandbox
   provider status, selects the Linux bubblewrap provider for enforced restricted-process launches
@@ -905,7 +916,8 @@ Root build also includes:
   app-store metadata parsing, Crypta catalog source fetching, artifact digest checks, safe ZIP
   extraction, and verified staging for AppHost install/update flows.
 - `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating, signing,
-  packaging, verifying, and catalog-authoring standalone staged bundles.
+  packaging, verifying, catalog-authoring, API contract snapshotting, and compatibility
+  verification for standalone staged bundles.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -1147,14 +1159,16 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `network.crypta.runtime.spi`;
   `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
   feed/model subset plus the detached `UserAlertSurface`;
-  `:platform-api` provides the transport-neutral Platform API v1 plus the minimal AppHost
-  control-plane routes; `:platform-apphost` provides the transport-neutral out-of-process AppHost
+  `:platform-api` provides the transport-neutral Platform API v1, the deterministic platform
+  compatibility contract, and the minimal AppHost control-plane routes; `:platform-apphost`
+  provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route,
   asset-resolution, and browser-session helpers; `:platform-sdk-js` provides the browser SDK
   resource for app-owned static UI; `:platform-appdist` provides the local app bundle digest,
   signing, packaging, and verification tooling; `:platform-appcatalog` provides signed catalog
   source, app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP staging
-  support; `:platform-devtools` provides the standalone `crypta-app` developer CLI;
+  support; `:platform-devtools` provides the standalone `crypta-app` developer CLI including
+  offline API contract and compatibility checks;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

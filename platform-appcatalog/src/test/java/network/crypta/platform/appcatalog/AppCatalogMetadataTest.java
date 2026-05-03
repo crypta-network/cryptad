@@ -84,11 +84,9 @@ class AppCatalogMetadataTest {
 
   @Test
   void compatibilityMetadata_whenVersionIsTooLong_expectInvalidCatalogEntry() {
-    Optional<String> tooLongVersion = Optional.of("1".repeat(97));
-
     AppCatalogException exception =
         assertThrows(
-            AppCatalogException.class, () -> new AppCatalogCompatibilityMetadata(tooLongVersion));
+            AppCatalogException.class, () -> new AppCatalogCompatibilityMetadata("1".repeat(97)));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
   }

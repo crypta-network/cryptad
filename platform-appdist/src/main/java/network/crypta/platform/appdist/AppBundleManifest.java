@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
  * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
  * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
  * @param permissions normalized permission strings declared by the app manifest
+ * @param apiCompatibility optional Platform API contract metadata declared by the app
  * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
  * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
  * @param sandboxMode requested process sandbox mode
@@ -47,6 +48,7 @@ public record AppBundleManifest(
     AppUiMode uiMode,
     String uiEntry,
     List<String> permissions,
+    AppApiCompatibilityMetadata apiCompatibility,
     Long dataQuotaBytes,
     Long cacheQuotaBytes,
     AppSandboxMode sandboxMode,
@@ -75,6 +77,7 @@ public record AppBundleManifest(
    * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
    * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
    * @param permissions normalized permission strings declared by the app manifest
+   * @param apiCompatibility optional Platform API contract metadata declared by the app
    * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
    * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
    * @param sandboxMode requested process sandbox mode
@@ -96,12 +99,71 @@ public record AppBundleManifest(
     uiMode = inferUiMode(uiMode, uiEntry);
     uiEntry = normalizeUiEntry(uiMode, uiEntry);
     permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
+    apiCompatibility =
+        Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
     dataQuotaBytes = normalizeQuota(dataQuotaBytes, "quota.data.bytes");
     cacheQuotaBytes = normalizeQuota(cacheQuotaBytes, "quota.cache.bytes");
     sandboxMode = Objects.requireNonNullElse(sandboxMode, AppSandboxMode.NONE);
     Objects.requireNonNull(restartPolicy, "restartPolicy");
     requireValidRestartMaxAttempts(restartMaxAttempts);
     requireValidRestartBackoffMillis(restartBackoffMillis);
+  }
+
+  /**
+   * Creates a manifest with no API compatibility metadata.
+   *
+   * <p>This overload preserves source compatibility for callers that construct manifests directly
+   * using the pre-compatibility constructor shape.
+   *
+   * @param manifestVersion manifest schema version, currently required to be {@code 1}
+   * @param appId stable lower-case application identifier safe for managed bundle paths
+   * @param appName human-readable application name shown by host and API surfaces
+   * @param appVersion display version string recorded in installed app summaries
+   * @param execPathText executable path relative to the bundle root, using normalized separators
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null} when the app has no bundled UI surface
+   * @param permissions normalized permission strings declared by the app manifest
+   * @param dataQuotaBytes optional mutable data quota metadata in bytes, or {@code null}
+   * @param cacheQuotaBytes optional mutable cache quota metadata in bytes, or {@code null}
+   * @param sandboxMode requested process sandbox mode
+   * @param sandboxRequired whether launch must fail when the requested sandbox mode is unsupported
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
+   */
+  public AppBundleManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes,
+      AppSandboxMode sandboxMode,
+      boolean sandboxRequired,
+      AppRestartPolicy restartPolicy,
+      int restartMaxAttempts,
+      long restartBackoffMillis) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        AppApiCompatibilityMetadata.undeclared(),
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        sandboxMode,
+        sandboxRequired,
+        restartPolicy,
+        restartMaxAttempts,
+        restartBackoffMillis);
   }
 
   /**

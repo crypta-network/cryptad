@@ -99,11 +99,13 @@ router checks it.
 
 ## Capability checks
 
-App principals are denied by default. A request must match the central route-to-capability matrix,
-and the app principal must include every required capability. A valid app token or browser session
-without the required capability receives `403 Forbidden`. An invalid or stale app token receives
-`401 invalid_app_token`; an invalid or stale browser session receives
-`401 invalid_app_browser_session`.
+App principals are denied by default. A request must match the endpoint descriptors published in
+the Platform API compatibility contract, and the app principal must include every required
+capability. The runtime authorization path reads the same descriptors that
+`GET /api/v1/platform/contract` publishes, so app-facing contract metadata and the permission
+matrix cannot drift as separate lists. A valid app token or browser session without the required
+capability receives `403 Forbidden`. An invalid or stale app token receives
+`401 invalid_app_token`; an invalid or stale browser session receives `401 invalid_app_browser_session`.
 
 The current capabilities are intentionally conservative:
 
@@ -131,6 +133,11 @@ The current capabilities are intentionally conservative:
 | `apps.manage` | app install, start, stop, update, uninstall |
 | `catalogs.read` | catalog and catalog-app reads |
 | `catalogs.manage` | catalog add/remove/refresh and catalog app install/update |
+| `platform.contract.read` | `GET /api/v1/platform/contract` contract snapshot reads |
+
+Capability descriptors, endpoint descriptors, and stability levels are described in
+[platform-api-contract.md](platform-api-contract.md). `app.permissions` remains the authoritative
+grant request; manifest `api.*` compatibility metadata is advisory verifier and review input.
 
 ## Audit trail
 

@@ -69,6 +69,10 @@ class AppCatalogWriterTest {
             license=MIT
             categories=Productivity,network,productivity
             minimumCryptaVersion=0.1.0
+            api.minimumVersion=1
+            api.maximumTestedVersion=1
+            api.optionalCapabilities=alerts.read,diagnostics.read
+            api.experimentalCapabilitiesAccepted=true
             review.status=reviewed
             review.note=Reviewed for local operator safety.
             permissions.rationale.queue.inspect=Inspects queue metadata.
@@ -99,6 +103,10 @@ class AppCatalogWriterTest {
             "app.queue-manager.license=MIT",
             "app.queue-manager.categories=productivity,network",
             "app.queue-manager.minimumCryptaVersion=0.1.0",
+            "app.queue-manager.api.minimumVersion=1",
+            "app.queue-manager.api.maximumTestedVersion=1",
+            "app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read",
+            "app.queue-manager.api.experimentalCapabilitiesAccepted=true",
             "app.queue-manager.review.status=reviewed",
             "app.queue-manager.review.note=Reviewed for local operator safety.",
             "app.queue-manager.permissions.rationale.queue.inspect=Inspects queue metadata.",

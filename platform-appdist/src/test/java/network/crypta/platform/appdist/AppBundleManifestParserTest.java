@@ -1,5 +1,6 @@
 package network.crypta.platform.appdist;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,6 +37,7 @@ class AppBundleManifestParserTest {
     assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
     assertEquals(0, manifest.restartMaxAttempts());
     assertEquals(0L, manifest.restartBackoffMillis());
+    assertFalse(manifest.apiCompatibility().declared());
   }
 
   @Test
@@ -293,6 +295,59 @@ class AppBundleManifestParserTest {
     assertEquals(
         "app.exec must not point at distribution sidecar: CRYPTAD-APP.CATALOG",
         exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenApiCompatibilityDeclared_expectNormalizedMetadata() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                api.minimumVersion=1
+                api.maximumTestedVersion=2
+                api.optionalCapabilities=ALERTS.READ, diagnostics.read,alerts.read
+                api.experimentalCapabilitiesAccepted=true
+                """));
+
+    AppApiCompatibilityMetadata compatibility = manifest.apiCompatibility();
+    assertEquals(Integer.valueOf(1), compatibility.minimumVersion());
+    assertEquals(Integer.valueOf(2), compatibility.maximumTestedVersion());
+    assertEquals(List.of("alerts.read", "diagnostics.read"), compatibility.optionalCapabilities());
+    assertTrue(compatibility.experimentalCapabilitiesAccepted());
+  }
+
+  @Test
+  void parseContent_whenApiMinimumVersionIsInvalid_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleManifestParser.parseContent(minimalManifest("api.minimumVersion=0\n")));
+
+    assertEquals("api.minimumVersion must be a positive integer", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenApiMaximumTestedBelowMinimum_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("api.minimumVersion=2\napi.maximumTestedVersion=1\n")));
+
+    assertEquals("api.maximumTestedVersion must be >= api.minimumVersion", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenApiExperimentalFlagIsMalformed_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("api.experimentalCapabilitiesAccepted=maybe\n")));
+
+    assertEquals("invalid api.experimentalCapabilitiesAccepted: maybe", exception.getMessage());
   }
 
   @Test

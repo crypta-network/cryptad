@@ -13,8 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractJson;
+import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFinding;
+import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFindingSeverity;
+import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityVerificationResult;
+import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogBuildRequest;
+import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSignature;
 import network.crypta.platform.appcatalog.AppCatalogSigner;
 import network.crypta.platform.appcatalog.AppCatalogVerifier;
@@ -55,6 +62,8 @@ import picocli.CommandLine;
       CryptaAppCli.PackCommand.class,
       CryptaAppCli.SignCommand.class,
       CryptaAppCli.VerifyCommand.class,
+      CryptaAppCli.ApiCommand.class,
+      CryptaAppCli.CompatCommand.class,
       CryptaAppCli.CatalogCommand.class
     })
 public final class CryptaAppCli implements Runnable {
@@ -202,13 +211,23 @@ public final class CryptaAppCli implements Runnable {
 
     @Override
     public Integer call() throws Exception {
-      BundleValidation validation = BundleValidator.validate(bundleDir, strict);
+      BundleValidation validation = BundleValidator.validate(bundleDir, false);
       if (validation.permissionLint().hasUnknownPermissions()) {
         super.commandLine()
             .getErr()
             .println(
                 "Warning: unknown app permission(s): "
                     + String.join(", ", validation.permissionLint().unknownPermissions()));
+      }
+      CompatibilityVerificationResult compatibility =
+          PlatformApiContractVerifier.verify(
+              validation.manifest().apiCompatibility(),
+              validation.manifest().permissions(),
+              PlatformApiContract.current(),
+              strict);
+      printCompatibilityFindings(super.commandLine(), compatibility);
+      if (compatibility.hasErrors()) {
+        throw new AppDistributionException("compatibility verification failed");
       }
       super.commandLine()
           .getOut()
@@ -218,6 +237,168 @@ public final class CryptaAppCli implements Runnable {
                   + " "
                   + validation.manifest().appVersion());
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /**
+   * Parent command for Platform API contract operations.
+   *
+   * <p>The group currently exposes offline snapshot generation so app authors and release
+   * certification can verify bundles without contacting a running node.
+   */
+  @Command(
+      name = "api",
+      description = "Inspect the Platform API compatibility contract.",
+      subcommands = {ApiSnapshotCommand.class})
+  static final class ApiCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app api snapshot}. */
+  @Command(name = "snapshot", description = "Write the current Platform API contract snapshot.")
+  static final class ApiSnapshotCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--output", required = true, description = "Contract JSON file to write.")
+    private Path output;
+
+    @Override
+    public Integer call() throws Exception {
+      Path normalizedOutput = output.toAbsolutePath().normalize();
+      Path parent = normalizedOutput.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      Files.writeString(
+          normalizedOutput,
+          PlatformApiContractJson.writeEnvelope(PlatformApiContract.current()),
+          StandardCharsets.UTF_8);
+      super.commandLine().getOut().println("Wrote Platform API contract: " + normalizedOutput);
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /**
+   * Parent command for offline compatibility verification.
+   *
+   * <p>The verifier compares staged bundles and catalog entry descriptors with a target Platform
+   * API contract snapshot. It never requires a running node.
+   */
+  @Command(
+      name = "compat",
+      description = "Verify app compatibility metadata against a Platform API contract.",
+      subcommands = {CompatVerifyCommand.class})
+  static final class CompatCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app compat verify}. */
+  @Command(name = "verify", description = "Verify a staged bundle or catalog entry descriptor.")
+  static final class CompatVerifyCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--bundle-dir", description = "Staged bundle directory to verify.")
+    private Path bundleDir;
+
+    @Option(names = "--catalog-entry", description = "Catalog entry descriptor to verify.")
+    private Path catalogEntry;
+
+    @Option(names = "--contract", description = "Target Platform API contract JSON snapshot.")
+    private Path contractFile;
+
+    @Option(names = "--strict", description = "Treat compatibility warnings as failures.")
+    private boolean strict;
+
+    @Override
+    public Integer call() throws Exception {
+      requireExactlyOneCompatTarget();
+      PlatformApiContract contract = loadContract(contractFile);
+      CompatibilityVerificationResult result =
+          bundleDir == null
+              ? verifyCatalogEntry(catalogEntry, contract, strict)
+              : verifyBundle(bundleDir, contract, strict);
+      printCompatibilityFindings(super.commandLine(), result);
+      if (result.hasErrors()) {
+        throw new AppDistributionException("compatibility verification failed");
+      }
+      super.commandLine().getOut().println("Compatibility verified.");
+      return CommandLine.ExitCode.OK;
+    }
+
+    private void requireExactlyOneCompatTarget() throws AppDistributionException {
+      if ((bundleDir == null) == (catalogEntry == null)) {
+        throw new AppDistributionException(
+            "specify exactly one of --bundle-dir or --catalog-entry");
+      }
+    }
+
+    private static PlatformApiContract loadContract(Path contractFile) throws java.io.IOException {
+      if (contractFile == null) {
+        return PlatformApiContract.current();
+      }
+      return PlatformApiContractJson.parse(Files.readString(contractFile, StandardCharsets.UTF_8));
+    }
+
+    private static CompatibilityVerificationResult verifyBundle(
+        Path bundleDir, PlatformApiContract contract, boolean strict) throws java.io.IOException {
+      BundleValidation validation = BundleValidator.validate(bundleDir, false);
+      return PlatformApiContractVerifier.verify(
+          validation.manifest().apiCompatibility(),
+          validation.manifest().permissions(),
+          contract,
+          strict);
+    }
+
+    private static CompatibilityVerificationResult verifyCatalogEntry(
+        Path descriptorFile, PlatformApiContract contract, boolean strict)
+        throws java.io.IOException {
+      AppCatalogWriter.CatalogEntryInspection inspection =
+          AppCatalogWriter.inspectEntryDescriptor(descriptorFile);
+      CompatibilityVerificationResult result =
+          PlatformApiContractVerifier.verify(
+              inspection.entry().compatibility().apiCompatibility(),
+              inspection.entry().permissions(),
+              contract,
+              strict);
+      List<CompatibilityFinding> findings = new ArrayList<>(result.findings());
+      inspection
+          .descriptor()
+          .permissionsOverride()
+          .ifPresent(
+              permissions -> {
+                if (!permissions.equals(inspection.manifest().permissions())) {
+                  findings.add(
+                      compatibilityFinding(
+                          "catalog_permission_mismatch",
+                          strict,
+                          "Catalog descriptor permissions differ from bundle manifest"
+                              + " permissions."));
+                }
+              });
+      AppCatalogCompatibilityMetadata descriptorCompatibility =
+          inspection.descriptor().compatibility();
+      if (descriptorCompatibility.apiCompatibility().declared()
+          && !descriptorCompatibility
+              .apiCompatibility()
+              .equals(inspection.manifest().apiCompatibility())) {
+        findings.add(
+            compatibilityFinding(
+                "catalog_api_compatibility_mismatch",
+                strict,
+                "Catalog descriptor API compatibility metadata differs from bundle manifest"
+                    + " metadata."));
+      }
+      return new CompatibilityVerificationResult(List.copyOf(findings));
+    }
+
+    private static CompatibilityFinding compatibilityFinding(
+        String code, boolean strict, String message) {
+      return new CompatibilityFinding(
+          code,
+          strict ? CompatibilityFindingSeverity.ERROR : CompatibilityFindingSeverity.WARNING,
+          message);
     }
   }
 
@@ -526,6 +707,15 @@ public final class CryptaAppCli implements Runnable {
 
     final CommandLine commandLine() {
       return spec.commandLine();
+    }
+  }
+
+  private static void printCompatibilityFindings(
+      CommandLine commandLine, CompatibilityVerificationResult result) {
+    for (CompatibilityFinding finding : result.findings()) {
+      String prefix =
+          finding.severity() == CompatibilityFindingSeverity.ERROR ? "Error: " : "Warning: ";
+      commandLine.getErr().println(prefix + finding.message());
     }
   }
 

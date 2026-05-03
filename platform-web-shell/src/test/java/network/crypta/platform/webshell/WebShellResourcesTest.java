@@ -452,6 +452,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function metadataLinkListNode(values)"));
     assertTrue(script.contains("function catalogReviewDetailsNode(app)"));
     assertTrue(script.contains("function catalogCompatibilityDetailsNode(app)"));
+    assertTrue(script.contains("function apiCompatibilityDetailsNode(app)"));
+    assertTrue(script.contains("function apiCompatibilityLabel(apiCompatibility)"));
+    assertTrue(script.contains("function apiCompatibilityTone(apiCompatibility)"));
     assertTrue(script.contains("function catalogPermissionReviewDetailsNode(app)"));
     assertTrue(script.contains("function catalogReleaseDetailsNode(app)"));
     assertTrue(script.contains("Review and trust"));
@@ -464,6 +467,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("[\"Source\", metadataLinkNode(app.source)]"));
     assertTrue(script.contains("[\"Categories\", chipListNode(app.categories)]"));
     assertTrue(script.contains("[\"Permission changes\","));
+    assertTrue(script.contains("[\"API contract\", apiCompatibilityLabel(apiCompatibility)]"));
+    assertTrue(
+        script.contains(
+            "[\"Minimum API contract version\", scalar(apiCompatibility.minimumVersion)]"));
+    assertTrue(script.contains("Platform API contract"));
     assertTrue(script.contains("[\"Screenshot links\", metadataLinkListNode(app.screenshots)]"));
     assertTrue(script.contains("link.rel = \"noopener noreferrer\";"));
     assertTrue(

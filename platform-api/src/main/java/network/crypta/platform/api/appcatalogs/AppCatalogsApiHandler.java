@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
@@ -24,6 +26,7 @@ import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -449,6 +452,9 @@ public final class AppCatalogsApiHandler {
     json.put("permissions", entry.permissions());
     json.put("permissionRationales", entry.permissionRationales());
     json.put("compatibility", summarizeCompatibility(entry.compatibility()));
+    json.put(
+        "apiCompatibility",
+        apiCompatibility(entry.compatibility().apiCompatibility(), entry.permissions()));
     json.put("changelog", summarizeChangelog(entry.changelog()));
     json.put("screenshots", entry.screenshots().stream().map(URI::toString).toList());
     json.put("bundle", summarizeBundle(entry));
@@ -494,7 +500,7 @@ public final class AppCatalogsApiHandler {
 
   private Map<String, Object> summarizeCompatibility(
       AppCatalogCompatibilityMetadata compatibility) {
-    String minimumVersion = compatibility.minimumCryptaVersion().orElse(null);
+    String minimumVersion = compatibility.minimumCryptaVersion();
     String currentVersion = currentCryptaVersion();
     CompatibilityResult result = compatibilityResult(minimumVersion, currentVersion);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
@@ -641,8 +647,14 @@ public final class AppCatalogsApiHandler {
     return List.copyOf(parts);
   }
 
+  private static Map<String, Object> apiCompatibility(
+      AppApiCompatibilityMetadata metadata, List<String> permissions) {
+    return PlatformApiContractVerifier.summarize(
+        metadata, permissions, PlatformApiContract.current());
+  }
+
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
     json.put("appId", manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
@@ -650,6 +662,8 @@ public final class AppCatalogsApiHandler {
     json.put("uiEntry", manifest.uiEntry());
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put("permissions", manifest.permissions());
+    json.put(
+        "apiCompatibility", apiCompatibility(manifest.apiCompatibility(), manifest.permissions()));
     json.put("installed", true);
     json.put("running", false);
     json.put("pid", null);

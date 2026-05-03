@@ -68,6 +68,9 @@ class CryptaAppCliTest {
         Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
 
     assertFalse(manifest.contains("app.permissions="));
+    assertTrue(manifest.contains("api.minimumVersion=1\n"));
+    assertTrue(manifest.contains("api.maximumTestedVersion=1\n"));
+    assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
   }
 
   @Test
@@ -165,6 +168,69 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
     assertEquals("", result.err());
+  }
+
+  @Test
+  void apiSnapshot_whenOutputRequested_expectContractJsonWritten() throws Exception {
+    Path contractFile = tempDir.resolve("platform-api-contract.json");
+
+    CliResult result = runCli("api", "snapshot", "--output", contractFile.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Wrote Platform API contract"));
+    String json = Files.readString(contractFile, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"contractVersion\":1"));
+    assertTrue(json.contains("\"platform.contract.read\""));
+  }
+
+  @Test
+  void compatVerify_whenBundleTargetsCurrentContract_expectSuccess() {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+
+    CliResult result = runCli("compat", "verify", "--bundle-dir", appDir.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Compatibility verified."));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void compatVerify_whenStrictBundleMinimumExceedsContract_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("api.minimumVersion=1", "api.minimumVersion=2")
+            .replace("api.maximumTestedVersion=1", "api.maximumTestedVersion=2"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("compat", "verify", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("requires Platform API contract 2"));
   }
 
   @Test
@@ -390,6 +456,9 @@ class CryptaAppCliTest {
     assertTrue(catalog.contains("app.sample-app.license=MIT\n"));
     assertTrue(catalog.contains("app.sample-app.categories=productivity,network\n"));
     assertTrue(catalog.contains("app.sample-app.minimumCryptaVersion=0.1.0\n"));
+    assertTrue(catalog.contains("app.sample-app.api.minimumVersion=1\n"));
+    assertTrue(catalog.contains("app.sample-app.api.maximumTestedVersion=1\n"));
+    assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     assertTrue(catalog.contains("app.sample-app.review.status=reviewed\n"));
     assertTrue(
         catalog.contains("app.sample-app.review.note=Reviewed for local operator safety.\n"));
@@ -493,7 +562,9 @@ class CryptaAppCliTest {
         descriptor.toString());
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
 
-    assertTrue(catalog.contains("catalog.version=1\n"));
+    assertTrue(catalog.contains("catalog.version=2\n"));
+    assertTrue(catalog.contains("app.sample-app.api.minimumVersion=1\n"));
+    assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     CliResult signResult =
         runCli(
             "catalog",
@@ -530,6 +601,8 @@ class CryptaAppCliTest {
     assertTrue(result.out().contains("init"));
     assertTrue(result.out().contains("validate"));
     assertTrue(result.out().contains("pack"));
+    assertTrue(result.out().contains("api"));
+    assertTrue(result.out().contains("compat"));
     assertTrue(result.out().contains("catalog"));
   }
 

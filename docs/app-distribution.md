@@ -199,9 +199,10 @@ surface.
 
 Catalog entry descriptors accepted by `crypta-app catalog create` can include `homepage`,
 `source`, `license`, `categories`, `minimumCryptaVersion`, `review.status`, `review.note`,
-`permissions.rationale.<permission>`, `screenshot.N`, `changelog.summary`, and `changelog.uri`.
-The generated catalog writes those fields under `app.<id>.*` and uses `catalog.version=2`.
-Descriptors without store metadata continue to generate minimal `catalog.version=1` catalogs.
+`permissions.rationale.<permission>`, `screenshot.N`, `changelog.summary`, `changelog.uri`, and
+`api.*` compatibility metadata. The generated catalog writes those fields under `app.<id>.*` and
+uses `catalog.version=2`. Descriptor/artifact pairs without store metadata or API compatibility
+metadata continue to generate minimal `catalog.version=1` catalogs.
 
 These fields are display and review metadata. The catalog signature still authenticates the exact
 catalog bytes, and the app bundle signature still authenticates the bundle payload. Review notes,

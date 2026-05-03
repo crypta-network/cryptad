@@ -308,7 +308,7 @@ class AppCatalogsApiHandlerTest {
         Optional.of(URI.create("https://example.invalid/repo")),
         Optional.of("MIT"),
         List.of("productivity", "network"),
-        new AppCatalogCompatibilityMetadata(Optional.of("0.1.0")),
+        new AppCatalogCompatibilityMetadata("0.1.0"),
         new AppCatalogReviewMetadata(
             AppCatalogReviewStatus.REVIEWED, Optional.of("Reviewed for local operator safety.")),
         new AppCatalogChangelog(
@@ -354,7 +354,7 @@ class AppCatalogsApiHandlerTest {
         Optional.empty(),
         Optional.empty(),
         List.of(),
-        new AppCatalogCompatibilityMetadata(Optional.of(minimumCryptaVersion)),
+        new AppCatalogCompatibilityMetadata(minimumCryptaVersion),
         AppCatalogReviewMetadata.EMPTY,
         AppCatalogChangelog.EMPTY,
         List.of(),

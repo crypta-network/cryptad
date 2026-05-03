@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
@@ -56,6 +57,9 @@ class AppManifestParserTest {
             app.exec=bin/start.sh
             app.ui.entry=/
             app.permissions=network.read, ui.open
+            api.minimumVersion=1
+            api.maximumTestedVersion=1
+            api.optionalCapabilities=alerts.read
             quota.data.bytes=1048576
             quota.cache.bytes=2048
             app.restart.policy=on-failure
@@ -71,6 +75,10 @@ class AppManifestParserTest {
     assertEquals(AppUiMode.SHELL_PANEL, manifest.uiMode());
     assertEquals("/", manifest.uiEntry());
     assertEquals(java.util.List.of("network.read", "ui.open"), manifest.permissions());
+    AppApiCompatibilityMetadata apiCompatibility = manifest.apiCompatibility();
+    assertEquals(Integer.valueOf(1), apiCompatibility.minimumVersion());
+    assertEquals(Integer.valueOf(1), apiCompatibility.maximumTestedVersion());
+    assertEquals(java.util.List.of("alerts.read"), apiCompatibility.optionalCapabilities());
     assertEquals(Long.valueOf(1048576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2048L), manifest.cacheQuotaBytes());
     assertEquals(AppSandboxMode.NONE, manifest.sandboxPolicy().mode());
@@ -88,6 +96,7 @@ class AppManifestParserTest {
 
     AppQuotaPolicy policy = AppQuotaPolicy.fromManifest(manifest);
 
+    assertFalse(manifest.apiCompatibility().declared());
     assertNull(manifest.dataQuotaBytes());
     assertNull(manifest.cacheQuotaBytes());
     assertFalse(policy.dataQuotaEnforced());
