@@ -91,7 +91,7 @@ public record AppUpdateCandidate(
     catalogSourceId = requireText(catalogSourceId, "catalogSourceId");
     installedVersion = requireText(installedVersion, "installedVersion");
     targetVersion = requireText(targetVersion, "targetVersion");
-    Objects.requireNonNull(status, "status");
+    Objects.requireNonNull(status, JSON_STATUS);
     versionComparison = requireText(versionComparison, "versionComparison");
     bundleSha256 = requireText(bundleSha256, "bundleSha256");
     if (bundleSizeBytes < 0L) {
