@@ -64,21 +64,23 @@ Use this skill when you need to:
     `PeerStatusCounts`, `RecentlyFailedReturn`, `RequestPriorityClasses`, and
     `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
-  - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1)
+  - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
+    compatibility contract, app capabilities/audit, and app-update lifecycle)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
-    AppHost core, sandbox status, and AppHost-managed quota enforcement)
+    AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
-    resolution helpers plus browser-session helpers)
+    resolution helpers, isolated origin metadata, and browser-session helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
     transport helpers, mutation form handling, error parsing, and conservative fragment
     sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
     signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
-    catalog writer/descriptors, Crypta catalog source handling, artifact verification, safe ZIP
-    extraction, and verified staging)
+    catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
+    metadata, artifact verification, safe ZIP extraction, and verified staging)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
-    CLI for staged-bundle and catalog-authoring workflows)
+    CLI for staged-bundle, catalog-authoring, API snapshot, and compatibility verification
+    workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
@@ -91,8 +93,8 @@ Use this skill when you need to:
   - `:bridge-fcp-runtime` → the concrete runtime-binding FCP bridge package
     `network.crypta.clients.fcp.bridge`
   - `:adapter-http-legacy-admin` → the detached shared legacy `network.crypta.clients.http`
-    shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and matching
-    `network/crypta/clients/http/**` main resources
+    shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, the app-UI loopback
+    origin server, and matching `network/crypta/clients/http/**` main resources
   - `:adapter-http-legacy-browse` → the concrete legacy browse/FProxy routes, toadlets, helper
     models, and browse-only packages under `network.crypta.clients.http`
   - `:bridge-http-runtime` → the concrete runtime-binding HTTP bridge implementations under
@@ -104,9 +106,9 @@ Use this skill when you need to:
     resources
 - First-party app bundle subprojects:
   - `:apps:queue-manager` → staged Queue Manager AppHost bundle with a static UI under
-    `/apps/queue-manager/static/`
+    an isolated app origin when available, with `/apps/queue-manager/static/` as fallback
   - `:apps:publisher` → staged Publisher AppHost bundle with a static UI under
-    `/apps/publisher/static/`
+    an isolated app origin when available, with `/apps/publisher/static/` as fallback
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -328,21 +330,25 @@ Use this skill when you need to:
 ### Platform control/UI modules
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
-  apps, and app-catalog control-plane families and is currently mounted at `/api/v1/` by the
-  legacy HTTP adapter. It also owns the central app-token authorization matrix and bounded
-  process-local app audit log for AppHost-originated API requests.
+  apps, app updates, app-catalog control-plane families, and the deterministic Platform API
+  compatibility contract, and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It
+  also owns the central app-token authorization matrix, browser-session authorization decisions,
+  bounded process-local app audit log, and local app-update lifecycle coordination above AppHost
+  and signed catalog primitives.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
   install/list/describe/start/stop/update/uninstall operations, per-launch app tokens, minimal
-  launch environments, token-redacted process-log snapshots, sandbox policy/status reporting,
-  AppHost-managed data/cache quota enforcement, bounded process logs, and in-session restart
-  attempts for manifests that opt in.
+  launch environments, token-redacted process-log snapshots, durable previous-bundle rollback
+  records, sandbox policy/status reporting, Linux bubblewrap provider selection for enforced
+  restricted-process launches, AppHost-managed data/cache quota enforcement, bounded process logs,
+  and in-session restart attempts for manifests that opt in.
 - `:platform-app-ui` owns `network.crypta.platform.appui`, the transport-neutral app-owned static
-  UI path layer. It maps installed static UI manifests to `/apps/{appId}/`, preserves nested entry
-  base URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
-  deterministic content-type, security-header, bootstrap, and browser-session helpers for HTTP
-  adapters.
+  UI path and origin layer. It maps installed static UI manifests to isolated per-app loopback
+  origins with `/apps/{appId}/` retained as a compatibility fallback, preserves nested entry base
+  URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
+  deterministic content-type, security-header, launch-proof bootstrap, and browser-session helpers
+  for HTTP adapters.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
   app bundles. It wraps route bootstrap, same-origin Platform API reads, form-password mutations,
   error parsing, and conservative legacy HTML fragment sanitization; it is not an authority or
@@ -350,21 +356,22 @@ Use this skill when you need to:
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
   sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries,
-  carries sandbox/quota manifest fields, and exposes the packager/distribution tool used by
-  first-party app Gradle tasks and developer tooling.
+  carries sandbox/quota/API compatibility manifest fields, and exposes the packager/distribution
+  tool used by first-party app Gradle tasks and developer tooling.
 - `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
   artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
-  enforces source/URI policy including `crypta:` catalog sources, validates artifact size and
-  SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to AppHost
-  install/update flows.
+  enforces source/URI policy including `crypta:` catalog sources, parses optional review/API
+  compatibility metadata, validates artifact size and SHA-256, safely extracts ZIP bundles, and
+  delegates verified staged bundles to AppHost install/update flows.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
-  linting, and catalog create/sign/verify commands around the platform distribution and catalog
-  libraries.
+  linting, API contract snapshot/compatibility verification, and catalog create/sign/verify
+  commands around the platform distribution, API, and catalog libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
-  opens app-owned `uiUrl` values when installed app summaries expose them.
+  opens app-owned `uiUrl` values when installed app summaries expose them and surfaces app catalog
+  review, update candidate, staged update, policy, health-gate, and rollback state for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
