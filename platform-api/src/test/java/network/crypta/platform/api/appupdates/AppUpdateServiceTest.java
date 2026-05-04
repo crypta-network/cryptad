@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
@@ -235,7 +236,8 @@ class AppUpdateServiceTest {
   void check_whenPolicyStageFails_expectLastCheckFailureRecorded() throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -324,7 +326,8 @@ class AppUpdateServiceTest {
   void check_whenPolicyIsStage_expectVerifiedCandidateStagedWithoutApply() throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
@@ -352,7 +355,8 @@ class AppUpdateServiceTest {
             Optional.of(updated));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
-    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
@@ -734,7 +738,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
-        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.CAUTION)));
+        .thenReturn(
+            List.of(
+                entry(UPDATE_VERSION, AppCatalogReviewStatus.CAUTION, compatibleApiMetadata())));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -748,6 +754,30 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenPolicyApplyWhenStoppedAndApiNewerThanTested_expectAutoApplyBlocked()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppApiCompatibilityMetadata newerThanTested =
+        new AppApiCompatibilityMetadata(1, 1, List.of(), false);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(
+            List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, newerThanTested)));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals("newer_than_tested", ((Map<?, ?>) candidate.get("apiCompatibility")).get(STATUS));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    verifyNoInstallPlanPreparation();
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
   void check_whenPolicyApplyWhenStoppedAndAppRunning_expectApplySkipped() throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
@@ -755,7 +785,9 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
-        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+        .thenReturn(
+            List.of(
+                entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata())));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -798,6 +830,20 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void rollback_whenCurrentManifestWouldBeUnreadable_expectNoDescribePreflight() throws Exception {
+    InstalledAppSnapshot rolledBack = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollback(APP_ID)).thenReturn(rolledBack);
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    Map<String, Object> summary = service.rollback(APP_ID, false);
+
+    assertEquals(INSTALLED_VERSION, summary.get(INSTALLED_VERSION_FIELD));
+    verify(appHost).rollback(APP_ID);
+    verify(appHost, never()).describe(APP_ID);
+  }
+
+  @Test
   void rollback_whenRestartFailsAfterRestore_expectStateCleanedAndRestartFailureReported()
       throws Exception {
     InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -829,11 +875,9 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void rollback_whenRollbackStatusCannotBeRead_expectFailureNotUnavailable() throws Exception {
-    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+  void rollback_whenRollbackRecordCannotBeRestored_expectFailureNotUnavailable() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    when(appHost.rollbackStatus(APP_ID)).thenThrow(new IOException("rollback manifest broken"));
+    when(appHost.rollback(APP_ID)).thenThrow(new IOException("rollback manifest broken"));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
 
     PlatformApiException exception =
@@ -841,16 +885,12 @@ class AppUpdateServiceTest {
 
     assertEquals(500, exception.statusCode());
     assertEquals(ROLLBACK_FAILED, exception.errorCode());
-    verify(appHost, never()).rollback(APP_ID);
+    verify(appHost).rollback(APP_ID);
   }
 
   @Test
-  void rollback_whenAppStartsAfterPrecheck_expectConflictNotServerError() throws Exception {
-    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+  void rollback_whenAppStartsBeforeRestore_expectConflictNotServerError() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    when(appHost.rollbackStatus(APP_ID))
-        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
     when(appHost.rollback(APP_ID))
         .thenThrow(new AppHostException("cannot rollback a running app: " + APP_ID));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
@@ -863,12 +903,8 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void rollback_whenAppIsUninstalledAfterPrecheck_expectNotFoundNotServerError() throws Exception {
-    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+  void rollback_whenAppIsUninstalledBeforeRestore_expectNotFoundNotServerError() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    when(appHost.rollbackStatus(APP_ID))
-        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
     when(appHost.rollback(APP_ID))
         .thenThrow(new AppHostException("app is not installed: " + APP_ID));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
@@ -881,13 +917,9 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void rollback_whenRecordIsRemovedAfterPrecheck_expectUnavailableNotServerError()
+  void rollback_whenRecordIsRemovedBeforeRestore_expectUnavailableNotServerError()
       throws Exception {
-    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    when(appHost.rollbackStatus(APP_ID))
-        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
     when(appHost.rollback(APP_ID))
         .thenThrow(new AppHostException("rollback record is not available: " + APP_ID));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
@@ -971,6 +1003,11 @@ class AppUpdateServiceTest {
 
   private static AppCatalogEntry entry(String version, AppCatalogReviewStatus reviewStatus) {
     return entry(version, reviewStatus, AppApiCompatibilityMetadata.undeclared());
+  }
+
+  private static AppApiCompatibilityMetadata compatibleApiMetadata() {
+    return new AppApiCompatibilityMetadata(
+        1, PlatformApiContract.current().contractVersion(), List.of(), false);
   }
 
   private static AppCatalogEntry entry(

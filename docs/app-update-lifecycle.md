@@ -63,8 +63,9 @@ The update review surface includes:
 
 Catalog review metadata and compatibility metadata are review gates, not trust gates. They do not
 replace signature verification. A compatible newer candidate can still be staged explicitly, but
-policy-driven apply requires `review.status=reviewed`; `unreviewed`, `caution`, and `rejected`
-entries require another operator decision before apply.
+policy-driven apply requires `review.status=reviewed` and `apiCompatibility.status=compatible`.
+`unreviewed`, `caution`, `rejected`, `unknown`, and `newer_than_tested` entries require another
+operator decision before apply.
 
 ## Apply policy
 

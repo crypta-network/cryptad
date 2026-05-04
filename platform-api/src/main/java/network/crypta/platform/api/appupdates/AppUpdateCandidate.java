@@ -56,6 +56,10 @@ public record AppUpdateCandidate(
     Map<String, Object> permissionDelta,
     boolean running,
     Instant detectedAt) {
+  private static final String JSON_STATUS = "status";
+  private static final String API_STATUS_COMPATIBLE = "compatible";
+  private static final String REVIEW_STATUS_REVIEWED = "reviewed";
+
   /**
    * Creates a validated candidate.
    *
@@ -117,15 +121,18 @@ public record AppUpdateCandidate(
   /**
    * Returns whether policy-driven apply may use this candidate without another operator decision.
    *
-   * <p>Automatic apply is stricter than staging. The candidate must already be eligible by default
-   * and the catalog review metadata must report {@code reviewed}. Caution, rejected, missing, or
-   * malformed review states are not auto-applied; they remain visible to the operator through the
-   * same candidate summary.
+   * <p>Automatic apply is stricter than staging. The candidate must already be eligible by default,
+   * the catalog review metadata must report {@code reviewed}, and the Platform API compatibility
+   * summary must report {@code compatible}. Caution, rejected, missing, or malformed review states
+   * are not auto-applied, and neither are unknown or newer-than-tested API compatibility states;
+   * they remain visible to the operator through the same candidate summary.
    *
    * @return {@code true} when the candidate is safely newer, compatible, and reviewed
    */
   public boolean eligibleForAutomaticApply() {
-    return eligibleByDefault() && reviewAllowsAutomaticApply(review);
+    return eligibleByDefault()
+        && reviewAllowsAutomaticApply(review)
+        && apiCompatibilityAllowsAutomaticApply(apiCompatibility);
   }
 
   /**
@@ -145,7 +152,7 @@ public record AppUpdateCandidate(
     json.put("catalogSourceId", catalogSourceId);
     json.put("installedVersion", installedVersion);
     json.put("targetVersion", targetVersion);
-    json.put("status", status.jsonValue());
+    json.put(JSON_STATUS, status.jsonValue());
     json.put("versionComparison", versionComparison);
     json.put("bundle", bundleSummary());
     json.put("review", review);
@@ -175,16 +182,25 @@ public record AppUpdateCandidate(
   }
 
   private static boolean reviewAllowsAutomaticApply(Map<String, Object> review) {
-    Object statusValue = review.get("status");
+    Object statusValue = review.get(JSON_STATUS);
     if (!(statusValue instanceof String status)) {
       return false;
     }
-    return "reviewed".equals(status);
+    return REVIEW_STATUS_REVIEWED.equals(status);
+  }
+
+  private static boolean apiCompatibilityAllowsAutomaticApply(
+      Map<String, Object> apiCompatibility) {
+    Object statusValue = apiCompatibility.get(JSON_STATUS);
+    if (!(statusValue instanceof String status)) {
+      return false;
+    }
+    return API_STATUS_COMPATIBLE.equals(status);
   }
 
   static Map<String, Object> reviewSummary(String status, String note) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
-    json.put("status", status);
+    json.put(JSON_STATUS, status);
     json.put("note", note);
     json.put("advisory", true);
     return json;

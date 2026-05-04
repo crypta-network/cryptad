@@ -358,14 +358,10 @@ public final class AppUpdateService {
    */
   public synchronized Map<String, Object> rollback(String appId, boolean restart) {
     String normalizedAppId = normalizeInstalledAppId(appId);
-    requireInstalled(normalizedAppId);
     boolean wasRunning = appHost.status(normalizedAppId).isPresent();
     if (wasRunning && !restart) {
       throw lifecycleFailure(
           409, ERROR_ROLLBACK_APP_RUNNING, "App must be stopped before rollback.");
-    }
-    if (!rollbackAvailable(normalizedAppId)) {
-      throw lifecycleFailure(404, ERROR_ROLLBACK_NOT_AVAILABLE, "Rollback is not available.");
     }
     try {
       if (wasRunning) {
