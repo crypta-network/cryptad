@@ -57,7 +57,10 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 1;
+  public static final int CURRENT_CONTRACT_VERSION = 2;
+
+  private static final int INITIAL_CONTRACT_VERSION = 1;
+  private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -70,14 +73,22 @@ public record PlatformApiContract(
 
   private static final String STABILITY_POLICY =
       "Stable endpoints and capabilities remain available within Platform API v1 contract version "
-          + "1. Experimental, deprecated, scheduled-for-removal, and internal entries are flagged "
-          + "for developer tooling and release review before behavior changes.";
+          + CURRENT_CONTRACT_VERSION
+          + ". Endpoint descriptors retain the contract version where each route first appeared. "
+          + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
+          + "developer tooling and release review before behavior changes.";
 
+  private static final String ROUTE_FAMILY_APPS = "apps";
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
   private static final String ROUTE_FAMILY_CONFIG = "config";
   private static final String ROUTE_FAMILY_PEERS = "peers";
   private static final String ROUTE_FAMILY_QUEUE = "queue";
   private static final String ROUTE_FAMILY_SECURITY_LEVELS = "security-levels";
+  private static final String METHOD_DELETE = "DELETE";
+  private static final String METHOD_GET = "GET";
+  private static final String METHOD_POST = "POST";
+  private static final List<String> APP_CATALOG_UPDATE_MANAGE_CAPABILITIES =
+      List.of(PlatformApiCapabilities.APPS_MANAGE, PlatformApiCapabilities.CATALOGS_MANAGE);
 
   private static final PlatformApiContract CURRENT =
       new PlatformApiContract(
@@ -465,67 +476,94 @@ public record PlatformApiContract(
         List.of(PlatformApiCapabilities.PEERS_WRITE),
         "Remove a peer.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "List installed apps.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "Read one installed app summary.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/runtime",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "Read token-free app runtime status.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/logs",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "Read redacted app process logs.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/permissions",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "Read app permissions and denied-count summary.");
     builder.get(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/audit",
         PlatformApiCapabilities.APPS_READ,
         PlatformApiCapabilities.APPS_READ,
         "Read bounded app audit entries.");
     builder.post(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/install",
         "apps.install",
         List.of(PlatformApiCapabilities.APPS_MANAGE),
         "Install a staged app bundle.");
     builder.post(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/start",
         "apps.start",
         List.of(PlatformApiCapabilities.APPS_MANAGE),
         "Start an installed app.");
     builder.post(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/stop",
         "apps.stop",
         List.of(PlatformApiCapabilities.APPS_MANAGE),
         "Stop a running app.");
     builder.post(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}/update",
         "apps.update",
         List.of(PlatformApiCapabilities.APPS_MANAGE),
         "Update an installed app from a staged bundle.");
+    builder.appUpdateGet(
+        "/apps/{appId}/updates",
+        PlatformApiCapabilities.APPS_READ,
+        "Read app update lifecycle status.");
+    builder.appUpdatePost(
+        "/apps/{appId}/updates/check",
+        "apps.updates.check",
+        APP_CATALOG_UPDATE_MANAGE_CAPABILITIES,
+        "Check signed catalogs for an app update candidate.");
+    builder.appUpdatePost(
+        "/apps/{appId}/updates/stage",
+        "apps.updates.stage",
+        APP_CATALOG_UPDATE_MANAGE_CAPABILITIES,
+        "Stage a verified app update candidate.");
+    builder.appUpdatePost(
+        "/apps/{appId}/updates/apply",
+        "apps.updates.apply",
+        APP_CATALOG_UPDATE_MANAGE_CAPABILITIES,
+        "Apply a staged app update.");
+    builder.appUpdatePost(
+        "/apps/{appId}/updates/rollback",
+        "apps.updates.rollback",
+        List.of(PlatformApiCapabilities.APPS_MANAGE),
+        "Restore the previous retained app bundle.");
+    builder.appUpdateGet(
+        "/apps/{appId}/updates/policy", "apps.updates.policy", "Read the app update policy.");
+    builder.appUpdatePolicyPost();
     builder.delete(
-        "apps",
+        ROUTE_FAMILY_APPS,
         "/apps/{appId}",
         "apps.uninstall",
         List.of(PlatformApiCapabilities.APPS_MANAGE),
@@ -589,7 +627,7 @@ public record PlatformApiContract(
 
   private static PlatformApiCapabilityDescriptor capability(String name, String description) {
     return new PlatformApiCapabilityDescriptor(
-        name, PlatformApiStabilityLevel.STABLE, CURRENT_CONTRACT_VERSION, null, description);
+        name, PlatformApiStabilityLevel.STABLE, INITIAL_CONTRACT_VERSION, null, description);
   }
 
   private static String requireText(String value, String fieldName) {
@@ -609,7 +647,17 @@ public record PlatformApiContract(
         String actionLabel,
         String capability,
         String description) {
-      endpoint(family, "GET", routeTemplate, actionLabel, List.of(capability), description);
+      endpoint(
+          new EndpointSpec(
+              family,
+              METHOD_GET,
+              routeTemplate,
+              actionLabel,
+              List.of(capability),
+              INITIAL_CONTRACT_VERSION,
+              true,
+              true,
+              description));
     }
 
     private void post(
@@ -618,7 +666,17 @@ public record PlatformApiContract(
         String actionLabel,
         List<String> capabilities,
         String description) {
-      endpoint(family, "POST", routeTemplate, actionLabel, capabilities, description);
+      endpoint(
+          new EndpointSpec(
+              family,
+              METHOD_POST,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              INITIAL_CONTRACT_VERSION,
+              true,
+              true,
+              description));
     }
 
     private void delete(
@@ -627,34 +685,96 @@ public record PlatformApiContract(
         String actionLabel,
         List<String> capabilities,
         String description) {
-      endpoint(family, "DELETE", routeTemplate, actionLabel, capabilities, description);
-    }
-
-    private void endpoint(
-        String family,
-        String method,
-        String routeTemplate,
-        String actionLabel,
-        List<String> capabilities,
-        String description) {
-      endpoints.add(
-          new PlatformApiEndpointDescriptor(
+      endpoint(
+          new EndpointSpec(
               family,
-              method,
+              METHOD_DELETE,
               routeTemplate,
               actionLabel,
               capabilities,
+              INITIAL_CONTRACT_VERSION,
               true,
               true,
-              true,
-              PlatformApiStabilityLevel.STABLE,
-              CURRENT_CONTRACT_VERSION,
-              null,
               description));
+    }
+
+    private void appUpdateGet(String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APPS,
+              METHOD_GET,
+              routeTemplate,
+              actionLabel,
+              List.of(PlatformApiCapabilities.APPS_READ),
+              APP_UPDATE_LIFECYCLE_CONTRACT_VERSION,
+              true,
+              true,
+              description));
+    }
+
+    private void appUpdatePost(
+        String routeTemplate, String actionLabel, List<String> capabilities, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APPS,
+              METHOD_POST,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              APP_UPDATE_LIFECYCLE_CONTRACT_VERSION,
+              true,
+              true,
+              description));
+    }
+
+    private void appUpdatePolicyPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APPS,
+              METHOD_POST,
+              "/apps/{appId}/updates/policy",
+              "apps.updates.policy",
+              List.of(PlatformApiCapabilities.APPS_MANAGE),
+              APP_UPDATE_LIFECYCLE_CONTRACT_VERSION,
+              false,
+              false,
+              "Update the local app update policy."));
+    }
+
+    private void endpoint(EndpointSpec spec) {
+      endpoints.add(
+          new PlatformApiEndpointDescriptor(
+              spec.family(),
+              spec.method(),
+              spec.routeTemplate(),
+              spec.actionLabel(),
+              spec.capabilities(),
+              true,
+              spec.appProcessAllowed(),
+              spec.appBrowserAllowed(),
+              PlatformApiStabilityLevel.STABLE,
+              spec.sinceContractVersion(),
+              null,
+              spec.description()));
     }
 
     private List<PlatformApiEndpointDescriptor> build() {
       return List.copyOf(endpoints);
+    }
+  }
+
+  private record EndpointSpec(
+      String family,
+      String method,
+      String routeTemplate,
+      String actionLabel,
+      List<String> capabilities,
+      int sinceContractVersion,
+      boolean appProcessAllowed,
+      boolean appBrowserAllowed,
+      String description) {
+    private EndpointSpec {
+      capabilities = List.copyOf(capabilities);
     }
   }
 }

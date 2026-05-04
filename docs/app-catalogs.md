@@ -275,7 +275,9 @@ refresh failed.
 Install and update endpoints prepare a verified temporary staged bundle, then delegate to
 `AppHost.installFromDirectory(...)` or `AppHost.updateFromDirectory(...)`. Existing local
 `/api/v1/apps/install?stagedDir=...` and `/api/v1/apps/{appId}/update?stagedDir=...` flows are
-unchanged.
+unchanged. Update apply remains explicit: catalog refresh and listing can detect candidates, but
+the operator or API caller still chooses when to apply the update, and AppHost applies it only when
+the target app is stopped.
 
 Catalog-installed apps use the same manifest UI contract as local staged apps. If the verified
 bundle declares `app.ui.mode=static` and a relative `app.ui.entry`, Cryptad serves the installed
@@ -294,11 +296,14 @@ directories.
 The Web Shell Apps section uses the same API to show catalog details before install or update:
 review status and note, source/homepage/license/category metadata, permission explanations,
 installed-vs-catalog version difference, advisory compatibility hints, and changelog metadata when
-present. Review metadata remains separate from signed catalog trust.
+present. Review metadata remains separate from signed catalog trust. See
+[app-update-lifecycle.md](app-update-lifecycle.md) for candidate detection, manual apply,
+permission-delta review, and rollback scope.
 
 ## Future work
 
 Manifest permissions are enforced for app-process Platform API calls as described in
 [app-permissions-and-audit.md](app-permissions-and-audit.md). Public app-store governance,
-background app update scheduling, Crypta artifact fetching, and remote screenshot proxying remain
-future work.
+silent automatic update policy, Crypta artifact fetching, and remote screenshot proxying remain
+future work. Catalog-backed candidate detection and explicit apply are implemented; silent
+auto-update is not the default.

@@ -534,6 +534,11 @@ public final class PlatformApiToadlet extends Toadlet {
     if (pathSegments.size() == 2 && "install".equals(pathSegments.get(1))) {
       return true;
     }
+    if ("POST".equals(method)
+        && pathSegments.size() == 4
+        && UPDATES_SEGMENT.equals(pathSegments.get(2))) {
+      return true;
+    }
     return pathSegments.size() == 3
         && ("start".equals(pathSegments.get(2))
             || "stop".equals(pathSegments.get(2))

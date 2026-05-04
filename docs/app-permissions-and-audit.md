@@ -130,9 +130,9 @@ The current capabilities are intentionally conservative:
 | `alerts.write` | alert dismiss |
 | `diagnostics.read` | `GET /api/v1/diagnostics` |
 | `apps.read` | app inventory, runtime, logs, permissions, audit reads |
-| `apps.manage` | app install, start, stop, update, uninstall |
+| `apps.manage` | app install, start, stop, local staged-directory update, rollback, uninstall |
 | `catalogs.read` | catalog and catalog-app reads |
-| `catalogs.manage` | catalog add/remove/refresh and catalog app install/update |
+| `catalogs.manage` | catalog add/remove/refresh, catalog app install/update, and catalog-backed app update check/stage/apply |
 | `platform.contract.read` | `GET /api/v1/platform/contract` contract snapshot reads |
 
 Capability descriptors, endpoint descriptors, and stability levels are described in

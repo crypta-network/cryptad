@@ -3,6 +3,7 @@ package network.crypta.platform.apphost;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
@@ -76,6 +77,41 @@ public interface AppHost {
    */
   InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory)
       throws IOException;
+
+  /**
+   * Returns path-free metadata for the previous bundle available for rollback.
+   *
+   * <p>A present value means the host has a durable previous installed bundle for the app id. The
+   * returned record is safe for public summaries: it exposes only manifest-level identity and
+   * version metadata, never launch tokens or AppHost filesystem paths. New installations have no
+   * rollback record until their first successful update.
+   *
+   * @param appId stable application identifier
+   * @return rollback metadata when a previous bundle is available, otherwise {@link
+   *     Optional#empty()}
+   * @throws IOException if the rollback tree cannot be inspected safely or its manifest is invalid
+   */
+  default Optional<AppRollbackRecord> rollbackStatus(String appId) throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    return Optional.empty();
+  }
+
+  /**
+   * Restores the previous installed bundle for one stopped app.
+   *
+   * <p>The operation replaces only the immutable installed bundle. The app's host-owned data,
+   * cache, and run directories remain attached to the app id and are preserved. Implementations
+   * must reject live apps rather than replacing files beneath a running process.
+   *
+   * @param appId stable application identifier
+   * @return installed application snapshot after the previous bundle has been restored
+   * @throws IOException if the app is missing, running, has no rollback record, or the replacement
+   *     cannot be completed safely
+   */
+  default InstalledAppSnapshot rollback(String appId) throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    throw new UnsupportedOperationException("rollback is not supported by this AppHost");
+  }
 
   /**
    * Removes one installed app and its host-owned directories.

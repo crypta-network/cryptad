@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":1"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":2"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(1, version.contractVersion());
+    assertEquals(2, version.contractVersion());
   }
 
   @Test
@@ -60,7 +60,7 @@ class PlatformApiContractTest {
       assertFalse(endpoint.requiredCapabilities().isEmpty(), endpoint.routeTemplate());
       assertTrue(
           knownCapabilities.containsAll(endpoint.requiredCapabilities()), endpoint.routeTemplate());
-      assertEquals(1, endpoint.sinceContractVersion(), endpoint.routeTemplate());
+      assertEquals(expectedSinceContractVersion(endpoint), endpoint.sinceContractVersion());
       assertEquals(
           PlatformApiStabilityLevel.STABLE, endpoint.stability(), endpoint.routeTemplate());
     }
@@ -84,11 +84,26 @@ class PlatformApiContractTest {
       PlatformApiAuthorizationDecision browserDecision =
           PlatformApiCapabilities.authorize(browserRequest);
 
-      assertTrue(processDecision.allowed(), endpoint.routeTemplate());
-      assertTrue(browserDecision.allowed(), endpoint.routeTemplate());
-      assertEquals(endpoint.toAction(), processDecision.action(), endpoint.routeTemplate());
-      assertEquals(endpoint.toAction(), browserDecision.action(), endpoint.routeTemplate());
+      assertEndpointAuthorization(endpoint, processDecision, endpoint.appProcessAllowed());
+      assertEndpointAuthorization(endpoint, browserDecision, endpoint.appBrowserAllowed());
     }
+  }
+
+  private static void assertEndpointAuthorization(
+      PlatformApiEndpointDescriptor endpoint,
+      PlatformApiAuthorizationDecision decision,
+      boolean principalAllowed) {
+    if (principalAllowed) {
+      assertTrue(decision.allowed(), endpoint.routeTemplate());
+      assertEquals(endpoint.toAction(), decision.action(), endpoint.routeTemplate());
+      return;
+    }
+    assertFalse(decision.allowed(), endpoint.routeTemplate());
+    assertEquals("unmapped_route", decision.reasonCode(), endpoint.routeTemplate());
+  }
+
+  private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    return endpoint.routeTemplate().startsWith("/apps/{appId}/updates") ? 2 : 1;
   }
 
   private static PlatformApiRequest appRequest(

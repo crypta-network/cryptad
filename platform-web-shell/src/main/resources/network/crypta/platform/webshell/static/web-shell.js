@@ -920,6 +920,24 @@
       : null;
   }
 
+  function appUpdatesPath(appId, action) {
+    if (typeof appId !== "string" || appId.length === 0) {
+      return null;
+    }
+    const basePath = `apps/${encodeURIComponent(appId)}/updates`;
+    switch (action) {
+      case "check":
+      case "stage":
+      case "apply":
+      case "rollback":
+        return `${basePath}/${action}`;
+      case "summary":
+        return basePath;
+      default:
+        return null;
+    }
+  }
+
   function catalogMutationPath(catalogId, appId, action) {
     if (typeof catalogId !== "string" || catalogId.length === 0) {
       return null;
@@ -1233,6 +1251,34 @@
     return form;
   }
 
+  function buildAppUpdateActionForm(app, action, label, disabledReason) {
+    const appId = typeof app.appId === "string" ? app.appId : "";
+    const path = appUpdatesPath(appId, action);
+    if (!path) {
+      return null;
+    }
+
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.appId = appId;
+    form.dataset.appUpdateAction = action;
+    form.dataset.appName = appDisplayName(app);
+    if (disabledReason) {
+      form.dataset.disabledReason = disabledReason;
+    }
+
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    if (disabledReason) {
+      submit.disabled = true;
+      submit.title = disabledReason;
+    }
+    form.append(submit);
+    return form;
+  }
+
   function buildCatalogActionForm(catalog, app, action, label) {
     const catalogId = typeof catalog.catalogId === "string" ? catalog.catalogId : "";
     const appId = app && typeof app.appId === "string" ? app.appId : "";
@@ -1471,6 +1517,240 @@
       : "No permission rationale supplied.";
   }
 
+  function appUpdateState(app) {
+    if (
+      app &&
+      app.updateState &&
+      typeof app.updateState === "object" &&
+      !Array.isArray(app.updateState)
+    ) {
+      return app.updateState;
+    }
+    if (app && app.updates && typeof app.updates === "object" && !Array.isArray(app.updates)) {
+      return app.updates;
+    }
+    return {};
+  }
+
+  function appHasUpdateState(updateState) {
+    return [
+      "status",
+      "candidate",
+      "staged",
+      "policy",
+      "rollback",
+      "scheduler",
+      "lastCheck",
+      "lastCheckAt",
+      "nextCheckAt",
+      "lastCheckResult",
+    ].some((key) => Object.prototype.hasOwnProperty.call(updateState, key));
+  }
+
+  function updateVersionSummary(updateInfo) {
+    const info = recordValue(updateInfo);
+    const version =
+      typeof info.targetVersion === "string" && info.targetVersion
+        ? info.targetVersion
+        : typeof info.version === "string" && info.version
+          ? info.version
+          : "";
+    const summary = typeof info.summary === "string" && info.summary ? info.summary : "";
+    const status = typeof info.status === "string" && info.status ? normalizedStatus(info.status) : "";
+    return [version, summary, status].filter((entry) => entry).join(" - ") || "Unavailable";
+  }
+
+  function updatePolicySummary(policy) {
+    if (typeof policy === "string" && policy.length > 0) {
+      return normalizedStatus(policy);
+    }
+    const value = recordValue(policy);
+    const mode = typeof value.mode === "string" && value.mode ? normalizedStatus(value.mode) : "";
+    const requireManualApply = value.requireManualApply === true ? "manual apply" : "";
+    const allowPrerelease = value.allowPrerelease === true ? "prerelease allowed" : "";
+    const entries = [mode, requireManualApply, allowPrerelease].filter((entry) => entry);
+    return entries.length ? entries.join("; ") : "Unavailable";
+  }
+
+  function updatePermissionDeltaSummary(source) {
+    const sourceRecord = recordValue(source);
+    const delta = recordValue(sourceRecord.permissionDelta || sourceRecord.permissionsDelta);
+    const added = stringList(delta.added).length;
+    const removed = stringList(delta.removed).length;
+    const unchanged = stringList(delta.unchanged).length;
+    if (added === 0 && removed === 0 && unchanged === 0) {
+      return "Unavailable";
+    }
+    return `+${added} / -${removed} / ${unchanged} unchanged`;
+  }
+
+  function updateApiRiskSummary(source) {
+    const compatibility = recordValue(recordValue(source).apiCompatibility);
+    return Object.keys(compatibility).length
+      ? apiCompatibilityLabel(compatibility)
+      : "Unavailable";
+  }
+
+  function appUpdateSchedulerValue(updateState, field, nestedField) {
+    const scheduler = recordValue(updateState.scheduler);
+    const lastCheck = recordValue(updateState.lastCheck);
+    if (field === "lastCheckAt") {
+      return scheduler[nestedField] || lastCheck.checkedAt || updateState[field];
+    }
+    if (field === "lastCheckResult") {
+      return (
+        scheduler[nestedField] ||
+        lastCheck.status ||
+        lastCheck.errorCode ||
+        updateState[field]
+      );
+    }
+    return scheduler[nestedField] || updateState[field];
+  }
+
+  function rollbackAvailable(updateState) {
+    const rollback = recordValue(updateState.rollback);
+    if (typeof rollback.available === "boolean") {
+      return rollback.available;
+    }
+    if (typeof updateState.rollbackAvailable === "boolean") {
+      return updateState.rollbackAvailable;
+    }
+    return false;
+  }
+
+  function appUpdateStatus(updateState) {
+    if (typeof updateState.status === "string" && updateState.status) {
+      return updateState.status;
+    }
+    if (typeof updateState.candidateStatus === "string" && updateState.candidateStatus) {
+      return updateState.candidateStatus;
+    }
+    const candidate = recordValue(updateState.candidate);
+    if (typeof candidate.status === "string" && candidate.status) {
+      return candidate.status;
+    }
+    return "";
+  }
+
+  function updateActionAllowed(updateState, action) {
+    const key = `can${action.charAt(0).toUpperCase()}${action.slice(1)}`;
+    return updateState[key] !== false;
+  }
+
+  function updateRunningAllowed(updateState, action) {
+    const title = action.charAt(0).toUpperCase() + action.slice(1);
+    const explicitKeys = [`can${title}WhileRunning`, `${action}AllowedWhileRunning`];
+    if (action === "apply") {
+      explicitKeys.push("canUpdateWhileRunning", "updateAllowedWhileRunning");
+    }
+    return explicitKeys.some((key) => updateState[key] === true);
+  }
+
+  function updateActionDisabledReason(app, updateState, action, runtimeRunning) {
+    if (!updateActionAllowed(updateState, action)) {
+      return `${normalizedStatus(action)} is unavailable for this app update state.`;
+    }
+    if (
+      (action === "apply" || action === "rollback") &&
+      runtimeRunning &&
+      !updateRunningAllowed(updateState, action)
+    ) {
+      return `${normalizedStatus(action)} requires stopping or restarting the running app first.`;
+    }
+    if (action === "apply" && !stagedUpdateAvailable(updateState)) {
+      return "Apply is unavailable until an update is staged.";
+    }
+    if (action === "rollback" && !rollbackAvailable(updateState)) {
+      return "Rollback is unavailable for this app.";
+    }
+    return "";
+  }
+
+  function stagedUpdateAvailable(updateState) {
+    const staged = recordValue(updateState.staged);
+    return staged.available === true || staged.status === "staged";
+  }
+
+  function appUpdateDetailsNode(app, updateState) {
+    if (!appHasUpdateState(updateState)) {
+      return null;
+    }
+    const details = document.createElement("details");
+    details.className = "json-details app-update-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "App update lifecycle";
+    details.append(summary);
+
+    const candidate = recordValue(updateState.candidate);
+    const staged = recordValue(updateState.staged);
+    const rollback = recordValue(updateState.rollback);
+    details.append(
+      definitionList([
+        ["Update candidate", normalizedStatus(appUpdateStatus(updateState), "Unavailable")],
+        ["Candidate summary", updateVersionSummary(candidate)],
+        ["Staged update", updateVersionSummary(staged)],
+        ["Policy", updatePolicySummary(updateState.policy)],
+        ["Permission changes before apply", updatePermissionDeltaSummary(staged)],
+        ["API compatibility before apply", updateApiRiskSummary(staged)],
+        ["Rollback available", rollbackAvailable(updateState) ? "Yes" : "No"],
+        [
+          "Rollback version",
+          scalar(rollback.previousVersion || rollback.version || updateState.rollbackVersion),
+        ],
+        [
+          "Last rollback result",
+          normalizedStatus(rollback.lastResult || updateState.lastRollbackResult, "Unavailable"),
+        ],
+        ["Last rollback at", formatIsoTimestamp(rollback.lastCompletedAt || updateState.lastRollbackAt)],
+        [
+          "Last scheduler check",
+          formatIsoTimestamp(appUpdateSchedulerValue(updateState, "lastCheckAt", "lastCheckAt")),
+        ],
+        ["Last scheduler result", scalar(appUpdateSchedulerValue(updateState, "lastCheckResult", "lastResult"))],
+        [
+          "Next scheduler check",
+          formatIsoTimestamp(appUpdateSchedulerValue(updateState, "nextCheckAt", "nextCheckAt")),
+        ],
+      ]),
+    );
+    return details;
+  }
+
+  function appendAppUpdateActionForms(actions, app, updateState, runtimeRunning) {
+    const checkDisabledReason =
+      updateActionDisabledReason(app, updateState, "check", runtimeRunning);
+    const stageDisabledReason =
+      updateActionDisabledReason(app, updateState, "stage", runtimeRunning);
+    const applyDisabledReason =
+      updateActionDisabledReason(app, updateState, "apply", runtimeRunning);
+    const rollbackDisabledReason =
+      updateActionDisabledReason(app, updateState, "rollback", runtimeRunning);
+    const applyRequiresRestart = applyDisabledReason.includes("requires stopping or restarting");
+    const rollbackRequiresRestart = rollbackDisabledReason.includes("requires stopping or restarting");
+    const forms = [
+      buildAppUpdateActionForm(app, "check", "Check for app update", checkDisabledReason),
+      buildAppUpdateActionForm(app, "stage", "Stage app update", stageDisabledReason),
+      buildAppUpdateActionForm(
+        app,
+        "apply",
+        applyRequiresRestart ? "Apply requires restart" : "Apply staged update",
+        applyDisabledReason,
+      ),
+      buildAppUpdateActionForm(
+        app,
+        "rollback",
+        rollbackRequiresRestart ? "Rollback requires restart" : "Rollback app update",
+        rollbackDisabledReason,
+      ),
+    ];
+    forms.forEach((form) => {
+      if (form) {
+        actions.append(form);
+      }
+    });
+  }
+
   function renderAppCard(app) {
     const card = document.createElement("article");
     card.className = "app-card";
@@ -1486,6 +1766,8 @@
     const runtimeStartedAt = runtime ? runtime.startedAt : app.startedAt;
     const sandbox = appSandboxStatus(app, runtime);
     const quota = appQuotaStatus(app, runtime);
+    const updateState = appUpdateState(app);
+    const hasUpdateState = appHasUpdateState(updateState);
 
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -1528,6 +1810,16 @@
     ) {
       pills.append(createPill("Quota warning", "is-warning"));
     }
+    if (hasUpdateState) {
+      const updateStatus = appUpdateStatus(updateState);
+      pills.append(createPill(updateStatus ? normalizedStatus(updateStatus) : "Update status", "is-warning"));
+      if (stagedUpdateAvailable(updateState)) {
+        pills.append(createPill("Update staged", "is-warning"));
+      }
+      if (rollbackAvailable(updateState)) {
+        pills.append(createPill("Rollback available", "is-warning"));
+      }
+    }
     header.append(heading, pills);
     card.append(header);
 
@@ -1566,10 +1858,34 @@
       ["Process log tail limit", logs ? formatBytes(logs.maxBytes) : "Unavailable"],
       ["Process log truncated", logs && logs.truncated ? "Yes" : "No"],
       ["Runtime detail", runtimeError || (runtime ? "Available" : "Unavailable")],
+      [
+        "Update candidate",
+        hasUpdateState ? normalizedStatus(appUpdateStatus(updateState), "Unavailable") : "Unavailable",
+      ],
+      ["Staged update", hasUpdateState ? updateVersionSummary(updateState.staged) : "Unavailable"],
+      ["Update policy", hasUpdateState ? updatePolicySummary(updateState.policy) : "Unavailable"],
+      ["Rollback availability", hasUpdateState && rollbackAvailable(updateState) ? "Available" : "Unavailable"],
+      ["Update detail", app.updatesError || (hasUpdateState ? "Available" : "Unavailable")],
+      [
+        "Last app update check",
+        hasUpdateState
+          ? formatIsoTimestamp(appUpdateSchedulerValue(updateState, "lastCheckAt", "lastCheckAt"))
+          : "Unavailable",
+      ],
+      [
+        "Next app update check",
+        hasUpdateState
+          ? formatIsoTimestamp(appUpdateSchedulerValue(updateState, "nextCheckAt", "nextCheckAt"))
+          : "Unavailable",
+      ],
     ];
     card.append(definitionList(entries));
     card.append(apiCompatibilityDetailsNode(app));
     card.append(appPermissionsDetailsNode(app));
+    const updateDetails = appUpdateDetailsNode(app, updateState);
+    if (updateDetails) {
+      card.append(updateDetails);
+    }
     card.append(appAuditDetailsNode(audit, app.auditError));
     const logDetails = appLogDetailsNode(logs, app.logsError);
     if (logDetails) {
@@ -1592,6 +1908,9 @@
       }
       if (uninstallForm) {
         actions.append(uninstallForm);
+      }
+      if (hasUpdateState) {
+        appendAppUpdateActionForms(actions, app, updateState, runtimeRunning);
       }
     }
     if (actions.childNodes.length) {
@@ -3088,12 +3407,15 @@
     const runtimePath = appRuntimePath(app.appId);
     const logsPath = appLogsPath(app.appId, 65536);
     const auditPath = appAuditPath(app.appId);
+    const updatesPath = appUpdatesPath(app.appId, "summary");
     let runtime = null;
     let runtimeError = "";
     let logs = null;
     let logsError = "";
     let audit = app.audit && typeof app.audit === "object" ? app.audit : null;
     let auditError = "";
+    let updateState = appUpdateState(app);
+    let updatesError = "";
     try {
       const runtimeSnapshot = runtimePath ? await loadOptionalJson(apiUrl(runtimePath)) : null;
       runtime =
@@ -3124,7 +3446,19 @@
       auditError =
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
-    return { ...app, runtime, runtimeError, logs, logsError, audit, auditError };
+    try {
+      const updatesSnapshot = updatesPath ? await loadOptionalJson(apiUrl(updatesPath)) : null;
+      updateState =
+        updatesSnapshot && updatesSnapshot.updateState && typeof updatesSnapshot.updateState === "object"
+          ? updatesSnapshot.updateState
+          : updatesSnapshot && updatesSnapshot.updates && typeof updatesSnapshot.updates === "object"
+            ? updatesSnapshot.updates
+            : updatesSnapshot || updateState;
+    } catch (error) {
+      updatesError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+    return { ...app, runtime, runtimeError, logs, logsError, audit, auditError, updateState, updatesError };
   }
 
   async function loadCatalogApps(catalog) {
@@ -3188,6 +3522,30 @@
       if (operation && operation !== action) {
         setAppsStatus(`App action completed: ${operation.replaceAll("_", " ")}.`, "is-success");
       }
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitAppUpdateMutation(form, action) {
+    const disabledReason = form.dataset.disabledReason || "";
+    if (disabledReason) {
+      setAppsStatus(disabledReason, "is-error");
+      return;
+    }
+    const appId = form.dataset.appId || "";
+    const path = appUpdatesPath(appId, action);
+    const appName = form.dataset.appName || appDisplayName({ appId });
+    if (!path) {
+      setAppsStatus("App update action unavailable for this app.", "is-error");
+      return;
+    }
+
+    try {
+      const data = await postForm(path, new FormData(form), "App update actions unavailable in read-only mode.");
+      const operation = data.operation || `update_${action}`;
+      setAppsStatus(`${appName} update action completed: ${operation.replaceAll("_", " ")}.`, "is-success");
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -3861,6 +4219,12 @@
       if (catalogAction) {
         event.preventDefault();
         await submitCatalogMutation(form, catalogAction);
+        return;
+      }
+      const appUpdateAction = form.dataset.appUpdateAction;
+      if (appUpdateAction) {
+        event.preventDefault();
+        await submitAppUpdateMutation(form, appUpdateAction);
         return;
       }
       const action = form.dataset.appAction;

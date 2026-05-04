@@ -385,7 +385,10 @@ development-only escape hatch for unsigned local testing.
 
 Do not commit production private signing keys to this repository. Keep local development keys
 outside the repo and pass them through Gradle properties or environment variables. Catalog-backed
-install/update endpoints are available now; background app-update scheduling remains future work.
+install/update endpoints are available now; catalog-backed candidate detection and explicit
+apply-when-stopped updates are implemented, while silent auto-update is not the default. See
+[docs/app-update-lifecycle.md](docs/app-update-lifecycle.md) for manual apply, review gates, and
+rollback scope.
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
 inputs.
 
@@ -1001,7 +1004,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   supported. Signed local and HTTPS catalog sources can now install or update apps through the
   same AppHost staged-directory semantics. Static app UIs are served from the installed bundle on
   isolated per-app loopback origins when available, with `/apps/{appId}/` retained as a
-  compatibility fallback; background app-update fetching remains future work.
+  compatibility fallback. Catalog-backed candidate detection and explicit apply-when-stopped
+  updates are implemented; silent automatic update is not the default. Bundle rollback restores
+  only the immutable installed bundle and does not roll back app data or cache.
 
 ## Architecture Overview
 

@@ -101,6 +101,61 @@
     },
     {
       "details": {
+        "checks": {
+          "updateApplyRunningConflictTest": true,
+          "updateApplyRunningConflictRouteTest": true,
+          "candidateCompatibilityMetadata": true,
+          "candidateDetectionSemantics": true,
+          "candidateReviewMetadata": true,
+          "catalogVersionComparison": true,
+          "apphostUpdateEntryPoint": true,
+          "hostApplyWhenStoppedGate": true,
+          "lifecycleHandlerRoutesStageAndApply": true,
+          "lifecycleServiceApplyDelegatesToAppHost": true,
+          "lifecycleServiceStagesVerifiedPlan": true,
+          "managedStageCopyBeforeValidation": true,
+          "manualApplyPolicyDocumented": true,
+          "matchingAppIdGate": true,
+          "permissionDeltaReview": true,
+          "policyModes": true
+        },
+        "liveNodeRequired": false,
+        "policy": "manual/stage/apply_when_stopped",
+        "silentAutoUpdateDefault": false
+      },
+      "id": "app-update.lifecycle",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-update lifecycle policy passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "durableRollbackRoot": true,
+          "installedBundleRecordedForRollback": true,
+          "managedBackupAllocated": true,
+          "manualRollbackSwapsBundles": true,
+          "mutableDirectoriesPreservedByUpdate": true,
+          "mutableDirectoriesPreservedByRollback": true,
+          "replacementCommitToleratesPreviousRecordCleanupFailure": true,
+          "restorePreviousBundleOnReplacementFailure": true,
+          "rollbackHealthGate": true,
+          "rollbackMetadataPathFree": true,
+          "rollbackScopeDocumented": true
+        },
+        "liveNodeRequired": false,
+        "preservesDataCacheRun": true,
+        "rollbackScope": "installed-bundle-only"
+      },
+      "id": "app-update.rollback",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-update rollback scope passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
         "enabled": false
       },
       "id": "apphost.live",

@@ -49,6 +49,19 @@ public record AppHostLayout(Path dataDir, Path cacheDir, Path runDir) {
   }
 
   /**
+   * Returns the root directory that holds previous bundles for rollback.
+   *
+   * <p>This tree is host-managed installation state, not application data. Each entry is the single
+   * previous verified installed bundle retained for one app id after a successful update or
+   * rollback.
+   *
+   * @return rollback root under {@code dataDir}
+   */
+  public Path rollbackAppsDir() {
+    return dataDir.resolve("apps").resolve("rollback");
+  }
+
+  /**
    * Returns the root directory that holds persistent app data.
    *
    * <p>This tree is the long-lived writable area that survives restarts and reinstalls unless the

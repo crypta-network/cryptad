@@ -1356,6 +1356,289 @@ def collect_sandbox_provider_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+def read_source(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def collect_app_update_lifecycle_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    apphost_source = (
+        settings.workspace_root
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
+    )
+    catalog_handler_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    update_service_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    update_handler_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdatesApiHandler.java"
+    )
+    update_policy_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdatePolicyMode.java"
+    )
+    update_candidate_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java"
+    )
+    update_status_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidateStatus.java"
+    )
+    update_service_test_source = (
+        settings.workspace_root
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
+    )
+    router_test_source = settings.workspace_root / "src/test/java/network/crypta/platform/api/PlatformApiRouterTest.java"
+    lifecycle_doc = settings.workspace_root / "docs/app-update-lifecycle.md"
+    apphost_text = read_source(apphost_source)
+    catalog_text = read_source(catalog_handler_source)
+    update_service_text = read_source(update_service_source)
+    update_handler_text = read_source(update_handler_source)
+    policy_text = read_source(update_policy_source)
+    candidate_text = read_source(update_candidate_source)
+    status_text = read_source(update_status_source)
+    update_service_test_text = read_source(update_service_test_source)
+    router_test_text = read_source(router_test_source)
+    doc_text = read_source(lifecycle_doc)
+    checks = {
+        "apphostUpdateEntryPoint": "updateFromDirectory" in apphost_text,
+        "policyModes": (
+            'MANUAL("manual")' in policy_text
+            and 'STAGE("stage")' in policy_text
+            and 'APPLY_WHEN_STOPPED("apply_when_stopped")' in policy_text
+        ),
+        "managedStageCopyBeforeValidation": (
+            "copyDirectoryTree(stagingRoot, temporaryInstallRoot)" in apphost_text
+            and "verifyCopiedBundle(temporaryInstallRoot)" in apphost_text
+            and "validateCopiedBundle(temporaryInstallRoot)" in apphost_text
+        ),
+        "matchingAppIdGate": "requireMatchingUpdateTarget(normalizedAppId, manifest)" in apphost_text,
+        "hostApplyWhenStoppedGate": (
+            "liveRunningProcess(normalizedAppId) != null" in apphost_text
+            and "cannot update a running app" in apphost_text
+        ),
+        "updateApplyRunningConflictTest": (
+            "apply_whenAppStartsAfterPrecheck_expectConflictNotServerError"
+            in update_service_test_text
+            and '"cannot update a running app: " + APP_ID' in update_service_test_text
+            and 'assertEquals("app_running", exception.errorCode())' in update_service_test_text
+        ),
+        "updateApplyRunningConflictRouteTest": (
+            "route_whenAppUpdateApplyRequestedWhileRunning_expectConflictJson" in router_test_text
+            and 'List.of("apps", APP_ID, "updates", "apply")' in router_test_text
+            and "assertEquals(409, response.statusCode())" in router_test_text
+            and 'verify(appHost, never()).updateFromDirectory(APP_ID, stagedDir)' in router_test_text
+            and "app_running" in router_test_text
+        ),
+        "catalogVersionComparison": (
+            "versionDifferent(" in catalog_text
+            and "updateAvailable(" in catalog_text
+            and '"versionDifferent"' in catalog_text
+            and '"updateAvailable"' in catalog_text
+        ),
+        "candidateDetectionSemantics": (
+            'AVAILABLE("available")' in status_text
+            and 'STAGED("staged")' in status_text
+            and 'BLOCKED("blocked")' in status_text
+            and 'INCOMPATIBLE("incompatible")' in status_text
+            and 'AMBIGUOUS("ambiguous")' in status_text
+            and 'ROLLBACK_AVAILABLE("rollback_available")' in status_text
+        ),
+        "candidateReviewMetadata": '"review"' in candidate_text and "reviewSummary" in candidate_text,
+        "candidateCompatibilityMetadata": (
+            '"apiCompatibility"' in candidate_text and "apiCompatibility" in candidate_text
+        ),
+        "permissionDeltaReview": (
+            "permissionDelta" in candidate_text and '"permissionDelta"' in candidate_text
+        ),
+        "lifecycleHandlerRoutesStageAndApply": (
+            "Map<String, Object> stage(String appId)" in update_handler_text
+            and "return updateService.stage(appId)" in update_handler_text
+            and (
+                "Map<String, Object> apply(String appId, Map<String, List<String>> queryParameters)"
+                in update_handler_text
+            )
+            and (
+                "return updateService.apply(appId, applyOptions(queryParameters))"
+                in update_handler_text
+            )
+        ),
+        "lifecycleServiceStagesVerifiedPlan": (
+            "public synchronized Map<String, Object> stage(String appId)" in update_service_text
+            and (
+                "catalogManager.prepareInstallPlan(candidate.catalogId(), appId)"
+                in update_service_text
+            )
+            and "planDiffersFromCandidate(candidate, installed, plan)" in update_service_text
+        ),
+        "lifecycleServiceApplyDelegatesToAppHost": (
+            (
+                "public synchronized Map<String, Object> apply(String appId, ApplyOptions options)"
+                in update_service_text
+            )
+            and (
+                "appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory())"
+                in update_service_text
+            )
+            and "closeStage(normalizedAppId)" in update_service_text
+        ),
+        "manualApplyPolicyDocumented": (
+            "apply_when_stopped" in doc_text
+            and "manual" in doc_text
+            and "stage" in doc_text
+            and "Silent automatic update is not the default" in doc_text
+            and "requires an operator or explicit API caller" in doc_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "policy": "manual/stage/apply_when_stopped",
+        "silentAutoUpdateDefault": False,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "sources": {
+            "apphost": display_path(apphost_source, settings.workspace_root),
+            "catalogHandler": display_path(catalog_handler_source, settings.workspace_root),
+            "updateService": display_path(update_service_source, settings.workspace_root),
+            "updateHandler": display_path(update_handler_source, settings.workspace_root),
+            "updatePolicy": display_path(update_policy_source, settings.workspace_root),
+            "updateCandidate": display_path(update_candidate_source, settings.workspace_root),
+            "updateStatus": display_path(update_status_source, settings.workspace_root),
+            "updateServiceTest": display_path(update_service_test_source, settings.workspace_root),
+            "routerTest": display_path(router_test_source, settings.workspace_root),
+            "lifecycleDoc": display_path(lifecycle_doc, settings.workspace_root),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-update.lifecycle",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "App-update lifecycle evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-update.lifecycle",
+        "pass",
+        True,
+        "App-update lifecycle policy passed deterministic offline evidence checks.",
+        source,
+        details,
+    )
+
+
+def collect_app_update_rollback_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    apphost_source = (
+        settings.workspace_root
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
+    )
+    apphost_test_source = (
+        settings.workspace_root
+        / "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java"
+    )
+    lifecycle_doc = settings.workspace_root / "docs/app-update-lifecycle.md"
+    apphost_text = read_source(apphost_source)
+    apphost_test_text = read_source(apphost_test_source)
+    doc_text = read_source(lifecycle_doc)
+    checks = {
+        "managedBackupAllocated": (
+            "TEMP_UPDATE_BACKUP_PREFIX" in apphost_text
+            and "temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX" in apphost_text
+        ),
+        "durableRollbackRoot": (
+            "rollbackRootFor" in apphost_text
+            and "ensureRollbackAppsDirectory" in apphost_text
+            and "rollbackStatus" in apphost_text
+        ),
+        "installedBundleRecordedForRollback": (
+            "moveIntoPlace(installedRoot, backupRoot)" in apphost_text
+            and "moveIntoPlace(backupRoot, rollbackRoot)" in apphost_text
+        ),
+        "restorePreviousBundleOnReplacementFailure": (
+            "restoreInstalledBundle(installedRoot, backupRoot, updateFailure)" in apphost_text
+            and "restorePreviousRollback(" in apphost_text
+        ),
+        "manualRollbackSwapsBundles": (
+            "swapInstalledBundleWithRollback" in apphost_text
+            and "moveIntoPlace(rollbackRoot, installedRoot)" in apphost_text
+            and "moveIntoPlace(currentInstallBackupRoot, rollbackRoot)" in apphost_text
+        ),
+        "replacementCommitToleratesPreviousRecordCleanupFailure": (
+            "deleteBackupAfterSuccessfulReplacement" in apphost_text
+            and "simulated backup cleanup failure" in apphost_test_text
+            and "cleanupAttempts.incrementAndGet()" in apphost_test_text
+            and 'resolve("first").resolve(SAMPLE_APP_ID)' in apphost_test_text
+            and "assertEquals(0, cleanupAttempts.get())" in apphost_test_text
+            and 'resolve("second").resolve(SAMPLE_APP_ID)' in apphost_test_text
+            and "firstUpdate.manifest().appVersion()" in apphost_test_text
+            and "assertEquals(1, cleanupAttempts.get())" in apphost_test_text
+            and "expectPreviousBundleRecordedForRollback" in apphost_test_text
+        ),
+        "mutableDirectoriesPreservedByUpdate": (
+            "preserve-data.txt" in apphost_test_text
+            and "preserve-cache.txt" in apphost_test_text
+            and "preserve-run.txt" in apphost_test_text
+        ),
+        "mutableDirectoriesPreservedByRollback": (
+            "rollback-data.txt" in apphost_test_text
+            and "rollback-cache.txt" in apphost_test_text
+            and "rollback-run.txt" in apphost_test_text
+        ),
+        "rollbackHealthGate": (
+            "cannot rollback a running app" in apphost_text
+            and "rollback_whenAppIsRunning_expectFailureAndInstalledBundleUnchanged" in apphost_test_text
+        ),
+        "rollbackMetadataPathFree": (
+            "rollbackStatus_whenRecordExists_expectMetadataOmitsTokensAndHostPaths" in apphost_test_text
+        ),
+        "rollbackScopeDocumented": (
+            "Rollback covers only the immutable installed bundle" in doc_text
+            and "Rollback does not roll back" in doc_text
+            and "app data directories" in doc_text
+            and "app cache directories" in doc_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "rollbackScope": "installed-bundle-only",
+        "preservesDataCacheRun": True,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "sources": {
+            "apphost": display_path(apphost_source, settings.workspace_root),
+            "apphostTest": display_path(apphost_test_source, settings.workspace_root),
+            "lifecycleDoc": display_path(lifecycle_doc, settings.workspace_root),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-update.rollback",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "App-update rollback evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-update.rollback",
+        "pass",
+        True,
+        "App-update rollback scope passed deterministic offline evidence checks.",
+        source,
+        details,
+    )
+
+
 def build_http_request(
     method: str, url: str, form_password: str = "", data: dict[str, str] | None = None
 ) -> urllib.request.Request:
@@ -1548,6 +1831,7 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem]) -> dict[str,
         "redaction": {
             "secretMaterialRedacted": True,
             "rawRequestBodiesExcluded": True,
+            "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
         },
     }
@@ -1568,6 +1852,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_ui_evidence(settings),
         collect_legacy_evidence(settings),
         collect_sandbox_provider_evidence(settings),
+        collect_app_update_lifecycle_evidence(settings),
+        collect_app_update_rollback_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
     sanitized_evidence = [
@@ -1945,6 +2231,23 @@ def run_self_test(repo_root: Path) -> None:
         assert sandbox_checks["noSetenvCommand"] is True, sandbox_checks
         assert "enforcedStatusToken" not in sandbox_checks, sandbox_checks
         assert "noTokenSetenvCommand" not in sandbox_checks, sandbox_checks
+        assert evidence_by_id["app-update.lifecycle"]["status"] == "pass"
+        assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
+        lifecycle_checks = evidence_by_id["app-update.lifecycle"]["details"]["checks"]
+        assert lifecycle_checks["hostApplyWhenStoppedGate"] is True, lifecycle_checks
+        assert lifecycle_checks["updateApplyRunningConflictTest"] is True, lifecycle_checks
+        assert lifecycle_checks["updateApplyRunningConflictRouteTest"] is True, lifecycle_checks
+        assert lifecycle_checks["candidateDetectionSemantics"] is True, lifecycle_checks
+        assert lifecycle_checks["permissionDeltaReview"] is True, lifecycle_checks
+        assert lifecycle_checks["lifecycleHandlerRoutesStageAndApply"] is True, lifecycle_checks
+        assert lifecycle_checks["lifecycleServiceStagesVerifiedPlan"] is True, lifecycle_checks
+        assert lifecycle_checks["lifecycleServiceApplyDelegatesToAppHost"] is True, lifecycle_checks
+        assert evidence_by_id["app-update.rollback"]["status"] == "pass"
+        assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
+        rollback_checks = evidence_by_id["app-update.rollback"]["details"]["checks"]
+        assert rollback_checks["restorePreviousBundleOnReplacementFailure"] is True, rollback_checks
+        assert rollback_checks["mutableDirectoriesPreservedByUpdate"] is True, rollback_checks
+        assert rollback_checks["mutableDirectoriesPreservedByRollback"] is True, rollback_checks
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
@@ -2223,6 +2526,257 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (sandbox_test_dir / "BubblewrapSandboxProviderTest.java").write_text(
         "class BubblewrapSandboxProviderTest { }\n", encoding="utf-8"
+    )
+    apphost = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
+    apphost.parent.mkdir(parents=True, exist_ok=True)
+    apphost.write_text(
+        """
+class LocalProcessAppHost {
+  private static final String TEMP_UPDATE_BACKUP_PREFIX = "app-install-backup-";
+  private static final String TEMP_ROLLBACK_BACKUP_PREFIX = "app-rollback-backup-";
+  InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory) throws IOException {
+    if (liveRunningProcess(normalizedAppId) != null) {
+      throw new AppHostException("cannot update a running app: " + normalizedAppId);
+    }
+    Path rollbackAppsDir = ensureRollbackAppsDirectory();
+    Path backupInstallRoot = temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+    Path rollbackRoot = rollbackRootFor(normalizedAppId);
+    Path previousRollbackBackupRoot = temporaryManagedPath(rollbackAppsDir, TEMP_ROLLBACK_BACKUP_PREFIX + normalizedAppId + "-");
+    copyDirectoryTree(stagingRoot, temporaryInstallRoot);
+    verifyCopiedBundle(temporaryInstallRoot);
+    AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
+    requireMatchingUpdateTarget(normalizedAppId, manifest);
+    replaceInstalledBundle(paths.installedRoot(), temporaryInstallRoot, backupInstallRoot, rollbackRoot, previousRollbackBackupRoot);
+    cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+  Optional<AppRollbackRecord> rollbackStatus(String appId) throws IOException {
+    return Optional.of(new AppRollbackRecord(appId));
+  }
+  InstalledAppSnapshot rollback(String appId) throws IOException {
+    if (liveRunningProcess(normalizedAppId) != null) {
+      throw new AppHostException("cannot rollback a running app: " + normalizedAppId);
+    }
+    Path rollbackRoot = rollbackRootFor(normalizedAppId);
+    Path currentInstallBackupRoot = temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+    swapInstalledBundleWithRollback(paths.installedRoot(), rollbackRoot, currentInstallBackupRoot);
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+  private Path rollbackRootFor(String appId) { return layout.rollbackAppsDir().resolve(appId); }
+  private Path ensureRollbackAppsDirectory() { return layout.rollbackAppsDir(); }
+  private void replaceInstalledBundle(Path installedRoot, Path replacementRoot, Path backupRoot, Path rollbackRoot, Path previousRollbackBackupRoot) throws IOException {
+    moveIntoPlace(installedRoot, backupRoot);
+    try {
+      moveIntoPlace(replacementRoot, installedRoot);
+      moveIntoPlace(backupRoot, rollbackRoot);
+    } catch (IOException updateFailure) {
+      restoreInstalledBundle(installedRoot, backupRoot, updateFailure);
+      restorePreviousRollback(rollbackRoot, previousRollbackBackupRoot, true, updateFailure);
+      throw updateFailure;
+    }
+    deleteBackupAfterSuccessfulReplacement(previousRollbackBackupRoot, true);
+  }
+  private void swapInstalledBundleWithRollback(Path installedRoot, Path rollbackRoot, Path currentInstallBackupRoot) throws IOException {
+    moveIntoPlace(installedRoot, currentInstallBackupRoot);
+    moveIntoPlace(rollbackRoot, installedRoot);
+    moveIntoPlace(currentInstallBackupRoot, rollbackRoot);
+  }
+  private void deleteBackupAfterSuccessfulReplacement(Path backupRoot, boolean backupPresent) throws IOException {
+    throw new IOException("simulated backup cleanup failure");
+  }
+  private static void restoreInstalledBundle(Path installedRoot, Path backupRoot, IOException updateFailure) throws IOException {
+    moveIntoPlace(backupRoot, installedRoot);
+  }
+  private static void restorePreviousRollback(Path rollbackRoot, Path backupRoot, boolean backupPresent, IOException updateFailure) throws IOException {
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    apphost_test = (
+        workspace
+        / "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java"
+    )
+    apphost_test.parent.mkdir(parents=True, exist_ok=True)
+    apphost_test.write_text(
+        """
+class LocalProcessAppHostTest {
+  void updateFromDirectory_whenInstalledStoppedApp_expectManifestAndExecutableReplacedPreservingMutableDirs() {
+    String data = "preserve-data.txt";
+    String cache = "preserve-cache.txt";
+    String run = "preserve-run.txt";
+  }
+  void updateFromDirectory_whenReplacingStoppedApp_expectPreviousBundleRecordedForRollback() {
+    AtomicInteger cleanupAttempts = new AtomicInteger();
+    LocalProcessAppHost host = allowUnsignedHost(_ -> {
+      cleanupAttempts.incrementAndGet();
+      throw new IOException("simulated backup cleanup failure");
+    });
+    Path firstUpdatedStage =
+        stageInstalledAppAt(tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("first").resolve(SAMPLE_APP_ID));
+    InstalledAppSnapshot firstUpdate = host.updateFromDirectory(SAMPLE_APP_ID, firstUpdatedStage);
+    assertEquals(0, cleanupAttempts.get());
+    Path secondUpdatedStage =
+        stageInstalledAppAt(tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("second").resolve(SAMPLE_APP_ID));
+    host.updateFromDirectory(SAMPLE_APP_ID, secondUpdatedStage);
+    assertEquals(
+        firstUpdate.manifest().appVersion(),
+        host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+    assertEquals(1, cleanupAttempts.get());
+  }
+  void rollback_whenPreviousBundleExists_expectRestoresBundleAndPreservesMutableDirs() {
+    String data = "rollback-data.txt";
+    String cache = "rollback-cache.txt";
+    String run = "rollback-run.txt";
+  }
+  void rollback_whenAppIsRunning_expectFailureAndInstalledBundleUnchanged() {}
+  void rollbackStatus_whenRecordExists_expectMetadataOmitsTokensAndHostPaths() {}
+}
+""",
+        encoding="utf-8",
+    )
+    appupdates_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates"
+    appupdates_dir.mkdir(parents=True, exist_ok=True)
+    (appupdates_dir / "AppUpdatePolicyMode.java").write_text(
+        """
+enum AppUpdatePolicyMode {
+  MANUAL("manual"),
+  STAGE("stage"),
+  APPLY_WHEN_STOPPED("apply_when_stopped");
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateCandidateStatus.java").write_text(
+        """
+enum AppUpdateCandidateStatus {
+  AVAILABLE("available"),
+  STAGED("staged"),
+  BLOCKED("blocked"),
+  INCOMPATIBLE("incompatible"),
+  AMBIGUOUS("ambiguous"),
+  ROLLBACK_AVAILABLE("rollback_available");
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateCandidate.java").write_text(
+        """
+record AppUpdateCandidate() {
+  Map<String, Object> toJsonValue() {
+    json.put("review", review);
+    json.put("apiCompatibility", apiCompatibility);
+    json.put("permissionDelta", permissionDelta(candidatePermissions, installedPermissions));
+    return json;
+  }
+  static Map<String, Object> reviewSummary(String status, String note) { return Map.of(); }
+  static Map<String, Object> permissionDelta(List<String> candidatePermissions, List<String> local) { return Map.of(); }
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateService.java").write_text(
+        """
+class AppUpdateService {
+  public synchronized Map<String, Object> stage(String appId) {
+    AppUpdateCandidate candidate = candidateOrDetect(appId, installed);
+    AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
+    if (planDiffersFromCandidate(candidate, installed, plan)) {
+      throw new PlatformApiException(409, "update_candidate_changed", "changed");
+    }
+    stageCandidate(appId, installed, candidate);
+    return summary(appId, installed);
+  }
+
+  public synchronized Map<String, Object> apply(String appId, ApplyOptions options) {
+    InstalledAppSnapshot updated =
+        appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
+    closeStage(normalizedAppId);
+    return summary(normalizedAppId, updated);
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdatesApiHandler.java").write_text(
+        """
+class AppUpdatesApiHandler {
+  public Map<String, Object> stage(String appId) {
+    return updateService.stage(appId);
+  }
+
+  public Map<String, Object> apply(String appId, Map<String, List<String>> queryParameters) {
+    return updateService.apply(appId, applyOptions(queryParameters));
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    appupdates_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api/appupdates"
+    appupdates_test_dir.mkdir(parents=True, exist_ok=True)
+    (appupdates_test_dir / "AppUpdateServiceTest.java").write_text(
+        """
+class AppUpdateServiceTest {
+  void apply_whenAppStartsAfterPrecheck_expectConflictNotServerError() {
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+        .thenThrow(new AppHostException("cannot update a running app: " + APP_ID));
+    assertEquals("app_running", exception.errorCode());
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    router_test = workspace / "src/test/java/network/crypta/platform/api/PlatformApiRouterTest.java"
+    router_test.parent.mkdir(parents=True, exist_ok=True)
+    router_test.write_text(
+        """
+class PlatformApiRouterTest {
+  void route_whenAppUpdateApplyRequestedWhileRunning_expectConflictJson() {
+    PlatformApiResponse response =
+        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "apply"), Map.of()));
+    assertEquals(409, response.statusCode());
+    assertTrue(response.body().contains("\\\"code\\\":\\\"app_running\\\""));
+    verify(appHost, never()).updateFromDirectory(APP_ID, stagedDir);
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    catalog_handler = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    catalog_handler.parent.mkdir(parents=True, exist_ok=True)
+    catalog_handler.write_text(
+        """
+class AppCatalogsApiHandler {
+  void summarize() {
+    json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
+    json.put("updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
+    json.put("review", summarizeReview(entry.review()));
+    json.put("compatibility", summarizeCompatibility(entry.compatibility()));
+    json.put("apiCompatibility", apiCompatibility(entry.compatibility().apiCompatibility(), entry.permissions()));
+    json.put("permissionDelta", summarizePermissionDelta(entry.permissions(), installed));
+    AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+    InstalledAppSnapshot updated = appHost.updateFromDirectory(entry.appId(), plan.stagedBundleDirectory());
+  }
+  private static boolean versionDifferent(String catalogVersion, String installedVersion, boolean installed) { return false; }
+  private static Optional<Boolean> updateAvailable(String catalogVersion, String installedVersion, boolean installed) { return Optional.empty(); }
+}
+""",
+        encoding="utf-8",
+    )
+    lifecycle_doc = workspace / "docs/app-update-lifecycle.md"
+    lifecycle_doc.write_text(
+        """
+AppHost v1 uses an `apply_when_stopped` policy.
+Silent automatic update is not the default.
+Applying an update requires an operator or explicit API caller.
+The policy modes are manual, stage, and apply_when_stopped.
+Rollback covers only the immutable installed bundle.
+Rollback does not roll back app data directories or app cache directories.
+""",
+        encoding="utf-8",
     )
 
 

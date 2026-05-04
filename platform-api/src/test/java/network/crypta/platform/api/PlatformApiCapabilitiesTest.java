@@ -121,6 +121,19 @@ class PlatformApiCapabilitiesTest {
   }
 
   @Test
+  void authorize_whenAppUpdateLifecycleLacksCatalogManage_expectDenied() {
+    PlatformApiAuthorizationDecision decision =
+        PlatformApiCapabilities.authorize(
+            appRequest(
+                "POST", List.of("apps", "alpha", "updates", "stage"), List.of("apps.manage")));
+
+    assertFalse(decision.allowed());
+    assertEquals("missing_capability", decision.reasonCode());
+    assertEquals(
+        List.of("apps.manage", "catalogs.manage"), decision.action().requiredCapabilities());
+  }
+
+  @Test
   void authorize_whenAppHitsUnmappedRoute_expectDeniedByDefault() {
     PlatformApiAuthorizationDecision decision =
         PlatformApiCapabilities.authorize(
@@ -233,6 +246,40 @@ class PlatformApiCapabilitiesTest {
         route("GET", List.of("apps", "alpha", "logs"), "apps", "apps.read", "apps.read"),
         route("GET", List.of("apps", "alpha", "permissions"), "apps", "apps.read", "apps.read"),
         route("GET", List.of("apps", "alpha", "audit"), "apps", "apps.read", "apps.read"),
+        route("GET", List.of("apps", "alpha", "updates"), "apps", "apps.read", "apps.read"),
+        route(
+            "GET",
+            List.of("apps", "alpha", "updates", "policy"),
+            "apps",
+            "apps.updates.policy",
+            "apps.read"),
+        route(
+            "POST",
+            List.of("apps", "alpha", "updates", "check"),
+            "apps",
+            "apps.updates.check",
+            "apps.manage",
+            "catalogs.manage"),
+        route(
+            "POST",
+            List.of("apps", "alpha", "updates", "stage"),
+            "apps",
+            "apps.updates.stage",
+            "apps.manage",
+            "catalogs.manage"),
+        route(
+            "POST",
+            List.of("apps", "alpha", "updates", "apply"),
+            "apps",
+            "apps.updates.apply",
+            "apps.manage",
+            "catalogs.manage"),
+        route(
+            "POST",
+            List.of("apps", "alpha", "updates", "rollback"),
+            "apps",
+            "apps.updates.rollback",
+            "apps.manage"),
         route("POST", List.of("apps", "install"), "apps", "apps.install", "apps.manage"),
         route("DELETE", List.of("apps", "alpha"), "apps", "apps.uninstall", "apps.manage"),
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
@@ -294,6 +341,7 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "start")),
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "logs")),
+        new UnmappedRouteCase("POST", List.of("apps", "alpha", "updates", "policy")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "refresh")),
         new UnmappedRouteCase(

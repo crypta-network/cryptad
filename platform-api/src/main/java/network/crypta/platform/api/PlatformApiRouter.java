@@ -6,6 +6,8 @@ import java.util.Objects;
 import network.crypta.platform.api.alerts.AlertsApiHandler;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
+import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.appupdates.AppUpdatesApiHandler;
 import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
@@ -45,6 +47,12 @@ public final class PlatformApiRouter {
   /** Envelope key for one catalog summary. */
   private static final String CATALOG_ENVELOPE_KEY = "catalog";
 
+  /** Shared route segment and envelope key for app-update lifecycle responses. */
+  private static final String UPDATES_ROUTE_SEGMENT = "updates";
+
+  /** Shared route segment and envelope key for app-update policy responses. */
+  private static final String POLICY_ROUTE_SEGMENT = "policy";
+
   /** Handler for the {@code /node/...} endpoint family. */
   private final NodeApiHandler nodeApiHandler;
 
@@ -77,6 +85,9 @@ public final class PlatformApiRouter {
 
   /** Handler for the {@code /apps/...} endpoint family, when AppHost support is available. */
   private final AppsApiHandler appsApiHandler;
+
+  /** Handler for the {@code /apps/{appId}/updates/...} endpoint family. */
+  private final AppUpdatesApiHandler appUpdatesApiHandler;
 
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
@@ -216,6 +227,10 @@ public final class PlatformApiRouter {
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
     appsApiHandler =
         appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog, appUiOriginRegistry);
+    appUpdatesApiHandler =
+        appHost == null || appCatalogManager == null
+            ? null
+            : new AppUpdatesApiHandler(new AppUpdateService(appHost, appCatalogManager));
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
@@ -316,7 +331,7 @@ public final class PlatformApiRouter {
     if ("security-levels".equals(firstSegment)) {
       return routeSecurityLevelsRequest(segments, request);
     }
-    if ("updates".equals(firstSegment)) {
+    if (UPDATES_ROUTE_SEGMENT.equals(firstSegment)) {
       return routeUpdatesRequest(segments, request);
     }
     if ("wizard".equals(firstSegment)) {
@@ -553,6 +568,7 @@ public final class PlatformApiRouter {
       case 1 -> routeAppsCollection(request.method());
       case 2 -> routeAppsResource(segments.get(1), request);
       case 3 -> routeAppsAction(segments.get(1), segments.get(2), request);
+      case 4 -> routeAppsNestedAction(segments.get(1), segments.get(2), segments.get(3), request);
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }
@@ -669,6 +685,16 @@ public final class PlatformApiRouter {
         }
         yield PlatformApiResponse.ok(envelope("audit", appsApiHandler.audit(appId)));
       }
+      case UPDATES_ROUTE_SEGMENT -> {
+        if (appUpdatesApiHandler == null) {
+          throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+        }
+        if (!"GET".equals(method)) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(UPDATES_ROUTE_SEGMENT, appUpdatesApiHandler.summary(appId)));
+      }
       case "start" -> {
         if (!"POST".equals(method)) {
           yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
@@ -690,6 +716,65 @@ public final class PlatformApiRouter {
       }
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
+  }
+
+  private PlatformApiResponse routeAppsNestedAction(
+      String appId, String resource, String action, PlatformApiRequest request) {
+    if (!UPDATES_ROUTE_SEGMENT.equals(resource) || appUpdatesApiHandler == null) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    return switch (action) {
+      case "check" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                UPDATES_ROUTE_SEGMENT,
+                appUpdatesApiHandler.check(appId, request.queryParameters())));
+      }
+      case "stage" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(UPDATES_ROUTE_SEGMENT, appUpdatesApiHandler.stage(appId)));
+      }
+      case "apply" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                UPDATES_ROUTE_SEGMENT,
+                appUpdatesApiHandler.apply(appId, request.queryParameters())));
+      }
+      case "rollback" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                UPDATES_ROUTE_SEGMENT,
+                appUpdatesApiHandler.rollback(appId, request.queryParameters())));
+      }
+      case POLICY_ROUTE_SEGMENT -> routeAppUpdatesPolicy(appId, request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeAppUpdatesPolicy(String appId, PlatformApiRequest request) {
+    if ("GET".equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope(POLICY_ROUTE_SEGMENT, appUpdatesApiHandler.policy(appId)));
+    }
+    if ("POST".equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope(
+              POLICY_ROUTE_SEGMENT,
+              appUpdatesApiHandler.setPolicy(appId, request.queryParameters())));
+    }
+    return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
   }
 
   /**

@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=1
+contractVersion=2
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 1,
+    "contractVersion": 2,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -82,8 +82,16 @@ so the contract and route-to-capability policy do not maintain separate route li
 | `scheduled-for-removal` | Still callable now, with planned removal metadata. |
 | `internal` | Not app-facing; developer tooling treats app use as an error. |
 
-PR-215 does not deprecate or remove any existing capability. The initial v1 contract marks the
-current app-facing capabilities and endpoints as stable.
+Contract version 2 adds the installed-app update lifecycle endpoints under
+`/apps/{appId}/updates`. Existing version 1 capabilities and endpoints remain stable, and their
+descriptors keep `sinceContractVersion=1` so tooling can distinguish old and newly introduced
+surface area.
+
+Catalog-backed update lifecycle mutations preserve the catalog capability boundary for app
+principals. App principals need `apps.manage` plus `catalogs.manage` for update `check`, `stage`,
+and `apply` actions because those routes can refresh signed catalogs, prepare catalog install
+plans, or apply catalog-staged bundles. Host/operator calls keep the existing local-management
+bypass.
 
 ## App manifest metadata
 
@@ -163,8 +171,8 @@ Installed app summaries and catalog app summaries include an `apiCompatibility` 
 ```json
 {
   "minimumVersion": 1,
-  "maximumTestedVersion": 1,
-  "currentVersion": 1,
+  "maximumTestedVersion": 2,
+  "currentVersion": 2,
   "optionalCapabilities": [],
   "experimentalCapabilitiesAccepted": false,
   "declared": true,

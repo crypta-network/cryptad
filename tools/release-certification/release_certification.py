@@ -558,6 +558,8 @@ def app_platform_evidence(
         "app-ui.smoke",
         "legacy.retirement",
         "apphost.sandbox-provider",
+        "app-update.lifecycle",
+        "app-update.rollback",
         "apphost.live",
     ]
     if summary is None:
@@ -804,6 +806,7 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem], copied_artif
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
             "secretMaterialRedacted": True,
+            "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
         },
     }
@@ -850,6 +853,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "catalog.smoke",
         "app-ui.smoke",
         "apphost.sandbox-provider",
+        "app-update.lifecycle",
+        "app-update.rollback",
         "apphost.live",
     ):
         append_detail(lines, summary, evidence_id)
@@ -860,8 +865,9 @@ def render_report(summary: dict[str, Any]) -> str:
             "",
             "## Redaction Rules",
             "",
-            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, and private insert URIs are not included.",
+            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw update or rollback command output, and private insert URIs are not included.",
             "- Local absolute paths are sanitized as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.",
+            "- Catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and rollback backup paths are sanitized.",
             "- `artifacts/private-insert-uris.json` is excluded even if an interop summary references it.",
             "",
         ]
@@ -1026,6 +1032,11 @@ def run_self_test(repo_root: Path) -> None:
         assert exit_code == 0, summary
         assert summary["status"] == "pass", summary
         assert summary["releaseCandidatePassed"] is True, summary
+        evidence_by_id = {item["id"]: item for item in summary["evidence"]}
+        assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [
@@ -1114,6 +1125,31 @@ def run_self_test(repo_root: Path) -> None:
         assert pr_app_exit_code == 1, pr_app_cert_summary
         assert pr_app_cert_summary["status"] == "fail", pr_app_cert_summary
         assert pr_app_cert_summary["releaseCandidatePassed"] is False, pr_app_cert_summary
+
+        missing_update_evidence_path = workspace / "build/app-platform-missing-update/summary.json"
+        missing_update_summary = read_json(settings.app_platform_summary)
+        assert missing_update_summary is not None
+        missing_update_summary["evidence"] = [
+            item
+            for item in missing_update_summary["evidence"]
+            if item.get("id") not in {"app-update.lifecycle", "app-update.rollback"}
+        ]
+        write_json(missing_update_evidence_path, missing_update_summary)
+        missing_update_items = app_platform_evidence(
+            missing_update_evidence_path, workspace, out_dir, "release-candidate"
+        )
+        missing_update_by_id = {item.id: item for item in missing_update_items}
+        assert missing_update_by_id["app-update.lifecycle"].status == "missing", missing_update_by_id
+        assert missing_update_by_id["app-update.rollback"].status == "missing", missing_update_by_id
+        missing_update_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/missing-update-cert").resolve(),
+            app_platform_summary=missing_update_evidence_path,
+        )
+        missing_update_cert_summary, missing_update_exit_code = run(missing_update_settings)
+        assert missing_update_exit_code == 1, missing_update_cert_summary
+        assert missing_update_cert_summary["status"] == "fail", missing_update_cert_summary
+        assert missing_update_cert_summary["releaseCandidatePassed"] is False, missing_update_cert_summary
 
         stale_artifact = out_dir / "artifacts/stale-from-previous-run.txt"
         stale_artifact.write_text("old evidence\n", encoding="utf-8")

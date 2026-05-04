@@ -1,0 +1,134 @@
+# App update lifecycle
+
+This document describes the v1 lifecycle for Cryptad AppHost app updates and rollback evidence.
+
+## Scope
+
+App updates are local AppHost bundle replacements. They are separate from CoreUpdater and do not
+change peer protocols, core package downloads, catalog trust roots, or app data formats.
+
+The v1 policy is:
+
+| Step | Policy | Release evidence |
+| --- | --- | --- |
+| Detect | Catalog detail and listing responses compare the installed app version with the verified catalog entry. | `app-update.lifecycle` |
+| Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, review notes, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
+| Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
+| Apply | Applying an update is manual by default. The target app must be stopped unless an explicit restart request allows stop/start choreography. | `app-update.lifecycle` |
+| Roll back | A successful update records the previous installed bundle as the durable rollback target. If replacement cannot complete, AppHost restores the previous bundle from a managed backup. | `app-update.rollback` |
+
+Silent automatic update is not the default. Catalog refresh can discover candidates and preserve the
+last verified catalog, but applying an update still requires an operator or explicit API caller.
+The update summary exposes scheduler state for clients, but the v1 scheduler is disabled by default
+and manual `check` requests are the stable trigger.
+
+Host/operator requests can manage the local lifecycle after the HTTP bridge has enforced its
+form-password guard. App principals remain default-deny and must carry the route capabilities
+published by the Platform API contract. Catalog-backed update lifecycle mutations require both
+`apps.manage` and `catalogs.manage` for app principals because `check`, `stage`, and `apply` can
+refresh signed catalogs, prepare catalog install plans, or apply catalog-staged bundles.
+
+Policy modes are explicit:
+
+| Mode | Behavior |
+| --- | --- |
+| `manual` | Detect candidates and show review metadata. Do not stage or apply automatically. This is the default. |
+| `stage` | Stage eligible verified candidates for later review. Do not apply automatically. |
+| `apply_when_stopped` | Apply eligible candidates only when the app is already stopped and review gates allow it. Do not stop a running app to update it. |
+
+## Candidate detection
+
+Catalog responses expose two related values for installed apps:
+
+- `versionDifferent` is true when the app is installed and the catalog version differs from the
+  installed version.
+- `updateAvailable` is true only when Cryptad can compare dotted numeric versions and the catalog
+  version is newer. It is false for not-installed and equal-version entries, and unknown when either
+  version is missing or comparison is ambiguous.
+
+This keeps the UI honest: a changed catalog version can be shown for review even when the runtime
+cannot prove that it is an upgrade.
+
+## Review gates
+
+The update review surface includes:
+
+- signed catalog verification and signed bundle verification;
+- artifact size and SHA-256 checks before extraction;
+- manifest `app.id` and `app.version` consistency checks;
+- advisory Cryptad build compatibility and Platform API contract compatibility summaries;
+- catalog `review.status` and `review.note`;
+- changelog metadata when present;
+- permission rationales and a permission delta with added, removed, and unchanged permissions.
+
+Catalog review metadata and compatibility metadata are review gates, not trust gates. They do not
+replace signature verification. A compatible newer candidate can still be staged explicitly, but
+policy-driven apply requires `review.status=reviewed`; `unreviewed`, `caution`, and `rejected`
+entries require another operator decision before apply.
+
+## Apply policy
+
+The default app-update policy is `manual`. The `apply_when_stopped` policy is available when an
+operator wants eligible candidates applied by policy, but the app must already be installed and not
+running before the update is applied. Platform API routes check runtime status before calling
+AppHost, and AppHost rechecks the live process table before any installed-bundle mutation.
+
+The update source must already be a local staged directory or a catalog-managed temporary staged
+directory. AppHost copies that stage under managed storage, verifies distribution sidecars when the
+host policy requires signed bundles, parses the manifest, and rejects a manifest whose `app.id`
+does not match the requested update target.
+
+## Rollback scope
+
+Rollback covers only the immutable installed bundle. During update, AppHost moves the existing
+installed bundle to a managed backup path, moves the verified replacement into place, then records
+the previous bundle under AppHost-managed rollback storage. If replacement cannot complete, AppHost
+restores the previous bundle from the managed backup and also preserves any previous rollback
+record.
+
+When an operator or API caller invokes rollback, AppHost swaps the current installed bundle with
+the durable rollback bundle. The app must be stopped for rollback just as it must be stopped for
+update apply.
+
+Rollback does not roll back:
+
+- app data directories;
+- app cache directories;
+- app run directories;
+- process logs;
+- external files an app may have written outside AppHost-managed directories;
+- catalog source state or scratch directories.
+
+Data, cache, and run directories are intentionally preserved across successful updates. If a new
+bundle changes its own data format, the app owns that migration and any app-level downgrade policy.
+
+## Process health gate
+
+The v1 health gate is conservative: an update is not applied while the app has a live process unless
+the API caller explicitly sets `restart=true`. A normal running-app update receives a conflict
+response and the installed bundle is left unchanged. A pending on-failure restart is canceled only
+after an update has been accepted and the replacement bundle is installed.
+
+When `healthCheck=process` is requested with restart behavior, Cryptad starts the app after bundle
+replacement and treats a readable running status as the v1 health signal. If
+`rollbackOnHealthFailure=true` is also set, AppHost restores the previous bundle when that process
+health signal fails and a rollback record is available. Failure responses keep the health failure
+and rollback failure distinct in update history.
+
+This avoids replacing files beneath a running process and keeps rollback limited to durable bundle
+state.
+
+## Release certification
+
+Release candidates require offline evidence for both app-update lifecycle behavior and rollback
+scope:
+
+- `app-update.lifecycle` proves the manual/stage/apply-when-stopped policy, candidate detection,
+  review metadata, permission delta, and compatibility checks are represented in source and tests.
+- `app-update.rollback` proves durable installed-bundle backup/restore behavior and confirms data,
+  cache, and run directories are outside rollback scope.
+
+The evidence is collected by `tools/release-certification/app_platform_smoke.py` and aggregated by
+`tools/release-certification/release_certification.py`. It does not require a live node. Release
+candidates fail when either evidence item is missing, failing, skipped, or wrong-mode unless a
+release manager records a waiver.
