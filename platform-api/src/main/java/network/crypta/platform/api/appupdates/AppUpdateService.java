@@ -357,13 +357,20 @@ public final class AppUpdateService {
       return lifecycleFailure(409, ERROR_APP_RUNNING, "App must be stopped before update.");
     }
     if (isMissingAppFailure(exception)) {
+      clearAppState(appId);
       return appNotFound();
     }
     if (isSignedBundleVerificationFailure(exception) || isInvalidAppBundleFailure(exception)) {
+      clearRejectedStage(appId);
       return lifecycleFailure(
           400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle failed AppHost validation.");
     }
     return lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
+  }
+
+  private void clearRejectedStage(String appId) {
+    closeStage(appId);
+    candidates.remove(appId);
   }
 
   /**

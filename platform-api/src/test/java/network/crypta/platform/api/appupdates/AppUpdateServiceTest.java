@@ -38,6 +38,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
@@ -742,6 +743,7 @@ class AppUpdateServiceTest {
     assertEquals(409, exception.statusCode());
     assertEquals("app_running", exception.errorCode());
     assertEquals(true, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
+    assertTrue(Files.exists(plan.scratchDirectory()));
   }
 
   @Test
@@ -763,6 +765,10 @@ class AppUpdateServiceTest {
 
     assertEquals(404, exception.statusCode());
     assertEquals(APP_NOT_FOUND, exception.errorCode());
+    Map<String, Object> summary = service.summary(APP_ID);
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+    assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
   @Test
@@ -784,6 +790,10 @@ class AppUpdateServiceTest {
 
     assertEquals(400, exception.statusCode());
     assertEquals("invalid_app_bundle", exception.errorCode());
+    Map<String, Object> summary = service.summary(APP_ID);
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+    assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
   @Test
