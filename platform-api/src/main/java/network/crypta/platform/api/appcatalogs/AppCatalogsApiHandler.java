@@ -333,13 +333,16 @@ public final class AppCatalogsApiHandler {
   public Map<String, Object> install(
       String catalogId, String appId, Map<String, List<String>> queryParameters) {
     String normalizedAppId;
+    AppReviewTrustDecision initialReviewTrust;
+    boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
     try {
       AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
       normalizedAppId = entry.appId();
       if (appHost.describe(normalizedAppId).isPresent()) {
         throw conflict(APP_ALREADY_INSTALLED_PREFIX + normalizedAppId);
       }
-      requireReviewGate(reviewTrust(entry), reviewAcknowledged(queryParameters), true);
+      initialReviewTrust = reviewTrust(entry);
+      requireReviewGate(initialReviewTrust, reviewAcknowledged, true);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -348,7 +351,12 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
-      requireReviewGate(reviewTrust(plan.entry()), reviewAcknowledged(queryParameters), true);
+      AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireReviewGate(
+          preparedReviewTrust,
+          reviewAcknowledgementStillApplies(
+              initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
+          true);
       InstalledAppSnapshot installed = appHost.installFromDirectory(plan.stagedBundleDirectory());
       return summarizeInstalledApp(installed.manifest());
     } catch (AppCatalogException exception) {
@@ -409,11 +417,18 @@ public final class AppCatalogsApiHandler {
     } catch (IOException _) {
       // Allow AppHost to repair installs whose manifest is unreadable.
     }
-    requireReviewGate(reviewTrust(entry), reviewAcknowledged(queryParameters), false);
+    AppReviewTrustDecision initialReviewTrust = reviewTrust(entry);
+    boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
+    requireReviewGate(initialReviewTrust, reviewAcknowledged, false);
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
-      requireReviewGate(reviewTrust(plan.entry()), reviewAcknowledged(queryParameters), false);
+      AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireReviewGate(
+          preparedReviewTrust,
+          reviewAcknowledgementStillApplies(
+              initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
+          false);
       InstalledAppSnapshot updated =
           appHost.updateFromDirectory(entry.appId(), plan.stagedBundleDirectory());
       return summarizeInstalledApp(updated.manifest());
@@ -468,6 +483,13 @@ public final class AppCatalogsApiHandler {
           reviewGateFailureCode(reviewTrust),
           action + " requires explicit acknowledgement of the review trust decision.");
     }
+  }
+
+  private static boolean reviewAcknowledgementStillApplies(
+      AppReviewTrustDecision initialDecision,
+      AppReviewTrustDecision preparedDecision,
+      boolean reviewAcknowledged) {
+    return reviewAcknowledged && initialDecision.equals(preparedDecision);
   }
 
   private static String reviewGateFailureCode(Map<String, Object> reviewTrust) {

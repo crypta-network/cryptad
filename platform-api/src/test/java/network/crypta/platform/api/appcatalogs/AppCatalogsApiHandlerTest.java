@@ -384,6 +384,65 @@ class AppCatalogsApiHandlerTest {
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
+  @Test
+  void install_whenAcknowledgedReviewTrustChangesAfterPlan_expectFreshAcknowledgementRequired()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.WARN_UNTRUSTED),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry acknowledgedEntry = richCatalogEntry();
+    AppCatalogEntry refreshedRejectedEntry =
+        richCatalogEntryWithTrustedReceipt(reviewerKeyPair, AppReviewReceiptStatus.REJECTED);
+    AppCatalogInstallPlan plan = plan(refreshedRejectedEntry);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(acknowledgedEntry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.install("core", APP_ID, reviewAcknowledgedQuery()));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_review_rejected", exception.errorCode());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void update_whenAcknowledgedReviewTrustChangesAfterPlan_expectFreshAcknowledgementRequired()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.WARN_UNTRUSTED),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry acknowledgedEntry = richCatalogEntry();
+    AppCatalogEntry refreshedRejectedEntry =
+        richCatalogEntryWithTrustedReceipt(reviewerKeyPair, AppReviewReceiptStatus.REJECTED);
+    AppCatalogInstallPlan plan = plan(refreshedRejectedEntry);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(acknowledgedEntry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.update("core", APP_ID, reviewAcknowledgedQuery()));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_review_rejected", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
   private Map<String, Object> listRichInstalledCatalogApp() throws Exception {
     AppCatalogsApiHandler handler =
         new AppCatalogsApiHandler(catalogManager, appHost, () -> "0.2.0");
@@ -437,9 +496,14 @@ class AppCatalogsApiHandlerTest {
   }
 
   private AppCatalogEntry richCatalogEntryWithTrustedReceipt(KeyPair reviewerKeyPair) {
+    return richCatalogEntryWithTrustedReceipt(reviewerKeyPair, AppReviewReceiptStatus.REVIEWED);
+  }
+
+  private AppCatalogEntry richCatalogEntryWithTrustedReceipt(
+      KeyPair reviewerKeyPair, AppReviewReceiptStatus status) {
     AppCatalogEntry entry = richCatalogEntry();
     AppReviewReceipt receipt =
-        AppReviewReceiptSigner.sign(reviewPayload(entry), reviewerKeyPair.getPrivate());
+        AppReviewReceiptSigner.sign(reviewPayload(entry, status), reviewerKeyPair.getPrivate());
     return new AppCatalogEntry(
         entry.appId(),
         entry.name(),
@@ -462,7 +526,8 @@ class AppCatalogsApiHandlerTest {
         entry.permissionRationales());
   }
 
-  private static AppReviewReceiptPayload reviewPayload(AppCatalogEntry entry) {
+  private static AppReviewReceiptPayload reviewPayload(
+      AppCatalogEntry entry, AppReviewReceiptStatus status) {
     return new AppReviewReceiptPayload(
         AppReviewReceiptPayload.RECEIPT_VERSION,
         entry.appId(),
@@ -472,7 +537,7 @@ class AppCatalogsApiHandlerTest {
         Optional.empty(),
         REVIEW_POLICY_ID,
         REVIEW_POLICY_VERSION,
-        AppReviewReceiptStatus.REVIEWED,
+        status,
         REVIEWER_KEY_ID,
         REVIEWED_AT,
         Optional.empty(),
@@ -488,6 +553,10 @@ class AppCatalogsApiHandlerTest {
             keyPair.getPublic().getEncoded(),
             "Crypta First-Party Review",
             REVIEW_POLICY_ID));
+  }
+
+  private static Map<String, List<String>> reviewAcknowledgedQuery() {
+    return Map.of("reviewAcknowledged", List.of("true"));
   }
 
   private static KeyPair reviewerKeyPair() throws Exception {
