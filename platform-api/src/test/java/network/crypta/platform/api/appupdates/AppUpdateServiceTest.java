@@ -73,6 +73,7 @@ class AppUpdateServiceTest {
   private static final String UPDATE_CANDIDATE_CHANGED = "update_candidate_changed";
   private static final String APP_NOT_FOUND = "app_not_found";
   private static final String ROLLBACK_FAILED = "rollback_failed";
+  private static final String ROLLBACK_MANIFEST_BROKEN = "rollback manifest broken";
   private static final AppUpdateService.ApplyOptions APPLY_NO_RESTART_NO_HEALTH =
       new AppUpdateService.ApplyOptions(false, AppUpdateService.HealthCheckMode.NONE, false);
   private static final AppUpdateService.ApplyOptions APPLY_NO_RESTART_PROCESS_HEALTH =
@@ -644,7 +645,7 @@ class AppUpdateServiceTest {
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     when(appHost.start(APP_ID)).thenReturn(running(updated));
-    when(appHost.rollbackStatus(APP_ID)).thenThrow(new IOException("rollback manifest broken"));
+    when(appHost.rollbackStatus(APP_ID)).thenThrow(new IOException(ROLLBACK_MANIFEST_BROKEN));
     service.stage(APP_ID);
 
     PlatformApiException exception =
@@ -958,11 +959,10 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void rollback_whenRunningAppCannotRestoreRecord_expectOriginalAppRestarted() throws Exception {
+  void rollback_whenRunningAppHasNoRecord_expectUnavailableWithoutStop() throws Exception {
     InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)), Optional.empty());
-    when(appHost.rollback(APP_ID))
-        .thenThrow(new AppHostException("rollback record is not available: " + APP_ID));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    when(appHost.rollbackStatus(APP_ID)).thenReturn(Optional.empty());
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
 
     PlatformApiException exception =
@@ -970,14 +970,32 @@ class AppUpdateServiceTest {
 
     assertEquals(404, exception.statusCode());
     assertEquals("rollback_not_available", exception.errorCode());
-    verify(appHost).stop(APP_ID);
-    verify(appHost).start(APP_ID);
+    verify(appHost, never()).stop(APP_ID);
+    verify(appHost, never()).rollback(APP_ID);
+    verify(appHost, never()).start(APP_ID);
+  }
+
+  @Test
+  void rollback_whenRunningAppRollbackStatusFails_expectFailureWithoutStop() throws Exception {
+    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    when(appHost.rollbackStatus(APP_ID)).thenThrow(new IOException(ROLLBACK_MANIFEST_BROKEN));
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, true));
+
+    assertEquals(500, exception.statusCode());
+    assertEquals(ROLLBACK_FAILED, exception.errorCode());
+    verify(appHost, never()).stop(APP_ID);
+    verify(appHost, never()).rollback(APP_ID);
+    verify(appHost, never()).start(APP_ID);
   }
 
   @Test
   void rollback_whenRollbackRecordCannotBeRestored_expectFailureNotUnavailable() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    when(appHost.rollback(APP_ID)).thenThrow(new IOException("rollback manifest broken"));
+    when(appHost.rollback(APP_ID)).thenThrow(new IOException(ROLLBACK_MANIFEST_BROKEN));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
 
     PlatformApiException exception =

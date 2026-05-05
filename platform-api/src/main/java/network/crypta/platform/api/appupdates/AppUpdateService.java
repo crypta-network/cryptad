@@ -393,6 +393,9 @@ public final class AppUpdateService {
       throw lifecycleFailure(
           409, ERROR_ROLLBACK_APP_RUNNING, "App must be stopped before rollback.");
     }
+    if (wasRunning) {
+      requireRollbackAvailableBeforeStop(normalizedAppId);
+    }
     try {
       if (wasRunning) {
         appHost.stop(normalizedAppId);
@@ -422,6 +425,19 @@ public final class AppUpdateService {
       recordRollbackFailure(normalizedAppId, ERROR_ROLLBACK_FAILED);
       throw lifecycleFailure(500, ERROR_ROLLBACK_FAILED, MESSAGE_ROLLBACK_FAILED);
     }
+  }
+
+  private void requireRollbackAvailableBeforeStop(String appId) {
+    try {
+      if (rollbackStatusOrFailure(appId).isPresent()) {
+        return;
+      }
+    } catch (PlatformApiException exception) {
+      recordRollbackFailure(appId, exception.errorCode());
+      throw exception;
+    }
+    recordRollbackFailure(appId, ERROR_ROLLBACK_NOT_AVAILABLE);
+    throw lifecycleFailure(404, ERROR_ROLLBACK_NOT_AVAILABLE, "Rollback is not available.");
   }
 
   private void restartOriginalAfterUncommittedApplyFailure(
