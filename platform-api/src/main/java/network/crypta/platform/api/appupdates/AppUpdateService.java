@@ -106,6 +106,7 @@ public final class AppUpdateService {
   private static final String JSON_REVIEW_TRUST = "reviewTrust";
   private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
   private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
+  private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
 
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
@@ -823,10 +824,15 @@ public final class AppUpdateService {
   }
 
   private static int stageabilityRank(AppUpdateCandidate candidate) {
-    if (Boolean.TRUE.equals(candidate.reviewTrust().get(JSON_BLOCKS_UPDATE))) {
+    Map<String, Object> reviewTrust = candidate.reviewTrust();
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))) {
       return 0;
     }
-    return 1;
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      return 1;
+    }
+    return 2;
   }
 
   private static int reviewTrustRank(Map<String, Object> reviewTrust) {
@@ -1031,7 +1037,7 @@ public final class AppUpdateService {
   private static boolean reviewGateRequiresOperator(AppUpdateCandidate candidate) {
     Map<String, Object> reviewTrust = candidate.reviewTrust();
     return Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
-        || Boolean.TRUE.equals(reviewTrust.get("blocksPolicyApply"))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))
         || Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
   }
 

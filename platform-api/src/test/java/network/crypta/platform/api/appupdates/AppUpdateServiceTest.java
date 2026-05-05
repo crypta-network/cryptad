@@ -314,6 +314,42 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenWarnPolicyHasNewerAcknowledgementCandidate_expectTrustedCandidateAutoStaged()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            new AppReviewPolicy(AppReviewPolicyMode.WARN_UNTRUSTED),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry trustedEntry =
+        reviewedUpdateEntryWithTrustedReceipt(compatibleApiMetadata(), reviewerKeyPair);
+    AppCatalogEntry acknowledgementEntry =
+        entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = plan("alpha", trustedEntry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
+    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listApps("beta")).thenReturn(List.of(acknowledgementEntry));
+    when(catalogManager.prepareInstallPlan("alpha", APP_ID)).thenReturn(plan);
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> staged = (Map<String, Object>) summary.get(STAGED);
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("alpha", candidate.get("catalogId"));
+    assertEquals(UPDATE_VERSION, candidate.get(TARGET_VERSION));
+    assertEquals("trusted_reviewed", ((Map<?, ?>) candidate.get("reviewTrust")).get(STATUS));
+    assertEquals(true, staged.get(AVAILABLE));
+    assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
+  }
+
+  @Test
   void check_whenCatalogListingFails_expectLastCheckFailureRecorded() throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -1412,9 +1448,13 @@ class AppUpdateServiceTest {
   }
 
   private AppCatalogInstallPlan plan(AppCatalogEntry entry) throws IOException {
+    return plan(CATALOG_ID, entry);
+  }
+
+  private AppCatalogInstallPlan plan(String catalogId, AppCatalogEntry entry) throws IOException {
     Path scratch = tempDir.resolve("scratch-" + entry.version());
     Path staged = scratch.resolve("bundle");
     Files.createDirectories(staged);
-    return new AppCatalogInstallPlan(CATALOG_ID, entry, staged, scratch);
+    return new AppCatalogInstallPlan(catalogId, entry, staged, scratch);
   }
 }
