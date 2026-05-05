@@ -402,11 +402,11 @@ class AppCatalogsApiHandlerTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(acknowledgedEntry);
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    Map<String, List<String>> queryParameters = reviewAcknowledgedQuery();
 
     PlatformApiException exception =
         assertThrows(
-            PlatformApiException.class,
-            () -> handler.install("core", APP_ID, reviewAcknowledgedQuery()));
+            PlatformApiException.class, () -> handler.install("core", APP_ID, queryParameters));
 
     assertEquals(409, exception.statusCode());
     assertEquals("app_review_rejected", exception.errorCode());
@@ -432,11 +432,11 @@ class AppCatalogsApiHandlerTest {
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    Map<String, List<String>> queryParameters = reviewAcknowledgedQuery();
 
     PlatformApiException exception =
         assertThrows(
-            PlatformApiException.class,
-            () -> handler.update("core", APP_ID, reviewAcknowledgedQuery()));
+            PlatformApiException.class, () -> handler.update("core", APP_ID, queryParameters));
 
     assertEquals(409, exception.statusCode());
     assertEquals("app_review_rejected", exception.errorCode());
