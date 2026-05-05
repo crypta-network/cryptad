@@ -477,6 +477,41 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenPolicyApplyWhenStoppedAndAdvisoryReviewedWithoutReceipt_expectCandidateApplied()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(updated));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost, catalogManager, AppReviewPolicy.DEFAULT, TrustedReviewerKeys::empty);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> reviewTrust = (Map<String, Object>) candidate.get("reviewTrust");
+    assertEquals(UPDATE_VERSION, summary.get(INSTALLED_VERSION_FIELD));
+    assertEquals(APPLIED, candidate.get(STATUS));
+    assertEquals("publisher_claim_only", reviewTrust.get(STATUS));
+    assertEquals(false, reviewTrust.get("positive"));
+    verify(appHost).updateFromDirectory(APP_ID, plan.stagedBundleDirectory());
+  }
+
+  @Test
   void apply_whenInstalledVersionChangedAfterStage_expectStageInvalidatedAndApplyBlocked()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -917,6 +952,42 @@ class AppUpdateServiceTest {
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
     assertEquals(AVAILABLE, candidate.get(STATUS));
     assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    verifyNoInstallPlanPreparation();
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenPolicyApplyWhenStoppedRequiresTrustedReview_expectPublisherOnlyReviewBlocked()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED),
+            TrustedReviewerKeys::empty);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(
+            List.of(
+                entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata())));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> reviewTrust = (Map<String, Object>) candidate.get("reviewTrust");
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entry -> "apply".equals(entry.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals("publisher_claim_only", reviewTrust.get(STATUS));
+    assertEquals(true, reviewTrust.get("blocksPolicyApply"));
+    assertEquals("app_review_missing", historyEntry.get(ERROR_CODE));
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());

@@ -59,7 +59,13 @@ public record AppUpdateCandidate(
     boolean running,
     Instant detectedAt) {
   private static final String JSON_STATUS = "status";
+  private static final String JSON_POSITIVE = "positive";
+  private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
+  private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
+  private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
   private static final String API_STATUS_COMPATIBLE = "compatible";
+  private static final String REVIEW_STATUS_REVIEWED = "reviewed";
+  private static final String REVIEW_TRUST_STATUS_PUBLISHER_CLAIM_ONLY = "publisher_claim_only";
 
   /**
    * Creates a validated candidate.
@@ -125,9 +131,12 @@ public record AppUpdateCandidate(
    * Returns whether policy-driven apply may use this candidate without another operator decision.
    *
    * <p>Automatic apply is stricter than staging. The candidate must already be eligible by default,
-   * a trusted positive review receipt must be present, and the Platform API compatibility summary
-   * must report {@code compatible}. Publisher advisory review metadata is not sufficient for
-   * automatic apply.
+   * local review policy must allow policy-driven apply without another acknowledgement, and the
+   * Platform API compatibility summary must report {@code compatible}. A trusted positive review
+   * receipt satisfies the review gate. For backward compatibility with older catalogs, publisher
+   * advisory {@code reviewed} metadata can also satisfy the gate only when the local review policy
+   * did not require independent receipt trust. Publisher advisory {@code caution}, {@code
+   * rejected}, and {@code unreviewed} states are never enough for automatic apply by themselves.
    *
    * @return {@code true} when the candidate is safely newer, compatible, and reviewed
    */
@@ -138,7 +147,7 @@ public record AppUpdateCandidate(
   }
 
   boolean reviewTrustAllowsAutomaticApply() {
-    return reviewTrustAllowsAutomaticApply(reviewTrust);
+    return reviewTrustAllowsAutomaticApply(reviewTrust, review);
   }
 
   boolean apiCompatibilityAllowsAutomaticApply() {
@@ -179,8 +188,8 @@ public record AppUpdateCandidate(
 
   private boolean operatorActionRequired() {
     if (status == AppUpdateCandidateStatus.AVAILABLE
-        && (Boolean.TRUE.equals(reviewTrust.get("requiresAcknowledgement"))
-            || Boolean.TRUE.equals(reviewTrust.get("blocksUpdate")))) {
+        && (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+            || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE)))) {
       return true;
     }
     return switch (status) {
@@ -197,13 +206,17 @@ public record AppUpdateCandidate(
     return bundle;
   }
 
-  private static boolean reviewTrustAllowsAutomaticApply(Map<String, Object> reviewTrust) {
-    Object positiveValue = reviewTrust.get("positive");
-    Object blockedValue = reviewTrust.get("blocksPolicyApply");
-    if (!(positiveValue instanceof Boolean positive)) {
+  private static boolean reviewTrustAllowsAutomaticApply(
+      Map<String, Object> reviewTrust, Map<String, Object> review) {
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
       return false;
     }
-    return positive && !Boolean.TRUE.equals(blockedValue);
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_POSITIVE))) {
+      return true;
+    }
+    return REVIEW_TRUST_STATUS_PUBLISHER_CLAIM_ONLY.equals(reviewTrust.get(JSON_STATUS))
+        && REVIEW_STATUS_REVIEWED.equals(review.get(JSON_STATUS));
   }
 
   private static boolean apiCompatibilityAllowsAutomaticApply(
