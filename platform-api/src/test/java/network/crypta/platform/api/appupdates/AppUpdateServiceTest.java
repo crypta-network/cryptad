@@ -536,6 +536,36 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void apply_whenRestartedRunningAppFailsBeforeReplacement_expectOriginalAppRestarted()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(), Optional.empty(), Optional.of(running(installed)), Optional.empty());
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    try (AppCatalogInstallPlan plan = plan(entry)) {
+      when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+      when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+          .thenThrow(new IOException("staged directory disappeared"));
+      service.stage(APP_ID);
+
+      PlatformApiException exception =
+          assertThrows(
+              PlatformApiException.class, () -> service.apply(APP_ID, APPLY_RESTART_NO_HEALTH));
+
+      assertEquals(500, exception.statusCode());
+      assertEquals("update_failed", exception.errorCode());
+      assertEquals(true, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
+      verify(appHost).stop(APP_ID);
+      verify(appHost).start(APP_ID);
+    }
+  }
+
+  @Test
   void apply_whenRestartProcessHealthLaunchFails_expectRollbackAttempted() throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -850,7 +880,9 @@ class AppUpdateServiceTest {
     InstalledAppSnapshot rolledBack = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID))
         .thenReturn(Optional.of(installed), Optional.of(installed), Optional.of(rolledBack));
-    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(), Optional.empty(), Optional.of(running(installed)), Optional.empty());
     when(appHost.rollbackStatus(APP_ID))
         .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
@@ -872,6 +904,39 @@ class AppUpdateServiceTest {
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
     assertFalse(Files.exists(plan.scratchDirectory()));
+    verify(appHost).stop(APP_ID);
+    verify(appHost).start(APP_ID);
+  }
+
+  @Test
+  void rollback_whenStoppedAppUsesRestartFlag_expectBundleRestoredWithoutStart() throws Exception {
+    InstalledAppSnapshot rolledBack = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollback(APP_ID)).thenReturn(rolledBack);
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    Map<String, Object> summary = service.rollback(APP_ID, true);
+
+    assertEquals(INSTALLED_VERSION, summary.get(INSTALLED_VERSION_FIELD));
+    verify(appHost, never()).stop(APP_ID);
+    verify(appHost, never()).start(APP_ID);
+  }
+
+  @Test
+  void rollback_whenRunningAppCannotRestoreRecord_expectOriginalAppRestarted() throws Exception {
+    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)), Optional.empty());
+    when(appHost.rollback(APP_ID))
+        .thenThrow(new AppHostException("rollback record is not available: " + APP_ID));
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, true));
+
+    assertEquals(404, exception.statusCode());
+    assertEquals("rollback_not_available", exception.errorCode());
+    verify(appHost).stop(APP_ID);
+    verify(appHost).start(APP_ID);
   }
 
   @Test

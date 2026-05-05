@@ -252,6 +252,7 @@ public final class AppUpdateService {
       recordApplyFailure(normalizedAppId, staged.candidate(), exception.errorCode());
       throw exception;
     } catch (AppHostException exception) {
+      restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, updated);
       PlatformApiException mapped =
           appHostApplyFailure(normalizedAppId, staged, updated, healthFailureState, exception);
       recordApplyFailure(normalizedAppId, staged.candidate(), mapped.errorCode());
@@ -261,6 +262,8 @@ public final class AppUpdateService {
         closeStage(normalizedAppId);
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
+      } else {
+        restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, updated);
       }
       recordApplyFailure(normalizedAppId, staged.candidate(), ERROR_UPDATE_FAILED);
       throw lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
@@ -370,7 +373,7 @@ public final class AppUpdateService {
       InstalledAppSnapshot rolledBack = invokeRollback(normalizedAppId);
       closeStage(normalizedAppId);
       candidates.remove(normalizedAppId);
-      if (restart) {
+      if (wasRunning) {
         startAfterRollback(normalizedAppId, rolledBack);
       }
       appendHistory(
@@ -383,12 +386,48 @@ public final class AppUpdateService {
           "Previous app bundle restored.");
       return summary(normalizedAppId, rolledBack);
     } catch (AppHostException exception) {
+      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning);
       PlatformApiException mapped = appHostRollbackFailure(exception);
       recordRollbackFailure(normalizedAppId, mapped.errorCode());
       throw mapped;
     } catch (IOException _) {
+      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning);
       recordRollbackFailure(normalizedAppId, ERROR_ROLLBACK_FAILED);
       throw lifecycleFailure(500, ERROR_ROLLBACK_FAILED, MESSAGE_ROLLBACK_FAILED);
+    }
+  }
+
+  private void restartOriginalAfterUncommittedApplyFailure(
+      String appId, boolean wasRunning, InstalledAppSnapshot updated) {
+    if (updated != null) {
+      return;
+    }
+    restartOriginalAfterUncommittedFailure(
+        appId,
+        wasRunning,
+        ACTION_APPLY,
+        ERROR_UPDATE_FAILED,
+        "Update failed before replacement, and original app restart failed.");
+  }
+
+  private void restartOriginalAfterUncommittedRollbackFailure(String appId, boolean wasRunning) {
+    restartOriginalAfterUncommittedFailure(
+        appId,
+        wasRunning,
+        ACTION_ROLLBACK,
+        ERROR_ROLLBACK_FAILED,
+        "Rollback failed before restore, and original app restart failed.");
+  }
+
+  private void restartOriginalAfterUncommittedFailure(
+      String appId, boolean wasRunning, String action, String errorCode, String message) {
+    if (!wasRunning || appHost.status(appId).isPresent()) {
+      return;
+    }
+    try {
+      appHost.start(appId);
+    } catch (IOException _) {
+      appendHistory(appId, action, STATUS_FAILED, null, null, errorCode, message);
     }
   }
 
