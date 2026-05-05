@@ -89,6 +89,9 @@ Release-candidate mode requires these evidence ids:
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
 | `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
+| `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
+| `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
+| `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence signs, verifies, and embeds an independent review receipt with configured reviewer inputs, without private reviewer key material in the report. |
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
@@ -102,6 +105,30 @@ or operator form password.
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract
 evidence, or strict compatibility verifier failure is a blocker unless a release-manager waiver is
 recorded.
+
+App-review evidence is separate from signed catalog and signed bundle evidence. In
+release-candidate mode, the app-platform smoke runner requires reviewer inputs for first-party
+catalog review receipt evidence:
+
+```text
+CRYPTAD_APP_REVIEWER_KEY_ID
+CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64
+CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE
+CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64
+CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE
+CRYPTAD_APP_REVIEW_POLICY_ID
+CRYPTAD_APP_REVIEW_POLICY_VERSION
+```
+
+`CRYPTAD_APP_REVIEW_POLICY_ID` defaults to `crypta-app-review-v1` and
+`CRYPTAD_APP_REVIEW_POLICY_VERSION` defaults to `1`. The runner uses `crypta-app review sign`,
+`crypta-app review verify`, and `crypta-app catalog create --review-receipt` to prove that
+review receipt evidence can be created and consumed offline. The release report summarizes the
+configured review policy, whether first-party receipt evidence blocks promotion, and the receipt
+coverage categories: trusted positive, missing, expired, mismatched, unknown reviewer, and trusted
+rejected. Reports may include reviewer key ids, reviewer display names, policy ids, and key
+fingerprints; they must not include private reviewer keys, raw public key bytes, local evidence
+paths, app/session/process tokens, or local staging paths.
 
 ## Waivers
 

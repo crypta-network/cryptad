@@ -62,10 +62,23 @@ local build, verification, install, and catalog-refresh flows.
 - The unsigned-bundle bypass is only for explicit local development. It does not make remote catalogs or remote artifacts trusted.
 
 Catalog installs and updates verify the signed catalog, the advertised artifact size and SHA-256,
-and the extracted bundle signature before AppHost installs the app. Catalog fetches support local
-files, `https:`, and loopback-only `http:` sources. Catalog ZIP extraction drops macOS
-`__MACOSX/**` and AppleDouble `._*` metadata entries before verification; executable app payload
-still has to match the signed bundle digest.
+and the extracted bundle signature before AppHost installs the app. The catalog signature
+authenticates catalog bytes and publisher metadata only. Legacy catalog `review.status` and
+`review.note` fields are publisher-advisory metadata and are not a cryptographic review trust
+boundary.
+
+Independent app review receipts use a separate trusted reviewer-key registry. A trusted receipt
+signature binds the reviewer key id, app id, app version, artifact digest, artifact size, review
+policy id/version, reviewer status, timestamps, and optional evidence metadata to canonical receipt
+payload bytes. Do not reuse app or catalog signing trust implicitly for review receipts, and do not
+commit reviewer private keys. Platform API and Web Shell review-trust responses may expose reviewer
+key ids, display names, policy ids, timestamps, evidence digests, and evidence URIs, but must not
+expose reviewer public key bytes, reviewer private key material, local receipt or evidence paths,
+catalog scratch paths, staging paths, browser session tokens, or AppHost process tokens.
+
+Catalog fetches support local files, `https:`, and loopback-only `http:` sources. Catalog ZIP
+extraction drops macOS `__MACOSX/**` and AppleDouble `._*` metadata entries before verification;
+executable app payload still has to match the signed bundle digest.
 
 App-owned static UI routes serve files from the immutable installed bundle. Static apps prefer a
 distinct loopback-only browser origin per app, with `/apps/{appId}/` retained as a compatibility

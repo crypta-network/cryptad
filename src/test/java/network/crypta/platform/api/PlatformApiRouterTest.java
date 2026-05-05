@@ -3206,6 +3206,7 @@ class PlatformApiRouterTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.entry()).thenReturn(catalogEntry(APP_VERSION));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.installFromDirectory(stagedDir)).thenReturn(installed);
     doThrow(new IOException("cleanup failed")).when(plan).close();
@@ -3248,6 +3249,7 @@ class PlatformApiRouterTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.entry()).thenReturn(catalogEntry(APP_VERSION));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.installFromDirectory(stagedDir))
         .thenThrow(
@@ -3277,6 +3279,7 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
     doThrow(new IOException("cleanup failed")).when(plan).close();
@@ -3320,6 +3323,7 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir))
         .thenThrow(new AppHostException("app.ui.entry must not traverse links in copied bundle"));
@@ -3347,6 +3351,7 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
 
@@ -3510,9 +3515,9 @@ class PlatformApiRouterTest {
         APP_NAME,
         APP_VERSION,
         "Catalog app summary",
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
+        null,
+        null,
+        null,
         List.of(),
         new AppCatalogCompatibilityMetadata(CATALOG_MINIMUM_CRYPTA_VERSION),
         AppCatalogReviewMetadata.EMPTY,

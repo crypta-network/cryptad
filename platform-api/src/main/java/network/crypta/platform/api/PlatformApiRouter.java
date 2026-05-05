@@ -762,7 +762,9 @@ public final class PlatformApiRouter {
           yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
         }
         yield PlatformApiResponse.ok(
-            envelope(UPDATES_ROUTE_SEGMENT, appUpdatesApiHandler.stage(appId)));
+            envelope(
+                UPDATES_ROUTE_SEGMENT,
+                appUpdatesApiHandler.stage(appId, request.queryParameters())));
       }
       case "apply" -> {
         if (!"POST".equals(request.method())) {
@@ -892,9 +894,14 @@ public final class PlatformApiRouter {
     return switch (action) {
       case "install" ->
           PlatformApiResponse.created(
-              envelope("app", appCatalogsApiHandler.install(catalogId, appId)));
+              envelope(
+                  "app",
+                  appCatalogsApiHandler.install(catalogId, appId, request.queryParameters())));
       case "update" ->
-          PlatformApiResponse.ok(envelope("app", appCatalogsApiHandler.update(catalogId, appId)));
+          PlatformApiResponse.ok(
+              envelope(
+                  "app",
+                  appCatalogsApiHandler.update(catalogId, appId, request.queryParameters())));
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
   }

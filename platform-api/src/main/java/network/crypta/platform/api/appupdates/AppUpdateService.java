@@ -21,6 +21,11 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -82,6 +87,11 @@ public final class AppUpdateService {
   private static final String ERROR_STAGE_FAILED = "stage_failed";
   private static final String ERROR_INVALID_UPDATE_OPTION = "invalid_update_option";
   private static final String ERROR_INVALID_APP_BUNDLE = "invalid_app_bundle";
+  private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
+  private static final String ERROR_APP_REVIEW_UNTRUSTED = "app_review_untrusted";
+  private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
+  private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
+  private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
   private static final String MESSAGE_APPLY_FAILED = "Failed to apply staged update.";
   private static final String MESSAGE_STAGE_FAILED = "Failed to stage update candidate.";
   private static final String MESSAGE_ROLLBACK_FAILED = "Rollback failed.";
@@ -93,9 +103,15 @@ public final class AppUpdateService {
   private static final String JSON_STATUS = "status";
   private static final String JSON_AVAILABLE = "available";
   private static final String JSON_STAGED_AT = "stagedAt";
+  private static final String JSON_REVIEW_TRUST = "reviewTrust";
+  private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
+  private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
+  private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
 
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
+  private final AppReviewPolicy reviewPolicy;
+  private final ReviewerKeysProvider reviewerKeysProvider;
   private final Map<String, AppUpdatePolicy> policies = new LinkedHashMap<>();
   private final Map<String, AppUpdateCandidate> candidates = new LinkedHashMap<>();
   private final Map<String, StagedUpdate> stagedUpdates = new LinkedHashMap<>();
@@ -114,8 +130,49 @@ public final class AppUpdateService {
    * @param catalogManager signed catalog manager used for candidate discovery and staging
    */
   public AppUpdateService(AppHost appHost, AppCatalogManager catalogManager) {
+    this(
+        appHost, catalogManager, AppReviewPolicy.loadFromSystem(), trustedReviewerKeysFromSystem());
+  }
+
+  /**
+   * Creates an app-update service with explicit review policy and reviewer-key provider.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param reviewPolicy local review policy
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   */
+  public AppUpdateService(
+      AppHost appHost,
+      AppCatalogManager catalogManager,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
+    this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
+    this.reviewerKeysProvider =
+        Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
+  }
+
+  private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
+    return TrustedReviewerKeysLoader::loadFromSystem;
+  }
+
+  /**
+   * Supplies trusted reviewer keys for review-receipt verification.
+   *
+   * <p>The provider exists so unit tests and embedders can inject ephemeral reviewer keys without
+   * using process-wide system properties or environment variables.
+   */
+  @FunctionalInterface
+  public interface ReviewerKeysProvider {
+    /**
+     * Returns trusted reviewer keys for the current request.
+     *
+     * @return local trusted reviewer keys
+     * @throws IOException if configured key material cannot be read
+     */
+    TrustedReviewerKeys trustedReviewerKeys() throws IOException;
   }
 
   /**
@@ -214,10 +271,21 @@ public final class AppUpdateService {
    * @return path-free update summary after a verified candidate is staged
    */
   public synchronized Map<String, Object> stage(String appId) {
+    return stage(appId, false);
+  }
+
+  /**
+   * Stages a verified catalog update candidate with an explicit review acknowledgement option.
+   *
+   * @param appId app id from the request path
+   * @param reviewAcknowledged whether the operator acknowledged an untrusted review decision
+   * @return path-free update summary after a verified candidate is staged
+   */
+  public synchronized Map<String, Object> stage(String appId, boolean reviewAcknowledged) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     AppUpdateCandidate candidate = candidateOrDetect(normalizedAppId, installed);
-    requireStageableCandidate(candidate);
+    requireStageableCandidate(candidate, reviewAcknowledged);
     stageCandidate(normalizedAppId, installed, candidate);
     return summary(normalizedAppId, installed);
   }
@@ -283,7 +351,7 @@ public final class AppUpdateService {
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
       } else {
-        restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, updated);
+        restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, null);
       }
       recordApplyFailure(normalizedAppId, staged.candidate(), ERROR_UPDATE_FAILED);
       throw lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
@@ -552,6 +620,10 @@ public final class AppUpdateService {
       return;
     }
     if (policy.mode() == AppUpdatePolicyMode.STAGE) {
+      if (reviewGateRequiresOperator(candidate)) {
+        appendReviewGateHistory(appId, ACTION_STAGE, candidate);
+        return;
+      }
       stageCandidate(appId, installed, candidate);
       return;
     }
@@ -567,15 +639,12 @@ public final class AppUpdateService {
             "Policy skipped apply because the app is running.");
         return;
       }
-      if (!candidate.eligibleForAutomaticApply()) {
-        appendHistory(
-            appId,
-            ACTION_APPLY,
-            STATUS_FAILED,
-            candidate.catalogId(),
-            candidate.targetVersion(),
-            ERROR_UPDATE_POLICY_BLOCKED,
-            "Policy skipped apply because review metadata requires operator confirmation.");
+      if (!candidate.reviewTrustAllowsAutomaticApply()) {
+        appendReviewGateHistory(appId, ACTION_APPLY, candidate);
+        return;
+      }
+      if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
+        appendCompatibilityGateHistory(appId, candidate);
         return;
       }
       stageCandidate(appId, installed, candidate);
@@ -722,10 +791,19 @@ public final class AppUpdateService {
     if (rankComparison != 0) {
       return rankComparison;
     }
+    int stageabilityComparison = Integer.compare(stageabilityRank(left), stageabilityRank(right));
+    if (stageabilityComparison != 0) {
+      return stageabilityComparison;
+    }
     Integer versionComparison =
         compareDottedNumericVersions(left.targetVersion(), right.targetVersion());
     if (versionComparison != null && versionComparison != 0) {
       return versionComparison;
+    }
+    int reviewTrustComparison =
+        Integer.compare(reviewTrustRank(left.reviewTrust()), reviewTrustRank(right.reviewTrust()));
+    if (reviewTrustComparison != 0) {
+      return reviewTrustComparison;
     }
     int catalogComparison = left.catalogId().compareTo(right.catalogId());
     if (catalogComparison != 0) {
@@ -745,6 +823,46 @@ public final class AppUpdateService {
     };
   }
 
+  private static int stageabilityRank(AppUpdateCandidate candidate) {
+    Map<String, Object> reviewTrust = candidate.reviewTrust();
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))) {
+      return 0;
+    }
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      return 1;
+    }
+    return 2;
+  }
+
+  private static int reviewTrustRank(Map<String, Object> reviewTrust) {
+    int rank = 0;
+    if (!Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))) {
+      rank += 1000;
+    }
+    if (!Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      rank += 100;
+    }
+    Object statusValue = reviewTrust.get(JSON_STATUS);
+    if (!(statusValue instanceof String status)) {
+      return rank;
+    }
+    return rank
+        + switch (status) {
+          case "trusted_reviewed" -> 80;
+          case "trusted_caution" -> 60;
+          case "publisher_claim_only" -> 40;
+          case "missing_receipt", "not_configured" -> 30;
+          case "unknown_reviewer",
+              "invalid_signature",
+              "artifact_mismatch",
+              "app_mismatch",
+              "expired" ->
+              20;
+          default -> 0;
+        };
+  }
+
   private AppUpdateCandidate candidateFor(
       String catalogId, AppCatalogEntry entry, InstalledAppSnapshot installed) {
     String installedVersion = installed.manifest().appVersion();
@@ -756,6 +874,7 @@ public final class AppUpdateService {
             PlatformApiContract.current());
     AppUpdateCandidateStatus status = statusFor(decision, apiCompatibility);
     AppCatalogReviewMetadata review = entry.review();
+    Map<String, Object> reviewTrust = reviewTrust(entry).toJsonValue();
     return new AppUpdateCandidate(
         installed.appId(),
         catalogId,
@@ -769,10 +888,24 @@ public final class AppUpdateService {
         entry.bundleType(),
         AppUpdateCandidate.reviewSummary(
             review.status().catalogValue(), review.note().orElse(null)),
+        reviewTrust,
         apiCompatibility,
         AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions()),
         appHost.status(installed.appId()).isPresent(),
         Instant.now());
+  }
+
+  private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
+    return AppReviewReceiptVerifier.evaluate(
+        entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  }
+
+  private TrustedReviewerKeys trustedReviewerKeysOrEmpty() {
+    try {
+      return reviewerKeysProvider.trustedReviewerKeys();
+    } catch (AppCatalogException | IOException _) {
+      return TrustedReviewerKeys.empty();
+    }
   }
 
   private AppUpdateCandidate noneCandidate(String appId, InstalledAppSnapshot installed) {
@@ -788,6 +921,9 @@ public final class AppUpdateService {
         0L,
         "not_applicable",
         AppUpdateCandidate.reviewSummary(AppCatalogReviewStatus.UNREVIEWED.catalogValue(), null),
+        AppReviewReceiptVerifier.evaluateMissingReceipt(
+                AppCatalogReviewMetadata.EMPTY, TrustedReviewerKeys.empty(), reviewPolicy)
+            .toJsonValue(),
         PlatformApiContractVerifier.summarize(
             installed.manifest().apiCompatibility(),
             installed.manifest().permissions(),
@@ -870,7 +1006,8 @@ public final class AppUpdateService {
     return List.copyOf(parts);
   }
 
-  private static void requireStageableCandidate(AppUpdateCandidate candidate) {
+  private static void requireStageableCandidate(
+      AppUpdateCandidate candidate, boolean reviewAcknowledged) {
     if (candidate.status() == AppUpdateCandidateStatus.INCOMPATIBLE) {
       throw lifecycleFailure(
           409, ERROR_UPDATE_INCOMPATIBLE, "Candidate is incompatible with this Platform API.");
@@ -879,6 +1016,65 @@ public final class AppUpdateService {
       throw lifecycleFailure(
           409, ERROR_UPDATE_NOT_AVAILABLE, "No safely newer update candidate is available.");
     }
+    requireReviewGate(candidate.reviewTrust(), reviewAcknowledged);
+  }
+
+  private static void requireReviewGate(
+      Map<String, Object> reviewTrust, boolean reviewAcknowledged) {
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))) {
+      throw lifecycleFailure(
+          409, reviewGateFailureCode(reviewTrust), "Update blocked by app review policy.");
+    }
+    if (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+        && !reviewAcknowledged) {
+      throw lifecycleFailure(
+          409,
+          reviewGateFailureCode(reviewTrust),
+          "Update requires explicit acknowledgement of the review trust decision.");
+    }
+  }
+
+  private static boolean reviewGateRequiresOperator(AppUpdateCandidate candidate) {
+    Map<String, Object> reviewTrust = candidate.reviewTrust();
+    return Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
+  }
+
+  private void appendReviewGateHistory(String appId, String action, AppUpdateCandidate candidate) {
+    appendHistory(
+        appId,
+        action,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        reviewGateFailureCode(candidate.reviewTrust()),
+        "Policy skipped update because no trusted positive review receipt verified.");
+  }
+
+  private void appendCompatibilityGateHistory(String appId, AppUpdateCandidate candidate) {
+    appendHistory(
+        appId,
+        ACTION_APPLY,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        ERROR_UPDATE_INCOMPATIBLE,
+        "Policy skipped apply because Platform API compatibility is not compatible.");
+  }
+
+  private static String reviewGateFailureCode(Map<String, Object> reviewTrust) {
+    Object statusValue = reviewTrust.get(JSON_STATUS);
+    if (!(statusValue instanceof String status)) {
+      return ERROR_APP_REVIEW_UNTRUSTED;
+    }
+    return switch (status) {
+      case "missing_receipt", "publisher_claim_only", "not_configured" -> ERROR_APP_REVIEW_MISSING;
+      case "artifact_mismatch", "app_mismatch" -> ERROR_APP_REVIEW_MISMATCH;
+      case "expired" -> ERROR_APP_REVIEW_EXPIRED;
+      case "trusted_rejected" -> ERROR_APP_REVIEW_REJECTED;
+      default -> ERROR_APP_REVIEW_UNTRUSTED;
+    };
   }
 
   private Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
@@ -927,6 +1123,7 @@ public final class AppUpdateService {
     json.put("bundleSha256", candidate.bundleSha256());
     json.put("bundleSizeBytes", candidate.bundleSizeBytes());
     json.put("review", candidate.review());
+    json.put(JSON_REVIEW_TRUST, candidate.reviewTrust());
     json.put("apiCompatibility", candidate.apiCompatibility());
     json.put("permissionDelta", candidate.permissionDelta());
     json.put(JSON_STAGED_AT, staged.stagedAt().toString());
@@ -1013,13 +1210,14 @@ public final class AppUpdateService {
         candidate.bundleSizeBytes(),
         candidate.bundleType(),
         candidate.review(),
+        candidate.reviewTrust(),
         candidate.apiCompatibility(),
         candidate.permissionDelta(),
         appHost.status(candidate.appId()).isPresent(),
         Instant.now());
   }
 
-  private static boolean planDiffersFromCandidate(
+  private boolean planDiffersFromCandidate(
       AppUpdateCandidate candidate, InstalledAppSnapshot installed, AppCatalogInstallPlan plan) {
     AppCatalogEntry entry = plan.entry();
     if (!candidate.catalogId().equals(plan.catalogId())
@@ -1042,6 +1240,7 @@ public final class AppUpdateService {
     Map<String, Object> permissionDelta =
         AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions());
     return !candidate.review().equals(reviewSummary)
+        || !candidate.reviewTrust().equals(reviewTrust(entry).toJsonValue())
         || !candidate.apiCompatibility().equals(apiCompatibility)
         || !candidate.permissionDelta().equals(permissionDelta);
   }
@@ -1182,8 +1381,7 @@ public final class AppUpdateService {
     }
   }
 
-  private static boolean stageDiffersFromInstalled(
-      StagedUpdate staged, InstalledAppSnapshot installed) {
+  private boolean stageDiffersFromInstalled(StagedUpdate staged, InstalledAppSnapshot installed) {
     return candidateDiffersFromInstalled(staged.candidate(), installed)
         || planDiffersFromCandidate(staged.candidate(), installed, staged.plan());
   }
@@ -1237,6 +1435,7 @@ public final class AppUpdateService {
         && stagedCandidate.bundleSizeBytes() == currentCandidate.bundleSizeBytes()
         && stagedCandidate.bundleType().equals(currentCandidate.bundleType())
         && stagedCandidate.review().equals(currentCandidate.review())
+        && stagedCandidate.reviewTrust().equals(currentCandidate.reviewTrust())
         && stagedCandidate.apiCompatibility().equals(currentCandidate.apiCompatibility())
         && stagedCandidate.permissionDelta().equals(currentCandidate.permissionDelta());
   }

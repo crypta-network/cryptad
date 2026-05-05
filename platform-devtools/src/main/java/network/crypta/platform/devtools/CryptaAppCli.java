@@ -4,12 +4,16 @@ import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -26,6 +30,15 @@ import network.crypta.platform.appcatalog.AppCatalogSignature;
 import network.crypta.platform.appcatalog.AppCatalogSigner;
 import network.crypta.platform.appcatalog.AppCatalogVerifier;
 import network.crypta.platform.appcatalog.AppCatalogWriter;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewReceipt;
+import network.crypta.platform.appcatalog.AppReviewReceiptIO;
+import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
+import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
+import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
+import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.AppDistributionTool;
@@ -64,6 +77,7 @@ import picocli.CommandLine;
       CryptaAppCli.VerifyCommand.class,
       CryptaAppCli.ApiCommand.class,
       CryptaAppCli.CompatCommand.class,
+      CryptaAppCli.ReviewCommand.class,
       CryptaAppCli.CatalogCommand.class
     })
 public final class CryptaAppCli implements Runnable {
@@ -403,6 +417,183 @@ public final class CryptaAppCli implements Runnable {
   }
 
   /**
+   * Parent command for independent app review receipt operations.
+   *
+   * <p>Review receipts are signed and verified separately from catalog signatures and app bundle
+   * signatures. The commands operate on catalog entry descriptors so developers can produce and
+   * validate receipts before embedding them into a signed catalog.
+   */
+  @Command(
+      name = "review",
+      description = "Sign and verify independent app review receipts.",
+      subcommands = {ReviewSignCommand.class, ReviewVerifyCommand.class})
+  static final class ReviewCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app review sign}. */
+  @Command(name = "sign", description = "Sign an independent app review receipt.")
+  static final class ReviewSignCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--catalog-entry", required = true, description = "Catalog entry descriptor.")
+    private Path catalogEntry;
+
+    @Option(names = "--receipt-file", required = true, description = "Receipt properties file.")
+    private Path receiptFile;
+
+    @Option(names = "--reviewer-key-id", required = true, description = "Reviewer key id.")
+    private String reviewerKeyId;
+
+    @Option(names = "--reviewer-private-key-base64", description = "Base64 or PEM reviewer key.")
+    private String reviewerPrivateKeyBase64;
+
+    @Option(names = "--reviewer-private-key-file", description = "Reviewer Ed25519 private key.")
+    private Path reviewerPrivateKeyFile;
+
+    @Option(names = "--reviewer-private-key-env", description = "Environment variable key source.")
+    private String reviewerPrivateKeyEnv;
+
+    @Option(names = "--policy-id", required = true, description = "Review policy id.")
+    private String policyId;
+
+    @Option(names = "--policy-version", required = true, description = "Review policy version.")
+    private String policyVersion;
+
+    @Option(names = "--status", required = true, description = "reviewed, caution, or rejected.")
+    private String status;
+
+    @Option(names = "--reviewed-at", description = "Review instant; defaults to current time.")
+    private Instant reviewedAt;
+
+    @Option(names = "--expires-at", description = "Optional receipt expiry instant.")
+    private Instant expiresAt;
+
+    @Option(names = "--bundle-key-id", description = "Optional signed-bundle key id.")
+    private String bundleKeyId;
+
+    @Option(names = "--evidence-file", description = "Evidence file whose SHA-256 is recorded.")
+    private Path evidenceFile;
+
+    @Option(names = "--evidence-sha256", description = "Precomputed evidence SHA-256.")
+    private String evidenceSha256;
+
+    @Option(names = "--evidence-uri", description = "HTTPS or crypta evidence URI.")
+    private URI evidenceUri;
+
+    @Option(names = "--note", description = "Optional single-line reviewer note.")
+    private String note;
+
+    @Option(names = "--overwrite", description = "Replace an existing receipt file.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      Path normalizedReceiptFile = receiptFile.toAbsolutePath().normalize();
+      if (Files.exists(normalizedReceiptFile) && !overwrite) {
+        throw new AppDistributionException(
+            "review receipt already exists: " + normalizedReceiptFile);
+      }
+      AppCatalogWriter.CatalogEntryInspection inspection =
+          AppCatalogWriter.inspectEntryDescriptor(catalogEntry);
+      PrivateKey privateKey =
+          KeyMaterialLoader.loadPrivateKey(
+              reviewerPrivateKeyBase64, reviewerPrivateKeyFile, reviewerPrivateKeyEnv);
+      AppReviewReceiptPayload payload =
+          new AppReviewReceiptPayload(
+              AppReviewReceiptPayload.RECEIPT_VERSION,
+              inspection.entry().appId(),
+              inspection.entry().version(),
+              inspection.entry().bundleSha256(),
+              inspection.entry().bundleSizeBytes(),
+              Optional.ofNullable(bundleKeyId),
+              policyId,
+              policyVersion,
+              AppReviewReceiptStatus.parse(status, "--status"),
+              reviewerKeyId,
+              reviewedAt == null ? Instant.now() : reviewedAt,
+              Optional.ofNullable(expiresAt),
+              evidenceSha256(),
+              Optional.ofNullable(evidenceUri),
+              Optional.ofNullable(note));
+      AppReviewReceipt receipt = AppReviewReceiptSigner.sign(payload, privateKey);
+      AppReviewReceiptIO.write(normalizedReceiptFile, receipt);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Signed review receipt: "
+                  + payload.appId()
+                  + " "
+                  + payload.appVersion()
+                  + " "
+                  + payload.status().catalogValue());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private Optional<String> evidenceSha256() throws java.io.IOException {
+      if (evidenceFile != null && evidenceSha256 != null) {
+        throw new AppDistributionException(
+            "configure evidence digest by --evidence-file or --evidence-sha256, not both");
+      }
+      if (evidenceSha256 != null) {
+        return Optional.of(evidenceSha256);
+      }
+      if (evidenceFile == null) {
+        return Optional.empty();
+      }
+      return Optional.of(sha256Hex(Files.readAllBytes(evidenceFile)));
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+      try {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+      } catch (NoSuchAlgorithmException exception) {
+        throw new IllegalStateException("SHA-256 is not available", exception);
+      }
+    }
+  }
+
+  /** Implements {@code crypta-app review verify}. */
+  @Command(name = "verify", description = "Verify an independent app review receipt.")
+  static final class ReviewVerifyCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--catalog-entry", required = true, description = "Catalog entry descriptor.")
+    private Path catalogEntry;
+
+    @Option(names = "--receipt-file", required = true, description = "Receipt properties file.")
+    private Path receiptFile;
+
+    @Option(
+        names = "--trusted-reviewer-keys-file",
+        required = true,
+        description = "Trusted reviewer keys properties file.")
+    private Path trustedReviewerKeysFile;
+
+    @Override
+    public Integer call() throws Exception {
+      AppCatalogWriter.CatalogEntryInspection inspection =
+          AppCatalogWriter.inspectEntryDescriptor(catalogEntry);
+      AppReviewReceipt receipt = AppReviewReceiptIO.read(receiptFile);
+      TrustedReviewerKeys trustedKeys = TrustedReviewerKeys.load(trustedReviewerKeysFile);
+      AppReviewTrustDecision decision =
+          AppReviewReceiptVerifier.evaluate(
+              inspection.entry(), receipt, trustedKeys, AppReviewPolicy.DEFAULT, Instant.now());
+      if (!decision.trusted()) {
+        throw new AppDistributionException(
+            "review receipt did not verify: " + decision.status().jsonValue());
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "Verified review receipt: "
+                  + decision.status().jsonValue()
+                  + " reviewer="
+                  + decision.reviewerKeyId());
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /**
    * Implements {@code crypta-app pack} for deterministic ZIP artifact creation.
    *
    * <p>The command validates the staged bundle before writing the artifact, respects an explicit
@@ -587,6 +778,11 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--entry", required = true, description = "Entry descriptor file; repeatable.")
     private List<Path> entries = new ArrayList<>();
 
+    @Option(
+        names = "--review-receipt",
+        description = "Review receipt properties file to embed; repeatable.")
+    private List<Path> reviewReceipts = new ArrayList<>();
+
     @Option(names = "--overwrite", description = "Replace an existing catalog file.")
     private boolean overwrite;
 
@@ -603,7 +799,8 @@ public final class CryptaAppCli implements Runnable {
                   name,
                   generatedAt == null ? Instant.now() : generatedAt,
                   entries,
-                  Optional.of(normalizedCatalogFile)));
+                  reviewReceipts,
+                  normalizedCatalogFile));
       int entryCount = result.catalog().entries().size();
       super.commandLine()
           .getOut()

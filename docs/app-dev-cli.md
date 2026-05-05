@@ -271,6 +271,12 @@ rationales explain declared permissions; they do not grant capabilities.
 API compatibility metadata is advisory. The signed bundle manifest remains authoritative for the
 app artifact, and catalog-vs-bundle mismatches are reported by `crypta-app compat verify`.
 
+Independent review receipts are separate from descriptor `review.status` and `review.note`. A
+receipt signs a canonical payload that binds the reviewer decision to the descriptor's app id,
+version, artifact SHA-256, artifact size, reviewer policy, reviewer key id, review timestamps, and
+optional evidence metadata. The receipt is later embedded into the signed catalog with
+`--review-receipt`, but the catalog signature does not make the receipt trusted by itself.
+
 `artifact.path` is local authoring input and is not written to the public catalog. Do not change
 the ZIP after creating the catalog; the generated catalog records its size and lowercase SHA-256
 digest.
@@ -281,14 +287,54 @@ sources are supported by the runtime catalog refresh flow, but `bundle.uri=crypt
 unless `platform-appcatalog` adds explicit Crypta artifact fetching. Keep Crypta keys for the
 catalog properties and catalog signature sidecars, not for app bundle artifacts.
 
-Create the catalog properties file:
+Create and verify an independent app review receipt before signing the catalog:
+
+```bash
+crypta-app review sign \
+  --catalog-entry catalog-entry.properties \
+  --receipt-file review-receipt.properties \
+  --reviewer-key-id crypta-first-party-review \
+  --reviewer-private-key-file /abs/path/to/reviewer-private.pem \
+  --policy-id crypta-app-review-v1 \
+  --policy-version 1 \
+  --status reviewed \
+  --evidence-file review-evidence.json \
+  --overwrite
+
+crypta-app review verify \
+  --catalog-entry catalog-entry.properties \
+  --receipt-file review-receipt.properties \
+  --trusted-reviewer-keys-file /abs/path/to/trusted-reviewers.properties
+```
+
+Reviewer private keys are local reviewer material, not app or catalog signing keys. Do not commit
+them. The trusted reviewer keys file is distinct from the AppHost trusted app-key file:
+
+```properties
+trusted.reviewers.version=1
+reviewer.1.id=crypta-first-party-review
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review
+reviewer.1.policy.id=crypta-app-review-v1
+```
+
+`review sign` accepts `--reviewer-private-key-base64`, `--reviewer-private-key-file`, or
+`--reviewer-private-key-env`. `--evidence-file` records the file's SHA-256 in the receipt; use
+`--evidence-sha256` when the evidence digest was computed elsewhere. Verification fails closed for
+app id/version mismatches, artifact digest or size mismatches, unknown reviewer keys, expired
+receipts, invalid signatures, malformed fields, and unsupported algorithms. A verified `rejected`
+receipt is trusted evidence but is not a positive review.
+
+Create the catalog properties file after the receipt exists:
 
 ```bash
 crypta-app catalog create \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
   --catalog-id dev \
   --name "Development Apps" \
-  --entry catalog-entry.properties
+  --entry catalog-entry.properties \
+  --review-receipt review-receipt.properties
 ```
 
 Sign the exact catalog bytes:

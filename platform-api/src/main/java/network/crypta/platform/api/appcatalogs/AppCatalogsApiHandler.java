@@ -26,6 +26,11 @@ import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -80,10 +85,20 @@ public final class AppCatalogsApiHandler {
   private static final String LAST_FETCH_ERROR_MESSAGE_FIELD = "lastFetchErrorMessage";
   private static final String LAST_RESOLVED_URI_FIELD = "lastResolvedUri";
   private static final String FETCH_STATUS_SUCCESS = "success";
+  private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
+  private static final String REVIEW_TRUST_FIELD = "reviewTrust";
+  private static final String STATUS_FIELD = "status";
+  private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
+  private static final String ERROR_APP_REVIEW_UNTRUSTED = "app_review_untrusted";
+  private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
+  private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
+  private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
 
   private final AppCatalogManager catalogManager;
   private final AppHost appHost;
   private final Supplier<String> currentCryptaVersionSupplier;
+  private final AppReviewPolicy reviewPolicy;
+  private final ReviewerKeysProvider reviewerKeysProvider;
 
   /**
    * Creates a handler backed by a catalog manager and shared AppHost.
@@ -116,10 +131,52 @@ public final class AppCatalogsApiHandler {
       AppCatalogManager catalogManager,
       AppHost appHost,
       Supplier<String> currentCryptaVersionSupplier) {
+    this(
+        catalogManager,
+        appHost,
+        currentCryptaVersionSupplier,
+        AppReviewPolicy.loadFromSystem(),
+        trustedReviewerKeysFromSystem());
+  }
+
+  /**
+   * Creates a handler with explicit review policy and reviewer-key provider.
+   *
+   * @param catalogManager signed catalog manager owned by runtime composition
+   * @param appHost shared AppHost used for final install and update operations
+   * @param currentCryptaVersionSupplier current node version supplier for compatibility display
+   * @param reviewPolicy local review policy for install/update gates
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   */
+  public AppCatalogsApiHandler(
+      AppCatalogManager catalogManager,
+      AppHost appHost,
+      Supplier<String> currentCryptaVersionSupplier,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider) {
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.currentCryptaVersionSupplier =
         Objects.requireNonNull(currentCryptaVersionSupplier, "currentCryptaVersionSupplier");
+    this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
+    this.reviewerKeysProvider =
+        Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
+  }
+
+  private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
+    return TrustedReviewerKeysLoader::loadFromSystem;
+  }
+
+  /** Supplies trusted reviewer keys for independent review-receipt checks. */
+  @FunctionalInterface
+  public interface ReviewerKeysProvider {
+    /**
+     * Returns local trusted reviewer keys.
+     *
+     * @return trusted reviewer registry
+     * @throws IOException if configured key material cannot be read
+     */
+    TrustedReviewerKeys trustedReviewerKeys() throws IOException;
   }
 
   /**
@@ -262,13 +319,30 @@ public final class AppCatalogsApiHandler {
    * @return installed app summary without launch tokens or staging paths
    */
   public Map<String, Object> install(String catalogId, String appId) {
+    return install(catalogId, appId, Map.of());
+  }
+
+  /**
+   * Installs one catalog app through AppHost with optional review acknowledgement.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   * @param queryParameters decoded request query parameters
+   * @return installed app summary without launch tokens or staging paths
+   */
+  public Map<String, Object> install(
+      String catalogId, String appId, Map<String, List<String>> queryParameters) {
     String normalizedAppId;
+    AppReviewTrustDecision initialReviewTrust;
+    boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
     try {
       AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
       normalizedAppId = entry.appId();
       if (appHost.describe(normalizedAppId).isPresent()) {
         throw conflict(APP_ALREADY_INSTALLED_PREFIX + normalizedAppId);
       }
+      initialReviewTrust = reviewTrust(entry);
+      requireReviewGate(initialReviewTrust, reviewAcknowledged, true);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -277,6 +351,12 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireReviewGate(
+          preparedReviewTrust,
+          reviewAcknowledgementStillApplies(
+              initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
+          true);
       InstalledAppSnapshot installed = appHost.installFromDirectory(plan.stagedBundleDirectory());
       return summarizeInstalledApp(installed.manifest());
     } catch (AppCatalogException exception) {
@@ -304,6 +384,19 @@ public final class AppCatalogsApiHandler {
    * @return updated installed app summary without launch tokens or staging paths
    */
   public Map<String, Object> update(String catalogId, String appId) {
+    return update(catalogId, appId, Map.of());
+  }
+
+  /**
+   * Updates one installed app from a catalog entry with optional review acknowledgement.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   * @param queryParameters decoded request query parameters
+   * @return updated installed app summary without launch tokens or staging paths
+   */
+  public Map<String, Object> update(
+      String catalogId, String appId, Map<String, List<String>> queryParameters) {
     String normalizedAppId;
     AppCatalogEntry entry;
     try {
@@ -324,9 +417,18 @@ public final class AppCatalogsApiHandler {
     } catch (IOException _) {
       // Allow AppHost to repair installs whose manifest is unreadable.
     }
+    AppReviewTrustDecision initialReviewTrust = reviewTrust(entry);
+    boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
+    requireReviewGate(initialReviewTrust, reviewAcknowledged, false);
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireReviewGate(
+          preparedReviewTrust,
+          reviewAcknowledgementStillApplies(
+              initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
+          false);
       InstalledAppSnapshot updated =
           appHost.updateFromDirectory(entry.appId(), plan.stagedBundleDirectory());
       return summarizeInstalledApp(updated.manifest());
@@ -351,6 +453,57 @@ public final class AppCatalogsApiHandler {
       LOG.log(
           System.Logger.Level.WARNING, "Failed to clean catalog app scratch directory", exception);
     }
+  }
+
+  private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
+    return AppReviewReceiptVerifier.evaluate(
+        entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  }
+
+  private TrustedReviewerKeys trustedReviewerKeysOrEmpty() {
+    try {
+      return reviewerKeysProvider.trustedReviewerKeys();
+    } catch (AppCatalogException | IOException _) {
+      return TrustedReviewerKeys.empty();
+    }
+  }
+
+  private static void requireReviewGate(
+      AppReviewTrustDecision decision, boolean reviewAcknowledged, boolean install) {
+    Map<String, Object> reviewTrust = decision.toJsonValue();
+    String blockField = install ? "blocksInstall" : "blocksUpdate";
+    String action = install ? "Install" : "Update";
+    if (Boolean.TRUE.equals(reviewTrust.get(blockField))) {
+      throw new PlatformApiException(
+          409, reviewGateFailureCode(reviewTrust), action + " blocked by app review policy.");
+    }
+    if (Boolean.TRUE.equals(reviewTrust.get("requiresAcknowledgement")) && !reviewAcknowledged) {
+      throw new PlatformApiException(
+          409,
+          reviewGateFailureCode(reviewTrust),
+          action + " requires explicit acknowledgement of the review trust decision.");
+    }
+  }
+
+  private static boolean reviewAcknowledgementStillApplies(
+      AppReviewTrustDecision initialDecision,
+      AppReviewTrustDecision preparedDecision,
+      boolean reviewAcknowledged) {
+    return reviewAcknowledged && initialDecision.equals(preparedDecision);
+  }
+
+  private static String reviewGateFailureCode(Map<String, Object> reviewTrust) {
+    Object statusValue = reviewTrust.get(STATUS_FIELD);
+    if (!(statusValue instanceof String status)) {
+      return ERROR_APP_REVIEW_UNTRUSTED;
+    }
+    return switch (status) {
+      case "missing_receipt", "publisher_claim_only", "not_configured" -> ERROR_APP_REVIEW_MISSING;
+      case "artifact_mismatch", "app_mismatch" -> ERROR_APP_REVIEW_MISMATCH;
+      case "expired" -> ERROR_APP_REVIEW_EXPIRED;
+      case "trusted_rejected" -> ERROR_APP_REVIEW_REJECTED;
+      default -> ERROR_APP_REVIEW_UNTRUSTED;
+    };
   }
 
   private Map<String, Object> summarizeCatalog(AppCatalogSourceSnapshot snapshot) {
@@ -449,6 +602,7 @@ public final class AppCatalogsApiHandler {
     json.put("license", entry.license().orElse(null));
     json.put("categories", entry.categories());
     json.put("review", summarizeReview(entry.review()));
+    json.put(REVIEW_TRUST_FIELD, reviewTrust(entry).toJsonValue());
     json.put("permissions", entry.permissions());
     json.put("permissionRationales", entry.permissionRationales());
     json.put("compatibility", summarizeCompatibility(entry.compatibility()));
@@ -492,7 +646,7 @@ public final class AppCatalogsApiHandler {
 
   private static Map<String, Object> summarizeReview(AppCatalogReviewMetadata review) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
-    json.put("status", review.status().catalogValue());
+    json.put(STATUS_FIELD, review.status().catalogValue());
     json.put("note", review.note().orElse(null));
     json.put("advisory", true);
     return json;
@@ -508,7 +662,7 @@ public final class AppCatalogsApiHandler {
     json.put("currentCryptaVersion", currentVersion);
     json.put(COMPATIBILITY_SATISFIED, result.satisfied());
     json.put("advisory", true);
-    json.put("status", result.status());
+    json.put(STATUS_FIELD, result.status());
     return json;
   }
 
@@ -651,6 +805,22 @@ public final class AppCatalogsApiHandler {
       AppApiCompatibilityMetadata metadata, List<String> permissions) {
     return PlatformApiContractVerifier.summarize(
         metadata, permissions, PlatformApiContract.current());
+  }
+
+  private static boolean reviewAcknowledged(Map<String, List<String>> queryParameters) {
+    String value =
+        PlatformApiParameters.readOptionalString(queryParameters, PARAM_REVIEW_ACKNOWLEDGED);
+    if (value == null || value.isBlank()) {
+      return false;
+    }
+    if ("true".equalsIgnoreCase(value.trim())) {
+      return true;
+    }
+    if ("false".equalsIgnoreCase(value.trim())) {
+      return false;
+    }
+    throw new PlatformApiException(
+        400, "invalid_query_parameter", PARAM_REVIEW_ACKNOWLEDGED + " must be 'true' or 'false'.");
   }
 
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {

@@ -40,6 +40,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param categories normalized catalog category tags
  * @param compatibility advisory compatibility metadata
  * @param review advisory human-review metadata
+ * @param reviewReceipt optional independently signed review receipt
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
  * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
@@ -60,6 +61,7 @@ public record AppCatalogEntry(
     List<String> categories,
     AppCatalogCompatibilityMetadata compatibility,
     AppCatalogReviewMetadata review,
+    Optional<AppReviewReceipt> reviewReceipt,
     AppCatalogChangelog changelog,
     List<URI> screenshots,
     URI bundleUri,
@@ -95,6 +97,7 @@ public record AppCatalogEntry(
    * @param categories normalized catalog category tags
    * @param compatibility advisory compatibility metadata
    * @param review advisory human-review metadata
+   * @param reviewReceipt optional independently signed review receipt
    * @param changelog optional change metadata for this catalog version
    * @param screenshots optional screenshot URIs displayed as links
    * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
@@ -126,6 +129,7 @@ public record AppCatalogEntry(
     categories = normalizeCategories(categories, appId);
     Objects.requireNonNull(compatibility, "compatibility");
     Objects.requireNonNull(review, "review");
+    Objects.requireNonNull(reviewReceipt, "reviewReceipt");
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots, appId);
     bundleUri = AppCatalogSidecars.requireSafeArtifactUri(Objects.requireNonNull(bundleUri));
@@ -148,6 +152,73 @@ public record AppCatalogEntry(
     }
     permissions = normalizePermissions(permissions, appId);
     permissionRationales = normalizePermissionRationales(permissionRationales, permissions, appId);
+  }
+
+  /**
+   * Creates a catalog entry with advisory store metadata and no signed review receipt.
+   *
+   * <p>This overload preserves existing controlled callers that construct rich catalog entries
+   * before independent review receipts were added. Nullable store metadata parameters are converted
+   * to absent optional values before the canonical constructor validates and normalizes them.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        Optional.ofNullable(homepage),
+        Optional.ofNullable(source),
+        Optional.ofNullable(license),
+        categories,
+        compatibility,
+        review,
+        Optional.empty(),
+        changelog,
+        screenshots,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
   }
 
   /**
@@ -188,6 +259,7 @@ public record AppCatalogEntry(
         List.of(),
         AppCatalogCompatibilityMetadata.EMPTY,
         AppCatalogReviewMetadata.EMPTY,
+        Optional.empty(),
         AppCatalogChangelog.EMPTY,
         List.of(),
         bundleUri,
@@ -206,6 +278,7 @@ public record AppCatalogEntry(
         || compatibility.minimumCryptaVersion() != null
         || compatibility.apiCompatibility().declared()
         || review.hasCatalogFields()
+        || reviewReceipt.isPresent()
         || !changelog.isEmpty()
         || !screenshots.isEmpty()
         || !permissionRationales.isEmpty();

@@ -102,7 +102,11 @@ installed state, running state, and installed version. It also includes optional
 when a metadata-capable catalog entry provides it:
 
 - `homepage`, `source`, `license`, and `categories`.
-- `review.status` and `review.note`.
+- Legacy publisher-advisory `review.status` and `review.note`.
+- `reviewTrust`, the node-local trusted review receipt decision. It includes stable `status`,
+  booleans for `trusted`, `positive`, `requiresAcknowledgement`, `blocksInstall`,
+  `blocksUpdate`, and `blocksPolicyApply`, reviewer key/display metadata, policy id/version,
+  review/expiry timestamps, optional evidence digest/URI, and warnings.
 - `permissionRationales`, keyed by normalized permission name.
 - `compatibility.minimumCryptaVersion`, the current comparable Cryptad build/version string,
   advisory status, and whether the comparison is satisfied when it can be evaluated.
@@ -117,15 +121,55 @@ when a metadata-capable catalog entry provides it:
   ordering cannot be evaluated safely.
 - `permissionDelta` for install/update review, with added, removed, and unchanged permissions.
 
-Signed catalog verification remains the source of trust. Review metadata is advisory and does not
-create cryptographic trust. Cryptad build compatibility and Platform API contract compatibility
-metadata are advisory in this PR and do not block install/update by themselves when version
-comparison is unavailable or ambiguous.
+Example review fields:
+
+```json
+{
+  "review": {
+    "status": "reviewed",
+    "note": "Publisher advisory note"
+  },
+  "reviewTrust": {
+    "status": "trusted_reviewed",
+    "trusted": true,
+    "positive": true,
+    "requiresAcknowledgement": false,
+    "blocksInstall": false,
+    "blocksUpdate": false,
+    "blocksPolicyApply": false,
+    "reviewerKeyId": "crypta-first-party-review",
+    "reviewerDisplayName": "Crypta First-Party Review",
+    "policyId": "crypta-app-review-v1",
+    "policyVersion": "1",
+    "reviewedAt": "2026-04-21T18:25:00Z",
+    "expiresAt": null,
+    "evidenceSha256": "<optional-lowercase-hex-sha256>",
+    "evidenceUri": "crypta:CHK@...",
+    "warnings": []
+  }
+}
+```
+
+Signed catalog verification authenticates catalog bytes and publisher metadata; it does not
+authenticate independent review evidence. `review.status=reviewed` remains advisory unless
+`reviewTrust.status=trusted_reviewed` verifies a receipt for the same app id, version, artifact
+digest, and size with a configured trusted reviewer key. Cryptad build compatibility and Platform
+API contract compatibility metadata are advisory in this PR and do not block install/update by
+themselves when version comparison is unavailable or ambiguous.
 
 The API must not expose trusted-key material, catalog scratch paths, verified staging directories,
-or AppHost filesystem paths through catalog responses. Screenshot fields are URL metadata for the
-operator; the Web Shell should show them as links or behind an explicit preview control rather than
-silently fetching arbitrary remote images.
+AppHost filesystem paths, reviewer public key bytes, reviewer private key material, receipt file
+paths, app browser session tokens, or AppHost process tokens through catalog responses. Screenshot
+fields are URL metadata for the operator; the Web Shell should show them as links or behind an
+explicit preview control rather than silently fetching arbitrary remote images.
+
+Install/update APIs use local review policy to decide whether `reviewTrust` blocks or requires
+acknowledgement. `advisory` is backward-compatible with old catalogs. `warn_untrusted` requires an
+explicit `reviewAcknowledged=true` request flag for missing, untrusted, expired, mismatched, or
+rejected review evidence. `require_trusted_review` blocks manual install/update unless the receipt
+is trusted and positive. Policy-driven update apply also honors `blocksPolicyApply`. Stable review
+gate error codes include `app_review_missing`, `app_review_untrusted`, `app_review_rejected`,
+`app_review_mismatch`, and `app_review_expired`.
 
 ## Web Shell relationship
 

@@ -10,6 +10,8 @@ app-owned static UI, and legacy-admin retirement state.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import dataclasses
 import hashlib
 import html.parser
@@ -39,6 +41,8 @@ APP_IDS = ("queue-manager", "publisher")
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
+    "--reviewer-private-key-base64",
+    "--reviewer-private-key-file",
     "--trusted-public-key-base64",
 }
 SENSITIVE_KEY_PATTERN = (
@@ -648,6 +652,28 @@ def signing_inputs(env: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def reviewer_inputs(env: dict[str, str]) -> dict[str, Any]:
+    key_id = env.get("CRYPTAD_APP_REVIEWER_KEY_ID", "").strip()
+    private_file = env.get("CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE", "").strip()
+    private_base64 = env.get("CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64", "").strip()
+    public_file = env.get("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE", "").strip()
+    public_base64 = env.get("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64", "").strip()
+    policy_id = env.get("CRYPTAD_APP_REVIEW_POLICY_ID", "crypta-app-review-v1").strip()
+    policy_version = env.get("CRYPTAD_APP_REVIEW_POLICY_VERSION", "1").strip()
+    return {
+        "keyId": key_id,
+        "privateFile": private_file,
+        "privateBase64": bool(private_base64),
+        "publicFile": public_file,
+        "publicBase64": bool(public_base64),
+        "policyId": policy_id,
+        "policyVersion": policy_version,
+        "hasPrivate": bool(private_file or private_base64),
+        "hasPublic": bool(public_file or public_base64),
+        "complete": bool(key_id and policy_id and policy_version and (private_file or private_base64) and (public_file or public_base64)),
+    }
+
+
 def sign_args(bundle_dir: Path, inputs: dict[str, Any]) -> list[str]:
     args = ["sign", "--bundle-dir", str(bundle_dir), "--key-id", inputs["keyId"]]
     if inputs["privateFile"]:
@@ -682,6 +708,99 @@ def catalog_verify_args(catalog_file: Path, inputs: dict[str, Any]) -> list[str]
     else:
         args.extend(["--trusted-public-key-base64", os.environ.get("CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64", "")])
     return args
+
+
+def review_sign_args(descriptor: Path, receipt_file: Path, inputs: dict[str, Any]) -> list[str]:
+    args = [
+        "review",
+        "sign",
+        "--catalog-entry",
+        str(descriptor),
+        "--receipt-file",
+        str(receipt_file),
+        "--reviewer-key-id",
+        inputs["keyId"],
+        "--policy-id",
+        inputs["policyId"],
+        "--policy-version",
+        inputs["policyVersion"],
+        "--status",
+        "reviewed",
+        "--reviewed-at",
+        "2026-05-01T00:00:00Z",
+        "--overwrite",
+    ]
+    if inputs["privateFile"]:
+        args.extend(["--reviewer-private-key-file", inputs["privateFile"]])
+    else:
+        args.extend(["--reviewer-private-key-env", "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64"])
+    return args
+
+
+def review_verify_args(descriptor: Path, receipt_file: Path, trusted_keys_file: Path) -> list[str]:
+    return [
+        "review",
+        "verify",
+        "--catalog-entry",
+        str(descriptor),
+        "--receipt-file",
+        str(receipt_file),
+        "--trusted-reviewer-keys-file",
+        str(trusted_keys_file),
+    ]
+
+
+def reviewer_public_key_base64(inputs: dict[str, Any]) -> str:
+    if inputs["publicBase64"]:
+        return "".join(os.environ.get("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64", "").split())
+    public_file = inputs["publicFile"]
+    if not public_file:
+        return ""
+    raw = Path(public_file).read_bytes()
+    text = raw.decode("utf-8", errors="ignore")
+    if "BEGIN PUBLIC KEY" in text:
+        return "".join(
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.startswith("-----")
+        )
+    compact_text = compact_base64_key_text(raw)
+    if compact_text:
+        return compact_text
+    return base64.b64encode(raw).decode("ascii")
+
+
+def compact_base64_key_text(raw: bytes) -> str | None:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    compact = "".join(text.split())
+    if not compact:
+        return None
+    try:
+        base64.b64decode(compact, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    return compact
+
+
+def write_trusted_reviewer_keys(path: Path, inputs: dict[str, Any]) -> None:
+    public_key = reviewer_public_key_base64(inputs)
+    path.write_text(
+        "\n".join(
+            [
+                "trusted.reviewers.version=1",
+                f"reviewer.1.id={inputs['keyId']}",
+                "reviewer.1.algorithm=Ed25519",
+                f"reviewer.1.public.key.base64={public_key}",
+                "reviewer.1.display.name=Certification Reviewer",
+                f"reviewer.1.policy.id={inputs['policyId']}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def collect_first_party_evidence(settings: Settings, cli: Path | None) -> EvidenceItem:
@@ -1138,6 +1257,249 @@ def collect_catalog_evidence(settings: Settings, sample_paths: dict[str, Path]) 
     if sign_result.exit_code != 0 or verify_result.exit_code != 0:
         return EvidenceItem("catalog.smoke", "fail", True, "Signed catalog smoke failed.", source, details)
     return EvidenceItem("catalog.smoke", "pass", True, "Catalog create, sign, and verify smoke passed.", source, details)
+
+
+def collect_app_review_receipt_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    appcatalog_dir = settings.workspace_root / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    verifier_text = read_source(appcatalog_dir / "AppReviewReceiptVerifier.java")
+    receipt_text = read_source(appcatalog_dir / "AppReviewReceipt.java")
+    payload_text = read_source(appcatalog_dir / "AppReviewReceiptPayload.java")
+    io_text = read_source(appcatalog_dir / "AppReviewReceiptIO.java")
+    keys_text = read_source(appcatalog_dir / "TrustedReviewerKeys.java")
+    cli_text = read_source(settings.workspace_root / "platform-devtools/src/main/java/network/crypta/platform/devtools/CryptaAppCli.java")
+    checks = {
+        "canonicalPayloadExcludesSignature": (
+            "canonicalPayloadBytes" in payload_text
+            and "review.receipt.signature.value.base64" not in payload_text
+        ),
+        "receiptSignatureIndependent": (
+            "Signature.getInstance(receipt.signature().algorithm())" in verifier_text
+            and "receipt.payload().canonicalPayloadBytes()" in verifier_text
+        ),
+        "bindingChecks": (
+            "receipt.mismatchStatus(" in verifier_text
+            and "binding.appId()" in verifier_text
+            and "binding.version()" in verifier_text
+            and "binding.artifactSha256()" in verifier_text
+            and "binding.artifactSizeBytes()" in verifier_text
+            and "AppReviewTrustStatus.ARTIFACT_MISMATCH" in receipt_text
+            and "AppReviewTrustStatus.APP_MISMATCH" in receipt_text
+        ),
+        "expiryAndUnknownReviewerFailClosed": (
+            "AppReviewTrustStatus.EXPIRED" in verifier_text
+            and "AppReviewTrustStatus.UNKNOWN_REVIEWER" in verifier_text
+        ),
+        "trustedReviewerRegistrySeparate": (
+            "trusted.reviewers.version" in keys_text
+            and "public.key.base64" in keys_text
+        ),
+        "parserWriterEmbedsReceipt": (
+            "parseProperties" in io_text
+            and "appendReceiptProperties" in io_text
+            and "review.receipt.signature.value.base64" in io_text
+        ),
+        "devtoolsSignVerify": (
+            'name = "review"' in cli_text
+            and "ReviewSignCommand" in cli_text
+            and "ReviewVerifyCommand" in cli_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "receiptSchemaVersion": 1,
+        "signatureAlgorithm": "Ed25519",
+        "checks": checks,
+        "sources": {
+            "verifier": display_path(appcatalog_dir / "AppReviewReceiptVerifier.java", settings.workspace_root),
+            "receipt": display_path(appcatalog_dir / "AppReviewReceipt.java", settings.workspace_root),
+            "payload": display_path(appcatalog_dir / "AppReviewReceiptPayload.java", settings.workspace_root),
+            "receiptIo": display_path(appcatalog_dir / "AppReviewReceiptIO.java", settings.workspace_root),
+            "trustedReviewerKeys": display_path(appcatalog_dir / "TrustedReviewerKeys.java", settings.workspace_root),
+            "devtools": display_path(settings.workspace_root / "platform-devtools/src/main/java/network/crypta/platform/devtools/CryptaAppCli.java", settings.workspace_root),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-review.trusted-receipts",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "App-review receipt evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.trusted-receipts",
+        "pass",
+        True,
+        "Trusted review receipt model and offline tooling evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_app_review_policy_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    appcatalog_dir = settings.workspace_root / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    api_catalogs = settings.workspace_root / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    api_updates = settings.workspace_root / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    policy_text = read_source(appcatalog_dir / "AppReviewPolicy.java")
+    mode_text = read_source(appcatalog_dir / "AppReviewPolicyMode.java")
+    decision_text = read_source(appcatalog_dir / "AppReviewTrustDecision.java")
+    catalogs_text = read_source(api_catalogs)
+    updates_text = read_source(api_updates)
+    checks = {
+        "policyModes": (
+            "ADVISORY" in mode_text
+            and "WARN_UNTRUSTED" in mode_text
+            and "REQUIRE_TRUSTED_REVIEW" in mode_text
+            and "REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED" in mode_text
+        ),
+        "defaultAdvisory": "AppReviewPolicyMode.ADVISORY" in policy_text,
+        "decisionFlags": (
+            "requiresAcknowledgement" in decision_text
+            and "blocksInstall" in decision_text
+            and "blocksUpdate" in decision_text
+            and "blocksPolicyApply" in decision_text
+        ),
+        "catalogInstallUpdateGate": (
+            "requireReviewGate(" in catalogs_text
+            and "reviewAcknowledged" in catalogs_text
+            and "app_review_missing" in catalogs_text
+        ),
+        "updateLifecycleGate": (
+            "requireReviewGate(candidate.reviewTrust()" in updates_text
+            and "eligibleForAutomaticApply()" in read_source(settings.workspace_root / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java")
+            and "app_review_rejected" in updates_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "mode": "advisory default; warn/block modes operator-configured",
+        "checks": checks,
+        "sources": {
+            "policy": display_path(appcatalog_dir / "AppReviewPolicy.java", settings.workspace_root),
+            "policyMode": display_path(appcatalog_dir / "AppReviewPolicyMode.java", settings.workspace_root),
+            "decision": display_path(appcatalog_dir / "AppReviewTrustDecision.java", settings.workspace_root),
+            "catalogsApi": display_path(api_catalogs, settings.workspace_root),
+            "updatesApi": display_path(api_updates, settings.workspace_root),
+        },
+    }
+    if errors:
+        return EvidenceItem("app-review.policy", "fail" if settings.mode == "release-candidate" else "warn", True, "App-review policy evidence is incomplete.", source, {"errors": errors, **details})
+    return EvidenceItem("app-review.policy", "pass", True, "App-review policy gates passed deterministic evidence checks.", source, details)
+
+
+def collect_app_review_first_party_catalog_evidence(settings: Settings, sample_paths: dict[str, Path]) -> EvidenceItem:
+    source = summary_source(settings)
+    cli = sample_paths.get("cli")
+    sample_zip = sample_paths.get("zip")
+    details: dict[str, Any] = {"policyMode": "release-candidate requires trusted positive receipts"}
+    if not cli or not sample_zip or not sample_zip.is_file():
+        return EvidenceItem("app-review.first-party-catalog", root_consequence(settings, "missing"), True, "Sample ZIP or crypta-app CLI is unavailable for app-review catalog evidence.", source, details)
+    inputs = reviewer_inputs(os.environ)
+    details["reviewerInputs"] = {
+        "keyIdPresent": bool(inputs["keyId"]),
+        "privateKeyPresent": inputs["hasPrivate"],
+        "publicKeyPresent": inputs["hasPublic"],
+        "policyId": inputs["policyId"],
+        "policyVersion": inputs["policyVersion"],
+    }
+    if not inputs["complete"]:
+        return EvidenceItem(
+            "app-review.first-party-catalog",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Reviewer key inputs are incomplete; trusted first-party review receipts were not verified.",
+            source,
+            details,
+        )
+    review_dir = sample_workspace(settings) / "app-review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    descriptor = review_dir / "entry.properties"
+    receipt_file = review_dir / "review-receipt.properties"
+    trusted_keys_file = review_dir / "trusted-reviewers.properties"
+    catalog_file = review_dir / "cryptad-app-catalog.properties"
+    sample_app_id = "cert-smoke"
+    sample_app_prefix = f"app.{sample_app_id}."
+    descriptor.write_text(
+        "\n".join(
+            [
+                f"artifact.path={sample_zip.resolve()}",
+                f"bundle.uri={sample_zip.resolve().as_uri()}",
+                "summary=Certification review smoke app.",
+                "name=Certification Review Smoke",
+                "permissions=queue.read",
+                f"app.id={sample_app_id}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    remove_existing_path(receipt_file)
+    remove_existing_path(catalog_file)
+    try:
+        write_trusted_reviewer_keys(trusted_keys_file, inputs)
+    except OSError as exc:
+        details["trustedReviewerKeys"] = {
+            "error": scrub_text(str(exc), settings.workspace_root)
+        }
+        return EvidenceItem(
+            "app-review.first-party-catalog",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Reviewer public key material could not be read for app-review catalog evidence.",
+            source,
+            details,
+        )
+    sign_result = run_cli(cli, review_sign_args(descriptor, receipt_file, inputs), settings, "crypta-app-review-sign")
+    verify_result = run_cli(cli, review_verify_args(descriptor, receipt_file, trusted_keys_file), settings, "crypta-app-review-verify")
+    create_result = run_cli(
+        cli,
+        [
+            "catalog",
+            "create",
+            "--catalog-file",
+            str(catalog_file),
+            "--catalog-id",
+            "cert-review-smoke",
+            "--name",
+            "Certification Review Smoke Apps",
+            "--generated-at",
+            "2026-05-01T00:00:00Z",
+            "--entry",
+            str(descriptor),
+            "--review-receipt",
+            str(receipt_file),
+            "--overwrite",
+        ],
+        settings,
+        "crypta-app-review-catalog-create",
+    )
+    details["sign"] = command_details(sign_result, settings)
+    details["verify"] = command_details(verify_result, settings)
+    details["catalogCreate"] = command_details(create_result, settings)
+    catalog = parse_properties(catalog_file) if catalog_file.is_file() else {}
+    receipt_status = catalog.get(sample_app_prefix + "review.receipt.status")
+    details["coverage"] = {
+        "catalogAppsInspected": 1,
+        "trustedPositiveReceipts": 1 if verify_result.exit_code == 0 and receipt_status == "reviewed" else 0,
+        "missingReceipts": 0 if receipt_status else 1,
+        "expiredOrMismatchedOrUnknownReviewer": 0 if verify_result.exit_code == 0 else 1,
+        "trustedRejectedReceipts": 1 if receipt_status == "rejected" else 0,
+        "promotionBlocked": verify_result.exit_code != 0 or receipt_status != "reviewed",
+    }
+    details["catalog"] = {
+        "catalogId": catalog.get("catalog.id"),
+        "appId": catalog.get(sample_app_prefix + "id"),
+        "receiptStatus": receipt_status,
+        "reviewerKeyId": catalog.get(sample_app_prefix + "review.receipt.reviewer.key.id"),
+        "policyId": catalog.get(sample_app_prefix + "review.receipt.policy.id"),
+        "policyVersion": catalog.get(sample_app_prefix + "review.receipt.policy.version"),
+    }
+    if sign_result.exit_code != 0 or verify_result.exit_code != 0 or create_result.exit_code != 0 or receipt_status != "reviewed":
+        return EvidenceItem("app-review.first-party-catalog", "fail" if settings.mode == "release-candidate" else "warn", True, "Trusted first-party review receipt catalog evidence failed.", source, details)
+    return EvidenceItem("app-review.first-party-catalog", "pass", True, "First-party catalog review receipt evidence passed.", source, details)
 
 
 def collect_app_ui_evidence(settings: Settings) -> EvidenceItem:
@@ -1849,6 +2211,9 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
+        collect_app_review_receipt_evidence(settings),
+        collect_app_review_policy_evidence(settings),
+        collect_app_review_first_party_catalog_evidence(settings, sample_paths),
         collect_app_ui_evidence(settings),
         collect_legacy_evidence(settings),
         collect_sandbox_provider_evidence(settings),
@@ -2174,6 +2539,23 @@ def run_self_test(repo_root: Path) -> None:
         )
         == "pass"
     )
+    with tempfile.TemporaryDirectory(prefix="cryptad-app-review-key-self-test-") as key_temp:
+        key_dir = Path(key_temp)
+        base64_key = base64.b64encode(b"review-public-key").decode("ascii")
+        base64_key_file = key_dir / "reviewer-public-base64.txt"
+        base64_key_file.write_text("\n".join((base64_key[:8], base64_key[8:])), encoding="utf-8")
+        assert (
+            reviewer_public_key_base64(
+                {"publicBase64": False, "publicFile": str(base64_key_file)}
+            )
+            == base64_key
+        )
+        raw_key = b"\xff\x00review-public-key"
+        raw_key_file = key_dir / "reviewer-public.der"
+        raw_key_file.write_bytes(raw_key)
+        assert reviewer_public_key_base64(
+            {"publicBase64": False, "publicFile": str(raw_key_file)}
+        ) == base64.b64encode(raw_key).decode("ascii")
     with tempfile.TemporaryDirectory(prefix="cryptad-app-smoke-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
@@ -2327,6 +2709,44 @@ def run_self_test(repo_root: Path) -> None:
         assert missing_catalog_item.details["catalogExists"] is False, missing_catalog_item
         assert not stale_catalog.exists(), stale_catalog
         assert not stale_signature.exists(), stale_signature
+
+        review_env_names = (
+            "CRYPTAD_APP_REVIEWER_KEY_ID",
+            "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+            "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64",
+            "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE",
+            "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64",
+            "CRYPTAD_APP_REVIEW_POLICY_ID",
+            "CRYPTAD_APP_REVIEW_POLICY_VERSION",
+        )
+        previous_review_env = {name: os.environ.get(name) for name in review_env_names}
+        os.environ["CRYPTAD_APP_REVIEWER_KEY_ID"] = "cert-review"
+        os.environ.pop("CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE", None)
+        os.environ["CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64"] = "ZmFrZQ=="
+        os.environ["CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE"] = str(
+            workspace / "missing-reviewer-public-key.pem"
+        )
+        os.environ.pop("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64", None)
+        os.environ["CRYPTAD_APP_REVIEW_POLICY_ID"] = "crypta-app-review-v1"
+        os.environ["CRYPTAD_APP_REVIEW_POLICY_VERSION"] = "1"
+        try:
+            missing_review_key_settings = dataclasses.replace(
+                settings,
+                out_dir=(workspace / "build/missing-review-key-smoke").resolve(),
+                mode="release-candidate",
+            )
+            missing_review_key_item = collect_app_review_first_party_catalog_evidence(
+                missing_review_key_settings,
+                {"cli": fake_cli, "zip": fresh_sample_paths["zip"]},
+            )
+        finally:
+            for name, value in previous_review_env.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        assert missing_review_key_item.status == "fail", missing_review_key_item
+        assert "trustedReviewerKeys" in missing_review_key_item.details, missing_review_key_item
 
         signing_env_names = (
             "CRYPTAD_APP_SIGNING_KEY_ID",

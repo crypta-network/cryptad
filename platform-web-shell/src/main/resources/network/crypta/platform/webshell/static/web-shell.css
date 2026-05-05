@@ -559,6 +559,17 @@ a {
 
 .app-action-form {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-acknowledgement {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--shell-muted);
+  font-size: 0.9rem;
 }
 
 .catalog-app-list {

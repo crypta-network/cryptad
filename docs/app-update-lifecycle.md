@@ -12,7 +12,7 @@ The v1 policy is:
 | Step | Policy | Release evidence |
 | --- | --- | --- |
 | Detect | Catalog detail and listing responses compare the installed app version with the verified catalog entry. | `app-update.lifecycle` |
-| Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, review notes, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
+| Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, publisher-advisory review notes, trusted review receipt decisions, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
 | Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
 | Apply | Applying an update is manual by default. The target app must be stopped unless an explicit restart request allows stop/start choreography. | `app-update.lifecycle` |
 | Roll back | A successful update records the previous installed bundle as the durable rollback target. If replacement cannot complete, AppHost restores the previous bundle from a managed backup. | `app-update.rollback` |
@@ -57,22 +57,42 @@ The update review surface includes:
 - artifact size and SHA-256 checks before extraction;
 - manifest `app.id` and `app.version` consistency checks;
 - advisory Cryptad build compatibility and Platform API contract compatibility summaries;
-- catalog `review.status` and `review.note`;
+- publisher-advisory catalog `review.status` and `review.note`;
+- trusted review receipt status, reviewer key/display metadata, policy id/version, evidence
+  digest/URI, receipt expiry, and receipt warnings when a catalog carries a receipt;
 - changelog metadata when present;
 - permission rationales and a permission delta with added, removed, and unchanged permissions.
 
 Catalog review metadata and compatibility metadata are review gates, not trust gates. They do not
-replace signature verification. A compatible newer candidate can still be staged explicitly, but
-policy-driven apply requires `review.status=reviewed` and `apiCompatibility.status=compatible`.
-`unreviewed`, `caution`, `rejected`, `unknown`, and `newer_than_tested` entries require another
-operator decision before apply.
+replace signature verification. `review.status=reviewed` is a publisher claim unless a separate
+review receipt verifies with a locally trusted reviewer key. A compatible newer candidate can still
+be staged explicitly under the default review policy, but stricter review policies can require
+operator acknowledgement or a trusted positive receipt before staging, updating, or policy-driven
+apply.
+
+App review policy is local node policy and is configured independently from update policy with
+`cryptad.appreview.policyMode` or `CRYPTAD_APPREVIEW_POLICY_MODE`:
+
+| Review policy mode | Install/update/apply behavior |
+| --- | --- |
+| `advisory` | Default. Show `reviewTrust`, but do not block manual install/update. |
+| `warn_untrusted` | Manual install/update is allowed only when the API request or Web Shell form explicitly acknowledges missing, untrusted, expired, mismatched, or rejected review evidence. |
+| `require_trusted_review` | Manual install/update is blocked unless `reviewTrust.status=trusted_reviewed`. |
+| `require_trusted_review_for_apply_when_stopped` | Manual install/update can be acknowledged, but policy-driven `apply_when_stopped` requires `reviewTrust.status=trusted_reviewed`. |
+
+Stable review-gate error codes include `app_review_missing`, `app_review_untrusted`,
+`app_review_rejected`, `app_review_mismatch`, and `app_review_expired`. `trusted_rejected` is
+trusted negative evidence and is never treated as a positive review.
 
 ## Apply policy
 
 The default app-update policy is `manual`. The `apply_when_stopped` policy is available when an
 operator wants eligible candidates applied by policy, but the app must already be installed and not
-running before the update is applied. Platform API routes check runtime status before calling
-AppHost, and AppHost rechecks the live process table before any installed-bundle mutation.
+running before the update is applied. When review policy is
+`require_trusted_review_for_apply_when_stopped` or `require_trusted_review`, policy-driven apply
+also requires a trusted positive review receipt for the exact catalog artifact. Platform API routes
+check runtime status before calling AppHost, and AppHost rechecks the live process table before any
+installed-bundle mutation.
 
 The update source must already be a local staged directory or a catalog-managed temporary staged
 directory. AppHost copies that stage under managed storage, verifies distribution sidecars when the
@@ -125,7 +145,8 @@ Release candidates require offline evidence for both app-update lifecycle behavi
 scope:
 
 - `app-update.lifecycle` proves the manual/stage/apply-when-stopped policy, candidate detection,
-  review metadata, permission delta, and compatibility checks are represented in source and tests.
+  review metadata, trusted review receipt decisions, permission delta, and compatibility checks are
+  represented in source and tests.
 - `app-update.rollback` proves durable installed-bundle backup/restore behavior and confirms data,
   cache, and run directories are outside rollback scope.
 

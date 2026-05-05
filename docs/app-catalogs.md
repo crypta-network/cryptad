@@ -17,10 +17,14 @@ The runtime verifies data in this order:
 3. The extracted bundle's existing `cryptad-app.digests` and `cryptad-app.signature` through
    `AppBundleVerifier`.
 4. The extracted manifest `app.id` and `app.version` against the catalog entry.
+5. If present, the app review receipt signature over canonical receipt payload bytes, using the
+   node's separate trusted reviewer-key registry.
 
-Catalog review metadata is advisory. Signed catalog verification and signed bundle verification
-remain the trust source. A `review.status` or `review.note` value does not create cryptographic
-trust and does not weaken artifact or bundle checks.
+These are separate trust layers. The catalog signature authenticates catalog bytes and publisher
+metadata. The artifact digest binds one catalog entry to one downloaded ZIP. The bundle signature
+authenticates the extracted app bundle. A review receipt signature independently authenticates
+review evidence from a reviewer key that the local node trusts for app review. Legacy
+`review.status` and `review.note` catalog metadata remains publisher-advisory only.
 
 ## Catalog files
 
@@ -61,6 +65,21 @@ app.queue-manager.api.minimumVersion=1
 app.queue-manager.api.maximumTestedVersion=1
 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
+app.queue-manager.review.receipt.version=1
+app.queue-manager.review.receipt.app.id=queue-manager
+app.queue-manager.review.receipt.app.version=1.0.0
+app.queue-manager.review.receipt.artifact.sha256=<lowercase-hex-sha256-of-zip>
+app.queue-manager.review.receipt.artifact.size=12345
+app.queue-manager.review.receipt.policy.id=crypta-app-review-v1
+app.queue-manager.review.receipt.policy.version=1
+app.queue-manager.review.receipt.status=reviewed
+app.queue-manager.review.receipt.reviewer.key.id=crypta-first-party-review
+app.queue-manager.review.receipt.reviewed.at=2026-04-21T18:25:00Z
+app.queue-manager.review.receipt.evidence.sha256=<optional-lowercase-hex-sha256>
+app.queue-manager.review.receipt.evidence.uri=crypta:CHK@...
+app.queue-manager.review.receipt.note=Reviewed against the first-party app policy.
+app.queue-manager.review.receipt.signature.algorithm=Ed25519
+app.queue-manager.review.receipt.signature.value.base64=<base64-signature-over-canonical-payload>
 ```
 
 The parser rejects duplicate keys, missing required fields, unsupported versions, unsupported
@@ -96,6 +115,7 @@ Catalog entries can include these optional fields:
 | `app.<id>.api.maximumTestedVersion` | Advisory maximum Platform API compatibility contract version tested by the app author. |
 | `app.<id>.api.optionalCapabilities` | Advisory comma-separated optional capability names used for verifier and review warnings. |
 | `app.<id>.api.experimentalCapabilitiesAccepted` | Whether the app author explicitly accepts experimental capability use. |
+| `app.<id>.review.receipt.*` | Optional independently signed review receipt. See [Trusted review receipts](#trusted-review-receipts). |
 
 URI fields are metadata only. The Web Shell should show screenshot URIs as links or behind an
 operator-explicit preview control; it should not silently auto-fetch arbitrary remote images from a
@@ -112,6 +132,83 @@ and display an `unknown` API compatibility status.
 Permission rationales explain why the catalog version declares a permission. They do not grant
 permissions and do not replace the signed bundle manifest's permission list or server-side
 Platform API authorization checks.
+
+## Trusted review receipts
+
+Catalog entries may carry an inline review receipt under `app.<id>.review.receipt.*`. The receipt
+is still part of the signed catalog bytes, but it is not trusted merely because the catalog signer
+included it. Cryptad verifies the receipt separately with a node-local trusted reviewer key. This
+lets the Web Shell and Platform API distinguish a publisher claim such as
+`review.status=reviewed` from a trusted reviewer receipt that binds a reviewer decision to the
+exact app artifact.
+
+The signed receipt payload contains:
+
+| Receipt property | Meaning |
+| --- | --- |
+| `review.receipt.version` | Receipt schema version. Current value is `1`. |
+| `review.receipt.app.id` | App id that must match the catalog entry. |
+| `review.receipt.app.version` | App version that must match the catalog entry. |
+| `review.receipt.artifact.sha256` | Lowercase SHA-256 that must match `app.<id>.bundle.sha256`. |
+| `review.receipt.artifact.size` | Artifact size that must match `app.<id>.bundle.size.bytes`. |
+| `review.receipt.bundle.key.id` | Optional signed-bundle key id recorded by the reviewer. |
+| `review.receipt.policy.id` | Reviewer policy id, for example `crypta-app-review-v1`. |
+| `review.receipt.policy.version` | Reviewer policy version. |
+| `review.receipt.status` | Reviewer decision: `reviewed`, `caution`, or `rejected`. |
+| `review.receipt.reviewer.key.id` | Reviewer key id looked up in the local reviewer trust registry. |
+| `review.receipt.reviewed.at` | Strict ISO-8601 review instant. |
+| `review.receipt.expires.at` | Optional strict ISO-8601 expiry instant. Expired receipts are untrusted. |
+| `review.receipt.evidence.sha256` | Optional evidence digest. |
+| `review.receipt.evidence.uri` | Optional `https:` or `crypta:` evidence URI. |
+| `review.receipt.note` | Optional bounded single-line reviewer note. |
+| `review.receipt.signature.algorithm` | Current value is `Ed25519`. |
+| `review.receipt.signature.value.base64` | Signature over canonical receipt payload bytes. The signature fields are not signed. |
+
+Canonicalization is deterministic: receipt payload fields are serialized in the fixed receipt
+order, bounded strings must be single-line, and the signature sidecar is excluded from the bytes
+being signed. Tampering with the app id, version, artifact digest, size, reviewer status, evidence
+fields, policy fields, timestamps, or reviewer key id invalidates the receipt. A `rejected`
+receipt can be trusted evidence, but it is not a positive review and must not be rendered as
+"safe" or "reviewed".
+
+Trusted reviewer keys are configured separately from app and catalog signing keys:
+
+| Setting | Environment variable |
+| --- | --- |
+| `cryptad.appreview.trustedReviewerKeysFile` | `CRYPTAD_APPREVIEW_TRUSTED_REVIEWER_KEYS_FILE` |
+| `cryptad.appreview.trustedReviewerKeyId` | `CRYPTAD_APPREVIEW_TRUSTED_REVIEWER_KEY_ID` |
+| `cryptad.appreview.trustedReviewerPublicKeyBase64` | `CRYPTAD_APPREVIEW_TRUSTED_REVIEWER_PUBLIC_KEY_BASE64` |
+| `cryptad.appreview.trustedReviewerPublicKeyFile` | `CRYPTAD_APPREVIEW_TRUSTED_REVIEWER_PUBLIC_KEY_FILE` |
+
+Trusted reviewer keys files use their own registry shape:
+
+```properties
+trusted.reviewers.version=1
+reviewer.1.id=crypta-first-party-review
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review
+reviewer.1.policy.id=crypta-app-review-v1
+```
+
+Unknown algorithms, duplicate key ids, malformed public keys, and incomplete entries fail closed.
+Platform API and Web Shell responses expose reviewer key ids, display names, policy ids, timestamps,
+evidence metadata, and warnings; they do not expose reviewer public key bytes, private key material,
+local receipt paths, scratch paths, staging paths, app browser tokens, or AppHost process tokens.
+
+Review policy is local operator policy, not catalog metadata. Configure it with
+`cryptad.appreview.policyMode` or `CRYPTAD_APPREVIEW_POLICY_MODE`:
+
+| Mode | Behavior |
+| --- | --- |
+| `advisory` | Default. Show trusted/untrusted review status, but do not block manual install/update. |
+| `warn_untrusted` | Allow manual install/update only after explicit acknowledgement for missing, untrusted, expired, mismatched, or rejected receipts. |
+| `require_trusted_review` | Block manual install/update unless a trusted positive receipt exists. |
+| `require_trusted_review_for_apply_when_stopped` | Require a trusted positive receipt for policy-driven apply-when-stopped updates; manual install/update can still proceed after acknowledgement. |
+
+Stable review-trust statuses include `trusted_reviewed`, `trusted_caution`, `trusted_rejected`,
+`missing_receipt`, `unknown_reviewer`, `invalid_signature`, `artifact_mismatch`, `app_mismatch`,
+`expired`, `publisher_claim_only`, and `not_configured`.
 
 ## Developer CLI catalog flow
 
@@ -166,7 +263,8 @@ crypta-app catalog create \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
   --catalog-id dev \
   --name "Development Apps" \
-  --entry catalog-entry.properties
+  --entry catalog-entry.properties \
+  --review-receipt review-receipt.properties
 
 crypta-app catalog sign \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
@@ -290,13 +388,22 @@ enforced only for AppHost-managed app data/cache directories. See
 Catalog app listing and detail responses expose optional store metadata, installed/running state,
 installed version, catalog version, advisory version-difference/update information, API
 compatibility summaries, permission rationales, and permission deltas for install/update review.
-Responses do not expose trusted-key material, catalog scratch paths, or verified staging
-directories.
+Responses include both the legacy advisory `review` object and the locally evaluated
+`reviewTrust` object. `reviewTrust.status` records the stable receipt decision, `trusted` records
+whether the receipt signature verified with a configured reviewer key, and `positive` is true only
+for `trusted_reviewed`. Review policy flags such as `requiresAcknowledgement`, `blocksInstall`,
+`blocksUpdate`, and `blocksPolicyApply` explain whether the local node will allow, warn, or block a
+catalog install/update/apply operation. Responses do not expose trusted-key material, reviewer
+public key bytes, catalog scratch paths, verified staging directories, receipt file paths, browser
+session tokens, or AppHost process tokens.
 
 The Web Shell Apps section uses the same API to show catalog details before install or update:
-review status and note, source/homepage/license/category metadata, permission explanations,
-installed-vs-catalog version difference, advisory compatibility hints, and changelog metadata when
-present. Review metadata remains separate from signed catalog trust. See
+catalog signature/source state, artifact digest and bundle verification status when available,
+publisher advisory review status and note, trusted review receipt status, reviewer key/display
+metadata, policy id/version, evidence metadata, expiry, warnings, source/homepage/license/category
+metadata, permission explanations, installed-vs-catalog version difference, advisory compatibility
+hints, and changelog metadata when present. Web Shell wording must distinguish "signed by catalog
+publisher" from "reviewed by trusted reviewer". See
 [app-update-lifecycle.md](app-update-lifecycle.md) for candidate detection, manual apply,
 permission-delta review, and rollback scope.
 

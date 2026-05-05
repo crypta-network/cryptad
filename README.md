@@ -364,9 +364,12 @@ Signed staged bundles add `cryptad-app.digests` and `cryptad-app.signature` at t
 
 Signed app catalogs add a verified source layer above signed bundles. See
 [`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
-catalog signatures, trusted-key configuration, optional app-store/API compatibility metadata, and
-`/api/v1/app-catalogs` install/update flow. Catalog review metadata is advisory; signed catalog
-and signed bundle verification remain the trust source.
+catalog signatures, trusted-key configuration, optional app-store/API compatibility metadata,
+independent app review receipts, reviewer-key configuration, review policy modes, and
+`/api/v1/app-catalogs` install/update flow. Catalog signatures authenticate catalog bytes and
+publisher metadata, artifact digests bind entries to ZIP bytes, bundle signatures authenticate app
+bundles, and review receipt signatures independently authenticate reviewer evidence. Legacy
+catalog `review.status` and `review.note` metadata remains publisher-advisory only.
 
 Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
 Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` remains a
@@ -386,7 +389,9 @@ development-only escape hatch for unsigned local testing.
 Do not commit production private signing keys to this repository. Keep local development keys
 outside the repo and pass them through Gradle properties or environment variables. Catalog-backed
 install/update endpoints are available now; catalog-backed candidate detection and explicit
-apply-when-stopped updates are implemented, while silent auto-update is not the default. See
+apply-when-stopped updates are implemented, while silent auto-update is not the default. Review
+policy defaults to advisory display, with stricter modes available for explicit acknowledgement or
+trusted-positive receipt requirements. See
 [docs/app-update-lifecycle.md](docs/app-update-lifecycle.md) for manual apply, review gates, and
 rollback scope.
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
@@ -442,6 +447,11 @@ metadata, changelog metadata, and advisory minimum Cryptad version. Descriptors 
 fields and without API compatibility metadata generate minimal `catalog.version=1` catalogs;
 descriptors or artifacts with store/API compatibility metadata generate `catalog.version=2`. See
 [docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
+
+`crypta-app review sign` and `crypta-app review verify` create and check independent review
+receipt properties files offline. `crypta-app catalog create --review-receipt` embeds a receipt
+into the generated catalog entry so Platform API responses can expose `reviewTrust` alongside the
+legacy advisory `review` object.
 
 First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
 and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow
@@ -522,8 +532,8 @@ tools/perf/run-performance-smoke.sh
 
 Release-candidate evidence is aggregated by the release certification tooling under
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
-Platform API contract, app-owned UI, legacy-admin retirement, and CI summaries and writes a
-redacted report plus a stable JSON companion.
+Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin retirement, and CI
+summaries and writes a redacted report plus a stable JSON companion.
 
 Fast self-tests:
 
@@ -547,7 +557,8 @@ tools/release-certification/run-release-certification.sh \
 ```
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
-waivers, optional live-node evidence, and redaction rules.
+including `app-review.trusted-receipts`, `app-review.policy`, and
+`app-review.first-party-catalog`, waivers, optional live-node evidence, and redaction rules.
 
 ## Testing
 
