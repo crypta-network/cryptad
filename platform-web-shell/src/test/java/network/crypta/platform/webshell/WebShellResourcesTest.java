@@ -462,6 +462,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("sourceRecord.permissionDelta || sourceRecord.permissionsDelta"));
     assertTrue(script.contains("function updateApiRiskSummary(source)"));
     assertTrue(script.contains("function rollbackAvailable(updateState)"));
+    assertTrue(script.contains("function stageableUpdateCandidate(updateState)"));
+    assertTrue(script.contains("candidate.autoStageAllowed"));
+    assertTrue(script.contains("status === \"available\""));
+    assertTrue(
+        script.contains("Stage is unavailable until a newer update candidate is available."));
     assertTrue(script.contains("function updateActionDisabledReason("));
     assertTrue(script.contains("function stagedUpdateAvailable(updateState)"));
     assertTrue(script.contains("staged.available === true || staged.status === \"staged\""));

@@ -1647,6 +1647,18 @@
     return explicitKeys.some((key) => updateState[key] === true);
   }
 
+  function stageableUpdateCandidate(updateState) {
+    const candidate = recordValue(updateState.candidate);
+    if (typeof candidate.autoStageAllowed === "boolean") {
+      return candidate.autoStageAllowed;
+    }
+    const status =
+      typeof candidate.status === "string" && candidate.status
+        ? candidate.status
+        : appUpdateStatus(updateState);
+    return status === "available";
+  }
+
   function updateActionDisabledReason(app, updateState, action, runtimeRunning) {
     if (!updateActionAllowed(updateState, action)) {
       return `${normalizedStatus(action)} is unavailable for this app update state.`;
@@ -1660,6 +1672,9 @@
     }
     if (action === "apply" && !stagedUpdateAvailable(updateState)) {
       return "Apply is unavailable until an update is staged.";
+    }
+    if (action === "stage" && !stageableUpdateCandidate(updateState)) {
+      return "Stage is unavailable until a newer update candidate is available.";
     }
     if (action === "rollback" && !rollbackAvailable(updateState)) {
       return "Rollback is unavailable for this app.";
