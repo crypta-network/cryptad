@@ -1278,7 +1278,11 @@ def collect_app_review_receipt_evidence(settings: Settings) -> EvidenceItem:
             and "receipt.payload().canonicalPayloadBytes()" in verifier_text
         ),
         "bindingChecks": (
-            "mismatchStatus(appId, version, artifactSha256, artifactSizeBytes)" in verifier_text
+            "receipt.mismatchStatus(" in verifier_text
+            and "binding.appId()" in verifier_text
+            and "binding.version()" in verifier_text
+            and "binding.artifactSha256()" in verifier_text
+            and "binding.artifactSizeBytes()" in verifier_text
             and "AppReviewTrustStatus.ARTIFACT_MISMATCH" in receipt_text
             and "AppReviewTrustStatus.APP_MISMATCH" in receipt_text
         ),
