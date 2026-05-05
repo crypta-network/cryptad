@@ -95,7 +95,8 @@ git push origin v<build-number>
       passed or has an explicit release-manager waiver.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
-- [ ] Signed catalog, app-owned UI, and legacy-admin retirement evidence are present in the
+- [ ] Signed catalog, Platform API contract, app-owned UI, AppHost sandbox-provider, app-update
+      lifecycle, app-update rollback, and legacy-admin retirement evidence are present in the
       certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.

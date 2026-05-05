@@ -36,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
@@ -1159,6 +1160,29 @@ End
     assertEquals(
         "{\"error\":{\"code\":\"forbidden\",\"message\":\"Valid form password is required.\"}}",
         bodyWrite.bodyText());
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "http://localhost/api/v1/apps/alpha/updates/check",
+        "http://localhost/api/v1/apps/alpha/updates/stage",
+        "http://localhost/api/v1/apps/alpha/updates/apply",
+        "http://localhost/api/v1/apps/alpha/updates/rollback",
+        "http://localhost/api/v1/apps/alpha/updates/policy",
+      })
+  void handleMethodPOST_whenAppUpdateMutationPasswordMissing_expectJson403WithoutRouting(
+      String requestUri) throws Exception {
+    URI uri = URI.create(requestUri);
+    assertTrue(uri.getPath().contains("/apps/alpha/updates/"));
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(uri, request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, uri.getPath());
+    assertForbiddenBody();
   }
 
   @Test

@@ -67,9 +67,11 @@ The Phase 3 platform path is split across focused modules:
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for external staged-bundle
   and catalog-authoring workflows.
 - `apps/queue-manager` owns the Queue Manager first-party app bundle. Current staged bundles
-  declare `app.ui.mode=static` and open under `/apps/queue-manager/static/`.
+  declare `app.ui.mode=static` and open through an isolated app origin when available, with
+  `/apps/queue-manager/static/` retained as the compatibility fallback.
 - `apps/publisher` owns the Publisher first-party app bundle. Current staged bundles declare
-  `app.ui.mode=static` and open under `/apps/publisher/static/`.
+  `app.ui.mode=static` and open through an isolated app origin when available, with
+  `/apps/publisher/static/` retained as the compatibility fallback.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
 - `:bridge-fcp-runtime` owns the concrete runtime bindings for FCP.
@@ -169,8 +171,10 @@ The release runbook records the same gates in
 
 Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 
-- Remote signed app catalogs and verified artifact staging have landed; background update
-  scheduling remains future work.
+- Remote signed app catalogs, verified artifact staging, manual app-update candidate detection,
+  staged apply, and bundle rollback have landed. Silent third-party auto-update remains future
+  work; the current app-update scheduler state is disabled by default and manual checks are the
+  stable trigger.
 - App-owned static UI routes have landed for installed static bundles, and Phase 6 now provides
   isolated per-app loopback browser origins with `/apps/{appId}/` retained as compatibility
   fallback.

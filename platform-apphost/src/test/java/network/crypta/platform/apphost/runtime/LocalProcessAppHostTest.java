@@ -53,6 +53,7 @@ import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppHostTokenRedactor;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.AppProcessLogSnapshot;
+import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
@@ -633,6 +634,250 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void installFromDirectory_whenNewInstallCompletes_expectNoRollbackRecord() throws IOException {
+    AppHost host = allowUnsignedHost();
+
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+
+    assertTrue(host.rollbackStatus(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void updateFromDirectory_whenUpdatedTwice_expectOnlyImmediatelyPreviousBundleRetained()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(
+        stageInstalledAppAt(
+            tempDir.resolve("stage-retention-install").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of("v2-marker.txt", "version-2\n")));
+    host.updateFromDirectory(
+        SAMPLE_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-retention-first-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of("v3-marker.txt", "version-3\n")));
+
+    AppRollbackRecord firstRollback = host.rollbackStatus(SAMPLE_APP_ID).orElseThrow();
+    assertEquals(APP_VERSION, firstRollback.appVersion());
+
+    host.updateFromDirectory(
+        SAMPLE_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-retention-second-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            "4.0.0",
+            scriptContent(new AppEnv()),
+            Map.of("v4-marker.txt", "version-4\n")));
+
+    AppRollbackRecord retainedRollback = host.rollbackStatus(SAMPLE_APP_ID).orElseThrow();
+    assertEquals(UPDATED_APP_VERSION, retainedRollback.appVersion());
+
+    InstalledAppSnapshot rolledBack = host.rollback(SAMPLE_APP_ID);
+
+    assertEquals(UPDATED_APP_VERSION, rolledBack.manifest().appVersion());
+    assertTrue(Files.exists(rolledBack.paths().installedRoot().resolve("v3-marker.txt")));
+    assertFalse(Files.exists(rolledBack.paths().installedRoot().resolve("v2-marker.txt")));
+  }
+
+  @Test
+  void rollback_whenPreviousBundleExists_expectRestoresBundleAndPreservesMutableDirs()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation =
+        host.installFromDirectory(
+            stageInstalledAppAt(
+                tempDir.resolve("stage-rollback-install").resolve(SAMPLE_APP_ID),
+                SAMPLE_APP_ID,
+                APP_VERSION,
+                """
+                #!/bin/sh
+                printf 'old\\n'
+                """,
+                Map.of("old-bundle.txt", "old-bundle\n")));
+    Path updatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-rollback-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            """
+            #!/bin/sh
+            printf 'new\\n'
+            """,
+            Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT));
+    host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+    Path dataSentinel =
+        Files.writeString(
+            installation.paths().dataDir().resolve("rollback-data.txt"),
+            "keep-data",
+            StandardCharsets.UTF_8);
+    Path cacheSentinel =
+        Files.writeString(
+            installation.paths().cacheDir().resolve("rollback-cache.txt"),
+            "keep-cache",
+            StandardCharsets.UTF_8);
+    Path runSentinel =
+        Files.writeString(
+            installation.paths().runDir().resolve("rollback-run.txt"),
+            "keep-run",
+            StandardCharsets.UTF_8);
+
+    InstalledAppSnapshot rolledBack = host.rollback(SAMPLE_APP_ID);
+
+    assertEquals(APP_VERSION, rolledBack.manifest().appVersion());
+    assertTrue(Files.exists(rolledBack.paths().installedRoot().resolve("old-bundle.txt")));
+    assertFalse(Files.exists(rolledBack.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME)));
+    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertEquals("keep-cache", Files.readString(cacheSentinel, StandardCharsets.UTF_8));
+    assertEquals("keep-run", Files.readString(runSentinel, StandardCharsets.UTF_8));
+    assertEquals(
+        UPDATED_APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+  }
+
+  @Test
+  void rollback_whenAppIsRunning_expectFailureAndInstalledBundleUnchanged() throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+    host.updateFromDirectory(
+        RUNNER_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-running-rollback-update").resolve(RUNNER_APP_ID),
+            RUNNER_APP_ID,
+            UPDATED_APP_VERSION,
+            DAEMONIZED_CHILD_PROCESS_SCRIPT,
+            Map.of()));
+    host.start(RUNNER_APP_ID);
+
+    try {
+      AppHostException exception =
+          assertThrows(AppHostException.class, () -> host.rollback(RUNNER_APP_ID));
+
+      assertEquals("cannot rollback a running app: " + RUNNER_APP_ID, exception.getMessage());
+      assertEquals(
+          UPDATED_APP_VERSION, host.describe(RUNNER_APP_ID).orElseThrow().manifest().appVersion());
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void uninstall_whenRollbackRecordExists_expectRollbackRecordCleared() throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.updateFromDirectory(
+        SAMPLE_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-uninstall-rollback-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of()));
+    assertTrue(host.rollbackStatus(SAMPLE_APP_ID).isPresent());
+
+    host.uninstall(SAMPLE_APP_ID);
+
+    assertTrue(host.rollbackStatus(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void updateFromDirectory_whenUpdateFails_expectCurrentBundleAndRollbackRecordPreserved()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    InstalledAppSnapshot updated =
+        host.updateFromDirectory(
+            SAMPLE_APP_ID,
+            stageInstalledAppAt(
+                tempDir.resolve("stage-failed-update-current").resolve(SAMPLE_APP_ID),
+                SAMPLE_APP_ID,
+                UPDATED_APP_VERSION,
+                scriptContent(new AppEnv()),
+                Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT)));
+    Path mismatchedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("stage-failed-update-mismatch").resolve(DUPLICATE_APP_ID),
+            DUPLICATE_APP_ID,
+            "4.0.0",
+            scriptContent(new AppEnv()),
+            Map.of("mismatched.txt", "mismatched\n"));
+
+    assertThrows(
+        AppManifestException.class, () -> host.updateFromDirectory(SAMPLE_APP_ID, mismatchedStage));
+
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+    assertEquals(
+        NEW_BUNDLE_CONTENT,
+        Files.readString(
+            updated.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void rollbackStatus_whenRecordExists_expectMetadataOmitsTokensAndHostPaths() throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+    RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+    String launchToken = running.token();
+    assertTrue(host.stop(RUNNER_APP_ID));
+    host.updateFromDirectory(
+        RUNNER_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-metadata-rollback-update").resolve(RUNNER_APP_ID),
+            RUNNER_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of()));
+
+    AppRollbackRecord rollbackRecord = host.rollbackStatus(RUNNER_APP_ID).orElseThrow();
+    String recordText = rollbackRecord.toString();
+
+    assertEquals(RUNNER_APP_ID, rollbackRecord.appId());
+    assertEquals(APP_VERSION, rollbackRecord.appVersion());
+    assertFalse(recordText.contains(launchToken));
+    assertFalse(recordText.contains(tempDir.toString()));
+    assertFalse(recordText.contains(installation.paths().installedRoot().toString()));
+    assertFalse(recordText.contains(installation.paths().dataDir().toString()));
+    assertFalse(recordText.contains(installation.paths().cacheDir().toString()));
+    assertFalse(recordText.contains(installation.paths().runDir().toString()));
+  }
+
+  @Test
+  void rollbackStatus_whenRollbackManifestTargetsDifferentApp_expectInvalidRecordRejected()
+      throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.updateFromDirectory(
+        SAMPLE_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-wrong-rollback-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of()));
+    Path rollbackManifest =
+        layout().rollbackAppsDir().resolve(SAMPLE_APP_ID).resolve(MANIFEST_FILE_NAME);
+    Files.writeString(
+        rollbackManifest,
+        Files.readString(rollbackManifest, StandardCharsets.UTF_8)
+            .replace("app.id=" + SAMPLE_APP_ID, "app.id=" + DUPLICATE_APP_ID),
+        StandardCharsets.UTF_8);
+
+    AppManifestException exception =
+        assertThrows(AppManifestException.class, () -> host.rollbackStatus(SAMPLE_APP_ID));
+
+    assertEquals(
+        "installed manifest app.id does not match directory name: " + SAMPLE_APP_ID,
+        exception.getMessage());
+  }
+
+  @Test
   void installFromDirectory_whenSignedBundleIsTampered_expectVerificationFailure()
       throws Exception {
     KeyPair keyPair = generateEd25519KeyPair();
@@ -785,37 +1030,46 @@ class LocalProcessAppHostTest {
   }
 
   @Test
-  void updateFromDirectory_whenBackupCleanupFails_expectSuccessfulReplacementAndReadableInstall()
+  void updateFromDirectory_whenReplacingStoppedApp_expectPreviousBundleRecordedForRollback()
       throws IOException {
+    AtomicInteger cleanupAttempts = new AtomicInteger();
     LocalProcessAppHost host =
         allowUnsignedHost(
             Duration.ofSeconds(1),
             new AppEnv(),
             _ -> {
+              cleanupAttempts.incrementAndGet();
               throw new IOException("simulated backup cleanup failure");
             });
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
-    Path updatedStage =
+    Path firstUpdatedStage =
         stageInstalledAppAt(
-            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(SAMPLE_APP_ID),
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("first").resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
             UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
             Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT));
+    InstalledAppSnapshot firstUpdate = host.updateFromDirectory(SAMPLE_APP_ID, firstUpdatedStage);
+    assertEquals(APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+    assertEquals(0, cleanupAttempts.get());
+    String secondUpdatedVersion = "4.0.0";
+    Path secondUpdatedStage =
+        stageInstalledAppAt(
+            tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("second").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            secondUpdatedVersion,
+            scriptContent(new AppEnv()),
+            Map.of(NEW_BUNDLE_FILE_NAME, "second-bundle\n"));
 
-    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
+    InstalledAppSnapshot updated = host.updateFromDirectory(SAMPLE_APP_ID, secondUpdatedStage);
 
-    assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
+    assertEquals(secondUpdatedVersion, updated.manifest().appVersion());
     assertEquals(
-        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
-    try (var entries = Files.list(updated.paths().installedRoot().getParent())) {
-      assertTrue(
-          entries.anyMatch(
-              path ->
-                  path.getFileName()
-                      .toString()
-                      .startsWith("app-install-backup-" + SAMPLE_APP_ID + "-")));
-    }
+        secondUpdatedVersion, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(
+        firstUpdate.manifest().appVersion(),
+        host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+    assertEquals(1, cleanupAttempts.get());
     assertEquals(List.of(updated), host.listInstalled());
   }
 
@@ -3391,10 +3645,12 @@ class LocalProcessAppHostTest {
             CompletableFuture.class,
             List.class,
             int.class,
-            int.class);
+            int.class,
+            boolean.class);
     constructor.setAccessible(true);
     Object runningProcess =
-        constructor.newInstance(process, snapshot, exitCleanup, List.of(process.toHandle()), 0, 0);
+        constructor.newInstance(
+            process, snapshot, exitCleanup, List.of(process.toHandle()), 0, 0, false);
     runningApps.put(appId, runningProcess);
   }
 

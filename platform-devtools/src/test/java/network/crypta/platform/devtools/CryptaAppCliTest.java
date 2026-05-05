@@ -184,7 +184,7 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Wrote Platform API contract"));
     String json = Files.readString(contractFile, StandardCharsets.UTF_8);
-    assertTrue(json.contains("\"contractVersion\":1"));
+    assertTrue(json.contains("\"contractVersion\":2"));
     assertTrue(json.contains("\"platform.contract.read\""));
   }
 

@@ -14,9 +14,11 @@ import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
+import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
@@ -25,6 +27,7 @@ import network.crypta.platform.apphost.AppProcessLogSnapshot;
 import network.crypta.platform.apphost.AppQuotaPolicy;
 import network.crypta.platform.apphost.AppQuotaStatus;
 import network.crypta.platform.apphost.AppQuotaUsage;
+import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -319,7 +322,7 @@ class PlatformApiRouterTest {
                 List.of("platform", "contract"), Map.of(), List.of("platform.contract.read")));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"contractVersion\":1"));
+    assertTrue(response.body().contains("\"contractVersion\":2"));
   }
 
   @Test
@@ -2163,6 +2166,177 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppUpdatesRequested_expectUpdateEnvelopeAndRollbackSummary() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollbackStatus(APP_ID))
+        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, "1.0.0")));
+
+    PlatformApiResponse response =
+        updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"updates\""));
+    assertTrue(response.body().contains("\"mode\":\"manual\""));
+    assertTrue(response.body().contains("\"previousVersion\":\"1.0.0\""));
+    assertFalse(response.body().contains(tempDir.toString()));
+    assertFalse(response.body().contains("token-"));
+  }
+
+  @Test
+  void route_whenAppUpdateStageRequested_expectVerifiedCandidateStaged() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    AppCatalogInstallPlan plan = new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+    PlatformApiResponse response =
+        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"status\":\"staged\""));
+    assertTrue(response.body().contains("\"targetVersion\":\"9.9.9\""));
+    assertFalse(response.body().contains(tempDir.toString()));
+    //noinspection resource
+    verify(catalogManager).prepareInstallPlan("core", APP_ID);
+  }
+
+  @Test
+  void route_whenStagedAppUpdateThenAppUninstalled_expectUpdateStateCleared() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(200, uninstallResponse.statusCode());
+      assertEquals(200, summaryResponse.statusCode());
+      assertFalse(Files.exists(scratchDir));
+      assertTrue(summaryResponse.body().contains("\"status\":\"none\""));
+      assertTrue(summaryResponse.body().contains("\"available\":false"));
+      assertFalse(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertFalse(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+    }
+  }
+
+  @Test
+  void route_whenAppUpdateApplyRequestedWhileRunning_expectConflictJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-apply-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    AppCatalogInstallPlan plan = new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(runningSnapshot()));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    PlatformApiResponse stageResponse =
+        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+
+    PlatformApiResponse response =
+        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "apply"), Map.of()));
+
+    assertEquals(200, stageResponse.statusCode());
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertTrue(response.body().contains("\"code\":\"app_running\""));
+    assertTrue(response.body().contains("App must be stopped before update."));
+    verify(appHost, never()).updateFromDirectory(APP_ID, stagedDir);
+  }
+
+  @Test
+  void route_whenAppUpdatePolicyChanged_expectPolicyEnvelope() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiResponse response =
+        updateRouter.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "updates", "policy"),
+                Map.of("mode", List.of("stage"))));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        "{\"policy\":{\"mode\":\"stage\",\"automaticStaging\":true,\"automaticApply\":false}}",
+        response.body());
+  }
+
+  @Test
+  void route_whenAppPrincipalChangesUpdatePolicy_expectDeniedBeforeDispatch() {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(runtimePorts, appHost, catalogManager, null, auditLog);
+
+    PlatformApiResponse response =
+        updateRouter.route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("apps", APP_ID, "updates", "policy"),
+                Map.of("mode", List.of("stage")),
+                PlatformApiPrincipal.appToken(APP_ID, List.of("apps.manage"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(appHost, catalogManager);
+  }
+
+  @Test
+  void route_whenAppPrincipalStagesUpdateWithoutCatalogManage_expectDeniedBeforeDispatch() {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppAuditLog auditLog = new AppAuditLog();
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(runtimePorts, appHost, catalogManager, null, auditLog);
+
+    PlatformApiResponse response =
+        updateRouter.route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("apps", APP_ID, "updates", "stage"),
+                Map.of(),
+                PlatformApiPrincipal.appToken(APP_ID, List.of("apps.manage"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"forbidden\""));
+    verifyNoInteractions(appHost, catalogManager);
+  }
+
+  @Test
   void route_whenAppAuditRequested_expectRecentTokenFreeAuditEntries() throws Exception {
     AppAuditLog auditLog = new AppAuditLog();
     PlatformApiRouter auditedRouter =
@@ -3311,6 +3485,23 @@ class PlatformApiRouterTest {
         0L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of("network.access"));
+  }
+
+  private AppCatalogSourceSnapshot catalogSourceSnapshot() {
+    return new AppCatalogSourceSnapshot(
+        "core",
+        "Core Apps",
+        URI.create("https://example.invalid/cryptad-app-catalog.properties"),
+        STARTED_AT,
+        1,
+        STARTED_AT,
+        STARTED_AT,
+        STARTED_AT,
+        STARTED_AT,
+        AppCatalogFetchStatus.SUCCESS,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
   }
 
   private AppCatalogEntry catalogEntryWithMinimumCryptaVersion() {

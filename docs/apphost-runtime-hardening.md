@@ -148,6 +148,12 @@ The layout keeps app state separated by purpose:
 Platform APIs describe these locations conceptually only. API responses must not include absolute
 installed, data, cache, or run paths.
 
+Updates replace only the installed bundle. AppHost preserves data, cache, and run directories
+across successful updates, and durable rollback records the previous installed bundle for later
+restore. Rollback does not restore app data, cache, process logs, or any external files written by
+the app. See [app-update-lifecycle.md](app-update-lifecycle.md) for the manual apply and rollback
+policy.
+
 On POSIX filesystems, AppHost applies owner-only permissions where practical:
 
 - directories: `rwx------`;

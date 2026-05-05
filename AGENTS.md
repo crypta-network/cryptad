@@ -23,7 +23,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-hotfix-workflow** — Run emergency hotfix flow: cut `hotfix/<build-number>` from `main`, ship fix, tag `v<build>`, and no-squash `--no-ff` merges to `main` and `develop`.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
-- **$cryptad-platform-apps** — Work on Platform API v1, AppHost, signed app bundles/catalogs, app-owned static UI, the browser SDK, app permissions/audit, and legacy admin retirement routing.
+- **$cryptad-platform-apps** — Work on Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, app-update lifecycle, app-owned static UI, the browser SDK, app permissions/audit, sandbox providers, and legacy admin retirement routing.
 - **$cryptad-interop-performance-gates** — Maintain Hyphanet interop, performance regression, and release-certification evidence gates under `tools/interop`, `tools/perf`, `tools/release-certification`, and CI/release readiness docs.
 - **$improve-unit-test-coverage-for-current-changes** — Improve unit test coverage for the current uncommitted Java changes with targeted Gradle runs and one final full-suite pass.
 - **$cryptad-runtime-debugging** — Debug live or reproducible Cryptad JVM failures on Windows, macOS, and Linux using `jcmd`, `jdb`, thread dumps, and the default JDWP listener on `127.0.0.1:5005`.
@@ -53,7 +53,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
   - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
-- **App platform:** For Platform API, AppHost, app catalogs/bundles, app-owned UI routes, the browser SDK, app permission/audit, or legacy admin retirement routing, load `$cryptad-platform-apps`.
+- **App platform:** For Platform API/contract, AppHost runtime/rollback, app catalogs/bundles, app-update lifecycle, app-owned UI routes, the browser SDK, app permission/audit, sandbox providers, or legacy admin retirement routing, load `$cryptad-platform-apps`.
 - **Interop/performance/certification gates:** For `tools/interop`, `tools/perf`, `tools/release-certification`, related CI jobs, or release-gate evidence, load `$cryptad-interop-performance-gates`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
 - **Runtime debugging:** For live deadlocks, hangs, blocked threads, stalled requests, or JDWP debugging with `jcmd` / `jdb`, load `$cryptad-runtime-debugging`.

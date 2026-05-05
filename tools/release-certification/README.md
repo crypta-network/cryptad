@@ -78,16 +78,20 @@ app-platform.first-party
 app-platform.devtools-cli
 app-platform.signed-bundles
 catalog.smoke
+platform-api.contract
 app-ui.smoke
 legacy.retirement
 apphost.sandbox-provider
+app-update.lifecycle
+app-update.rollback
 ```
 
-`apphost.sandbox-provider` uses deterministic source checks and fake/offline provider tests; it
-does not require host-installed bubblewrap in normal CI. `interop.extended` and `apphost.live` are
-recorded as optional stronger evidence. Extended interop is still required by the release runbook
-when compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
-normal PR CI must not require a running node or operator credentials.
+`platform-api.contract`, `apphost.sandbox-provider`, `app-update.lifecycle`, and
+`app-update.rollback` use deterministic source checks, fixtures, and fake/offline tests; they do
+not require a live node or host-installed bubblewrap in normal CI. `interop.extended` and
+`apphost.live` are recorded as optional stronger evidence. Extended interop is still required by
+the release runbook when compatibility-sensitive behavior changed. Live AppHost lifecycle evidence
+is optional because normal PR CI must not require a running node or operator credentials.
 
 Record an explicit waiver when a release manager accepts missing optional or replacement evidence:
 
@@ -103,8 +107,10 @@ release-candidate gate from failing for that item.
 ## App-platform smoke
 
 The app-platform smoke runner validates first-party staged app manifests, static app UI/SDK
-coherence, the `crypta-app` developer CLI, signed bundle evidence when signing inputs are present,
-signed catalog authoring/verification, and the legacy-admin retirement map.
+coherence, the `crypta-app` developer CLI, Platform API contract snapshots and compatibility
+verification, signed bundle evidence when signing inputs are present, signed catalog
+authoring/verification, AppHost sandbox-provider evidence, app-update lifecycle/rollback evidence,
+and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -141,9 +147,12 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - browser-session tokens;
 - the host/operator form password;
 - raw request bodies;
+- raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;
 - developer-specific absolute filesystem paths;
+- catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and
+  rollback backup paths;
 - non-localhost remote endpoint metadata.
 
 The aggregator sanitizes paths as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.  It

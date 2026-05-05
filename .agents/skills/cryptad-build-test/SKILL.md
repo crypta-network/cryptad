@@ -89,21 +89,24 @@ Use this skill when you need to:
   `package-info.java` coverage for the production packages they own.
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
-- `:platform-api` owns the transport-neutral Platform API v1. Its focused leaf tests now live
+- `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
+  app capability/audit decisions, and app-update lifecycle service. Its focused leaf tests now live
   under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
-  policy/status reporting, data/cache quota enforcement, and focused leaf tests under
-  `platform-apphost/src/test/java`.
-- `:platform-app-ui` owns app-owned static UI route, path, content-type, header, asset resolver,
-  and browser-session helpers plus focused tests under `platform-app-ui/src/test/java`.
+  policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
+  data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.
+- `:platform-app-ui` owns app-owned static UI route, isolated origin metadata, path, content-type,
+  header, asset resolver, launch-proof bootstrap, and browser-session helpers plus focused tests
+  under `platform-app-ui/src/test/java`.
 - `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest,
   deterministic packager, and distribution-tool code plus focused tests under
   `platform-appdist/src/test/java`.
 - `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
-  verification, `crypta:` catalog source fetching, artifact download, safe ZIP extraction, and
-  verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
-- `:platform-devtools` owns the standalone `crypta-app` developer CLI plus focused CLI tests under
-  `platform-devtools/src/test/java`.
+  verification, `crypta:` catalog source fetching, app-store/API compatibility metadata, artifact
+  download, safe ZIP extraction, and verified staging code plus focused tests under
+  `platform-appcatalog/src/test/java`.
+- `:platform-devtools` owns the standalone `crypta-app` developer CLI, including API snapshot and
+  compatibility verification commands, plus focused CLI tests under `platform-devtools/src/test/java`.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under

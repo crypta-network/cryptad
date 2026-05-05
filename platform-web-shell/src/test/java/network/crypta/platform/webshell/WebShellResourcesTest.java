@@ -82,6 +82,7 @@ class WebShellResourcesTest {
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
     assertAppsMarkersPresent(script);
+    assertAppUpdateLifecycleMarkersPresent(script);
     assertAppStoreMetadataMarkersPresent(script);
     assertCompatibilityUndeclaredPrecedesSuccess(script);
     assertAppsSubmissionOrder(script);
@@ -375,6 +376,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function appRuntimePath(appId)"));
     assertTrue(script.contains("function appLogsPath(appId, maxBytes)"));
     assertTrue(script.contains("function appAuditPath(appId)"));
+    assertTrue(script.contains("function appUpdatesPath(appId, action)"));
     assertTrue(script.contains("async function loadAppRuntimeDetails(app)"));
     assertTrue(script.contains("const explicitHref = normalizeAppUiEntryHref(app.uiUrl, app);"));
     assertTrue(
@@ -437,6 +439,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/runtime`"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/logs?maxBytes="));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/audit`"));
+    assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/updates`"));
     assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
     assertTrue(
         script.contains(
@@ -444,6 +447,61 @@ class WebShellResourcesTest {
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
     assertTrue(script.contains("Catalog actions unavailable in read-only mode."));
+  }
+
+  private static void assertAppUpdateLifecycleMarkersPresent(String script) {
+    assertTrue(script.contains("function appUpdateState(app)"));
+    assertTrue(script.contains("function appHasUpdateState(updateState)"));
+    assertTrue(script.contains("function updateVersionSummary(updateInfo)"));
+    assertTrue(script.contains("info.targetVersion"));
+    assertTrue(script.contains("\"lastCheck\""));
+    assertTrue(script.contains("lastCheck.checkedAt"));
+    assertTrue(script.contains("lastCheck.status"));
+    assertTrue(script.contains("function updatePolicySummary(policy)"));
+    assertTrue(script.contains("function updatePermissionDeltaSummary(source)"));
+    assertTrue(script.contains("sourceRecord.permissionDelta || sourceRecord.permissionsDelta"));
+    assertTrue(script.contains("function updateApiRiskSummary(source)"));
+    assertTrue(script.contains("function rollbackAvailable(updateState)"));
+    assertTrue(script.contains("function stageableUpdateCandidate(updateState)"));
+    assertTrue(script.contains("candidate.autoStageAllowed"));
+    assertTrue(script.contains("status === \"available\""));
+    assertTrue(
+        script.contains("Stage is unavailable until a newer update candidate is available."));
+    assertTrue(script.contains("function updateActionDisabledReason("));
+    assertTrue(script.contains("function stagedUpdateAvailable(updateState)"));
+    assertTrue(script.contains("staged.available === true || staged.status === \"staged\""));
+    assertTrue(script.contains("if (stagedUpdateAvailable(updateState))"));
+    assertTrue(script.contains("rollback.previousVersion"));
+    assertTrue(script.contains("function appUpdateDetailsNode(app, updateState)"));
+    assertTrue(script.contains("function appendAppUpdateActionForms("));
+    assertTrue(script.contains("function buildAppUpdateActionForm("));
+    assertTrue(script.contains("async function submitAppUpdateMutation(form, action)"));
+    assertTrue(script.contains("form.dataset.appUpdateAction = action;"));
+    assertTrue(script.contains("submit.disabled = true;"));
+    assertTrue(script.contains("submit.title = disabledReason;"));
+    assertTrue(script.contains("const updatesPath = appUpdatesPath(app.appId, \"summary\");"));
+    assertTrue(script.contains("await loadOptionalJson(apiUrl(updatesPath))"));
+    assertTrue(script.contains("updatesSnapshot.updateState"));
+    assertTrue(script.contains("updatesSnapshot.updates"));
+    assertTrue(script.contains("[\"Update candidate\","));
+    assertTrue(script.contains("[\"Staged update\","));
+    assertTrue(script.contains("[\"Update policy\","));
+    assertTrue(script.contains("[\"Permission changes before apply\","));
+    assertTrue(script.contains("[\"API compatibility before apply\","));
+    assertTrue(script.contains("[\"Rollback available\","));
+    assertTrue(script.contains("\"Last scheduler check\","));
+    assertTrue(script.contains("\"Next scheduler check\","));
+    assertTrue(script.contains("App update lifecycle"));
+    assertTrue(script.contains("Check for app update"));
+    assertTrue(script.contains("Stage app update"));
+    assertTrue(script.contains("Apply staged update"));
+    assertTrue(script.contains("Rollback app update"));
+    assertTrue(script.contains("Apply requires restart"));
+    assertTrue(script.contains("Rollback requires restart"));
+    assertTrue(script.contains("requires stopping or restarting the running app first"));
+    assertTrue(script.contains("App update actions unavailable in read-only mode."));
+    assertTrue(script.contains("const appUpdateAction = form.dataset.appUpdateAction;"));
+    assertTrue(script.contains("await submitAppUpdateMutation(form, appUpdateAction);"));
   }
 
   private static void assertAppStoreMetadataMarkersPresent(String script) {

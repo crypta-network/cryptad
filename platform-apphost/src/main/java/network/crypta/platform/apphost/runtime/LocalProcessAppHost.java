@@ -47,6 +47,7 @@ import network.crypta.platform.apphost.AppQuotaEnforcer;
 import network.crypta.platform.apphost.AppQuotaPolicy;
 import network.crypta.platform.apphost.AppQuotaStatus;
 import network.crypta.platform.apphost.AppQuotaWarning;
+import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
@@ -87,8 +88,10 @@ public final class LocalProcessAppHost implements AppHost {
       new RestartStormPolicy(DEFAULT_RESTART_STORM_WINDOW, DEFAULT_RESTART_STORM_MAX_IN_WINDOW);
   private static final String TEMP_INSTALL_PREFIX = "app-install-";
   private static final String TEMP_UPDATE_BACKUP_PREFIX = TEMP_INSTALL_PREFIX + "backup-";
+  private static final String TEMP_ROLLBACK_BACKUP_PREFIX = "app-rollback-backup-";
   private static final String LOCAL_DIRECTORY_NAME = "local";
   private static final String INSTALLED_APPS_DIR_LABEL = "installedAppsDir";
+  private static final String ROLLBACK_APPS_DIR_LABEL = "rollbackAppsDir";
   private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
   private static final String PROC_ROOT = "/proc";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
@@ -411,7 +414,8 @@ public final class LocalProcessAppHost implements AppHost {
     Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
     rejectOverlappingInstallTree(stagingRoot, layout.installedAppsDir());
     Path installedAppsDir = layout.installedAppsDir();
-    ensureManagedDirectory(layout.dataDir(), installedAppsDir);
+    ensureManagedDirectory(layout.dataDir(), installedAppsDir, INSTALLED_APPS_DIR_LABEL);
+    rejectOverlappingRollbackTree(stagingRoot, layout.rollbackAppsDir());
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
@@ -424,6 +428,7 @@ public final class LocalProcessAppHost implements AppHost {
       }
       validateManagedMutableDirectories(paths);
       paths.ensureMutableDirectories();
+      deleteRollbackRecordIfPresent(paths.appId());
       moveIntoPlace(temporaryInstallRoot, paths.installedRoot());
       return new InstalledAppSnapshot(manifest, paths);
     } catch (IOException | RuntimeException e) {
@@ -456,7 +461,9 @@ public final class LocalProcessAppHost implements AppHost {
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
     Path installedAppsDir = validateInstalledAppsDirectory();
+    Path rollbackAppsDir = ensureRollbackAppsDirectory();
     rejectOverlappingInstallTree(stagingRoot, installedAppsDir);
+    rejectOverlappingRollbackTree(stagingRoot, rollbackAppsDir);
     InstalledAppPaths paths = layout.pathsFor(normalizedAppId);
     rejectOverlappingMutableAppDirectories(stagingRoot, paths);
     if (liveRunningProcess(normalizedAppId) != null) {
@@ -471,18 +478,86 @@ public final class LocalProcessAppHost implements AppHost {
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
     Path backupInstallRoot =
         temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+    Path rollbackRoot = rollbackRootFor(normalizedAppId);
+    Path previousRollbackBackupRoot =
+        temporaryManagedPath(rollbackAppsDir, TEMP_ROLLBACK_BACKUP_PREFIX + normalizedAppId + "-");
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
       verifyCopiedBundle(temporaryInstallRoot);
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
       requireMatchingUpdateTarget(normalizedAppId, manifest);
-      replaceInstalledBundle(paths.installedRoot(), temporaryInstallRoot, backupInstallRoot);
+      replaceInstalledBundle(
+          paths.installedRoot(),
+          temporaryInstallRoot,
+          backupInstallRoot,
+          rollbackRoot,
+          previousRollbackBackupRoot);
       cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
       return new InstalledAppSnapshot(manifest, paths);
     } catch (IOException | RuntimeException e) {
       deleteScratchTreeIfPresent(temporaryInstallRoot);
       throw e;
     }
+  }
+
+  /**
+   * Returns path-free metadata for one app's durable rollback bundle.
+   *
+   * @param appId stable application identifier
+   * @return rollback metadata when a previous bundle exists
+   * @throws IOException if the rollback tree cannot be inspected safely or the rollback manifest is
+   *     invalid
+   */
+  @Override
+  public synchronized Optional<AppRollbackRecord> rollbackStatus(String appId) throws IOException {
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    validateInstalledAppsDirectory();
+    validateRollbackAppsDirectory();
+    Path rollbackRoot = rollbackRootFor(normalizedAppId);
+    if (!Files.isDirectory(rollbackRoot, LinkOption.NOFOLLOW_LINKS)) {
+      return Optional.empty();
+    }
+    AppManifest manifest = readInstalledManifest(rollbackRoot);
+    requireMatchingUpdateTarget(normalizedAppId, manifest);
+    return Optional.of(
+        new AppRollbackRecord(normalizedAppId, manifest.appName(), manifest.appVersion()));
+  }
+
+  /**
+   * Restores the previous installed bundle while preserving mutable app directories.
+   *
+   * @param appId stable application identifier
+   * @return installed application snapshot after rollback
+   * @throws IOException if the app is missing, running, has no rollback record, or the replacement
+   *     cannot be completed safely
+   */
+  @Override
+  public synchronized InstalledAppSnapshot rollback(String appId) throws IOException {
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    Path installedAppsDir = validateInstalledAppsDirectory();
+    ensureRollbackAppsDirectory();
+    InstalledAppPaths paths = layout.pathsFor(normalizedAppId);
+    if (liveRunningProcess(normalizedAppId) != null) {
+      throw new AppHostException("cannot rollback a running app: " + normalizedAppId);
+    }
+    if (!Files.isDirectory(paths.installedRoot(), LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException(APP_NOT_INSTALLED_PREFIX + normalizedAppId);
+    }
+    Path rollbackRoot = rollbackRootFor(normalizedAppId);
+    if (!Files.isDirectory(rollbackRoot, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException("rollback record is not available: " + normalizedAppId);
+    }
+    validateManagedMutableDirectories(paths);
+    paths.ensureMutableDirectories();
+    verifyCopiedBundle(rollbackRoot);
+    AppManifest rollbackManifest = validateCopiedBundle(rollbackRoot);
+    requireMatchingUpdateTarget(normalizedAppId, rollbackManifest);
+    Path currentInstallBackupRoot =
+        temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+
+    swapInstalledBundleWithRollback(paths.installedRoot(), rollbackRoot, currentInstallBackupRoot);
+    cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
+    return new InstalledAppSnapshot(rollbackManifest, paths);
   }
 
   /**
@@ -498,6 +573,7 @@ public final class LocalProcessAppHost implements AppHost {
   @Override
   public synchronized void uninstall(String appId) throws IOException {
     validateInstalledAppsDirectory();
+    validateRollbackAppsDirectory();
     InstalledAppPaths paths = layout.pathsFor(appId);
     if (liveRunningProcess(paths.appId()) != null) {
       throw new AppHostException("cannot uninstall a running app: " + appId);
@@ -510,6 +586,7 @@ public final class LocalProcessAppHost implements AppHost {
     deleteRecursively(paths.dataDir());
     deleteRecursively(paths.cacheDir());
     deleteRecursively(paths.runDir());
+    deleteRollbackRecordIfPresent(paths.appId());
     runtimeRecords.remove(paths.appId());
     automaticRestartAttempts.remove(paths.appId());
     explicitStopRequests.remove(paths.appId());
@@ -688,17 +765,23 @@ public final class LocalProcessAppHost implements AppHost {
             exitCleanup,
             startupProcessTree,
             restartCount,
-            currentRestartAttempt);
+            currentRestartAttempt,
+            startupRepresentativeProcessHandoff(process, startupProcessTree));
     runningApps.put(normalizedAppId, runningProcess);
     runtimeRecords.compute(
         normalizedAppId,
         (_, previousRecord) ->
             RuntimeRecord.running(snapshot, restartCount, currentRestartAttempt, previousRecord));
-    startTrackedProcessTreeObserver(normalizedAppId, process, exitCleanup);
-    RunningProcess liveRunningProcess = liveRunningProcess(normalizedAppId);
-    if (liveRunningProcess == null) {
+    StartupAcceptance startupAcceptance =
+        acceptStartupRunningProcess(normalizedAppId, runningProcess, exitCleanup);
+    if (startupAcceptance.runningProcess() == null) {
       throw startupFailure(normalizedAppId, process);
     }
+    RunningProcess liveRunningProcess = startupAcceptance.runningProcess();
+    if (startupAcceptance.restartScheduled()) {
+      return liveRunningProcess.snapshot();
+    }
+    startTrackedProcessTreeObserver(normalizedAppId, process, exitCleanup);
     return liveRunningProcess.snapshot();
   }
 
@@ -1057,6 +1140,13 @@ public final class LocalProcessAppHost implements AppHost {
     return processExitCode(runningProcess.process());
   }
 
+  private static boolean startupRepresentativeProcessHandoff(
+      Process process, List<ProcessHandle> startupProcessTree) {
+    long rootPid = process.pid();
+    return !isEffectivelyAlive(process.toHandle())
+        && startupProcessTree.stream().anyMatch(processHandle -> processHandle.pid() != rootPid);
+  }
+
   private AppManifest readInstalledManifest(Path installedRoot) throws IOException {
     Path manifestFile =
         resolveBundleEntry(
@@ -1148,6 +1238,32 @@ public final class LocalProcessAppHost implements AppHost {
       runningProcess.exitCleanup().join();
     }
     return null;
+  }
+
+  private StartupAcceptance acceptStartupRunningProcess(
+      String appId, RunningProcess runningProcess, CompletableFuture<Void> exitCleanup) {
+    RunningProcess refreshedRunningProcess = runningProcess.refresh();
+    if (refreshedRunningProcess == null) {
+      refreshedRunningProcess = recoverTrackedRunningProcess(runningProcess);
+    }
+    if (refreshedRunningProcess != null) {
+      runningApps.replace(appId, runningProcess, refreshedRunningProcess);
+      return StartupAcceptance.live(refreshedRunningProcess);
+    }
+    if (runningApps.remove(appId, runningProcess)) {
+      RunningProcess exitedRunningProcess = runningProcess.withObservedRootHandoff();
+      recordExitAndScheduleRestartIfNeeded(appId, exitedRunningProcess);
+      exitCleanup.complete(null);
+      if (startupRestartScheduled(appId, exitedRunningProcess)) {
+        return StartupAcceptance.restarting(exitedRunningProcess);
+      }
+    }
+    return StartupAcceptance.failed();
+  }
+
+  private boolean startupRestartScheduled(String appId, RunningProcess runningProcess) {
+    return runningProcess.isRepresentativeProcessHandoff()
+        && hasScheduledRestartRecord(appId, runningProcess.currentRestartAttempt() + 1);
   }
 
   private void recordExitAndScheduleRestartIfNeeded(String appId, RunningProcess runningProcess) {
@@ -1366,6 +1482,14 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
+  private static void rejectOverlappingRollbackTree(Path stagingRoot, Path rollbackAppsDir)
+      throws IOException {
+    if (pathsOverlap(stagingRoot, rollbackAppsDir)) {
+      throw new AppHostException(
+          "stagedAppDirectory must not overlap the rollback app tree: " + stagingRoot);
+    }
+  }
+
   private static void rejectOverlappingMutableAppDirectories(
       Path stagingRoot, InstalledAppPaths paths) throws IOException {
     rejectOverlappingManagedAppDirectory(stagingRoot, paths.dataDir(), "dataDir");
@@ -1388,10 +1512,10 @@ public final class LocalProcessAppHost implements AppHost {
         || secondComparablePath.startsWith(firstComparablePath);
   }
 
-  private static void ensureManagedDirectory(Path baseDirectory, Path directory)
+  private static void ensureManagedDirectory(Path baseDirectory, Path directory, String label)
       throws IOException {
     Path normalized = directory.toAbsolutePath().normalize();
-    validateManagedPathPrefixes(baseDirectory, normalized, INSTALLED_APPS_DIR_LABEL);
+    validateManagedPathPrefixes(baseDirectory, normalized, label);
     Deque<Path> missingSegments = new ArrayDeque<>();
     Path current = normalized;
     while (current != null && !Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
@@ -1402,32 +1526,44 @@ public final class LocalProcessAppHost implements AppHost {
       current = current.getParent();
     }
     if (current == null) {
-      throw new AppHostException(
-          INSTALLED_APPS_DIR_LABEL + " must resolve beneath an existing filesystem root");
+      throw new AppHostException(label + " must resolve beneath an existing filesystem root");
     }
-    validateManagedDirectoryEntry(current, INSTALLED_APPS_DIR_LABEL);
+    validateManagedDirectoryEntry(current, label);
     while (!missingSegments.isEmpty()) {
       current = current.resolve(missingSegments.pop());
       Files.createDirectory(current);
     }
-    validateManagedDirectoryEntry(normalized, INSTALLED_APPS_DIR_LABEL);
+    validateManagedDirectoryEntry(normalized, label);
     if (!Files.isDirectory(normalized, LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppHostException(INSTALLED_APPS_DIR_LABEL + " must be a directory: " + normalized);
+      throw new AppHostException(label + " must be a directory: " + normalized);
     }
   }
 
   private Path validateInstalledAppsDirectory() throws IOException {
-    Path installedAppsDir = layout.installedAppsDir().toAbsolutePath().normalize();
-    validateManagedPathPrefixes(layout.dataDir(), installedAppsDir, INSTALLED_APPS_DIR_LABEL);
-    if (!Files.exists(installedAppsDir, LinkOption.NOFOLLOW_LINKS)) {
-      return installedAppsDir;
+    return validateManagedDirectory(layout.installedAppsDir(), INSTALLED_APPS_DIR_LABEL);
+  }
+
+  private Path ensureRollbackAppsDirectory() throws IOException {
+    Path rollbackAppsDir = layout.rollbackAppsDir().toAbsolutePath().normalize();
+    ensureManagedDirectory(layout.dataDir(), rollbackAppsDir, ROLLBACK_APPS_DIR_LABEL);
+    return rollbackAppsDir;
+  }
+
+  private Path validateRollbackAppsDirectory() throws IOException {
+    return validateManagedDirectory(layout.rollbackAppsDir(), ROLLBACK_APPS_DIR_LABEL);
+  }
+
+  private Path validateManagedDirectory(Path directory, String label) throws IOException {
+    Path normalized = directory.toAbsolutePath().normalize();
+    validateManagedPathPrefixes(layout.dataDir(), normalized, label);
+    if (!Files.exists(normalized, LinkOption.NOFOLLOW_LINKS)) {
+      return normalized;
     }
-    validateManagedDirectoryEntry(installedAppsDir, INSTALLED_APPS_DIR_LABEL);
-    if (!Files.isDirectory(installedAppsDir, LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppHostException(
-          INSTALLED_APPS_DIR_LABEL + " must be a directory: " + installedAppsDir);
+    validateManagedDirectoryEntry(normalized, label);
+    if (!Files.isDirectory(normalized, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException(label + " must be a directory: " + normalized);
     }
-    return installedAppsDir;
+    return normalized;
   }
 
   private static void validateManagedDirectoryEntry(Path entry, String label) throws IOException {
@@ -2083,23 +2219,102 @@ public final class LocalProcessAppHost implements AppHost {
     throw new AppHostException("failed to allocate temporary managed path under: " + parent);
   }
 
-  private void replaceInstalledBundle(Path installedRoot, Path replacementRoot, Path backupRoot)
-      throws IOException {
-    moveIntoPlace(installedRoot, backupRoot);
-    try {
-      moveIntoPlace(replacementRoot, installedRoot);
-    } catch (IOException updateFailure) {
-      restoreInstalledBundle(installedRoot, backupRoot, updateFailure);
-      throw updateFailure;
-    }
-    deleteBackupAfterSuccessfulReplacement(backupRoot);
+  private Path rollbackRootFor(String appId) {
+    return layout.rollbackAppsDir().resolve(InstalledAppPaths.normalizeAppId(appId));
   }
 
-  private void deleteBackupAfterSuccessfulReplacement(Path backupRoot) {
+  private void deleteRollbackRecordIfPresent(String appId) throws IOException {
+    Path rollbackAppsDir = validateRollbackAppsDirectory();
+    if (!Files.exists(rollbackAppsDir, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    Path rollbackRoot = rollbackRootFor(appId);
+    if (Files.exists(rollbackRoot, LinkOption.NOFOLLOW_LINKS)) {
+      deleteRecursively(rollbackRoot);
+    }
+  }
+
+  private void replaceInstalledBundle(
+      Path installedRoot,
+      Path replacementRoot,
+      Path backupRoot,
+      Path rollbackRoot,
+      Path previousRollbackBackupRoot)
+      throws IOException {
+    boolean previousRollbackMoved =
+        movePreviousRollbackAside(rollbackRoot, previousRollbackBackupRoot);
+    boolean installedMoved = false;
+    try {
+      moveIntoPlace(installedRoot, backupRoot);
+      installedMoved = true;
+      moveIntoPlace(replacementRoot, installedRoot);
+      moveIntoPlace(backupRoot, rollbackRoot);
+    } catch (IOException updateFailure) {
+      if (installedMoved) {
+        restoreInstalledBundle(installedRoot, backupRoot, updateFailure);
+      }
+      restorePreviousRollback(
+          rollbackRoot, previousRollbackBackupRoot, previousRollbackMoved, updateFailure);
+      throw updateFailure;
+    }
+    deleteBackupAfterSuccessfulReplacement(previousRollbackBackupRoot, previousRollbackMoved);
+  }
+
+  private void swapInstalledBundleWithRollback(
+      Path installedRoot, Path rollbackRoot, Path currentInstallBackupRoot) throws IOException {
+    moveIntoPlace(installedRoot, currentInstallBackupRoot);
+    boolean rollbackMovedToInstalled = false;
+    try {
+      moveIntoPlace(rollbackRoot, installedRoot);
+      rollbackMovedToInstalled = true;
+      moveIntoPlace(currentInstallBackupRoot, rollbackRoot);
+    } catch (IOException rollbackFailure) {
+      if (rollbackMovedToInstalled) {
+        try {
+          moveIntoPlace(installedRoot, rollbackRoot);
+        } catch (IOException restoreRollbackFailure) {
+          rollbackFailure.addSuppressed(restoreRollbackFailure);
+        }
+      }
+      restoreInstalledBundle(installedRoot, currentInstallBackupRoot, rollbackFailure);
+      throw rollbackFailure;
+    }
+  }
+
+  private static boolean movePreviousRollbackAside(Path rollbackRoot, Path backupRoot)
+      throws IOException {
+    if (!Files.exists(rollbackRoot, LinkOption.NOFOLLOW_LINKS)) {
+      return false;
+    }
+    moveIntoPlace(rollbackRoot, backupRoot);
+    return true;
+  }
+
+  private void deleteBackupAfterSuccessfulReplacement(Path backupRoot, boolean backupPresent) {
+    if (!backupPresent) {
+      return;
+    }
     try {
       managedTreeDeleter.deleteRecursively(backupRoot);
     } catch (IOException _) {
-      // The replacement is already committed; a skipped temp backup is safer than a false failure.
+      // The replacement is already committed; a skipped temp record is safer than a false failure.
+    }
+  }
+
+  private static void restorePreviousRollback(
+      Path rollbackRoot, Path backupRoot, boolean backupPresent, IOException updateFailure) {
+    if (!backupPresent) {
+      return;
+    }
+    try {
+      deleteScratchTreeIfPresent(rollbackRoot);
+    } catch (IOException cleanupFailure) {
+      updateFailure.addSuppressed(cleanupFailure);
+    }
+    try {
+      moveIntoPlace(backupRoot, rollbackRoot);
+    } catch (IOException restoreFailure) {
+      updateFailure.addSuppressed(restoreFailure);
     }
   }
 
@@ -3189,6 +3404,20 @@ public final class LocalProcessAppHost implements AppHost {
     }
   }
 
+  private record StartupAcceptance(RunningProcess runningProcess, boolean restartScheduled) {
+    private static StartupAcceptance live(RunningProcess runningProcess) {
+      return new StartupAcceptance(runningProcess, false);
+    }
+
+    private static StartupAcceptance restarting(RunningProcess runningProcess) {
+      return new StartupAcceptance(runningProcess, true);
+    }
+
+    private static StartupAcceptance failed() {
+      return new StartupAcceptance(null, false);
+    }
+  }
+
   @SuppressWarnings("ClassCanBeRecord")
   private static final class RunningProcess {
     private final Process process;
@@ -3198,23 +3427,6 @@ public final class LocalProcessAppHost implements AppHost {
     private final int restartCount;
     private final int currentRestartAttempt;
     private final boolean representativeProcessHandoff;
-
-    private RunningProcess(
-        Process process,
-        RunningAppSnapshot snapshot,
-        CompletableFuture<Void> exitCleanup,
-        List<ProcessHandle> trackedHandles,
-        int restartCount,
-        int currentRestartAttempt) {
-      this(
-          process,
-          snapshot,
-          exitCleanup,
-          trackedHandles,
-          restartCount,
-          currentRestartAttempt,
-          false);
-    }
 
     private RunningProcess(
         Process process,
@@ -3255,6 +3467,22 @@ public final class LocalProcessAppHost implements AppHost {
 
     private boolean isRepresentativeProcessHandoff() {
       return representativeProcessHandoff;
+    }
+
+    private RunningProcess withObservedRootHandoff() {
+      if (representativeProcessHandoff
+          || !hasTrackedDescendant()
+          || isEffectivelyAlive(process.toHandle())) {
+        return this;
+      }
+      return new RunningProcess(
+          process,
+          snapshot,
+          exitCleanup,
+          trackedHandles,
+          restartCount,
+          currentRestartAttempt,
+          true);
     }
 
     private boolean isAlive() {
@@ -3328,6 +3556,11 @@ public final class LocalProcessAppHost implements AppHost {
     private boolean rootProcessExited(List<ProcessHandle> aliveProcessTree) {
       long rootPid = process.pid();
       return aliveProcessTree.stream().noneMatch(processHandle -> processHandle.pid() == rootPid);
+    }
+
+    private boolean hasTrackedDescendant() {
+      long rootPid = process.pid();
+      return trackedHandles.stream().anyMatch(processHandle -> processHandle.pid() != rootPid);
     }
 
     private List<ProcessHandle> withoutRootProcess(List<ProcessHandle> processTree) {

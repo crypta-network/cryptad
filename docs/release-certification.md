@@ -87,12 +87,16 @@ Release-candidate mode requires these evidence ids:
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and direct fallback URLs remain documented. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
+| `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
+| `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
 host-installed bubblewrap in normal CI; it uses source checks and fake/offline provider tests.
-`apphost.live` is optional stronger evidence because normal PR and scheduled CI must not require a
-live local node or operator form password.
+`app-update.lifecycle` and `app-update.rollback` do not require a live node; missing update
+evidence blocks release-candidate mode unless a release-manager waiver is recorded. `apphost.live`
+is optional stronger evidence because normal PR and scheduled CI must not require a live local node
+or operator form password.
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. In
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract
@@ -141,9 +145,12 @@ The report and copied artifacts must not contain:
 - app browser session tokens;
 - the host/operator form password;
 - raw request bodies;
+- raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;
 - absolute developer-specific filesystem paths;
+- catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and
+  rollback backup paths;
 - non-localhost remote addresses.
 
 `artifacts/private-insert-uris.json` from interop runs must never be uploaded or pasted into a

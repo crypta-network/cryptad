@@ -140,6 +140,9 @@ enabled by the host response.
 App-owned UI uses stable URLs across reinstall and update operations. Responses are therefore sent
 with non-public no-cache headers instead of the legacy admin adapter's long-lived static cache
 policy.
+The stable URL is a browser route guarantee only; update rollback is scoped to the immutable
+installed bundle and does not roll back app data, cache, or browser-visible app state. See
+[app-update-lifecycle.md](app-update-lifecycle.md).
 
 Static browser UI does not receive `CRYPTAD_APP_TOKEN` and cannot authenticate as the app process.
 Instead, app-owned bootstrap issues a browser session token for `X-Crypta-App-Session`. Platform

@@ -40,21 +40,25 @@ Use this skill when working on:
   and re-exports `:foundation-support` and `:foundation-fs` where public APIs expose those types.
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
-- The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, and the
-  `:platform-apphost` JAR contributes the transport-neutral local AppHost core used by that API.
-- The `:platform-app-ui` JAR contributes app-owned static UI route helpers used by the legacy HTTP
-  admin adapter to serve installed bundle files under `/apps/{appId}/`.
+- The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, compatibility
+  contract, and app-update lifecycle coordination, and the `:platform-apphost` JAR contributes the
+  transport-neutral local AppHost core, sandbox-provider selection, and durable bundle rollback used
+  by that API.
+- The `:platform-app-ui` JAR contributes app-owned static UI route/origin helpers used by the
+  legacy HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`
+  compatibility fallback.
 - The `:platform-appdist` JAR contributes signed local app bundle digest, signature, verifier,
   trusted-key, packager, and distribution-tool classes used by first-party app tasks, developer
   tooling, and AppHost validation.
 - The `:platform-appcatalog` JAR contributes signed catalog source parsing, catalog writing,
-  verification, Crypta catalog source fetching, artifact download, safe ZIP extraction, and
-  verified staging support.
+  verification, Crypta catalog source fetching, app-store/API compatibility metadata parsing,
+  artifact download, safe ZIP extraction, and verified staging support.
 - The `:platform-devtools` application builds the standalone `crypta-app` developer CLI
   distribution with its own `installDist` output. It is developer tooling, not a daemon entrypoint
   inside `build/cryptad-dist`.
 - The `:platform-sdk-js` JAR contributes the browser SDK resource staged into first-party static
-  app bundles and loaded by app-owned UIs under `/apps/{appId}/`.
+  app bundles and loaded by app-owned UIs on isolated loopback origins or the `/apps/{appId}/`
+  fallback.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
   JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
 - The `:runtime-alerts` JAR contributes the detached alert/feed model subset, including the
@@ -69,7 +73,8 @@ Use this skill when working on:
   matching `network/crypta/clients/http/**` resources. Static files and templates now ship from
   that leaf JAR on the runtime classpath, so packaged/runtime code must treat them as classpath
   resources rather than plain files. This leaf also hosts the current `/api/v1/` bridge for
-  `:platform-api` and the `/app/node/` bridge for `:platform-web-shell`.
+  `:platform-api`, the `/app/node/` bridge for `:platform-web-shell`, and the per-app loopback
+  origin server used by isolated static app UIs.
 - The `:adapter-http-legacy-browse` JAR carries the concrete legacy browse/FProxy classes.
 - The `:bridge-http-runtime` JAR carries the concrete `network.crypta.clients.http.bridge`
   runtime-binding implementations plus the legacy HTTP `network.crypta.clients.http.geoip`
