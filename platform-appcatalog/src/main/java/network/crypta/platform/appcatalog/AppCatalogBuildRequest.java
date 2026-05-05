@@ -22,19 +22,15 @@ import java.util.Optional;
  * normalized during construction, but the request does not read descriptor contents or bundle
  * artifacts. That validation remains in the writer so callers can build, inspect, and pass around a
  * request without performing file-system work.
- *
- * @param catalogId stable catalog identifier written to {@code catalog.id} after normalization
- * @param catalogName human-readable catalog name written to {@code catalog.name}
- * @param generatedAt deterministic generation timestamp written to {@code catalog.generatedAt}
- * @param entryDescriptorFiles one or more descriptor files in exact output entry order
- * @param outputFile optional file that should receive the catalog properties bytes
  */
-public record AppCatalogBuildRequest(
-    String catalogId,
-    String catalogName,
-    Instant generatedAt,
-    List<Path> entryDescriptorFiles,
-    Optional<Path> outputFile) {
+public final class AppCatalogBuildRequest {
+  private final String catalogId;
+  private final String catalogName;
+  private final Instant generatedAt;
+  private final List<Path> entryDescriptorFiles;
+  private final List<Path> reviewReceiptFiles;
+  private final Path outputFile;
+
   /**
    * Creates a request that returns bytes without writing a catalog file.
    *
@@ -50,7 +46,29 @@ public record AppCatalogBuildRequest(
    */
   public AppCatalogBuildRequest(
       String catalogId, String catalogName, Instant generatedAt, List<Path> entryDescriptorFiles) {
-    this(catalogId, catalogName, generatedAt, entryDescriptorFiles, Optional.empty());
+    this(catalogId, catalogName, generatedAt, entryDescriptorFiles, List.of(), null);
+  }
+
+  /**
+   * Creates a request with review receipt files and no output file.
+   *
+   * <p>Receipt paths are normalized and stored in caller-supplied order. {@link AppCatalogWriter}
+   * later matches them to descriptor entries by receipt payload binding so catalog authoring can
+   * remain deterministic even when receipts are supplied separately from entry descriptors.
+   *
+   * @param catalogId stable catalog identifier used as the catalog namespace
+   * @param catalogName human-readable catalog name shown in developer output
+   * @param generatedAt deterministic generation timestamp for the catalog metadata
+   * @param entryDescriptorFiles descriptor files in the exact order written to the catalog
+   * @param reviewReceiptFiles receipt files to embed into matching catalog entries
+   */
+  public AppCatalogBuildRequest(
+      String catalogId,
+      String catalogName,
+      Instant generatedAt,
+      List<Path> entryDescriptorFiles,
+      List<Path> reviewReceiptFiles) {
+    this(catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, null);
   }
 
   /**
@@ -66,21 +84,52 @@ public record AppCatalogBuildRequest(
    * @param catalogName human-readable catalog name shown in developer output
    * @param generatedAt deterministic generation timestamp for the catalog metadata
    * @param entryDescriptorFiles descriptor files in the exact order written to the catalog
+   * @param reviewReceiptFiles receipt files to embed into matching catalog entries
    * @param outputFile optional destination for the generated catalog properties bytes
    * @throws AppCatalogException if catalog metadata or descriptor-file inputs are malformed
    */
-  public AppCatalogBuildRequest {
-    catalogId = AppCatalog.normalizeCatalogId(catalogId);
-    catalogName =
+  public AppCatalogBuildRequest(
+      String catalogId,
+      String catalogName,
+      Instant generatedAt,
+      List<Path> entryDescriptorFiles,
+      List<Path> reviewReceiptFiles,
+      Path outputFile) {
+    this.catalogId = AppCatalog.normalizeCatalogId(catalogId);
+    this.catalogName =
         AppCatalogSidecars.requireNonBlankSingleLine(
             catalogName, "catalog.name", AppCatalogSidecars.INVALID_CATALOG_ENTRY);
-    Objects.requireNonNull(generatedAt, "generatedAt");
-    entryDescriptorFiles = normalizeDescriptorFiles(entryDescriptorFiles);
-    outputFile =
-        Objects.requireNonNull(outputFile, "outputFile")
-            .map(
-                path ->
-                    Objects.requireNonNull(path, "outputFile path").toAbsolutePath().normalize());
+    this.generatedAt = Objects.requireNonNull(generatedAt, "generatedAt");
+    this.entryDescriptorFiles = normalizeDescriptorFiles(entryDescriptorFiles);
+    this.reviewReceiptFiles = normalizeReviewReceiptFiles(reviewReceiptFiles);
+    this.outputFile = normalizeOutputFile(outputFile);
+  }
+
+  /**
+   * Returns the normalized catalog id.
+   *
+   * @return stable catalog identifier written to {@code catalog.id}
+   */
+  public String catalogId() {
+    return catalogId;
+  }
+
+  /**
+   * Returns the normalized catalog display name.
+   *
+   * @return human-readable catalog name written to {@code catalog.name}
+   */
+  public String catalogName() {
+    return catalogName;
+  }
+
+  /**
+   * Returns the deterministic catalog generation timestamp.
+   *
+   * @return timestamp written to {@code catalog.generatedAt}
+   */
+  public Instant generatedAt() {
+    return generatedAt;
   }
 
   /**
@@ -92,9 +141,29 @@ public record AppCatalogBuildRequest(
    *
    * @return immutable descriptor paths in the order used for {@code catalog.entries}
    */
-  @Override
   public List<Path> entryDescriptorFiles() {
     return List.copyOf(entryDescriptorFiles);
+  }
+
+  /**
+   * Returns normalized review receipt files in caller-supplied order.
+   *
+   * @return immutable receipt paths
+   */
+  public List<Path> reviewReceiptFiles() {
+    return List.copyOf(reviewReceiptFiles);
+  }
+
+  /**
+   * Returns the optional output file for generated catalog properties.
+   *
+   * <p>An empty value means the writer should return catalog bytes without writing them to disk.
+   * When present, the path has already been converted to absolute normalized form.
+   *
+   * @return optional destination for {@code cryptad-app-catalog.properties}
+   */
+  public Optional<Path> outputFile() {
+    return Optional.ofNullable(outputFile);
   }
 
   /**
@@ -109,7 +178,47 @@ public record AppCatalogBuildRequest(
    */
   public AppCatalogBuildRequest withOutputFile(Path outputFile) {
     return new AppCatalogBuildRequest(
-        catalogId, catalogName, generatedAt, entryDescriptorFiles, Optional.of(outputFile));
+        catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, outputFile);
+  }
+
+  @Override
+  public boolean equals(Object object) {
+    if (this == object) {
+      return true;
+    }
+    if (!(object instanceof AppCatalogBuildRequest that)) {
+      return false;
+    }
+    return catalogId.equals(that.catalogId)
+        && catalogName.equals(that.catalogName)
+        && generatedAt.equals(that.generatedAt)
+        && entryDescriptorFiles.equals(that.entryDescriptorFiles)
+        && reviewReceiptFiles.equals(that.reviewReceiptFiles)
+        && Objects.equals(outputFile, that.outputFile);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, outputFile);
+  }
+
+  @Override
+  public String toString() {
+    return "AppCatalogBuildRequest["
+        + "catalogId="
+        + catalogId
+        + ", catalogName="
+        + catalogName
+        + ", generatedAt="
+        + generatedAt
+        + ", entryDescriptorFiles="
+        + entryDescriptorFiles
+        + ", reviewReceiptFiles="
+        + reviewReceiptFiles
+        + ", outputFile="
+        + outputFile()
+        + ']';
   }
 
   private static List<Path> normalizeDescriptorFiles(List<Path> descriptorFiles) {
@@ -126,5 +235,21 @@ public record AppCatalogBuildRequest(
               .normalize());
     }
     return List.copyOf(normalized);
+  }
+
+  private static List<Path> normalizeReviewReceiptFiles(List<Path> reviewReceiptFiles) {
+    Objects.requireNonNull(reviewReceiptFiles, "reviewReceiptFiles");
+    List<Path> normalized = new ArrayList<>(reviewReceiptFiles.size());
+    for (Path reviewReceiptFile : reviewReceiptFiles) {
+      normalized.add(
+          Objects.requireNonNull(reviewReceiptFile, "reviewReceiptFiles value")
+              .toAbsolutePath()
+              .normalize());
+    }
+    return List.copyOf(normalized);
+  }
+
+  private static Path normalizeOutputFile(Path outputFile) {
+    return outputFile == null ? null : outputFile.toAbsolutePath().normalize();
   }
 }

@@ -25,6 +25,7 @@ public final class AppUpdatesApiHandler {
   private static final String PARAM_MODE = "mode";
   private static final String PARAM_REFRESH_CATALOGS = "refreshCatalogs";
   private static final String PARAM_RESTART = "restart";
+  private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
   private static final String PARAM_ROLLBACK_ON_HEALTH_FAILURE = "rollbackOnHealthFailure";
 
   private final AppUpdateService updateService;
@@ -81,6 +82,17 @@ public final class AppUpdatesApiHandler {
    */
   public Map<String, Object> stage(String appId) {
     return updateService.stage(appId);
+  }
+
+  /**
+   * Stages the current verified update candidate with optional review acknowledgement.
+   *
+   * @param appId app id from the request path
+   * @param queryParameters decoded query parameters from the router
+   * @return path-free update state after staging
+   */
+  public Map<String, Object> stage(String appId, Map<String, List<String>> queryParameters) {
+    return updateService.stage(appId, optionalBoolean(queryParameters, PARAM_REVIEW_ACKNOWLEDGED));
   }
 
   /**

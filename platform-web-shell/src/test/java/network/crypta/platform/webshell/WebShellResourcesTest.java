@@ -468,6 +468,12 @@ class WebShellResourcesTest {
     assertTrue(
         script.contains("Stage is unavailable until a newer update candidate is available."));
     assertTrue(script.contains("function updateActionDisabledReason("));
+    assertTrue(script.contains("function reviewTrustBlockFieldForAction(action)"));
+    assertTrue(script.contains("if (action === \"update\" || action === \"stage\")"));
+    assertFalse(
+        script.contains(
+            "action === \"install\" ? \"blocksInstall\" : action === \"update\" || action ==="
+                + " \"stage\" ? \"blocksUpdate\" : \"blocksPolicyApply\""));
     assertTrue(script.contains("function stagedUpdateAvailable(updateState)"));
     assertTrue(script.contains("staged.available === true || staged.status === \"staged\""));
     assertTrue(script.contains("if (stagedUpdateAvailable(updateState))"));
@@ -516,9 +522,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function catalogPermissionReviewDetailsNode(app)"));
     assertTrue(script.contains("function catalogReleaseDetailsNode(app)"));
     assertTrue(script.contains("Review and trust"));
-    assertTrue(
-        script.contains(
-            "Advisory metadata; catalog and bundle verification still control installation."));
+    assertTrue(script.contains("Publisher advisory review"));
+    assertTrue(script.contains("Trusted review receipt"));
+    assertTrue(script.contains("function reviewTrustLabel(reviewTrust)"));
+    assertTrue(script.contains("function appendReviewAcknowledgement(form, reviewTrust, action)"));
+    assertTrue(script.contains("reviewAcknowledged"));
     assertTrue(script.contains("Permission review"));
     assertTrue(script.contains("Release metadata"));
     assertTrue(script.contains("[\"Homepage\", metadataLinkNode(app.homepage)]"));

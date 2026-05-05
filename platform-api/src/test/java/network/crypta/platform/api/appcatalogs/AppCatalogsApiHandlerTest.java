@@ -1,7 +1,11 @@
 package network.crypta.platform.api.appcatalogs;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -12,10 +16,19 @@ import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
+import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewPolicyMode;
+import network.crypta.platform.appcatalog.AppReviewReceipt;
+import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
+import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
+import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
+import network.crypta.platform.appcatalog.TrustedReviewerKey;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -32,13 +45,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings({"java:S100", "unchecked"})
 class AppCatalogsApiHandlerTest {
   private static final String APP_ID = "queue-manager";
+  private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
+  private static final String REVIEW_POLICY_ID = "crypta-app-review-v1";
+  private static final String REVIEW_POLICY_VERSION = "1";
+  private static final Instant REVIEWED_AT = Instant.parse("2026-05-01T00:00:00Z");
 
   @Mock private AppCatalogManager catalogManager;
   @Mock private AppHost appHost;
@@ -120,9 +140,23 @@ class AppCatalogsApiHandlerTest {
     assertEquals("Reviewed for local operator safety.", review.get("note"));
     assertEquals(true, review.get("advisory"));
 
+    Map<String, Object> reviewTrust = (Map<String, Object>) app.get("reviewTrust");
+    assertEquals("publisher_claim_only", reviewTrust.get("status"));
+    assertEquals(false, reviewTrust.get("trusted"));
+    assertEquals(false, reviewTrust.get("positive"));
+    assertEquals(false, reviewTrust.get("blocksInstall"));
+    assertEquals(false, reviewTrust.get("blocksUpdate"));
+    assertFalse(app.toString().contains("PUBLIC KEY"));
+
     Map<String, Object> rationales = (Map<String, Object>) app.get("permissionRationales");
     assertEquals("Reads the local transfer queue.", rationales.get("queue.read"));
     assertEquals("Lets the app manage queue entries.", rationales.get("queue.write"));
+  }
+
+  @Test
+  void listApps_whenEntryHasStoreMetadataAndInstalledAppDiffers_expectCompatibilityAndChangelog()
+      throws Exception {
+    Map<String, Object> app = listRichInstalledCatalogApp();
 
     Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
     assertEquals("0.1.0", compatibility.get("minimumCryptaVersion"));
@@ -130,7 +164,6 @@ class AppCatalogsApiHandlerTest {
     assertEquals(true, compatibility.get("satisfied"));
     assertEquals(true, compatibility.get("advisory"));
     assertEquals("satisfied", compatibility.get("status"));
-
     Map<String, Object> changelog = (Map<String, Object>) app.get("changelog");
     assertEquals("Adds queue retry controls.", changelog.get("summary"));
     assertEquals("https://example.invalid/changelog.txt", changelog.get("uri"));
@@ -171,6 +204,10 @@ class AppCatalogsApiHandlerTest {
     assertEquals("unreviewed", review.get("status"));
     assertNull(review.get("note"));
     assertTrue((Boolean) review.get("advisory"));
+
+    Map<String, Object> reviewTrust = (Map<String, Object>) app.get("reviewTrust");
+    assertEquals("not_configured", reviewTrust.get("status"));
+    assertEquals(false, reviewTrust.get("trusted"));
 
     Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
     assertNull(compatibility.get("minimumCryptaVersion"));
@@ -275,6 +312,78 @@ class AppCatalogsApiHandlerTest {
     assertEquals("unknown", compatibility.get("status"));
   }
 
+  @Test
+  void install_whenPolicyRequiresTrustedReviewAndReceiptIsMissing_expectStableReviewError()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            TrustedReviewerKeys::empty);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(richCatalogEntry());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_review_missing", exception.errorCode());
+    assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void install_whenPreparedPlanLosesTrustedReview_expectPlanReviewGateBlocks() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry trustedEntry = richCatalogEntryWithTrustedReceipt(reviewerKeyPair);
+    AppCatalogEntry refreshedEntryWithoutReceipt = richCatalogEntry();
+    AppCatalogInstallPlan plan = plan(refreshedEntryWithoutReceipt);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(trustedEntry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_review_missing", exception.errorCode());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void update_whenPreparedPlanLosesTrustedReview_expectPlanReviewGateBlocks() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry trustedEntry = richCatalogEntryWithTrustedReceipt(reviewerKeyPair);
+    AppCatalogEntry refreshedEntryWithoutReceipt = richCatalogEntry();
+    AppCatalogInstallPlan plan = plan(refreshedEntryWithoutReceipt);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(trustedEntry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_review_missing", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
   private Map<String, Object> listRichInstalledCatalogApp() throws Exception {
     AppCatalogsApiHandler handler =
         new AppCatalogsApiHandler(catalogManager, appHost, () -> "0.2.0");
@@ -304,9 +413,9 @@ class AppCatalogsApiHandlerTest {
         "Queue Manager",
         "1.2.0",
         "Manage local Crypta transfer queues.",
-        Optional.of(URI.create("https://example.invalid/app")),
-        Optional.of(URI.create("https://example.invalid/repo")),
-        Optional.of("MIT"),
+        URI.create("https://example.invalid/app"),
+        URI.create("https://example.invalid/repo"),
+        "MIT",
         List.of("productivity", "network"),
         new AppCatalogCompatibilityMetadata("0.1.0"),
         new AppCatalogReviewMetadata(
@@ -325,6 +434,71 @@ class AppCatalogsApiHandlerTest {
             "Reads the local transfer queue.",
             "queue.write",
             "Lets the app manage queue entries."));
+  }
+
+  private AppCatalogEntry richCatalogEntryWithTrustedReceipt(KeyPair reviewerKeyPair) {
+    AppCatalogEntry entry = richCatalogEntry();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(reviewPayload(entry), reviewerKeyPair.getPrivate());
+    return new AppCatalogEntry(
+        entry.appId(),
+        entry.name(),
+        entry.version(),
+        entry.summary(),
+        entry.homepage(),
+        entry.source(),
+        entry.license(),
+        entry.categories(),
+        entry.compatibility(),
+        entry.review(),
+        Optional.of(receipt),
+        entry.changelog(),
+        entry.screenshots(),
+        entry.bundleUri(),
+        entry.bundleSha256(),
+        entry.bundleSizeBytes(),
+        entry.bundleType(),
+        entry.permissions(),
+        entry.permissionRationales());
+  }
+
+  private static AppReviewReceiptPayload reviewPayload(AppCatalogEntry entry) {
+    return new AppReviewReceiptPayload(
+        AppReviewReceiptPayload.RECEIPT_VERSION,
+        entry.appId(),
+        entry.version(),
+        entry.bundleSha256(),
+        entry.bundleSizeBytes(),
+        Optional.empty(),
+        REVIEW_POLICY_ID,
+        REVIEW_POLICY_VERSION,
+        AppReviewReceiptStatus.REVIEWED,
+        REVIEWER_KEY_ID,
+        REVIEWED_AT,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty());
+  }
+
+  private static TrustedReviewerKeys trustedReviewerKeys(KeyPair keyPair) {
+    return TrustedReviewerKeys.of(
+        TrustedReviewerKey.ed25519(
+            REVIEWER_KEY_ID,
+            keyPair.getPublic().getEncoded(),
+            "Crypta First-Party Review",
+            REVIEW_POLICY_ID));
+  }
+
+  private static KeyPair reviewerKeyPair() throws Exception {
+    return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+  }
+
+  private AppCatalogInstallPlan plan(AppCatalogEntry entry) throws IOException {
+    Path scratch = tempDir.resolve("scratch-" + entry.version());
+    Path staged = scratch.resolve("bundle");
+    Files.createDirectories(staged);
+    return new AppCatalogInstallPlan("core", entry, staged, scratch);
   }
 
   private AppCatalogEntry minimalCatalogEntry() {
@@ -350,9 +524,9 @@ class AppCatalogsApiHandlerTest {
         "Queue Manager",
         "1.2.0",
         "Manage local Crypta transfer queues.",
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
+        null,
+        null,
+        null,
         List.of(),
         new AppCatalogCompatibilityMetadata(minimumCryptaVersion),
         AppCatalogReviewMetadata.EMPTY,

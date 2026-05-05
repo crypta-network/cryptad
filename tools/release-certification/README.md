@@ -84,14 +84,20 @@ legacy.retirement
 apphost.sandbox-provider
 app-update.lifecycle
 app-update.rollback
+app-review.trusted-receipts
+app-review.policy
+app-review.first-party-catalog
 ```
 
-`platform-api.contract`, `apphost.sandbox-provider`, `app-update.lifecycle`, and
-`app-update.rollback` use deterministic source checks, fixtures, and fake/offline tests; they do
-not require a live node or host-installed bubblewrap in normal CI. `interop.extended` and
-`apphost.live` are recorded as optional stronger evidence. Extended interop is still required by
-the release runbook when compatibility-sensitive behavior changed. Live AppHost lifecycle evidence
-is optional because normal PR CI must not require a running node or operator credentials.
+`platform-api.contract`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+`app-update.rollback`, `app-review.trusted-receipts`, and `app-review.policy` use deterministic
+source checks, fixtures, and fake/offline tests; they do not require a live node or host-installed
+bubblewrap in normal CI. `app-review.first-party-catalog` also runs offline, but
+release-candidate mode requires explicit reviewer key inputs so the runner can sign, verify, and
+embed a first-party review receipt. `interop.extended` and `apphost.live` are recorded as optional
+stronger evidence. Extended interop is still required by the release runbook when
+compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
+normal PR CI must not require a running node or operator credentials.
 
 Record an explicit waiver when a release manager accepts missing optional or replacement evidence:
 
@@ -110,7 +116,7 @@ The app-platform smoke runner validates first-party staged app manifests, static
 coherence, the `crypta-app` developer CLI, Platform API contract snapshots and compatibility
 verification, signed bundle evidence when signing inputs are present, signed catalog
 authoring/verification, AppHost sandbox-provider evidence, app-update lifecycle/rollback evidence,
-and the legacy-admin retirement map.
+independent app-review receipt evidence, and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -125,6 +131,24 @@ CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE
 In `pr` and `nightly` modes, missing signing inputs are recorded as skipped or warning evidence.
 In `release-candidate` mode, missing signed bundle or signed catalog evidence is a failing required
 item.
+
+Review receipt inputs use a separate reviewer-key namespace:
+
+```text
+CRYPTAD_APP_REVIEWER_KEY_ID
+CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64
+CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE
+CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64
+CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE
+CRYPTAD_APP_REVIEW_POLICY_ID
+CRYPTAD_APP_REVIEW_POLICY_VERSION
+```
+
+In `pr` and `nightly` modes, missing reviewer inputs are recorded as skipped or warning evidence.
+In `release-candidate` mode, missing first-party review receipt evidence is a failing required
+item. The report records reviewer key ids, policy ids, receipt status counts, and redacted command
+metadata; it must not include reviewer private keys, raw public key bytes, local evidence paths, or
+app/session/process tokens.
 
 Optional live-node AppHost lifecycle smoke is enabled only when requested:
 
@@ -143,6 +167,8 @@ write raw request bodies.
 Certification outputs must remain suitable for release-candidate evidence.  Do not upload or paste:
 
 - private signing keys;
+- private reviewer keys;
+- raw trusted reviewer public key bytes;
 - app process tokens;
 - browser-session tokens;
 - the host/operator form password;

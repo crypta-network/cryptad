@@ -14,7 +14,9 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -71,7 +73,8 @@ public final class AppCatalogWriter {
    */
   public static WriteResult write(AppCatalogBuildRequest request) throws IOException {
     AppCatalogBuildRequest checkedRequest = Objects.requireNonNull(request, "request");
-    List<AppCatalogEntry> entries = buildEntries(checkedRequest.entryDescriptorFiles());
+    List<AppCatalogEntry> entries =
+        buildEntries(checkedRequest.entryDescriptorFiles(), checkedRequest.reviewReceiptFiles());
     AppCatalog catalog =
         new AppCatalog(
             catalogVersion(entries),
@@ -116,12 +119,60 @@ public final class AppCatalogWriter {
     return builder.toString().getBytes(StandardCharsets.UTF_8);
   }
 
-  private static List<AppCatalogEntry> buildEntries(List<Path> descriptorFiles) throws IOException {
+  private static List<AppCatalogEntry> buildEntries(
+      List<Path> descriptorFiles, List<Path> reviewReceiptFiles) throws IOException {
+    Map<ReviewReceiptKey, AppReviewReceipt> receipts = loadReviewReceipts(reviewReceiptFiles);
     List<AppCatalogEntry> entries = new ArrayList<>(descriptorFiles.size());
     for (Path descriptorFile : descriptorFiles) {
-      entries.add(inspectEntryDescriptor(descriptorFile).entry());
+      AppCatalogEntry entry = inspectEntryDescriptor(descriptorFile).entry();
+      entries.add(withMatchingReviewReceipt(entry, receipts));
+    }
+    if (!receipts.isEmpty()) {
+      throw AppCatalogSidecars.invalidEntry("review receipt does not match any catalog entry");
     }
     return List.copyOf(entries);
+  }
+
+  private static Map<ReviewReceiptKey, AppReviewReceipt> loadReviewReceipts(List<Path> receiptFiles)
+      throws IOException {
+    Map<ReviewReceiptKey, AppReviewReceipt> receipts = new LinkedHashMap<>();
+    for (Path receiptFile : receiptFiles) {
+      AppReviewReceipt receipt = AppReviewReceiptIO.read(receiptFile);
+      ReviewReceiptKey key = ReviewReceiptKey.fromReceipt(receipt);
+      AppReviewReceipt previous = receipts.putIfAbsent(key, receipt);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry("duplicate review receipt for catalog entry");
+      }
+    }
+    return receipts;
+  }
+
+  private static AppCatalogEntry withMatchingReviewReceipt(
+      AppCatalogEntry entry, Map<ReviewReceiptKey, AppReviewReceipt> receipts) {
+    AppReviewReceipt receipt = receipts.remove(ReviewReceiptKey.fromEntry(entry));
+    if (receipt == null) {
+      return entry;
+    }
+    return new AppCatalogEntry(
+        entry.appId(),
+        entry.name(),
+        entry.version(),
+        entry.summary(),
+        entry.homepage(),
+        entry.source(),
+        entry.license(),
+        entry.categories(),
+        entry.compatibility(),
+        entry.review(),
+        Optional.of(receipt),
+        entry.changelog(),
+        entry.screenshots(),
+        entry.bundleUri(),
+        entry.bundleSha256(),
+        entry.bundleSizeBytes(),
+        entry.bundleType(),
+        entry.permissions(),
+        entry.permissionRationales());
   }
 
   /**
@@ -177,9 +228,9 @@ public final class AppCatalogWriter {
         descriptor.nameOverride().orElse(manifest.appName()),
         version,
         descriptor.summary(),
-        descriptor.homepage(),
-        descriptor.source(),
-        descriptor.license(),
+        descriptor.homepage().orElse(null),
+        descriptor.source().orElse(null),
+        descriptor.license().orElse(null),
         descriptor.categories(),
         compatibilityForCatalog(descriptor, manifest),
         descriptor.review(),
@@ -476,6 +527,9 @@ public final class AppCatalogWriter {
           .note()
           .ifPresent(value -> appendProperty(builder, prefix + "review.note", value));
     }
+    entry
+        .reviewReceipt()
+        .ifPresent(receipt -> AppReviewReceiptIO.appendReceiptProperties(builder, prefix, receipt));
     if (!entry.permissionRationales().isEmpty()) {
       entry
           .permissionRationales()
@@ -540,6 +594,23 @@ public final class AppCatalogWriter {
   private record ArtifactSnapshot(Path file, String sha256, long sizeBytes) {}
 
   private record ArtifactMetadata(String sha256, long sizeBytes, AppBundleManifest manifest) {}
+
+  private record ReviewReceiptKey(
+      String appId, String appVersion, String artifactSha256, long artifactSizeBytes) {
+    private static ReviewReceiptKey fromEntry(AppCatalogEntry entry) {
+      return new ReviewReceiptKey(
+          entry.appId(), entry.version(), entry.bundleSha256(), entry.bundleSizeBytes());
+    }
+
+    private static ReviewReceiptKey fromReceipt(AppReviewReceipt receipt) {
+      AppReviewReceiptPayload payload = receipt.payload();
+      return new ReviewReceiptKey(
+          payload.appId(),
+          payload.appVersion(),
+          payload.artifactSha256(),
+          payload.artifactSizeBytes());
+    }
+  }
 
   /**
    * Descriptor inspection result used by offline compatibility tooling.

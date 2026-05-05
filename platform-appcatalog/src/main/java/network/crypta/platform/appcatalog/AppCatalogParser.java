@@ -131,6 +131,7 @@ public final class AppCatalogParser {
                 parseApiCompatibility(properties, prefix))
             : AppCatalogCompatibilityMetadata.EMPTY,
         storeMetadataAllowed ? parseReview(properties, prefix) : AppCatalogReviewMetadata.EMPTY,
+        storeMetadataAllowed ? parseReviewReceipt(properties, prefix) : Optional.empty(),
         storeMetadataAllowed ? parseChangelog(properties, prefix) : AppCatalogChangelog.EMPTY,
         storeMetadataAllowed ? parseScreenshots(properties, prefix) : List.of(),
         parseUri(removeRequired(properties, prefix + "bundle.uri"), prefix + "bundle.uri"),
@@ -272,6 +273,16 @@ public final class AppCatalogParser {
             .map(value -> AppCatalogReviewStatus.parse(value, prefix + "review.status"))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
     return new AppCatalogReviewMetadata(status, removeOptional(properties, prefix + "review.note"));
+  }
+
+  private static Optional<AppReviewReceipt> parseReviewReceipt(
+      Map<String, String> properties, String prefix) {
+    String receiptPrefix = prefix + "review.receipt.";
+    boolean present = properties.keySet().stream().anyMatch(key -> key.startsWith(receiptPrefix));
+    if (!present) {
+      return Optional.empty();
+    }
+    return Optional.of(AppReviewReceiptIO.parseProperties(properties, prefix));
   }
 
   private static AppCatalogChangelog parseChangelog(Map<String, String> properties, String prefix) {

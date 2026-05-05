@@ -34,6 +34,7 @@ import java.util.Objects;
  * @param bundleSizeBytes expected bundle artifact size in bytes
  * @param bundleType catalog artifact type used by the verified staging path
  * @param review advisory catalog review metadata summarized for operator display
+ * @param reviewTrust independent review receipt trust decision
  * @param apiCompatibility Platform API compatibility summary for the candidate
  * @param permissionDelta added, removed, and unchanged permissions versus the installed app
  * @param running whether the app was running when the candidate was detected
@@ -52,13 +53,13 @@ public record AppUpdateCandidate(
     long bundleSizeBytes,
     String bundleType,
     Map<String, Object> review,
+    Map<String, Object> reviewTrust,
     Map<String, Object> apiCompatibility,
     Map<String, Object> permissionDelta,
     boolean running,
     Instant detectedAt) {
   private static final String JSON_STATUS = "status";
   private static final String API_STATUS_COMPATIBLE = "compatible";
-  private static final String REVIEW_STATUS_REVIEWED = "reviewed";
 
   /**
    * Creates a validated candidate.
@@ -80,6 +81,7 @@ public record AppUpdateCandidate(
    * @param bundleSizeBytes expected artifact size in bytes, never negative
    * @param bundleType catalog artifact type, for example a signed bundle archive
    * @param review advisory review summary copied for display and audit use
+   * @param reviewTrust review receipt trust summary copied for display and audit use
    * @param apiCompatibility Platform API compatibility summary copied for display
    * @param permissionDelta permission delta map copied for display and gating
    * @param running whether the app was running when detection occurred
@@ -99,6 +101,7 @@ public record AppUpdateCandidate(
     }
     bundleType = requireText(bundleType, "bundleType");
     review = copyInOrder(review, "review");
+    reviewTrust = copyInOrder(reviewTrust, "reviewTrust");
     apiCompatibility = copyInOrder(apiCompatibility, "apiCompatibility");
     permissionDelta = copyInOrder(permissionDelta, "permissionDelta");
     Objects.requireNonNull(detectedAt, "detectedAt");
@@ -122,17 +125,24 @@ public record AppUpdateCandidate(
    * Returns whether policy-driven apply may use this candidate without another operator decision.
    *
    * <p>Automatic apply is stricter than staging. The candidate must already be eligible by default,
-   * the catalog review metadata must report {@code reviewed}, and the Platform API compatibility
-   * summary must report {@code compatible}. Caution, rejected, missing, or malformed review states
-   * are not auto-applied, and neither are unknown or newer-than-tested API compatibility states;
-   * they remain visible to the operator through the same candidate summary.
+   * a trusted positive review receipt must be present, and the Platform API compatibility summary
+   * must report {@code compatible}. Publisher advisory review metadata is not sufficient for
+   * automatic apply.
    *
    * @return {@code true} when the candidate is safely newer, compatible, and reviewed
    */
   public boolean eligibleForAutomaticApply() {
     return eligibleByDefault()
-        && reviewAllowsAutomaticApply(review)
-        && apiCompatibilityAllowsAutomaticApply(apiCompatibility);
+        && reviewTrustAllowsAutomaticApply()
+        && apiCompatibilityAllowsAutomaticApply();
+  }
+
+  boolean reviewTrustAllowsAutomaticApply() {
+    return reviewTrustAllowsAutomaticApply(reviewTrust);
+  }
+
+  boolean apiCompatibilityAllowsAutomaticApply() {
+    return apiCompatibilityAllowsAutomaticApply(apiCompatibility);
   }
 
   /**
@@ -156,6 +166,7 @@ public record AppUpdateCandidate(
     json.put("versionComparison", versionComparison);
     json.put("bundle", bundleSummary());
     json.put("review", review);
+    json.put("reviewTrust", reviewTrust);
     json.put("apiCompatibility", apiCompatibility);
     json.put("permissionDelta", permissionDelta);
     json.put("running", running);
@@ -167,6 +178,11 @@ public record AppUpdateCandidate(
   }
 
   private boolean operatorActionRequired() {
+    if (status == AppUpdateCandidateStatus.AVAILABLE
+        && (Boolean.TRUE.equals(reviewTrust.get("requiresAcknowledgement"))
+            || Boolean.TRUE.equals(reviewTrust.get("blocksUpdate")))) {
+      return true;
+    }
     return switch (status) {
       case AMBIGUOUS, BLOCKED, INCOMPATIBLE -> true;
       default -> false;
@@ -181,12 +197,13 @@ public record AppUpdateCandidate(
     return bundle;
   }
 
-  private static boolean reviewAllowsAutomaticApply(Map<String, Object> review) {
-    Object statusValue = review.get(JSON_STATUS);
-    if (!(statusValue instanceof String status)) {
+  private static boolean reviewTrustAllowsAutomaticApply(Map<String, Object> reviewTrust) {
+    Object positiveValue = reviewTrust.get("positive");
+    Object blockedValue = reviewTrust.get("blocksPolicyApply");
+    if (!(positiveValue instanceof Boolean positive)) {
       return false;
     }
-    return REVIEW_STATUS_REVIEWED.equals(status);
+    return positive && !Boolean.TRUE.equals(blockedValue);
   }
 
   private static boolean apiCompatibilityAllowsAutomaticApply(

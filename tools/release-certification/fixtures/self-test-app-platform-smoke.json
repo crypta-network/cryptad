@@ -62,6 +62,45 @@
     },
     {
       "details": {
+        "receiptSchemaVersion": 1,
+        "signatureAlgorithm": "Ed25519"
+      },
+      "id": "app-review.trusted-receipts",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trusted review receipt model and offline tooling evidence passed."
+    },
+    {
+      "details": {
+        "mode": "advisory default; warn/block modes operator-configured"
+      },
+      "id": "app-review.policy",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-review policy gates passed deterministic evidence checks."
+    },
+    {
+      "details": {
+        "coverage": {
+          "catalogAppsInspected": 1,
+          "expiredOrMismatchedOrUnknownReviewer": 0,
+          "missingReceipts": 0,
+          "promotionBlocked": false,
+          "trustedPositiveReceipts": 1,
+          "trustedRejectedReceipts": 0
+        },
+        "policyMode": "release-candidate requires trusted positive receipts"
+      },
+      "id": "app-review.first-party-catalog",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party catalog review receipt evidence passed."
+    },
+    {
+      "details": {
         "sdkResource": "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
       },
       "id": "app-ui.smoke",

@@ -51,6 +51,22 @@ class AppCatalogBuildRequestTest {
   }
 
   @Test
+  void withOutputFile_whenReviewReceiptFilesArePresent_expectPreservedNormalizedReceipts() {
+    Path descriptorFile = tempDir.resolve("entry.properties");
+    Path receiptFile = Path.of("receipts").resolve("..").resolve("review-receipt.properties");
+    Path outputFile = tempDir.resolve("cryptad-app-catalog.properties");
+    AppCatalogBuildRequest request =
+        new AppCatalogBuildRequest(
+            "dev", CATALOG_NAME, GENERATED_AT, List.of(descriptorFile), List.of(receiptFile));
+
+    AppCatalogBuildRequest withOutput = request.withOutputFile(outputFile);
+
+    assertEquals(List.of(receiptFile.toAbsolutePath().normalize()), request.reviewReceiptFiles());
+    assertEquals(request.reviewReceiptFiles(), withOutput.reviewReceiptFiles());
+    assertEquals(outputFile.toAbsolutePath().normalize(), withOutput.outputFile().orElseThrow());
+  }
+
+  @Test
   void constructor_whenDescriptorFilesAreEmpty_expectInvalidCatalogEntry() {
     List<Path> emptyDescriptorFiles = List.of();
 

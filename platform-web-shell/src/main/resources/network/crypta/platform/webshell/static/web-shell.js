@@ -1275,6 +1275,9 @@
       submit.disabled = true;
       submit.title = disabledReason;
     }
+    if (action === "stage") {
+      appendReviewAcknowledgement(form, updateReviewTrustForAction(appUpdateState(app), action), action);
+    }
     form.append(submit);
     return form;
   }
@@ -1293,11 +1296,19 @@
     form.dataset.catalogAppId = appId;
     form.dataset.catalogAction = action;
     form.dataset.catalogAppName = app ? appDisplayName(app) : catalogId;
+    const reviewTrust = app ? recordValue(app.reviewTrust) : {};
+    const disabledReason = app ? reviewTrustActionReason(reviewTrust, action) : "";
 
     const submit = document.createElement("button");
     submit.className = "button button-secondary";
     submit.type = "submit";
     submit.textContent = label;
+    if (disabledReason) {
+      submit.disabled = true;
+      submit.title = disabledReason;
+      form.dataset.disabledReason = disabledReason;
+    }
+    appendReviewAcknowledgement(form, reviewTrust, action);
     form.append(submit);
     return form;
   }
@@ -1390,6 +1401,75 @@
       return "is-success";
     }
     return "is-warning";
+  }
+
+  function reviewTrustTone(reviewTrust) {
+    const trust = recordValue(reviewTrust);
+    const status = typeof trust.status === "string" ? trust.status.toLowerCase() : "";
+    if (trust.positive === true && trust.trusted === true) {
+      return "is-success";
+    }
+    if (status.includes("reject") || status.includes("mismatch") || status.includes("expired") || status.includes("invalid")) {
+      return "is-error";
+    }
+    return "is-warning";
+  }
+
+  function reviewTrustLabel(reviewTrust) {
+    const trust = recordValue(reviewTrust);
+    const status = typeof trust.status === "string" ? trust.status : "";
+    if (!status) {
+      return "Trusted receipt unavailable";
+    }
+    if (trust.positive === true && trust.trusted === true) {
+      return "Trusted receipt reviewed";
+    }
+    if (status === "publisher_claim_only") {
+      return "Publisher advisory only";
+    }
+    return normalizedStatus(status);
+  }
+
+  function reviewTrustWarnings(reviewTrust) {
+    return stringList(recordValue(reviewTrust).warnings).join("; ") || "None";
+  }
+
+  function reviewTrustActionReason(reviewTrust, action) {
+    const trust = recordValue(reviewTrust);
+    const blockField = reviewTrustBlockFieldForAction(action);
+    if (trust[blockField] === true) {
+      return `${normalizedStatus(action)} blocked by app review policy: ${reviewTrustLabel(trust)}.`;
+    }
+    return "";
+  }
+
+  function reviewTrustBlockFieldForAction(action) {
+    if (action === "install") {
+      return "blocksInstall";
+    }
+    if (action === "update" || action === "stage") {
+      return "blocksUpdate";
+    }
+    return "";
+  }
+
+  function appendReviewAcknowledgement(form, reviewTrust, action) {
+    const trust = recordValue(reviewTrust);
+    if (trust.requiresAcknowledgement !== true) {
+      return;
+    }
+    if (reviewTrustActionReason(trust, action)) {
+      return;
+    }
+    const label = document.createElement("label");
+    label.className = "checkbox-field review-acknowledgement";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "reviewAcknowledged";
+    input.value = "true";
+    input.required = true;
+    label.append(input, document.createTextNode(` Acknowledge ${reviewTrustLabel(trust)}`));
+    form.append(label);
   }
 
   function compatibilityTone(compatibility) {
@@ -1659,6 +1739,19 @@
     return status === "available";
   }
 
+  function updateReviewTrustForAction(updateState, action) {
+    const state = recordValue(updateState);
+    const candidate = recordValue(state.candidate);
+    const staged = recordValue(state.staged);
+    if (action === "apply") {
+      return recordValue(staged.reviewTrust || candidate.reviewTrust);
+    }
+    if (action === "stage") {
+      return recordValue(candidate.reviewTrust);
+    }
+    return {};
+  }
+
   function updateActionDisabledReason(app, updateState, action, runtimeRunning) {
     if (!updateActionAllowed(updateState, action)) {
       return `${normalizedStatus(action)} is unavailable for this app update state.`;
@@ -1675,6 +1768,12 @@
     }
     if (action === "stage" && !stageableUpdateCandidate(updateState)) {
       return "Stage is unavailable until a newer update candidate is available.";
+    }
+    if (action === "stage" || action === "apply") {
+      const reviewReason = reviewTrustActionReason(updateReviewTrustForAction(updateState, action), action);
+      if (reviewReason) {
+        return reviewReason;
+      }
     }
     if (action === "rollback" && !rollbackAvailable(updateState)) {
       return "Rollback is unavailable for this app.";
@@ -1708,6 +1807,8 @@
         ["Policy", updatePolicySummary(updateState.policy)],
         ["Permission changes before apply", updatePermissionDeltaSummary(staged)],
         ["API compatibility before apply", updateApiRiskSummary(staged)],
+        ["Trusted review before apply", reviewTrustLabel(updateReviewTrustForAction(updateState, "apply"))],
+        ["Review policy handling", reviewTrustWarnings(updateReviewTrustForAction(updateState, "apply"))],
         ["Rollback available", rollbackAvailable(updateState) ? "Yes" : "No"],
         [
           "Rollback version",
@@ -2211,6 +2312,10 @@
 
   function catalogReviewDetailsNode(app) {
     const review = recordValue(app.review);
+    const reviewTrust = recordValue(app.reviewTrust);
+    const reviewer =
+      reviewTrust.reviewerDisplayName || reviewTrust.reviewerKeyId || "Unavailable";
+    const policy = [reviewTrust.policyId, reviewTrust.policyVersion].filter((entry) => entry).join(" ");
     const details = document.createElement("details");
     details.className = "json-details catalog-review-details";
     const summary = document.createElement("summary");
@@ -2218,10 +2323,22 @@
     details.append(summary);
     details.append(
       definitionList([
-        ["Catalog trust", "Signed catalog metadata"],
-        ["Review status", normalizedStatus(review.status, "Unreviewed")],
-        ["Review note", scalar(review.note)],
-        ["Review semantics", "Advisory metadata; catalog and bundle verification still control installation."],
+        ["Catalog signature", "Signed catalog publisher metadata"],
+        ["Bundle artifact", "Digest checked before bundle signature verification"],
+        ["Publisher advisory review", normalizedStatus(review.status, "Unreviewed")],
+        ["Publisher advisory note", scalar(review.note)],
+        ["Trusted review receipt", reviewTrustLabel(reviewTrust)],
+        ["Trusted reviewer", scalar(reviewer)],
+        ["Reviewer key id", scalar(reviewTrust.reviewerKeyId)],
+        ["Review policy", scalar(policy)],
+        ["Policy mode", normalizedStatus(reviewTrust.policyMode, "Advisory")],
+        ["Reviewed at", formatIsoTimestamp(reviewTrust.reviewedAt)],
+        ["Expires at", formatIsoTimestamp(reviewTrust.expiresAt)],
+        ["Evidence SHA-256", scalar(reviewTrust.evidenceSha256)],
+        ["Evidence URI", metadataLinkNode(reviewTrust.evidenceUri)],
+        ["Install handling", reviewTrust.blocksInstall ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+        ["Update handling", reviewTrust.blocksUpdate ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+        ["Warnings", reviewTrustWarnings(reviewTrust)],
       ]),
     );
     return details;
@@ -2341,6 +2458,7 @@
     }
 
     const review = recordValue(app.review);
+    const reviewTrust = recordValue(app.reviewTrust);
     const compatibility = recordValue(app.compatibility);
     const apiCompatibility = recordValue(app.apiCompatibility);
     const header = document.createElement("div");
@@ -2354,7 +2472,8 @@
     const pills = document.createElement("div");
     pills.className = "app-card-pills";
     pills.append(createPill("Signed catalog"));
-    pills.append(createPill(normalizedStatus(review.status, "Unreviewed"), reviewTone(review.status)));
+    pills.append(createPill(`Advisory: ${normalizedStatus(review.status, "Unreviewed")}`, reviewTone(review.status)));
+    pills.append(createPill(reviewTrustLabel(reviewTrust), reviewTrustTone(reviewTrust)));
     pills.append(createPill(versionLabel(app), versionTone(app)));
     pills.append(createPill(compatibilityLabel(compatibility), compatibilityTone(compatibility)));
     pills.append(createPill(apiCompatibilityLabel(apiCompatibility), apiCompatibilityTone(apiCompatibility)));
@@ -2371,8 +2490,10 @@
         ["Source", metadataLinkNode(app.source)],
         ["License", scalar(app.license)],
         ["Categories", chipListNode(app.categories)],
-        ["Review status", normalizedStatus(review.status, "Unreviewed")],
-        ["Review note", scalar(review.note)],
+        ["Publisher advisory review", normalizedStatus(review.status, "Unreviewed")],
+        ["Publisher advisory note", scalar(review.note)],
+        ["Trusted review receipt", reviewTrustLabel(reviewTrust)],
+        ["Trusted reviewer", scalar(reviewTrust.reviewerDisplayName || reviewTrust.reviewerKeyId)],
         ["Permissions", formatPermissions(app.permissions)],
         ["Permission changes", `+${stringList(recordValue(app.permissionDelta).added).length} / -${stringList(recordValue(app.permissionDelta).removed).length}`],
         ["Compatibility", compatibilityLabel(compatibility)],
@@ -3591,6 +3712,11 @@
   }
 
   async function submitCatalogMutation(form, action) {
+    const disabledReason = form.dataset.disabledReason || "";
+    if (disabledReason) {
+      setAppsStatus(disabledReason, "is-error");
+      return;
+    }
     const catalogId = form.dataset.catalogId || "";
     const appId = form.dataset.catalogAppId || "";
     const path = catalogMutationPath(catalogId, appId, action);

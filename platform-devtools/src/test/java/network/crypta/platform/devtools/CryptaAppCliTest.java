@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.util.Base64;
 import network.crypta.platform.api.PlatformApiContract;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -539,6 +540,106 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void reviewSignVerifyAndCatalogCreate_whenReceiptIsTrusted_expectEmbeddedReceipt()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    Path receiptFile = tempDir.resolve("review-receipt.properties");
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers.properties");
+    Path catalogFile = tempDir.resolve("cryptad-app-catalog.properties");
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("review-private.der");
+    Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=1",
+            "reviewer.1.id=dev-review",
+            "reviewer.1.algorithm=Ed25519",
+            "reviewer.1.public.key.base64="
+                + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+            "reviewer.1.display.name=Development Review",
+            "reviewer.1.policy.id=dev-review-v1"),
+        StandardCharsets.UTF_8);
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=" + outputZip.toUri(),
+            "summary=Sample catalog entry."),
+        StandardCharsets.UTF_8);
+
+    CliResult signResult =
+        runCli(
+            "review",
+            "sign",
+            "--catalog-entry",
+            descriptor.toString(),
+            "--receipt-file",
+            receiptFile.toString(),
+            "--reviewer-key-id",
+            "dev-review",
+            "--reviewer-private-key-file",
+            privateKey.toString(),
+            "--policy-id",
+            "dev-review-v1",
+            "--policy-version",
+            "1",
+            "--status",
+            "reviewed",
+            "--reviewed-at",
+            "2026-05-01T00:00:00Z");
+    CliResult verifyResult =
+        runCli(
+            "review",
+            "verify",
+            "--catalog-entry",
+            descriptor.toString(),
+            "--receipt-file",
+            receiptFile.toString(),
+            "--trusted-reviewer-keys-file",
+            trustedReviewers.toString());
+    CliResult catalogResult =
+        runCli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            catalogFile.toString(),
+            "--catalog-id",
+            "dev",
+            "--name",
+            "Development Apps",
+            "--entry",
+            descriptor.toString(),
+            "--review-receipt",
+            receiptFile.toString());
+
+    String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
+    assertEquals(CommandLine.ExitCode.OK, signResult.exitCode());
+    assertTrue(signResult.out().contains("Signed review receipt: sample-app 0.1.0 reviewed"));
+    assertEquals(CommandLine.ExitCode.OK, verifyResult.exitCode());
+    assertTrue(verifyResult.out().contains("Verified review receipt: trusted_reviewed"));
+    assertEquals(CommandLine.ExitCode.OK, catalogResult.exitCode());
+    assertTrue(catalog.contains("app.sample-app.review.receipt.status=reviewed\n"));
+    assertTrue(catalog.contains("app.sample-app.review.receipt.reviewer.key.id=dev-review\n"));
+    assertTrue(catalog.contains("app.sample-app.review.receipt.signature.value.base64="));
+  }
+
+  @Test
   void catalogSignAndVerify_whenCatalogCliRoundTrips_expectSuccess() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");
@@ -625,6 +726,7 @@ class CryptaAppCliTest {
     assertTrue(result.out().contains("pack"));
     assertTrue(result.out().contains("api"));
     assertTrue(result.out().contains("compat"));
+    assertTrue(result.out().contains("review"));
     assertTrue(result.out().contains("catalog"));
   }
 

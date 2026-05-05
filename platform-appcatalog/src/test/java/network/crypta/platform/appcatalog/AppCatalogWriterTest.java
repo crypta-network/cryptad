@@ -14,7 +14,6 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import network.crypta.platform.appdist.AppBundleManifestParser;
@@ -345,9 +344,9 @@ class AppCatalogWriterTest {
         QUEUE_APP_NAME,
         QUEUE_APP_VERSION,
         LOCAL_QUEUE_SUMMARY,
-        Optional.of(URI.create("https://example.invalid/apps/queue-manager")),
-        Optional.empty(),
-        Optional.empty(),
+        URI.create("https://example.invalid/apps/queue-manager"),
+        null,
+        null,
         List.of(),
         AppCatalogCompatibilityMetadata.EMPTY,
         AppCatalogReviewMetadata.EMPTY,

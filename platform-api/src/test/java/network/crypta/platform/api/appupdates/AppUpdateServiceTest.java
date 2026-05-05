@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,14 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewPolicyMode;
+import network.crypta.platform.appcatalog.AppReviewReceipt;
+import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
+import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
+import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
+import network.crypta.platform.appcatalog.TrustedReviewerKey;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -74,6 +84,10 @@ class AppUpdateServiceTest {
   private static final String APP_NOT_FOUND = "app_not_found";
   private static final String ROLLBACK_FAILED = "rollback_failed";
   private static final String ROLLBACK_MANIFEST_BROKEN = "rollback manifest broken";
+  private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
+  private static final String REVIEW_POLICY_ID = "crypta-app-review-v1";
+  private static final String REVIEW_POLICY_VERSION = "1";
+  private static final Instant REVIEWED_AT = Instant.parse("2026-05-01T00:00:00Z");
   private static final AppUpdateService.ApplyOptions APPLY_NO_RESTART_NO_HEALTH =
       new AppUpdateService.ApplyOptions(false, AppUpdateService.HealthCheckMode.NONE, false);
   private static final AppUpdateService.ApplyOptions APPLY_NO_RESTART_PROCESS_HEALTH =
@@ -138,6 +152,27 @@ class AppUpdateServiceTest {
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
             List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract)));
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals("none", candidate.get(STATUS));
+    assertEquals("equal", candidate.get(VERSION_COMPARISON));
+    assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
+  void check_whenStrictReviewPolicyAndEqualCatalogVersion_expectNoOperatorActionRequired()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            TrustedReviewerKeys::empty);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
         (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
@@ -214,6 +249,68 @@ class AppUpdateServiceTest {
     assertEquals(AVAILABLE, candidate.get(STATUS));
     assertEquals("beta", candidate.get("catalogId"));
     assertEquals("2.0.0", candidate.get(TARGET_VERSION));
+  }
+
+  @Test
+  void check_whenMultipleCatalogsHaveSameVersion_expectTrustedReviewedCandidatePreferred()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry trustedEntry =
+        reviewedUpdateEntryWithTrustedReceipt(compatibleApiMetadata(), reviewerKeyPair);
+    AppCatalogEntry publisherOnlyEntry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
+    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listApps("beta")).thenReturn(List.of(publisherOnlyEntry));
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("alpha", candidate.get("catalogId"));
+    assertEquals(UPDATE_VERSION, candidate.get(TARGET_VERSION));
+    assertEquals("trusted_reviewed", ((Map<?, ?>) candidate.get("reviewTrust")).get(STATUS));
+    assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
+  void check_whenBlockedNewerAndTrustedOlder_expectTrustedCandidatePreferred() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry trustedEntry =
+        reviewedUpdateEntryWithTrustedReceipt(compatibleApiMetadata(), reviewerKeyPair);
+    AppCatalogEntry blockedNewerEntry =
+        entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
+    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listApps("beta")).thenReturn(List.of(blockedNewerEntry));
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("alpha", candidate.get("catalogId"));
+    assertEquals(UPDATE_VERSION, candidate.get(TARGET_VERSION));
+    Map<String, Object> reviewTrust = (Map<String, Object>) candidate.get("reviewTrust");
+    assertEquals("trusted_reviewed", reviewTrust.get(STATUS));
+    assertEquals(false, reviewTrust.get("blocksUpdate"));
   }
 
   @Test
@@ -356,9 +453,15 @@ class AppUpdateServiceTest {
             Optional.of(installed),
             Optional.of(updated));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        reviewedUpdateEntryWithTrustedReceipt(compatibleApiMetadata(), reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
@@ -822,14 +925,22 @@ class AppUpdateServiceTest {
   @Test
   void check_whenPolicyApplyWhenStoppedAndApiNewerThanTested_expectAutoApplyBlocked()
       throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
-        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     AppApiCompatibilityMetadata newerThanTested =
         new AppApiCompatibilityMetadata(1, 1, List.of(), false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
-            List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, newerThanTested)));
+            List.of(reviewedUpdateEntryWithTrustedReceipt(newerThanTested, reviewerKeyPair)));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -839,6 +950,14 @@ class AppUpdateServiceTest {
     assertEquals(false, candidate.get("autoApplyAllowed"));
     assertEquals("newer_than_tested", ((Map<?, ?>) candidate.get("apiCompatibility")).get(STATUS));
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entry -> "apply".equals(entry.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("update_incompatible", historyEntry.get(ERROR_CODE));
+    assertTrue(((String) historyEntry.get("message")).contains("Platform API compatibility"));
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
@@ -1059,10 +1178,20 @@ class AppUpdateServiceTest {
 
   private AppUpdateService serviceWithInstalled(String version, List<String> permissions)
       throws Exception {
+    return serviceWithInstalled(
+        version, permissions, AppReviewPolicy.DEFAULT, TrustedReviewerKeys::empty);
+  }
+
+  private AppUpdateService serviceWithInstalled(
+      String version,
+      List<String> permissions,
+      AppReviewPolicy reviewPolicy,
+      AppUpdateService.ReviewerKeysProvider reviewerKeysProvider)
+      throws Exception {
     InstalledAppSnapshot installed = installed(version, permissions);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    return new AppUpdateService(appHost, catalogManager);
+    return new AppUpdateService(appHost, catalogManager, reviewPolicy, reviewerKeysProvider);
   }
 
   private InstalledAppSnapshot installed(String version, List<String> permissions) {
@@ -1135,9 +1264,9 @@ class AppUpdateServiceTest {
         APP_NAME,
         version,
         "Manage queues.",
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
+        null,
+        null,
+        null,
         List.of(),
         new AppCatalogCompatibilityMetadata(null, metadata),
         new AppCatalogReviewMetadata(reviewStatus, Optional.empty()),
@@ -1149,6 +1278,66 @@ class AppUpdateServiceTest {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of(QUEUE_READ_PERMISSION, "queue.write"),
         Map.of("queue.write", "Lets the app manage queue entries."));
+  }
+
+  private static AppCatalogEntry reviewedUpdateEntryWithTrustedReceipt(
+      AppApiCompatibilityMetadata metadata, KeyPair reviewerKeyPair) {
+    AppCatalogEntry unsignedEntry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, metadata);
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(reviewPayload(unsignedEntry), reviewerKeyPair.getPrivate());
+    return new AppCatalogEntry(
+        unsignedEntry.appId(),
+        unsignedEntry.name(),
+        unsignedEntry.version(),
+        unsignedEntry.summary(),
+        unsignedEntry.homepage(),
+        unsignedEntry.source(),
+        unsignedEntry.license(),
+        unsignedEntry.categories(),
+        unsignedEntry.compatibility(),
+        unsignedEntry.review(),
+        Optional.of(receipt),
+        unsignedEntry.changelog(),
+        unsignedEntry.screenshots(),
+        unsignedEntry.bundleUri(),
+        unsignedEntry.bundleSha256(),
+        unsignedEntry.bundleSizeBytes(),
+        unsignedEntry.bundleType(),
+        unsignedEntry.permissions(),
+        unsignedEntry.permissionRationales());
+  }
+
+  private static AppReviewReceiptPayload reviewPayload(AppCatalogEntry entry) {
+    return new AppReviewReceiptPayload(
+        AppReviewReceiptPayload.RECEIPT_VERSION,
+        entry.appId(),
+        entry.version(),
+        entry.bundleSha256(),
+        entry.bundleSizeBytes(),
+        Optional.empty(),
+        REVIEW_POLICY_ID,
+        REVIEW_POLICY_VERSION,
+        AppReviewReceiptStatus.REVIEWED,
+        REVIEWER_KEY_ID,
+        REVIEWED_AT,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty());
+  }
+
+  private static TrustedReviewerKeys trustedReviewerKeys(KeyPair keyPair) {
+    return TrustedReviewerKeys.of(
+        TrustedReviewerKey.ed25519(
+            REVIEWER_KEY_ID,
+            keyPair.getPublic().getEncoded(),
+            "Crypta First-Party Review",
+            REVIEW_POLICY_ID));
+  }
+
+  private static KeyPair reviewerKeyPair() throws Exception {
+    return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
   }
 
   private AppCatalogInstallPlan plan(AppCatalogEntry entry) throws IOException {
