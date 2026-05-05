@@ -2212,6 +2212,41 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenStagedAppUpdateThenAppUninstalled_expectUpdateStateCleared() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(200, uninstallResponse.statusCode());
+      assertEquals(200, summaryResponse.statusCode());
+      assertFalse(Files.exists(scratchDir));
+      assertTrue(summaryResponse.body().contains("\"status\":\"none\""));
+      assertTrue(summaryResponse.body().contains("\"available\":false"));
+      assertFalse(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertFalse(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+    }
+  }
+
+  @Test
   void route_whenAppUpdateApplyRequestedWhileRunning_expectConflictJson() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);

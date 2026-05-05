@@ -482,6 +482,31 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void clearAppState_whenStageExists_expectScratchClosedAndStateReset() throws Exception {
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION))));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    try (AppCatalogInstallPlan plan = plan(entry)) {
+      when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+      service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+      service.stage(APP_ID);
+
+      service.clearAppState(APP_ID);
+
+      Map<String, Object> summary = service.summary(APP_ID);
+      assertFalse(Files.exists(plan.scratchDirectory()));
+      assertEquals("manual", ((Map<?, ?>) summary.get("policy")).get("mode"));
+      assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+      assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+      verify(appHost, never()).updateFromDirectory(any(), any());
+    }
+  }
+
+  @Test
   void apply_whenSameVersionManifestChangesAfterStage_expectStageInvalidatedAndApplyBlocked()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));

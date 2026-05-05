@@ -119,6 +119,26 @@ public final class AppUpdateService {
   }
 
   /**
+   * Discards all local update lifecycle state for an app removed outside this service.
+   *
+   * <p>The existing app-management endpoint owns uninstall. When it removes an app, this method
+   * closes any retained catalog staging plan and clears cached update metadata so catalog scratch
+   * storage cannot leak and a later reinstall cannot inherit a stale reviewed candidate. The method
+   * intentionally removes local policy, last-check, and history records as well because they
+   * describe the removed installation rather than a future app with the same id.
+   *
+   * @param appId app id whose update state should be removed
+   */
+  public synchronized void clearAppState(String appId) {
+    String normalizedAppId = normalizeInstalledAppId(appId);
+    closeStage(normalizedAppId);
+    candidates.remove(normalizedAppId);
+    policies.remove(normalizedAppId);
+    lastChecks.remove(normalizedAppId);
+    history.remove(normalizedAppId);
+  }
+
+  /**
    * Returns the current update lifecycle summary for one app.
    *
    * <p>The summary includes the installed version, running state, policy, candidate, staged update,
@@ -1085,8 +1105,7 @@ public final class AppUpdateService {
   }
 
   private void clearStateForMissingApp(String appId) {
-    closeStage(appId);
-    candidates.remove(appId);
+    clearAppState(appId);
   }
 
   private static PlatformApiException appNotFound() {

@@ -89,6 +89,9 @@ public final class PlatformApiRouter {
   /** Handler for the {@code /apps/{appId}/updates/...} endpoint family. */
   private final AppUpdatesApiHandler appUpdatesApiHandler;
 
+  /** App-update lifecycle coordinator shared by update routes and app uninstall cleanup. */
+  private final AppUpdateService appUpdateService;
+
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
 
@@ -227,10 +230,12 @@ public final class PlatformApiRouter {
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
     appsApiHandler =
         appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog, appUiOriginRegistry);
-    appUpdatesApiHandler =
+    appUpdateService =
         appHost == null || appCatalogManager == null
             ? null
-            : new AppUpdatesApiHandler(new AppUpdateService(appHost, appCatalogManager));
+            : new AppUpdateService(appHost, appCatalogManager);
+    appUpdatesApiHandler =
+        appUpdateService == null ? null : new AppUpdatesApiHandler(appUpdateService);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
@@ -627,10 +632,29 @@ public final class PlatformApiRouter {
       return PlatformApiResponse.ok(envelope("app", appsApiHandler.get(appId)));
     }
     if (METHOD_DELETE.equals(method)) {
-      return PlatformApiResponse.ok(envelope("app", appsApiHandler.uninstall(appId)));
+      return uninstallInstalledApp(appId);
     }
     return methodNotAllowed(
         "GET, DELETE", "Platform API v1 supports GET and DELETE requests only.");
+  }
+
+  private PlatformApiResponse uninstallInstalledApp(String appId) {
+    try {
+      Map<String, Object> app = appsApiHandler.uninstall(appId);
+      clearAppUpdateState(appId);
+      return PlatformApiResponse.ok(envelope("app", app));
+    } catch (PlatformApiException exception) {
+      if (exception.statusCode() == 404) {
+        clearAppUpdateState(appId);
+      }
+      throw exception;
+    }
+  }
+
+  private void clearAppUpdateState(String appId) {
+    if (appUpdateService != null) {
+      appUpdateService.clearAppState(appId);
+    }
   }
 
   /**
