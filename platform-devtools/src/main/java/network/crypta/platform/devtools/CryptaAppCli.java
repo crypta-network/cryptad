@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import network.crypta.platform.api.PlatformApiContract;
@@ -68,7 +69,7 @@ import picocli.CommandLine;
 @Command(
     name = "crypta-app",
     mixinStandardHelpOptions = true,
-    description = "Create, validate, package, sign, and catalog Crypta app bundles.",
+    description = "Create, validate, lint, package, sign, and catalog Crypta app bundles.",
     subcommands = {
       CryptaAppCli.InitCommand.class,
       CryptaAppCli.ValidateCommand.class,
@@ -77,6 +78,7 @@ import picocli.CommandLine;
       CryptaAppCli.VerifyCommand.class,
       CryptaAppCli.ApiCommand.class,
       CryptaAppCli.CompatCommand.class,
+      CryptaAppCli.UiCommand.class,
       CryptaAppCli.ReviewCommand.class,
       CryptaAppCli.CatalogCommand.class
     })
@@ -220,7 +222,9 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--bundle-dir", required = true, description = "Staged bundle directory.")
     private Path bundleDir;
 
-    @Option(names = "--strict", description = "Treat permission lint warnings as failures.")
+    @Option(
+        names = "--strict",
+        description = "Treat validation, compatibility, and UI lint warnings as failures.")
     private boolean strict;
 
     @Override
@@ -243,6 +247,13 @@ public final class CryptaAppCli implements Runnable {
       if (compatibility.hasErrors()) {
         throw new AppDistributionException("compatibility verification failed");
       }
+      if (strict) {
+        AppUiLintResult uiLint = AppUiLinter.lint(bundleDir, true);
+        printUiLintFindings(super.commandLine(), uiLint);
+        if (uiLint.hasErrors()) {
+          throw new AppDistributionException("UI lint failed");
+        }
+      }
       super.commandLine()
           .getOut()
           .println(
@@ -251,6 +262,67 @@ public final class CryptaAppCli implements Runnable {
                   + " "
                   + validation.manifest().appVersion());
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /**
+   * Parent command for app-owned UI developer checks.
+   *
+   * <p>The group keeps UI-only checks separate from package signing and catalog tooling so app
+   * authors can run fast offline feedback before a bundle is signed.
+   */
+  @Command(
+      name = "ui",
+      description = "Inspect app-owned browser UI assets.",
+      subcommands = {CryptaAppCli.UiLintCommand.class})
+  static final class UiCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app ui lint} for staged static app bundles. */
+  @Command(name = "lint", description = "Run offline app-owned UI lint checks.")
+  static final class UiLintCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--bundle-dir", required = true, description = "Staged bundle directory.")
+    private Path bundleDir;
+
+    @Option(names = "--strict", description = "Promote strict UI lint warnings to errors.")
+    private boolean strict;
+
+    @Option(names = "--json", description = "Write deterministic JSON lint output.")
+    private Path jsonOutput;
+
+    @Override
+    public Integer call() throws Exception {
+      AppUiLintResult result = AppUiLinter.lint(bundleDir, strict);
+      if (jsonOutput != null) {
+        Path normalizedJsonOutput = jsonOutput.toAbsolutePath().normalize();
+        Path parent = normalizedJsonOutput.getParent();
+        if (parent != null) {
+          Files.createDirectories(parent);
+        }
+        Files.writeString(normalizedJsonOutput, result.toJson(), StandardCharsets.UTF_8);
+      }
+      printUiLintFindings(super.commandLine(), result);
+      if (!result.applicable()) {
+        super.commandLine()
+            .getOut()
+            .println("UI lint not applicable for app.ui.mode=" + result.uiMode());
+        return CommandLine.ExitCode.OK;
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "UI lint "
+                  + (result.hasErrors() ? "failed" : "passed")
+                  + ": "
+                  + result.errorCount()
+                  + " error(s), "
+                  + result.warningCount()
+                  + " warning(s)");
+      return result.hasErrors() ? CommandLine.ExitCode.SOFTWARE : CommandLine.ExitCode.OK;
     }
   }
 
@@ -913,6 +985,23 @@ public final class CryptaAppCli implements Runnable {
       String prefix =
           finding.severity() == CompatibilityFindingSeverity.ERROR ? "Error: " : "Warning: ";
       commandLine.getErr().println(prefix + finding.message());
+    }
+  }
+
+  private static void printUiLintFindings(CommandLine commandLine, AppUiLintResult result) {
+    for (AppUiLintFinding finding : result.findings()) {
+      PrintWriter writer =
+          finding.severity() == AppUiLintSeverity.ERROR
+              ? commandLine.getErr()
+              : commandLine.getOut();
+      String location = finding.path().isBlank() ? "" : finding.path() + ": ";
+      writer.println(
+          finding.severity().name().toLowerCase(Locale.ROOT)
+              + ": "
+              + location
+              + finding.id()
+              + ": "
+              + finding.message());
     }
   }
 

@@ -83,13 +83,20 @@ build/dev-apps/hello-queue/
   static/app.js
   static/app.css
   static/crypta-platform.js
+  static/crypta-ui/crypta-ui-tokens.css
+  static/crypta-ui/crypta-ui.css
+  static/crypta-ui/crypta-ui-components.js
 ```
 
 When the browser SDK resource is available, the static template copies or vendors it as
 `static/crypta-platform.js`. Static pages should load it with `./crypta-platform.js`; see
-[platform-sdk-js.md](platform-sdk-js.md). If the scaffold is created with `--ui-mode none`, no
-browser UI is declared. If it uses `--ui-mode shell-panel`, the manifest points at a shell-panel
-entry instead of an app-owned static route.
+[platform-sdk-js.md](platform-sdk-js.md). The static template also copies the canonical Crypta UI
+design-system assets under `static/crypta-ui/` and links the token stylesheet, base stylesheet, and
+app stylesheet in that order. See [app-ui-design-system.md](app-ui-design-system.md) for the
+supported `cr-*` vocabulary, local-resource rules, and permission-disclosure guidance. If the
+scaffold is created with `--ui-mode none`, no browser UI is declared. If it uses
+`--ui-mode shell-panel`, the manifest points at a shell-panel entry instead of an app-owned static
+route.
 
 A static scaffold should produce a manifest with fields like:
 
@@ -126,7 +133,24 @@ crypta-app validate --bundle-dir build/dev-apps/hello-queue
 ```
 
 Add `--strict` when unknown manifest permissions, compatibility warnings, or
-newer-than-tested contract targets should fail the command instead of producing a warning.
+newer-than-tested contract targets should fail the command instead of producing a warning. Strict
+validation also runs the static UI linter for `app.ui.mode=static` bundles.
+
+Run the UI linter directly while iterating on app-owned static UI:
+
+```bash
+crypta-app ui lint --bundle-dir build/dev-apps/hello-queue
+crypta-app ui lint --bundle-dir build/dev-apps/hello-queue --strict
+crypta-app ui lint \
+  --bundle-dir build/dev-apps/hello-queue \
+  --strict \
+  --json build/dev-apps/hello-queue-ui-lint.json
+```
+
+`crypta-app ui lint` is offline. It checks the staged static UI for local-resource compatibility,
+obvious CSP violations, SDK/bootstrap ordering, accessibility basics, permission disclosure, and
+design-system adoption. JSON output uses bundle-relative paths so reports can be archived without
+developer-specific local paths.
 
 Sign it with a local development key:
 
@@ -390,6 +414,8 @@ apps together.
 
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
+- [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and
+  `crypta-app ui lint`.
 - [app-catalogs.md](app-catalogs.md) describes the runtime catalog format, verification order, and
   Platform API install/update flow.
 - [platform-sdk-js.md](platform-sdk-js.md) describes the browser SDK used by app-owned static UI.

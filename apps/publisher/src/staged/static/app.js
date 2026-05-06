@@ -125,7 +125,7 @@
       summaryRow("Outcome", data.outcome),
     );
     const button = document.createElement("button");
-    button.className = "button secondary";
+    button.className = "cr-button cr-button--secondary";
     button.type = "button";
     button.textContent = "Show upload queue";
     button.addEventListener("click", showUploadQueue);
@@ -136,7 +136,7 @@
     const container = document.createElement("div");
     container.className = "legacy-fragment";
     if (typeof contentHtml !== "string" || !contentHtml) {
-      container.append(text("p", "empty", "No upload queue content was returned."));
+      container.append(text("p", "cr-empty", "No upload queue content was returned."));
       elements.result.replaceChildren(container);
       return;
     }
@@ -297,7 +297,18 @@
 
   function setStatus(message, tone) {
     elements.status.textContent = message || "";
-    elements.status.className = `status ${tone || ""}`.trim();
+    elements.status.className = statusClassName(tone);
+  }
+
+  function statusClassName(tone) {
+    switch (tone) {
+      case "success":
+        return "cr-status cr-status--success";
+      case "error":
+        return "cr-status cr-status--danger";
+      default:
+        return "cr-status";
+    }
   }
 
 })();

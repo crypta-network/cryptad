@@ -72,7 +72,7 @@
     const fragment = document.createElement("div");
     fragment.className = "legacy-fragment";
     if (typeof contentHtml !== "string" || contentHtml.length === 0) {
-      fragment.append(text("p", "empty", "No queue content was returned."));
+      fragment.append(text("p", "cr-empty", "No queue content was returned."));
       elements.content.append(fragment);
       return;
     }
@@ -307,12 +307,23 @@
   }
 
   function renderText(value) {
-    elements.content.replaceChildren(text("p", "empty", value));
+    elements.content.replaceChildren(text("p", "cr-empty", value));
   }
 
   function setStatus(message, tone) {
     elements.status.textContent = message || "";
-    elements.status.className = `status ${tone || ""}`.trim();
+    elements.status.className = statusClassName(tone);
+  }
+
+  function statusClassName(tone) {
+    switch (tone) {
+      case "success":
+        return "cr-status cr-status--success";
+      case "error":
+        return "cr-status cr-status--danger";
+      default:
+        return "cr-status";
+    }
   }
 
   function text(tagName, className, value) {

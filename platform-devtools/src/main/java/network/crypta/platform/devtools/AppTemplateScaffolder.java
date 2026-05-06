@@ -16,6 +16,7 @@ import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.designsystem.DesignSystemAssets;
 
 /**
  * Creates standalone staged app-bundle skeletons for third-party developers.
@@ -23,8 +24,8 @@ import network.crypta.platform.appdist.AppDistributionException;
  * <p>The scaffolder writes ordinary bundle files, not a Gradle subproject. Generated manifests are
  * parsed with the production appdist parser before they are written so command-line input follows
  * the same syntax and value rules as signed bundles. A static template also copies the canonical
- * browser SDK resource into the staged bundle so the new app can load the same client API that
- * first-party static apps use.
+ * browser SDK and app UI design-system resources into the staged bundle so the new app can load the
+ * same client API and platform UI vocabulary that first-party static apps use.
  *
  * <p>The generated bundle is intentionally conservative: it uses no sandbox, zero quota defaults,
  * and a launcher script that tells developers to replace it before publishing. The class is
@@ -44,20 +45,13 @@ final class AppTemplateScaffolder {
   /** Stylesheet content written to {@code static/app.css} for the static scaffold. */
   private static final String STATIC_CSS =
       """
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, sans-serif;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
+      .sample-layout {
         display: grid;
-        place-items: center;
+        gap: var(--cr-space-4);
       }
 
-      main {
-        width: min(42rem, calc(100vw - 2rem));
+      .sample-status {
+        margin-top: var(--cr-space-3);
       }
       """;
 
@@ -233,6 +227,7 @@ final class AppTemplateScaffolder {
     writeTemplateFile(staticDir.resolve("app.js"), staticJavaScript(request));
     writeTemplateFile(staticDir.resolve("app.css"), STATIC_CSS);
     copySdk(staticDir.resolve("crypta-platform.js"));
+    DesignSystemAssets.copyIntoBundle(request.directory());
   }
 
   /**
@@ -291,19 +286,33 @@ final class AppTemplateScaffolder {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${APP_NAME}</title>
+        <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+        <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
         <link rel="stylesheet" href="./app.css">
       </head>
-      <body>
-        <main>
-          <h1>${APP_NAME}</h1>
-          <p id="status">Connecting to Crypta...</p>
+      <body class="cr-app">
+        <main class="cr-shell sample-layout">
+          <header class="cr-header">
+            <div>
+              <p class="cr-label">Crypta app</p>
+              <h1>${APP_NAME}</h1>
+            </div>
+          </header>
+          ${PERMISSION_SUMMARY}
+          <section class="cr-card" aria-labelledby="status-heading">
+            <h2 id="status-heading">Connection</h2>
+            <p class="cr-status cr-status--info sample-status" id="status" role="status" aria-live="polite">
+              Connecting to Crypta...
+            </p>
+          </section>
         </main>
         <script src="./crypta-platform.js"></script>
         <script type="module" src="./app.js"></script>
       </body>
     </html>
     """
-        .replace("${APP_NAME}", escapedName);
+        .replace("${APP_NAME}", escapedName)
+        .replace("${PERMISSION_SUMMARY}", permissionSummary(request.permissions()));
   }
 
   /**
@@ -320,13 +329,38 @@ final class AppTemplateScaffolder {
       const platform = window.CryptaPlatform;
       const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
       status.textContent = `${bootstrap.appName} is connected.`;
+      status.className = "cr-status cr-status--success sample-status";
     }
 
     main().catch((error) => {
       status.textContent = error instanceof Error ? error.message : String(error);
+      status.className = "cr-status cr-status--danger sample-status";
     });
     """
         .replace(APP_ID_PLACEHOLDER, request.appId());
+  }
+
+  private static String permissionSummary(List<String> permissions) {
+    if (permissions.isEmpty()) {
+      return "";
+    }
+    StringBuilder builder = new StringBuilder();
+    builder
+        .append("<section class=\"cr-permission-summary\" data-crypta-permission-summary>")
+        .append('\n')
+        .append("            <p><strong>Declared permissions</strong></p>")
+        .append('\n')
+        .append("            <ul>")
+        .append('\n');
+    for (String permission : permissions) {
+      builder
+          .append("              <li><code>")
+          .append(escapeHtml(permission))
+          .append("</code></li>")
+          .append('\n');
+    }
+    builder.append("            </ul>").append('\n').append("          </section>");
+    return builder.toString();
   }
 
   /**
@@ -344,7 +378,8 @@ final class AppTemplateScaffolder {
     ## Local workflow
 
     ```bash
-    crypta-app validate --bundle-dir .
+    crypta-app ui lint --bundle-dir . --strict
+    crypta-app validate --bundle-dir . --strict
     crypta-app sign --bundle-dir . --key-id dev-local --private-key-file /path/to/private.pem
     crypta-app pack --bundle-dir . --output ../${APP_ID}-${APP_VERSION}.zip --overwrite
     crypta-app verify --bundle-dir . --trusted-key-id dev-local --trusted-public-key-file /path/to/public.pem

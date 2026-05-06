@@ -15,6 +15,7 @@ Related but documented elsewhere:
 - Signed catalog sources and remote/local catalog artifact install/update:
   [app-catalogs.md](app-catalogs.md)
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
+- App UI design-system assets and linting: [app-ui-design-system.md](app-ui-design-system.md)
 - Browser SDK helpers for app-owned static UI: [platform-sdk-js.md](platform-sdk-js.md)
 - Public catalog-over-Crypta source syntax and trust boundaries: [app-catalogs.md](app-catalogs.md)
 - App update candidate detection, policy, staged apply, and rollback scope:
@@ -31,6 +32,7 @@ Related but documented elsewhere:
 cryptad-app.properties
 bin/<launcher>.sh
 static/...
+static/crypta-ui/...
 cryptad-app.digests
 cryptad-app.signature
 ```
@@ -77,7 +79,10 @@ compatibility fallbacks.
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
 [platform-sdk-js.md](platform-sdk-js.md) for the staged browser SDK used by first-party static UI
-bundles.
+bundles. Static bundles should also include the canonical design-system assets under
+`static/crypta-ui/`, load `crypta-ui-tokens.css` and `crypta-ui.css` before app-specific CSS, and
+pass `crypta-app ui lint` before signing or cataloging. See
+[app-ui-design-system.md](app-ui-design-system.md).
 
 ## Sandbox Manifest Fields
 
@@ -171,7 +176,8 @@ crypta-app init \
   --ui-mode static \
   --permission queue.read
 
-crypta-app validate --bundle-dir build/dev-apps/hello-queue
+crypta-app ui lint --bundle-dir build/dev-apps/hello-queue --strict
+crypta-app validate --bundle-dir build/dev-apps/hello-queue --strict
 crypta-app sign \
   --bundle-dir build/dev-apps/hello-queue \
   --key-id dev-local \
@@ -188,7 +194,8 @@ crypta-app verify \
 
 `crypta-app init` creates a standalone staged bundle directory, not a new Gradle subproject. The
 static template copies or vendors the browser SDK as `static/crypta-platform.js` when that resource
-is available. See [app-dev-cli.md](app-dev-cli.md) for the full scaffold, pack, and catalog flow.
+is available, and copies canonical design-system assets into `static/crypta-ui/`. See
+[app-dev-cli.md](app-dev-cli.md) for the full scaffold, lint, pack, and catalog flow.
 
 The CLI does not replace the first-party Gradle workflow. Queue Manager and Publisher can keep
 using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`, and `verifyApp` tasks.

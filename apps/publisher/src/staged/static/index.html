@@ -4,81 +4,156 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Publisher</title>
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
 </head>
-<body>
-  <main class="app-shell">
-    <header class="app-header">
+<body class="cr-app">
+  <main class="cr-shell publisher-layout">
+    <header class="cr-header">
       <div>
-        <p class="eyebrow">Cryptad app</p>
+        <p class="cr-label">Crypta app</p>
         <h1>Publisher</h1>
       </div>
-      <button class="button secondary" id="upload-queue-button" type="button">Upload queue</button>
+      <button class="cr-button cr-button--secondary" id="upload-queue-button" type="button">
+        Upload queue
+      </button>
     </header>
 
-    <section class="forms">
-      <form class="publish-form" id="file-form" data-source-type="file">
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>queue.read</code> reads local upload queue snapshots.</li>
+        <li><code>queue.write</code> exports upload queue keys.</li>
+        <li><code>content.insert</code> queues local file and directory inserts.</li>
+      </ul>
+    </section>
+
+    <section class="publisher-forms">
+      <form class="cr-card publish-form" id="file-form" data-source-type="file">
         <h2>Local file insert</h2>
-        <label>
-          <span>Source path</span>
-          <input name="sourcePath" type="text" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Source path</span>
+          <input
+            class="cr-input"
+            name="sourcePath"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Insert URI</span>
-          <input name="insertUri" type="text" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Identifier</span>
-          <input name="identifier" type="text" autocomplete="off" spellcheck="false">
+        <label class="cr-field">
+          <span class="cr-label">Identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
         </label>
-        <label>
-          <span>Compatibility mode</span>
-          <input name="compatibilityMode" type="text" value="COMPAT_CURRENT" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Compatibility mode</span>
+          <input
+            class="cr-input"
+            name="compatibilityMode"
+            type="text"
+            value="COMPAT_CURRENT"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Content type</span>
-          <input name="contentType" type="text" autocomplete="off" spellcheck="false">
+        <label class="cr-field">
+          <span class="cr-label">Content type</span>
+          <input
+            class="cr-input"
+            name="contentType"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
         </label>
-        <label>
-          <span>Target filename</span>
-          <input name="targetFilename" type="text" autocomplete="off" spellcheck="false">
+        <label class="cr-field">
+          <span class="cr-label">Target filename</span>
+          <input
+            class="cr-input"
+            name="targetFilename"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
         </label>
-        <label class="checkbox">
+        <label class="cr-checkbox">
           <input name="compress" type="checkbox" checked>
           <span>Compress</span>
         </label>
-        <button class="button primary" type="submit">Publish file</button>
+        <button class="cr-button cr-button--primary publish-submit" type="submit">
+          Publish file
+        </button>
       </form>
 
-      <form class="publish-form" id="directory-form" data-source-type="directory">
+      <form class="cr-card publish-form" id="directory-form" data-source-type="directory">
         <h2>Local directory insert</h2>
-        <label>
-          <span>Source path</span>
-          <input name="sourcePath" type="text" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Source path</span>
+          <input
+            class="cr-input"
+            name="sourcePath"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Insert URI</span>
-          <input name="insertUri" type="text" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Identifier</span>
-          <input name="identifier" type="text" autocomplete="off" spellcheck="false">
+        <label class="cr-field">
+          <span class="cr-label">Identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
         </label>
-        <label>
-          <span>Compatibility mode</span>
-          <input name="compatibilityMode" type="text" value="COMPAT_CURRENT" autocomplete="off" spellcheck="false" required>
+        <label class="cr-field">
+          <span class="cr-label">Compatibility mode</span>
+          <input
+            class="cr-input"
+            name="compatibilityMode"
+            type="text"
+            value="COMPAT_CURRENT"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label class="checkbox">
+        <label class="cr-checkbox">
           <input name="compress" type="checkbox" checked>
           <span>Compress</span>
         </label>
-        <button class="button primary" type="submit">Publish directory</button>
+        <button class="cr-button cr-button--primary publish-submit" type="submit">
+          Publish directory
+        </button>
       </form>
     </section>
 
-    <p class="status" id="status" role="status" aria-live="polite"></p>
-    <section class="result-panel" id="result">
-      <p class="empty">Submit a local file or directory insert to queue a persistent upload.</p>
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+    <section class="cr-card result-panel" id="result">
+      <p class="cr-empty">Submit a local file or directory insert to queue a persistent upload.</p>
     </section>
   </main>
   <script src="./crypta-platform.js" defer></script>

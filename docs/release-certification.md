@@ -84,6 +84,9 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
+| `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
+| `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
+| `app-ui.first-party-adoption` | App-platform smoke summary. | Queue Manager and Publisher source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and direct fallback URLs remain documented. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
@@ -129,6 +132,13 @@ coverage categories: trusted positive, missing, expired, mismatched, unknown rev
 rejected. Reports may include reviewer key ids, reviewer display names, policy ids, and key
 fingerprints; they must not include private reviewer keys, raw public key bytes, local evidence
 paths, app/session/process tokens, or local staging paths.
+
+App UI design evidence is offline. Release-candidate mode treats first-party strict UI lint errors
+as blocking evidence because Queue Manager and Publisher ship with the node. Advisory
+third-party-style warnings are recorded by `crypta-app ui lint` but are not turned into a global
+release blocker by default. The app-platform smoke report must keep UI lint output sanitized:
+relative bundle paths and finding ids are acceptable, while tokens, form passwords, query strings,
+private file paths, and local file contents are not.
 
 ## Waivers
 
