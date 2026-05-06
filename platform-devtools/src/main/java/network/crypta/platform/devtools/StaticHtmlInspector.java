@@ -33,11 +33,9 @@ final class StaticHtmlInspector {
   private static final Pattern END_SCRIPT_PATTERN =
       Pattern.compile("</\\s*script\\s*>", Pattern.CASE_INSENSITIVE);
 
-  /** Pattern that captures simple quoted, unquoted, and boolean HTML attributes. */
-  private static final Pattern ATTRIBUTE_PATTERN =
-      Pattern.compile(
-          "([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s\"'>`]+))?",
-          Pattern.DOTALL);
+  /** Pattern that captures one HTML attribute name token. */
+  private static final Pattern ATTRIBUTE_NAME_PATTERN =
+      Pattern.compile("[A-Za-z_:][-A-Za-z0-9_:.]*");
 
   /** Pattern that extracts heading contents for visible-heading checks. */
   private static final Pattern HEADING_PATTERN =
@@ -784,13 +782,124 @@ final class StaticHtmlInspector {
    */
   private static Map<String, String> attributes(String attributeText) {
     java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
-    Matcher matcher = ATTRIBUTE_PATTERN.matcher(attributeText);
-    while (matcher.find()) {
-      String value =
-          matcher.group(2) == null ? "" : decodeHtmlCharacterReferences(unquote(matcher.group(2)));
-      attributes.put(matcher.group(1).toLowerCase(Locale.ROOT), value);
+    int position = 0;
+    while (position < attributeText.length()) {
+      position = skipAttributeSeparators(attributeText, position);
+      Matcher matcher = ATTRIBUTE_NAME_PATTERN.matcher(attributeText);
+      matcher.region(position, attributeText.length());
+      if (!matcher.lookingAt()) {
+        position++;
+        continue;
+      }
+      String name = matcher.group().toLowerCase(Locale.ROOT);
+      AttributeValue value = readAttributeValue(attributeText, matcher.end());
+      attributes.put(name, decodeHtmlCharacterReferences(value.value()));
+      position = value.nextIndex();
     }
     return attributes;
+  }
+
+  /**
+   * Skips whitespace and self-closing slashes before the next attribute name.
+   *
+   * @param attributeText raw attribute text captured from a start tag
+   * @param offset first character to inspect
+   * @return first candidate attribute-name position
+   */
+  private static int skipAttributeSeparators(String attributeText, int offset) {
+    int position = offset;
+    while (position < attributeText.length()
+        && (Character.isWhitespace(attributeText.charAt(position))
+            || attributeText.charAt(position) == '/')) {
+      position++;
+    }
+    return position;
+  }
+
+  /**
+   * Reads the optional value after one parsed attribute name.
+   *
+   * @param attributeText raw attribute text captured from a start tag
+   * @param offset first character after the attribute name
+   * @return raw value text and the next parse offset
+   */
+  private static AttributeValue readAttributeValue(String attributeText, int offset) {
+    int position = skipHtmlWhitespace(attributeText, offset);
+    if (position >= attributeText.length() || attributeText.charAt(position) != '=') {
+      return new AttributeValue("", position);
+    }
+    position = skipHtmlWhitespace(attributeText, position + 1);
+    if (position >= attributeText.length()) {
+      return new AttributeValue("", position);
+    }
+    char first = attributeText.charAt(position);
+    if (first == '"' || first == '\'') {
+      return readQuotedAttributeValue(attributeText, position, first);
+    }
+    return readUnquotedAttributeValue(attributeText, position);
+  }
+
+  /**
+   * Skips HTML attribute whitespace from a starting position.
+   *
+   * @param text attribute text to scan
+   * @param offset first character to inspect
+   * @return first non-whitespace position, or the text length
+   */
+  private static int skipHtmlWhitespace(String text, int offset) {
+    int position = offset;
+    while (position < text.length() && Character.isWhitespace(text.charAt(position))) {
+      position++;
+    }
+    return position;
+  }
+
+  /**
+   * Reads a quoted attribute value.
+   *
+   * @param attributeText raw attribute text captured from a start tag
+   * @param quotePosition position of the opening quote
+   * @param quote quote character that closes the value
+   * @return value without surrounding quotes and the next parse offset
+   */
+  private static AttributeValue readQuotedAttributeValue(
+      String attributeText, int quotePosition, char quote) {
+    int valueStart = quotePosition + 1;
+    int valueEnd = attributeText.indexOf(quote, valueStart);
+    if (valueEnd < 0) {
+      return new AttributeValue(attributeText.substring(valueStart), attributeText.length());
+    }
+    return new AttributeValue(attributeText.substring(valueStart, valueEnd), valueEnd + 1);
+  }
+
+  /**
+   * Reads an unquoted attribute value.
+   *
+   * @param attributeText raw attribute text captured from a start tag
+   * @param offset first value character
+   * @return value text and the next parse offset
+   */
+  private static AttributeValue readUnquotedAttributeValue(String attributeText, int offset) {
+    int position = offset;
+    while (position < attributeText.length()
+        && !isUnquotedAttributeValueTerminator(attributeText.charAt(position))) {
+      position++;
+    }
+    return new AttributeValue(attributeText.substring(offset, position), position);
+  }
+
+  /**
+   * Checks whether a character terminates an unquoted attribute value.
+   *
+   * @param character character to classify
+   * @return {@code true} when the unquoted value should end before this character
+   */
+  private static boolean isUnquotedAttributeValueTerminator(char character) {
+    return Character.isWhitespace(character)
+        || character == '"'
+        || character == '\''
+        || character == '>'
+        || character == '`';
   }
 
   /**
@@ -942,20 +1051,6 @@ final class StaticHtmlInspector {
   }
 
   /**
-   * Removes one matching quote pair from an attribute value.
-   *
-   * @param value raw attribute value captured by the attribute pattern
-   * @return unquoted value when single or double quotes wrap the full value
-   */
-  private static String unquote(String value) {
-    if ((value.startsWith("\"") && value.endsWith("\""))
-        || (value.startsWith("'") && value.endsWith("'"))) {
-      return value.substring(1, value.length() - 1);
-    }
-    return value;
-  }
-
-  /**
    * Checks whether a URL-like value points at a remote resource.
    *
    * @param value URL or path value from an HTML attribute
@@ -1099,6 +1194,14 @@ final class StaticHtmlInspector {
   private static String stripTags(String value) {
     return value.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
   }
+
+  /**
+   * Result of reading one HTML attribute value.
+   *
+   * @param value parsed attribute value without surrounding quotes
+   * @param nextIndex next character offset after the consumed value
+   */
+  private record AttributeValue(String value, int nextIndex) {}
 
   /**
    * Result of reading one HTML character reference.
