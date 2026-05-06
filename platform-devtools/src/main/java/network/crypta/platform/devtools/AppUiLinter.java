@@ -58,6 +58,12 @@ final class AppUiLinter {
   /** Content-type prefix required for the manifest-declared static UI document. */
   private static final String HTML_CONTENT_TYPE_PREFIX = "text/html";
 
+  /** Manifest value for app-owned static UI mode in result summaries. */
+  private static final String STATIC_UI_MODE = "static";
+
+  /** Common prefix for local script and stylesheet reference diagnostics. */
+  private static final String LOCAL_REFERENCE_MESSAGE_PREFIX = "Local ";
+
   /** Percent-encoding marker used by app-owned UI route paths. */
   private static final char PERCENT = '%';
 
@@ -120,7 +126,7 @@ final class AppUiLinter {
               "structure",
               "app.ui.entry does not resolve to a readable static UI file: " + manifest.uiEntry(),
               entryBundlePath));
-      return new AppUiLintResult(manifest.appId(), "static", true, findings);
+      return new AppUiLintResult(manifest.appId(), STATIC_UI_MODE, true, findings);
     }
     String entryContentType = AppUiContentTypes.forPath(entryBundlePath);
     if (!entryContentType.startsWith(HTML_CONTENT_TYPE_PREFIX)) {
@@ -133,7 +139,7 @@ final class AppUiLinter {
                   + ": "
                   + manifest.uiEntry(),
               entryBundlePath));
-      return new AppUiLintResult(manifest.appId(), "static", true, findings);
+      return new AppUiLintResult(manifest.appId(), STATIC_UI_MODE, true, findings);
     }
 
     String indexHtml = Files.readString(entry, StandardCharsets.UTF_8);
@@ -154,7 +160,7 @@ final class AppUiLinter {
         entryDirectory.toString().isBlank() ? bundleRoot : bundleRoot.resolve(entryDirectory);
     addTextFileFindings(bundleRoot, scanRoot, scriptSources, strict, findings);
     addCssFindings(bundleRoot, scanRoot, stylesheetHrefs, strict, findings);
-    return new AppUiLintResult(manifest.appId(), "static", true, findings);
+    return new AppUiLintResult(manifest.appId(), STATIC_UI_MODE, true, findings);
   }
 
   /**
@@ -224,10 +230,8 @@ final class AppUiLinter {
               "index.html does not link crypta-ui.css.",
               entryBundlePath));
     }
-    if ((firstAppCss >= 0
-            && ((tokensIndex >= 0 && tokensIndex > firstAppCss)
-                || (uiIndex >= 0 && uiIndex > firstAppCss)))
-        || (tokensIndex >= 0 && uiIndex >= 0 && tokensIndex > uiIndex)) {
+    if ((firstAppCss >= 0 && (tokensIndex > firstAppCss || uiIndex > firstAppCss))
+        || (uiIndex >= 0 && tokensIndex > uiIndex)) {
       findings.add(
           strictFinding(
               strict,
@@ -576,7 +580,7 @@ final class AppUiLinter {
               error(
                   "local-ui-reference-route-invalid",
                   CATEGORY_CSP,
-                  "Local "
+                  LOCAL_REFERENCE_MESSAGE_PREFIX
                       + referenceKind
                       + " reference is not a valid app UI route asset path: "
                       + referencedPath,
@@ -588,7 +592,7 @@ final class AppUiLinter {
                 error(
                     "local-ui-reference-missing",
                     CATEGORY_CSP,
-                    "Local "
+                    LOCAL_REFERENCE_MESSAGE_PREFIX
                         + referenceKind
                         + " reference does not resolve to a regular file: "
                         + routeAssetPath,
@@ -725,7 +729,7 @@ final class AppUiLinter {
           error(
               "local-ui-reference-unsupported-type",
               CATEGORY_CSP,
-              "Local "
+              LOCAL_REFERENCE_MESSAGE_PREFIX
                   + referenceKind
                   + " reference uses unsupported app UI content type "
                   + contentType
