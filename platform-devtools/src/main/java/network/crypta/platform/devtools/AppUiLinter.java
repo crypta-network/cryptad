@@ -530,13 +530,14 @@ final class AppUiLinter {
   /**
    * Adds errors for local script and stylesheet references that cannot load at runtime.
    *
-   * <p>HTML inspection already reports remote, absolute, and traversal-shaped resource references
-   * as CSP/safety findings. This check handles the remaining local-resource contract: every local
-   * entry-point script or stylesheet that the browser will try to load must resolve to a regular
-   * file inside the staged bundle and must use the same executable/applicable MIME mapping as the
-   * app-owned UI server. Missing files and unsupported content types are reported before the
-   * JavaScript and CSS scans so strict validation cannot pass an app UI whose SDK, app script, or
-   * stylesheet was omitted or will be served as opaque bytes under {@code nosniff}.
+   * <p>HTML inspection already reports remote and JavaScript URL resource references as CSP/safety
+   * findings. This check handles the remaining local-resource contract: every entry-point script or
+   * stylesheet that the browser will try to load from the app UI origin must be route-safe, resolve
+   * to a regular file inside the staged bundle, and use the same executable/applicable MIME mapping
+   * as the app-owned UI server. Invalid absolute paths, traversal-shaped paths, missing files, and
+   * unsupported content types are reported before the JavaScript and CSS scans so strict validation
+   * cannot pass an app UI whose SDK, app script, or stylesheet was omitted or will be served as
+   * opaque bytes under {@code nosniff}.
    *
    * @param bundleRoot normalized absolute bundle root
    * @param referencedPaths normalized bundle-relative paths referenced by the static entry
@@ -849,10 +850,10 @@ final class AppUiLinter {
   }
 
   /**
-   * Checks whether a normalized reference should be resolved against the app bundle.
+   * Checks whether a normalized reference should be validated against the app UI route contract.
    *
    * @param path candidate bundle-relative reference
-   * @return {@code true} for references that are not remote, absolute, or JavaScript URLs
+   * @return {@code true} for references that are not remote, protocol-relative, or JavaScript URLs
    */
   private static boolean isLocalReferenceCandidate(String path) {
     String normalized = path.toLowerCase(Locale.ROOT);
@@ -860,7 +861,6 @@ final class AppUiLinter {
         && !normalized.startsWith("http://")
         && !normalized.startsWith("https://")
         && !normalized.startsWith("//")
-        && !normalized.startsWith("/")
         && !normalized.startsWith("javascript:");
   }
 

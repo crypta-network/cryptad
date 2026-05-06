@@ -342,6 +342,35 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenAbsoluteScriptAndStylesheetReferencesPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "/api/v1/foo.js")
+            .replace("./app.css", "/theme.css"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-route-invalid"));
+    assertTrue(result.err().contains("/api/v1/foo.js"));
+    assertTrue(result.err().contains("/theme.css"));
+  }
+
+  @Test
   void uiLint_whenLocalReferenceUsesRouteEncoding_expectSuccess() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
