@@ -93,11 +93,12 @@ final class StaticCssInspector {
   /**
    * Reads the first URL-like token after a CSS {@code @import} directive.
    *
-   * <p>This method intentionally recognizes a small CSS token subset: whitespace after {@code
-   * @import} followed by an optional {@code url(} wrapper, or the compact valid form where a quoted
-   * string starts immediately after {@code @import}. It does not treat identifier continuations such
-   * as {@code @importfoo} or {@code @importurl(...)} as import rules. The scanner advances at least
-   * past the directive offset for malformed imports so callers can continue scanning in linear time.
+   * <p>This method intentionally recognizes a small CSS token subset: whitespace after the import
+   * directive followed by an optional {@code url(} wrapper, or the compact valid form where a
+   * quoted string starts immediately after the directive. It does not treat identifier
+   * continuations such as {@code importfoo} or {@code importurl(...)} as import rules. The scanner
+   * advances at least past the directive offset for malformed imports so callers can continue
+   * scanning in linear time.
    *
    * @param css CSS text decoded from a local app UI file
    * @param offset position immediately after {@code @import}
