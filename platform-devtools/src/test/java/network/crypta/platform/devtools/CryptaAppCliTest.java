@@ -220,6 +220,36 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenLocalScriptAndStylesheetReferencesAreMissing_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.delete(appDir.resolve("static").resolve("crypta-platform.js"));
+    Files.delete(appDir.resolve("static").resolve("app.js"));
+    Files.delete(appDir.resolve("static").resolve("app.css"));
+
+    CliResult lintResult = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    CliResult validateResult = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, lintResult.exitCode());
+    assertTrue(lintResult.err().contains("local-ui-reference-missing"));
+    assertTrue(lintResult.err().contains("static/crypta-platform.js"));
+    assertTrue(lintResult.err().contains("static/app.js"));
+    assertTrue(lintResult.err().contains("static/app.css"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, validateResult.exitCode());
+    assertTrue(validateResult.err().contains("UI lint failed"));
+    assertTrue(validateResult.err().contains("local-ui-reference-missing"));
+  }
+
+  @Test
   void validate_whenStaticUiEntryUsesCustomRelativePath_expectStrictUiLintSuccess()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");

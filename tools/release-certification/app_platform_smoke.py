@@ -1699,6 +1699,7 @@ def collect_app_ui_lint_evidence(settings: Settings, cli: Path | None) -> Eviden
     lint_dir.mkdir(parents=True, exist_ok=True)
     for spec in first_party_app_specs(settings):
         json_path = lint_dir / f"{spec['appId']}.json"
+        remove_existing_path(json_path)
         result = run_cli(
             cli,
             [
@@ -1719,6 +1720,11 @@ def collect_app_ui_lint_evidence(settings: Settings, cli: Path | None) -> Eviden
         }
         lint_json = read_json_file(json_path)
         if lint_json:
+            app_details["report"] = {
+                "appId": str(lint_json.get("appId", "")),
+                "uiMode": str(lint_json.get("uiMode", "")),
+                "applicable": lint_json.get("applicable"),
+            }
             summary = lint_json.get("summary", {})
             app_details["summary"] = summary
             findings = lint_json.get("findings", [])
@@ -1731,6 +1737,7 @@ def collect_app_ui_lint_evidence(settings: Settings, cli: Path | None) -> Eviden
         details["apps"][spec["appId"]] = app_details
         if result.exit_code != 0:
             errors.append(f"crypta-app ui lint failed for {spec['appId']}")
+        errors.extend(ui_lint_report_errors(lint_json, str(spec["appId"])))
     if errors:
         return EvidenceItem(
             "app-ui.lint",
@@ -1758,6 +1765,40 @@ def read_json_file(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
     return value if isinstance(value, dict) else None
+
+
+def ui_lint_report_errors(lint_json: dict[str, Any] | None, expected_app_id: str) -> list[str]:
+    if lint_json is None:
+        return [f"crypta-app ui lint JSON missing or malformed for {expected_app_id}"]
+    errors: list[str] = []
+    if lint_json.get("appId") != expected_app_id:
+        errors.append(f"crypta-app ui lint JSON appId mismatch for {expected_app_id}")
+    if lint_json.get("uiMode") != "static":
+        errors.append(f"crypta-app ui lint JSON uiMode mismatch for {expected_app_id}")
+    if lint_json.get("applicable") is not True:
+        errors.append(f"crypta-app ui lint JSON applicability mismatch for {expected_app_id}")
+    summary = lint_json.get("summary")
+    if not isinstance(summary, dict):
+        errors.append(
+            f"crypta-app ui lint JSON summary missing or malformed for {expected_app_id}"
+        )
+    else:
+        error_count = summary.get("errors")
+        if not isinstance(error_count, int) or isinstance(error_count, bool) or error_count != 0:
+            errors.append(f"crypta-app ui lint JSON reports nonzero errors for {expected_app_id}")
+    findings = lint_json.get("findings")
+    if not isinstance(findings, list):
+        errors.append(
+            f"crypta-app ui lint JSON findings missing or malformed for {expected_app_id}"
+        )
+    elif any(
+        isinstance(finding, dict) and str(finding.get("severity", "")).lower() == "error"
+        for finding in findings
+    ):
+        errors.append(
+            f"crypta-app ui lint JSON findings include error severity for {expected_app_id}"
+        )
+    return errors
 
 
 def collect_app_ui_evidence(settings: Settings) -> EvidenceItem:
@@ -2870,6 +2911,78 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
+
+        def collect_ui_lint_with_fake_env(
+            env_name: str, out_leaf: str
+        ) -> tuple[EvidenceItem, Path]:
+            previous = os.environ.get(env_name)
+            os.environ[env_name] = "1"
+            try:
+                lint_settings = dataclasses.replace(
+                    settings,
+                    out_dir=(workspace / "build" / out_leaf).resolve(),
+                    mode="release-candidate",
+                )
+                stale_json = (
+                    lint_settings.out_dir / "artifacts/app-ui-lint/queue-manager.json"
+                )
+                stale_json.parent.mkdir(parents=True, exist_ok=True)
+                stale_json.write_text(
+                    json.dumps(
+                        {
+                            "appId": "queue-manager",
+                            "uiMode": "static",
+                            "applicable": True,
+                            "summary": {"errors": 0, "warnings": 0, "notes": 0},
+                            "findings": [],
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return collect_app_ui_lint_evidence(lint_settings, fake_cli), stale_json
+            finally:
+                if previous is None:
+                    os.environ.pop(env_name, None)
+                else:
+                    os.environ[env_name] = previous
+
+        missing_ui_lint_item, stale_ui_lint_json = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON",
+            "missing-ui-lint-json",
+        )
+        assert missing_ui_lint_item.status == "fail", missing_ui_lint_item
+        assert any(
+            "JSON missing or malformed" in error
+            for error in missing_ui_lint_item.details["errors"]
+        ), missing_ui_lint_item
+        assert not stale_ui_lint_json.exists(), stale_ui_lint_json
+        malformed_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON",
+            "malformed-ui-lint-json",
+        )
+        assert malformed_ui_lint_item.status == "fail", malformed_ui_lint_item
+        assert any(
+            "JSON missing or malformed" in error
+            for error in malformed_ui_lint_item.details["errors"]
+        ), malformed_ui_lint_item
+        wrong_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP",
+            "wrong-ui-lint-app",
+        )
+        assert wrong_ui_lint_item.status == "fail", wrong_ui_lint_item
+        assert any(
+            "appId mismatch" in error for error in wrong_ui_lint_item.details["errors"]
+        ), wrong_ui_lint_item
+        errored_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS",
+            "errored-ui-lint-report",
+        )
+        assert errored_ui_lint_item.status == "fail", errored_ui_lint_item
+        assert any(
+            "nonzero errors" in error for error in errored_ui_lint_item.details["errors"]
+        ), errored_ui_lint_item
         assert evidence_by_id["apphost.sandbox-provider"]["status"] == "pass"
         assert evidence_by_id["apphost.sandbox-provider"]["details"]["liveBubblewrapRequired"] is False
         sandbox_checks = evidence_by_id["apphost.sandbox-provider"]["details"]["checks"]
@@ -3510,6 +3623,17 @@ def write_text(path, text):
     path.write_text(text, encoding="utf-8")
 
 
+def property_value(path, name):
+    if not path.is_file():
+        return ""
+    prefix = name + "="
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped.split("=", 1)[1]
+    return ""
+
+
 def init_app(args):
     directory_text = option_value(args, "--dir")
     if not directory_text:
@@ -3558,14 +3682,31 @@ def init_app(args):
 
 def ui_lint(args):
     output_text = option_value(args, "--json")
+    bundle_text = option_value(args, "--bundle-dir")
+    app_id = "cert-smoke"
+    ui_mode = "static"
+    if bundle_text:
+        manifest = Path(bundle_text) / "cryptad-app.properties"
+        app_id = property_value(manifest, "app.id") or app_id
+        ui_mode = property_value(manifest, "app.ui.mode") or ui_mode
     payload = {
-        "appId": "cert-smoke",
-        "uiMode": "static",
+        "appId": app_id,
+        "uiMode": ui_mode,
         "applicable": True,
         "summary": {"errors": 0, "warnings": 0, "notes": 0},
         "findings": [],
     }
+    if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP") == "1":
+        payload["appId"] = "wrong-app"
+    if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS") == "1":
+        payload["summary"]["errors"] = 1
+        payload["findings"] = [{"id": "fake-error", "severity": "error"}]
     if output_text:
+        if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON") == "1":
+            return 0
+        if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON") == "1":
+            write_text(Path(output_text), "{not-json\n")
+            return 0
         write_text(Path(output_text), json.dumps(payload, sort_keys=True) + "\n")
     return 0
 
@@ -3749,12 +3890,49 @@ case "$cmd" in
     sub="${1:-}"; shift || true
     if [ "$sub" = "lint" ]; then
       out=""
+      bundle=""
       while [ "$#" -gt 0 ]; do
-        if [ "$1" = "--json" ]; then out="$2"; shift 2; else shift; fi
+        case "$1" in
+          --json)
+            out="$2"
+            shift 2
+            ;;
+          --bundle-dir)
+            bundle="$2"
+            shift 2
+            ;;
+          *)
+            shift
+            ;;
+        esac
       done
       if [ -n "$out" ]; then
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON:-0}" = "1" ]; then
+          exit 0
+        fi
         mkdir -p "$(dirname "$out")"
-        printf '%s\n' '{"appId":"cert-smoke","applicable":true,"findings":[],"summary":{"errors":0,"notes":0,"warnings":0},"uiMode":"static"}' > "$out"
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON:-0}" = "1" ]; then
+          printf '%s\n' '{not-json' > "$out"
+          exit 0
+        fi
+        app_id="cert-smoke"
+        ui_mode="static"
+        if [ -n "$bundle" ] && [ -f "$bundle/cryptad-app.properties" ]; then
+          app_id="$(awk -F= '$1 == "app.id" {print substr($0, index($0, "=") + 1); exit}' "$bundle/cryptad-app.properties")"
+          ui_mode="$(awk -F= '$1 == "app.ui.mode" {print substr($0, index($0, "=") + 1); exit}' "$bundle/cryptad-app.properties")"
+          app_id="${app_id:-cert-smoke}"
+          ui_mode="${ui_mode:-static}"
+        fi
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP:-0}" = "1" ]; then
+          app_id="wrong-app"
+        fi
+        error_count="0"
+        findings="[]"
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS:-0}" = "1" ]; then
+          error_count="1"
+          findings='[{"id":"fake-error","severity":"error"}]'
+        fi
+        printf '{"appId":"%s","applicable":true,"findings":%s,"summary":{"errors":%s,"notes":0,"warnings":0},"uiMode":"%s"}\n' "$app_id" "$findings" "$error_count" "$ui_mode" > "$out"
       fi
       exit 0
     fi

@@ -117,15 +117,19 @@ final class AppUiLinter {
         entryRelativePath.getParent() == null ? Path.of("") : entryRelativePath.getParent();
     StaticHtmlInspector html =
         StaticHtmlInspector.inspect(indexHtml, entryBundlePath, entryDirectory);
+    List<String> scriptSources = html.normalizedScriptSources();
+    List<String> stylesheetHrefs = html.normalizedStylesheetHrefs();
     addDesignSystemFindings(bundleRoot, html, entryBundlePath, strict, findings);
     findings.addAll(html.safetyFindings());
     findings.addAll(html.accessibilityFindings(strict, designSystemCssPresent(bundleRoot)));
     findings.addAll(html.sdkFindings(strict));
+    addMissingLocalReferenceFindings(bundleRoot, scriptSources, "script", findings);
+    addMissingLocalReferenceFindings(bundleRoot, stylesheetHrefs, "stylesheet", findings);
     addPermissionFindings(manifest, html, entryBundlePath, strict, findings);
     Path scanRoot =
         entryDirectory.toString().isBlank() ? bundleRoot : bundleRoot.resolve(entryDirectory);
-    addTextFileFindings(bundleRoot, scanRoot, html.normalizedScriptSources(), strict, findings);
-    addCssFindings(bundleRoot, scanRoot, html.normalizedStylesheetHrefs(), strict, findings);
+    addTextFileFindings(bundleRoot, scanRoot, scriptSources, strict, findings);
+    addCssFindings(bundleRoot, scanRoot, stylesheetHrefs, strict, findings);
     return new AppUiLintResult(manifest.appId(), "static", true, findings);
   }
 
@@ -473,6 +477,44 @@ final class AppUiLinter {
               "sdk",
               "Local app JavaScript references /api/v1/ directly; use the browser SDK helpers.",
               path));
+    }
+  }
+
+  /**
+   * Adds errors for local script and stylesheet references that cannot be served from the bundle.
+   *
+   * <p>HTML inspection already reports remote, absolute, and traversal-shaped resource references
+   * as CSP/safety findings. This check handles the remaining local-resource contract: every local
+   * entry-point script or stylesheet that the browser will try to load must resolve to a regular
+   * file inside the staged bundle. Missing files are reported before the JavaScript and CSS scans
+   * so strict validation cannot pass an app UI whose SDK, app script, or stylesheet was omitted.
+   *
+   * @param bundleRoot normalized absolute bundle root
+   * @param referencedPaths normalized bundle-relative paths referenced by the static entry
+   * @param referenceKind human-readable resource kind for the finding message
+   * @param findings mutable finding list that receives missing-reference errors
+   */
+  private static void addMissingLocalReferenceFindings(
+      Path bundleRoot,
+      Collection<String> referencedPaths,
+      String referenceKind,
+      List<AppUiLintFinding> findings) {
+    LinkedHashSet<String> checkedPaths = new LinkedHashSet<>();
+    for (String referencedPath : referencedPaths) {
+      if (isLocalBundlePath(referencedPath) && checkedPaths.add(referencedPath)) {
+        Path file = bundleRoot.resolve(referencedPath).normalize();
+        if (!file.startsWith(bundleRoot) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+          findings.add(
+              error(
+                  "local-ui-reference-missing",
+                  CATEGORY_CSP,
+                  "Local "
+                      + referenceKind
+                      + " reference does not resolve to a regular file: "
+                      + referencedPath,
+                  referencedPath));
+        }
+      }
     }
   }
 
