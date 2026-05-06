@@ -55,6 +55,9 @@ final class AppUiLinter {
   /** Finding category for permission-disclosure consistency checks. */
   private static final String CATEGORY_PERMISSIONS = "permissions";
 
+  /** Content-type prefix required for the manifest-declared static UI document. */
+  private static final String HTML_CONTENT_TYPE_PREFIX = "text/html";
+
   /** Percent-encoding marker used by app-owned UI route paths. */
   private static final char PERCENT = '%';
 
@@ -116,6 +119,19 @@ final class AppUiLinter {
               "static-entry-missing",
               "structure",
               "app.ui.entry does not resolve to a readable static UI file: " + manifest.uiEntry(),
+              entryBundlePath));
+      return new AppUiLintResult(manifest.appId(), "static", true, findings);
+    }
+    String entryContentType = AppUiContentTypes.forPath(entryBundlePath);
+    if (!entryContentType.startsWith(HTML_CONTENT_TYPE_PREFIX)) {
+      findings.add(
+          error(
+              "static-entry-non-html",
+              "structure",
+              "app.ui.entry must resolve to an HTML document served as text/html, but maps to "
+                  + entryContentType
+                  + ": "
+                  + manifest.uiEntry(),
               entryBundlePath));
       return new AppUiLintResult(manifest.appId(), "static", true, findings);
     }

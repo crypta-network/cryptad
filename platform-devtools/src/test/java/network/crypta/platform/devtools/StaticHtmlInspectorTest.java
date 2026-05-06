@@ -69,6 +69,56 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void sdkFindings_whenSdkIsDeferredBeforeParserBlockingAppScript_expectStrictOrderError() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <script src="../static/crypta-platform.js" defer></script>
+            <script src="./main.js"></script>
+            """,
+            "ui/index.html",
+            Path.of("ui"));
+
+    List<AppUiLintFinding> findings = inspector.sdkFindings(true);
+
+    assertEquals(1, findings.size());
+    assertEquals("sdk-script-defer-order", findings.getFirst().id());
+    assertEquals(AppUiLintSeverity.ERROR, findings.getFirst().severity());
+  }
+
+  @Test
+  void sdkFindings_whenSdkIsAsyncBeforeDeferredAppScript_expectStrictAsyncError() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <script src="../static/crypta-platform.js" async></script>
+            <script src="./main.js" defer></script>
+            """,
+            "ui/index.html",
+            Path.of("ui"));
+
+    List<AppUiLintFinding> findings = inspector.sdkFindings(true);
+
+    assertEquals(1, findings.size());
+    assertEquals("sdk-script-async", findings.getFirst().id());
+    assertEquals(AppUiLintSeverity.ERROR, findings.getFirst().severity());
+  }
+
+  @Test
+  void sdkFindings_whenSdkAndAppScriptsAreDeferredInOrder_expectNoFindings() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <script src="../static/crypta-platform.js" defer></script>
+            <script src="./main.js" defer></script>
+            """,
+            "ui/index.html",
+            Path.of("ui"));
+
+    assertTrue(inspector.sdkFindings(true).isEmpty());
+  }
+
+  @Test
   void accessibilityFindings_whenEssentialsAreMissing_expectStrictErrors() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(

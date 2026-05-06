@@ -33,10 +33,11 @@ final class StaticHtmlInspector {
   private static final Pattern END_SCRIPT_PATTERN =
       Pattern.compile("</\\s*script\\s*>", Pattern.CASE_INSENSITIVE);
 
-  /** Pattern that captures simple quoted and unquoted HTML attributes. */
+  /** Pattern that captures simple quoted, unquoted, and boolean HTML attributes. */
   private static final Pattern ATTRIBUTE_PATTERN =
       Pattern.compile(
-          "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s\"'>`]+)", Pattern.DOTALL);
+          "([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s\"'>`]+))?",
+          Pattern.DOTALL);
 
   /** Pattern that extracts heading contents for visible-heading checks. */
   private static final Pattern HEADING_PATTERN =
@@ -71,6 +72,15 @@ final class StaticHtmlInspector {
 
   /** Attribute name for source-bearing HTML elements. */
   private static final String ATTRIBUTE_SRC = "src";
+
+  /** Attribute name for asynchronous script execution. */
+  private static final String ATTRIBUTE_ASYNC = "async";
+
+  /** Attribute name for deferred script execution. */
+  private static final String ATTRIBUTE_DEFER = "defer";
+
+  /** Attribute name that selects JavaScript module scripts. */
+  private static final String ATTRIBUTE_TYPE = "type";
 
   /** Raw HTML text from the manifest-declared static UI entry. */
   private final String html;
@@ -219,16 +229,18 @@ final class StaticHtmlInspector {
   /**
    * Reports SDK loading and ordering findings.
    *
-   * <p>The first loaded local app script must not appear before the browser SDK. Any local script
-   * that is not the SDK or a design-system support file is treated as app JavaScript, regardless of
-   * filename.
+   * <p>The first loaded local app script must not appear before the browser SDK in document order.
+   * The check also rejects SDK execution attributes that make document order unreliable: an {@code
+   * async} SDK can race any app script, and a deferred or module SDK can run after a later
+   * parser-blocking app script. Any local script that is not the SDK or a design-system support
+   * file is treated as app JavaScript, regardless of filename.
    *
    * @param strict whether SDK findings should be warnings or errors where applicable
    * @return deterministic SDK findings for the inspected entry
    */
   List<AppUiLintFinding> sdkFindings(boolean strict) {
     List<AppUiLintFinding> findings = new ArrayList<>();
-    List<String> scripts = normalizedScriptSources();
+    List<ScriptReference> scripts = scriptReferences();
     int sdkIndex = firstSdkScriptIndex(scripts);
     int appIndex = firstAppScriptIndex(scripts);
     if (sdkIndex < 0) {
@@ -249,6 +261,7 @@ final class StaticHtmlInspector {
               "App JavaScript appears before crypta-platform.js.",
               path));
     }
+    addSdkExecutionAttributeFindings(strict, scripts, sdkIndex, appIndex, findings);
     return findings;
   }
 
@@ -258,24 +271,47 @@ final class StaticHtmlInspector {
    * @return script sources in document order, normalized relative to the entry directory
    */
   List<String> normalizedScriptSources() {
-    List<String> scripts = new ArrayList<>();
+    return scriptReferences().stream().map(ScriptReference::source).toList();
+  }
+
+  /**
+   * Returns local and remote script references with execution-relevant attributes.
+   *
+   * @return script references in document order
+   */
+  private List<ScriptReference> scriptReferences() {
+    List<ScriptReference> references = new ArrayList<>();
     for (Tag tag : tags) {
       if (tag.name().equals(TAG_SCRIPT) && !tag.attribute(ATTRIBUTE_SRC).isBlank()) {
-        scripts.add(normalizeLocalReference(tag.attribute(ATTRIBUTE_SRC), entryDirectory));
+        references.add(scriptReference(tag));
       }
     }
-    return scripts;
+    return references;
+  }
+
+  /**
+   * Converts a parsed script tag into the execution model used by SDK-order checks.
+   *
+   * @param tag parsed script tag with a non-empty {@code src}
+   * @return normalized script reference and execution attributes
+   */
+  private ScriptReference scriptReference(Tag tag) {
+    return new ScriptReference(
+        normalizeLocalReference(tag.attribute(ATTRIBUTE_SRC), entryDirectory),
+        tag.hasAttribute(ATTRIBUTE_ASYNC),
+        tag.hasAttribute(ATTRIBUTE_DEFER),
+        tag.attribute(ATTRIBUTE_TYPE).equalsIgnoreCase("module"));
   }
 
   /**
    * Finds the first browser SDK script in document order.
    *
-   * @param scripts normalized script paths from the static entry
+   * @param scripts normalized script references from the static entry
    * @return zero-based index of the first SDK script, or {@code -1} when absent
    */
-  private static int firstSdkScriptIndex(List<String> scripts) {
+  private static int firstSdkScriptIndex(List<ScriptReference> scripts) {
     for (int index = 0; index < scripts.size(); index++) {
-      if (AppUiLinter.isSdkScript(scripts.get(index))) {
+      if (scripts.get(index).isSdk()) {
         return index;
       }
     }
@@ -285,16 +321,74 @@ final class StaticHtmlInspector {
   /**
    * Finds the first local app script in document order.
    *
-   * @param scripts normalized script paths from the static entry
+   * @param scripts normalized script references from the static entry
    * @return zero-based index of the first app script, or {@code -1} when absent
    */
-  private static int firstAppScriptIndex(List<String> scripts) {
+  private static int firstAppScriptIndex(List<ScriptReference> scripts) {
     for (int index = 0; index < scripts.size(); index++) {
-      if (AppUiLinter.isAppScript(scripts.get(index))) {
+      if (scripts.get(index).isApp()) {
         return index;
       }
     }
     return -1;
+  }
+
+  /**
+   * Adds findings for SDK script attributes that make SDK-before-app ordering unreliable.
+   *
+   * @param strict whether SDK findings should be warnings or errors where applicable
+   * @param scripts normalized script references from the static entry
+   * @param sdkIndex zero-based SDK script index, or {@code -1} when absent
+   * @param appIndex zero-based first app script index, or {@code -1} when absent
+   * @param findings mutable finding list that receives SDK findings
+   */
+  private void addSdkExecutionAttributeFindings(
+      boolean strict,
+      List<ScriptReference> scripts,
+      int sdkIndex,
+      int appIndex,
+      List<AppUiLintFinding> findings) {
+    if (sdkIndex < 0 || appIndex < 0) {
+      return;
+    }
+    ScriptReference sdk = scripts.get(sdkIndex);
+    if (sdk.async()) {
+      findings.add(
+          AppUiLinter.strictFinding(
+              strict,
+              "sdk-script-async",
+              "sdk",
+              "crypta-platform.js must not use async because app JavaScript may execute before the"
+                  + " SDK.",
+              path));
+    } else if (sdk.isDeferred() && hasAppScriptThatCanBeatDeferredSdk(scripts, sdkIndex)) {
+      findings.add(
+          AppUiLinter.strictFinding(
+              strict,
+              "sdk-script-defer-order",
+              "sdk",
+              "Deferred crypta-platform.js can run after a later parser-blocking or async app"
+                  + " script.",
+              path));
+    }
+  }
+
+  /**
+   * Checks whether a script after a deferred SDK can execute before that SDK.
+   *
+   * @param scripts normalized script references from the static entry
+   * @param sdkIndex zero-based index of the deferred SDK script
+   * @return {@code true} when a later app script is parser-blocking or async
+   */
+  private static boolean hasAppScriptThatCanBeatDeferredSdk(
+      List<ScriptReference> scripts, int sdkIndex) {
+    for (int index = sdkIndex + 1; index < scripts.size(); index++) {
+      ScriptReference script = scripts.get(index);
+      if (script.isApp() && script.canRunBeforeDeferredPredecessor()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -686,7 +780,8 @@ final class StaticHtmlInspector {
     java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
     Matcher matcher = ATTRIBUTE_PATTERN.matcher(attributeText);
     while (matcher.find()) {
-      attributes.put(matcher.group(1).toLowerCase(Locale.ROOT), unquote(matcher.group(2)));
+      String value = matcher.group(2) == null ? "" : unquote(matcher.group(2));
+      attributes.put(matcher.group(1).toLowerCase(Locale.ROOT), value);
     }
     return attributes;
   }
@@ -851,6 +946,52 @@ final class StaticHtmlInspector {
   }
 
   /**
+   * Normalized script reference with the attributes that influence browser execution order.
+   *
+   * @param source normalized script source from the static entry
+   * @param async whether the script has an {@code async} attribute
+   * @param defer whether the script has a {@code defer} attribute
+   * @param module whether the script is loaded with {@code type=module}
+   */
+  private record ScriptReference(String source, boolean async, boolean defer, boolean module) {
+    /**
+     * Checks whether this reference loads the browser SDK.
+     *
+     * @return {@code true} when the source path names {@code crypta-platform.js}
+     */
+    private boolean isSdk() {
+      return AppUiLinter.isSdkScript(source);
+    }
+
+    /**
+     * Checks whether this reference is local app-owned JavaScript.
+     *
+     * @return {@code true} when the source path is local and not the SDK or design-system support
+     */
+    private boolean isApp() {
+      return AppUiLinter.isAppScript(source);
+    }
+
+    /**
+     * Checks whether this script waits until document parsing completes before execution.
+     *
+     * @return {@code true} for deferred classic scripts and non-async module scripts
+     */
+    private boolean isDeferred() {
+      return defer || module;
+    }
+
+    /**
+     * Checks whether this script can execute before an earlier deferred script.
+     *
+     * @return {@code true} for async scripts and parser-blocking classic scripts
+     */
+    private boolean canRunBeforeDeferredPredecessor() {
+      return async || !isDeferred();
+    }
+  }
+
+  /**
    * Parsed start tag with normalized attribute names and source offsets.
    *
    * @param name lower-case tag name
@@ -867,6 +1008,16 @@ final class StaticHtmlInspector {
      */
     private String attribute(String name) {
       return attributes.getOrDefault(name.toLowerCase(Locale.ROOT), "");
+    }
+
+    /**
+     * Checks whether an attribute was present even when its value is blank.
+     *
+     * @param name requested attribute name
+     * @return {@code true} when the parsed start tag included the attribute
+     */
+    private boolean hasAttribute(String name) {
+      return attributes.containsKey(name.toLowerCase(Locale.ROOT));
     }
   }
 }

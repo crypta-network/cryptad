@@ -249,6 +249,39 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenStaticEntryIsNotHtml_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.move(staticDir.resolve("index.html"), staticDir.resolve("index.txt"));
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.ui.entry=static/index.html\n", "app.ui.entry=static/index.txt\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult lintResult = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    CliResult validateResult = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, lintResult.exitCode());
+    assertTrue(lintResult.err().contains("static-entry-non-html"));
+    assertTrue(lintResult.err().contains("application/octet-stream"));
+    assertTrue(lintResult.err().contains("static/index.txt"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, validateResult.exitCode());
+    assertTrue(validateResult.err().contains("static-entry-non-html"));
+  }
+
+  @Test
   void uiLint_whenLocalScriptAndStylesheetReferencesAreMissing_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -597,6 +630,41 @@ class CryptaAppCliTest {
 
     assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
     assertTrue(result.err().contains("sdk-script-order"));
+  }
+
+  @Test
+  void uiLint_whenDeferredSdkPrecedesParserBlockingAppScript_expectStrictOrderFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <script src="./crypta-platform.js"></script>
+                    <script type="module" src="./app.js"></script>
+                """,
+                """
+                    <script src="./crypta-platform.js" defer></script>
+                    <script src="./app.js"></script>
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-script-defer-order"));
   }
 
   @Test
