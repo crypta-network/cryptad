@@ -282,6 +282,33 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenStaticEntryParentIsSymbolicLink_expectFailureWithoutReadingExternalUi()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Path externalStaticDir = tempDir.resolve("external-static");
+    Files.move(staticDir, externalStaticDir);
+    Assumptions.assumeTrue(canCreateSymlink(staticDir));
+    Files.createSymbolicLink(staticDir, externalStaticDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("static-entry-missing"));
+    assertTrue(result.err().contains("static/index.html"));
+  }
+
+  @Test
   void uiLint_whenLocalScriptAndStylesheetReferencesAreMissing_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -309,6 +336,43 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.SOFTWARE, validateResult.exitCode());
     assertTrue(validateResult.err().contains("UI lint failed"));
     assertTrue(validateResult.err().contains("local-ui-reference-missing"));
+  }
+
+  @Test
+  void uiLint_whenLocalScriptParentIsSymbolicLink_expectFailureWithoutReadingExternalAsset()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Path externalAssetDir = tempDir.resolve("external-assets");
+    Files.createDirectories(externalAssetDir);
+    Files.writeString(
+        externalAssetDir.resolve("app.js"),
+        "CryptaPlatform.bootstrap.load().then(() => undefined);\n",
+        StandardCharsets.UTF_8);
+    Path linkedAssetDir = staticDir.resolve("linked");
+    Assumptions.assumeTrue(canCreateSymlink(linkedAssetDir));
+    Files.createSymbolicLink(linkedAssetDir, externalAssetDir);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./linked/app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-missing"));
+    assertTrue(result.err().contains("static/linked/app.js"));
   }
 
   @Test

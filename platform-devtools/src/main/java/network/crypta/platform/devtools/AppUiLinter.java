@@ -113,7 +113,7 @@ final class AppUiLinter {
     Path entryRelativePath = manifest.staticUiEntryPath();
     String entryBundlePath = bundlePath(entryRelativePath);
     Path entry = bundleRoot.resolve(entryRelativePath).normalize();
-    if (!entry.startsWith(bundleRoot) || !Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+    if (!isBundleLocalRegularFile(bundleRoot, entry)) {
       findings.add(
           error(
               "static-entry-missing",
@@ -181,7 +181,7 @@ final class AppUiLinter {
       throws IOException {
     for (DesignSystemAsset asset : DesignSystemAssets.list()) {
       Path target = bundleRoot.resolve(asset.bundlePath());
-      if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+      if (!isBundleLocalRegularFile(bundleRoot, target)) {
         findings.add(
             strictFinding(
                 strict,
@@ -273,8 +273,8 @@ final class AppUiLinter {
    * @return {@code true} when the canonical CSS path is a real regular file
    */
   private static boolean designSystemCssPresent(Path bundleRoot) {
-    return Files.isRegularFile(
-        bundleRoot.resolve("static/crypta-ui/crypta-ui.css"), LinkOption.NOFOLLOW_LINKS);
+    return isBundleLocalRegularFile(
+        bundleRoot, bundleRoot.resolve("static/crypta-ui/crypta-ui.css"));
   }
 
   /**
@@ -583,8 +583,7 @@ final class AppUiLinter {
                   referencedPath));
         } else {
           Path file = bundleRoot.resolve(routeAssetPath).normalize();
-          if (!file.startsWith(bundleRoot)
-              || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+          if (!isBundleLocalRegularFile(bundleRoot, file)) {
             findings.add(
                 error(
                     "local-ui-reference-missing",
@@ -787,10 +786,10 @@ final class AppUiLinter {
   private static List<Path> uiTextFiles(
       Path bundleRoot, Path scanRoot, Collection<String> referencedPaths) throws IOException {
     LinkedHashSet<Path> files = new LinkedHashSet<>();
-    if (Files.isDirectory(scanRoot, LinkOption.NOFOLLOW_LINKS)) {
+    if (isBundleLocalDirectory(bundleRoot, scanRoot)) {
       try (var stream = Files.walk(scanRoot)) {
         stream
-            .filter(file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+            .filter(file -> isBundleLocalRegularFile(bundleRoot, file))
             .sorted()
             .forEach(files::add);
       }
@@ -799,12 +798,66 @@ final class AppUiLinter {
       String routeAssetPath = localRouteAssetPath(referencedPath);
       if (!routeAssetPath.isBlank()) {
         Path file = bundleRoot.resolve(routeAssetPath).normalize();
-        if (file.startsWith(bundleRoot) && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+        if (isBundleLocalRegularFile(bundleRoot, file)) {
           files.add(file);
         }
       }
     }
     return List.copyOf(files);
+  }
+
+  /**
+   * Checks whether a candidate file is a regular file reached without leaving the staged bundle.
+   *
+   * <p>{@link LinkOption#NOFOLLOW_LINKS} on {@link Files#isRegularFile(Path, LinkOption...)}
+   * protects only the final component. UI lint also refuses symlinked parent directories so a
+   * staged bundle cannot point {@code static/} or an asset subdirectory at host files outside the
+   * bundle and have those external bytes linted as if they were app-owned UI resources.
+   *
+   * @param bundleRoot normalized absolute bundle root
+   * @param file candidate file path
+   * @return {@code true} when the file is regular and every path component under the bundle root is
+   *     not a symbolic link
+   */
+  private static boolean isBundleLocalRegularFile(Path bundleRoot, Path file) {
+    return hasNoSymbolicLinkInPath(bundleRoot, file)
+        && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS);
+  }
+
+  /**
+   * Checks whether a candidate directory can be walked as part of the staged bundle.
+   *
+   * @param bundleRoot normalized absolute bundle root
+   * @param directory candidate directory path
+   * @return {@code true} when the directory exists under the bundle root without symlink components
+   */
+  private static boolean isBundleLocalDirectory(Path bundleRoot, Path directory) {
+    return hasNoSymbolicLinkInPath(bundleRoot, directory)
+        && Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS);
+  }
+
+  /**
+   * Rejects paths outside the bundle or paths that traverse symbolic links under the bundle root.
+   *
+   * @param bundleRoot normalized absolute bundle root
+   * @param candidate candidate file or directory path
+   * @return {@code true} when every candidate component from the root through the final path
+   *     element is lexical-bundle-local and not a symbolic link
+   */
+  private static boolean hasNoSymbolicLinkInPath(Path bundleRoot, Path candidate) {
+    Path normalizedRoot = bundleRoot.toAbsolutePath().normalize();
+    Path normalizedCandidate = candidate.toAbsolutePath().normalize();
+    if (!normalizedCandidate.startsWith(normalizedRoot) || Files.isSymbolicLink(normalizedRoot)) {
+      return false;
+    }
+    Path current = normalizedRoot;
+    for (Path segment : normalizedRoot.relativize(normalizedCandidate)) {
+      current = current.resolve(segment);
+      if (Files.isSymbolicLink(current)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
