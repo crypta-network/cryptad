@@ -15,8 +15,8 @@ import java.util.Optional;
  * the design-system stylesheet itself.
  *
  * <p>Callers provide the bundle-relative path separately so findings never include absolute local
- * paths. Remote imports are always fatal because app-owned UI must stay local; non-normalized local
- * imports follow the strict-mode severity chosen by the CLI.
+ * paths. Remote and scheme-like imports are always fatal because app-owned UI must stay local;
+ * non-normalized local imports follow the strict-mode severity chosen by the CLI.
  */
 final class StaticCssInspector {
   /** CSS directive that imports another stylesheet. */
@@ -31,9 +31,9 @@ final class StaticCssInspector {
   /**
    * Inspects CSS text for import rules that violate the app UI lint contract.
    *
-   * <p>The scanner reports remote imports as errors and local imports that are not normalized as
-   * strict-mode findings. It does not resolve imports or read additional files; the surrounding
-   * linter decides which CSS files are local and safe to scan.
+   * <p>The scanner reports remote and scheme-like non-local imports as errors and local imports
+   * that are not normalized as strict-mode findings. It does not resolve imports or read additional
+   * files; the surrounding linter decides which CSS files are local and safe to scan.
    *
    * @param css CSS text decoded from a local app UI file
    * @param path bundle-relative path used in emitted findings
@@ -70,6 +70,14 @@ final class StaticCssInspector {
               AppUiLinter.CATEGORY_CSP,
               AppUiLintSeverity.ERROR,
               "Remote CSS @import is not allowed.",
+              path));
+    } else if (isNonLocalReference(value)) {
+      findings.add(
+          new AppUiLintFinding(
+              "non-local-css-import",
+              AppUiLinter.CATEGORY_CSP,
+              AppUiLintSeverity.ERROR,
+              "CSS @import must reference a local bundle-relative stylesheet.",
               path));
     } else if (!isNormalizedLocalImport(value)) {
       findings.add(
@@ -208,6 +216,33 @@ final class StaticCssInspector {
     return normalized.startsWith("http://")
         || normalized.startsWith("https://")
         || normalized.startsWith("//");
+  }
+
+  /**
+   * Checks whether an import value uses a non-local URL scheme.
+   *
+   * <p>App-owned UI serves immutable bundle files under a self-only CSP. Scheme-like imports such
+   * as {@code data:}, {@code file:}, and extension-specific pseudo-protocols are therefore not
+   * bundle-relative resources even when they are not network remote URLs.
+   *
+   * @param value extracted import token without surrounding quotes
+   * @return {@code true} when the token begins with a URL scheme and colon
+   */
+  private static boolean isNonLocalReference(String value) {
+    int colonIndex = value.indexOf(':');
+    if (colonIndex <= 0 || !Character.isLetter(value.charAt(0))) {
+      return false;
+    }
+    for (int index = 1; index < colonIndex; index++) {
+      char character = value.charAt(index);
+      if (!Character.isLetterOrDigit(character)
+          && character != '+'
+          && character != '-'
+          && character != '.') {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

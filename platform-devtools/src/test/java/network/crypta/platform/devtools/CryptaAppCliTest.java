@@ -371,6 +371,61 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenEncodedLoadedAppScriptOmitsBootstrap_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("space app.js"), "console.log('loaded');\n", StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./space%20app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/space app.js"));
+  }
+
+  @Test
+  void uiLint_whenCssImportUsesNonLocalScheme_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.css"),
+        "\n@import url(\"data:text/css,body{}\");\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("non-local-css-import"));
+    assertTrue(result.err().contains("static/app.css"));
+  }
+
+  @Test
   void uiLint_whenPermissionDisclosureOmitsDeclaredPermission_expectStrictFailure()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");

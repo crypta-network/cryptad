@@ -21,6 +21,22 @@ class StaticCssInspectorTest {
   }
 
   @Test
+  void inspect_whenNonLocalImportSchemePresent_expectError() {
+    String css =
+        """
+        @import url("data:text/css,body{}");
+        @import "file:///tmp/reset.css";
+        """;
+
+    List<AppUiLintFinding> findings = StaticCssInspector.inspect(css, "static/app.css", false);
+
+    assertEquals(List.of("non-local-css-import", "non-local-css-import"), findingIds(findings));
+    assertEquals(
+        List.of(AppUiLintSeverity.ERROR, AppUiLintSeverity.ERROR),
+        findings.stream().map(AppUiLintFinding::severity).toList());
+  }
+
+  @Test
   void inspect_whenLocalImportIsNotNormalized_expectStrictSeverityControlsFindingSeverity() {
     String css =
         """
@@ -51,5 +67,9 @@ class StaticCssInspectorTest {
     List<AppUiLintFinding> findings = StaticCssInspector.inspect(css, "static/app.css", true);
 
     assertEquals(List.of(), findings);
+  }
+
+  private static List<String> findingIds(List<AppUiLintFinding> findings) {
+    return findings.stream().map(AppUiLintFinding::id).toList();
   }
 }

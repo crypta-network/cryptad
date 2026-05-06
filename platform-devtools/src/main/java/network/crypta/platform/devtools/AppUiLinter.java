@@ -324,7 +324,7 @@ final class AppUiLinter {
    *
    * @param bundleRoot normalized absolute bundle root used to relativize findings
    * @param scanRoot directory that contains the manifest-declared static entry
-   * @param loadedScripts bundle-relative script paths loaded by the static entry
+   * @param loadedScripts bundle-relative script references loaded by the static entry
    * @param strict whether advisory JavaScript findings should become errors
    * @param findings mutable finding list that receives text and JavaScript findings
    * @throws IOException if a candidate text file cannot be read
@@ -336,19 +336,21 @@ final class AppUiLinter {
       boolean strict,
       List<AppUiLintFinding> findings)
       throws IOException {
+    List<String> loadedScriptAssetPaths = localRouteAssetPaths(loadedScripts);
     ScriptScanResult scriptScan = ScriptScanResult.NONE;
     for (Path file : uiTextFiles(bundleRoot, scanRoot, loadedScripts)) {
       scriptScan =
-          scriptScan.merge(scanTextFile(bundleRoot, loadedScripts, strict, findings, file));
+          scriptScan.merge(
+              scanTextFile(bundleRoot, loadedScriptAssetPaths, strict, findings, file));
     }
-    addBootstrapMissingFindingIfNeeded(loadedScripts, strict, findings, scriptScan);
+    addBootstrapMissingFindingIfNeeded(loadedScriptAssetPaths, strict, findings, scriptScan);
   }
 
   /**
    * Scans one local UI text file and reports any loaded app-script state it contributes.
    *
    * @param bundleRoot normalized absolute bundle root used to relativize findings
-   * @param loadedScripts bundle-relative script paths loaded by the static entry
+   * @param loadedScripts decoded bundle-relative script asset paths loaded by the static entry
    * @param strict whether advisory JavaScript findings should become errors
    * @param findings mutable finding list that receives text and JavaScript findings
    * @param file candidate regular file found during UI scanning
@@ -419,7 +421,7 @@ final class AppUiLinter {
    * Scans one JavaScript file and reports whether it is a loaded app script with SDK bootstrap.
    *
    * @param bundleRoot normalized absolute bundle root used to classify loaded scripts
-   * @param loadedScripts bundle-relative script paths loaded by the static entry
+   * @param loadedScripts decoded bundle-relative script asset paths loaded by the static entry
    * @param strict whether advisory JavaScript findings should become errors
    * @param findings mutable finding list that receives JavaScript findings
    * @param file candidate JavaScript file
@@ -445,7 +447,7 @@ final class AppUiLinter {
   /**
    * Adds the SDK bootstrap finding after all local app scripts have been scanned.
    *
-   * @param loadedScripts bundle-relative script paths loaded by the static entry
+   * @param loadedScripts decoded bundle-relative script asset paths loaded by the static entry
    * @param strict whether the bootstrap finding should be warning or error severity
    * @param findings mutable finding list that receives the bootstrap finding
    * @param scriptScan aggregate app-script and bootstrap observations
@@ -466,6 +468,27 @@ final class AppUiLinter {
               "Local app JavaScript does not call CryptaPlatform.bootstrap.load(...).",
               findingPath));
     }
+  }
+
+  /**
+   * Converts loaded HTML references to route-decoded bundle asset paths.
+   *
+   * <p>HTML inspection keeps reference text in URL form so local-reference findings can point at
+   * the source attribute. JavaScript scanning compares against filesystem paths discovered during
+   * the bundle walk, so it needs the route-decoded asset path that the runtime resolver would use.
+   *
+   * @param referencedPaths bundle-relative URL references loaded by the static entry
+   * @return decoded route-safe asset paths in first-seen order
+   */
+  private static List<String> localRouteAssetPaths(Collection<String> referencedPaths) {
+    LinkedHashSet<String> assetPaths = new LinkedHashSet<>();
+    for (String referencedPath : referencedPaths) {
+      String assetPath = localRouteAssetPath(referencedPath);
+      if (!assetPath.isBlank()) {
+        assetPaths.add(assetPath);
+      }
+    }
+    return List.copyOf(assetPaths);
   }
 
   /**
