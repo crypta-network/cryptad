@@ -1,5 +1,6 @@
 package network.crypta.platform.devtools;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,6 +54,9 @@ final class AppUiLinter {
 
   /** Finding category for permission-disclosure consistency checks. */
   private static final String CATEGORY_PERMISSIONS = "permissions";
+
+  /** Percent-encoding marker used by app-owned UI route paths. */
+  private static final char PERCENT = '%';
 
   /** Pattern for direct Platform API calls that should normally go through the browser SDK. */
   private static final Pattern DIRECT_API_REFERENCE =
@@ -523,24 +527,136 @@ final class AppUiLinter {
       List<AppUiLintFinding> findings) {
     LinkedHashSet<String> checkedPaths = new LinkedHashSet<>();
     for (String referencedPath : referencedPaths) {
-      if (isLocalBundlePath(referencedPath) && checkedPaths.add(referencedPath)) {
-        Path file = bundleRoot.resolve(referencedPath).normalize();
-        if (!file.startsWith(bundleRoot) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+      if (isLocalReferenceCandidate(referencedPath) && checkedPaths.add(referencedPath)) {
+        String routeAssetPath = localRouteAssetPath(referencedPath);
+        if (routeAssetPath.isBlank()) {
           findings.add(
               error(
-                  "local-ui-reference-missing",
+                  "local-ui-reference-route-invalid",
                   CATEGORY_CSP,
                   "Local "
                       + referenceKind
-                      + " reference does not resolve to a regular file: "
+                      + " reference is not a valid app UI route asset path: "
                       + referencedPath,
                   referencedPath));
         } else {
-          addUnsupportedLocalReferenceFindingIfNeeded(
-              referencedPath, referenceKind, requiredContentTypePrefix, findings);
+          Path file = bundleRoot.resolve(routeAssetPath).normalize();
+          if (!file.startsWith(bundleRoot)
+              || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            findings.add(
+                error(
+                    "local-ui-reference-missing",
+                    CATEGORY_CSP,
+                    "Local "
+                        + referenceKind
+                        + " reference does not resolve to a regular file: "
+                        + routeAssetPath,
+                    referencedPath));
+          } else {
+            addUnsupportedLocalReferenceFindingIfNeeded(
+                routeAssetPath, referenceKind, requiredContentTypePrefix, findings);
+          }
         }
       }
     }
+  }
+
+  /**
+   * Resolves one local HTML reference using the app-owned UI route segment rules.
+   *
+   * <p>The linter starts from bundle-relative paths after HTML URL resolution, then applies the
+   * same asset-segment contract as the installed app UI route: percent-decoding happens before
+   * segment validation, and decoded traversal, embedded separators, drive-letter syntax, blank
+   * segments, control characters, and malformed percent escapes are rejected. The returned path is
+   * the decoded bundle asset path that the runtime resolver would receive.
+   *
+   * @param referencedPath normalized bundle-relative reference from the static entry
+   * @return the route-safe asset path, or an empty string when the route parser would reject it
+   */
+  private static String localRouteAssetPath(String referencedPath) {
+    if (referencedPath.isBlank() || referencedPath.startsWith("/")) {
+      return "";
+    }
+    String[] rawSegments = referencedPath.split("/", -1);
+    boolean trailingSlash = rawSegments.length > 1 && rawSegments[rawSegments.length - 1].isEmpty();
+    int segmentCount = trailingSlash ? rawSegments.length - 1 : rawSegments.length;
+    List<String> decodedSegments = new ArrayList<>(segmentCount);
+    for (int index = 0; index < segmentCount; index++) {
+      String segment = decodedRouteSegment(rawSegments[index]);
+      if (!isRouteSafeAssetSegment(segment)) {
+        return "";
+      }
+      decodedSegments.add(segment);
+    }
+    return String.join("/", decodedSegments);
+  }
+
+  /**
+   * Decodes one raw route segment using the app UI route's percent-encoding rules.
+   *
+   * @param rawSegment raw segment from a browser URL path
+   * @return decoded UTF-8 segment, or an empty string when the encoding is malformed
+   */
+  private static String decodedRouteSegment(String rawSegment) {
+    if (rawSegment.isEmpty()) {
+      return "";
+    }
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream(rawSegment.length());
+    int index = 0;
+    while (index < rawSegment.length()) {
+      char character = rawSegment.charAt(index);
+      if (character == PERCENT) {
+        int high = hexDigit(rawSegment, index + 1);
+        int low = hexDigit(rawSegment, index + 2);
+        if (high < 0 || low < 0) {
+          return "";
+        }
+        bytes.write((high << 4) + low);
+        index += 3;
+      } else if (character > 0x7F) {
+        bytes.writeBytes(Character.toString(character).getBytes(StandardCharsets.UTF_8));
+        index++;
+      } else {
+        bytes.write((byte) character);
+        index++;
+      }
+    }
+    return bytes.toString(StandardCharsets.UTF_8);
+  }
+
+  /**
+   * Reads one hexadecimal percent-escape digit.
+   *
+   * @param rawSegment raw segment that contains the percent escape
+   * @param index character index to read
+   * @return decoded digit value, or {@code -1} when the escape is incomplete or invalid
+   */
+  private static int hexDigit(String rawSegment, int index) {
+    return index >= rawSegment.length() ? -1 : Character.digit(rawSegment.charAt(index), 16);
+  }
+
+  /**
+   * Checks one decoded app UI asset path segment against the runtime route denylist.
+   *
+   * @param segment decoded path segment
+   * @return {@code true} when the segment is safe to pass to bundle-relative resolution
+   */
+  private static boolean isRouteSafeAssetSegment(String segment) {
+    if (segment.isBlank()
+        || segment.equals(".")
+        || segment.equals("..")
+        || segment.indexOf('/') >= 0
+        || segment.indexOf('\\') >= 0
+        || segment.indexOf(':') >= 0
+        || segment.indexOf('\0') >= 0) {
+      return false;
+    }
+    for (int index = 0; index < segment.length(); index++) {
+      if (Character.isISOControl(segment.charAt(index))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -638,8 +754,9 @@ final class AppUiLinter {
       }
     }
     for (String referencedPath : referencedPaths) {
-      if (isLocalBundlePath(referencedPath)) {
-        Path file = bundleRoot.resolve(referencedPath).normalize();
+      String routeAssetPath = localRouteAssetPath(referencedPath);
+      if (!routeAssetPath.isBlank()) {
+        Path file = bundleRoot.resolve(routeAssetPath).normalize();
         if (file.startsWith(bundleRoot) && Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
           files.add(file);
         }
@@ -680,9 +797,10 @@ final class AppUiLinter {
    * @return {@code true} when the path refers to a local app script
    */
   static boolean isAppScript(String scriptPath) {
-    return isLocalBundlePath(scriptPath)
-        && !isSdkScript(scriptPath)
-        && !scriptPath.startsWith("static/crypta-ui/");
+    String routeAssetPath = localRouteAssetPath(scriptPath);
+    return !routeAssetPath.isBlank()
+        && !isSdkAssetPath(routeAssetPath)
+        && !routeAssetPath.startsWith("static/crypta-ui/");
   }
 
   /**
@@ -692,23 +810,33 @@ final class AppUiLinter {
    * @return {@code true} when the local bundle path ends in {@code crypta-platform.js}
    */
   static boolean isSdkScript(String scriptPath) {
-    return isLocalBundlePath(scriptPath) && fileName(scriptPath).equals("crypta-platform.js");
+    return isSdkAssetPath(localRouteAssetPath(scriptPath));
   }
 
   /**
-   * Checks whether a normalized reference is safe to resolve under the bundle root.
+   * Checks whether a route-normalized script path names the browser SDK.
+   *
+   * @param assetPath decoded bundle-relative asset path produced by {@link #localRouteAssetPath}
+   * @return {@code true} when the final path segment is {@code crypta-platform.js}
+   */
+  private static boolean isSdkAssetPath(String assetPath) {
+    return !assetPath.isBlank() && fileName(assetPath).equals("crypta-platform.js");
+  }
+
+  /**
+   * Checks whether a normalized reference should be resolved against the app bundle.
    *
    * @param path candidate bundle-relative reference
-   * @return {@code true} when the reference is local, relative, non-empty, and traversal-free
+   * @return {@code true} for references that are not remote, absolute, or JavaScript URLs
    */
-  private static boolean isLocalBundlePath(String path) {
+  private static boolean isLocalReferenceCandidate(String path) {
     String normalized = path.toLowerCase(Locale.ROOT);
     return !normalized.isBlank()
         && !normalized.startsWith("http://")
         && !normalized.startsWith("https://")
         && !normalized.startsWith("//")
         && !normalized.startsWith("/")
-        && !normalized.contains("..");
+        && !normalized.startsWith("javascript:");
   }
 
   /**

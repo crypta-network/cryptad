@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -364,6 +365,27 @@ final class AppTemplateScaffolder {
   }
 
   /**
+   * Normalizes permission spellings to the manifest parser's canonical comparison form.
+   *
+   * <p>The parser accepts case-insensitive permission identifiers and stores them lower-case.
+   * Rendering the same normalized values into both {@code app.permissions} and the static
+   * disclosure keeps a freshly scaffolded app strict-lint clean even when the CLI input used mixed
+   * case. Invalid or blank values are intentionally preserved after trimming/lower-casing so the
+   * production manifest parser still reports the canonical validation error for the generated
+   * manifest.
+   *
+   * @param permissions CLI-supplied permission strings in request order
+   * @return immutable normalized permission strings with duplicates removed in first-seen order
+   */
+  private static List<String> normalizePermissions(List<String> permissions) {
+    LinkedHashSet<String> normalized = new LinkedHashSet<>();
+    for (String permission : permissions) {
+      normalized.add(permission.trim().toLowerCase(Locale.ROOT));
+    }
+    return List.copyOf(normalized);
+  }
+
+  /**
    * Renders the README that explains the local developer workflow.
    *
    * @param request normalized scaffold request that supplies app name, id, and version
@@ -459,9 +481,9 @@ final class AppTemplateScaffolder {
    * Immutable input used to render one scaffolded staged bundle.
    *
    * <p>The request stores the developer-facing values accepted by the CLI and applies normalization
-   * in a separate step so command parsing can stay simple. Permission values are copied as
-   * supplied; the manifest parser validates their syntax once {@link #manifestContent()} has
-   * rendered the generated properties.
+   * in a separate step so command parsing can stay simple. Permission values are normalized to the
+   * same lower-case form as the manifest parser; the parser still validates their syntax once
+   * {@link #manifestContent()} has rendered the generated properties.
    *
    * @param directory target bundle directory to create or overwrite
    * @param appId manifest app identifier supplied by the developer
@@ -500,7 +522,8 @@ final class AppTemplateScaffolder {
      *
      * <p>The directory becomes absolute and normalized, the app identifier is passed through the
      * production manifest normalizer, and name/version strings are trimmed. Permission values are
-     * left in their original order so the generated manifest reflects the CLI input order.
+     * lower-cased, trimmed, and deduplicated in first-seen order so the generated manifest and
+     * static disclosure use the same canonical identifiers.
      *
      * @return normalized request ready for scaffold file generation
      */
@@ -511,7 +534,7 @@ final class AppTemplateScaffolder {
           name.trim(),
           version.trim(),
           uiMode,
-          permissions,
+          normalizePermissions(permissions),
           overwrite);
     }
 

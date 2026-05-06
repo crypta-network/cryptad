@@ -93,6 +93,35 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void init_whenPermissionCaseNeedsNormalization_expectDisclosureAndManifestUseCanonicalValue()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "Queue.Read");
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
+    String indexHtml =
+        Files.readString(appDir.resolve("static").resolve("index.html"), StandardCharsets.UTF_8);
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(manifest.contains("app.permissions=queue.read\n"));
+    assertTrue(indexHtml.contains("<code>queue.read</code>"));
+    assertFalse(indexHtml.contains("Queue.Read"));
+  }
+
+  @Test
   void init_whenShellPanelRequested_expectManifestUsesShellPanelWithoutStaticTemplate()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
@@ -279,6 +308,66 @@ class CryptaAppCliTest {
     assertTrue(result.err().contains("local-ui-reference-unsupported-type"));
     assertTrue(result.err().contains("static/app.jsx"));
     assertTrue(result.err().contains("static/app.scss"));
+  }
+
+  @Test
+  void uiLint_whenLocalReferencesAreNotRouteSafe_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(staticDir.resolve("foo:bar.css"), "body {}\n", StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "../../app.js")
+            .replace("./app.css", "./foo:bar.css"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-route-invalid"));
+    assertTrue(result.err().contains("../app.js"));
+    assertTrue(result.err().contains("static/foo:bar.css"));
+  }
+
+  @Test
+  void uiLint_whenLocalReferenceUsesRouteEncoding_expectSuccess() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("space app.js"),
+        Files.readString(staticDir.resolve("app.js"), StandardCharsets.UTF_8),
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./space%20app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
   }
 
   @Test
