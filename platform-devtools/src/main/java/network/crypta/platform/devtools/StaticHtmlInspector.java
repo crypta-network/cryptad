@@ -747,7 +747,10 @@ final class StaticHtmlInspector {
    * <p>Query strings and fragments are removed before path normalization because lint findings need
    * bundle file paths, not request URLs. Remote, absolute, protocol-relative, and {@code
    * javascript:} references are returned unchanged so safety checks can report them without
-   * resolving them locally.
+   * resolving them locally. Relative browser paths are normalized with slash-separated string logic
+   * instead of host {@link Path} parsing so route-invalid URL text such as custom schemes,
+   * drive-letter-looking values, or malformed asset names is reported as a lint finding on every
+   * supported operating system.
    *
    * @param value raw attribute value from {@code href} or {@code src}
    * @param entryDirectory bundle-relative directory containing the inspected entry
@@ -769,8 +772,72 @@ final class StaticHtmlInspector {
         || normalized.toLowerCase(Locale.ROOT).startsWith("javascript:")) {
       return normalized;
     }
-    Path resolved = entryDirectory.resolve(normalized.replace('\\', '/')).normalize();
-    return resolved.toString().replace('\\', '/');
+    return normalizeRelativeBrowserPath(entryDirectory, normalized);
+  }
+
+  /**
+   * Resolves one relative browser reference against the entry directory without host path parsing.
+   *
+   * @param entryDirectory bundle-relative directory that contains the inspected entry
+   * @param reference query- and fragment-free browser reference
+   * @return slash-separated bundle-relative path after dot-segment normalization
+   */
+  private static String normalizeRelativeBrowserPath(Path entryDirectory, String reference) {
+    List<String> segments = new ArrayList<>();
+    appendPathSegments(segments, entryDirectory.toString().replace('\\', '/'), false);
+    appendPathSegments(segments, reference.replace('\\', '/'), true);
+    return String.join("/", segments);
+  }
+
+  /**
+   * Appends path segments while applying URL-style dot-segment normalization.
+   *
+   * @param segments mutable normalized segment list
+   * @param path slash-separated path text
+   * @param preserveEmptySegments whether embedded empty segments should remain lintable
+   */
+  private static void appendPathSegments(
+      List<String> segments, String path, boolean preserveEmptySegments) {
+    if (path.isEmpty()) {
+      return;
+    }
+    String[] rawSegments = path.split("/", -1);
+    for (int index = 0; index < rawSegments.length; index++) {
+      String segment = rawSegments[index];
+      if (segment.equals("..")) {
+        normalizeParentSegment(segments);
+      } else if (!segment.equals(".")
+          && (!segment.isEmpty()
+              || shouldKeepEmptySegment(rawSegments, index, preserveEmptySegments))) {
+        segments.add(segment);
+      }
+    }
+  }
+
+  /**
+   * Applies one parent-directory segment to a normalized relative path.
+   *
+   * @param segments mutable normalized segment list
+   */
+  private static void normalizeParentSegment(List<String> segments) {
+    if (!segments.isEmpty() && !segments.getLast().equals("..")) {
+      segments.removeLast();
+    } else {
+      segments.add("..");
+    }
+  }
+
+  /**
+   * Checks whether an empty raw segment should be preserved for route validation.
+   *
+   * @param rawSegments complete raw segment array
+   * @param index current raw segment index
+   * @param preserveEmptySegments whether reference-path empty segments should remain visible
+   * @return {@code true} for embedded empty segments in relative browser references
+   */
+  private static boolean shouldKeepEmptySegment(
+      String[] rawSegments, int index, boolean preserveEmptySegments) {
+    return preserveEmptySegments && index > 0 && index < rawSegments.length - 1;
   }
 
   /**

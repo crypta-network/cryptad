@@ -32,6 +32,24 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void normalizedReferences_whenReferenceContainsRouteInvalidCharacters_expectLintablePaths() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <link rel="stylesheet" href="foo:bar.css">
+            <link rel="stylesheet" href="data:text/css,body{}">
+            <script src="main:debug.js"></script>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertEquals(
+        List.of("static/foo:bar.css", "static/data:text/css,body{}"),
+        inspector.normalizedStylesheetHrefs());
+    assertEquals(List.of("static/main:debug.js"), inspector.normalizedScriptSources());
+  }
+
+  @Test
   void sdkFindings_whenLocalAppScriptPrecedesSdk_expectStrictOrderError() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(
