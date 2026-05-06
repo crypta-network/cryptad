@@ -773,17 +773,172 @@ final class StaticHtmlInspector {
   /**
    * Parses simple HTML attributes from raw tag text.
    *
+   * <p>Attribute values are entity-decoded once, matching the browser's treatment of URL-bearing
+   * attributes before scheme interpretation. This keeps safety checks from missing values whose
+   * scheme separators are written as character references. The decoder intentionally supports the
+   * numeric references and small named-reference set that affect URL schemes and separators;
+   * unknown or malformed references are left intact.
+   *
    * @param attributeText raw attribute text captured from a start tag
-   * @return lower-case attribute names mapped to unquoted values in source order
+   * @return lower-case attribute names mapped to entity-decoded, unquoted values in source order
    */
   private static Map<String, String> attributes(String attributeText) {
     java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
     Matcher matcher = ATTRIBUTE_PATTERN.matcher(attributeText);
     while (matcher.find()) {
-      String value = matcher.group(2) == null ? "" : unquote(matcher.group(2));
+      String value =
+          matcher.group(2) == null ? "" : decodeHtmlCharacterReferences(unquote(matcher.group(2)));
       attributes.put(matcher.group(1).toLowerCase(Locale.ROOT), value);
     }
     return attributes;
+  }
+
+  /**
+   * Decodes HTML character references used in attribute values.
+   *
+   * @param value unquoted raw attribute value
+   * @return value with supported character references decoded
+   */
+  private static String decodeHtmlCharacterReferences(String value) {
+    int firstAmpersand = value.indexOf('&');
+    if (firstAmpersand < 0) {
+      return value;
+    }
+    StringBuilder decoded = new StringBuilder(value.length());
+    decoded.append(value, 0, firstAmpersand);
+    int index = firstAmpersand;
+    while (index < value.length()) {
+      char character = value.charAt(index);
+      if (character == '&') {
+        CharacterReference reference = readCharacterReference(value, index + 1);
+        if (reference.decoded() != null) {
+          decoded.append(reference.decoded());
+          index = reference.nextIndex();
+        } else {
+          decoded.append(character);
+          index++;
+        }
+      } else {
+        decoded.append(character);
+        index++;
+      }
+    }
+    return decoded.toString();
+  }
+
+  /**
+   * Reads one named or numeric character reference after an ampersand.
+   *
+   * @param value complete attribute value
+   * @param offset first character after {@code &}
+   * @return decoded reference, or a missing result when the reference is malformed or unsupported
+   */
+  private static CharacterReference readCharacterReference(String value, int offset) {
+    if (offset >= value.length()) {
+      return CharacterReference.missing(offset);
+    }
+    if (value.charAt(offset) == '#') {
+      return readNumericCharacterReference(value, offset + 1);
+    }
+    return readNamedCharacterReference(value, offset);
+  }
+
+  /**
+   * Reads a decimal or hexadecimal numeric character reference.
+   *
+   * @param value complete attribute value
+   * @param offset first character after {@code &#}
+   * @return decoded reference, or a missing result when the numeric reference is invalid
+   */
+  private static CharacterReference readNumericCharacterReference(String value, int offset) {
+    int radix = 10;
+    int digitsStart = offset;
+    if (offset < value.length() && isHtmlHexMarker(value.charAt(offset))) {
+      radix = 16;
+      digitsStart = offset + 1;
+    }
+    int position = digitsStart;
+    while (position < value.length() && Character.digit(value.charAt(position), radix) >= 0) {
+      position++;
+    }
+    if (position == digitsStart || position >= value.length() || value.charAt(position) != ';') {
+      return CharacterReference.missing(offset);
+    }
+    String digits = value.substring(digitsStart, position);
+    String decoded = decodeCodePoint(digits, radix);
+    return decoded == null
+        ? CharacterReference.missing(offset)
+        : CharacterReference.found(decoded, position + 1);
+  }
+
+  /**
+   * Checks whether a numeric character reference switches to hexadecimal notation.
+   *
+   * @param character character after {@code &#}
+   * @return {@code true} for {@code x} and {@code X}
+   */
+  private static boolean isHtmlHexMarker(char character) {
+    return character == 'x' || character == 'X';
+  }
+
+  /**
+   * Decodes one numeric character-reference code point.
+   *
+   * @param digits numeric digits captured from the reference
+   * @param radix numeric radix, either 10 or 16
+   * @return decoded code point as a string, or {@code null} when invalid
+   */
+  private static String decodeCodePoint(String digits, int radix) {
+    try {
+      int codePoint = Integer.parseInt(digits, radix);
+      if (!Character.isValidCodePoint(codePoint)
+          || (codePoint <= Character.MAX_VALUE && Character.isSurrogate((char) codePoint))) {
+        return null;
+      }
+      return Character.toString(codePoint);
+    } catch (NumberFormatException _) {
+      return null;
+    }
+  }
+
+  /**
+   * Reads a small set of named character references relevant to URL attributes.
+   *
+   * @param value complete attribute value
+   * @param offset first character after {@code &}
+   * @return decoded reference, or a missing result when the name is malformed or unsupported
+   */
+  private static CharacterReference readNamedCharacterReference(String value, int offset) {
+    int position = offset;
+    while (position < value.length() && Character.isLetterOrDigit(value.charAt(position))) {
+      position++;
+    }
+    if (position == offset || position >= value.length() || value.charAt(position) != ';') {
+      return CharacterReference.missing(offset);
+    }
+    String decoded = decodeNamedCharacterReference(value.substring(offset, position));
+    return decoded == null
+        ? CharacterReference.missing(offset)
+        : CharacterReference.found(decoded, position + 1);
+  }
+
+  /**
+   * Decodes common named references that can affect URL safety checks.
+   *
+   * @param name entity name without {@code &} or {@code ;}
+   * @return decoded text, or {@code null} for unsupported names
+   */
+  private static String decodeNamedCharacterReference(String name) {
+    return switch (name) {
+      case "amp" -> "&";
+      case "apos" -> "'";
+      case "colon" -> ":";
+      case "gt" -> ">";
+      case "lt" -> "<";
+      case "quot" -> "\"";
+      case "sol" -> "/";
+      default -> null;
+    };
   }
 
   /**
@@ -943,6 +1098,22 @@ final class StaticHtmlInspector {
    */
   private static String stripTags(String value) {
     return value.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
+  }
+
+  /**
+   * Result of reading one HTML character reference.
+   *
+   * @param decoded decoded text, or {@code null} when no supported reference was present
+   * @param nextIndex next character offset after the consumed reference
+   */
+  private record CharacterReference(String decoded, int nextIndex) {
+    private static CharacterReference found(String decoded, int nextIndex) {
+      return new CharacterReference(decoded, nextIndex);
+    }
+
+    private static CharacterReference missing(int nextIndex) {
+      return new CharacterReference(null, nextIndex);
+    }
   }
 
   /**

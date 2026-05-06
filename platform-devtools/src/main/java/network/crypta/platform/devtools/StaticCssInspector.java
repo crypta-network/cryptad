@@ -93,22 +93,23 @@ final class StaticCssInspector {
   /**
    * Reads the first URL-like token after a CSS {@code @import} directive.
    *
-   * <p>This method intentionally recognizes the same small grammar the previous regex handled:
-   * whitespace after {@code @import}, an optional {@code url(} wrapper, optional surrounding
-   * quotes, and a token terminated by quotes, whitespace, {@code ;}, or {@code )}. It advances at
-   * least past the directive offset for malformed imports so callers can continue scanning in
-   * linear time.
+   * <p>This method intentionally recognizes a small CSS token subset: whitespace after {@code
+   * @import} followed by an optional {@code url(} wrapper, or the compact valid form where a quoted
+   * string starts immediately after {@code @import}. It does not treat identifier continuations such
+   * as {@code @importfoo} or {@code @importurl(...)} as import rules. The scanner advances at least
+   * past the directive offset for malformed imports so callers can continue scanning in linear time.
    *
    * @param css CSS text decoded from a local app UI file
    * @param offset position immediately after {@code @import}
    * @return extracted value and the next safe scan position
    */
   private static ImportValue readImportValue(String css, int offset) {
-    if (!hasWhitespaceAt(css, offset)) {
+    boolean hasWhitespace = hasWhitespaceAt(css, offset);
+    if (!hasWhitespace && !hasQuoteAt(css, offset)) {
       return ImportValue.missing(offset);
     }
-    int position = skipWhitespace(css, offset);
-    if (startsWithUrlFunction(css, position)) {
+    int position = hasWhitespace ? skipWhitespace(css, offset) : offset;
+    if (hasWhitespace && startsWithUrlFunction(css, position)) {
       position = skipWhitespace(css, position + URL_FUNCTION_PREFIX.length());
     }
     if (position >= css.length()) {
@@ -153,6 +154,17 @@ final class StaticCssInspector {
    */
   private static boolean hasWhitespaceAt(String css, int offset) {
     return offset < css.length() && Character.isWhitespace(css.charAt(offset));
+  }
+
+  /**
+   * Checks whether a position contains a CSS quote token.
+   *
+   * @param css CSS text being scanned
+   * @param offset candidate character position
+   * @return {@code true} when the offset is in range and points at a quote
+   */
+  private static boolean hasQuoteAt(String css, int offset) {
+    return offset < css.length() && isQuote(css.charAt(offset));
   }
 
   /**

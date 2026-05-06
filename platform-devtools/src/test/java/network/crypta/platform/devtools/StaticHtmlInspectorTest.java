@@ -187,6 +187,31 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void safetyFindings_whenUrlSchemesUseCharacterReferences_expectCspFindings() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <html lang="en">
+              <head>
+                <link rel="stylesheet" href="https&#58;//cdn.example.invalid/app.css">
+              </head>
+              <body>
+                <a href="javascript&#58;alert(1)">Bad URL</a>
+                <script src="https&colon;&sol;&sol;cdn.example.invalid/app.js"></script>
+              </body>
+            </html>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    Set<String> findingIds = ids(inspector.safetyFindings());
+
+    assertTrue(findingIds.contains("remote-stylesheet"));
+    assertTrue(findingIds.contains("javascript-url"));
+    assertTrue(findingIds.contains("remote-script"));
+  }
+
+  @Test
   void mentionedPermissionsInDisclosure_whenDisclosureContainsPermissions_expectStableSet() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(

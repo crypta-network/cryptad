@@ -21,6 +21,19 @@ class StaticCssInspectorTest {
   }
 
   @Test
+  void inspect_whenCompactQuotedRemoteImportPresent_expectError() {
+    String css =
+        """
+        @import"https://cdn.example.invalid/reset.css";
+        @importfoo"https://cdn.example.invalid/ignored.css";
+        """;
+
+    List<AppUiLintFinding> findings = StaticCssInspector.inspect(css, "static/app.css", true);
+
+    assertEquals(List.of("remote-css-import"), findingIds(findings));
+  }
+
+  @Test
   void inspect_whenNonLocalImportSchemePresent_expectError() {
     String css =
         """
