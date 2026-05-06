@@ -1639,8 +1639,12 @@ def source_ui_adoption_details(
     mentioned_permissions = set(
         re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
     )
+    omitted = sorted(permissions - mentioned_permissions)
     undeclared = sorted(mentioned_permissions - permissions)
     details["mentionedPermissions"] = sorted(mentioned_permissions)
+    details["omittedPermissions"] = omitted
+    if details["hasPermissionDisclosure"] and omitted:
+        errors.append("permission disclosure omits declared permissions: " + ",".join(omitted))
     if undeclared:
         errors.append(
             "permission disclosure mentions undeclared permissions: " + ",".join(undeclared)
@@ -2664,6 +2668,28 @@ def run_self_test(repo_root: Path) -> None:
             )
         script_errors, _ = validate_static_ui_files(static_dir, env_settings)
     assert "index.html must load crypta-platform.js before app.js" in script_errors, script_errors
+    with tempfile.TemporaryDirectory(prefix="cryptad-app-adoption-self-test-") as adoption_name:
+        adoption_static_dir = Path(adoption_name)
+        adoption_static_dir.joinpath("index.html").write_text(
+            '<!doctype html><html lang="en"><head>'
+            '<link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">'
+            '<link rel="stylesheet" href="./crypta-ui/crypta-ui.css">'
+            '<link rel="stylesheet" href="./app.css">'
+            '</head><body class="cr-app"><main class="cr-shell">'
+            '<section class="cr-permission-summary" data-crypta-permission-summary>'
+            "<code>queue.read</code>"
+            "</section></main></body></html>\n",
+            encoding="utf-8",
+        )
+        adoption_errors, adoption_details = source_ui_adoption_details(
+            adoption_static_dir,
+            {"queue.read", "queue.write"},
+            env_settings,
+        )
+    assert (
+        "permission disclosure omits declared permissions: queue.write" in adoption_errors
+    ), adoption_errors
+    assert adoption_details["omittedPermissions"] == ["queue.write"], adoption_details
     scrubbed = scrub_text("key file /mnt/secrets/signing/key.pem token=hunter2 USK@private/insert", repo_root)
     assert "/mnt/secrets/signing/key.pem" not in scrubbed
     assert "hunter2" not in scrubbed

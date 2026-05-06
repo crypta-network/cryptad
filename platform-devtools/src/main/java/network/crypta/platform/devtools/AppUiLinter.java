@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.appui.AppUiContentTypes;
 import network.crypta.platform.designsystem.DesignSystemAsset;
 import network.crypta.platform.designsystem.DesignSystemAssets;
 
@@ -49,6 +50,9 @@ final class AppUiLinter {
 
   /** Finding category for UI safety checks that protect app/session credential boundaries. */
   private static final String CATEGORY_SAFETY = "safety";
+
+  /** Finding category for permission-disclosure consistency checks. */
+  private static final String CATEGORY_PERMISSIONS = "permissions";
 
   /** Pattern for direct Platform API calls that should normally go through the browser SDK. */
   private static final Pattern DIRECT_API_REFERENCE =
@@ -123,8 +127,8 @@ final class AppUiLinter {
     findings.addAll(html.safetyFindings());
     findings.addAll(html.accessibilityFindings(strict, designSystemCssPresent(bundleRoot)));
     findings.addAll(html.sdkFindings(strict));
-    addMissingLocalReferenceFindings(bundleRoot, scriptSources, "script", findings);
-    addMissingLocalReferenceFindings(bundleRoot, stylesheetHrefs, "stylesheet", findings);
+    addLocalReferenceFindings(bundleRoot, scriptSources, "script", "text/javascript", findings);
+    addLocalReferenceFindings(bundleRoot, stylesheetHrefs, "stylesheet", "text/css", findings);
     addPermissionFindings(manifest, html, entryBundlePath, strict, findings);
     Path scanRoot =
         entryDirectory.toString().isBlank() ? bundleRoot : bundleRoot.resolve(entryDirectory);
@@ -275,17 +279,31 @@ final class AppUiLinter {
           strictFinding(
               strict,
               "permission-disclosure-missing",
-              "permissions",
+              CATEGORY_PERMISSIONS,
               "App declares permissions but the UI has no visible permission disclosure section.",
               entryBundlePath));
     }
-    for (String mentionedPermission : html.mentionedPermissionsInDisclosure()) {
+    Set<String> mentionedPermissions = html.mentionedPermissionsInDisclosure();
+    if (!manifest.permissions().isEmpty() && html.hasPermissionDisclosure()) {
+      for (String declaredPermission : manifest.permissions()) {
+        if (!mentionedPermissions.contains(declaredPermission)) {
+          findings.add(
+              strictFinding(
+                  strict,
+                  "permission-disclosure-missing-permission",
+                  CATEGORY_PERMISSIONS,
+                  "Permission disclosure omits declared permission: " + declaredPermission,
+                  entryBundlePath));
+        }
+      }
+    }
+    for (String mentionedPermission : mentionedPermissions) {
       if (!manifest.permissions().contains(mentionedPermission)) {
         findings.add(
             strictFinding(
                 strict,
                 "permission-disclosure-undeclared-permission",
-                "permissions",
+                CATEGORY_PERMISSIONS,
                 "Permission disclosure mentions undeclared permission: " + mentionedPermission,
                 entryBundlePath));
       }
@@ -481,23 +499,27 @@ final class AppUiLinter {
   }
 
   /**
-   * Adds errors for local script and stylesheet references that cannot be served from the bundle.
+   * Adds errors for local script and stylesheet references that cannot load at runtime.
    *
    * <p>HTML inspection already reports remote, absolute, and traversal-shaped resource references
    * as CSP/safety findings. This check handles the remaining local-resource contract: every local
    * entry-point script or stylesheet that the browser will try to load must resolve to a regular
-   * file inside the staged bundle. Missing files are reported before the JavaScript and CSS scans
-   * so strict validation cannot pass an app UI whose SDK, app script, or stylesheet was omitted.
+   * file inside the staged bundle and must use the same executable/applicable MIME mapping as the
+   * app-owned UI server. Missing files and unsupported content types are reported before the
+   * JavaScript and CSS scans so strict validation cannot pass an app UI whose SDK, app script, or
+   * stylesheet was omitted or will be served as opaque bytes under {@code nosniff}.
    *
    * @param bundleRoot normalized absolute bundle root
    * @param referencedPaths normalized bundle-relative paths referenced by the static entry
    * @param referenceKind human-readable resource kind for the finding message
-   * @param findings mutable finding list that receives missing-reference errors
+   * @param requiredContentTypePrefix content-type prefix required for this reference kind
+   * @param findings mutable finding list that receives local-reference errors
    */
-  private static void addMissingLocalReferenceFindings(
+  private static void addLocalReferenceFindings(
       Path bundleRoot,
       Collection<String> referencedPaths,
       String referenceKind,
+      String requiredContentTypePrefix,
       List<AppUiLintFinding> findings) {
     LinkedHashSet<String> checkedPaths = new LinkedHashSet<>();
     for (String referencedPath : referencedPaths) {
@@ -513,8 +535,46 @@ final class AppUiLinter {
                       + " reference does not resolve to a regular file: "
                       + referencedPath,
                   referencedPath));
+        } else {
+          addUnsupportedLocalReferenceFindingIfNeeded(
+              referencedPath, referenceKind, requiredContentTypePrefix, findings);
         }
       }
+    }
+  }
+
+  /**
+   * Adds an error when a local entry reference resolves but will be served with the wrong MIME
+   * type.
+   *
+   * <p>The app UI runtime sends {@code X-Content-Type-Options: nosniff}; a script or stylesheet
+   * that maps to {@link AppUiContentTypes#OCTET_STREAM} exists on disk but still will not execute
+   * or apply in the browser. Keeping this check tied to {@link AppUiContentTypes} avoids a linter
+   * allowlist that drifts from the server-side static asset behavior.
+   *
+   * @param referencedPath normalized bundle-relative path referenced by the static entry
+   * @param referenceKind human-readable resource kind for the finding message
+   * @param requiredContentTypePrefix content-type prefix required for this reference kind
+   * @param findings mutable finding list that receives unsupported-type errors
+   */
+  private static void addUnsupportedLocalReferenceFindingIfNeeded(
+      String referencedPath,
+      String referenceKind,
+      String requiredContentTypePrefix,
+      List<AppUiLintFinding> findings) {
+    String contentType = AppUiContentTypes.forPath(referencedPath);
+    if (!contentType.startsWith(requiredContentTypePrefix)) {
+      findings.add(
+          error(
+              "local-ui-reference-unsupported-type",
+              CATEGORY_CSP,
+              "Local "
+                  + referenceKind
+                  + " reference uses unsupported app UI content type "
+                  + contentType
+                  + ": "
+                  + referencedPath,
+              referencedPath));
     }
   }
 

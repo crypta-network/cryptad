@@ -250,6 +250,70 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenLocalScriptAndStylesheetUseUnsupportedTypes_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.move(staticDir.resolve("app.js"), staticDir.resolve("app.jsx"));
+    Files.move(staticDir.resolve("app.css"), staticDir.resolve("app.scss"));
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "./app.jsx")
+            .replace("./app.css", "./app.scss"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-unsupported-type"));
+    assertTrue(result.err().contains("static/app.jsx"));
+    assertTrue(result.err().contains("static/app.scss"));
+  }
+
+  @Test
+  void uiLint_whenPermissionDisclosureOmitsDeclaredPermission_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read",
+        "--permission",
+        "queue.write");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("              <li><code>queue.write</code></li>\n", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("permission-disclosure-missing-permission"));
+    assertTrue(result.err().contains("queue.write"));
+  }
+
+  @Test
   void validate_whenStaticUiEntryUsesCustomRelativePath_expectStrictUiLintSuccess()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");

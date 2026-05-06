@@ -11,6 +11,7 @@ val mainSourceSet = sourceSets.named("main")
 dependencies {
   implementation(project(":platform-design-system"))
   implementation(project(":platform-api")) { isTransitive = false }
+  implementation(project(":platform-app-ui")) { isTransitive = false }
   implementation(project(":platform-appcatalog"))
   implementation(project(":platform-appdist"))
   implementation(project(":platform-sdk-js"))
