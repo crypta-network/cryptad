@@ -682,6 +682,40 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenDesignSystemTokensLoadAfterBaseCss_expectStrictOrderFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                """,
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-css-order"));
+  }
+
+  @Test
   void uiLint_whenUiModeIsNone_expectNotApplicableSuccess() {
     Path appDir = tempDir.resolve("sample-app");
     runCli(

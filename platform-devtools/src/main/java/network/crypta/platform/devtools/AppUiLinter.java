@@ -208,15 +208,17 @@ final class AppUiLinter {
               "index.html does not link crypta-ui.css.",
               entryBundlePath));
     }
-    if (firstAppCss >= 0
-        && ((tokensIndex >= 0 && tokensIndex > firstAppCss)
-            || (uiIndex >= 0 && uiIndex > firstAppCss))) {
+    if ((firstAppCss >= 0
+            && ((tokensIndex >= 0 && tokensIndex > firstAppCss)
+                || (uiIndex >= 0 && uiIndex > firstAppCss)))
+        || (tokensIndex >= 0 && uiIndex >= 0 && tokensIndex > uiIndex)) {
       findings.add(
           strictFinding(
               strict,
               "design-system-css-order",
               CATEGORY_DESIGN_SYSTEM,
-              "Design-system stylesheets must load before app-specific stylesheets.",
+              "Design-system tokens must load before base styles, and both before app-specific"
+                  + " stylesheets.",
               entryBundlePath));
     }
     if (!html.usesDesignSystemClass()) {
