@@ -212,6 +212,30 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void safetyFindings_whenDangerousMarkupAppearsOnlyInComments_expectNoFindings() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <html lang="en">
+              <head>
+                <!-- <base href="https://example.invalid/"> -->
+                <!-- <link rel="stylesheet" href="https://cdn.example.invalid/app.css"> -->
+              </head>
+              <body>
+                <!-- <script src="https://cdn.example.invalid/app.js"></script> -->
+                <!-- <script>window.inline = true;</script> -->
+                <!-- <button onclick="void 0">Bad example</button> -->
+                <script src="./app.js"></script>
+              </body>
+            </html>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertEquals(Set.of(), ids(inspector.safetyFindings()));
+  }
+
+  @Test
   void mentionedPermissionsInDisclosure_whenDisclosureContainsPermissions_expectStableSet() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(

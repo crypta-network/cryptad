@@ -71,6 +71,12 @@ final class AppUiLinter {
   private static final Pattern DIRECT_API_REFERENCE =
       Pattern.compile("(?s)(fetch\\s*\\(\\s*['\"]/?api/v1/|['\"]/?api/v1/)");
 
+  /** Pattern for a JavaScript member call to the browser SDK bootstrap loader. */
+  private static final Pattern BOOTSTRAP_LOAD_CALL =
+      Pattern.compile(
+          "\\b[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*\\.\\s*[A-Za-z_$][A-Za-z0-9_$]*)*"
+              + "\\s*\\.\\s*bootstrap\\s*\\.\\s*load\\s*\\(");
+
   /** Credential and launch-token spellings that should not appear in browser-owned UI files. */
   private static final List<String> FORBIDDEN_TEXT =
       List.of(
@@ -463,7 +469,188 @@ final class AppUiLinter {
     boolean loadedAppScript = loadedScripts.contains(bundlePath) && isAppScript(bundlePath);
     addJavaScriptFindings(strict, findings, path, text);
     return new ScriptScanResult(
-        loadedAppScript, loadedAppScript && text.contains(".bootstrap.load"));
+        loadedAppScript, loadedAppScript && containsBootstrapLoadCall(text));
+  }
+
+  /**
+   * Checks loaded app JavaScript for a real SDK bootstrap member call.
+   *
+   * <p>Comments and string literals are blanked before matching so notes such as {@code TODO
+   * .bootstrap.load} or examples embedded in strings do not satisfy strict UI lint. The matcher
+   * still accepts common aliases such as {@code platform.bootstrap.load(...)} because the generated
+   * scaffold stores {@code window.CryptaPlatform} in a local variable before loading bootstrap
+   * data.
+   *
+   * @param text JavaScript source decoded as UTF-8
+   * @return {@code true} when executable-looking code calls a {@code bootstrap.load(...)} member
+   */
+  private static boolean containsBootstrapLoadCall(String text) {
+    return BOOTSTRAP_LOAD_CALL.matcher(stripJavaScriptCommentsAndStrings(text)).find();
+  }
+
+  /**
+   * Replaces JavaScript comments and string/template literals with spaces while preserving offsets.
+   *
+   * @param text JavaScript source to sanitize for pattern checks
+   * @return source text with comments and strings removed from token matching
+   */
+  private static String stripJavaScriptCommentsAndStrings(String text) {
+    StringBuilder stripped = new StringBuilder(text);
+    int index = 0;
+    while (index < text.length()) {
+      int ignoredStart = nextJavaScriptIgnoredRangeStart(text, index);
+      if (ignoredStart < 0) {
+        return stripped.toString();
+      }
+      int ignoredEnd = javaScriptIgnoredRangeEnd(text, ignoredStart);
+      blankRangeExceptLineBreaks(stripped, ignoredStart, ignoredEnd);
+      index = ignoredEnd;
+    }
+    return stripped.toString();
+  }
+
+  /**
+   * Finds the next JavaScript comment or string/template literal opener.
+   *
+   * @param text JavaScript source to scan
+   * @param fromIndex first character position to inspect
+   * @return opener offset, or {@code -1} when no ignored range remains
+   */
+  private static int nextJavaScriptIgnoredRangeStart(String text, int fromIndex) {
+    for (int index = Math.max(0, fromIndex); index < text.length(); index++) {
+      char character = text.charAt(index);
+      if (isJavaScriptQuote(character) || startsJavaScriptComment(text, index)) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Computes the exclusive end offset for one JavaScript ignored range.
+   *
+   * @param text JavaScript source being scanned
+   * @param start offset of a quote, line comment, or block comment opener
+   * @return exclusive end offset for the ignored range
+   */
+  private static int javaScriptIgnoredRangeEnd(String text, int start) {
+    if (startsLineComment(text, start)) {
+      return lineCommentEnd(text, start + 2);
+    }
+    if (startsBlockComment(text, start)) {
+      return blockCommentEnd(text, start + 2);
+    }
+    return quotedJavaScriptEnd(text, start, text.charAt(start));
+  }
+
+  /**
+   * Checks whether a character opens a JavaScript string or template literal.
+   *
+   * @param character character to classify
+   * @return {@code true} for single quotes, double quotes, and template backticks
+   */
+  private static boolean isJavaScriptQuote(char character) {
+    return character == '\'' || character == '"' || character == '`';
+  }
+
+  /**
+   * Checks whether a JavaScript comment starts at an offset.
+   *
+   * @param text JavaScript source being scanned
+   * @param index candidate comment opener position
+   * @return {@code true} for line and block comments
+   */
+  private static boolean startsJavaScriptComment(String text, int index) {
+    return startsLineComment(text, index) || startsBlockComment(text, index);
+  }
+
+  /**
+   * Checks whether {@code //} starts at an offset.
+   *
+   * @param text text being scanned
+   * @param index candidate offset
+   * @return {@code true} when a line comment starts here
+   */
+  private static boolean startsLineComment(String text, int index) {
+    return index + 1 < text.length() && text.charAt(index) == '/' && text.charAt(index + 1) == '/';
+  }
+
+  /**
+   * Checks whether {@code /*} starts at an offset.
+   *
+   * @param text text being scanned
+   * @param index candidate offset
+   * @return {@code true} when a block comment starts here
+   */
+  private static boolean startsBlockComment(String text, int index) {
+    return index + 1 < text.length() && text.charAt(index) == '/' && text.charAt(index + 1) == '*';
+  }
+
+  /**
+   * Finds the exclusive end of a JavaScript line comment body.
+   *
+   * @param text JavaScript source being scanned
+   * @param index first character after the {@code //} opener
+   * @return offset of the line break or source end
+   */
+  private static int lineCommentEnd(String text, int index) {
+    int end = index;
+    while (end < text.length() && text.charAt(end) != '\n' && text.charAt(end) != '\r') {
+      end++;
+    }
+    return end;
+  }
+
+  /**
+   * Finds the exclusive end of a JavaScript block comment body.
+   *
+   * @param text JavaScript source being scanned
+   * @param index first character after the {@code /*} opener
+   * @return first offset after the block-comment terminator, or source end for an unterminated
+   *     comment
+   */
+  private static int blockCommentEnd(String text, int index) {
+    int close = text.indexOf("*/", index);
+    return close < 0 ? text.length() : close + 2;
+  }
+
+  /**
+   * Finds the exclusive end of a quoted JavaScript string or template literal.
+   *
+   * @param text JavaScript source being scanned
+   * @param quoteIndex offset of the opening quote or backtick
+   * @param quote quote character that closes the literal
+   * @return first offset after the closing quote, or source end when unterminated
+   */
+  private static int quotedJavaScriptEnd(String text, int quoteIndex, char quote) {
+    int index = quoteIndex + 1;
+    while (index < text.length()) {
+      char character = text.charAt(index);
+      if (character == '\\') {
+        index += 2;
+      } else if (character == quote) {
+        return index + 1;
+      } else {
+        index++;
+      }
+    }
+    return text.length();
+  }
+
+  /**
+   * Blanks a source range while preserving line breaks for stable diagnostic offsets.
+   *
+   * @param text mutable source text
+   * @param start first offset to blank
+   * @param end exclusive end offset
+   */
+  private static void blankRangeExceptLineBreaks(StringBuilder text, int start, int end) {
+    for (int index = start; index < end; index++) {
+      char character = text.charAt(index);
+      if (character != '\n' && character != '\r') {
+        text.setCharAt(index, ' ');
+      }
+    }
   }
 
   /**

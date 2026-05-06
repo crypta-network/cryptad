@@ -50,6 +50,22 @@ class StaticCssInspectorTest {
   }
 
   @Test
+  void inspect_whenImportsAppearOnlyInCommentsAndStrings_expectNoFindings() {
+    String css =
+        """
+        /* @import url("https://cdn.example.invalid/reset.css"); */
+        .example::before {
+          content: "@import url('https://cdn.example.invalid/string.css')";
+        }
+        @import url(local.css);
+        """;
+
+    List<AppUiLintFinding> findings = StaticCssInspector.inspect(css, "static/app.css", true);
+
+    assertEquals(List.of(), findingIds(findings));
+  }
+
+  @Test
   void inspect_whenLocalImportIsNotNormalized_expectStrictSeverityControlsFindingSeverity() {
     String css =
         """

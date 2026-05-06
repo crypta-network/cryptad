@@ -116,7 +116,9 @@ final class StaticCssInspector {
     if (position >= css.length()) {
       return ImportValue.missing(position);
     }
+    char quote = 0;
     if (isQuote(css.charAt(position))) {
+      quote = css.charAt(position);
       position++;
     }
     int valueStart = position;
@@ -126,7 +128,11 @@ final class StaticCssInspector {
     if (position == valueStart) {
       return ImportValue.missing(position);
     }
-    return ImportValue.found(css.substring(valueStart, position).trim(), position);
+    int nextIndex =
+        quote != 0 && position < css.length() && css.charAt(position) == quote
+            ? position + 1
+            : position;
+    return ImportValue.found(css.substring(valueStart, position).trim(), nextIndex);
   }
 
   /**
@@ -138,12 +144,83 @@ final class StaticCssInspector {
    */
   private static int indexOfImportDirective(String css, int fromIndex) {
     int max = css.length() - IMPORT_DIRECTIVE.length();
-    for (int index = Math.max(0, fromIndex); index <= max; index++) {
+    int index = Math.max(0, fromIndex);
+    while (index <= max) {
+      int skippedIndex = skipCssCommentOrString(css, index);
+      if (skippedIndex != index) {
+        index = skippedIndex;
+        continue;
+      }
       if (css.regionMatches(true, index, IMPORT_DIRECTIVE, 0, IMPORT_DIRECTIVE.length())) {
         return index;
       }
+      index++;
     }
     return -1;
+  }
+
+  /**
+   * Skips a CSS comment or quoted string that starts at the current scan offset.
+   *
+   * @param css CSS text to scan
+   * @param index current candidate offset
+   * @return first offset after the ignored range, or {@code index} when no ignored range starts
+   *     here
+   */
+  private static int skipCssCommentOrString(String css, int index) {
+    if (startsCssComment(css, index)) {
+      return cssCommentEnd(css, index + 2);
+    }
+    if (index < css.length() && isQuote(css.charAt(index))) {
+      return quotedCssStringEnd(css, index, css.charAt(index));
+    }
+    return index;
+  }
+
+  /**
+   * Checks whether a CSS block comment starts at an offset.
+   *
+   * @param css CSS text being scanned
+   * @param index candidate comment opener position
+   * @return {@code true} when a block comment starts here
+   */
+  private static boolean startsCssComment(String css, int index) {
+    return index + 1 < css.length() && css.charAt(index) == '/' && css.charAt(index + 1) == '*';
+  }
+
+  /**
+   * Finds the first offset after a CSS block comment.
+   *
+   * @param css CSS text being scanned
+   * @param index first character after the comment opener
+   * @return first offset after the comment terminator, or source end for an unterminated comment
+   */
+  private static int cssCommentEnd(String css, int index) {
+    int close = css.indexOf("*/", index);
+    return close < 0 ? css.length() : close + 2;
+  }
+
+  /**
+   * Finds the first offset after a quoted CSS string.
+   *
+   * @param css CSS text being scanned
+   * @param quoteIndex offset of the opening quote
+   * @param quote quote character that closes the string
+   * @return first offset after the closing quote, or source end when unterminated
+   */
+  private static int quotedCssStringEnd(String css, int quoteIndex, char quote) {
+    int index = quoteIndex + 1;
+    while (index < css.length()) {
+      char character = css.charAt(index);
+      if (character == '\\') {
+        index += 2;
+      } else if (character == quote) {
+        return index + 1;
+      } else {
+        index++;
+      }
+    }
+    return css.length();
   }
 
   /**

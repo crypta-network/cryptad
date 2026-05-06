@@ -83,6 +83,9 @@ final class StaticHtmlInspector {
   /** Raw HTML text from the manifest-declared static UI entry. */
   private final String html;
 
+  /** HTML text with comments blanked out so scanners do not treat examples as live markup. */
+  private final String uncommentedHtml;
+
   /** Bundle-relative path to the inspected entry, used in emitted findings. */
   private final String path;
 
@@ -96,12 +99,15 @@ final class StaticHtmlInspector {
    * Creates an inspector from raw HTML and pre-scanned tags.
    *
    * @param html raw HTML text from the static UI entry
+   * @param uncommentedHtml HTML text with comments replaced by offset-preserving whitespace
    * @param path bundle-relative path to the inspected entry
    * @param entryDirectory bundle-relative directory that contains the inspected entry
    * @param tags parsed start tags in source order
    */
-  private StaticHtmlInspector(String html, String path, Path entryDirectory, List<Tag> tags) {
+  private StaticHtmlInspector(
+      String html, String uncommentedHtml, String path, Path entryDirectory, List<Tag> tags) {
     this.html = html;
+    this.uncommentedHtml = uncommentedHtml;
     this.path = path;
     this.entryDirectory = entryDirectory;
     this.tags = tags;
@@ -120,8 +126,9 @@ final class StaticHtmlInspector {
    * @return inspector with parsed tag metadata and the original HTML text
    */
   static StaticHtmlInspector inspect(String html, String path, Path entryDirectory) {
+    String uncommentedHtml = stripHtmlComments(html);
     List<Tag> tags = new ArrayList<>();
-    Matcher matcher = TAG_PATTERN.matcher(html);
+    Matcher matcher = TAG_PATTERN.matcher(uncommentedHtml);
     while (matcher.find()) {
       tags.add(
           new Tag(
@@ -130,7 +137,50 @@ final class StaticHtmlInspector {
               matcher.start(),
               matcher.end()));
     }
-    return new StaticHtmlInspector(html, path, entryDirectory, tags);
+    return new StaticHtmlInspector(html, uncommentedHtml, path, entryDirectory, tags);
+  }
+
+  /**
+   * Replaces HTML comments with spaces while preserving line breaks and character offsets.
+   *
+   * <p>The linter uses regular-expression scanners for a small HTML subset. Blanking comment ranges
+   * before those scans prevents disabled examples such as commented remote scripts from producing
+   * CSP findings, while preserved offsets still let tag metadata point into the original document
+   * for inline-script body checks.
+   *
+   * @param html raw HTML text from the static UI entry
+   * @return HTML with comment contents removed from scanner visibility
+   */
+  private static String stripHtmlComments(String html) {
+    StringBuilder stripped = new StringBuilder(html);
+    int searchIndex = 0;
+    while (searchIndex < html.length()) {
+      int commentStart = html.indexOf("<!--", searchIndex);
+      if (commentStart < 0) {
+        return stripped.toString();
+      }
+      int commentEnd = html.indexOf("-->", commentStart + 4);
+      int exclusiveEnd = commentEnd < 0 ? html.length() : commentEnd + 3;
+      blankRangeExceptLineBreaks(stripped, commentStart, exclusiveEnd);
+      searchIndex = exclusiveEnd;
+    }
+    return stripped.toString();
+  }
+
+  /**
+   * Blanks a source range while preserving line breaks for stable offsets.
+   *
+   * @param text mutable text to update
+   * @param start first offset to blank
+   * @param end exclusive end offset
+   */
+  private static void blankRangeExceptLineBreaks(StringBuilder text, int start, int end) {
+    for (int index = start; index < end; index++) {
+      char character = text.charAt(index);
+      if (character != '\n' && character != '\r') {
+        text.setCharAt(index, ' ');
+      }
+    }
   }
 
   /**
@@ -159,7 +209,7 @@ final class StaticHtmlInspector {
   boolean usesDesignSystemClass() {
     return Pattern.compile(
             "\\bcr-(?:app|shell|header|card|toolbar|button|status|field|input|empty)")
-        .matcher(html)
+        .matcher(uncommentedHtml)
         .find();
   }
 
@@ -170,7 +220,7 @@ final class StaticHtmlInspector {
    *     present
    */
   boolean hasPermissionDisclosure() {
-    String lower = html.toLowerCase(Locale.ROOT);
+    String lower = uncommentedHtml.toLowerCase(Locale.ROOT);
     return lower.contains("cr-permission-summary")
         || lower.contains("data-crypta-permission-summary")
         || lower.contains("<crypta-permission-summary");
@@ -187,7 +237,7 @@ final class StaticHtmlInspector {
    */
   Set<String> mentionedPermissionsInDisclosure() {
     Set<String> permissions = new LinkedHashSet<>();
-    String lower = html.toLowerCase(Locale.ROOT);
+    String lower = uncommentedHtml.toLowerCase(Locale.ROOT);
     int start = lower.indexOf("cr-permission-summary");
     if (start < 0) {
       start = lower.indexOf("data-crypta-permission-summary");
@@ -202,7 +252,7 @@ final class StaticHtmlInspector {
     if (end < 0) {
       end = lower.indexOf("</crypta-permission-summary>", start);
     }
-    String block = html.substring(start, end < 0 ? html.length() : end);
+    String block = uncommentedHtml.substring(start, end < 0 ? uncommentedHtml.length() : end);
     Matcher matcher = PERMISSION_PATTERN.matcher(block);
     while (matcher.find()) {
       permissions.add(matcher.group().toLowerCase(Locale.ROOT));
@@ -637,7 +687,7 @@ final class StaticHtmlInspector {
    * @return {@code true} when the first title element has non-empty stripped text
    */
   private boolean hasNonEmptyTitle() {
-    Matcher matcher = TITLE_PATTERN.matcher(html);
+    Matcher matcher = TITLE_PATTERN.matcher(uncommentedHtml);
     return matcher.find() && !stripTags(matcher.group(1)).isBlank();
   }
 
@@ -647,7 +697,7 @@ final class StaticHtmlInspector {
    * @return {@code true} when any {@code h1} through {@code h6} element has non-empty stripped text
    */
   private boolean hasVisibleHeading() {
-    Matcher matcher = HEADING_PATTERN.matcher(html);
+    Matcher matcher = HEADING_PATTERN.matcher(uncommentedHtml);
     while (matcher.find()) {
       if (!stripTags(matcher.group(1)).isBlank()) {
         return true;
@@ -664,7 +714,7 @@ final class StaticHtmlInspector {
    */
   private void addInputLabelFindings(boolean strict, List<AppUiLintFinding> findings) {
     Set<String> labelledIds = labelForIds();
-    Matcher matcher = INPUT_TAG_PATTERN.matcher(html);
+    Matcher matcher = INPUT_TAG_PATTERN.matcher(uncommentedHtml);
     while (matcher.find()) {
       Map<String, String> attrs = attributes(matcher.group(1));
       if (isVisibleInputWithoutAccessibleName(attrs, labelledIds, matcher.start())) {
@@ -707,7 +757,7 @@ final class StaticHtmlInspector {
    * @param findings mutable finding list that receives button-name findings
    */
   private void addButtonNameFindings(boolean strict, List<AppUiLintFinding> findings) {
-    Matcher matcher = BUTTON_PATTERN.matcher(html);
+    Matcher matcher = BUTTON_PATTERN.matcher(uncommentedHtml);
     while (matcher.find()) {
       Map<String, String> attrs = attributes(matcher.group(1));
       String text = stripTags(matcher.group(2)).trim();
@@ -731,7 +781,7 @@ final class StaticHtmlInspector {
    */
   private Set<String> labelForIds() {
     Set<String> ids = new LinkedHashSet<>();
-    Matcher matcher = LABEL_FOR_PATTERN.matcher(html);
+    Matcher matcher = LABEL_FOR_PATTERN.matcher(uncommentedHtml);
     while (matcher.find()) {
       String id = attributes(matcher.group(1)).getOrDefault("for", "");
       if (!id.isBlank()) {
@@ -744,15 +794,15 @@ final class StaticHtmlInspector {
   /**
    * Checks whether an input offset appears inside a label element.
    *
-   * @param offset character offset of an input tag in the raw HTML text
+   * @param offset character offset of an input tag in the comment-stripped HTML text
    * @return {@code true} when the nearest preceding label closes after the input offset
    */
   private boolean isWrappedInLabel(int offset) {
-    int labelStart = html.lastIndexOf("<label", offset);
+    int labelStart = uncommentedHtml.lastIndexOf("<label", offset);
     if (labelStart < 0) {
       return false;
     }
-    int labelEnd = html.indexOf("</label>", labelStart);
+    int labelEnd = uncommentedHtml.indexOf("</label>", labelStart);
     return labelEnd > offset;
   }
 
