@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -16,6 +17,7 @@ import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.designsystem.DesignSystemAssets;
 
 /**
  * Creates standalone staged app-bundle skeletons for third-party developers.
@@ -23,8 +25,8 @@ import network.crypta.platform.appdist.AppDistributionException;
  * <p>The scaffolder writes ordinary bundle files, not a Gradle subproject. Generated manifests are
  * parsed with the production appdist parser before they are written so command-line input follows
  * the same syntax and value rules as signed bundles. A static template also copies the canonical
- * browser SDK resource into the staged bundle so the new app can load the same client API that
- * first-party static apps use.
+ * browser SDK and app UI design-system resources into the staged bundle so the new app can load the
+ * same client API and platform UI vocabulary that first-party static apps use.
  *
  * <p>The generated bundle is intentionally conservative: it uses no sandbox, zero quota defaults,
  * and a launcher script that tells developers to replace it before publishing. The class is
@@ -44,20 +46,13 @@ final class AppTemplateScaffolder {
   /** Stylesheet content written to {@code static/app.css} for the static scaffold. */
   private static final String STATIC_CSS =
       """
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, sans-serif;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
+      .sample-layout {
         display: grid;
-        place-items: center;
+        gap: var(--cr-space-4);
       }
 
-      main {
-        width: min(42rem, calc(100vw - 2rem));
+      .sample-status {
+        margin-top: var(--cr-space-3);
       }
       """;
 
@@ -233,6 +228,7 @@ final class AppTemplateScaffolder {
     writeTemplateFile(staticDir.resolve("app.js"), staticJavaScript(request));
     writeTemplateFile(staticDir.resolve("app.css"), STATIC_CSS);
     copySdk(staticDir.resolve("crypta-platform.js"));
+    DesignSystemAssets.copyIntoBundle(request.directory());
   }
 
   /**
@@ -291,19 +287,33 @@ final class AppTemplateScaffolder {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${APP_NAME}</title>
+        <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+        <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
         <link rel="stylesheet" href="./app.css">
       </head>
-      <body>
-        <main>
-          <h1>${APP_NAME}</h1>
-          <p id="status">Connecting to Crypta...</p>
+      <body class="cr-app">
+        <main class="cr-shell sample-layout">
+          <header class="cr-header">
+            <div>
+              <p class="cr-label">Crypta app</p>
+              <h1>${APP_NAME}</h1>
+            </div>
+          </header>
+          ${PERMISSION_SUMMARY}
+          <section class="cr-card" aria-labelledby="status-heading">
+            <h2 id="status-heading">Connection</h2>
+            <p class="cr-status cr-status--info sample-status" id="status" role="status" aria-live="polite">
+              Connecting to Crypta...
+            </p>
+          </section>
         </main>
         <script src="./crypta-platform.js"></script>
         <script type="module" src="./app.js"></script>
       </body>
     </html>
     """
-        .replace("${APP_NAME}", escapedName);
+        .replace("${APP_NAME}", escapedName)
+        .replace("${PERMISSION_SUMMARY}", permissionSummary(request.permissions()));
   }
 
   /**
@@ -320,13 +330,59 @@ final class AppTemplateScaffolder {
       const platform = window.CryptaPlatform;
       const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
       status.textContent = `${bootstrap.appName} is connected.`;
+      status.className = "cr-status cr-status--success sample-status";
     }
 
     main().catch((error) => {
       status.textContent = error instanceof Error ? error.message : String(error);
+      status.className = "cr-status cr-status--danger sample-status";
     });
     """
         .replace(APP_ID_PLACEHOLDER, request.appId());
+  }
+
+  private static String permissionSummary(List<String> permissions) {
+    if (permissions.isEmpty()) {
+      return "";
+    }
+    StringBuilder builder = new StringBuilder();
+    builder
+        .append("<section class=\"cr-permission-summary\" data-crypta-permission-summary>")
+        .append('\n')
+        .append("            <p><strong>Declared permissions</strong></p>")
+        .append('\n')
+        .append("            <ul>")
+        .append('\n');
+    for (String permission : permissions) {
+      builder
+          .append("              <li><code>")
+          .append(escapeHtml(permission))
+          .append("</code></li>")
+          .append('\n');
+    }
+    builder.append("            </ul>").append('\n').append("          </section>");
+    return builder.toString();
+  }
+
+  /**
+   * Normalizes permission spellings to the manifest parser's canonical comparison form.
+   *
+   * <p>The parser accepts case-insensitive permission identifiers and stores them lower-case.
+   * Rendering the same normalized values into both {@code app.permissions} and the static
+   * disclosure keeps a freshly scaffolded app strict-lint clean even when the CLI input used mixed
+   * case. Invalid or blank values are intentionally preserved after trimming/lower-casing so the
+   * production manifest parser still reports the canonical validation error for the generated
+   * manifest.
+   *
+   * @param permissions CLI-supplied permission strings in request order
+   * @return immutable normalized permission strings with duplicates removed in first-seen order
+   */
+  private static List<String> normalizePermissions(List<String> permissions) {
+    LinkedHashSet<String> normalized = new LinkedHashSet<>();
+    for (String permission : permissions) {
+      normalized.add(permission.trim().toLowerCase(Locale.ROOT));
+    }
+    return List.copyOf(normalized);
   }
 
   /**
@@ -344,7 +400,8 @@ final class AppTemplateScaffolder {
     ## Local workflow
 
     ```bash
-    crypta-app validate --bundle-dir .
+    crypta-app ui lint --bundle-dir . --strict
+    crypta-app validate --bundle-dir . --strict
     crypta-app sign --bundle-dir . --key-id dev-local --private-key-file /path/to/private.pem
     crypta-app pack --bundle-dir . --output ../${APP_ID}-${APP_VERSION}.zip --overwrite
     crypta-app verify --bundle-dir . --trusted-key-id dev-local --trusted-public-key-file /path/to/public.pem
@@ -424,9 +481,9 @@ final class AppTemplateScaffolder {
    * Immutable input used to render one scaffolded staged bundle.
    *
    * <p>The request stores the developer-facing values accepted by the CLI and applies normalization
-   * in a separate step so command parsing can stay simple. Permission values are copied as
-   * supplied; the manifest parser validates their syntax once {@link #manifestContent()} has
-   * rendered the generated properties.
+   * in a separate step so command parsing can stay simple. Permission values are normalized to the
+   * same lower-case form as the manifest parser; the parser still validates their syntax once
+   * {@link #manifestContent()} has rendered the generated properties.
    *
    * @param directory target bundle directory to create or overwrite
    * @param appId manifest app identifier supplied by the developer
@@ -465,7 +522,8 @@ final class AppTemplateScaffolder {
      *
      * <p>The directory becomes absolute and normalized, the app identifier is passed through the
      * production manifest normalizer, and name/version strings are trimmed. Permission values are
-     * left in their original order so the generated manifest reflects the CLI input order.
+     * lower-cased, trimmed, and deduplicated in first-seen order so the generated manifest and
+     * static disclosure use the same canonical identifiers.
      *
      * @return normalized request ready for scaffold file generation
      */
@@ -476,7 +534,7 @@ final class AppTemplateScaffolder {
           name.trim(),
           version.trim(),
           uiMode,
-          permissions,
+          normalizePermissions(permissions),
           overwrite);
     }
 

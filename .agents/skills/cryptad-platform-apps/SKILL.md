@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, app-update lifecycle, app-owned static UI, browser sessions, the browser SDK, developer CLI, app permissions/audit, sandbox providers, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, app-update lifecycle, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -18,6 +18,7 @@ Load only the docs needed for the change:
 - Signed catalogs: `docs/app-catalogs.md`
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
+- App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
@@ -39,16 +40,20 @@ Load only the docs needed for the change:
   session issuance/verification for static app Platform API calls.
 - `:platform-sdk-js` owns `crypta-platform.js`, the dependency-free browser helper staged into
   first-party static app bundles.
+- `:platform-design-system` owns canonical local app UI CSS/JS assets and safe asset metadata/copy
+  helpers used by scaffolds, first-party staging, UI lint, and release evidence.
 - `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
   deterministic bundle packaging, manifest sandbox/quota fields, and first-party
   signing/verification tooling.
 - `:platform-appcatalog` owns signed catalog parsing, catalog writing, catalog source/artifact
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
-  into AppHost install/update flows, plus optional review/API compatibility metadata used by app
-  update review.
+  into AppHost install/update flows, plus optional review/API compatibility metadata, independent
+  app-review receipts, trusted reviewer-key loading, review policy modes, and review trust
+  decisions used by app update review.
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
   packaging, verifying, catalog-authoring, API contract snapshotting, and compatibility
-  verification for developer-owned staged bundles.
+  verification for developer-owned staged bundles, including `crypta-app ui lint` and review
+  receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets and bootstrap.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
@@ -71,8 +76,13 @@ Load only the docs needed for the change:
   passwords, tokens, absolute filesystem paths, or large payloads.
 - Static UI routes must serve only immutable installed-bundle files. Reject traversal, encoded path
   separators, symlink/reparse escapes, reserved sidecars, and host-dependent MIME inference.
+- Static app UI design-system assets must stay local to the bundle. Do not add CDN dependencies or
+  remote CSS/JS allowances; use `crypta-app ui lint` for offline CSP, SDK/bootstrap, accessibility,
+  permission-disclosure, and design-system checks.
 - Signed catalogs and bundles must verify before install/update. Unsigned live-node installs require
   the explicit development-only escape hatch.
+- Trusted app-review receipts are independent reviewer evidence. Do not treat publisher advisory
+  `review.status`, app signing keys, or catalog signing keys as reviewer trust.
 - `crypta:` catalog sources still require signed catalog verification. They do not make catalog
   artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
   `docs/app-catalogs.md`.
@@ -106,8 +116,9 @@ Load only the docs needed for the change:
 
 - `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
-  `crypta-app init/validate/pack`, Platform API contract snapshots, signed bundle evidence, signed
-  catalog evidence, sandbox-provider evidence, app-update lifecycle/rollback evidence,
+  design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack`, Platform
+  API contract snapshots, signed bundle evidence, signed catalog evidence, trusted app-review
+  receipt evidence, sandbox-provider evidence, app-update lifecycle/rollback evidence,
   legacy-admin retirement state, and optional localhost-only live AppHost lifecycle evidence.
 - `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
   downloads, or production credentials.
@@ -126,6 +137,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :platform-app-ui:test
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
+./gradlew :platform-design-system:test
 ./gradlew :platform-devtools:test
 ./gradlew :platform-sdk-js:test
 ./gradlew :platform-web-shell:test
@@ -143,9 +155,9 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 `./gradlew :platform-devtools:installDist` and smoke the generated
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
 
-When changing signed bundle/catalog, static UI, SDK, Platform API contract, AppHost lifecycle,
-app-update lifecycle/rollback, sandbox-provider evidence, or legacy-admin retirement evidence
-behavior, also run:
+When changing signed bundle/catalog, app-review receipts, static UI, design-system assets, UI lint,
+SDK, Platform API contract, AppHost lifecycle, app-update lifecycle/rollback, sandbox-provider
+evidence, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_smoke.py --self-test

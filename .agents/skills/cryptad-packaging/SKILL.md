@@ -25,8 +25,8 @@ Use this skill when working on:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
-  `:bridge-fcp-runtime`, `:bridge-http-runtime`,
+  `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
+  `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
@@ -52,7 +52,12 @@ Use this skill when working on:
   tooling, and AppHost validation.
 - The `:platform-appcatalog` JAR contributes signed catalog source parsing, catalog writing,
   verification, Crypta catalog source fetching, app-store/API compatibility metadata parsing,
-  artifact download, safe ZIP extraction, and verified staging support.
+  independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
+  verified staging support.
+- The `:platform-design-system` JAR contributes canonical local static app UI assets and helper
+  APIs used by first-party app staging and the standalone developer CLI. It is packaged as a normal
+  leaf artifact but the CSS/JS bytes are copied into app bundles, not loaded from a daemon-hosted
+  CDN.
 - The `:platform-devtools` application builds the standalone `crypta-app` developer CLI
   distribution with its own `installDist` output. It is developer tooling, not a daemon entrypoint
   inside `build/cryptad-dist`.
@@ -85,7 +90,7 @@ Use this skill when working on:
   bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
   artifacts and AppHost install inputs; they are not daemon entrypoints inside
   `build/cryptad-dist`. Their static UI staging copies the current `:platform-sdk-js` browser
-  resource into each bundle's `static/` assets.
+  resource and canonical `:platform-design-system` assets into each bundle's `static/` assets.
 
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.

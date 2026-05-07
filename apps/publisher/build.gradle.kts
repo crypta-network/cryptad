@@ -19,6 +19,11 @@ val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
 val stageAssetsDir = layout.projectDirectory.dir("src/staged")
 val manifestTemplateFile = stageAssetsDir.file("cryptad-app.properties.template")
+val platformDesignSystemResourceDir =
+  project(":platform-design-system")
+    .layout
+    .projectDirectory
+    .dir("src/main/resources/network/crypta/platform/designsystem/static")
 val platformSdkJsFile =
   project(":platform-sdk-js")
     .layout
@@ -135,6 +140,7 @@ val stageApp by
     dependsOn(generateManifest)
     into(stageAppDir)
     from(stageAssetsDir) { exclude("cryptad-app.properties.template") }
+    from(platformDesignSystemResourceDir) { into("static/crypta-ui") }
     from(platformSdkJsFile) { into("static") }
     from(generatedManifestDir)
     doLast {

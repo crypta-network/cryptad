@@ -4,50 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Queue Manager</title>
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
 </head>
-<body>
-  <main class="app-shell">
-    <header class="app-header">
+<body class="cr-app">
+  <main class="cr-shell queue-layout">
+    <header class="cr-header">
       <div>
-        <p class="eyebrow">Cryptad app</p>
+        <p class="cr-label">Crypta app</p>
         <h1>Queue Manager</h1>
       </div>
-      <button class="button secondary" id="refresh-button" type="button">Refresh</button>
+      <button class="cr-button cr-button--secondary" id="refresh-button" type="button">
+        Refresh
+      </button>
     </header>
 
-    <section class="toolbar" aria-label="Queue view">
-      <div class="tabs" role="tablist" aria-label="Queue page">
-        <button class="tab active" id="downloads-tab" type="button" role="tab" aria-selected="true">
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>queue.read</code> reads local transfer queue snapshots.</li>
+        <li><code>queue.write</code> queues downloads and updates queue requests.</li>
+      </ul>
+    </section>
+
+    <section class="cr-toolbar queue-toolbar" aria-label="Queue view">
+      <div class="queue-tabs" role="tablist" aria-label="Queue page">
+        <button
+          class="cr-button queue-tab active"
+          id="downloads-tab"
+          type="button"
+          role="tab"
+          aria-selected="true">
           Downloads
         </button>
-        <button class="tab" id="uploads-tab" type="button" role="tab" aria-selected="false">
+        <button
+          class="cr-button queue-tab"
+          id="uploads-tab"
+          type="button"
+          role="tab"
+          aria-selected="false">
           Uploads
         </button>
       </div>
     </section>
 
-    <section class="download-panel" id="download-panel">
-      <form class="direct-download" id="direct-download-form">
-        <label>
-          <span>Fetch URI</span>
-          <input name="fetchUri" type="text" autocomplete="off" spellcheck="false" required>
+    <section class="cr-card queue-download-panel" id="download-panel">
+      <form class="queue-direct-download" id="direct-download-form">
+        <label class="cr-field">
+          <span class="cr-label">Fetch URI</span>
+          <input
+            class="cr-input"
+            name="fetchUri"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
         </label>
-        <label>
-          <span>Expected MIME type</span>
-          <input name="expectedMimeType" type="text" autocomplete="off" spellcheck="false">
+        <label class="cr-field">
+          <span class="cr-label">Expected MIME type</span>
+          <input
+            class="cr-input"
+            name="expectedMimeType"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
         </label>
-        <label class="checkbox">
+        <label class="cr-checkbox">
           <input name="filterData" type="checkbox" checked>
           <span>Filter data</span>
         </label>
-        <button class="button primary" type="submit">Queue download</button>
+        <button class="cr-button cr-button--primary" type="submit">Queue download</button>
       </form>
     </section>
 
-    <p class="status" id="status" role="status" aria-live="polite"></p>
-    <section class="queue-content" id="queue-content">
-      <p class="empty">Loading queue snapshot...</p>
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+    <section class="cr-card queue-content" id="queue-content">
+      <p class="cr-empty">Loading queue snapshot...</p>
     </section>
   </main>
   <script src="./crypta-platform.js" defer></script>

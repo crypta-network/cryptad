@@ -101,6 +101,68 @@
     },
     {
       "details": {
+        "assets": {
+          "crypta-ui-components.js": {
+            "present": true
+          },
+          "crypta-ui.css": {
+            "present": true
+          },
+          "crypta-ui-tokens.css": {
+            "present": true
+          }
+        }
+      },
+      "id": "app-ui.design-system",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Canonical app UI design-system assets are present and staged into first-party apps."
+    },
+    {
+      "details": {
+        "apps": {
+          "publisher": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          },
+          "queue-manager": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          }
+        }
+      },
+      "id": "app-ui.lint",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "crypta-app ui lint passed for first-party static apps."
+    },
+    {
+      "details": {
+        "sourceStaticUi": {
+          "publisher": {
+            "usesDesignSystemClasses": true
+          },
+          "queue-manager": {
+            "usesDesignSystemClasses": true
+          }
+        }
+      },
+      "id": "app-ui.first-party-adoption",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party static apps use design-system loading order, classes, and permission disclosure."
+    },
+    {
+      "details": {
         "sdkResource": "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
       },
       "id": "app-ui.smoke",

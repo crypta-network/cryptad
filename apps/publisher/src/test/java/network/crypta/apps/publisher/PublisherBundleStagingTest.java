@@ -35,6 +35,17 @@ class PublisherBundleStagingTest {
           "sdk",
           "js",
           "crypta-platform.js");
+  private static final Path DESIGN_SYSTEM_SOURCE_PATH =
+      Path.of(
+          "platform-design-system",
+          "src",
+          "main",
+          "resources",
+          "network",
+          "crypta",
+          "platform",
+          "designsystem",
+          "static");
 
   @Test
   void stagedBundle_whenManifestParsed_expectExpectedAppHostFields() throws Exception {
@@ -93,7 +104,12 @@ class PublisherBundleStagingTest {
     Path staticDirectory = stageDirectory().resolve("static");
 
     verifyStaticAssetsPresent(staticDirectory);
-    verifySdkLoadsBeforeAppScript(Files.readString(staticDirectory.resolve("index.html")));
+    String indexHtml = Files.readString(staticDirectory.resolve("index.html"));
+    verifyDesignSystemCssLoadsBeforeAppCss(indexHtml);
+    verifySdkLoadsBeforeAppScript(indexHtml);
+    verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-tokens.css");
+    verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui.css");
+    verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-components.js");
     verifyStagedSdkScript(Files.readString(staticDirectory.resolve("crypta-platform.js")));
     verifyPublisherAppScript(Files.readString(staticDirectory.resolve("app.js")));
   }
@@ -103,7 +119,27 @@ class PublisherBundleStagingTest {
     assertTrue(Files.isRegularFile(staticDirectory.resolve("app.js")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("app.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-platform.js")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-tokens.css")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui.css")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-components.js")));
     assertTrue(Files.notExists(staticDirectory.resolve("README.txt")));
+  }
+
+  private static void verifyDesignSystemCssLoadsBeforeAppCss(String indexHtml) {
+    int tokensIndex = indexHtml.indexOf("crypta-ui-tokens.css");
+    int uiCssIndex = indexHtml.indexOf("crypta-ui.css");
+    int appCssIndex = indexHtml.indexOf("app.css");
+
+    assertTrue(tokensIndex >= 0, "index.html must load design-system tokens.");
+    assertTrue(uiCssIndex > tokensIndex, "index.html must load design-system CSS after tokens.");
+    assertTrue(appCssIndex > uiCssIndex, "index.html must load app.css after design-system CSS.");
+  }
+
+  private static void verifyStagedDesignSystemAsset(Path staticDirectory, String assetName)
+      throws Exception {
+    assertEquals(
+        Files.readString(repoRoot().resolve(DESIGN_SYSTEM_SOURCE_PATH).resolve(assetName)),
+        Files.readString(staticDirectory.resolve("crypta-ui").resolve(assetName)));
   }
 
   private static void verifySdkLoadsBeforeAppScript(String indexHtml) {

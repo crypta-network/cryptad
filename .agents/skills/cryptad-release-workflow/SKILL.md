@@ -30,9 +30,9 @@ Build: 2
 - Do not rebase/squash release merges.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include the release certification report, first-party app
-  staging/signing/verification, catalog and app-owned UI smoke, `crypta-app` CLI smoke, legacy-admin
-  retirement evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance
-  smoke.
+  staging/signing/verification, catalog and trusted app-review receipt smoke, app-owned UI
+  design-system/lint smoke, `crypta-app` CLI smoke, legacy-admin retirement evidence, Hyphanet
+  interop smoke/soak evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -95,16 +95,16 @@ git push origin v<build-number>
       passed or has an explicit release-manager waiver.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
-- [ ] Signed catalog, Platform API contract, app-owned UI, AppHost sandbox-provider, app-update
-      lifecycle, app-update rollback, and legacy-admin retirement evidence are present in the
-      certification summary.
+- [ ] Signed catalog, trusted app-review receipt, Platform API contract, app UI design-system/lint,
+      app-owned UI smoke, AppHost sandbox-provider, app-update lifecycle, app-update rollback, and
+      legacy-admin retirement evidence are present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
       performance-sensitive changes require it.
-- [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, form
-      passwords, app tokens, browser-session tokens, raw request bodies, and unsanitized local
-      paths.
+- [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, private
+      reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
+      trusted reviewer public key bytes, and unsanitized local paths.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

@@ -45,8 +45,21 @@ class CryptaAppCliTest {
     assertTrue(Files.isRegularFile(appDir.resolve("static").resolve("app.js")));
     assertTrue(Files.isRegularFile(appDir.resolve("static").resolve("app.css")));
     assertTrue(Files.isRegularFile(appDir.resolve("static").resolve("crypta-platform.js")));
+    assertTrue(
+        Files.isRegularFile(
+            appDir.resolve("static").resolve("crypta-ui").resolve("crypta-ui-tokens.css")));
+    assertTrue(
+        Files.isRegularFile(
+            appDir.resolve("static").resolve("crypta-ui").resolve("crypta-ui.css")));
+    assertTrue(
+        Files.isRegularFile(
+            appDir.resolve("static").resolve("crypta-ui").resolve("crypta-ui-components.js")));
     assertTrue(Files.isRegularFile(appDir.resolve("README.md")));
     assertTrue(result.out().contains("Initialized app bundle"));
+    String indexHtml = Files.readString(appDir.resolve("static").resolve("index.html"));
+    assertTrue(indexHtml.indexOf("crypta-ui-tokens.css") < indexHtml.indexOf("crypta-ui.css"));
+    assertTrue(indexHtml.indexOf("crypta-ui.css") < indexHtml.indexOf("app.css"));
+    assertTrue(indexHtml.contains("class=\"cr-app\""));
     assertTrue(
         Files.readString(appDir.resolve("static").resolve("crypta-platform.js"))
             .contains("window.CryptaPlatform"));
@@ -77,6 +90,35 @@ class CryptaAppCliTest {
         manifest.contains(
             "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION + "\n"));
     assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
+  }
+
+  @Test
+  void init_whenPermissionCaseNeedsNormalization_expectDisclosureAndManifestUseCanonicalValue()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "Queue.Read");
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
+    String indexHtml =
+        Files.readString(appDir.resolve("static").resolve("index.html"), StandardCharsets.UTF_8);
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(manifest.contains("app.permissions=queue.read\n"));
+    assertTrue(indexHtml.contains("<code>queue.read</code>"));
+    assertFalse(indexHtml.contains("Queue.Read"));
   }
 
   @Test
@@ -174,6 +216,989 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
     assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenScaffoldedStaticAppCheckedStrict_expectSuccessAndJson() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path json = tempDir.resolve("reports").resolve("ui-lint.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+
+    CliResult result =
+        runCli(
+            "ui", "lint", "--bundle-dir", appDir.toString(), "--strict", "--json", json.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    String jsonText = Files.readString(json, StandardCharsets.UTF_8);
+    assertTrue(jsonText.contains("\"appId\": \"sample-app\""));
+    assertTrue(jsonText.contains("\"uiMode\": \"static\""));
+    assertTrue(jsonText.contains("\"findings\": []"));
+    assertFalse(jsonText.contains(tempDir.toString()));
+  }
+
+  @Test
+  void uiLint_whenStaticEntryIsNotHtml_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.move(staticDir.resolve("index.html"), staticDir.resolve("index.txt"));
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.ui.entry=static/index.html\n", "app.ui.entry=static/index.txt\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult lintResult = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    CliResult validateResult = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, lintResult.exitCode());
+    assertTrue(lintResult.err().contains("static-entry-non-html"));
+    assertTrue(lintResult.err().contains("application/octet-stream"));
+    assertTrue(lintResult.err().contains("static/index.txt"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, validateResult.exitCode());
+    assertTrue(validateResult.err().contains("static-entry-non-html"));
+  }
+
+  @Test
+  void uiLint_whenStaticEntryParentIsSymbolicLink_expectFailureWithoutReadingExternalUi()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Path externalStaticDir = tempDir.resolve("external-static");
+    Files.move(staticDir, externalStaticDir);
+    Assumptions.assumeTrue(canCreateSymlink(staticDir));
+    Files.createSymbolicLink(staticDir, externalStaticDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("static-entry-missing"));
+    assertTrue(result.err().contains("static/index.html"));
+  }
+
+  @Test
+  void uiLint_whenLocalScriptAndStylesheetReferencesAreMissing_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.delete(appDir.resolve("static").resolve("crypta-platform.js"));
+    Files.delete(appDir.resolve("static").resolve("app.js"));
+    Files.delete(appDir.resolve("static").resolve("app.css"));
+
+    CliResult lintResult = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+    CliResult validateResult = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, lintResult.exitCode());
+    assertTrue(lintResult.err().contains("local-ui-reference-missing"));
+    assertTrue(lintResult.err().contains("static/crypta-platform.js"));
+    assertTrue(lintResult.err().contains("static/app.js"));
+    assertTrue(lintResult.err().contains("static/app.css"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, validateResult.exitCode());
+    assertTrue(validateResult.err().contains("UI lint failed"));
+    assertTrue(validateResult.err().contains("local-ui-reference-missing"));
+  }
+
+  @Test
+  void uiLint_whenLocalScriptParentIsSymbolicLink_expectFailureWithoutReadingExternalAsset()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Path externalAssetDir = tempDir.resolve("external-assets");
+    Files.createDirectories(externalAssetDir);
+    Files.writeString(
+        externalAssetDir.resolve("app.js"),
+        "CryptaPlatform.bootstrap.load().then(() => undefined);\n",
+        StandardCharsets.UTF_8);
+    Path linkedAssetDir = staticDir.resolve("linked");
+    Assumptions.assumeTrue(canCreateSymlink(linkedAssetDir));
+    Files.createSymbolicLink(linkedAssetDir, externalAssetDir);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./linked/app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-missing"));
+    assertTrue(result.err().contains("static/linked/app.js"));
+  }
+
+  @Test
+  void uiLint_whenLocalScriptAndStylesheetUseUnsupportedTypes_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.move(staticDir.resolve("app.js"), staticDir.resolve("app.jsx"));
+    Files.move(staticDir.resolve("app.css"), staticDir.resolve("app.scss"));
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "./app.jsx")
+            .replace("./app.css", "./app.scss"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-unsupported-type"));
+    assertTrue(result.err().contains("static/app.jsx"));
+    assertTrue(result.err().contains("static/app.scss"));
+  }
+
+  @Test
+  void uiLint_whenLocalReferencesAreNotRouteSafe_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(staticDir.resolve("foo:bar.css"), "body {}\n", StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "../../app.js")
+            .replace("./app.css", "./foo:bar.css"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-route-invalid"));
+    assertTrue(result.err().contains("../app.js"));
+    assertTrue(result.err().contains("static/foo:bar.css"));
+  }
+
+  @Test
+  void uiLint_whenAbsoluteScriptAndStylesheetReferencesPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("./app.js", "/api/v1/foo.js")
+            .replace("./app.css", "/theme.css"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("local-ui-reference-route-invalid"));
+    assertTrue(result.err().contains("/api/v1/foo.js"));
+    assertTrue(result.err().contains("/theme.css"));
+  }
+
+  @Test
+  void uiLint_whenLocalReferenceUsesRouteEncoding_expectSuccess() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("space app.js"),
+        Files.readString(staticDir.resolve("app.js"), StandardCharsets.UTF_8),
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./space%20app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+  }
+
+  @Test
+  void uiLint_whenEncodedLoadedAppScriptOmitsBootstrap_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("space app.js"), "console.log('loaded');\n", StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./space%20app.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/space app.js"));
+  }
+
+  @Test
+  void uiLint_whenBootstrapAppearsOnlyInCommentOrString_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        // TODO call CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+        const example = "platform.bootstrap.load({ appId: 'sample-app' })";
+        console.log(example);
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
+  void uiLint_whenBootstrapFollowsRegexLiteralWithEscapedSlashes_expectStrictSuccess()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        const matcher = /^https?:\\/\\//; CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+        console.log(matcher.test(window.location.href));
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+  }
+
+  @Test
+  void uiLint_whenBootstrapAppearsOnlyInRegexLiteral_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        const example = /CryptaPlatform.bootstrap.load()/;
+        console.log(example);
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
+  void uiLint_whenBootstrapUsesLargeMemberChain_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    StringBuilder script = new StringBuilder("const root = window.CryptaPlatform;\nroot");
+    for (int index = 0; index < 2048; index++) {
+      script.append(".member").append(index);
+    }
+    script.append(".bootstrap.load({ appId: \"sample-app\" });\n");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"), script.toString(), StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+  }
+
+  @Test
+  void uiLint_whenAppScriptLivesUnderCryptaUiDirectory_expectStrictBootstrapFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("crypta-ui").resolve("main.js"),
+        "console.log('loaded app code');\n",
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./crypta-ui/main.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/crypta-ui/main.js"));
+  }
+
+  @Test
+  void uiLint_whenCssImportUsesNonLocalScheme_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.css"),
+        "\n@import url(\"data:text/css,body{}\");\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("non-local-css-import"));
+    assertTrue(result.err().contains("static/app.css"));
+  }
+
+  @Test
+  void uiLint_whenPermissionDisclosureOmitsDeclaredPermission_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read",
+        "--permission",
+        "queue.write");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("              <li><code>queue.write</code></li>\n", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("permission-disclosure-missing-permission"));
+    assertTrue(result.err().contains("queue.write"));
+  }
+
+  @Test
+  void uiLint_whenPermissionDisclosureMentionsUndeclaredPermission_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                "              <li><code>queue.read</code></li>\n",
+                """
+                              <li><code>queue.read</code></li>
+                              <li><code>content.insert</code></li>
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("permission-disclosure-undeclared-permission"));
+    assertTrue(result.err().contains("content.insert"));
+  }
+
+  @Test
+  void validate_whenStaticUiEntryUsesCustomRelativePath_expectStrictUiLintSuccess()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path uiDir = appDir.resolve("ui");
+    Files.createDirectory(uiDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.ui.entry=static/index.html\n", "app.ui.entry=ui/index.html\n"),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        uiDir.resolve("index.html"),
+        """
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Sample App</title>
+            <link rel="stylesheet" href="../static/crypta-ui/crypta-ui-tokens.css">
+            <link rel="stylesheet" href="../static/crypta-ui/crypta-ui.css">
+            <link rel="stylesheet" href="./app.css">
+          </head>
+          <body class="cr-app">
+            <main class="cr-shell">
+              <h1>Sample App</h1>
+              <section class="cr-permission-summary" data-crypta-permission-summary>
+                <p><strong>Declared permissions</strong></p>
+                <ul><li><code>queue.read</code></li></ul>
+              </section>
+              <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+            </main>
+            <script src="../static/crypta-platform.js"></script>
+            <script type="module" src="./main.js"></script>
+          </body>
+        </html>
+        """,
+        StandardCharsets.UTF_8);
+    Files.writeString(uiDir.resolve("app.css"), ".custom { color: var(--cr-color-text); }\n");
+    Files.writeString(
+        uiDir.resolve("main.js"),
+        """
+        async function main() {
+          await CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+        }
+        main();
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenCustomAppScriptLoadsBeforeSdk_expectStrictOrderFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <script src="./crypta-platform.js"></script>
+                    <script type="module" src="./app.js"></script>
+                """,
+                """
+                    <script src="./main.js"></script>
+                    <script src="./crypta-platform.js"></script>
+                """),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        appDir.resolve("static").resolve("main.js"),
+        """
+        async function main() {
+          await CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+        }
+        main();
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-script-order"));
+  }
+
+  @Test
+  void uiLint_whenDeferredSdkPrecedesParserBlockingAppScript_expectStrictOrderFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <script src="./crypta-platform.js"></script>
+                    <script type="module" src="./app.js"></script>
+                """,
+                """
+                    <script src="./crypta-platform.js" defer></script>
+                    <script src="./app.js"></script>
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-script-defer-order"));
+  }
+
+  @Test
+  void uiLint_whenRemoteScriptPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                "<script src=\"./crypta-platform.js\"></script>",
+                "<script src=\"https://cdn.example.invalid/platform.js\"></script>"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("remote-script"));
+  }
+
+  @Test
+  void uiLint_whenInlineScriptAndEventHandlerPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("<body class=\"cr-app\">", "<body class=\"cr-app\" onclick=\"void 0\">")
+            .replace("</body>", "<script>window.inline = true;</script>\n</body>"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("inline-event-handler"));
+    assertTrue(result.err().contains("inline-script"));
+  }
+
+  @Test
+  void uiLint_whenForbiddenTokenTextPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        "\nconsole.log('CRYPTAD_APP_TOKEN');\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("forbidden-token-text"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
+  void uiLint_whenUnsafeLocalJavaScriptPatternsPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        async function main() {
+          await CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+          eval("console.log('unsafe')");
+          const factory = new Function("return 1");
+          localStorage.setItem("session", "value");
+          await fetch("/api/v1/queue");
+          return factory();
+        }
+        main();
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("dynamic-code-evaluation"));
+    assertTrue(result.err().contains("persistent-browser-storage"));
+    assertTrue(result.err().contains("direct-platform-api-reference"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
+  void validate_whenStrictStaticUiLintFindsProblem_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("    <link rel=\"stylesheet\" href=\"./crypta-ui/crypta-ui.css\">\n", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult normalResult = runCli("validate", "--bundle-dir", appDir.toString());
+    CliResult strictResult = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, normalResult.exitCode());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, strictResult.exitCode());
+    assertTrue(strictResult.err().contains("design-system-css-not-linked"));
+    assertTrue(strictResult.err().contains("UI lint failed"));
+  }
+
+  @Test
+  void uiLint_whenCanonicalDesignSystemAssetIsModified_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("crypta-ui").resolve("crypta-ui.css"),
+        "\n.modified {}\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-asset-modified"));
+    assertTrue(result.err().contains("static/crypta-ui/crypta-ui.css"));
+  }
+
+  @Test
+  void uiLint_whenDesignSystemTokensLoadAfterBaseCss_expectStrictOrderFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                """,
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-css-order"));
+  }
+
+  @Test
+  void uiLint_whenNonCanonicalCryptaUiStylesheetLoadsBeforeTokens_expectStrictOrderFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("crypta-ui").resolve("custom.css"),
+        ".cr-app { color: inherit; }\n",
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                """,
+                """
+                    <link rel="stylesheet" href="./crypta-ui/custom.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-css-order"));
+  }
+
+  @Test
+  void uiLint_whenUiModeIsNone_expectNotApplicableSuccess() {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--ui-mode",
+        "none");
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+  }
+
+  @Test
+  void uiLint_whenUiModeIsShellPanel_expectNotApplicableSuccess() {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--ui-mode",
+        "shell-panel");
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=shell-panel"));
   }
 
   @Test
@@ -726,6 +1751,7 @@ class CryptaAppCliTest {
     assertTrue(result.out().contains("pack"));
     assertTrue(result.out().contains("api"));
     assertTrue(result.out().contains("compat"));
+    assertTrue(result.out().contains("ui"));
     assertTrue(result.out().contains("review"));
     assertTrue(result.out().contains("catalog"));
   }

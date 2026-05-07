@@ -1,0 +1,239 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--cr-color-bg);
+  color: var(--cr-color-text);
+  font-family: var(--cr-font-family);
+  line-height: var(--cr-line-height);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+label,
+summary {
+  touch-action: manipulation;
+}
+
+a {
+  color: var(--cr-color-accent);
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--cr-color-accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.cr-app {
+  min-height: 100vh;
+  background: var(--cr-color-bg);
+  color: var(--cr-color-text);
+}
+
+.cr-shell {
+  width: min(1180px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: var(--cr-space-6) 0 var(--cr-space-8);
+}
+
+.cr-header,
+.cr-card,
+.cr-toolbar {
+  background: var(--cr-color-surface);
+  border: var(--cr-border);
+  box-shadow: var(--cr-shadow-1);
+}
+
+.cr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cr-space-4);
+  padding: var(--cr-space-5);
+  border-radius: var(--cr-radius-3);
+}
+
+.cr-header h1,
+.cr-card h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.cr-header h1 {
+  font-size: 1.7rem;
+}
+
+.cr-card {
+  padding: var(--cr-space-5);
+  border-radius: var(--cr-radius-3);
+}
+
+.cr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+  align-items: center;
+  padding: var(--cr-space-4) var(--cr-space-5);
+  border-radius: var(--cr-radius-3);
+}
+
+.cr-button {
+  min-height: 2.5rem;
+  border: 1px solid #aeb8c4;
+  border-radius: var(--cr-radius-2);
+  padding: var(--cr-space-2) var(--cr-space-4);
+  background: var(--cr-color-surface);
+  color: var(--cr-color-text);
+  cursor: pointer;
+}
+
+.cr-button:hover {
+  border-color: var(--cr-color-accent);
+}
+
+.cr-button--primary {
+  border-color: var(--cr-color-accent);
+  background: var(--cr-color-accent);
+  color: var(--cr-color-accent-contrast);
+}
+
+.cr-button--secondary {
+  background: var(--cr-color-surface);
+}
+
+.cr-field {
+  display: grid;
+  gap: var(--cr-space-2);
+}
+
+.cr-label {
+  color: var(--cr-color-muted);
+  font-size: var(--cr-font-size-sm);
+  font-weight: 600;
+}
+
+.cr-input {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid #b8c3cf;
+  border-radius: var(--cr-radius-2);
+  padding: var(--cr-space-2) var(--cr-space-3);
+  background: var(--cr-color-surface);
+  color: var(--cr-color-text);
+}
+
+.cr-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cr-space-2);
+  min-height: 2.5rem;
+  color: var(--cr-color-muted);
+  font-size: var(--cr-font-size-sm);
+}
+
+.cr-status {
+  min-height: 1.5rem;
+  margin: 0;
+  color: var(--cr-color-muted);
+}
+
+.cr-status--success {
+  color: var(--cr-color-success);
+}
+
+.cr-status--warning {
+  color: var(--cr-color-warning);
+}
+
+.cr-status--danger {
+  color: var(--cr-color-danger);
+}
+
+.cr-status--info {
+  color: var(--cr-color-info);
+}
+
+.cr-empty {
+  margin: 0;
+  color: var(--cr-color-muted);
+}
+
+.cr-kv-list {
+  display: grid;
+  gap: var(--cr-space-2);
+  margin: 0;
+}
+
+.cr-kv-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.3fr) 1fr;
+  gap: var(--cr-space-3);
+}
+
+.cr-kv-row dt {
+  color: var(--cr-color-muted);
+  font-weight: 700;
+}
+
+.cr-kv-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cr-permission-summary {
+  display: grid;
+  gap: var(--cr-space-2);
+  background: var(--cr-color-surface-muted);
+  border: var(--cr-border);
+  border-radius: var(--cr-radius-2);
+  padding: var(--cr-space-4);
+}
+
+.cr-permission-summary p,
+.cr-permission-summary ul {
+  margin: 0;
+}
+
+.cr-permission-summary ul {
+  padding-left: var(--cr-space-5);
+}
+
+.cr-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .cr-shell {
+    width: min(100vw - 1.25rem, 1180px);
+    padding-top: var(--cr-space-3);
+  }
+
+  .cr-header,
+  .cr-toolbar,
+  .cr-kv-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

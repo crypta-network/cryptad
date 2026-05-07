@@ -38,6 +38,7 @@ DEFAULT_OUT_DIR = Path("build/release-certification/app-platform-smoke")
 SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "app-platform-smoke-report.md"
 APP_IDS = ("queue-manager", "publisher")
+APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -532,7 +533,7 @@ def validate_static_ui_files(static_dir: Path, settings: Settings) -> tuple[list
                 errors.append("index.html must load crypta-platform.js before app.js")
     if app_js.is_file():
         app_text = app_js.read_text(encoding="utf-8")
-        if "CryptaPlatform.bootstrap.load" not in app_text:
+        if ".bootstrap.load" not in app_text:
             errors.append("app.js does not call CryptaPlatform.bootstrap.load")
     if sdk.is_file():
         sdk_text = sdk.read_text(encoding="utf-8")
@@ -1502,6 +1503,308 @@ def collect_app_review_first_party_catalog_evidence(settings: Settings, sample_p
     return EvidenceItem("app-review.first-party-catalog", "pass", True, "First-party catalog review receipt evidence passed.", source, details)
 
 
+def design_system_source_dir(settings: Settings) -> Path:
+    return (
+        settings.workspace_root
+        / "platform-design-system/src/main/resources/network/crypta/platform/designsystem/static"
+    )
+
+
+def design_system_asset_names() -> tuple[str, ...]:
+    return ("crypta-ui-tokens.css", "crypta-ui.css", "crypta-ui-components.js")
+
+
+def collect_app_ui_design_system_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    canonical_dir = design_system_source_dir(settings)
+    details: dict[str, Any] = {
+        "canonicalResourceDir": display_path(canonical_dir, settings.workspace_root),
+        "assets": [],
+        "apps": {},
+    }
+    errors: list[str] = []
+    for asset_name in design_system_asset_names():
+        asset_path = canonical_dir / asset_name
+        if not asset_path.is_file():
+            errors.append(f"canonical design-system asset missing: {asset_name}")
+            details["assets"].append({"name": asset_name, "present": False})
+            continue
+        details["assets"].append(
+            {
+                "name": asset_name,
+                "present": True,
+                "sha256": sha256_file(asset_path),
+                "sizeBytes": asset_path.stat().st_size,
+            }
+        )
+    for spec in first_party_app_specs(settings):
+        app_details: dict[str, Any] = {"assets": []}
+        staged_static_dir = spec["stagedDir"] / "static/crypta-ui"
+        for asset_name in design_system_asset_names():
+            staged_asset = staged_static_dir / asset_name
+            canonical_asset = canonical_dir / asset_name
+            present = staged_asset.is_file()
+            matches = (
+                present
+                and canonical_asset.is_file()
+                and sha256_file(staged_asset) == sha256_file(canonical_asset)
+            )
+            app_details["assets"].append(
+                {
+                    "name": asset_name,
+                    "present": present,
+                    "matchesCanonical": matches,
+                    "path": display_path(staged_asset, settings.workspace_root),
+                }
+            )
+            if not present:
+                errors.append(f"{spec['appId']}: staged design-system asset missing: {asset_name}")
+            elif not matches:
+                errors.append(f"{spec['appId']}: staged design-system asset differs: {asset_name}")
+        details["apps"][spec["appId"]] = app_details
+    if errors:
+        return EvidenceItem(
+            "app-ui.design-system",
+            root_consequence(settings, "fail"),
+            True,
+            "App UI design-system asset evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-ui.design-system",
+        "pass",
+        True,
+        "Canonical app UI design-system assets are present and staged into first-party apps.",
+        source,
+        details,
+    )
+
+
+def stylesheet_order_ok(index_html: str) -> bool:
+    tokens = index_html.find("crypta-ui-tokens.css")
+    ui_css = index_html.find("crypta-ui.css")
+    app_css = index_html.find("app.css")
+    return tokens >= 0 and ui_css > tokens and app_css > ui_css
+
+
+def permission_disclosure_block(index_html: str) -> str:
+    lower = index_html.lower()
+    candidates = [
+        lower.find("cr-permission-summary"),
+        lower.find("data-crypta-permission-summary"),
+        lower.find("<crypta-permission-summary"),
+    ]
+    starts = [candidate for candidate in candidates if candidate >= 0]
+    if not starts:
+        return ""
+    start = min(starts)
+    end_candidates = [
+        lower.find("</section>", start),
+        lower.find("</crypta-permission-summary>", start),
+    ]
+    ends = [candidate for candidate in end_candidates if candidate >= 0]
+    end = min(ends) if ends else len(index_html)
+    return index_html[start:end]
+
+
+def source_ui_adoption_details(
+    static_dir: Path, permissions: set[str], settings: Settings
+) -> tuple[list[str], dict[str, Any]]:
+    errors: list[str] = []
+    index = static_dir / "index.html"
+    details: dict[str, Any] = {
+        "index": display_path(index, settings.workspace_root),
+        "designSystemStylesheetOrder": False,
+        "usesDesignSystemClasses": False,
+        "hasPermissionDisclosure": False,
+    }
+    if not index.is_file():
+        return ["static/index.html is missing"], details
+    index_html = index.read_text(encoding="utf-8")
+    details["designSystemStylesheetOrder"] = stylesheet_order_ok(index_html)
+    details["usesDesignSystemClasses"] = "cr-" in index_html
+    details["hasPermissionDisclosure"] = (
+        "cr-permission-summary" in index_html
+        or "data-crypta-permission-summary" in index_html
+        or "<crypta-permission-summary" in index_html
+    )
+    if not details["designSystemStylesheetOrder"]:
+        errors.append("index.html does not load design-system CSS before app CSS")
+    if not details["usesDesignSystemClasses"]:
+        errors.append("index.html does not use cr-* design-system classes")
+    if permissions and not details["hasPermissionDisclosure"]:
+        errors.append("manifest permissions have no visible permission disclosure")
+    disclosure = permission_disclosure_block(index_html)
+    mentioned_permissions = set(
+        re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
+    )
+    omitted = sorted(permissions - mentioned_permissions)
+    undeclared = sorted(mentioned_permissions - permissions)
+    details["mentionedPermissions"] = sorted(mentioned_permissions)
+    details["omittedPermissions"] = omitted
+    if details["hasPermissionDisclosure"] and omitted:
+        errors.append("permission disclosure omits declared permissions: " + ",".join(omitted))
+    if undeclared:
+        errors.append(
+            "permission disclosure mentions undeclared permissions: " + ",".join(undeclared)
+        )
+    return errors, details
+
+
+def collect_app_ui_first_party_adoption_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    details: dict[str, Any] = {"sourceStaticUi": {}, "stagedStaticUi": {}}
+    errors: list[str] = []
+    for spec in first_party_app_specs(settings):
+        source_errors, source_details = source_ui_adoption_details(
+            spec["sourceDir"] / "static", spec["permissions"], settings
+        )
+        staged_errors, staged_details = source_ui_adoption_details(
+            spec["stagedDir"] / "static", spec["permissions"], settings
+        )
+        details["sourceStaticUi"][spec["appId"]] = source_details
+        details["stagedStaticUi"][spec["appId"]] = staged_details
+        errors.extend(f"{spec['appId']} source: {error}" for error in source_errors)
+        errors.extend(f"{spec['appId']} staged: {error}" for error in staged_errors)
+    if errors:
+        return EvidenceItem(
+            "app-ui.first-party-adoption",
+            root_consequence(settings, "fail"),
+            True,
+            "First-party app UI design-system adoption checks found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-ui.first-party-adoption",
+        "pass",
+        True,
+        "First-party static apps use design-system loading order, classes, and permission disclosure.",
+        source,
+        details,
+    )
+
+
+def collect_app_ui_lint_evidence(settings: Settings, cli: Path | None) -> EvidenceItem:
+    source = summary_source(settings)
+    details: dict[str, Any] = {"apps": {}}
+    if cli is None or not cli.is_file():
+        return EvidenceItem(
+            "app-ui.lint",
+            root_consequence(settings, "missing"),
+            True,
+            "crypta-app CLI is unavailable for app UI lint evidence.",
+            source,
+            details,
+        )
+    errors: list[str] = []
+    lint_dir = settings.out_dir / "artifacts" / "app-ui-lint"
+    lint_dir.mkdir(parents=True, exist_ok=True)
+    for spec in first_party_app_specs(settings):
+        json_path = lint_dir / f"{spec['appId']}.json"
+        remove_existing_path(json_path)
+        result = run_cli(
+            cli,
+            [
+                "ui",
+                "lint",
+                "--bundle-dir",
+                str(spec["stagedDir"]),
+                "--strict",
+                "--json",
+                str(json_path),
+            ],
+            settings,
+            f"crypta-app-ui-lint-{spec['appId']}",
+        )
+        app_details = {
+            "command": command_details(result, settings),
+            "json": display_path(json_path, settings.workspace_root, settings.out_dir),
+        }
+        lint_json = read_json_file(json_path)
+        if lint_json:
+            app_details["report"] = {
+                "appId": str(lint_json.get("appId", "")),
+                "uiMode": str(lint_json.get("uiMode", "")),
+                "applicable": lint_json.get("applicable"),
+            }
+            summary = lint_json.get("summary", {})
+            app_details["summary"] = summary
+            findings = lint_json.get("findings", [])
+            if isinstance(findings, list):
+                app_details["findingIds"] = [
+                    str(finding.get("id", "unknown"))
+                    for finding in findings
+                    if isinstance(finding, dict)
+                ]
+        details["apps"][spec["appId"]] = app_details
+        if result.exit_code != 0:
+            errors.append(f"crypta-app ui lint failed for {spec['appId']}")
+        errors.extend(ui_lint_report_errors(lint_json, str(spec["appId"])))
+    if errors:
+        return EvidenceItem(
+            "app-ui.lint",
+            root_consequence(settings, "fail"),
+            True,
+            "First-party app UI lint found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-ui.lint",
+        "pass",
+        True,
+        "crypta-app ui lint passed for first-party static apps.",
+        source,
+        details,
+    )
+
+
+def read_json_file(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def ui_lint_report_errors(lint_json: dict[str, Any] | None, expected_app_id: str) -> list[str]:
+    if lint_json is None:
+        return [f"crypta-app ui lint JSON missing or malformed for {expected_app_id}"]
+    errors: list[str] = []
+    if lint_json.get("appId") != expected_app_id:
+        errors.append(f"crypta-app ui lint JSON appId mismatch for {expected_app_id}")
+    if lint_json.get("uiMode") != "static":
+        errors.append(f"crypta-app ui lint JSON uiMode mismatch for {expected_app_id}")
+    if lint_json.get("applicable") is not True:
+        errors.append(f"crypta-app ui lint JSON applicability mismatch for {expected_app_id}")
+    summary = lint_json.get("summary")
+    if not isinstance(summary, dict):
+        errors.append(
+            f"crypta-app ui lint JSON summary missing or malformed for {expected_app_id}"
+        )
+    else:
+        error_count = summary.get("errors")
+        if not isinstance(error_count, int) or isinstance(error_count, bool) or error_count != 0:
+            errors.append(f"crypta-app ui lint JSON reports nonzero errors for {expected_app_id}")
+    findings = lint_json.get("findings")
+    if not isinstance(findings, list):
+        errors.append(
+            f"crypta-app ui lint JSON findings missing or malformed for {expected_app_id}"
+        )
+    elif any(
+        isinstance(finding, dict) and str(finding.get("severity", "")).lower() == "error"
+        for finding in findings
+    ):
+        errors.append(
+            f"crypta-app ui lint JSON findings include error severity for {expected_app_id}"
+        )
+    return errors
+
+
 def collect_app_ui_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     source_ok, source_errors, source_details = check_source_static_ui(settings)
@@ -2214,6 +2517,9 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_first_party_catalog_evidence(settings, sample_paths),
+        collect_app_ui_design_system_evidence(settings),
+        collect_app_ui_lint_evidence(settings, cli if isinstance(cli, Path) else None),
+        collect_app_ui_first_party_adoption_evidence(settings),
         collect_app_ui_evidence(settings),
         collect_legacy_evidence(settings),
         collect_sandbox_provider_evidence(settings),
@@ -2362,6 +2668,28 @@ def run_self_test(repo_root: Path) -> None:
             )
         script_errors, _ = validate_static_ui_files(static_dir, env_settings)
     assert "index.html must load crypta-platform.js before app.js" in script_errors, script_errors
+    with tempfile.TemporaryDirectory(prefix="cryptad-app-adoption-self-test-") as adoption_name:
+        adoption_static_dir = Path(adoption_name)
+        adoption_static_dir.joinpath("index.html").write_text(
+            '<!doctype html><html lang="en"><head>'
+            '<link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">'
+            '<link rel="stylesheet" href="./crypta-ui/crypta-ui.css">'
+            '<link rel="stylesheet" href="./app.css">'
+            '</head><body class="cr-app"><main class="cr-shell">'
+            '<section class="cr-permission-summary" data-crypta-permission-summary>'
+            "<code>queue.read</code>"
+            "</section></main></body></html>\n",
+            encoding="utf-8",
+        )
+        adoption_errors, adoption_details = source_ui_adoption_details(
+            adoption_static_dir,
+            {"queue.read", "queue.write"},
+            env_settings,
+        )
+    assert (
+        "permission disclosure omits declared permissions: queue.write" in adoption_errors
+    ), adoption_errors
+    assert adoption_details["omittedPermissions"] == ["queue.write"], adoption_details
     scrubbed = scrub_text("key file /mnt/secrets/signing/key.pem token=hunter2 USK@private/insert", repo_root)
     assert "/mnt/secrets/signing/key.pem" not in scrubbed
     assert "hunter2" not in scrubbed
@@ -2606,6 +2934,81 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
+        assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
+        assert evidence_by_id["app-ui.lint"]["status"] == "pass"
+        assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
+
+        def collect_ui_lint_with_fake_env(
+            env_name: str, out_leaf: str
+        ) -> tuple[EvidenceItem, Path]:
+            previous = os.environ.get(env_name)
+            os.environ[env_name] = "1"
+            try:
+                lint_settings = dataclasses.replace(
+                    settings,
+                    out_dir=(workspace / "build" / out_leaf).resolve(),
+                    mode="release-candidate",
+                )
+                stale_json = (
+                    lint_settings.out_dir / "artifacts/app-ui-lint/queue-manager.json"
+                )
+                stale_json.parent.mkdir(parents=True, exist_ok=True)
+                stale_json.write_text(
+                    json.dumps(
+                        {
+                            "appId": "queue-manager",
+                            "uiMode": "static",
+                            "applicable": True,
+                            "summary": {"errors": 0, "warnings": 0, "notes": 0},
+                            "findings": [],
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return collect_app_ui_lint_evidence(lint_settings, fake_cli), stale_json
+            finally:
+                if previous is None:
+                    os.environ.pop(env_name, None)
+                else:
+                    os.environ[env_name] = previous
+
+        missing_ui_lint_item, stale_ui_lint_json = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON",
+            "missing-ui-lint-json",
+        )
+        assert missing_ui_lint_item.status == "fail", missing_ui_lint_item
+        assert any(
+            "JSON missing or malformed" in error
+            for error in missing_ui_lint_item.details["errors"]
+        ), missing_ui_lint_item
+        assert not stale_ui_lint_json.exists(), stale_ui_lint_json
+        malformed_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON",
+            "malformed-ui-lint-json",
+        )
+        assert malformed_ui_lint_item.status == "fail", malformed_ui_lint_item
+        assert any(
+            "JSON missing or malformed" in error
+            for error in malformed_ui_lint_item.details["errors"]
+        ), malformed_ui_lint_item
+        wrong_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP",
+            "wrong-ui-lint-app",
+        )
+        assert wrong_ui_lint_item.status == "fail", wrong_ui_lint_item
+        assert any(
+            "appId mismatch" in error for error in wrong_ui_lint_item.details["errors"]
+        ), wrong_ui_lint_item
+        errored_ui_lint_item, _ = collect_ui_lint_with_fake_env(
+            "CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS",
+            "errored-ui-lint-report",
+        )
+        assert errored_ui_lint_item.status == "fail", errored_ui_lint_item
+        assert any(
+            "nonzero errors" in error for error in errored_ui_lint_item.details["errors"]
+        ), errored_ui_lint_item
         assert evidence_by_id["apphost.sandbox-provider"]["status"] == "pass"
         assert evidence_by_id["apphost.sandbox-provider"]["details"]["liveBubblewrapRequired"] is False
         sandbox_checks = evidence_by_id["apphost.sandbox-provider"]["details"]["checks"]
@@ -2880,6 +3283,11 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk = workspace / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
     sdk.parent.mkdir(parents=True, exist_ok=True)
     sdk.write_text("window.CryptaPlatform = {}; const h = 'X-Crypta-App-Session';\n", encoding="utf-8")
+    design_dir = workspace / "platform-design-system/src/main/resources/network/crypta/platform/designsystem/static"
+    design_dir.mkdir(parents=True, exist_ok=True)
+    (design_dir / "crypta-ui-tokens.css").write_text(":root{--cr-space-4:1rem;}\n", encoding="utf-8")
+    (design_dir / "crypta-ui.css").write_text(".cr-app{}.cr-shell{}.cr-button{}\n", encoding="utf-8")
+    (design_dir / "crypta-ui-components.js").write_text('window.CryptaUi={version:"1"};\n', encoding="utf-8")
     for app_id, display_name, launcher, permissions in (
         ("queue-manager", "Queue Manager", "queue-manager.sh", "queue.read,queue.write"),
         ("publisher", "Publisher", "publisher.sh", "queue.read,queue.write,content.insert"),
@@ -2889,10 +3297,20 @@ def make_self_test_workspace(workspace: Path) -> None:
         staged = workspace / f"apps/{project}/build/cryptad-app/{app_id}"
         for root in (source, staged):
             (root / "bin").mkdir(parents=True, exist_ok=True)
-            (root / "static").mkdir(parents=True, exist_ok=True)
+            (root / "static/crypta-ui").mkdir(parents=True, exist_ok=True)
             (root / "bin" / launcher).write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+            permission_items = "".join(f"<li><code>{permission}</code></li>" for permission in permissions.split(","))
             (root / "static/index.html").write_text(
-                "<!doctype html><script src=\"./crypta-platform.js\"></script><script src=\"./app.js\"></script>",
+                "<!doctype html><html lang=\"en\"><head>"
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+                f"<title>{display_name}</title>"
+                "<link rel=\"stylesheet\" href=\"./crypta-ui/crypta-ui-tokens.css\">"
+                "<link rel=\"stylesheet\" href=\"./crypta-ui/crypta-ui.css\">"
+                "<link rel=\"stylesheet\" href=\"./app.css\">"
+                "</head><body class=\"cr-app\"><main class=\"cr-shell\">"
+                f"<section class=\"cr-permission-summary\" data-crypta-permission-summary><ul>{permission_items}</ul></section>"
+                f"<h1>{display_name}</h1>"
+                "</main><script src=\"./crypta-platform.js\"></script><script src=\"./app.js\"></script></body></html>",
                 encoding="utf-8",
             )
             (root / "static/app.js").write_text(
@@ -2900,6 +3318,8 @@ def make_self_test_workspace(workspace: Path) -> None:
                 encoding="utf-8",
             )
             (root / "static/app.css").write_text("body { color: #111; }\n", encoding="utf-8")
+            for asset_name in design_system_asset_names():
+                shutil.copy2(design_dir / asset_name, root / "static/crypta-ui" / asset_name)
             shutil.copy2(sdk, root / "static/crypta-platform.js")
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
@@ -2925,6 +3345,15 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs = workspace / "docs/legacy-retirement-plan.md"
     docs.parent.mkdir(parents=True, exist_ok=True)
     docs.write_text("Direct legacy URLs remain reachable for fallback.\n", encoding="utf-8")
+    (workspace / APP_UI_DESIGN_SYSTEM_DOC).write_text(
+        "crypta-platform.js loads before app.js. Static apps load crypta-ui-tokens.css, "
+        "crypta-ui.css, then app.css. Use cr-shell and cr-button classes. "
+        "Content-Security-Policy includes connect-src. Accessibility requires aria labels. "
+        "Permission disclosure mirrors app.permissions. Run crypta-app ui lint --bundle-dir. "
+        "First-party Queue Manager and Publisher use this guidance. Warnings become failure "
+        "in release-candidate evidence.\n",
+        encoding="utf-8",
+    )
     sandbox_dir = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"
     sandbox_test_dir = workspace / "platform-apphost/src/test/java/network/crypta/platform/apphost/sandbox"
     sandbox_dir.mkdir(parents=True, exist_ok=True)
@@ -3220,13 +3649,24 @@ def write_text(path, text):
     path.write_text(text, encoding="utf-8")
 
 
+def property_value(path, name):
+    if not path.is_file():
+        return ""
+    prefix = name + "="
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped.split("=", 1)[1]
+    return ""
+
+
 def init_app(args):
     directory_text = option_value(args, "--dir")
     if not directory_text:
         return 2
     directory = Path(directory_text)
     (directory / "bin").mkdir(parents=True, exist_ok=True)
-    (directory / "static").mkdir(parents=True, exist_ok=True)
+    (directory / "static/crypta-ui").mkdir(parents=True, exist_ok=True)
     write_text(
         directory / "cryptad-app.properties",
         "\n".join(
@@ -3249,17 +3689,51 @@ def init_app(args):
     write_text(directory / "bin/start.sh", "#!/usr/bin/env sh\nexit 0\n")
     write_text(
         directory / "static/index.html",
-        '<script src="./crypta-platform.js"></script><script src="./app.js"></script>\n',
+        '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>\n',
     )
     write_text(
         directory / "static/app.js",
         'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });\n',
     )
     write_text(directory / "static/app.css", "body{}\n")
+    write_text(directory / "static/crypta-ui/crypta-ui-tokens.css", ":root{--cr-space-4:1rem;}\n")
+    write_text(directory / "static/crypta-ui/crypta-ui.css", ".cr-app{}.cr-shell{}.cr-button{}\n")
+    write_text(directory / "static/crypta-ui/crypta-ui-components.js", 'window.CryptaUi={version:"1"};\n')
     write_text(
         directory / "static/crypta-platform.js",
         'window.CryptaPlatform={}; X="X-Crypta-App-Session";\n',
     )
+    return 0
+
+
+def ui_lint(args):
+    output_text = option_value(args, "--json")
+    bundle_text = option_value(args, "--bundle-dir")
+    app_id = "cert-smoke"
+    ui_mode = "static"
+    if bundle_text:
+        manifest = Path(bundle_text) / "cryptad-app.properties"
+        app_id = property_value(manifest, "app.id") or app_id
+        ui_mode = property_value(manifest, "app.ui.mode") or ui_mode
+    payload = {
+        "appId": app_id,
+        "uiMode": ui_mode,
+        "applicable": True,
+        "summary": {"errors": 0, "warnings": 0, "notes": 0},
+        "findings": [],
+    }
+    if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP") == "1":
+        payload["appId"] = "wrong-app"
+    if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS") == "1":
+        payload["summary"]["errors"] = 1
+        payload["findings"] = [{"id": "fake-error", "severity": "error"}]
+    if output_text:
+        if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON") == "1":
+            return 0
+        if os.environ.get("CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON") == "1":
+            write_text(Path(output_text), "{not-json\n")
+            return 0
+        write_text(Path(output_text), json.dumps(payload, sort_keys=True) + "\n")
     return 0
 
 
@@ -3367,6 +3841,11 @@ def main():
         return init_app(args)
     if command == "validate":
         return 0
+    if command == "ui":
+        subcommand = args[0] if args else ""
+        if subcommand == "lint":
+            return ui_lint(args[1:])
+        return 0
     if command == "pack":
         return pack_app(args)
     if command == "catalog":
@@ -3419,16 +3898,70 @@ case "$cmd" in
     while [ "$#" -gt 0 ]; do
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
-    mkdir -p "$dir/bin" "$dir/static"
+    mkdir -p "$dir/bin" "$dir/static/crypta-ui"
     printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=1' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
-    printf '%s\n' '<script src="./crypta-platform.js"></script><script src="./app.js"></script>' > "$dir/static/index.html"
+    printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
     printf '%s\n' 'body{}' > "$dir/static/app.css"
+    printf '%s\n' ':root{--cr-space-4:1rem;}' > "$dir/static/crypta-ui/crypta-ui-tokens.css"
+    printf '%s\n' '.cr-app{}.cr-shell{}.cr-button{}' > "$dir/static/crypta-ui/crypta-ui.css"
+    printf '%s\n' 'window.CryptaUi={version:"1"};' > "$dir/static/crypta-ui/crypta-ui-components.js"
     printf '%s\n' 'window.CryptaPlatform={}; X="X-Crypta-App-Session";' > "$dir/static/crypta-platform.js"
     ;;
   validate)
     exit 0
+    ;;
+  ui)
+    sub="${1:-}"; shift || true
+    if [ "$sub" = "lint" ]; then
+      out=""
+      bundle=""
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --json)
+            out="$2"
+            shift 2
+            ;;
+          --bundle-dir)
+            bundle="$2"
+            shift 2
+            ;;
+          *)
+            shift
+            ;;
+        esac
+      done
+      if [ -n "$out" ]; then
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_SKIP_UI_LINT_JSON:-0}" = "1" ]; then
+          exit 0
+        fi
+        mkdir -p "$(dirname "$out")"
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_BAD_UI_LINT_JSON:-0}" = "1" ]; then
+          printf '%s\n' '{not-json' > "$out"
+          exit 0
+        fi
+        app_id="cert-smoke"
+        ui_mode="static"
+        if [ -n "$bundle" ] && [ -f "$bundle/cryptad-app.properties" ]; then
+          app_id="$(awk -F= '$1 == "app.id" {print substr($0, index($0, "=") + 1); exit}' "$bundle/cryptad-app.properties")"
+          ui_mode="$(awk -F= '$1 == "app.ui.mode" {print substr($0, index($0, "=") + 1); exit}' "$bundle/cryptad-app.properties")"
+          app_id="${app_id:-cert-smoke}"
+          ui_mode="${ui_mode:-static}"
+        fi
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_WRONG_UI_LINT_APP:-0}" = "1" ]; then
+          app_id="wrong-app"
+        fi
+        error_count="0"
+        findings="[]"
+        if [ "${CRYPTAD_APP_SMOKE_FAKE_UI_LINT_ERRORS:-0}" = "1" ]; then
+          error_count="1"
+          findings='[{"id":"fake-error","severity":"error"}]'
+        fi
+        printf '{"appId":"%s","applicable":true,"findings":%s,"summary":{"errors":%s,"notes":0,"warnings":0},"uiMode":"%s"}\n' "$app_id" "$findings" "$error_count" "$ui_mode" > "$out"
+      fi
+      exit 0
+    fi
     ;;
   pack)
     out=""

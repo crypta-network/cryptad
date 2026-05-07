@@ -16,6 +16,7 @@ version = "3"
 
 val internalLeafProjects =
   listOf(
+    project(":platform-design-system"),
     project(":platform-appdist"),
     project(":platform-app-ui"),
     project(":platform-appcatalog"),
@@ -102,6 +103,7 @@ dependencies {
   implementation(project(":kernel-transport"))
   implementation(project(":kernel-routing"))
   implementation(project(":runtime-spi"))
+  implementation(project(":platform-design-system"))
   implementation(project(":platform-api"))
   implementation(project(":platform-app-ui"))
   implementation(project(":platform-appcatalog"))

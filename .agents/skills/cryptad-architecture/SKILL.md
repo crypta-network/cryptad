@@ -70,6 +70,8 @@ Use this skill when you need to:
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
     resolution helpers, isolated origin metadata, and browser-session helpers)
+  - `:platform-design-system` → `network.crypta.platform.designsystem` (canonical local app UI
+    CSS/JS resources plus asset metadata and safe bundle-copy helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
     transport helpers, mutation form handling, error parsing, and conservative fragment
     sanitization
@@ -77,10 +79,11 @@ Use this skill when you need to:
     signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
-    metadata, artifact verification, safe ZIP extraction, and verified staging)
+    metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
+    verified staging)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
-    CLI for staged-bundle, catalog-authoring, API snapshot, and compatibility verification
-    workflows)
+    CLI for staged-bundle, UI lint, catalog-authoring, API snapshot, and compatibility
+    verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
@@ -137,9 +140,10 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
   transport-neutral AppHost core, `:platform-app-ui` owns app-owned static UI route helpers,
-  `:platform-sdk-js` owns the browser SDK resource, `:platform-appdist` owns signed local bundle
-  distribution, `:platform-appcatalog` owns signed catalog sources and verified staging,
-  `:platform-devtools` owns the standalone app developer CLI,
+  `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
+  browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
+  `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
+  staging, `:platform-devtools` owns the standalone app developer CLI and offline UI linter,
   `:platform-web-shell` owns the browser-facing
   node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
@@ -361,12 +365,14 @@ Use this skill when you need to:
 - `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
   artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
   enforces source/URI policy including `crypta:` catalog sources, parses optional review/API
-  compatibility metadata, validates artifact size and SHA-256, safely extracts ZIP bundles, and
+  compatibility metadata, verifies independent app-review receipts against trusted reviewer keys
+  and local review policy, validates artifact size and SHA-256, safely extracts ZIP bundles, and
   delegates verified staged bundles to AppHost install/update flows.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
-  linting, API contract snapshot/compatibility verification, and catalog create/sign/verify
-  commands around the platform distribution, API, and catalog libraries.
+  linting, offline UI linting, API contract snapshot/compatibility verification, review receipt
+  signing/verification, and catalog create/sign/verify commands around the platform distribution,
+  API, design-system, and catalog libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it

@@ -17,6 +17,14 @@ bootstrap and Platform API calls; permission enforcement remains server-side.
 The route serves immutable files from the installed app bundle only. It does not serve app data,
 cache, run directories, catalog scratch directories, or caller staging paths.
 
+Static apps should vendor the canonical Crypta UI design-system assets under
+`static/crypta-ui/` and load them before app-specific CSS. The design system is a small local
+asset set, not a hosted framework. `crypta-app ui lint` can check the staged bundle offline for
+design-system adoption, CSP-compatible local resources, SDK/bootstrap ordering, permission
+disclosure, and basic accessibility before the app is signed or cataloged. See
+[app-ui-design-system.md](app-ui-design-system.md) for the asset list, `cr-*` classes, and warning
+versus failure policy.
+
 ## Manifest fields
 
 App manifests can declare a UI mode:
@@ -136,6 +144,12 @@ Isolated app-origin responses keep scripts local to the app origin and add `conn
 admin Platform API root supplied in bootstrap. They do not allow remote scripts, objects, embeds,
 or `base` rewriting. Frame ancestry is limited to the Web Shell/admin origin when embedding is
 enabled by the host response.
+
+The same CSP model means static app bundles should avoid remote stylesheets, CDN scripts, inline
+scripts, inline event handlers, `javascript:` URLs, dynamic code evaluation, and browser storage
+for app/session credential material. The browser SDK keeps app browser-session credentials in
+memory; app-owned UI files must not reference AppHost launch-token names or the local admin form
+password.
 
 App-owned UI uses stable URLs across reinstall and update operations. Responses are therefore sent
 with non-public no-cache headers instead of the legacy admin adapter's long-lived static cache

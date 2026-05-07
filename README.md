@@ -254,6 +254,10 @@ Cryptad now uses a partial multi-project Gradle build.
   origins with `/apps/{appId}/` as a compatibility fallback, resolves installed-bundle assets,
   issues origin-bound short-lived browser sessions for static app API calls, and enforces
   traversal, symlink, and content-type boundaries before the HTTP adapter streams files.
+- `:platform-design-system` owns the canonical local app UI design-system resources under
+  `network.crypta.platform.designsystem`, including CSS tokens, base `cr-*` classes, optional
+  progressive-enhancement JavaScript, and safe asset metadata/copy helpers for staged static app
+  bundles.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource used by app-owned static UI
   bundles. First-party app staging copies this SDK into staged `static/` assets so pages can use
   the same bootstrap, Platform API, mutation, error, and fragment-sanitization helpers.
@@ -263,8 +267,8 @@ Cryptad now uses a partial multi-project Gradle build.
   remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
   ZIP extraction, and verified staging for AppHost install/update flows.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
-  signing, packaging, verifying, catalog-authoring, API contract snapshotting, and compatibility
-  verification for standalone staged bundles.
+  UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
+  compatibility verification for standalone staged bundles.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
@@ -378,7 +382,8 @@ compatibility fallback, and shell-panel bundles keep existing local links such a
 origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
 asset boundary. The repo-owned Queue Manager and Publisher bundles now stage static UIs that open
 through the isolated app UI path when available, including the browser SDK described in
-[`docs/platform-sdk-js.md`](docs/platform-sdk-js.md).
+[`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and the canonical UI design-system assets
+described in [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md).
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -418,7 +423,8 @@ crypta-app init \
   --version 0.1.0 \
   --ui-mode static \
   --permission queue.read
-crypta-app validate --bundle-dir build/dev-apps/hello-queue
+crypta-app ui lint --bundle-dir build/dev-apps/hello-queue --strict
+crypta-app validate --bundle-dir build/dev-apps/hello-queue --strict
 crypta-app sign \
   --bundle-dir build/dev-apps/hello-queue \
   --key-id dev-local \
@@ -438,8 +444,9 @@ crypta-app compat verify \
 ```
 
 `crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
-scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available. The CLI is
-local developer tooling; it does not add hot reload or a daemon-side install command.
+scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available and copy the
+canonical app UI design-system assets into `static/crypta-ui/`. The CLI is local developer
+tooling; it does not add hot reload or a daemon-side install command.
 
 `crypta-app catalog create` descriptors can author optional store metadata such as homepage,
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
@@ -466,16 +473,18 @@ compatibility, bridge, debug, and fallback surfaces.
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
 sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
-Manager and Publisher UIs. Phase 6 starts moving static app UIs onto isolated per-app loopback
-origins while retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced
-Linux AppHost process sandbox provider through bubblewrap for supported `restricted-process`
-launches. Installed apps can be launched through `/app/node/` shell-panel links or through isolated
-app UI URLs when the signed bundle declares `app.ui.mode=static`. Phase 6 also adds the
-deterministic Platform API compatibility contract so app manifests, signed catalogs, developer
-tooling, and release certification can compare API contract versions without changing endpoint
-behavior. The Web Shell Apps section uses `/api/v1/app-catalogs` metadata to show source, license,
-category, review, permission-rationale, version-difference, API compatibility, and changelog
-details before install or update.
+Manager and Publisher UIs. Phase 6 adds isolated per-app loopback origins for static app UIs while
+retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
+process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
+apps can be launched through `/app/node/` shell-panel links or through isolated app UI URLs when the
+signed bundle declares `app.ui.mode=static`. Phase 6 also adds a canonical local app UI design
+system and offline UI linting so first-party and third-party static UIs can check CSP-compatible
+resources, SDK/bootstrap ordering, permission disclosure, accessibility basics, and platform
+consistency before signing. The deterministic Platform API compatibility contract lets app
+manifests, signed catalogs, developer tooling, and release certification compare API contract
+versions without changing endpoint behavior. The Web Shell Apps section uses
+`/api/v1/app-catalogs` metadata to show source, license, category, review, permission-rationale,
+version-difference, API compatibility, and changelog details before install or update.
 
 Key docs:
 
@@ -486,6 +495,7 @@ Key docs:
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
 - [App-owned static UI](docs/app-owned-ui.md)
+- [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
 - [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
 - [App permissions and audit](docs/app-permissions-and-audit.md)
@@ -620,8 +630,8 @@ Additional root and mixed verification slices remain available:
 ```
 
 Platform checks now live in `:platform-api`, `:platform-apphost`, `:platform-app-ui`,
-`:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`, and
-`:platform-web-shell`.
+`:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`,
+`:platform-sdk-js`, and `:platform-web-shell`.
 
 ## Code Quality
 
@@ -921,6 +931,8 @@ Root build also includes:
   HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`
   compatibility path without exposing data/cache/run directories or traversal paths. It also owns
   origin-bound browser session issuance and verification for static app API calls.
+- `:platform-design-system`: canonical CSS token, base class, and optional JavaScript resources
+  for local app-owned static UI, plus safe helper APIs for copying and hashing those assets.
 - `:platform-sdk-js`: browser-native SDK resource for app-owned static UI bootstrap, Platform API
   form/JSON helpers, error handling, and conservative legacy-fragment sanitization.
 - `:platform-appdist`: local app distribution tooling for deterministic bundle digests, Ed25519
@@ -929,9 +941,9 @@ Root build also includes:
 - `:platform-appcatalog`: signed catalog source parsing, catalog writing, signature verification,
   app-store metadata parsing, Crypta catalog source fetching, artifact digest checks, safe ZIP
   extraction, and verified staging for AppHost install/update flows.
-- `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating, signing,
-  packaging, verifying, catalog-authoring, API contract snapshotting, and compatibility
-  verification for standalone staged bundles.
+- `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating,
+  UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
+  compatibility verification for standalone staged bundles.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
   `/app/node/`.
@@ -1030,8 +1042,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
-    `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`,
-    `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
+    `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-design-system`,
+    `:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`,
+    `:platform-web-shell`,
     `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
     `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
@@ -1179,12 +1192,13 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   compatibility contract, and the minimal AppHost control-plane routes; `:platform-apphost`
   provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route,
-  asset-resolution, and browser-session helpers; `:platform-sdk-js` provides the browser SDK
-  resource for app-owned static UI; `:platform-appdist` provides the local app bundle digest,
-  signing, packaging, and verification tooling; `:platform-appcatalog` provides signed catalog
-  source, app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP staging
+  asset-resolution, and browser-session helpers; `:platform-design-system` provides canonical
+  app UI assets for local static bundles; `:platform-sdk-js` provides the browser SDK resource for
+  app-owned static UI; `:platform-appdist` provides the local app bundle digest, signing,
+  packaging, and verification tooling; `:platform-appcatalog` provides signed catalog source,
+  app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP staging
   support; `:platform-devtools` provides the standalone `crypta-app` developer CLI including
-  offline API contract and compatibility checks;
+  offline UI linting, API contract, and compatibility checks;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level
