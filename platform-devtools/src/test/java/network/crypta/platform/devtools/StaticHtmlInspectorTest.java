@@ -186,6 +186,34 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void accessibilityFindings_whenEssentialsAndAccessibleNamesPresent_expectNoFindings() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <html lang="en">
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Accessible app</title>
+                <style>:focus-visible { outline: 2px solid currentColor; }</style>
+              </head>
+              <body>
+                <h1>Accessible app</h1>
+                <label for="named">Name</label>
+                <input id="named">
+                <label>Filter <input id="wrapped"></label>
+                <input type="hidden" id="internal">
+                <button aria-label="Refresh"><span></span></button>
+                <button title="Open"><span></span></button>
+              </body>
+            </html>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertEquals(List.of(), inspector.accessibilityFindings(true, false));
+  }
+
+  @Test
   void safetyFindings_whenDangerousMarkupPresent_expectCspErrorsAndWarnings() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(
@@ -338,6 +366,37 @@ class StaticHtmlInspectorTest {
     assertEquals(
         new LinkedHashSet<>(List.of("queue.read", "publisher.write")),
         inspector.mentionedPermissionsInDisclosure());
+  }
+
+  @Test
+  void permissionDisclosure_whenAlternateMarkersPresent_expectDetectedPermissions() {
+    StaticHtmlInspector dataAttributeInspector =
+        StaticHtmlInspector.inspect(
+            """
+            <section data-crypta-permission-summary>
+              <p><code>queue.read</code></p>
+            </section>
+            """,
+            "static/index.html",
+            Path.of("static"));
+    StaticHtmlInspector customElementInspector =
+        StaticHtmlInspector.inspect(
+            """
+            <crypta-permission-summary>
+              <code>content.insert</code>
+            </crypta-permission-summary>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertTrue(dataAttributeInspector.hasPermissionDisclosure());
+    assertEquals(
+        new LinkedHashSet<>(List.of("queue.read")),
+        dataAttributeInspector.mentionedPermissionsInDisclosure());
+    assertTrue(customElementInspector.hasPermissionDisclosure());
+    assertEquals(
+        new LinkedHashSet<>(List.of("content.insert")),
+        customElementInspector.mentionedPermissionsInDisclosure());
   }
 
   private static Set<String> ids(List<AppUiLintFinding> findings) {

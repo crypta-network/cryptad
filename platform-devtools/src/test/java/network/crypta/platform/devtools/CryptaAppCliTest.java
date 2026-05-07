@@ -671,6 +671,41 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenPermissionDisclosureMentionsUndeclaredPermission_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                "              <li><code>queue.read</code></li>\n",
+                """
+                              <li><code>queue.read</code></li>
+                              <li><code>content.insert</code></li>
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("permission-disclosure-undeclared-permission"));
+    assertTrue(result.err().contains("content.insert"));
+  }
+
+  @Test
   void validate_whenStaticUiEntryUsesCustomRelativePath_expectStrictUiLintSuccess()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
@@ -901,6 +936,43 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenUnsafeLocalJavaScriptPatternsPresent_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        async function main() {
+          await CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+          eval("console.log('unsafe')");
+          const factory = new Function("return 1");
+          localStorage.setItem("session", "value");
+          await fetch("/api/v1/queue");
+          return factory();
+        }
+        main();
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("dynamic-code-evaluation"));
+    assertTrue(result.err().contains("persistent-browser-storage"));
+    assertTrue(result.err().contains("direct-platform-api-reference"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
   void validate_whenStrictStaticUiLintFindsProblem_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -927,6 +999,32 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.SOFTWARE, strictResult.exitCode());
     assertTrue(strictResult.err().contains("design-system-css-not-linked"));
     assertTrue(strictResult.err().contains("UI lint failed"));
+  }
+
+  @Test
+  void uiLint_whenCanonicalDesignSystemAssetIsModified_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("crypta-ui").resolve("crypta-ui.css"),
+        "\n.modified {}\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-asset-modified"));
+    assertTrue(result.err().contains("static/crypta-ui/crypta-ui.css"));
   }
 
   @Test

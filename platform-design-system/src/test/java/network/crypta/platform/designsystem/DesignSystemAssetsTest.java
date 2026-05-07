@@ -64,6 +64,28 @@ class DesignSystemAssetsTest {
   }
 
   @Test
+  void copyIntoBundle_whenCanonicalFileAlreadyExists_expectCanonicalBytesReplaceIt()
+      throws Exception {
+    Path bundleRoot = tempDir.resolve("bundle");
+    Path stylesheet = bundleRoot.resolve("static/crypta-ui/crypta-ui.css");
+    Files.createDirectories(stylesheet.getParent());
+    Files.writeString(stylesheet, "modified", StandardCharsets.UTF_8);
+
+    List<DesignSystemAsset> copied = DesignSystemAssets.copyIntoBundle(bundleRoot);
+
+    DesignSystemAsset cssAsset =
+        copied.stream()
+            .filter(asset -> asset.name().equals("crypta-ui.css"))
+            .findFirst()
+            .orElseThrow();
+    String css = Files.readString(stylesheet, StandardCharsets.UTF_8);
+    assertEquals(cssAsset.sizeBytes(), Files.size(stylesheet));
+    assertEquals(cssAsset.sha256Hex(), sha256Hex(Files.readAllBytes(stylesheet)));
+    assertTrue(css.contains(".cr-app"));
+    assertFalse(css.contains("modified"));
+  }
+
+  @Test
   void copyIntoBundle_whenRootIsSymlink_expectFailure() throws Exception {
     Path target = tempDir.resolve("target");
     Path symlink = tempDir.resolve("bundle-link");
