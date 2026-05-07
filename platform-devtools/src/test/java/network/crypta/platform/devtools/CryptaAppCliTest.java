@@ -555,6 +555,32 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenBootstrapUsesLargeMemberChain_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    StringBuilder script = new StringBuilder("const root = window.CryptaPlatform;\nroot");
+    for (int index = 0; index < 2048; index++) {
+      script.append(".member").append(index);
+    }
+    script.append(".bootstrap.load({ appId: \"sample-app\" });\n");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"), script.toString(), StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+  }
+
+  @Test
   void uiLint_whenAppScriptLivesUnderCryptaUiDirectory_expectStrictBootstrapFailure()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");

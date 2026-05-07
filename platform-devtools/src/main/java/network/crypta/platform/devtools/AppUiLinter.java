@@ -91,11 +91,11 @@ final class AppUiLinter {
   private static final Pattern DIRECT_API_REFERENCE =
       Pattern.compile("(?s)(fetch\\s*\\(\\s*['\"]/?api/v1/|['\"]/?api/v1/)");
 
-  /** Pattern for a JavaScript member call to the browser SDK bootstrap loader. */
-  private static final Pattern BOOTSTRAP_LOAD_CALL =
-      Pattern.compile(
-          "\\b[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*\\.\\s*[A-Za-z_$][A-Za-z0-9_$]*)*"
-              + "\\s*\\.\\s*bootstrap\\s*\\.\\s*load\\s*\\(");
+  /** JavaScript property name for the SDK bootstrap namespace. */
+  private static final String BOOTSTRAP_PROPERTY = "bootstrap";
+
+  /** JavaScript method name for the SDK bootstrap loader. */
+  private static final String LOAD_METHOD = "load";
 
   /** Credential and launch-token spellings that should not appear in browser-owned UI files. */
   private static final List<String> FORBIDDEN_TEXT =
@@ -498,13 +498,134 @@ final class AppUiLinter {
    * .bootstrap.load} or examples embedded in strings do not satisfy strict UI lint. The matcher
    * still accepts common aliases such as {@code platform.bootstrap.load(...)} because the generated
    * scaffold stores {@code window.CryptaPlatform} in a local variable before loading bootstrap
-   * data.
+   * data. The member-chain check is implemented as a linear scan instead of a regular expression so
+   * very large generated scripts cannot trigger regex recursion or backtracking limits.
    *
    * @param text JavaScript source decoded as UTF-8
    * @return {@code true} when executable-looking code calls a {@code bootstrap.load(...)} member
    */
   private static boolean containsBootstrapLoadCall(String text) {
-    return BOOTSTRAP_LOAD_CALL.matcher(stripJavaScriptCommentsAndStrings(text)).find();
+    String stripped = stripJavaScriptCommentsAndStrings(text);
+    int bootstrapIndex = stripped.indexOf(BOOTSTRAP_PROPERTY);
+    while (bootstrapIndex >= 0) {
+      if (isBootstrapLoadCallAt(stripped, bootstrapIndex)) {
+        return true;
+      }
+      bootstrapIndex = stripped.indexOf(BOOTSTRAP_PROPERTY, bootstrapIndex + 1);
+    }
+    return false;
+  }
+
+  /**
+   * Checks one {@code bootstrap} token candidate for a receiver-backed {@code .load(...)} call.
+   *
+   * @param text JavaScript source with comments and strings already blanked
+   * @param bootstrapIndex offset of a candidate {@code bootstrap} token
+   * @return {@code true} when the candidate is part of {@code receiver.bootstrap.load(...)}
+   */
+  private static boolean isBootstrapLoadCallAt(String text, int bootstrapIndex) {
+    return hasIdentifierBoundaries(text, bootstrapIndex, BOOTSTRAP_PROPERTY.length())
+        && hasReceiverMemberAccessBefore(text, bootstrapIndex)
+        && hasLoadCallAfterBootstrap(text, bootstrapIndex + BOOTSTRAP_PROPERTY.length());
+  }
+
+  /**
+   * Checks whether a token is bounded by non-identifier characters.
+   *
+   * @param text JavaScript source being scanned
+   * @param start token start offset
+   * @param length token length in characters
+   * @return {@code true} when adjacent characters cannot extend the identifier token
+   */
+  private static boolean hasIdentifierBoundaries(String text, int start, int length) {
+    int end = start + length;
+    return (start == 0 || !isJavaScriptIdentifierPart(text.charAt(start - 1)))
+        && (end >= text.length() || !isJavaScriptIdentifierPart(text.charAt(end)));
+  }
+
+  /**
+   * Checks whether the {@code bootstrap} token is reached through a member receiver.
+   *
+   * @param text JavaScript source being scanned
+   * @param bootstrapIndex offset of the candidate {@code bootstrap} token
+   * @return {@code true} for shapes like {@code platform.bootstrap}
+   */
+  private static boolean hasReceiverMemberAccessBefore(String text, int bootstrapIndex) {
+    int dotIndex = skipJavaScriptWhitespaceBackward(text, bootstrapIndex - 1);
+    if (dotIndex < 0 || text.charAt(dotIndex) != '.') {
+      return false;
+    }
+    int receiverEnd = skipJavaScriptWhitespaceBackward(text, dotIndex - 1);
+    return receiverEnd >= 0 && isJavaScriptIdentifierPart(text.charAt(receiverEnd));
+  }
+
+  /**
+   * Checks whether {@code bootstrap} is followed by a {@code .load(} member call.
+   *
+   * @param text JavaScript source being scanned
+   * @param afterBootstrap first offset after the candidate {@code bootstrap} token
+   * @return {@code true} when a load call follows
+   */
+  private static boolean hasLoadCallAfterBootstrap(String text, int afterBootstrap) {
+    int dotIndex = skipJavaScriptWhitespace(text, afterBootstrap);
+    if (dotIndex >= text.length() || text.charAt(dotIndex) != '.') {
+      return false;
+    }
+    int loadIndex = skipJavaScriptWhitespace(text, dotIndex + 1);
+    if (!text.startsWith(LOAD_METHOD, loadIndex)) {
+      return false;
+    }
+    int afterLoad = loadIndex + LOAD_METHOD.length();
+    if (afterLoad < text.length() && isJavaScriptIdentifierPart(text.charAt(afterLoad))) {
+      return false;
+    }
+    int callIndex = skipJavaScriptWhitespace(text, afterLoad);
+    return callIndex < text.length() && text.charAt(callIndex) == '(';
+  }
+
+  /**
+   * Skips JavaScript whitespace moving forward.
+   *
+   * @param text JavaScript source being scanned
+   * @param index first offset to inspect
+   * @return first non-whitespace offset, or {@code text.length()}
+   */
+  private static int skipJavaScriptWhitespace(String text, int index) {
+    int position = Math.max(0, index);
+    while (position < text.length() && Character.isWhitespace(text.charAt(position))) {
+      position++;
+    }
+    return position;
+  }
+
+  /**
+   * Skips JavaScript whitespace moving backward.
+   *
+   * @param text JavaScript source being scanned
+   * @param index first offset to inspect
+   * @return first non-whitespace offset, or {@code -1}
+   */
+  private static int skipJavaScriptWhitespaceBackward(String text, int index) {
+    int position = Math.min(index, text.length() - 1);
+    while (position >= 0 && Character.isWhitespace(text.charAt(position))) {
+      position--;
+    }
+    return position;
+  }
+
+  /**
+   * Checks whether a character is part of the ASCII JavaScript identifier subset used by the lint
+   * scanner.
+   *
+   * @param character character to classify
+   * @return {@code true} for letters, digits, underscore, or dollar sign
+   */
+  private static boolean isJavaScriptIdentifierPart(char character) {
+    return (character >= 'A' && character <= 'Z')
+        || (character >= 'a' && character <= 'z')
+        || (character >= '0' && character <= '9')
+        || character == '_'
+        || character == '$';
   }
 
   /**
