@@ -72,8 +72,9 @@ build/release-certification/artifacts/
 
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
-  for the Platform API contract, signed catalogs, app-owned UI origin behavior, sandbox provider
-  selection, and app-update lifecycle/rollback.
+  for the Platform API contract, signed catalogs, trusted app-review receipts, app-owned UI origin
+  behavior, app UI design-system/lint evidence, sandbox provider selection, and app-update
+  lifecycle/rollback.
 - The wrapper resolves relative `--out-dir` values under the repository root, then runs the
   app-platform smoke collector before aggregation.
 - Normal local commands:
@@ -87,13 +88,16 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
 
 - Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
   or failing unless a release-manager waiver is recorded. Required app-platform evidence now
-  includes `platform-api.contract`, `catalog.smoke`, `app-ui.smoke`, `apphost.sandbox-provider`,
-  `app-update.lifecycle`, and `app-update.rollback`.
+  includes `platform-api.contract`, `catalog.smoke`, `app-ui.design-system`, `app-ui.lint`,
+  `app-ui.first-party-adoption`, `app-ui.smoke`, `apphost.sandbox-provider`,
+  `app-update.lifecycle`, `app-update.rollback`, `app-review.trusted-receipts`,
+  `app-review.policy`, and `app-review.first-party-catalog`.
 - Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw
-  request bodies, raw update/rollback command output, private insert URIs, non-localhost endpoint
-  metadata, catalog scratch paths, staged bundle paths, rollback backup paths, or other unsanitized
-  local paths. The aggregator filters `artifacts/private-insert-uris.json` even when interop
-  summaries reference it.
+  reviewer keys, raw trusted reviewer public key bytes, raw request bodies, raw update/rollback
+  command output, private insert URIs, non-localhost endpoint metadata, catalog scratch paths,
+  staged bundle paths, rollback backup paths, UI lint report paths, or other unsanitized local
+  paths. The aggregator filters `artifacts/private-insert-uris.json` even when interop summaries
+  reference it.
 
 ## CI and release notes
 

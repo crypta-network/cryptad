@@ -23,8 +23,8 @@ Use this skill when you need to:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`,
-  `:runtime-node`, `:adapter-fcp`,
+  `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
+  `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -102,11 +102,15 @@ Use this skill when you need to:
   deterministic packager, and distribution-tool code plus focused tests under
   `platform-appdist/src/test/java`.
 - `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
-  verification, `crypta:` catalog source fetching, app-store/API compatibility metadata, artifact
-  download, safe ZIP extraction, and verified staging code plus focused tests under
-  `platform-appcatalog/src/test/java`.
+  verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
+  independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
+  verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
+- `:platform-design-system` owns the canonical local app UI CSS/JS resources plus safe
+  asset-listing, hashing, and bundle-copy helpers. Its focused tests live under
+  `platform-design-system/src/test/java`.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI, including API snapshot and
-  compatibility verification commands, plus focused CLI tests under `platform-devtools/src/test/java`.
+  compatibility verification commands and offline app UI linting, plus focused CLI/linter tests
+  under `platform-devtools/src/test/java`.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
@@ -169,6 +173,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-app-ui:test`
   - `./gradlew :platform-appdist:test`
   - `./gradlew :platform-appcatalog:test`
+  - `./gradlew :platform-design-system:test`
   - `./gradlew :platform-devtools:test`
   - `./gradlew :platform-sdk-js:test`
   - `./gradlew :platform-web-shell:test`
