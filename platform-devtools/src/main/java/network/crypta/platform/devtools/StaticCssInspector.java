@@ -94,24 +94,24 @@ final class StaticCssInspector {
    * Reads the first URL-like token after a CSS {@code @import} directive.
    *
    * <p>This method intentionally recognizes a small CSS token subset: whitespace after the import
-   * directive followed by an optional {@code url(} wrapper, or the compact valid form where a
-   * quoted string starts immediately after the directive. It does not treat identifier
-   * continuations such as {@code importfoo} or {@code importurl(...)} as import rules. The scanner
-   * advances at least past the directive offset for malformed imports so callers can continue
-   * scanning in linear time.
+   * directive followed by CSS whitespace/comments and an optional {@code url(} wrapper, or the
+   * compact valid form where a quoted string starts immediately after the directive. It does not
+   * treat identifier continuations such as {@code importfoo} or {@code importurl(...)} as import
+   * rules. The scanner advances at least past the directive offset for malformed imports so callers
+   * can continue scanning in linear time.
    *
    * @param css CSS text decoded from a local app UI file
    * @param offset position immediately after {@code @import}
    * @return extracted value and the next safe scan position
    */
   private static ImportValue readImportValue(String css, int offset) {
-    boolean hasWhitespace = hasWhitespaceAt(css, offset);
-    if (!hasWhitespace && !hasQuoteAt(css, offset)) {
+    boolean hasSeparator = hasWhitespaceOrCommentAt(css, offset);
+    if (!hasSeparator && !hasQuoteAt(css, offset)) {
       return ImportValue.missing(offset);
     }
-    int position = hasWhitespace ? skipWhitespace(css, offset) : offset;
-    if (hasWhitespace && startsWithUrlFunction(css, position)) {
-      position = skipWhitespace(css, position + URL_FUNCTION_PREFIX.length());
+    int position = hasSeparator ? skipWhitespaceAndComments(css, offset) : offset;
+    if (hasSeparator && startsWithUrlFunction(css, position)) {
+      position = skipWhitespaceAndComments(css, position + URL_FUNCTION_PREFIX.length());
     }
     if (position >= css.length()) {
       return ImportValue.missing(position);
@@ -224,14 +224,15 @@ final class StaticCssInspector {
   }
 
   /**
-   * Checks whether a position contains CSS whitespace.
+   * Checks whether a position contains CSS whitespace or a comment.
    *
    * @param css CSS text being scanned
    * @param offset candidate character position
-   * @return {@code true} when the offset is in range and points at whitespace
+   * @return {@code true} when the offset is in range and points at whitespace or a comment opener
    */
-  private static boolean hasWhitespaceAt(String css, int offset) {
-    return offset < css.length() && Character.isWhitespace(css.charAt(offset));
+  private static boolean hasWhitespaceOrCommentAt(String css, int offset) {
+    return offset < css.length()
+        && (Character.isWhitespace(css.charAt(offset)) || startsCssComment(css, offset));
   }
 
   /**
@@ -246,16 +247,22 @@ final class StaticCssInspector {
   }
 
   /**
-   * Skips consecutive whitespace characters from a starting position.
+   * Skips consecutive CSS whitespace and comments from a starting position.
    *
    * @param css CSS text being scanned
    * @param offset first position to inspect
-   * @return first non-whitespace position, or {@code css.length()}
+   * @return first non-whitespace/comment position, or {@code css.length()}
    */
-  private static int skipWhitespace(String css, int offset) {
+  private static int skipWhitespaceAndComments(String css, int offset) {
     int position = offset;
-    while (position < css.length() && Character.isWhitespace(css.charAt(position))) {
-      position++;
+    while (position < css.length()) {
+      if (Character.isWhitespace(css.charAt(position))) {
+        position++;
+      } else if (startsCssComment(css, position)) {
+        position = cssCommentEnd(css, position + 2);
+      } else {
+        return position;
+      }
     }
     return position;
   }

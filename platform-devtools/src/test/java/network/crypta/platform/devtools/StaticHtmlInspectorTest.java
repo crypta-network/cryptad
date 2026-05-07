@@ -7,6 +7,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -47,6 +48,42 @@ class StaticHtmlInspectorTest {
         List.of("static/foo:bar.css", "static/data:text/css,body{}"),
         inspector.normalizedStylesheetHrefs());
     assertEquals(List.of("static/main:debug.js"), inspector.normalizedScriptSources());
+  }
+
+  @Test
+  void usesDesignSystemClass_whenDocumentedClassAppearsInClassAttribute_expectTrue() {
+    for (String className :
+        List.of(
+            "cr-permission-summary",
+            "cr-label",
+            "cr-checkbox",
+            "cr-kv-list",
+            "cr-kv-row",
+            "cr-sr-only",
+            "cr-button--primary",
+            "cr-status--warning")) {
+      StaticHtmlInspector inspector =
+          StaticHtmlInspector.inspect(
+              "<section class=\"" + className + "\"></section>",
+              "static/index.html",
+              Path.of("static"));
+
+      assertTrue(inspector.usesDesignSystemClass(), className);
+    }
+  }
+
+  @Test
+  void usesDesignSystemClass_whenCrTextAppearsOutsideClassAttribute_expectFalse() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <p>Use cr-permission-summary here.</p>
+            <section data-example="cr-label"></section>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertFalse(inspector.usesDesignSystemClass());
   }
 
   @Test

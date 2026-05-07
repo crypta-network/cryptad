@@ -34,6 +34,19 @@ class StaticCssInspectorTest {
   }
 
   @Test
+  void inspect_whenRemoteImportHasCommentsAfterDirective_expectError() {
+    String css =
+        """
+        @import/* disabled whitespace */url("https://cdn.example.invalid/reset.css");
+        @import /* spaced */ "https://cdn.example.invalid/theme.css";
+        """;
+
+    List<AppUiLintFinding> findings = StaticCssInspector.inspect(css, "static/app.css", true);
+
+    assertEquals(List.of("remote-css-import", "remote-css-import"), findingIds(findings));
+  }
+
+  @Test
   void inspect_whenNonLocalImportSchemePresent_expectError() {
     String css =
         """

@@ -80,6 +80,32 @@ final class StaticHtmlInspector {
   /** Attribute name that selects JavaScript module scripts. */
   private static final String ATTRIBUTE_TYPE = "type";
 
+  /** Stable Crypta UI class names documented for app-owned static UI. */
+  private static final Set<String> DESIGN_SYSTEM_CLASSES =
+      Set.of(
+          "cr-app",
+          "cr-shell",
+          "cr-header",
+          "cr-card",
+          "cr-toolbar",
+          "cr-button",
+          "cr-button--primary",
+          "cr-button--secondary",
+          "cr-field",
+          "cr-label",
+          "cr-input",
+          "cr-checkbox",
+          "cr-status",
+          "cr-status--success",
+          "cr-status--warning",
+          "cr-status--danger",
+          "cr-status--info",
+          "cr-empty",
+          "cr-kv-list",
+          "cr-kv-row",
+          "cr-permission-summary",
+          "cr-sr-only");
+
   /** Raw HTML text from the manifest-declared static UI entry. */
   private final String html;
 
@@ -204,13 +230,38 @@ final class StaticHtmlInspector {
   /**
    * Checks whether the entry appears to use the stable Crypta UI class vocabulary.
    *
-   * @return {@code true} when a known {@code cr-*} class name appears in the HTML text
+   * @return {@code true} when a documented {@code cr-*} class token appears in a class attribute
    */
   boolean usesDesignSystemClass() {
-    return Pattern.compile(
-            "\\bcr-(?:app|shell|header|card|toolbar|button|status|field|input|empty)")
-        .matcher(uncommentedHtml)
-        .find();
+    for (Tag tag : tags) {
+      if (usesDesignSystemClass(tag.attribute("class"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Checks one decoded class attribute for documented Crypta UI classes.
+   *
+   * @param classAttribute decoded class attribute value
+   * @return {@code true} when any whitespace-separated class token is documented
+   */
+  private static boolean usesDesignSystemClass(String classAttribute) {
+    int position = 0;
+    while (position < classAttribute.length()) {
+      position = skipHtmlWhitespace(classAttribute, position);
+      int classStart = position;
+      while (position < classAttribute.length()
+          && !Character.isWhitespace(classAttribute.charAt(position))) {
+        position++;
+      }
+      if (classStart < position
+          && DESIGN_SYSTEM_CLASSES.contains(classAttribute.substring(classStart, position))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
