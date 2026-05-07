@@ -22,19 +22,27 @@ import java.util.Objects;
  * origins without allowing remote scripts, remote stylesheets, or CDN dependencies.
  *
  * <p>This class is the single source of truth for the small platform UI asset set. Scaffolding,
- * first-party app staging, and UI linting use the same metadata so a generated bundle and a
- * reviewed bundle agree on filenames, MIME types, sizes, and SHA-256 digests. The copy helper is
- * deliberately conservative around filesystem boundaries: it normalizes paths, refuses symbolic
- * links at the bundle root and destination, and writes only under the expected bundle-relative
- * directory. Callers should prefer these helpers over hard-coded resource names when they need to
- * stage or verify the canonical UI files.
+ * first-party app staging, UI linting, and release evidence use the same metadata so a generated
+ * bundle and a reviewed bundle agree on filenames, MIME types, sizes, and SHA-256 digests. That
+ * agreement matters because third-party app authors copy these resources into their own immutable
+ * bundles; tooling must be able to tell a canonical local asset from a modified or missing one
+ * without depending on a live node.
+ *
+ * <p>The copy helper is deliberately conservative around filesystem boundaries. It normalizes
+ * paths, refuses symbolic links at the bundle root and destination, creates only the expected
+ * bundle-relative directory tree, and replaces existing regular files with canonical bytes. Callers
+ * should prefer these helpers over hard-coded resource names whenever they stage, verify, or report
+ * the canonical UI files. The class is stateless and thread-safe; each call reads the current
+ * classpath resources and returns immutable metadata.
  */
 public final class DesignSystemAssets {
   /**
    * Bundle-relative directory used by static app UIs.
    *
    * <p>The value is stable report and manifest-adjacent vocabulary, not a host filesystem path.
-   * Resolve it under a validated app bundle root before reading or writing files.
+   * Resolve it under a validated app bundle root before reading or writing files. The slash form is
+   * intentional because bundle manifests, CLI output, and JSON lint reports need the same value on
+   * Linux, macOS, and Windows.
    */
   public static final String BUNDLE_DIRECTORY = "static/crypta-ui";
 
@@ -55,11 +63,13 @@ public final class DesignSystemAssets {
    * values describe the bytes shipped in the current platform build. The order matches the expected
    * static app loading sequence: tokens first, component CSS second, optional
    * progressive-enhancement JavaScript last. The list is immutable and safe to use for CLI reports,
-   * tests, and linter comparisons.
+   * tests, and linter comparisons. Callers that need resource bytes should read from {@link
+   * DesignSystemAsset#resourcePath()} rather than assuming files have already been staged.
    *
-   * @return immutable list of asset metadata with size and SHA-256 digest computed from classpath
-   *     resources
-   * @throws IOException if any canonical resource cannot be loaded from the module classpath
+   * @return immutable list of asset metadata with size and SHA-256 digest computed from the current
+   *     module classpath resources
+   * @throws IOException if any canonical resource cannot be opened or read from the module
+   *     classpath
    */
   public static List<DesignSystemAsset> list() throws IOException {
     List<DesignSystemAsset> assets = new ArrayList<>(DEFINITIONS.size());
@@ -86,14 +96,17 @@ public final class DesignSystemAssets {
    * canonical bytes; existing non-regular files fail before any attempt to stream resource content.
    *
    * <p>This method is intended for deterministic staging tasks, not for serving request paths. It
-   * creates the {@code static/crypta-ui/} directory tree when needed and returns the same metadata
-   * that {@link #list()} reports. Callers can persist or print that metadata as evidence that a
-   * bundle contains the exact local assets expected by UI lint and release certification.
+   * creates the {@code static/crypta-ui/} directory tree one segment at a time when needed and
+   * returns the same metadata that {@link #list()} reports. It does not delete extra files an app
+   * may have placed elsewhere in the bundle. Callers can persist or print the returned metadata as
+   * evidence that a bundle contains the exact local assets expected by UI lint and release
+   * certification.
    *
-   * @param bundleRoot staged app bundle root that already exists as a real directory
-   * @return immutable metadata for the copied canonical assets, in deterministic load order
-   * @throws IOException if the bundle root is unsafe, a destination is unsafe, or a resource cannot
-   *     be copied
+   * @param bundleRoot staged app bundle root that already exists as a real, non-symbolic-link
+   *     directory
+   * @return immutable metadata for the copied canonical assets in deterministic load order
+   * @throws IOException if the bundle root is unsafe, a destination path is unsafe, or a canonical
+   *     resource cannot be read or copied
    */
   public static List<DesignSystemAsset> copyIntoBundle(Path bundleRoot) throws IOException {
     Path root = Objects.requireNonNull(bundleRoot, "bundleRoot").toAbsolutePath().normalize();

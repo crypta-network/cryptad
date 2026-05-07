@@ -22,7 +22,11 @@ import java.util.regex.Pattern;
  *
  * <p>Paths returned by this class are normalized relative to the manifest-declared entry directory.
  * A bundle can therefore use {@code ui/index.html}, {@code index.html}, or the first-party {@code
- * static/index.html} layout and still get deterministic bundle-relative findings.
+ * static/index.html} layout and still get deterministic bundle-relative findings. Comments are
+ * blanked before tag scanning, duplicate attributes preserve the first browser-visible value, and
+ * URL-bearing attributes are decoded for the character references that affect schemes. Those
+ * details keep the linter aligned with common browser behavior without adding a full HTML parser
+ * dependency.
  */
 final class StaticHtmlInspector {
   /** Pattern that captures start tags and their raw attribute text. */
@@ -144,12 +148,13 @@ final class StaticHtmlInspector {
    *
    * <p>The scan records start tags and attributes only. Later checks use the raw HTML when they
    * need paired content, such as inline script bodies, title text, headings, labels, or button
-   * names.
+   * names. Attribute values are normalized during this phase so downstream CSP and SDK checks work
+   * with the value a browser would use for scheme interpretation and duplicate-attribute handling.
    *
-   * @param html raw HTML text from the static UI entry
-   * @param path bundle-relative path to the inspected entry
+   * @param html raw HTML text from the static UI entry, decoded from the staged bundle file
+   * @param path bundle-relative path to the inspected entry for diagnostics and JSON output
    * @param entryDirectory bundle-relative directory that contains the inspected entry
-   * @return inspector with parsed tag metadata and the original HTML text
+   * @return inspector with parsed tag metadata, comment-stripped scanner text, and original HTML
    */
   static StaticHtmlInspector inspect(String html, String path, Path entryDirectory) {
     String uncommentedHtml = stripHtmlComments(html);
@@ -876,7 +881,8 @@ final class StaticHtmlInspector {
    * attributes before scheme interpretation. This keeps safety checks from missing values whose
    * scheme separators are written as character references. The decoder intentionally supports the
    * numeric references and small named-reference set that affect URL schemes and separators;
-   * unknown or malformed references are left intact.
+   * unknown or malformed references are left intact. When a tag repeats an attribute, the first
+   * value is retained because browsers ignore later duplicates for the same attribute name.
    *
    * @param attributeText raw attribute text captured from a start tag
    * @return lower-case attribute names mapped to the first entity-decoded, unquoted value seen for
@@ -1318,10 +1324,23 @@ final class StaticHtmlInspector {
    * @param nextIndex next character offset after the consumed reference
    */
   private record CharacterReference(String decoded, int nextIndex) {
+    /**
+     * Creates a successful character-reference parse result.
+     *
+     * @param decoded decoded character or string inserted into the attribute value
+     * @param nextIndex first offset after the consumed reference text
+     * @return character-reference result carrying decoded text
+     */
     private static CharacterReference found(String decoded, int nextIndex) {
       return new CharacterReference(decoded, nextIndex);
     }
 
+    /**
+     * Creates a missing or unsupported character-reference parse result.
+     *
+     * @param nextIndex offset where the caller should resume scanning the raw value
+     * @return character-reference result with no decoded replacement
+     */
     private static CharacterReference missing(int nextIndex) {
       return new CharacterReference(null, nextIndex);
     }

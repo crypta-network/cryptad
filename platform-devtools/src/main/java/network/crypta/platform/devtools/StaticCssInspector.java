@@ -16,7 +16,11 @@ import java.util.Optional;
  *
  * <p>Callers provide the bundle-relative path separately so findings never include absolute local
  * paths. Remote and scheme-like imports are always fatal because app-owned UI must stay local;
- * non-normalized local imports follow the strict-mode severity chosen by the CLI.
+ * non-normalized local imports follow the strict-mode severity chosen by the CLI. Comments and CSS
+ * strings are skipped before import matching, which lets app authors keep disabled examples in
+ * their stylesheet without producing false CSP failures. The scanner still treats comments between
+ * {@code @import} and the URL token as CSS whitespace, matching browser tokenization for compact or
+ * minified imports.
  */
 final class StaticCssInspector {
   /** CSS directive that imports another stylesheet. */
@@ -33,12 +37,14 @@ final class StaticCssInspector {
    *
    * <p>The scanner reports remote and scheme-like non-local imports as errors and local imports
    * that are not normalized as strict-mode findings. It does not resolve imports or read additional
-   * files; the surrounding linter decides which CSS files are local and safe to scan.
+   * files; the surrounding linter decides which CSS files are local and safe to scan. The method is
+   * linear in the input length and avoids regular expressions for directive discovery so minified
+   * or malformed stylesheets cannot turn lint into a backtracking-heavy operation.
    *
-   * @param css CSS text decoded from a local app UI file
-   * @param path bundle-relative path used in emitted findings
-   * @param strict whether non-normalized local imports should be warnings or errors
-   * @return deterministic list of CSS findings in source order
+   * @param css CSS text decoded from a local app UI file as UTF-8
+   * @param path bundle-relative path used in emitted findings and JSON reports
+   * @param strict whether non-normalized local imports should be reported as warnings or errors
+   * @return deterministic list of CSS findings in source order, without resolving imported files
    */
   static List<AppUiLintFinding> inspect(String css, String path, boolean strict) {
     List<AppUiLintFinding> findings = new ArrayList<>();
@@ -98,7 +104,8 @@ final class StaticCssInspector {
    * compact valid form where a quoted string starts immediately after the directive. It does not
    * treat identifier continuations such as {@code importfoo} or {@code importurl(...)} as import
    * rules. The scanner advances at least past the directive offset for malformed imports so callers
-   * can continue scanning in linear time.
+   * can continue scanning in linear time. Media query tails are ignored because the lint rule only
+   * cares about the imported resource reference itself.
    *
    * @param css CSS text decoded from a local app UI file
    * @param offset position immediately after {@code @import}
@@ -363,10 +370,23 @@ final class StaticCssInspector {
    * @param nextIndex next safe character offset for the caller's outer scan
    */
   private record ImportValue(Optional<String> value, int nextIndex) {
+    /**
+     * Creates a result for an import directive with a usable URL token.
+     *
+     * @param value extracted import token after quote and wrapper removal
+     * @param nextIndex next offset where the outer scan can resume safely
+     * @return import scan result containing the extracted token
+     */
     private static ImportValue found(String value, int nextIndex) {
       return new ImportValue(Optional.of(value), nextIndex);
     }
 
+    /**
+     * Creates a result for a malformed or tokenless import directive.
+     *
+     * @param nextIndex next offset where scanning should resume after the malformed directive
+     * @return import scan result with no extracted token
+     */
     private static ImportValue missing(int nextIndex) {
       return new ImportValue(Optional.empty(), nextIndex);
     }

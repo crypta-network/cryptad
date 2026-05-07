@@ -30,13 +30,20 @@ import network.crypta.platform.designsystem.DesignSystemAssets;
  * Crypta node or a browser automation dependency. It reads the bundle manifest, resolves the
  * manifest-declared static UI entry, inspects the HTML entry point, and scans local text files that
  * are either in the entry directory or referenced by the entry. The checks focus on high-value
- * failures: local-resource CSP compatibility, SDK bootstrap ordering, obvious credential naming,
- * design-system adoption, permission disclosure, and basic accessibility.
+ * failures: local-resource CSP compatibility, SDK bootstrap ordering, route-safe local references,
+ * obvious credential naming, design-system adoption, permission disclosure, and basic
+ * accessibility.
  *
  * <p>The implementation is intentionally conservative. It is a developer-facing safety net, not a
  * full HTML, CSS, or JavaScript parser. Findings use bundle-relative paths and stable ids so
  * command output, JSON reports, and release-certification evidence stay deterministic and do not
  * disclose absolute host paths or runtime secrets.
+ *
+ * <p>The scan follows the same security boundary as app-owned static UI routes: files must stay
+ * under the staged bundle, symlinked parents are not trusted, local scripts and stylesheets must
+ * map to content types the app UI server will actually serve, and remote code is never treated as a
+ * fallback for missing local assets. Those checks make strict validation useful before signing or
+ * cataloging a bundle while keeping non-static app modes explicitly not applicable.
  */
 final class AppUiLinter {
   /** Finding category for CSP and local-resource compatibility findings. */
@@ -118,11 +125,18 @@ final class AppUiLinter {
    * {@code strict} is true, selected consistency and accessibility findings are promoted from
    * warnings to errors before they are returned.
    *
-   * @param bundleDir staged app bundle directory containing {@code cryptad-app.properties}
-   * @param strict whether strict-mode advisory findings should be reported as errors
-   * @return deterministic lint result with bundle identity, applicability, and findings
-   * @throws IOException if the manifest, static entry, canonical assets, or scanned files cannot be
-   *     read
+   * <p>The method performs all checks against staged bundle files and canonical classpath
+   * resources. It does not fetch remote URLs, execute scripts, open a browser, or inspect live
+   * Platform API state. If a referenced local resource is missing or route-invalid, the linter
+   * reports that failure and avoids resolving the value through host filesystem semantics.
+   *
+   * @param bundleDir staged app bundle directory containing {@code cryptad-app.properties} and any
+   *     app-owned UI files
+   * @param strict whether strict-mode advisory findings should be promoted to error severity before
+   *     reporting
+   * @return deterministic lint result with bundle identity, applicability, and sanitized findings
+   * @throws IOException if the manifest, static entry, canonical assets, or scanned bundle-local
+   *     files cannot be read
    */
   static AppUiLintResult lint(Path bundleDir, boolean strict) throws IOException {
     Path bundleRoot = bundleDir.toAbsolutePath().normalize();

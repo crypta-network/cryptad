@@ -16,12 +16,16 @@ import java.util.Locale;
  * <p>JSON serialization is implemented locally to avoid adding a dependency to the standalone
  * developer tooling path. The output shape is stable and intended for offline certification
  * fixtures, so changes to field names or ordering should be treated as developer-facing behavior.
+ * The result object is therefore both a command model and an evidence model: validation reads the
+ * severity counts, while release tooling can archive the same sanitized findings without needing
+ * access to the staged bundle.
  *
  * @param appId parsed app id, or an empty string if manifest parsing failed before an id was known
  * @param uiMode parsed manifest UI mode, such as {@code static}, {@code none}, or {@code
  *     shell-panel}
  * @param applicable whether static UI lint checks apply to this bundle and mode
- * @param findings deterministic finding list, copied defensively during construction
+ * @param findings deterministic finding list, copied defensively during construction and preserved
+ *     in reporting order
  */
 record AppUiLintResult(
     String appId, String uiMode, boolean applicable, List<AppUiLintFinding> findings) {
@@ -30,12 +34,13 @@ record AppUiLintResult(
    *
    * <p>The compact constructor copies the finding list so later caller-side mutations cannot change
    * command output, JSON evidence, or validation decisions. Individual findings are immutable
-   * records, so no deeper copy is needed.
+   * records, so no deeper copy is needed. A {@code null} list or {@code null} element is rejected
+   * by the standard collection copy contract, which keeps invalid results from reaching CLI output.
    *
    * @param appId parsed app id, or an empty string if parsing failed before an id was available
    * @param uiMode manifest UI mode value reported by the bundle
    * @param applicable whether static UI lint rules were applicable to the bundle
-   * @param findings finding list in deterministic reporting order
+   * @param findings non-null finding list in deterministic reporting order
    */
   AppUiLintResult {
     findings = List.copyOf(findings);
@@ -57,6 +62,9 @@ record AppUiLintResult(
   /**
    * Counts fatal findings in the current result.
    *
+   * <p>The value is used for command status and for the JSON summary. It counts only effective
+   * severities already present on findings; callers should not reinterpret warning rules here.
+   *
    * @return number of findings whose effective severity is {@link AppUiLintSeverity#ERROR}
    */
   long errorCount() {
@@ -66,6 +74,9 @@ record AppUiLintResult(
   /**
    * Counts advisory findings in the current result.
    *
+   * <p>Warnings remain non-fatal in normal lint output. Strict lint should promote a rule before a
+   * finding reaches this result when that rule must block validation.
+   *
    * @return number of findings whose effective severity is {@link AppUiLintSeverity#WARNING}
    */
   long warningCount() {
@@ -74,6 +85,9 @@ record AppUiLintResult(
 
   /**
    * Counts informational findings in the current result.
+   *
+   * <p>Notes explain not-applicable or evidence-only outcomes. They are included in reports so
+   * callers can distinguish a skipped static UI lint run from a silent empty result.
    *
    * @return number of findings whose effective severity is {@link AppUiLintSeverity#NOTE}
    */
@@ -86,7 +100,9 @@ record AppUiLintResult(
    *
    * <p>The serializer emits fields in a fixed order and escapes every string value directly. It is
    * intentionally limited to the small data model used by UI lint reports, which keeps the
-   * standalone CLI dependency-light and avoids pulling a general JSON library into this leaf.
+   * standalone CLI dependency-light and avoids pulling a general JSON library into this leaf. The
+   * method does not pretty-print file contents or command-line arguments; every path and message
+   * has already been reduced to the sanitized finding model.
    *
    * @return JSON document ending with a newline, suitable for {@code crypta-app ui lint --json}
    */
