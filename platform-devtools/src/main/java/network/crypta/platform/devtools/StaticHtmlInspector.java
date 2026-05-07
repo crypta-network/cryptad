@@ -828,7 +828,8 @@ final class StaticHtmlInspector {
    * unknown or malformed references are left intact.
    *
    * @param attributeText raw attribute text captured from a start tag
-   * @return lower-case attribute names mapped to entity-decoded, unquoted values in source order
+   * @return lower-case attribute names mapped to the first entity-decoded, unquoted value seen for
+   *     that name
    */
   private static Map<String, String> attributes(String attributeText) {
     java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
@@ -843,7 +844,7 @@ final class StaticHtmlInspector {
       }
       String name = matcher.group().toLowerCase(Locale.ROOT);
       AttributeValue value = readAttributeValue(attributeText, matcher.end());
-      attributes.put(name, decodeHtmlCharacterReferences(value.value()));
+      attributes.putIfAbsent(name, decodeHtmlCharacterReferences(value.value()));
       position = value.nextIndex();
     }
     return attributes;
@@ -1005,6 +1006,10 @@ final class StaticHtmlInspector {
   /**
    * Reads a decimal or hexadecimal numeric character reference.
    *
+   * <p>HTML numeric character references do not require a semicolon in attribute values when the
+   * next character is not part of the selected radix. Decoding the semicolonless form keeps URL
+   * scheme checks aligned with browser handling of values such as {@code javascript&#58alert(1)}.
+   *
    * @param value complete attribute value
    * @param offset first character after {@code &#}
    * @return decoded reference, or a missing result when the numeric reference is invalid
@@ -1020,14 +1025,16 @@ final class StaticHtmlInspector {
     while (position < value.length() && Character.digit(value.charAt(position), radix) >= 0) {
       position++;
     }
-    if (position == digitsStart || position >= value.length() || value.charAt(position) != ';') {
+    if (position == digitsStart) {
       return CharacterReference.missing(offset);
     }
     String digits = value.substring(digitsStart, position);
     String decoded = decodeCodePoint(digits, radix);
+    int nextIndex =
+        position < value.length() && value.charAt(position) == ';' ? position + 1 : position;
     return decoded == null
         ? CharacterReference.missing(offset)
-        : CharacterReference.found(decoded, position + 1);
+        : CharacterReference.found(decoded, nextIndex);
   }
 
   /**

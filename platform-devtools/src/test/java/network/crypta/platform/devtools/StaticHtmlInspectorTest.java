@@ -212,6 +212,56 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void safetyFindings_whenUrlSchemesUseSemicolonlessNumericReferences_expectCspFindings() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <html lang="en">
+              <head>
+                <link rel="stylesheet" href="https&#58//cdn.example.invalid/app.css">
+              </head>
+              <body>
+                <a href="javascript&#58alert(1)">Bad URL</a>
+                <script src="https&#x3A//cdn.example.invalid/app.js"></script>
+              </body>
+            </html>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    Set<String> findingIds = ids(inspector.safetyFindings());
+
+    assertTrue(findingIds.contains("remote-stylesheet"));
+    assertTrue(findingIds.contains("javascript-url"));
+    assertTrue(findingIds.contains("remote-script"));
+  }
+
+  @Test
+  void safetyFindings_whenUrlAttributesAreDuplicated_expectFirstAttributeUsed() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <html lang="en">
+              <head>
+                <link rel="stylesheet" href="https://cdn.example.invalid/app.css" href="./app.css">
+              </head>
+              <body>
+                <a href="javascript:alert(1)" href="./safe.html">Bad URL</a>
+                <script src="https://cdn.example.invalid/app.js" src="./app.js"></script>
+              </body>
+            </html>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    Set<String> findingIds = ids(inspector.safetyFindings());
+
+    assertTrue(findingIds.contains("remote-stylesheet"));
+    assertTrue(findingIds.contains("javascript-url"));
+    assertTrue(findingIds.contains("remote-script"));
+  }
+
+  @Test
   void safetyFindings_whenDangerousMarkupAppearsOnlyInComments_expectNoFindings() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(
