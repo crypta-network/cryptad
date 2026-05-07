@@ -104,6 +104,26 @@ final class AppUiLinter {
   /** JavaScript method name for the SDK bootstrap loader. */
   private static final String LOAD_METHOD = "load";
 
+  /** Punctuation after which a JavaScript regex literal can commonly start. */
+  private static final String REGEX_PREFIX_PUNCTUATION = "([{=,:;!&|?+-*%^~<>";
+
+  /** Keywords after which a JavaScript regex literal can commonly start. */
+  private static final Set<String> REGEX_PREFIX_KEYWORDS =
+      Set.of(
+          "await",
+          "case",
+          "delete",
+          "do",
+          "else",
+          "in",
+          "instanceof",
+          "new",
+          "return",
+          "throw",
+          "typeof",
+          "void",
+          "yield");
+
   /** Credential and launch-token spellings that should not appear in browser-owned UI files. */
   private static final List<String> FORBIDDEN_TEXT =
       List.of(
@@ -643,7 +663,8 @@ final class AppUiLinter {
   }
 
   /**
-   * Replaces JavaScript comments and string/template literals with spaces while preserving offsets.
+   * Replaces JavaScript comments, string/template literals, and regex literals with spaces while
+   * preserving offsets.
    *
    * @param text JavaScript source to sanitize for pattern checks
    * @return source text with comments and strings removed from token matching
@@ -664,7 +685,7 @@ final class AppUiLinter {
   }
 
   /**
-   * Finds the next JavaScript comment or string/template literal opener.
+   * Finds the next JavaScript comment, string/template literal, or regex literal opener.
    *
    * @param text JavaScript source to scan
    * @param fromIndex first character position to inspect
@@ -673,7 +694,9 @@ final class AppUiLinter {
   private static int nextJavaScriptIgnoredRangeStart(String text, int fromIndex) {
     for (int index = Math.max(0, fromIndex); index < text.length(); index++) {
       char character = text.charAt(index);
-      if (isJavaScriptQuote(character) || startsJavaScriptComment(text, index)) {
+      if (isJavaScriptQuote(character)
+          || startsJavaScriptComment(text, index)
+          || startsJavaScriptRegexLiteral(text, index)) {
         return index;
       }
     }
@@ -684,7 +707,7 @@ final class AppUiLinter {
    * Computes the exclusive end offset for one JavaScript ignored range.
    *
    * @param text JavaScript source being scanned
-   * @param start offset of a quote, line comment, or block comment opener
+   * @param start offset of a quote, line comment, block comment, or regex literal opener
    * @return exclusive end offset for the ignored range
    */
   private static int javaScriptIgnoredRangeEnd(String text, int start) {
@@ -693,6 +716,9 @@ final class AppUiLinter {
     }
     if (startsBlockComment(text, start)) {
       return blockCommentEnd(text, start + 2);
+    }
+    if (startsJavaScriptRegexLiteral(text, start)) {
+      return regexLiteralEnd(text, start);
     }
     return quotedJavaScriptEnd(text, start, text.charAt(start));
   }
@@ -741,6 +767,74 @@ final class AppUiLinter {
   }
 
   /**
+   * Checks whether a slash is likely to open a JavaScript regex literal.
+   *
+   * <p>This is not a full ECMAScript grammar. It recognizes the common expression-start positions
+   * used by app UI code so escaped slashes inside regex literals are not mistaken for {@code //}
+   * comments before a real bootstrap call later on the same line.
+   *
+   * @param text JavaScript source being scanned
+   * @param index candidate regex opener position
+   * @return {@code true} when the slash appears in a regex-literal context
+   */
+  private static boolean startsJavaScriptRegexLiteral(String text, int index) {
+    if (index + 1 >= text.length() || text.charAt(index) != '/') {
+      return false;
+    }
+    char next = text.charAt(index + 1);
+    if (next == '/' || next == '*' || next == '=') {
+      return false;
+    }
+    int previous = skipJavaScriptWhitespaceBackward(text, index - 1);
+    if (previous < 0) {
+      return true;
+    }
+    char previousCharacter = text.charAt(previous);
+    if (isRegexPrefixPunctuation(previousCharacter)) {
+      return true;
+    }
+    return isRegexPrefixKeyword(previousJavaScriptWord(text, previous));
+  }
+
+  /**
+   * Checks whether punctuation before a slash leaves the parser expecting an expression.
+   *
+   * @param character punctuation immediately before a candidate regex literal
+   * @return {@code true} when a regex literal can plausibly follow the character
+   */
+  private static boolean isRegexPrefixPunctuation(char character) {
+    return REGEX_PREFIX_PUNCTUATION.indexOf(character) >= 0;
+  }
+
+  /**
+   * Reads the JavaScript identifier ending at a known identifier character.
+   *
+   * @param text JavaScript source being scanned
+   * @param endInclusive offset of the last identifier character
+   * @return identifier text, or an empty string when the offset is not on an identifier
+   */
+  private static String previousJavaScriptWord(String text, int endInclusive) {
+    if (endInclusive < 0 || !isJavaScriptIdentifierPart(text.charAt(endInclusive))) {
+      return "";
+    }
+    int start = endInclusive;
+    while (start > 0 && isJavaScriptIdentifierPart(text.charAt(start - 1))) {
+      start--;
+    }
+    return text.substring(start, endInclusive + 1);
+  }
+
+  /**
+   * Checks whether a keyword before a slash usually introduces an expression.
+   *
+   * @param word JavaScript identifier immediately before a candidate regex literal
+   * @return {@code true} when the word is an expression-prefix keyword
+   */
+  private static boolean isRegexPrefixKeyword(String word) {
+    return REGEX_PREFIX_KEYWORDS.contains(word);
+  }
+
+  /**
    * Finds the exclusive end of a JavaScript line comment body.
    *
    * @param text JavaScript source being scanned
@@ -766,6 +860,57 @@ final class AppUiLinter {
   private static int blockCommentEnd(String text, int index) {
     int close = text.indexOf("*/", index);
     return close < 0 ? text.length() : close + 2;
+  }
+
+  /**
+   * Finds the exclusive end of a JavaScript regex literal.
+   *
+   * <p>The scan respects escaped characters and bracket classes, then consumes trailing ASCII
+   * identifier characters as flags. Unterminated literals stop at the line break or source end so a
+   * malformed regex does not blank unrelated later lines.
+   *
+   * @param text JavaScript source being scanned
+   * @param slashIndex offset of the opening slash
+   * @return first offset after the literal and flags, or the current line end when unterminated
+   */
+  private static int regexLiteralEnd(String text, int slashIndex) {
+    boolean inCharacterClass = false;
+    int index = slashIndex + 1;
+    while (index < text.length()) {
+      char character = text.charAt(index);
+      if (character == '\n' || character == '\r') {
+        return index;
+      }
+      if (character == '\\') {
+        index += 2;
+      } else if (character == '[') {
+        inCharacterClass = true;
+        index++;
+      } else if (character == ']') {
+        inCharacterClass = false;
+        index++;
+      } else if (character == '/' && !inCharacterClass) {
+        return regexFlagsEnd(text, index + 1);
+      } else {
+        index++;
+      }
+    }
+    return text.length();
+  }
+
+  /**
+   * Finds the first offset after regex flags.
+   *
+   * @param text JavaScript source being scanned
+   * @param index first character after the closing slash
+   * @return first offset after ASCII identifier-like flags
+   */
+  private static int regexFlagsEnd(String text, int index) {
+    int end = index;
+    while (end < text.length() && isJavaScriptIdentifierPart(text.charAt(end))) {
+      end++;
+    }
+    return end;
   }
 
   /**

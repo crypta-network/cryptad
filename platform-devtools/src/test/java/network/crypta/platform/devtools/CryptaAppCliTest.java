@@ -555,6 +555,61 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenBootstrapFollowsRegexLiteralWithEscapedSlashes_expectStrictSuccess()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        const matcher = /^https?:\\/\\//; CryptaPlatform.bootstrap.load({ appId: "sample-app" });
+        console.log(matcher.test(window.location.href));
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+  }
+
+  @Test
+  void uiLint_whenBootstrapAppearsOnlyInRegexLiteral_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        appDir.resolve("static").resolve("app.js"),
+        """
+        const example = /CryptaPlatform.bootstrap.load()/;
+        console.log(example);
+        """,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/app.js"));
+  }
+
+  @Test
   void uiLint_whenBootstrapUsesLargeMemberChain_expectStrictSuccess() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
