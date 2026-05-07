@@ -61,6 +61,26 @@ final class AppUiLinter {
   /** Manifest value for app-owned static UI mode in result summaries. */
   private static final String STATIC_UI_MODE = "static";
 
+  /** Canonical design-system token stylesheet path inside static app bundles. */
+  private static final String DESIGN_SYSTEM_TOKENS_CSS =
+      DesignSystemAssets.BUNDLE_DIRECTORY + "/crypta-ui-tokens.css";
+
+  /** Canonical design-system base stylesheet path inside static app bundles. */
+  private static final String DESIGN_SYSTEM_CSS =
+      DesignSystemAssets.BUNDLE_DIRECTORY + "/crypta-ui.css";
+
+  /** Optional canonical design-system progressive-enhancement script path. */
+  private static final String DESIGN_SYSTEM_COMPONENTS_JS =
+      DesignSystemAssets.BUNDLE_DIRECTORY + "/crypta-ui-components.js";
+
+  /** Canonical design-system stylesheet paths that are exempt from app-CSS ordering checks. */
+  private static final Set<String> CANONICAL_DESIGN_SYSTEM_STYLESHEETS =
+      Set.of(DESIGN_SYSTEM_TOKENS_CSS, DESIGN_SYSTEM_CSS);
+
+  /** Canonical design-system script paths that are not considered app bootstrap scripts. */
+  private static final Set<String> CANONICAL_DESIGN_SYSTEM_SCRIPTS =
+      Set.of(DESIGN_SYSTEM_COMPONENTS_JS);
+
   /** Common prefix for local script and stylesheet reference diagnostics. */
   private static final String LOCAL_REFERENCE_MESSAGE_PREFIX = "Local ";
 
@@ -215,8 +235,8 @@ final class AppUiLinter {
       }
     }
     List<String> stylesheets = html.normalizedStylesheetHrefs();
-    int tokensIndex = stylesheets.indexOf("static/crypta-ui/crypta-ui-tokens.css");
-    int uiIndex = stylesheets.indexOf("static/crypta-ui/crypta-ui.css");
+    int tokensIndex = stylesheets.indexOf(DESIGN_SYSTEM_TOKENS_CSS);
+    int uiIndex = stylesheets.indexOf(DESIGN_SYSTEM_CSS);
     int firstAppCss = firstAppStylesheet(stylesheets);
     if (tokensIndex < 0) {
       findings.add(
@@ -266,7 +286,7 @@ final class AppUiLinter {
    */
   private static int firstAppStylesheet(List<String> stylesheets) {
     for (int index = 0; index < stylesheets.size(); index++) {
-      if (!stylesheets.get(index).startsWith("static/crypta-ui/")) {
+      if (!CANONICAL_DESIGN_SYSTEM_STYLESHEETS.contains(stylesheets.get(index))) {
         return index;
       }
     }
@@ -283,8 +303,7 @@ final class AppUiLinter {
    * @return {@code true} when the canonical CSS path is a real regular file
    */
   private static boolean designSystemCssPresent(Path bundleRoot) {
-    return isBundleLocalRegularFile(
-        bundleRoot, bundleRoot.resolve("static/crypta-ui/crypta-ui.css"));
+    return isBundleLocalRegularFile(bundleRoot, bundleRoot.resolve(DESIGN_SYSTEM_CSS));
   }
 
   /**
@@ -1075,9 +1094,10 @@ final class AppUiLinter {
   /**
    * Classifies a loaded script path as app-owned JavaScript.
    *
-   * <p>The SDK and design-system support files are excluded because they should not satisfy app
-   * bootstrap requirements or trigger direct app-script ordering checks. The input must already be
-   * normalized to a bundle-relative path.
+   * <p>The SDK and canonical design-system support files are excluded because they should not
+   * satisfy app bootstrap requirements or trigger direct app-script ordering checks. Other scripts
+   * remain app-owned even if an author places them beside the vendored design-system assets. The
+   * input must already be normalized to a bundle-relative path.
    *
    * @param scriptPath normalized script path from the static entry
    * @return {@code true} when the path refers to a local app script
@@ -1086,7 +1106,7 @@ final class AppUiLinter {
     String routeAssetPath = localRouteAssetPath(scriptPath);
     return !routeAssetPath.isBlank()
         && !isSdkAssetPath(routeAssetPath)
-        && !routeAssetPath.startsWith("static/crypta-ui/");
+        && !CANONICAL_DESIGN_SYSTEM_SCRIPTS.contains(routeAssetPath);
   }
 
   /**

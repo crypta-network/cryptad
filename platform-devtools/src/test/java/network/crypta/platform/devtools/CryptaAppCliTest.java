@@ -555,6 +555,38 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenAppScriptLivesUnderCryptaUiDirectory_expectStrictBootstrapFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("crypta-ui").resolve("main.js"),
+        "console.log('loaded app code');\n",
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace("./app.js", "./crypta-ui/main.js"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("sdk-bootstrap-missing"));
+    assertTrue(result.err().contains("static/crypta-ui/main.js"));
+  }
+
+  @Test
   void uiLint_whenCssImportUsesNonLocalScheme_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -896,6 +928,47 @@ class CryptaAppCliTest {
                 """
                     <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
                     <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                """),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("design-system-css-order"));
+  }
+
+  @Test
+  void uiLint_whenNonCanonicalCryptaUiStylesheetLoadsBeforeTokens_expectStrictOrderFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path staticDir = appDir.resolve("static");
+    Files.writeString(
+        staticDir.resolve("crypta-ui").resolve("custom.css"),
+        ".cr-app { color: inherit; }\n",
+        StandardCharsets.UTF_8);
+    Path index = staticDir.resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                """
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+                """,
+                """
+                    <link rel="stylesheet" href="./crypta-ui/custom.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+                    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
                 """),
         StandardCharsets.UTF_8);
 
