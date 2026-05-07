@@ -1,17 +1,18 @@
 ---
 name: improve-unit-test-coverage-for-current-changes
 description: |
-  Improve unit test coverage for the current uncommitted working-tree changes in a Java repository.
-  Use when Codex should inspect staged, unstaged, and untracked local changes, identify the touched
-  production classes or changed test files, add or update the smallest relevant JUnit tests, and
-  verify them with targeted Gradle runs plus one final full-suite run.
+  Improve unit test coverage for Java changes in the current working tree and, when the current
+  branch is not develop, files changed on the branch since develop. Use when Codex should inspect
+  staged, unstaged, untracked, and branch-local Java changes, identify the touched production
+  classes or changed test files, add or update the smallest relevant JUnit tests, and verify them
+  with targeted Gradle runs plus one final full-suite run.
 ---
 
 # Improve unit test coverage for current changes
 
 ## Invoke the skill
 
-Invoke the skill without arguments when all current local changes are in scope:
+Invoke the skill without arguments when all current branch and local changes are in scope:
 
 `$improve-unit-test-coverage-for-current-changes`
 
@@ -26,8 +27,11 @@ Base ref: HEAD
 Default to these assumptions unless the user says otherwise:
 
 - Treat staged, unstaged, and untracked files as in scope.
-- Compare local changes to `HEAD`.
-- Ignore already-committed branch history.
+- If the current branch is `develop`, compare local changes to `HEAD`.
+- If the current branch is not `develop`, include files changed between the current branch and
+  `develop`. Prefer the merge base with `origin/develop`; use local `develop` when
+  `origin/develop` is unavailable.
+- If `Base ref:` is provided, use that ref instead of the branch-aware default.
 - Focus on unit-test coverage, not project-wide coverage percentages.
 
 ## Follow guardrails
@@ -48,16 +52,25 @@ style guidance for a single class, borrow conventions from
 
 ## Determine the changed files
 
-Start from the current working tree, not the branch diff.
+Start from the branch-aware base plus the current working tree.
 
-Use deterministic Git commands:
+First choose the comparison base deterministically:
 
-- `git diff --name-only --diff-filter=ACMR HEAD -- '*.java'`
+- Run `git rev-parse --abbrev-ref HEAD`.
+- If `Base ref:` was provided, use it.
+- If the current branch is `develop`, use `HEAD`.
+- If the current branch is not `develop`, use `git merge-base HEAD origin/develop` when
+  `origin/develop` exists. If it does not exist, use `git merge-base HEAD develop`.
+- If neither develop ref exists, fall back to `HEAD` and mention that fallback in the final report.
+
+Then use deterministic Git commands:
+
+- `git diff --name-only --diff-filter=ACMR <base-ref> -- '*.java'`
 - `git ls-files --others --exclude-standard -- '*.java'`
 
 Then inspect actual hunks for each candidate file:
 
-- `git diff --unified=0 HEAD -- <path>`
+- `git diff --unified=0 <base-ref> -- <path>`
 
 Apply these filters:
 
@@ -69,7 +82,7 @@ Apply these filters:
 - If `Limit to:` is provided, intersect the Git-derived list with that path or subtree.
 
 If there are no changed production or test Java files, stop and report that there is no unit-test
-coverage work to do for the current local changes.
+coverage work to do for the selected branch and local changes.
 
 ## Decide what to cover
 
@@ -153,6 +166,7 @@ only when they are local to the file and do not expand the scope materially.
 When you finish, summarize:
 
 - Which local production files or test files were in scope.
+- Which comparison base was used, especially when the current branch was compared with `develop`.
 - Which behaviors gained new or improved tests.
 - Which targeted Gradle commands you ran and whether they passed.
 - Whether the final `./gradlew test` run passed.

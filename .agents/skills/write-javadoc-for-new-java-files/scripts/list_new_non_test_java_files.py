@@ -15,6 +15,7 @@ EXCLUDED_TEST_ROOT_NAMES = (
     "functionalTest",
 )
 EXCLUDED_TEST_SUFFIXES = ("Test.java", "Tests.java", "IT.java", "ITCase.java")
+DEFAULT_DEVELOP_REFS = ("origin/develop", "develop")
 
 
 def run_git(repo_root: Path, *args: str) -> list[str]:
@@ -26,6 +27,38 @@ def run_git(repo_root: Path, *args: str) -> list[str]:
         text=True,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def git_succeeds(repo_root: Path, *args: str) -> bool:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def resolve_default_base_ref(repo_root: Path) -> str:
+    branch = run_git(repo_root, "rev-parse", "--abbrev-ref", "HEAD")[0]
+    if branch == "develop":
+        return "HEAD"
+
+    for develop_ref in DEFAULT_DEVELOP_REFS:
+        if git_succeeds(
+            repo_root, "rev-parse", "--verify", "--quiet", f"{develop_ref}^{{commit}}"
+        ):
+            merge_base = run_git(repo_root, "merge-base", "HEAD", develop_ref)
+            if merge_base:
+                return merge_base[0]
+
+    print(
+        "warning: no origin/develop or develop ref found; defaulting --base-ref to HEAD",
+        file=sys.stderr,
+    )
+    return "HEAD"
 
 
 def normalize_repo_relative(repo_root: Path, raw_path: str) -> PurePosixPath:
@@ -72,8 +105,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-ref",
-        default="HEAD",
-        help="Git base ref to compare against. Defaults to HEAD.",
+        default=None,
+        help=(
+            "Git base ref to compare against. Defaults to HEAD on develop, or the merge base with "
+            "origin/develop or develop on other branches."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -92,7 +128,8 @@ def main() -> int:
             run_git(Path.cwd(), "rev-parse", "--show-toplevel")[0]
         ).resolve()
         limit_paths = [normalize_repo_relative(repo_root, raw_limit) for raw_limit in args.limit]
-        added_paths = run_git(repo_root, "diff", "--name-only", "--diff-filter=A", args.base_ref, "--")
+        base_ref = args.base_ref or resolve_default_base_ref(repo_root)
+        added_paths = run_git(repo_root, "diff", "--name-only", "--diff-filter=A", base_ref, "--")
         untracked_paths = run_git(repo_root, "ls-files", "--others", "--exclude-standard", "--")
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
