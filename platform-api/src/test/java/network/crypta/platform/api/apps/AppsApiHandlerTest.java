@@ -654,7 +654,7 @@ class AppsApiHandlerTest {
   void uninstall_whenVaultUnavailableAndAppDeclaresVaultPermission_expectAppHostNotMutated() {
     SingleAppHost appHost =
         new SingleAppHost(
-            snapshot(AppUiMode.NONE, null, List.of("vault.secrets.read", "vault.secrets.write")));
+            snapshotWithPermissions(List.of("vault.secrets.read", "vault.secrets.write")));
     AppsApiHandler handler = new AppsApiHandler(appHost);
 
     PlatformApiException exception =
@@ -866,9 +866,8 @@ class AppsApiHandlerTest {
     return snapshot(uiMode, uiEntry, null, null);
   }
 
-  private InstalledAppSnapshot snapshot(
-      AppUiMode uiMode, String uiEntry, List<String> permissions) {
-    return snapshot(uiMode, uiEntry, permissions, null, null);
+  private InstalledAppSnapshot snapshotWithPermissions(List<String> permissions) {
+    return snapshot(AppUiMode.NONE, null, permissions, null, null);
   }
 
   private InstalledAppSnapshot snapshot(
