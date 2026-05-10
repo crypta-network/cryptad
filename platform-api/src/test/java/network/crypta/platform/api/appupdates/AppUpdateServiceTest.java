@@ -39,6 +39,12 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.appvault.AppIdentityGrant;
+import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityGrantStatus;
+import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
+import network.crypta.platform.appvault.AppVaultService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -147,7 +153,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(3, 3, List.of(), false);
+        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -202,7 +208,7 @@ class AppUpdateServiceTest {
       throws Exception {
     AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(3, 3, List.of(), false);
+        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -396,7 +402,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(3, 3, List.of(), false);
+        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -439,7 +445,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry compatibleEntry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(3, 3, List.of(), false);
+        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
     AppCatalogEntry incompatibleEntry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract);
     AppCatalogInstallPlan plan = plan(compatibleEntry);
@@ -574,6 +580,71 @@ class AppUpdateServiceTest {
     assertEquals(false, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
     assertFalse(Files.exists(plan.scratchDirectory()));
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void apply_whenVaultCleanupFailsAfterReplacement_expectStageClosedAndAppliedWarning()
+      throws Exception {
+    InstalledAppSnapshot installed =
+        installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.use"));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed), Optional.of(installed), Optional.of(updated));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    AppIdentityGrant grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    Files.writeString(
+        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        "grantId="
+            + grant.grantId()
+            + "\nidentityId="
+            + grant.identityId()
+            + "\nappId="
+            + grant.appId()
+            + "\nscopes=sign.domain-separated\nstatus=not-a-status\ncreatedAt="
+            + grant.createdAt()
+            + "\nupdatedAt="
+            + grant.updatedAt()
+            + "\n");
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty,
+            vaultService);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    service.stage(APP_ID);
+
+    Map<String, Object> summary = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals(APPLIED, ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+    List<Map<String, Object>> history = (List<Map<String, Object>>) summary.get("history");
+    assertEquals("success", history.getFirst().get(STATUS));
+    assertEquals(
+        "Staged update applied; vault grant cleanup failed and requires operator review.",
+        history.getFirst().get(MESSAGE));
+    assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
   @Test
@@ -801,6 +872,67 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.summary(APP_ID);
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void apply_whenVaultPermissionRemovedButHealthRollbackCommits_expectGrantRemainsActive()
+      throws Exception {
+    InstalledAppSnapshot installed =
+        installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.use"));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed), Optional.of(installed), Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(), Optional.empty(), Optional.of(running(installed)), Optional.empty());
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    AppIdentityGrant grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty,
+            vaultService);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.start(APP_ID)).thenThrow(new IOException("launch failed"));
+    when(appHost.rollbackStatus(APP_ID))
+        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
+    when(appHost.rollback(APP_ID)).thenReturn(installed);
+    service.stage(APP_ID);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.apply(APP_ID, APPLY_RESTART_PROCESS_HEALTH_ROLLBACK));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("health_check_failed", exception.errorCode());
+    AppIdentityGrant retainedGrant = vaultService.listGrantsForApp(APP_ID).getFirst();
+    assertEquals(grant.grantId(), retainedGrant.grantId());
+    assertEquals(AppIdentityGrantStatus.ACTIVE, retainedGrant.status());
+    assertEquals(
+        java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED), retainedGrant.scopes());
     assertFalse(Files.exists(plan.scratchDirectory()));
   }
 

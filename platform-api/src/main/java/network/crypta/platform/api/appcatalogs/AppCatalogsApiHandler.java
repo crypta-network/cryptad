@@ -39,6 +39,8 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.appui.AppUiPaths;
+import network.crypta.platform.appvault.AppVaultException;
+import network.crypta.platform.appvault.AppVaultService;
 
 /**
  * Signed app-catalog endpoint family for Platform API v1.
@@ -85,6 +87,9 @@ public final class AppCatalogsApiHandler {
   private static final String LAST_FETCH_ERROR_MESSAGE_FIELD = "lastFetchErrorMessage";
   private static final String LAST_RESOLVED_URI_FIELD = "lastResolvedUri";
   private static final String FETCH_STATUS_SUCCESS = "success";
+  private static final String FIELD_WARNINGS = "warnings";
+  private static final String VAULT_GRANT_CLEANUP_WARNING =
+      "Vault grant cleanup failed and requires operator review.";
   private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
   private static final String STATUS_FIELD = "status";
@@ -99,6 +104,7 @@ public final class AppCatalogsApiHandler {
   private final Supplier<String> currentCryptaVersionSupplier;
   private final AppReviewPolicy reviewPolicy;
   private final ReviewerKeysProvider reviewerKeysProvider;
+  private final AppVaultService appVaultService;
 
   /**
    * Creates a handler backed by a catalog manager and shared AppHost.
@@ -131,12 +137,30 @@ public final class AppCatalogsApiHandler {
       AppCatalogManager catalogManager,
       AppHost appHost,
       Supplier<String> currentCryptaVersionSupplier) {
+    this(catalogManager, appHost, currentCryptaVersionSupplier, null);
+  }
+
+  /**
+   * Creates a handler backed by catalog services and optional vault lifecycle integration.
+   *
+   * @param catalogManager signed catalog manager owned by runtime composition
+   * @param appHost shared AppHost used for final install and update operations
+   * @param currentCryptaVersionSupplier current node version supplier for compatibility display
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   */
+  public AppCatalogsApiHandler(
+      AppCatalogManager catalogManager,
+      AppHost appHost,
+      Supplier<String> currentCryptaVersionSupplier,
+      AppVaultService appVaultService) {
     this(
         catalogManager,
         appHost,
         currentCryptaVersionSupplier,
         AppReviewPolicy.loadFromSystem(),
-        trustedReviewerKeysFromSystem());
+        trustedReviewerKeysFromSystem(),
+        appVaultService);
   }
 
   /**
@@ -154,6 +178,33 @@ public final class AppCatalogsApiHandler {
       Supplier<String> currentCryptaVersionSupplier,
       AppReviewPolicy reviewPolicy,
       ReviewerKeysProvider reviewerKeysProvider) {
+    this(
+        catalogManager,
+        appHost,
+        currentCryptaVersionSupplier,
+        reviewPolicy,
+        reviewerKeysProvider,
+        null);
+  }
+
+  /**
+   * Creates a handler with explicit review policy, reviewer-key provider, and optional vault.
+   *
+   * @param catalogManager signed catalog manager owned by runtime composition
+   * @param appHost shared AppHost used for final install and update operations
+   * @param currentCryptaVersionSupplier current node version supplier for compatibility display
+   * @param reviewPolicy local review policy for install/update gates
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   */
+  public AppCatalogsApiHandler(
+      AppCatalogManager catalogManager,
+      AppHost appHost,
+      Supplier<String> currentCryptaVersionSupplier,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService) {
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.currentCryptaVersionSupplier =
@@ -161,6 +212,7 @@ public final class AppCatalogsApiHandler {
     this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
     this.reviewerKeysProvider =
         Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
+    this.appVaultService = appVaultService;
   }
 
   private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
@@ -430,8 +482,13 @@ public final class AppCatalogsApiHandler {
               initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
           false);
       InstalledAppSnapshot updated =
-          appHost.updateFromDirectory(entry.appId(), plan.stagedBundleDirectory());
-      return summarizeInstalledApp(updated.manifest());
+          appHost.updateFromDirectory(normalizedAppId, plan.stagedBundleDirectory());
+      boolean vaultCleanupSucceeded = disableVaultGrantsRemovedByUpdate(updated);
+      Map<String, Object> summary = summarizeInstalledApp(updated.manifest());
+      if (!vaultCleanupSucceeded) {
+        summary.put(FIELD_WARNINGS, List.of(VAULT_GRANT_CLEANUP_WARNING));
+      }
+      return summary;
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (AppHostException exception) {
@@ -452,6 +509,22 @@ public final class AppCatalogsApiHandler {
     } catch (IOException exception) {
       LOG.log(
           System.Logger.Level.WARNING, "Failed to clean catalog app scratch directory", exception);
+    }
+  }
+
+  private boolean disableVaultGrantsRemovedByUpdate(InstalledAppSnapshot updated) {
+    if (appVaultService == null) {
+      return true;
+    }
+    try {
+      appVaultService.disableGrantsForRemovedVaultPermissions(
+          updated.appId(), new LinkedHashSet<>(updated.manifest().permissions()));
+      return true;
+    } catch (AppVaultException exception) {
+      LOG.log(
+          System.Logger.Level.WARNING,
+          "Catalog update applied but vault grant cleanup failed: " + exception.errorCode());
+      return false;
     }
   }
 

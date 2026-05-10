@@ -123,6 +123,17 @@ Rollback does not roll back:
 Data, cache, and run directories are intentionally preserved across successful updates. If a new
 bundle changes its own data format, the app owns that migration and any app-level downgrade policy.
 
+Vault records are also outside rollback snapshots. App-owned secrets, app-owned identities, shared
+identity grants, and grant status changes are evaluated against the currently installed manifest
+and current local grant state. Updating an app preserves app-owned vault material and active grants
+only for vault capabilities still declared by the replacement manifest; removing a vault capability
+marks matching grants inactive until operator review. Rollback restores the previous bundle, but it
+does not restore old secret values or older grant decisions.
+
+Uninstall is not a rollback operation. The v1 uninstall path revokes that app id's identity grants
+and purges app-owned secret values so a later same-id reinstall cannot silently recover the previous
+install's private configuration.
+
 ## Process health gate
 
 The v1 health gate is conservative: an update is not applied while the app has a live process unless

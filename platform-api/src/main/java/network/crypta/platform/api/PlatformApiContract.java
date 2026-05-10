@@ -57,10 +57,11 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 2;
+  public static final int CURRENT_CONTRACT_VERSION = 3;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
+  private static final int APP_VAULT_CONTRACT_VERSION = 3;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -80,13 +81,19 @@ public record PlatformApiContract(
 
   private static final String ROUTE_FAMILY_APPS = "apps";
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
+  private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
   private static final String ROUTE_FAMILY_CONFIG = "config";
+  private static final String ROUTE_FAMILY_IDENTITY_VAULT = "identity-vault";
   private static final String ROUTE_FAMILY_PEERS = "peers";
   private static final String ROUTE_FAMILY_QUEUE = "queue";
   private static final String ROUTE_FAMILY_SECURITY_LEVELS = "security-levels";
+  private static final String ROUTE_APP_VAULT_SECRET = "/app-vault/secrets/{name}";
+  private static final String ROUTE_IDENTITY_VAULT_GRANT = "/identity-vault/grants/{grantId}";
   private static final String METHOD_DELETE = "DELETE";
   private static final String METHOD_GET = "GET";
+  private static final String METHOD_PATCH = "PATCH";
   private static final String METHOD_POST = "POST";
+  private static final String METHOD_PUT = "PUT";
   private static final List<String> APP_CATALOG_UPDATE_MANAGE_CAPABILITIES =
       List.of(PlatformApiCapabilities.APPS_MANAGE, PlatformApiCapabilities.CATALOGS_MANAGE);
 
@@ -265,6 +272,25 @@ public record PlatformApiContract(
         capability(PlatformApiCapabilities.SECURITY_WRITE, "Change security-level settings."),
         capability(PlatformApiCapabilities.UPDATES_READ, "Read core update state."),
         capability(PlatformApiCapabilities.UPDATES_WRITE, "Trigger core update actions."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_IDENTITIES_CREATE,
+            "Create app-owned vault identities without exposing private key material."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_IDENTITIES_MANAGE,
+            "Manage vault identity grants through host/operator routes."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_IDENTITIES_READ,
+            "Read vault identity metadata granted to the calling app."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_IDENTITIES_USE,
+            "Use granted vault identities for approved bounded operations."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_SECRETS_READ,
+            "Read app-owned secret values from the process-only vault API."),
+        experimentalCapability(
+            PlatformApiCapabilities.VAULT_SECRETS_WRITE,
+            "Create, replace, or delete app-owned secret values through the process-only vault"
+                + " API."),
         capability(PlatformApiCapabilities.WIZARD_READ, "Read first-time wizard state."),
         capability(PlatformApiCapabilities.WIZARD_WRITE, "Submit first-time wizard choices."));
   }
@@ -616,6 +642,85 @@ public record PlatformApiContract(
         "catalogs.apps.update",
         List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
         "Update an app from a signed catalog.");
+    builder.appVaultGet(
+        "/app-vault/secrets",
+        "app-vault.secrets.list",
+        List.of(PlatformApiCapabilities.VAULT_SECRETS_READ),
+        false,
+        "List redacted metadata for app-owned secrets.");
+    builder.appVaultPutSecret();
+    builder.appVaultGet(
+        ROUTE_APP_VAULT_SECRET,
+        "app-vault.secrets.read",
+        List.of(PlatformApiCapabilities.VAULT_SECRETS_READ),
+        false,
+        "Read one app-owned secret value for an app process principal.");
+    builder.appVaultDeleteSecret();
+    builder.appVaultGet(
+        "/app-vault/identities",
+        "app-vault.identities.list",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+        true,
+        "List vault identity metadata visible to the calling app.");
+    builder.appVaultPost(
+        "/app-vault/identities",
+        "app-vault.identities.create",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_CREATE),
+        false,
+        "Create an app-owned vault identity.");
+    builder.appVaultGet(
+        "/app-vault/identities/{identityId}",
+        "app-vault.identities.read",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+        true,
+        "Read one vault identity metadata record visible to the calling app.");
+    builder.appVaultPost(
+        "/app-vault/identities/{identityId}/use",
+        "app-vault.identities.use",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_USE),
+        false,
+        "Use one granted vault identity for a bounded operation.");
+    builder.appVaultGet(
+        "/app-vault/grants",
+        "app-vault.grants.list",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+        true,
+        "List vault identity grants for the calling app.");
+    builder.appVaultPost(
+        "/app-vault/grants/request",
+        "app-vault.grants.request",
+        List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+        true,
+        "Submit a token-free vault grant request for operator review.");
+    builder.identityVaultGet(
+        "/identity-vault/identities",
+        "identity-vault.identities.list",
+        "List vault identities for host/operator management.");
+    builder.identityVaultPost(
+        "/identity-vault/identities",
+        "identity-vault.identities.create",
+        "Create an operator-managed vault identity.");
+    builder.identityVaultGet(
+        "/identity-vault/identities/{identityId}",
+        "identity-vault.identities.read",
+        "Read one vault identity for host/operator management.");
+    builder.identityVaultDelete(
+        "/identity-vault/identities/{identityId}",
+        "identity-vault.identities.delete",
+        "Delete one vault identity and revoke its grants.");
+    builder.identityVaultGet(
+        "/identity-vault/grants",
+        "identity-vault.grants.list",
+        "List vault identity grants for host/operator management.");
+    builder.identityVaultPost(
+        "/identity-vault/grants",
+        "identity-vault.grants.create",
+        "Grant one vault identity to one app.");
+    builder.identityVaultGrantStatusPatch();
+    builder.identityVaultDelete(
+        ROUTE_IDENTITY_VAULT_GRANT,
+        "identity-vault.grants.revoke",
+        "Revoke one vault identity grant.");
     builder.get(
         "platform",
         "/platform/contract",
@@ -628,6 +733,16 @@ public record PlatformApiContract(
   private static PlatformApiCapabilityDescriptor capability(String name, String description) {
     return new PlatformApiCapabilityDescriptor(
         name, PlatformApiStabilityLevel.STABLE, INITIAL_CONTRACT_VERSION, null, description);
+  }
+
+  private static PlatformApiCapabilityDescriptor experimentalCapability(
+      String name, String description) {
+    return new PlatformApiCapabilityDescriptor(
+        name,
+        PlatformApiStabilityLevel.EXPERIMENTAL,
+        APP_VAULT_CONTRACT_VERSION,
+        null,
+        description);
   }
 
   private static String requireText(String value, String fieldName) {
@@ -698,6 +813,66 @@ public record PlatformApiContract(
               description));
     }
 
+    private void appVaultGet(
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        boolean appBrowserAllowed,
+        String description) {
+      appVaultEndpoint(
+          METHOD_GET, routeTemplate, actionLabel, capabilities, appBrowserAllowed, description);
+    }
+
+    private void appVaultPost(
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        boolean appBrowserAllowed,
+        String description) {
+      appVaultEndpoint(
+          METHOD_POST, routeTemplate, actionLabel, capabilities, appBrowserAllowed, description);
+    }
+
+    private void appVaultPutSecret() {
+      appVaultEndpoint(
+          METHOD_PUT,
+          ROUTE_APP_VAULT_SECRET,
+          "app-vault.secrets.write",
+          List.of(PlatformApiCapabilities.VAULT_SECRETS_WRITE),
+          false,
+          "Create or replace one app-owned secret value.");
+    }
+
+    private void appVaultDeleteSecret() {
+      appVaultEndpoint(
+          METHOD_DELETE,
+          ROUTE_APP_VAULT_SECRET,
+          "app-vault.secrets.delete",
+          List.of(PlatformApiCapabilities.VAULT_SECRETS_WRITE),
+          false,
+          "Delete one app-owned secret without exposing the old value.");
+    }
+
+    private void identityVaultGet(String routeTemplate, String actionLabel, String description) {
+      identityVaultEndpoint(METHOD_GET, routeTemplate, actionLabel, description);
+    }
+
+    private void identityVaultPost(String routeTemplate, String actionLabel, String description) {
+      identityVaultEndpoint(METHOD_POST, routeTemplate, actionLabel, description);
+    }
+
+    private void identityVaultGrantStatusPatch() {
+      identityVaultEndpoint(
+          METHOD_PATCH,
+          ROUTE_IDENTITY_VAULT_GRANT,
+          "identity-vault.grants.status",
+          "Change one vault grant status.");
+    }
+
+    private void identityVaultDelete(String routeTemplate, String actionLabel, String description) {
+      identityVaultEndpoint(METHOD_DELETE, routeTemplate, actionLabel, description);
+    }
+
     private void appUpdateGet(String routeTemplate, String actionLabel, String description) {
       endpoint(
           new EndpointSpec(
@@ -749,13 +924,52 @@ public record PlatformApiContract(
               spec.routeTemplate(),
               spec.actionLabel(),
               spec.capabilities(),
-              true,
+              spec.hostOperatorBypassAllowed(),
               spec.appProcessAllowed(),
               spec.appBrowserAllowed(),
-              PlatformApiStabilityLevel.STABLE,
+              spec.stability(),
               spec.sinceContractVersion(),
               null,
               spec.description()));
+    }
+
+    private void appVaultEndpoint(
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        boolean appBrowserAllowed,
+        String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_VAULT,
+              method,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              APP_VAULT_CONTRACT_VERSION,
+              false,
+              true,
+              appBrowserAllowed,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
+    }
+
+    private void identityVaultEndpoint(
+        String method, String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_IDENTITY_VAULT,
+              method,
+              routeTemplate,
+              actionLabel,
+              List.of(PlatformApiCapabilities.VAULT_IDENTITIES_MANAGE),
+              APP_VAULT_CONTRACT_VERSION,
+              true,
+              false,
+              false,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
     }
 
     private List<PlatformApiEndpointDescriptor> build() {
@@ -770,11 +984,38 @@ public record PlatformApiContract(
       String actionLabel,
       List<String> capabilities,
       int sinceContractVersion,
+      boolean hostOperatorBypassAllowed,
       boolean appProcessAllowed,
       boolean appBrowserAllowed,
+      PlatformApiStabilityLevel stability,
       String description) {
+    private EndpointSpec(
+        String family,
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        int sinceContractVersion,
+        boolean appProcessAllowed,
+        boolean appBrowserAllowed,
+        String description) {
+      this(
+          family,
+          method,
+          routeTemplate,
+          actionLabel,
+          capabilities,
+          sinceContractVersion,
+          true,
+          appProcessAllowed,
+          appBrowserAllowed,
+          PlatformApiStabilityLevel.STABLE,
+          description);
+    }
+
     private EndpointSpec {
       capabilities = List.copyOf(capabilities);
+      Objects.requireNonNull(stability, "stability");
     }
   }
 }

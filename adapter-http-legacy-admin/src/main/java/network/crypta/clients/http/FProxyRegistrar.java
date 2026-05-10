@@ -342,7 +342,8 @@ final class FProxyRegistrar {
             dependencies.appHost(),
             dependencies.appCatalogManager(),
             appBrowserSessionStore,
-            appUiOriginServer);
+            appUiOriginServer,
+            dependencies.appVaultService());
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));

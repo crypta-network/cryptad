@@ -134,10 +134,22 @@ The current capabilities are intentionally conservative:
 | `catalogs.read` | catalog and catalog-app reads |
 | `catalogs.manage` | catalog add/remove/refresh, catalog app install/update, and catalog-backed app update check/stage/apply |
 | `platform.contract.read` | `GET /api/v1/platform/contract` contract snapshot reads |
+| `vault.secrets.read` | read app-granted vault secret metadata and values |
+| `vault.secrets.write` | create, update, rotate, or delete app-owned vault secrets |
+| `vault.identities.read` | read app-granted identity metadata and public identity material |
+| `vault.identities.create` | create app-owned identities |
+| `vault.identities.use` | use an app-granted identity without exporting private identity material |
+| `vault.identities.manage` | manage app-owned identities and app grants for shared identities |
 
 Capability descriptors, endpoint descriptors, and stability levels are described in
 [platform-api-contract.md](platform-api-contract.md). `app.permissions` remains the authoritative
 grant request; manifest `api.*` compatibility metadata is advisory verifier and review input.
+
+The app secret and identity vault has additional lifecycle and redaction rules because it handles
+local secret values and identity private material. See
+[app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) for app-owned versus shared
+identities, process/browser restrictions, local at-rest limitations, update/rollback/uninstall
+grant behavior, and future content/social/mail extension points.
 
 ## Audit trail
 
@@ -175,6 +187,10 @@ Installed app summaries also include a small audit object and a retained denied-
 The Web Shell displays declared permissions, recent app-originated audit events, and denied-call
 counts on installed app cards. Audit entries include the auth source so operators can distinguish
 AppHost process-token calls from browser-session calls.
+
+Vault metadata is not part of the app-readable summary contract. App principals only receive vault
+availability in installed-app summaries; secret names, identity grant details, and vault audit
+targets remain behind the vault-specific capabilities and host/operator views.
 
 Installed app summaries and runtime status also include quota status for AppHost-managed data,
 cache, and process-log resources. Those quota fields are operator visibility and lifecycle

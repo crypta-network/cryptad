@@ -70,8 +70,12 @@ crypta-app init \
 ```
 
 Repeat `--permission` for each Platform API capability the app needs. Current capability names are
-listed in [app-permissions-and-audit.md](app-permissions-and-audit.md). Use `--overwrite` only when
-you deliberately want to replace an existing scaffolded directory.
+listed in [app-permissions-and-audit.md](app-permissions-and-audit.md). The developer tooling also
+recognizes the app-vault capability names `vault.secrets.read`, `vault.secrets.write`,
+`vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and
+`vault.identities.manage`; see [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)
+before requesting them. Use `--overwrite` only when you deliberately want to replace an existing
+scaffolded directory.
 
 The `static` scaffold is expected to produce a bundle shaped like:
 
@@ -151,6 +155,12 @@ crypta-app ui lint \
 obvious CSP violations, SDK/bootstrap ordering, accessibility basics, permission disclosure, and
 design-system adoption. JSON output uses bundle-relative paths so reports can be archived without
 developer-specific local paths.
+
+When a static app declares vault capabilities, `crypta-app init` writes the same names into the
+visible permission disclosure and `crypta-app ui lint --strict` checks that the disclosure still
+matches `app.permissions`. Keep the disclosure path-free and value-free: show capability names and
+operator-facing rationale, not secret values, identity private keys, seed phrases, or recovery
+phrases.
 
 Sign it with a local development key:
 

@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.platform.api.AppAuditEvent;
 import network.crypta.platform.api.AppAuditLog;
 import network.crypta.platform.api.PlatformApiContract;
@@ -36,6 +37,8 @@ import network.crypta.platform.apphost.sandbox.AppSandboxStatus;
 import network.crypta.platform.appui.AppUiOriginBinding;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appui.AppUiPaths;
+import network.crypta.platform.appvault.AppVaultException;
+import network.crypta.platform.appvault.AppVaultService;
 
 /**
  * App-management endpoint family for Platform API v1.
@@ -68,6 +71,7 @@ public final class AppsApiHandler {
   private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
+  private static final String FIELD_AVAILABLE = "available";
   private static final String FIELD_APP_ID = "appId";
   private static final String FIELD_CACHE_BYTES = "cacheBytes";
   private static final String FIELD_DATA_BYTES = "dataBytes";
@@ -82,6 +86,9 @@ public final class AppsApiHandler {
       "Query parameter 'maxBytes' must be a positive integer.";
   private static final String SIGNED_BUNDLE_FAILURE_MESSAGE =
       "Staged app bundle must pass trusted signature verification.";
+  private static final String VAULT_GRANT_CLEANUP_WARNING =
+      "Vault grant cleanup failed and requires operator review.";
+  private static final String VAULT_PERMISSION_PREFIX = "vault.";
 
   /** Detached AppHost core used for app lifecycle and inventory operations. */
   private final AppHost appHost;
@@ -91,6 +98,9 @@ public final class AppsApiHandler {
 
   /** Optional app UI origin registry used to publish isolated static UI links. */
   private final AppUiOriginRegistry appUiOriginRegistry;
+
+  /** Optional platform-managed vault used for app vault summaries and update grant review. */
+  private final AppVaultService appVaultService;
 
   /**
    * Creates an app-management handler backed by the supplied AppHost.
@@ -126,9 +136,26 @@ public final class AppsApiHandler {
    */
   public AppsApiHandler(
       AppHost appHost, AppAuditLog auditLog, AppUiOriginRegistry appUiOriginRegistry) {
+    this(appHost, auditLog, appUiOriginRegistry, null);
+  }
+
+  /**
+   * Creates an app-management handler with optional app-vault lifecycle integration.
+   *
+   * @param appHost detached AppHost core used for app lifecycle operations
+   * @param auditLog bounded process-local app audit log
+   * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
+   * @param appVaultService optional app-vault service used for summaries and update grant review
+   */
+  public AppsApiHandler(
+      AppHost appHost,
+      AppAuditLog auditLog,
+      AppUiOriginRegistry appUiOriginRegistry,
+      AppVaultService appVaultService) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
     this.appUiOriginRegistry = Objects.requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
+    this.appVaultService = appVaultService;
   }
 
   /**
@@ -142,6 +169,16 @@ public final class AppsApiHandler {
    * @return ordered list of app summaries suitable for JSON serialization
    */
   public List<Map<String, Object>> list() {
+    return list(true);
+  }
+
+  /**
+   * Lists all installed apps with optional operator-only vault details.
+   *
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return ordered list of app summaries suitable for JSON serialization
+   */
+  public List<Map<String, Object>> list(boolean includeVaultDetails) {
     try {
       Map<String, RunningAppSnapshot> runningByAppId = runningByAppId(appHost.listRunning());
       List<InstalledAppSnapshot> installedApps = appHost.listInstalled();
@@ -153,7 +190,8 @@ public final class AppsApiHandler {
                       snapshot.manifest(),
                       true,
                       runningByAppId.get(snapshot.appId()),
-                      quotaByAppId.get(snapshot.appId())))
+                      quotaByAppId.get(snapshot.appId()),
+                      includeVaultDetails))
           .toList();
     } catch (IOException _) {
       throw internalError("Failed to list installed apps.");
@@ -171,13 +209,25 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary
    */
   public Map<String, Object> get(String appId) {
+    return get(appId, true);
+  }
+
+  /**
+   * Describes one installed app with optional operator-only vault details.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary
+   */
+  public Map<String, Object> get(String appId, boolean includeVaultDetails) {
     String normalizedAppId = normalizeAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     return summarize(
         installed.manifest(),
         true,
         appHost.status(normalizedAppId).orElse(null),
-        quotaStatusForSummary(normalizedAppId));
+        quotaStatusForSummary(normalizedAppId),
+        includeVaultDetails);
   }
 
   /**
@@ -264,6 +314,18 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary for the installed bundle
    */
   public Map<String, Object> install(Map<String, List<String>> queryParameters) {
+    return install(queryParameters, true);
+  }
+
+  /**
+   * Installs one staged app bundle with optional operator-only vault details in the response.
+   *
+   * @param queryParameters decoded query parameters for the current request
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary for the installed bundle
+   */
+  public Map<String, Object> install(
+      Map<String, List<String>> queryParameters, boolean includeVaultDetails) {
     Path stagedDir = parseStagedDirectory(queryParameters);
     AppManifest manifest = parseManifest(stagedDir);
     if (installed(manifest.appId())) {
@@ -272,7 +334,12 @@ public final class AppsApiHandler {
 
     try {
       InstalledAppSnapshot installed = appHost.installFromDirectory(stagedDir);
-      return summarize(installed.manifest(), true, null, quotaStatusForSummary(installed.appId()));
+      return summarize(
+          installed.manifest(),
+          true,
+          null,
+          quotaStatusForSummary(installed.appId()),
+          includeVaultDetails);
     } catch (AppHostException e) {
       throw installFailure(manifest.appId(), e);
     } catch (IOException _) {
@@ -297,6 +364,19 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary for the updated bundle
    */
   public Map<String, Object> update(String appId, Map<String, List<String>> queryParameters) {
+    return update(appId, queryParameters, true);
+  }
+
+  /**
+   * Replaces one installed app with optional operator-only vault details in the response.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param queryParameters decoded query parameters for the current request
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary for the updated bundle
+   */
+  public Map<String, Object> update(
+      String appId, Map<String, List<String>> queryParameters, boolean includeVaultDetails) {
     String normalizedAppId = normalizeAppId(appId);
     Path stagedDir = parseStagedDirectory(queryParameters);
     AppManifest manifest = parseManifest(stagedDir);
@@ -311,7 +391,18 @@ public final class AppsApiHandler {
 
     try {
       InstalledAppSnapshot updated = appHost.updateFromDirectory(normalizedAppId, stagedDir);
-      return summarize(updated.manifest(), true, null, quotaStatusForSummary(updated.appId()));
+      boolean vaultCleanupSucceeded = disableVaultGrantsRemovedByUpdate(updated);
+      Map<String, Object> summary =
+          summarize(
+              updated.manifest(),
+              true,
+              null,
+              quotaStatusForSummary(updated.appId()),
+              includeVaultDetails);
+      if (!vaultCleanupSucceeded) {
+        summary.put(FIELD_WARNINGS, List.of(VAULT_GRANT_CLEANUP_WARNING));
+      }
+      return summary;
     } catch (AppHostException e) {
       throw updateFailure(normalizedAppId, e);
     } catch (IOException _) {
@@ -332,6 +423,17 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary for the running app
    */
   public Map<String, Object> start(String appId) {
+    return start(appId, true);
+  }
+
+  /**
+   * Starts one installed app with optional operator-only vault details in the response.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary for the running app
+   */
+  public Map<String, Object> start(String appId, boolean includeVaultDetails) {
     String normalizedAppId = normalizeAppId(appId);
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict("app is already running: " + normalizedAppId);
@@ -340,7 +442,12 @@ public final class AppsApiHandler {
 
     try {
       RunningAppSnapshot running = appHost.start(normalizedAppId);
-      return summarize(running.manifest(), true, running, quotaStatusForSummary(running.appId()));
+      return summarize(
+          running.manifest(),
+          true,
+          running,
+          quotaStatusForSummary(running.appId()),
+          includeVaultDetails);
     } catch (AppHostException e) {
       throw startFailure(normalizedAppId, e);
     } catch (IOException _) {
@@ -362,6 +469,17 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary after the app has stopped
    */
   public Map<String, Object> stop(String appId) {
+    return stop(appId, true);
+  }
+
+  /**
+   * Stops one running app with optional operator-only vault details in the response.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary after the app has stopped
+   */
+  public Map<String, Object> stop(String appId, boolean includeVaultDetails) {
     String normalizedAppId = normalizeAppId(appId);
     RunningAppSnapshot running = appHost.status(normalizedAppId).orElse(null);
 
@@ -374,12 +492,22 @@ public final class AppsApiHandler {
       throw internalError("Failed to stop app.");
     }
     if (running != null) {
-      return summarize(running.manifest(), true, null, quotaStatusForSummary(running.appId()));
+      return summarize(
+          running.manifest(),
+          true,
+          null,
+          quotaStatusForSummary(running.appId()),
+          includeVaultDetails);
     }
     InstalledAppSnapshot installed = describeForStopSummary(normalizedAppId);
     return installed == null
-        ? summarizeUnknown(normalizedAppId, true)
-        : summarize(installed.manifest(), true, null, quotaStatusForSummary(installed.appId()));
+        ? summarizeUnknown(normalizedAppId, true, includeVaultDetails)
+        : summarize(
+            installed.manifest(),
+            true,
+            null,
+            quotaStatusForSummary(installed.appId()),
+            includeVaultDetails);
   }
 
   /**
@@ -395,6 +523,17 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary with {@code installed=false}
    */
   public Map<String, Object> uninstall(String appId) {
+    return uninstall(appId, true);
+  }
+
+  /**
+   * Uninstalls one stopped app with optional operator-only vault details in the response.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @return JSON-compatible app summary with {@code installed=false}
+   */
+  public Map<String, Object> uninstall(String appId, boolean includeVaultDetails) {
     String normalizedAppId = normalizeAppId(appId);
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict("cannot uninstall a running app: " + normalizedAppId);
@@ -402,13 +541,20 @@ public final class AppsApiHandler {
     InstalledAppSnapshot installed = describeForUninstallSummary(normalizedAppId);
 
     try {
+      blockVaultForUninstallIfNeeded(normalizedAppId, installed);
       appHost.uninstall(normalizedAppId);
+      cleanupVaultForUninstall(normalizedAppId);
       return installed != null
-          ? summarize(installed.manifest(), false, null, null)
-          : summarizeUnknown(normalizedAppId, false);
+          ? summarize(installed.manifest(), false, null, null, includeVaultDetails)
+          : summarizeUnknown(normalizedAppId, false, includeVaultDetails);
     } catch (AppHostException e) {
+      if (isMissingAppFailure(e) && cleanupVaultForMissingApp(normalizedAppId)) {
+        return summarizeUnknown(normalizedAppId, false, includeVaultDetails);
+      }
+      clearVaultBlockForPreCommitUninstallFailure(normalizedAppId);
       throw uninstallFailure(normalizedAppId, e);
     } catch (IOException _) {
+      clearVaultBlockForPreCommitUninstallFailure(normalizedAppId);
       throw internalError("Failed to uninstall app.");
     }
   }
@@ -552,14 +698,16 @@ public final class AppsApiHandler {
    * @param manifest normalized application manifest
    * @param installed whether the app is still installed
    * @param running running snapshot when the app is live, or {@code null}
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
    * @return ordered JSON-compatible summary map
    */
   private Map<String, Object> summarize(
       AppManifest manifest,
       boolean installed,
       RunningAppSnapshot running,
-      AppQuotaStatus quotaStatus) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(20);
+      AppQuotaStatus quotaStatus,
+      boolean includeVaultDetails) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(21);
     json.put(FIELD_APP_ID, manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
@@ -588,6 +736,7 @@ public final class AppsApiHandler {
     json.put(FIELD_STARTED_AT, running == null ? null : running.startedAt().toString());
     json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(manifest.appId()));
     json.put("audit", auditSummary(manifest.appId()));
+    json.put("vault", vaultStatus(manifest.appId(), includeVaultDetails));
     return json;
   }
 
@@ -625,7 +774,7 @@ public final class AppsApiHandler {
   private static Map<String, Object> summarizeProcessLog(AppProcessLogSnapshot snapshot) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
     json.put(FIELD_APP_ID, snapshot.appId());
-    json.put("available", snapshot.available());
+    json.put(FIELD_AVAILABLE, snapshot.available());
     json.put("truncated", snapshot.truncated());
     json.put("maxBytes", snapshot.maxBytes());
     json.put("sizeBytes", snapshot.sizeBytes());
@@ -645,10 +794,13 @@ public final class AppsApiHandler {
    * damaged app bundle whose manifest can no longer be parsed.
    *
    * @param appId normalized application identifier
+   * @param installed whether the app is still installed
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
    * @return ordered JSON-compatible summary map with unknown manifest fields set to {@code null}
    */
-  private Map<String, Object> summarizeUnknown(String appId, boolean installed) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(20);
+  private Map<String, Object> summarizeUnknown(
+      String appId, boolean installed, boolean includeVaultDetails) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(21);
     json.put(FIELD_APP_ID, appId);
     json.put("name", null);
     json.put("version", null);
@@ -672,7 +824,110 @@ public final class AppsApiHandler {
     json.put(FIELD_STARTED_AT, null);
     json.put(FIELD_RECENT_DENIED_COUNT, auditLog.deniedCountForApp(appId));
     json.put("audit", auditSummary(appId));
+    json.put("vault", vaultStatus(appId, includeVaultDetails));
     return json;
+  }
+
+  private boolean disableVaultGrantsRemovedByUpdate(InstalledAppSnapshot updated) {
+    if (appVaultService == null) {
+      return true;
+    }
+    try {
+      appVaultService.disableGrantsForRemovedVaultPermissions(
+          updated.appId(), Set.copyOf(updated.manifest().permissions()));
+      return true;
+    } catch (AppVaultException _) {
+      return false;
+    }
+  }
+
+  private void cleanupVaultForUninstall(String appId) {
+    if (appVaultService != null) {
+      AppVaultException cleanupFailure = null;
+      try {
+        appVaultService.deleteSecretsForApp(appId);
+      } catch (AppVaultException exception) {
+        cleanupFailure = exception;
+      }
+      try {
+        appVaultService.deleteAppOwnedIdentitiesForApp(appId);
+      } catch (AppVaultException exception) {
+        cleanupFailure = appendCleanupFailure(cleanupFailure, exception);
+      }
+      try {
+        appVaultService.revokeGrantsForApp(appId);
+      } catch (AppVaultException exception) {
+        cleanupFailure = appendCleanupFailure(cleanupFailure, exception);
+      }
+      if (cleanupFailure != null) {
+        throw cleanupFailure;
+      }
+      appVaultService.clearAppAccessBlock(appId);
+    }
+  }
+
+  private void blockVaultForUninstallIfNeeded(String appId, InstalledAppSnapshot installed) {
+    if (appVaultService == null) {
+      if (installed == null || declaresVaultPermissions(installed)) {
+        throw vaultUnavailableForUninstall();
+      }
+      return;
+    }
+    if (installed != null || appVaultService.hasRetainedAppState(appId)) {
+      appVaultService.disableAppAccess(appId, "app_uninstall_cleanup");
+    }
+  }
+
+  private static boolean declaresVaultPermissions(InstalledAppSnapshot installed) {
+    return installed.manifest().permissions().stream()
+        .anyMatch(permission -> permission.startsWith(VAULT_PERMISSION_PREFIX));
+  }
+
+  private boolean cleanupVaultForMissingApp(String appId) {
+    if (appVaultService == null || !appVaultService.hasRetainedAppState(appId)) {
+      return false;
+    }
+    appVaultService.disableAppAccess(appId, "app_uninstall_cleanup");
+    cleanupVaultForUninstall(appId);
+    return true;
+  }
+
+  private void clearVaultBlockForPreCommitUninstallFailure(String appId) {
+    if (appVaultService == null) {
+      return;
+    }
+    if (appHost.status(appId).isPresent() || installed(appId)) {
+      appVaultService.clearAppAccessBlock(appId);
+    }
+  }
+
+  private static AppVaultException appendCleanupFailure(
+      AppVaultException currentFailure, AppVaultException nextFailure) {
+    if (currentFailure == null) {
+      return nextFailure;
+    }
+    currentFailure.addSuppressed(nextFailure);
+    return currentFailure;
+  }
+
+  private Map<String, Object> vaultStatus(String appId, boolean includeDetails) {
+    if (appVaultService == null) {
+      return Map.of(FIELD_AVAILABLE, false);
+    }
+    if (!includeDetails) {
+      return Map.of(FIELD_AVAILABLE, true);
+    }
+    try {
+      LinkedHashMap<String, Object> json = new LinkedHashMap<>(appVaultService.appStatus(appId));
+      json.put(FIELD_AVAILABLE, true);
+      return java.util.Collections.unmodifiableMap(json);
+    } catch (AppVaultException exception) {
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+      json.put(FIELD_AVAILABLE, true);
+      json.put("status", "unavailable");
+      json.put("errorCode", exception.errorCode());
+      return java.util.Collections.unmodifiableMap(json);
+    }
   }
 
   private AppUiOriginBinding uiOriginBinding(AppManifest manifest) {
@@ -1059,5 +1314,12 @@ public final class AppsApiHandler {
    */
   private static PlatformApiException internalError(String message) {
     return new PlatformApiException(500, "internal_error", message);
+  }
+
+  private static PlatformApiException vaultUnavailableForUninstall() {
+    return new PlatformApiException(
+        409,
+        "app_vault_unavailable",
+        "App vault cleanup is unavailable; app uninstall cannot safely proceed.");
   }
 }

@@ -4,6 +4,7 @@ import java.util.Objects;
 import network.crypta.config.Config;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.RuntimePorts;
 
 /**
@@ -23,6 +24,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param runtimePorts detached runtime ports exposed to the HTTP shell
  * @param appHost shared AppHost instance exposed through the Platform API bridge
  * @param appCatalogManager optional signed app-catalog manager exposed through the Platform API
+ * @param appVaultService optional app-vault service exposed through vault Platform API routes
  * @param config node configuration used to list sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet handed to the registrar for root-path registration
  * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route publication
@@ -33,6 +35,7 @@ record FProxyRegistrarDependencies(
     RuntimePorts runtimePorts,
     AppHost appHost,
     AppCatalogManager appCatalogManager,
+    AppVaultService appVaultService,
     Config config,
     Toadlet browseRoot,
     LegacyHttpBrowseRouteRegistrar browseRouteRegistrar,
@@ -60,6 +63,7 @@ record FProxyRegistrarDependencies(
         runtimePorts,
         appHost,
         null,
+        null,
         config,
         browseRoot,
         browseRouteRegistrar,
@@ -76,6 +80,7 @@ record FProxyRegistrarDependencies(
    * @param runtimePorts runtime-spi ports exposed to HTTP-layer toadlets and helper pages
    * @param appHost shared AppHost instance exposed through the Platform API bridge
    * @param appCatalogManager optional signed app-catalog manager exposed through the Platform API
+   * @param appVaultService optional app-vault service exposed through vault Platform API routes
    * @param config node configuration used to list and filter sub-config toadlets
    * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path
    * @param browseRouteRegistrar browse-neutral registrar seam used for browse-owned route

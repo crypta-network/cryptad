@@ -36,6 +36,11 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.AlertFeedPort;
 import network.crypta.runtime.spi.AlertListSnapshot;
 import network.crypta.runtime.spi.AlertMutationPort;
@@ -190,6 +195,21 @@ class PlatformApiRouterTest {
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
+  private PlatformApiRouter routerWithVault() throws IOException {
+    return routerWithVault(null);
+  }
+
+  private PlatformApiRouter routerWithVault(AppCatalogManager appCatalogManager)
+      throws IOException {
+    return new PlatformApiRouter(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        null,
+        AppUiOriginRegistry.sameOriginOnly(),
+        AppVaultService.open(tempDir.resolve("router-vault")));
+  }
+
   private void stubQueueInsertCompatibilityModes() {
     when(queueSupportPort.supportedInsertCompatibilityModes())
         .thenReturn(
@@ -322,7 +342,10 @@ class PlatformApiRouterTest {
                 List.of("platform", "contract"), Map.of(), List.of("platform.contract.read")));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"contractVersion\":2"));
+    assertTrue(
+        response
+            .body()
+            .contains("\"contractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION));
   }
 
   @Test
@@ -2115,8 +2138,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(
-            Map.of("apps", List.of(summary(true, true, APP_PID, STARTED_AT)))),
+        PlatformApiJsonWriter.write(Map.of("apps", List.of(summary(true, APP_PID, STARTED_AT)))),
         response.body());
   }
 
@@ -2131,7 +2153,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, true, APP_PID, STARTED_AT))),
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, APP_PID, STARTED_AT))),
         response.body());
   }
 
@@ -2168,7 +2190,7 @@ class PlatformApiRouterTest {
   @Test
   void route_whenAppUpdatesRequested_expectUpdateEnvelopeAndRollbackSummary() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
-    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.rollbackStatus(APP_ID))
@@ -2214,7 +2236,7 @@ class PlatformApiRouterTest {
   @Test
   void route_whenStagedAppUpdateThenAppUninstalled_expectUpdateStateCleared() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
-    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
     Path stagedDir = scratchDir.resolve("bundle");
@@ -2243,6 +2265,147 @@ class PlatformApiRouterTest {
       assertTrue(summaryResponse.body().contains("\"available\":false"));
       assertFalse(summaryResponse.body().contains("\"status\":\"staged\""));
       assertFalse(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+    }
+  }
+
+  @Test
+  void route_whenUninstallVaultCleanupFailsAfterCommit_expectUpdateStateCleared() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    var grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    Files.writeString(
+        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        grantId=%s
+        identityId=%s
+        appId=%s
+        scopes=sign.domain-separated
+        status=not-a-status
+        createdAt=%s
+        updatedAt=%s
+        """
+            .formatted(
+                grant.grantId(),
+                grant.identityId(),
+                grant.appId(),
+                grant.createdAt(),
+                grant.updatedAt()));
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "retained-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        Map.of());
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            vaultService);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-vault-cleanup-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.empty())
+          .thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+      PlatformApiResponse retainedSecretResponse =
+          updateRouter.route(
+              new PlatformApiRequest(
+                  "GET",
+                  List.of("app-vault", "secrets", "api-token"),
+                  Map.of(),
+                  PlatformApiPrincipal.appToken(APP_ID, List.of("vault.secrets.read"))));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(400, uninstallResponse.statusCode());
+      assertTrue(uninstallResponse.body().contains("unsupported_grant_status"));
+      assertEquals(200, summaryResponse.statusCode());
+      assertEquals(403, retainedSecretResponse.statusCode());
+      assertTrue(retainedSecretResponse.body().contains("app_vault_access_disabled"));
+      assertFalse(retainedSecretResponse.body().contains("retained-secret"));
+      assertFalse(Files.exists(scratchDir));
+      assertTrue(summaryResponse.body().contains("\"status\":\"none\""));
+      assertFalse(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertFalse(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+    }
+  }
+
+  @Test
+  void route_whenUninstallVaultPreBlockFails_expectUpdateStatePreserved() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    Path vaultRoot = tempDir.resolve("vault-preblock-failure");
+    AppVaultService vaultService = AppVaultService.open(vaultRoot);
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            vaultService);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-vault-preblock-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      Path accessBlocksRoot = vaultRoot.resolve("app-access-blocks");
+      Files.delete(accessBlocksRoot);
+      Files.writeString(accessBlocksRoot, "not-a-directory");
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(500, uninstallResponse.statusCode());
+      assertTrue(uninstallResponse.body().contains("vault_storage_failed"));
+      assertEquals(200, summaryResponse.statusCode());
+      assertTrue(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertTrue(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+      verify(appHost, never()).uninstall(APP_ID);
     }
   }
 
@@ -2615,7 +2778,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(true))), response.body());
+        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary())), response.body());
   }
 
   @Test
@@ -2625,11 +2788,10 @@ class PlatformApiRouterTest {
     when(appHost.status(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.empty());
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
 
     assertEquals(200, response.statusCode());
-    assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(false))), response.body());
+    assertUninstallSummary(response.body(), INSTALL_ROUTE_APP_ID);
   }
 
   @Test
@@ -2690,14 +2852,7 @@ class PlatformApiRouterTest {
             Map.of(
                 "app",
                 summaryFor(
-                    APP_ID,
-                    "Alpha App 2",
-                    "2.2.0",
-                    "ui/v2.html",
-                    true,
-                    true,
-                    APP_PID,
-                    STARTED_AT))),
+                    APP_ID, "Alpha App 2", "2.2.0", "ui/v2.html", true, APP_PID, STARTED_AT))),
         response.body());
   }
 
@@ -2718,8 +2873,7 @@ class PlatformApiRouterTest {
     assertEquals(201, response.statusCode());
     assertEquals("Created", response.reasonPhrase());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -2740,9 +2894,7 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         PlatformApiJsonWriter.write(
-            Map.of(
-                "app",
-                summaryFor(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY, true, false, null, null))),
+            Map.of("app", summaryFor(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY, false, null, null))),
         response.body());
     verify(appHost, never()).describe(APP_ID);
   }
@@ -3053,8 +3205,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -3069,8 +3220,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
     verify(appHost).stop(APP_ID);
   }
 
@@ -3086,8 +3236,7 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals("OK", response.reasonPhrase());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -3097,41 +3246,43 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
     assertEquals(200, response.statusCode());
-    assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(false, false, null, null))),
-        response.body());
+    assertUninstallSummary(response.body(), APP_ID);
   }
 
   @Test
-  void route_whenAppManifestUnreadableDuringUninstall_expectCleanupSummaryJson() throws Exception {
+  void route_whenAppManifestUnreadableDuringUninstallAndVaultUnavailable_expectConflictJson()
+      throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
 
     PlatformApiResponse response =
         router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
-    assertEquals(200, response.statusCode());
-    assertEquals("OK", response.reasonPhrase());
-    assertEquals(PlatformApiJsonWriter.write(Map.of("app", unknownSummary())), response.body());
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_vault_unavailable\",\"message\":\"App vault cleanup is"
+            + " unavailable; app uninstall cannot safely proceed.\"}}",
+        response.body());
   }
 
   @Test
-  void route_whenAppUninstallRacesToMissing_expectNotFoundJson() throws Exception {
+  void route_whenAppUninstallRacesToMissingAfterVaultBlock_expectCleanupSummaryJson()
+      throws Exception {
     InstalledAppSnapshot installed = installedSnapshot();
     when(appHost.describe(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(installed, null));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     doThrow(new AppHostException("app is not installed: alpha")).when(appHost).uninstall(APP_ID);
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
-    assertEquals(404, response.statusCode());
-    assertEquals("Not Found", response.reasonPhrase());
-    assertEquals(
-        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    assertEquals(200, response.statusCode());
+    assertEquals("OK", response.reasonPhrase());
+    assertUninstallSummary(response.body(), APP_ID);
   }
 
   @Test
@@ -3147,7 +3298,7 @@ class PlatformApiRouterTest {
         .uninstall(APP_ID);
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
     assertEquals(409, response.statusCode());
     assertEquals("Conflict", response.reasonPhrase());
@@ -3531,10 +3682,8 @@ class PlatformApiRouterTest {
         Map.of());
   }
 
-  private static Map<String, Object> summary(
-      boolean installed, boolean running, Long pid, Instant startedAt) {
-    return summaryFor(
-        APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, running, pid, startedAt);
+  private static Map<String, Object> summary(boolean running, Long pid, Instant startedAt) {
+    return summaryFor(APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, running, pid, startedAt);
   }
 
   private static Map<String, Object> catalogSummary(String appVersion) {
@@ -3554,9 +3703,8 @@ class PlatformApiRouterTest {
     return summary;
   }
 
-  private static Map<String, Object> installRouteSummary(boolean installed) {
-    return summaryFor(
-        INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, false, null, null);
+  private static Map<String, Object> installRouteSummary() {
+    return summaryFor(INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, false, null, null);
   }
 
   private static Map<String, Object> runtimeSummary() {
@@ -3573,7 +3721,7 @@ class PlatformApiRouterTest {
     summary.put("logAvailable", true);
     summary.put("logSizeBytes", 128L);
     summary.put("sandbox", sandboxSummary());
-    summary.put("quota", unlimitedQuotaSummary(0L, 0L));
+    summary.put("quota", unlimitedQuotaSummary());
     summary.put("warnings", List.of());
     return summary;
   }
@@ -3595,11 +3743,10 @@ class PlatformApiRouterTest {
       String appName,
       String appVersion,
       String appUiEntry,
-      boolean installed,
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(21);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
@@ -3612,40 +3759,25 @@ class PlatformApiRouterTest {
     summary.put("sameOriginFallbackUrl", sameOriginFallbackUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
     summary.put("apiCompatibility", undeclaredApiCompatibilityForLegacyPermissions());
-    summary.put("quota", manifestQuotaSummary(installed ? 0L : null, installed ? 0L : null));
+    summary.put("quota", manifestQuotaSummary());
     summary.put("sandbox", sandboxSummary());
-    summary.put("installed", installed);
+    summary.put("installed", true);
     summary.put("running", running);
     summary.put("pid", pid);
     summary.put("startedAt", startedAt == null ? null : startedAt.toString());
     summary.put("recentDeniedCount", 0L);
     summary.put("audit", emptyAuditSummary(appId));
+    summary.put("vault", Map.of("available", false));
     return summary;
   }
 
-  private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
-    summary.put("appId", APP_ID);
-    summary.put("name", null);
-    summary.put("version", null);
-    summary.put("uiMode", "none");
-    summary.put("uiEntry", null);
-    summary.put("uiUrl", null);
-    summary.put("uiOrigin", null);
-    summary.put("uiOriginMode", null);
-    summary.put("uiOriginStatus", null);
-    summary.put("sameOriginFallbackUrl", null);
-    summary.put("permissions", List.of());
-    summary.put("apiCompatibility", undeclaredApiCompatibility(List.of()));
-    summary.put("quota", unknownQuotaSummary());
-    summary.put("sandbox", sandboxSummary());
-    summary.put("installed", false);
-    summary.put("running", false);
-    summary.put("pid", null);
-    summary.put("startedAt", null);
-    summary.put("recentDeniedCount", 0L);
-    summary.put("audit", emptyAuditSummary(APP_ID));
-    return summary;
+  private static void assertUninstallSummary(String body, String appId) {
+    assertTrue(body.contains("\"appId\":\"" + appId + "\""));
+    assertTrue(body.contains("\"installed\":false"));
+    assertTrue(body.contains("\"running\":false"));
+    assertTrue(body.contains("\"vault\":{"));
+    assertTrue(body.contains("\"available\":true"));
+    assertFalse(body.contains("secret-token"));
   }
 
   private static Map<String, Object> undeclaredApiCompatibilityForLegacyPermissions() {
@@ -3717,15 +3849,14 @@ class PlatformApiRouterTest {
         List.of());
   }
 
-  private static Map<String, Object> manifestQuotaSummary(
-      Long dataUsageBytes, Long cacheUsageBytes) {
+  private static Map<String, Object> manifestQuotaSummary() {
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
     quota.put("dataBytes", MANIFEST_DATA_QUOTA_BYTES);
     quota.put("cacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
     quota.put("effectiveDataBytes", MANIFEST_DATA_QUOTA_BYTES);
     quota.put("effectiveCacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
-    quota.put("dataUsageBytes", dataUsageBytes);
-    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataUsageBytes", 0L);
+    quota.put("cacheUsageBytes", 0L);
     quota.put("dataQuotaEnforced", true);
     quota.put("cacheQuotaEnforced", true);
     quota.put("dataOverLimit", false);
@@ -3736,15 +3867,14 @@ class PlatformApiRouterTest {
     return quota;
   }
 
-  private static Map<String, Object> unlimitedQuotaSummary(
-      Long dataUsageBytes, Long cacheUsageBytes) {
+  private static Map<String, Object> unlimitedQuotaSummary() {
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
     quota.put("dataBytes", null);
     quota.put("cacheBytes", null);
     quota.put("effectiveDataBytes", null);
     quota.put("effectiveCacheBytes", null);
-    quota.put("dataUsageBytes", dataUsageBytes);
-    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataUsageBytes", 0L);
+    quota.put("cacheUsageBytes", 0L);
     quota.put("dataQuotaEnforced", false);
     quota.put("cacheQuotaEnforced", false);
     quota.put("dataOverLimit", false);
@@ -3753,10 +3883,6 @@ class PlatformApiRouterTest {
     quota.put("processLogSizeBytes", null);
     quota.put("warnings", List.of());
     return quota;
-  }
-
-  private static Map<String, Object> unknownQuotaSummary() {
-    return unlimitedQuotaSummary(null, null);
   }
 
   private static String uiMode(String appUiEntry) {

@@ -34,6 +34,8 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.appvault.AppVaultException;
+import network.crypta.platform.appvault.AppVaultService;
 
 /**
  * Coordinates conservative app update checks, staging, apply, policy, history, and rollback.
@@ -93,6 +95,8 @@ public final class AppUpdateService {
   private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
   private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
   private static final String MESSAGE_APPLY_FAILED = "Failed to apply staged update.";
+  private static final String MESSAGE_APPLY_VAULT_CLEANUP_FAILED =
+      "Staged update applied; vault grant cleanup failed and requires operator review.";
   private static final String MESSAGE_STAGE_FAILED = "Failed to stage update candidate.";
   private static final String MESSAGE_ROLLBACK_FAILED = "Rollback failed.";
   private static final String VERSION_NEWER = "newer";
@@ -112,6 +116,7 @@ public final class AppUpdateService {
   private final AppCatalogManager catalogManager;
   private final AppReviewPolicy reviewPolicy;
   private final ReviewerKeysProvider reviewerKeysProvider;
+  private final AppVaultService appVaultService;
   private final Map<String, AppUpdatePolicy> policies = new LinkedHashMap<>();
   private final Map<String, AppUpdateCandidate> candidates = new LinkedHashMap<>();
   private final Map<String, StagedUpdate> stagedUpdates = new LinkedHashMap<>();
@@ -130,8 +135,25 @@ public final class AppUpdateService {
    * @param catalogManager signed catalog manager used for candidate discovery and staging
    */
   public AppUpdateService(AppHost appHost, AppCatalogManager catalogManager) {
+    this(appHost, catalogManager, null);
+  }
+
+  /**
+   * Creates an app-update service with optional vault grant lifecycle integration.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   */
+  public AppUpdateService(
+      AppHost appHost, AppCatalogManager catalogManager, AppVaultService appVaultService) {
     this(
-        appHost, catalogManager, AppReviewPolicy.loadFromSystem(), trustedReviewerKeysFromSystem());
+        appHost,
+        catalogManager,
+        AppReviewPolicy.loadFromSystem(),
+        trustedReviewerKeysFromSystem(),
+        appVaultService);
   }
 
   /**
@@ -147,11 +169,31 @@ public final class AppUpdateService {
       AppCatalogManager catalogManager,
       AppReviewPolicy reviewPolicy,
       ReviewerKeysProvider reviewerKeysProvider) {
+    this(appHost, catalogManager, reviewPolicy, reviewerKeysProvider, null);
+  }
+
+  /**
+   * Creates an app-update service with explicit review policy, reviewer keys, and optional vault.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param reviewPolicy local review policy
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   */
+  public AppUpdateService(
+      AppHost appHost,
+      AppCatalogManager catalogManager,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
     this.reviewerKeysProvider =
         Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
+    this.appVaultService = appVaultService;
   }
 
   private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
@@ -311,6 +353,7 @@ public final class AppUpdateService {
 
     InstalledAppSnapshot updated = null;
     HealthFailureState healthFailureState = new HealthFailureState();
+    boolean vaultCleanupFailed;
     try {
       if (wasRunning) {
         appHost.stop(normalizedAppId);
@@ -320,6 +363,7 @@ public final class AppUpdateService {
         startOrTreatAsHealthFailure(normalizedAppId, options, healthFailureState);
       }
       verifyHealthOrRollback(normalizedAppId, options, healthFailureState);
+      vaultCleanupFailed = !disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
       closeStage(normalizedAppId);
       candidates.put(normalizedAppId, appliedCandidate(staged.candidate(), updated));
       appendHistory(
@@ -329,11 +373,12 @@ public final class AppUpdateService {
           staged.candidate().catalogId(),
           staged.candidate().targetVersion(),
           null,
-          "Staged update applied.");
+          vaultCleanupFailed ? MESSAGE_APPLY_VAULT_CLEANUP_FAILED : "Staged update applied.");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
       closeStage(normalizedAppId);
       if (updated != null) {
+        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
       }
@@ -347,6 +392,7 @@ public final class AppUpdateService {
       throw mapped;
     } catch (IOException _) {
       if (updated != null) {
+        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
         closeStage(normalizedAppId);
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
@@ -506,6 +552,27 @@ public final class AppUpdateService {
     }
     recordRollbackFailure(appId, ERROR_ROLLBACK_NOT_AVAILABLE);
     throw lifecycleFailure(404, ERROR_ROLLBACK_NOT_AVAILABLE, "Rollback is not available.");
+  }
+
+  private boolean disableVaultGrantsRemovedByUpdate(InstalledAppSnapshot updated) {
+    if (appVaultService == null) {
+      return true;
+    }
+    try {
+      appVaultService.disableGrantsForRemovedVaultPermissions(
+          updated.appId(), new java.util.LinkedHashSet<>(updated.manifest().permissions()));
+      return true;
+    } catch (AppVaultException _) {
+      return false;
+    }
+  }
+
+  private boolean disableVaultGrantsAfterCommittedUpdate(
+      InstalledAppSnapshot updated, HealthFailureState healthFailureState) {
+    if (healthFailureState.rollbackCommitted()) {
+      return true;
+    }
+    return disableVaultGrantsRemovedByUpdate(updated);
   }
 
   private void restartOriginalAfterUncommittedApplyFailure(

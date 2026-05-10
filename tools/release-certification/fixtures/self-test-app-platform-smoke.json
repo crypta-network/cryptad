@@ -42,6 +42,38 @@
     },
     {
       "details": {
+        "capabilities": [
+          "vault.secrets.read",
+          "vault.secrets.write",
+          "vault.identities.read",
+          "vault.identities.create",
+          "vault.identities.use",
+          "vault.identities.manage"
+        ],
+        "checks": {
+          "appOwnedAndSharedIdentities": true,
+          "atRestLimitations": true,
+          "auditAndRedaction": true,
+          "capabilitiesDocumented": true,
+          "devtoolsVocabularyPresent": true,
+          "futureExtensionPoint": true,
+          "grantLifecycle": true,
+          "processBrowserRestrictions": true
+        },
+        "redaction": {
+          "capabilityNamesRetained": true,
+          "identityPrivateMaterialRedacted": true,
+          "secretValuesRedacted": true
+        }
+      },
+      "id": "app-vault.capabilities",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App secret and identity vault capability docs and redaction checks passed."
+    },
+    {
+      "details": {
         "keyId": "dev-local"
       },
       "id": "app-platform.signed-bundles",

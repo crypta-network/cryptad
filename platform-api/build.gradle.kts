@@ -17,6 +17,7 @@ dependencies {
   api(project(":platform-app-ui"))
   api(project(":platform-apphost"))
   api(project(":platform-appcatalog"))
+  api(project(":platform-appvault"))
 
   compileOnly(libs.jetbrainsAnnotations)
 

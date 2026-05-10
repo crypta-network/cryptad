@@ -33,7 +33,8 @@ MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
-    r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session"
+    r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
+    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic"
 )
 SENSITIVE_KEY_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -285,6 +286,10 @@ def should_redact_key_name(key_hint: str) -> bool:
         "formpassword",
         "privatekey",
         "secret",
+        "identityseed",
+        "recoveryphrase",
+        "mnemonic",
+        "seed",
         "token",
         "password",
         "passwd",
@@ -292,7 +297,20 @@ def should_redact_key_name(key_hint: str) -> bool:
         "xcryptaappsession",
     }:
         return True
-    return any(fragment in normalized for fragment in ("privatekey", "token", "password", "passwd", "secret", "credential"))
+    return any(
+        fragment in normalized
+        for fragment in (
+            "privatekey",
+            "token",
+            "password",
+            "passwd",
+            "secret",
+            "credential",
+            "seedphrase",
+            "recoveryphrase",
+            "mnemonic",
+        )
+    )
 
 
 def sanitize_value(value: Any, workspace_root: Path, out_dir: Path | None = None, key_hint: str = "") -> Any:
@@ -553,6 +571,7 @@ def app_platform_evidence(
         "app-platform.first-party",
         "app-platform.devtools-cli",
         "platform-api.contract",
+        "app-vault.capabilities",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-review.trusted-receipts",
@@ -855,6 +874,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.first-party",
         "app-platform.devtools-cli",
         "platform-api.contract",
+        "app-vault.capabilities",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-review.trusted-receipts",
@@ -1049,6 +1069,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["app-vault.capabilities"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-vault.capabilities"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [
@@ -1248,6 +1270,45 @@ def run_self_test(repo_root: Path) -> None:
         assert signing_metadata["privateKeyFile"] == "<redacted>", signing_metadata
         assert signing_metadata["token"] == "<redacted>", signing_metadata
         assert signing_metadata["path"] == "/apps/cert-smoke/runtime", signing_metadata
+        vault_metadata = sanitize_value(
+            {
+                "capabilities": [
+                    "vault.secrets.read",
+                    "vault.secrets.write",
+                    "vault.identities.read",
+                    "vault.identities.create",
+                    "vault.identities.use",
+                    "vault.identities.manage",
+                ],
+                "secretValue": "stored-secret",
+                "identityPrivateKey": "private-identity-key",
+                "identitySeed": "identity-seed",
+                "recoveryPhrase": "alpha beta gamma",
+                "mnemonicPhrase": "delta epsilon zeta",
+                "accountMnemonic": "eta theta iota",
+                "publicIdentityId": "identity-public-id",
+            },
+            workspace,
+            out_dir,
+        )
+        assert vault_metadata["capabilities"][0] == "vault.secrets.read", vault_metadata
+        assert vault_metadata["secretValue"] == "<redacted>", vault_metadata
+        assert vault_metadata["identityPrivateKey"] == "<redacted>", vault_metadata
+        assert vault_metadata["identitySeed"] == "<redacted>", vault_metadata
+        assert vault_metadata["recoveryPhrase"] == "<redacted>", vault_metadata
+        assert vault_metadata["mnemonicPhrase"] == "<redacted>", vault_metadata
+        assert vault_metadata["accountMnemonic"] == "<redacted>", vault_metadata
+        assert vault_metadata["publicIdentityId"] == "identity-public-id", vault_metadata
+        vault_scrubbed = scrub_text(
+            '{"identitySeed":"seed-secret","recoveryPhrase":"alpha beta","mnemonicPhrase":"delta epsilon",'
+            '"accountMnemonic":"eta theta","secretValue":"vault-secret"} '
+            "capability=vault.identities.use",
+            workspace,
+            out_dir,
+        )
+        for forbidden in ("seed-secret", "alpha beta", "delta epsilon", "eta theta", "vault-secret"):
+            assert forbidden not in vault_scrubbed, vault_scrubbed
+        assert "vault.identities.use" in vault_scrubbed, vault_scrubbed
         credential_scrubbed = scrub_text(
             'Authorization: Bearer report-secret\n'
             'Cookie: session=abc; csrf=def\n'

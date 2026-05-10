@@ -1210,7 +1210,8 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Wrote Platform API contract"));
     String json = Files.readString(contractFile, StandardCharsets.UTF_8);
-    assertTrue(json.contains("\"contractVersion\":2"));
+    assertTrue(
+        json.contains("\"contractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION));
     assertTrue(json.contains("\"platform.contract.read\""));
   }
 
@@ -1333,6 +1334,44 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.err().contains("Warning: unknown app permission(s): future.read"));
     assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
+  }
+
+  @Test
+  void validate_whenVaultPermissionsAndStrict_expectRecognizedByValidationAndUiLint()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "vault.secrets.read",
+        "--permission",
+        "vault.identities.use");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace(
+                "api.experimentalCapabilitiesAccepted=false\n",
+                "api.experimentalCapabilitiesAccepted=true\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+    String indexHtml =
+        Files.readString(appDir.resolve("static").resolve("index.html"), StandardCharsets.UTF_8);
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
+    assertEquals("", result.err());
+    assertTrue(indexHtml.contains("<code>vault.secrets.read</code>"));
+    assertTrue(indexHtml.contains("<code>vault.identities.use</code>"));
   }
 
   @Test

@@ -95,6 +95,13 @@ summary does not need live Platform API access. Use one of these markers so the 
 The disclosure should mention only permissions declared by the manifest. Rationale text for catalog
 entries remains catalog metadata; the in-app disclosure is for local operator visibility.
 
+Vault capabilities are ordinary manifest permissions for linting, but their disclosure text must
+stay value-free. A static app may show `vault.secrets.read` or `vault.identities.use` in its
+permission summary; it must not include secret values, identity private keys, seed phrases, recovery
+phrases, local vault paths, process launch tokens, or browser session tokens. The vault lifecycle
+and redaction rules are documented in
+[app-secret-and-identity-vault.md](app-secret-and-identity-vault.md).
+
 ## Accessibility basics
 
 Static app pages should include:

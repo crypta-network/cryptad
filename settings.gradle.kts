@@ -27,6 +27,7 @@ include(
   ":apps:queue-manager",
   ":apps:publisher",
   ":platform-design-system",
+  ":platform-appvault",
   ":platform-appdist",
   ":platform-devtools",
   ":platform-app-ui",

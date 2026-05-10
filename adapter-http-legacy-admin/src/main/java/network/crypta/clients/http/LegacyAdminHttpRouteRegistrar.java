@@ -45,6 +45,7 @@ public final class LegacyAdminHttpRouteRegistrar implements LegacyHttpRouteRegis
             context.runtimePorts(),
             context.appHost(),
             context.appCatalogManager(),
+            context.appVaultService(),
             context.config(),
             context.browseRoot(),
             context.browseRouteRegistrar(),

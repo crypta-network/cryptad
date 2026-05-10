@@ -948,7 +948,7 @@ public final class ToadletContextImpl implements ToadletContext {
     return switch (method) {
       case "GET", "POST" -> true;
       case "HEAD" -> isAppUiPath(uri);
-      case "DELETE" -> isPlatformApiPath(uri);
+      case "DELETE", "PATCH", "PUT" -> isPlatformApiPath(uri);
       default -> false;
     };
   }

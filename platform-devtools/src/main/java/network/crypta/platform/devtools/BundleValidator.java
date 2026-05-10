@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import network.crypta.platform.api.PlatformApiCapabilityRegistry;
 import network.crypta.platform.appdist.AppBundleDigest;
 import network.crypta.platform.appdist.AppBundleDigestVerifier;
 import network.crypta.platform.appdist.AppBundleDigestWriter;
@@ -64,7 +63,7 @@ final class BundleValidator {
     AppBundleManifest manifest = validated.manifest();
     PermissionLintResult lint =
         PermissionLintResult.lint(
-            manifest.permissions(), PlatformApiCapabilityRegistry.knownCapabilities());
+            manifest.permissions(), DevtoolsCapabilityVocabulary.knownCapabilities());
     if (strict && lint.hasUnknownPermissions()) {
       throw new AppDistributionException(
           "unknown app permission(s): " + String.join(", ", lint.unknownPermissions()));
