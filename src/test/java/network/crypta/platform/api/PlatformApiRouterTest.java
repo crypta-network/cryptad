@@ -2138,8 +2138,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(
-            Map.of("apps", List.of(summary(true, true, APP_PID, STARTED_AT)))),
+        PlatformApiJsonWriter.write(Map.of("apps", List.of(summary(true, APP_PID, STARTED_AT)))),
         response.body());
   }
 
@@ -2154,7 +2153,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, true, APP_PID, STARTED_AT))),
+        PlatformApiJsonWriter.write(Map.of("app", summary(true, APP_PID, STARTED_AT))),
         response.body());
   }
 
@@ -2779,7 +2778,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(true))), response.body());
+        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary())), response.body());
   }
 
   @Test
@@ -2853,14 +2852,7 @@ class PlatformApiRouterTest {
             Map.of(
                 "app",
                 summaryFor(
-                    APP_ID,
-                    "Alpha App 2",
-                    "2.2.0",
-                    "ui/v2.html",
-                    true,
-                    true,
-                    APP_PID,
-                    STARTED_AT))),
+                    APP_ID, "Alpha App 2", "2.2.0", "ui/v2.html", true, APP_PID, STARTED_AT))),
         response.body());
   }
 
@@ -2881,8 +2873,7 @@ class PlatformApiRouterTest {
     assertEquals(201, response.statusCode());
     assertEquals("Created", response.reasonPhrase());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -2903,9 +2894,7 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         PlatformApiJsonWriter.write(
-            Map.of(
-                "app",
-                summaryFor(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY, true, false, null, null))),
+            Map.of("app", summaryFor(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY, false, null, null))),
         response.body());
     verify(appHost, never()).describe(APP_ID);
   }
@@ -3216,8 +3205,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -3232,8 +3220,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
     verify(appHost).stop(APP_ID);
   }
 
@@ -3249,8 +3236,7 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals("OK", response.reasonPhrase());
     assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(true, false, null, null))),
-        response.body());
+        PlatformApiJsonWriter.write(Map.of("app", summary(false, null, null))), response.body());
   }
 
   @Test
@@ -3696,10 +3682,8 @@ class PlatformApiRouterTest {
         Map.of());
   }
 
-  private static Map<String, Object> summary(
-      boolean installed, boolean running, Long pid, Instant startedAt) {
-    return summaryFor(
-        APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, running, pid, startedAt);
+  private static Map<String, Object> summary(boolean running, Long pid, Instant startedAt) {
+    return summaryFor(APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, running, pid, startedAt);
   }
 
   private static Map<String, Object> catalogSummary(String appVersion) {
@@ -3719,9 +3703,8 @@ class PlatformApiRouterTest {
     return summary;
   }
 
-  private static Map<String, Object> installRouteSummary(boolean installed) {
-    return summaryFor(
-        INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, installed, false, null, null);
+  private static Map<String, Object> installRouteSummary() {
+    return summaryFor(INSTALL_ROUTE_APP_ID, APP_NAME, APP_VERSION, APP_UI_ENTRY, false, null, null);
   }
 
   private static Map<String, Object> runtimeSummary() {
@@ -3738,7 +3721,7 @@ class PlatformApiRouterTest {
     summary.put("logAvailable", true);
     summary.put("logSizeBytes", 128L);
     summary.put("sandbox", sandboxSummary());
-    summary.put("quota", unlimitedQuotaSummary(0L, 0L));
+    summary.put("quota", unlimitedQuotaSummary());
     summary.put("warnings", List.of());
     return summary;
   }
@@ -3760,7 +3743,6 @@ class PlatformApiRouterTest {
       String appName,
       String appVersion,
       String appUiEntry,
-      boolean installed,
       boolean running,
       Long pid,
       Instant startedAt) {
@@ -3777,9 +3759,9 @@ class PlatformApiRouterTest {
     summary.put("sameOriginFallbackUrl", sameOriginFallbackUrl(appId, appUiEntry));
     summary.put("permissions", List.of("network.access", "file.read"));
     summary.put("apiCompatibility", undeclaredApiCompatibilityForLegacyPermissions());
-    summary.put("quota", manifestQuotaSummary(installed ? 0L : null, installed ? 0L : null));
+    summary.put("quota", manifestQuotaSummary());
     summary.put("sandbox", sandboxSummary());
-    summary.put("installed", installed);
+    summary.put("installed", true);
     summary.put("running", running);
     summary.put("pid", pid);
     summary.put("startedAt", startedAt == null ? null : startedAt.toString());
@@ -3867,15 +3849,14 @@ class PlatformApiRouterTest {
         List.of());
   }
 
-  private static Map<String, Object> manifestQuotaSummary(
-      Long dataUsageBytes, Long cacheUsageBytes) {
+  private static Map<String, Object> manifestQuotaSummary() {
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
     quota.put("dataBytes", MANIFEST_DATA_QUOTA_BYTES);
     quota.put("cacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
     quota.put("effectiveDataBytes", MANIFEST_DATA_QUOTA_BYTES);
     quota.put("effectiveCacheBytes", MANIFEST_CACHE_QUOTA_BYTES);
-    quota.put("dataUsageBytes", dataUsageBytes);
-    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataUsageBytes", 0L);
+    quota.put("cacheUsageBytes", 0L);
     quota.put("dataQuotaEnforced", true);
     quota.put("cacheQuotaEnforced", true);
     quota.put("dataOverLimit", false);
@@ -3886,15 +3867,14 @@ class PlatformApiRouterTest {
     return quota;
   }
 
-  private static Map<String, Object> unlimitedQuotaSummary(
-      Long dataUsageBytes, Long cacheUsageBytes) {
+  private static Map<String, Object> unlimitedQuotaSummary() {
     LinkedHashMap<String, Object> quota = LinkedHashMap.newLinkedHashMap(13);
     quota.put("dataBytes", null);
     quota.put("cacheBytes", null);
     quota.put("effectiveDataBytes", null);
     quota.put("effectiveCacheBytes", null);
-    quota.put("dataUsageBytes", dataUsageBytes);
-    quota.put("cacheUsageBytes", cacheUsageBytes);
+    quota.put("dataUsageBytes", 0L);
+    quota.put("cacheUsageBytes", 0L);
     quota.put("dataQuotaEnforced", false);
     quota.put("cacheQuotaEnforced", false);
     quota.put("dataOverLimit", false);
