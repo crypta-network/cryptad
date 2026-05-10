@@ -257,7 +257,7 @@ class PageMakerTest {
     Toadlet directoryBrowser = mock(Toadlet.class);
     when(directoryBrowser.path()).thenReturn(LocalDirectoryToadlet.basePath());
     when(context.activeToadlet()).thenReturn(directoryBrowser);
-    lenient().when(context.getUri()).thenReturn(URI.create(QueueToadlet.PATH_DOWNLOADS));
+    lenient().when(context.getUri()).thenReturn(URI.create(LegacyHttpPaths.CONFIG_PATH));
 
     PageNode page =
         maker.getPageNode(
@@ -268,25 +268,25 @@ class PageMakerTest {
     String html = page.generate();
 
     assertFalse(html.contains("legacy-admin-retirement-notice"));
-    assertFalse(html.contains("Queue Manager app"));
+    assertFalse(html.contains("Web Shell config"));
   }
 
   @Test
   void getPageNode_whenActiveToadletMissingAndRequestUriIsReplaced_rendersNotice() {
     PageMaker maker = newPageMaker();
     stubPageRenderingContext(false);
-    when(context.getUri()).thenReturn(URI.create(QueueToadlet.PATH_DOWNLOADS));
+    when(context.getUri()).thenReturn(URI.create(LegacyHttpPaths.CONFIG_PATH));
 
     PageNode page =
         maker.getPageNode(
-            "Downloads",
+            "Configuration",
             context,
             new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
 
     String html = page.generate();
 
     assertTrue(html.contains("legacy-admin-retirement-notice"));
-    assertTrue(html.contains("Queue Manager app"));
+    assertTrue(html.contains("Web Shell config"));
   }
 
   @Test
@@ -386,6 +386,65 @@ class PageMakerTest {
     String html = page.generate();
 
     assertTrue(html.contains("href=\"" + WebShellPaths.SHELL_ROOT + "#peers\""));
+  }
+
+  @Test
+  void getPageNode_whenCategoryRootDisabledButChildVisible_suppressesRootAnchor() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    maker.addNavigationCategory(
+        "/apps/queue-manager/",
+        "FProxyToadlet.categoryQueue",
+        "FProxyToadlet.categoryTitleQueue",
+        null,
+        false,
+        ignored -> false,
+        ignored -> false);
+    maker.addNavigationLink(
+        "FProxyToadlet.categoryQueue",
+        "/filterfile/",
+        "ContentFilterToadlet.filterFile",
+        "ContentFilterToadlet.filterFileTitle",
+        false,
+        null);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertFalse(html.contains("href=\"/apps/queue-manager/\""));
+    assertTrue(html.contains("href=\"/filterfile/\""));
+  }
+
+  @Test
+  void getPageNode_whenNonFullUserHasVisibleChild_keepsFullOnlyCategoryRootClickable() {
+    PageMaker maker = newPageMaker();
+    stubPageRenderingContext(false);
+    when(context.isAllowedFullAccess()).thenReturn(false);
+    maker.addNavigationCategory(
+        "/", "FProxyToadlet.categoryBrowsing", "FProxyToadlet.categoryTitleBrowsing");
+    maker.addNavigationLink(
+        "FProxyToadlet.categoryBrowsing",
+        "/welcome/",
+        "WelcomeToadlet.name",
+        "WelcomeToadlet.title",
+        false,
+        null);
+
+    PageNode page =
+        maker.getPageNode(
+            "Navigation",
+            context,
+            new PageMaker.RenderParameters().renderStatus(false).renderModeSwitch(false));
+
+    String html = page.generate();
+
+    assertTrue(html.contains("href=\"/\""));
+    assertTrue(html.contains("href=\"/welcome/\""));
   }
 
   @Test

@@ -58,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
@@ -135,7 +136,7 @@ class FProxyRegistrarTest {
             eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
             eq(LegacyHttpCategories.CATEGORY_QUEUE),
             eq("FProxyToadlet.categoryTitleQueue"),
-            eq(QueueToadlet.PATH_DOWNLOADS),
+            isNull(),
             eq(false),
             any(LinkEnabledCallback.class),
             any(LinkEnabledCallback.class));
@@ -144,7 +145,9 @@ class FProxyRegistrarTest {
             eq(LegacyAdminRetirementRegistry.require("friends").replacementUrl()),
             eq(LegacyHttpCategories.CATEGORY_FRIENDS),
             eq("FProxyToadlet.categoryTitleFriends"),
-            eq(LegacyHttpPaths.FRIENDS_PATH),
+            isNull(),
+            eq(true),
+            any(LinkEnabledCallback.class),
             any(LinkEnabledCallback.class));
     verify(server)
         .registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
@@ -285,7 +288,7 @@ class FProxyRegistrarTest {
   }
 
   @Test
-  void maybeCreateFProxyEtc_whenRegisteringShellCategoryRoots_providesLegacyFallbacks() {
+  void maybeCreateFProxyEtc_whenRegisteringShellCategoryRoots_hidesRemovedFallbacks() {
     AtomicReference<String> primaryRoot =
         new AtomicReference<>(LauncherReadinessInfo.DEFAULT_UI_ROOT);
     when(server.primaryUiRoot()).thenAnswer(ignored -> primaryRoot.get());
@@ -293,12 +296,7 @@ class FProxyRegistrarTest {
     FProxyRegistrar.maybeCreateFProxyEtc(
         dependencies(new LegacyFProxyBrowseRouteRegistrar(client)), server);
 
-    LinkEnabledCallback friendsCallback =
-        capturedCategoryRootCallback(
-            LegacyAdminRetirementRegistry.require("friends").replacementUrl(),
-            LegacyHttpCategories.CATEGORY_FRIENDS,
-            "FProxyToadlet.categoryTitleFriends",
-            LegacyHttpPaths.FRIENDS_PATH);
+    CategoryRootCallbacks friendsCallbacks = capturedFriendsCategoryRootCallbacks();
     LinkEnabledCallback statusCallback =
         capturedCategoryRootCallback(
             WebShellPaths.SHELL_ROOT,
@@ -312,13 +310,15 @@ class FProxyRegistrarTest {
             "FProxyToadlet.categoryTitleConfig",
             SecurityLevelsToadlet.PATH);
 
-    assertFalse(friendsCallback.isEnabled(null));
+    assertFalse(friendsCallbacks.primaryLinkEnabled().isEnabled(null));
+    assertFalse(friendsCallbacks.rootLinkEnabled().isEnabled(null));
     assertFalse(statusCallback.isEnabled(null));
     assertFalse(configCallback.isEnabled(null));
 
     primaryRoot.set(WebShellPaths.SHELL_ROOT);
 
-    assertTrue(friendsCallback.isEnabled(null));
+    assertTrue(friendsCallbacks.primaryLinkEnabled().isEnabled(null));
+    assertTrue(friendsCallbacks.rootLinkEnabled().isEnabled(null));
     assertTrue(statusCallback.isEnabled(null));
     assertTrue(configCallback.isEnabled(null));
   }
@@ -343,35 +343,30 @@ class FProxyRegistrarTest {
     when(container.isFProxyJavascriptEnabled()).thenReturn(true);
     installed.set(true);
     assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+    assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
 
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(container.isFProxyJavascriptEnabled()).thenReturn(false);
     assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+    assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
 
     when(container.isFProxyJavascriptEnabled()).thenReturn(true);
     installed.set(false);
     assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+    assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
 
     installed.set(true);
     assertTrue(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+    assertTrue(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
 
     InstalledAppSnapshot queueManagerWithoutStaticUi = installedApp(AppUiMode.NONE);
     when(appHost.describe("queue-manager")).thenReturn(Optional.of(queueManagerWithoutStaticUi));
     assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
+    assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
 
     when(appHost.describe("queue-manager")).thenThrow(new IOException("boom"));
     assertFalse(queueCallbacks.primaryLinkEnabled().isEnabled(ctx));
-
-    when(ctx.isAllowedFullAccess()).thenReturn(false);
-    when(container.publicGatewayMode()).thenReturn(true);
     assertFalse(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
-
-    when(container.publicGatewayMode()).thenReturn(false);
-    assertTrue(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
-
-    when(container.publicGatewayMode()).thenReturn(true);
-    when(ctx.isAllowedFullAccess()).thenReturn(true);
-    assertTrue(queueCallbacks.rootLinkEnabled().isEnabled(ctx));
   }
 
   @Test
@@ -456,7 +451,7 @@ class FProxyRegistrarTest {
             eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
             eq(LegacyHttpCategories.CATEGORY_QUEUE),
             eq("FProxyToadlet.categoryTitleQueue"),
-            eq(QueueToadlet.PATH_DOWNLOADS),
+            isNull(),
             eq(false),
             any(LinkEnabledCallback.class),
             any(LinkEnabledCallback.class));
@@ -657,6 +652,24 @@ class FProxyRegistrarTest {
     return callbackCaptor.getValue();
   }
 
+  private CategoryRootCallbacks capturedFriendsCategoryRootCallbacks() {
+    ArgumentCaptor<LinkEnabledCallback> primaryCallbackCaptor =
+        ArgumentCaptor.forClass(LinkEnabledCallback.class);
+    ArgumentCaptor<LinkEnabledCallback> rootCallbackCaptor =
+        ArgumentCaptor.forClass(LinkEnabledCallback.class);
+    verify(server)
+        .registerMenu(
+            eq(LegacyAdminRetirementRegistry.require("friends").replacementUrl()),
+            eq(LegacyHttpCategories.CATEGORY_FRIENDS),
+            eq("FProxyToadlet.categoryTitleFriends"),
+            isNull(),
+            eq(true),
+            primaryCallbackCaptor.capture(),
+            rootCallbackCaptor.capture());
+    return new CategoryRootCallbacks(
+        primaryCallbackCaptor.getValue(), rootCallbackCaptor.getValue());
+  }
+
   private CategoryRootCallbacks capturedQueueCategoryRootCallbacks() {
     ArgumentCaptor<LinkEnabledCallback> primaryCallbackCaptor =
         ArgumentCaptor.forClass(LinkEnabledCallback.class);
@@ -667,7 +680,7 @@ class FProxyRegistrarTest {
             eq(LegacyAdminRetirementRegistry.require("queue-downloads").replacementUrl()),
             eq(LegacyHttpCategories.CATEGORY_QUEUE),
             eq("FProxyToadlet.categoryTitleQueue"),
-            eq(QueueToadlet.PATH_DOWNLOADS),
+            isNull(),
             eq(false),
             primaryCallbackCaptor.capture(),
             rootCallbackCaptor.capture());

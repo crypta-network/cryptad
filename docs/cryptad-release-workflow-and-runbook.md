@@ -94,12 +94,14 @@ Treat these as release blockers, in order:
    apply, durable previous-bundle rollback, and the rule that rollback does not restore app data or
    cache. Optional live smoke may exercise install/update/rollback through localhost routes, but
    normal release-candidate evidence must not require a live node.
-11. **Legacy-admin retirement evidence** - record the current retirement map and diagnostics shape
-   before any release promotion. The certification report must include primary-replaced, retained,
-   and pending surface counts, confirm primary-replaced surfaces are absent from Web Shell fallback
-   navigation, and confirm direct fallback URLs remain documented. Optional live evidence may read
-   `GET /api/v1/diagnostics`; those counters are process-local and are not durable audit logs. The
-   retirement source of truth is [legacy-retirement-plan.md](legacy-retirement-plan.md).
+11. **Legacy-admin retirement evidence** - record the current retirement map, removal-wave policy,
+   and diagnostics shape before any release promotion. The certification report must include
+   primary-replaced, retained, and pending surface counts, confirm primary-replaced surfaces are
+   absent from Web Shell fallback navigation, prove `legacy-admin.removal-wave-1` replacement and
+   blocked-mutation behavior, and confirm retained/pending legacy routes remain documented.
+   Optional live evidence may read `GET /api/v1/diagnostics`; those counters are process-local and
+   are not durable audit logs. The retirement source of truth is
+   [legacy-retirement-plan.md](legacy-retirement-plan.md).
 12. **Hyphanet interop Tier 1 smoke** - run the packaged-node compatibility smoke locally on Linux
    when the environment is prepared, or verify that the CI `interop-smoke` job passed for the
    release candidate. The gate is documented in

@@ -18,8 +18,37 @@ class LegacyAdminRetirementRegistryTest {
     assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
     assertEquals(QueueToadlet.PATH_DOWNLOADS, surface.legacyPath());
     assertEquals(AppUiPaths.APPS_ROOT + "queue-manager/", surface.replacementUrl());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT, surface.removalMode());
+    assertEquals(1, surface.removalWave());
+    assertEquals("phase-6-pr-8", surface.removedByDefaultSince());
+    assertEquals("none", surface.fallbackPolicy());
     assertTrue(surface.includeInUsageDiagnostics());
     assertFalse(surface.includeInWebShellFallbackLinks());
+  }
+
+  @Test
+  void removalWaveSurfaces_whenWaveOneRequested_expectFirstRemovalSetOnly() {
+    List<String> waveOneIds =
+        LegacyAdminRetirementRegistry.removalWaveSurfaces(1).stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(
+        List.of(
+            "queue-downloads",
+            "queue-uploads",
+            "file-insert",
+            "local-file-insert",
+            "friends",
+            "add-friend",
+            "strangers",
+            "connectivity"),
+        waveOneIds);
+    assertFalse(waveOneIds.contains("alerts"));
+    assertFalse(waveOneIds.contains("config"));
+    assertFalse(waveOneIds.contains("security-levels"));
+    assertFalse(waveOneIds.contains("first-time-wizard"));
+    assertFalse(waveOneIds.contains("content-filter"));
   }
 
   @Test
@@ -30,6 +59,8 @@ class LegacyAdminRetirementRegistryTest {
 
     assertEquals("config", surface.id());
     assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
+    assertEquals(LegacyAdminRemovalMode.RENDER_LEGACY, surface.removalMode());
+    assertEquals(0, surface.removalWave());
     assertEquals(WebShellPaths.SHELL_ROOT + "#config", surface.replacementUrl());
   }
 
@@ -42,6 +73,7 @@ class LegacyAdminRetirementRegistryTest {
 
     assertEquals("platform-api", surface.id());
     assertEquals(LegacyAdminRetirementState.INFRASTRUCTURE, surface.state());
+    assertEquals(LegacyAdminRemovalMode.INFRASTRUCTURE, surface.removalMode());
     assertFalse(surface.includeInUsageDiagnostics());
   }
 

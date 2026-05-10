@@ -947,8 +947,9 @@ public final class ToadletContextImpl implements ToadletContext {
   static boolean isMethodAllowedInRestrictedMode(String method, URI uri) {
     return switch (method) {
       case "GET", "POST" -> true;
-      case "HEAD" -> isAppUiPath(uri);
-      case "DELETE", "PATCH", "PUT" -> isPlatformApiPath(uri);
+      case "HEAD" -> isAppUiPath(uri) || LegacyAdminRemovalPolicy.isRemovedCanonicalPath(uri);
+      case "DELETE", "PATCH", "PUT" ->
+          isPlatformApiPath(uri) || LegacyAdminRemovalPolicy.isRemovedCanonicalPath(uri);
       default -> false;
     };
   }
@@ -1094,48 +1095,33 @@ public final class ToadletContextImpl implements ToadletContext {
     URI currentUri = uri;
     LegacyAdminSurface usageSurface =
         LegacyAdminRetirementRegistry.findByLegacyPath(uri.getPath()).orElse(null);
-    boolean redirect;
-    do {
-      redirect = false;
-      FindToadletResult toadletResult = findToadlet(container, ctx, currentUri);
-      if (toadletResult.handled) {
-        recordLegacyAdminUsageIfAccepted(toadletResult.usageSurface(), ctx);
+    while (true) {
+      FindToadletResult toadletResult = findToadlet(container, currentUri);
+      if (handlePermanentRedirectIfPresent(toadletResult, method, currentUri, ctx)) {
         return;
       }
+
       Toadlet toadlet = toadletResult.toadlet;
       if (toadlet == null) {
         ctx.sendNoToadletError(ctx.shouldDisconnect);
         return;
       }
 
-      if (!toadlet.findSupportedMethods().contains(method)) {
-        ctx.sendMethodNotAllowed(method, ctx.shouldDisconnect);
+      if (trySendLegacyAdminRemovalDecision(method, currentUri, ctx)) {
         return;
       }
 
-      HTTPRequestImpl req = new HTTPRequestImpl(currentUri, data, ctx, method);
-      try {
-        if (method.equals("POST")
-            && !toadlet.allowPOSTWithoutPassword()
-            && !ctx.checkFormPassword(req, toadlet.path())) {
-          return;
-        }
-
-        if (ctx.isAllowedFullAccess()) {
-          ctx.getPageMaker().parseMode(req, container);
-        }
-
-        try {
-          callToadletMethod(toadlet, method, currentUri, req, ctx, data, sock);
-          recordLegacyAdminUsageIfAccepted(usageSurface, ctx);
-        } catch (RedirectException re) {
-          currentUri = re.newuri;
-          redirect = true;
-        }
-      } finally {
-        req.freeParts();
+      if (tryRejectUnsupportedMethod(toadlet, method, ctx)) {
+        return;
       }
-    } while (redirect);
+
+      Optional<URI> redirectUri =
+          callToadletAndRecordRedirect(toadlet, method, currentUri, data, ctx, sock, usageSurface);
+      if (redirectUri.isEmpty()) {
+        return;
+      }
+      currentUri = redirectUri.orElseThrow();
+    }
   }
 
   private static void recordLegacyAdminUsageIfAccepted(
@@ -1145,20 +1131,116 @@ public final class ToadletContextImpl implements ToadletContext {
     }
   }
 
+  private static boolean handlePermanentRedirectIfPresent(
+      FindToadletResult toadletResult, String method, URI currentUri, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    if (toadletResult.permanentRedirectUri() == null) {
+      return false;
+    }
+    if (trySendReplacementForCanonicalRedirect(toadletResult, method, currentUri, ctx)) {
+      return true;
+    }
+    Toadlet.writePermanentRedirect(
+        ctx, "Found elsewhere", toadletResult.permanentRedirectUri().toASCIIString());
+    recordLegacyAdminUsageIfAccepted(toadletResult.usageSurface(), ctx);
+    return true;
+  }
+
+  private static boolean trySendReplacementForCanonicalRedirect(
+      FindToadletResult toadletResult, String method, URI currentUri, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    if (toadletResult.usageSurface() == null) {
+      return false;
+    }
+    return trySendLegacyAdminRemovalDecision(method, currentUri, ctx);
+  }
+
+  private static boolean trySendLegacyAdminRemovalDecision(
+      String method, URI currentUri, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    Optional<LegacyAdminRemovalDecision> removalDecision =
+        LegacyAdminRemovalPolicy.decide(method, currentUri, ctx);
+    if (removalDecision.isEmpty()) {
+      return false;
+    }
+    sendLegacyAdminReplacementResponse(removalDecision.orElseThrow(), method, ctx);
+    return true;
+  }
+
+  private static void sendLegacyAdminReplacementResponse(
+      LegacyAdminRemovalDecision decision, String method, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    LegacyAdminReplacementResponse.send(decision, method, ctx);
+    LegacyAdminUsageRecorder.defaultRecorder()
+        .recordSurface(decision.surface(), decision.usageEvent());
+  }
+
+  private static boolean tryRejectUnsupportedMethod(
+      Toadlet toadlet, String method, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    if (toadlet.findSupportedMethods().contains(method)) {
+      return false;
+    }
+    ctx.sendMethodNotAllowed(method, ctx.shouldDisconnect);
+    return true;
+  }
+
+  private static Optional<URI> callToadletAndRecordRedirect(
+      Toadlet toadlet,
+      String method,
+      URI currentUri,
+      Bucket data,
+      ToadletContextImpl ctx,
+      Socket sock,
+      LegacyAdminSurface usageSurface)
+      throws IOException,
+          ToadletContextClosedException,
+          NoSuchMethodException,
+          IllegalAccessException,
+          ToadletInvocationException {
+    HTTPRequestImpl req = new HTTPRequestImpl(currentUri, data, ctx, method);
+    try {
+      if (isPostWithoutAcceptedFormPassword(toadlet, method, req, ctx)) {
+        return Optional.empty();
+      }
+      parseModeForFullAccess(ctx, req);
+      try {
+        callToadletMethod(toadlet, method, currentUri, req, ctx, data, sock);
+        recordLegacyAdminUsageIfAccepted(usageSurface, ctx);
+        return Optional.empty();
+      } catch (RedirectException re) {
+        return Optional.of(re.newuri);
+      }
+    } finally {
+      req.freeParts();
+    }
+  }
+
+  private static boolean isPostWithoutAcceptedFormPassword(
+      Toadlet toadlet, String method, HTTPRequestImpl req, ToadletContextImpl ctx)
+      throws ToadletContextClosedException, IOException {
+    return "POST".equals(method)
+        && !toadlet.allowPOSTWithoutPassword()
+        && !ctx.checkFormPassword(req, toadlet.path());
+  }
+
+  private static void parseModeForFullAccess(ToadletContextImpl ctx, HTTPRequestImpl req) {
+    if (ctx.isAllowedFullAccess()) {
+      ctx.getPageMaker().parseMode(req, ctx.container);
+    }
+  }
+
   boolean hasAcceptedLegacyAdminUsageResponse() {
     return !requestGateDenied && replyStatusCode >= 200 && replyStatusCode < 400;
   }
 
-  private static FindToadletResult findToadlet(
-      ToadletContainer container, ToadletContextImpl ctx, URI uri)
-      throws IOException, ToadletContextClosedException {
+  private static FindToadletResult findToadlet(ToadletContainer container, URI uri) {
     try {
       Toadlet toadlet = container.findToadlet(uri);
-      return new FindToadletResult(toadlet, false, null);
+      return new FindToadletResult(toadlet, null, null);
     } catch (PermanentRedirectException e) {
-      Toadlet.writePermanentRedirect(ctx, "Found elsewhere", e.newuri.toASCIIString());
       return new FindToadletResult(
-          null, true, canonicalRedirectSurface(uri, e.newuri).orElse(null));
+          null, e.newuri, canonicalRedirectSurface(uri, e.newuri).orElse(null));
     }
   }
 
@@ -1188,7 +1270,7 @@ public final class ToadletContextImpl implements ToadletContext {
   }
 
   private record FindToadletResult(
-      Toadlet toadlet, boolean handled, LegacyAdminSurface usageSurface) {}
+      Toadlet toadlet, URI permanentRedirectUri, LegacyAdminSurface usageSurface) {}
 
   private static final class ToadletInvocationException extends Exception {
     ToadletInvocationException(Throwable cause) {

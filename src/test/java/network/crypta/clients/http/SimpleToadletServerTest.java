@@ -1,9 +1,11 @@
 package network.crypta.clients.http;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,7 +23,10 @@ import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
+import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.UserAlertSurface;
@@ -155,6 +160,55 @@ class SimpleToadletServerTest {
     config.set("hasCompletedWizard", true);
 
     assertEquals(WebShellPaths.SHELL_ROOT, server.primaryUiRoot());
+  }
+
+  @Test
+  void isStaticAppUiAvailable_whenRuntimeSupportUnavailable_returnsFalse() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+
+    assertFalse(server.isStaticAppUiAvailable("queue-manager"));
+  }
+
+  @Test
+  void isStaticAppUiAvailable_whenStaticAppInstalled_returnsTrue() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    AppHost appHost = mock(AppHost.class);
+    InstalledAppSnapshot queueManager = installedApp(AppUiMode.STATIC);
+    when(appHost.describe("queue-manager")).thenReturn(Optional.of(queueManager));
+    server.setRuntimeSupport(runtimeSupportWith(appHost));
+
+    assertTrue(server.isStaticAppUiAvailable("queue-manager"));
+  }
+
+  @Test
+  void isStaticAppUiAvailable_whenAppMissing_returnsFalse() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    AppHost appHost = mock(AppHost.class);
+    when(appHost.describe("queue-manager")).thenReturn(Optional.empty());
+    server.setRuntimeSupport(runtimeSupportWith(appHost));
+
+    assertFalse(server.isStaticAppUiAvailable("queue-manager"));
+  }
+
+  @Test
+  void isStaticAppUiAvailable_whenAppHasNoStaticUi_returnsFalse() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    AppHost appHost = mock(AppHost.class);
+    InstalledAppSnapshot queueManager = installedApp(AppUiMode.NONE);
+    when(appHost.describe("queue-manager")).thenReturn(Optional.of(queueManager));
+    server.setRuntimeSupport(runtimeSupportWith(appHost));
+
+    assertFalse(server.isStaticAppUiAvailable("queue-manager"));
+  }
+
+  @Test
+  void isStaticAppUiAvailable_whenDescribeFails_returnsFalse() throws Exception {
+    SimpleToadletServer server = newServerWithDefaults();
+    AppHost appHost = mock(AppHost.class);
+    when(appHost.describe("queue-manager")).thenThrow(new IOException("manifest unavailable"));
+    server.setRuntimeSupport(runtimeSupportWith(appHost));
+
+    assertFalse(server.isStaticAppUiAvailable("queue-manager"));
   }
 
   @Test
@@ -638,6 +692,20 @@ class SimpleToadletServerTest {
           .thenReturn(iface);
       return new SimpleToadletServer(config, bucketFactory, executor);
     }
+  }
+
+  private static HttpShellRuntimeSupport runtimeSupportWith(AppHost appHost) {
+    HttpShellRuntimeSupport runtimeSupport = mock(HttpShellRuntimeSupport.class);
+    when(runtimeSupport.appHost()).thenReturn(appHost);
+    return runtimeSupport;
+  }
+
+  private static InstalledAppSnapshot installedApp(AppUiMode uiMode) {
+    InstalledAppSnapshot snapshot = mock(InstalledAppSnapshot.class);
+    AppManifest manifest = mock(AppManifest.class);
+    when(snapshot.manifest()).thenReturn(manifest);
+    when(manifest.uiMode()).thenReturn(uiMode);
+    return snapshot;
   }
 
   private static class DummyToadlet extends Toadlet {

@@ -372,7 +372,15 @@ class PlatformApiRouterTest {
                             "/downloads/",
                             "PRIMARY_REPLACED",
                             "/apps/queue-manager/",
+                            "REDIRECT_TO_REPLACEMENT",
+                            1,
+                            "phase-6-pr-8",
+                            "none",
                             3L,
+                            2L,
+                            1L,
+                            0L,
+                            0L,
                             1_770_000_000_000L))));
     when(diagnosticPort.snapshot()).thenReturn(new DiagnosticReportSnapshot(List.of()));
 
@@ -384,7 +392,11 @@ class PlatformApiRouterTest {
         "{\"sectionCount\":0,\"sections\":[],\"plainTextExport\":\"\",\"legacyAdmin\":{\"surfaces\""
             + ":[{\"id\":\"queue-downloads\",\"title\":\"Download queue\",\"path\":\"/downloads/\","
             + "\"state\":\"PRIMARY_REPLACED\",\"replacementUrl\":\"/apps/queue-manager/\","
-            + "\"count\":3,\"lastSeenEpochMillis\":1770000000000}]}}",
+            + "\"removalMode\":\"REDIRECT_TO_REPLACEMENT\",\"removalWave\":1,"
+            + "\"removedByDefaultSince\":\"phase-6-pr-8\",\"fallbackPolicy\":\"none\","
+            + "\"count\":3,\"replacementResponseCount\":2,"
+            + "\"blockedMutatingRequestCount\":1,\"fallbackRenderCount\":0,"
+            + "\"retainedOrPendingRenderCount\":0,\"lastSeenEpochMillis\":1770000000000}]}}",
         response.body());
   }
 

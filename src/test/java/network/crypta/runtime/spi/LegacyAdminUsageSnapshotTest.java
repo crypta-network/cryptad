@@ -45,9 +45,70 @@ class LegacyAdminUsageSnapshotTest {
   }
 
   @Test
+  void surfaceUsageConstructor_whenRemovalWaveNegative_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurfaceUsage(
+                "queue-downloads",
+                "Download queue",
+                "/downloads/",
+                "PRIMARY_REPLACED",
+                "/apps/queue-manager/",
+                "REDIRECT_TO_REPLACEMENT",
+                -1,
+                "phase-6-pr-8",
+                "none",
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenEventCounterNegative_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurfaceUsage(
+                "queue-downloads",
+                "Download queue",
+                "/downloads/",
+                "PRIMARY_REPLACED",
+                "/apps/queue-manager/",
+                "REDIRECT_TO_REPLACEMENT",
+                1,
+                "phase-6-pr-8",
+                "none",
+                0L,
+                -1L,
+                0L,
+                0L,
+                0L,
+                0L));
+  }
+
+  @Test
   void surfaceUsageConstructor_whenReplacementUrlNull_expectAccepted() {
     LegacyAdminSurfaceUsage usage =
-        new LegacyAdminSurfaceUsage("help", "Help", "/help/", "RETAINED", null, 0L, 0L);
+        new LegacyAdminSurfaceUsage(
+            "help",
+            "Help",
+            "/help/",
+            "RETAINED",
+            null,
+            "RETAINED",
+            0,
+            null,
+            "retained",
+            0L,
+            0L,
+            0L,
+            0L,
+            0L,
+            0L);
 
     assertEquals("help", usage.surfaceId());
     assertNull(usage.replacementUrl());
@@ -61,7 +122,15 @@ class LegacyAdminUsageSnapshotTest {
         "/downloads/",
         "PRIMARY_REPLACED",
         "/apps/queue-manager/",
+        "REDIRECT_TO_REPLACEMENT",
+        1,
+        "phase-6-pr-8",
+        "none",
         count,
+        0L,
+        0L,
+        0L,
+        0L,
         lastSeenEpochMillis);
   }
 }

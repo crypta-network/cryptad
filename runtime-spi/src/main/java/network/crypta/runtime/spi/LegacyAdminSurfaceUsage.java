@@ -26,7 +26,20 @@ import java.util.Objects;
  * @param state retirement state name assigned to the surface by the HTTP adapter
  * @param replacementUrl same-origin replacement Web Shell or app URL, or {@code null} when none is
  *     declared
+ * @param removalMode current execution/removal mode assigned by the HTTP adapter
+ * @param removalWave first removal wave number, or {@code 0} when the surface is not removed by
+ *     default
+ * @param removedByDefaultSince stable release/phase marker, or {@code null} when not removed by
+ *     default
+ * @param fallbackPolicy path-free description of temporary fallback behavior
  * @param count number of observed visits since process start
+ * @param replacementResponseCount number of redirect or gone-with-replacement responses since
+ *     process start
+ * @param blockedMutatingRequestCount number of removed legacy mutating requests blocked before old
+ *     behavior could execute
+ * @param fallbackRenderCount number of temporary legacy fallback renderings since process start
+ * @param retainedOrPendingRenderCount number of retained or pending legacy responses since process
+ *     start
  * @param lastSeenEpochMillis last observed visit timestamp in epoch milliseconds, or {@code 0} when
  *     no visit has been recorded
  */
@@ -36,7 +49,15 @@ public record LegacyAdminSurfaceUsage(
     String legacyPath,
     String state,
     String replacementUrl,
+    String removalMode,
+    int removalWave,
+    String removedByDefaultSince,
+    String fallbackPolicy,
     long count,
+    long replacementResponseCount,
+    long blockedMutatingRequestCount,
+    long fallbackRenderCount,
+    long retainedOrPendingRenderCount,
     long lastSeenEpochMillis) {
   /**
    * Creates an immutable legacy-admin usage entry.
@@ -54,8 +75,31 @@ public record LegacyAdminSurfaceUsage(
     Objects.requireNonNull(title, "title");
     Objects.requireNonNull(legacyPath, "legacyPath");
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(removalMode, "removalMode");
+    Objects.requireNonNull(fallbackPolicy, "fallbackPolicy");
+    if (removedByDefaultSince != null && removedByDefaultSince.isBlank()) {
+      throw new IllegalArgumentException("removedByDefaultSince must not be blank");
+    }
+    if (fallbackPolicy.isBlank()) {
+      throw new IllegalArgumentException("fallbackPolicy must not be blank");
+    }
+    if (removalWave < 0) {
+      throw new IllegalArgumentException("removalWave must not be negative");
+    }
     if (count < 0) {
       throw new IllegalArgumentException("count must not be negative");
+    }
+    if (replacementResponseCount < 0) {
+      throw new IllegalArgumentException("replacementResponseCount must not be negative");
+    }
+    if (blockedMutatingRequestCount < 0) {
+      throw new IllegalArgumentException("blockedMutatingRequestCount must not be negative");
+    }
+    if (fallbackRenderCount < 0) {
+      throw new IllegalArgumentException("fallbackRenderCount must not be negative");
+    }
+    if (retainedOrPendingRenderCount < 0) {
+      throw new IllegalArgumentException("retainedOrPendingRenderCount must not be negative");
     }
     if (lastSeenEpochMillis < 0) {
       throw new IllegalArgumentException("lastSeenEpochMillis must not be negative");

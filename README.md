@@ -474,8 +474,11 @@ and [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors a
 ## Platform Closeout & API Surface
 
 Phase 3 Platform Primacy makes `:platform-api`, `:platform-web-shell`, and `:platform-apphost` the
-primary local platform path for operator workflows and first-party apps. Legacy HTTP and FCP remain
-compatibility, bridge, debug, and fallback surfaces.
+primary local platform path for operator workflows and first-party apps. Legacy HTTP remains the
+bridge for `/api/v1/`, `/app/node/`, `/apps/{appId}/`, retained FProxy browse, and pending legacy
+tools; FCP remains a separate compatibility protocol. The first legacy-admin removal wave now
+returns replacement responses for selected already-replaced admin pages instead of rendering them
+as normal fallback surfaces.
 
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
@@ -492,6 +495,13 @@ manifests, signed catalogs, developer tooling, and release certification compare
 versions without changing endpoint behavior. The Web Shell Apps section uses
 `/api/v1/app-catalogs` metadata to show source, license, category, review, permission-rationale,
 version-difference, API compatibility, and changelog details before install or update.
+Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
+`/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
+`/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue
+Manager, Publisher, or Web Shell, while mutating requests are blocked before old handlers run.
+Configurations without the replacement static app UI, without FProxy JavaScript, or without Web
+Shell as the advertised primary UI keep rendering the legacy fallback and count that usage in
+diagnostics. FProxy browse, retained browse-adjacent tools, and pending routes remain reachable.
 
 Key docs:
 
@@ -550,8 +560,9 @@ tools/perf/run-performance-smoke.sh
 
 Release-candidate evidence is aggregated by the release certification tooling under
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
-Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin retirement, and CI
-summaries and writes a redacted report plus a stable JSON companion.
+Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin retirement,
+legacy-admin removal-wave evidence, and CI summaries and writes a redacted report plus a stable
+JSON companion.
 
 Fast self-tests:
 

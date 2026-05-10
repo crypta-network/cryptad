@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -32,6 +33,9 @@ import network.crypta.io.SSLNetworkInterface;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PrioRunnable;
+import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.core.SSL;
@@ -529,10 +533,35 @@ public final class SimpleToadletServer
    *
    * @return primary browser-facing shell route
    */
+  @Override
   public String primaryUiRoot() {
     return shouldAdvertiseWebShellPrimaryUi()
         ? WebShellPaths.SHELL_ROOT
         : LauncherReadinessInfo.DEFAULT_UI_ROOT;
+  }
+
+  @Override
+  public boolean isStaticAppUiAvailable(String appId) {
+    if (appId == null || appId.isBlank()) {
+      return false;
+    }
+    network.crypta.clients.http.HttpShellRuntimeSupport runtimeSupportRef = runtimeSupport;
+    if (runtimeSupportRef == null) {
+      return false;
+    }
+    AppHost appHost = runtimeSupportRef.appHost();
+    if (appHost == null) {
+      return false;
+    }
+    try {
+      return appHost
+          .describe(appId)
+          .map(InstalledAppSnapshot::manifest)
+          .map(manifest -> manifest.uiMode() == AppUiMode.STATIC)
+          .orElse(false);
+    } catch (IOException _) {
+      return false;
+    }
   }
 
   /**
@@ -1490,15 +1519,17 @@ public final class SimpleToadletServer
    * Registers a navigation category with runtime-selected target and visibility.
    *
    * <p>{@code primaryLinkEnabled} controls whether the primary or fallback target is rendered.
-   * {@code rootLinkEnabled} controls whether a root-only category is rendered at all.
+   * {@code rootLinkEnabled} controls whether the category root link is rendered; child links can
+   * still keep the category visible.
    *
    * @param link primary navigation target
    * @param name short category name shown in menus; should be unique within its level
    * @param title descriptive title used for tooltips or extended labels; may be {@code null}
    * @param fallbackLink alternate navigation target when {@code link} is not enabled
-   * @param fullOnly whether a root-only category requires full-access permission
+   * @param fullOnly whether a root category with no visible children requires full-access
+   *     permission
    * @param primaryLinkEnabled callback deciding whether the primary target is usable
-   * @param rootLinkEnabled callback deciding whether a root-only category should render
+   * @param rootLinkEnabled callback deciding whether the root link should render
    */
   public void registerMenu(
       String link,
