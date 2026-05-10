@@ -353,17 +353,17 @@ public final class AppUpdateService {
 
     InstalledAppSnapshot updated = null;
     HealthFailureState healthFailureState = new HealthFailureState();
-    boolean vaultCleanupFailed;
+    boolean vaultCleanupFailed = false;
     try {
       if (wasRunning) {
         appHost.stop(normalizedAppId);
       }
       updated = appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
-      vaultCleanupFailed = !disableVaultGrantsRemovedByUpdate(updated);
       if (options.restart()) {
         startOrTreatAsHealthFailure(normalizedAppId, options, healthFailureState);
       }
       verifyHealthOrRollback(normalizedAppId, options, healthFailureState);
+      vaultCleanupFailed = !disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
       closeStage(normalizedAppId);
       candidates.put(normalizedAppId, appliedCandidate(staged.candidate(), updated));
       appendHistory(
@@ -378,6 +378,7 @@ public final class AppUpdateService {
     } catch (PlatformApiException exception) {
       closeStage(normalizedAppId);
       if (updated != null) {
+        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
       }
@@ -391,6 +392,7 @@ public final class AppUpdateService {
       throw mapped;
     } catch (IOException _) {
       if (updated != null) {
+        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
         closeStage(normalizedAppId);
         updateCandidateAfterPostApplyFailure(
             normalizedAppId, staged.candidate(), updated, healthFailureState);
@@ -563,6 +565,14 @@ public final class AppUpdateService {
     } catch (AppVaultException _) {
       return false;
     }
+  }
+
+  private boolean disableVaultGrantsAfterCommittedUpdate(
+      InstalledAppSnapshot updated, HealthFailureState healthFailureState) {
+    if (healthFailureState.rollbackCommitted()) {
+      return true;
+    }
+    return disableVaultGrantsRemovedByUpdate(updated);
   }
 
   private void restartOriginalAfterUncommittedApplyFailure(

@@ -84,6 +84,7 @@ class AppVaultApiRouterTest {
     assertTrue(read.body().contains("\"secret\":{\"appId\":\"" + APP_ID + "\""));
     assertTrue(read.body().contains("\"valueBase64\""));
     assertFalse(read.body().contains("\"secret\":{\"secret\""));
+    assertFalse(read.body().contains("\"lastUsedAt\":null"));
     assertFalse(read.body().contains(rawSecret));
     assertEquals(403, browserRead.statusCode());
   }

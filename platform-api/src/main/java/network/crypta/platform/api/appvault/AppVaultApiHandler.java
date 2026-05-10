@@ -122,12 +122,11 @@ public final class AppVaultApiHandler {
    */
   public Map<String, Object> readSecret(String appId, String secretName) {
     appVaultService.requireAppAccessAllowed(appId);
+    byte[] value = appVaultService.readSecretValue(appId, secretName);
     AppSecretRecord secretRecord = appVaultService.getSecretRecord(appId, secretName);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
     json.put("secret", secretSummary(secretRecord));
-    json.put(
-        PARAM_VALUE_BASE64,
-        Base64.getEncoder().encodeToString(appVaultService.readSecretValue(appId, secretName)));
+    json.put(PARAM_VALUE_BASE64, Base64.getEncoder().encodeToString(value));
     return json;
   }
 

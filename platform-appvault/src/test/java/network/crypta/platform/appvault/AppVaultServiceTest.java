@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -557,6 +558,22 @@ class AppVaultServiceTest {
     assertTrue(service.listIdentities().isEmpty());
     assertTrue(service.listGrantsForApp(APP_ID).isEmpty());
     assertTrue(directoryEmpty(paths().identitiesRoot()));
+  }
+
+  @Test
+  void createOperatorIdentity_whenOwnerAppIdIsBlank_expectSharedIdentityStored()
+      throws IOException {
+    AppVaultService service = service();
+
+    AppIdentityRecord identity =
+        service.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            OPERATOR_PUBLISHER_LABEL,
+            " ",
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    assertNull(identity.ownerAppId());
+    assertEquals(identity.identityId(), service.listIdentities().getFirst().identityId());
   }
 
   @Test

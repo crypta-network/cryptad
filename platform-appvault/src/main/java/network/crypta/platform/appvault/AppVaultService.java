@@ -1003,7 +1003,7 @@ public final class AppVaultService {
               secureRandom);
       store.writeIdentity(identityRecord, envelope);
       appendAudit(
-          ownerAppId,
+          identityRecord.ownerAppId(),
           "identity.create",
           AUDIT_TARGET_IDENTITY,
           identityId,
