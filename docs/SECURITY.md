@@ -159,6 +159,17 @@ distinguish process-token requests from browser-session requests. They must not 
 tokens, raw browser session tokens, query strings, request bodies, form passwords, or filesystem
 paths.
 
+The app secret and identity vault is a local at-rest protection boundary, not a remote KMS,
+hardware-backed enclave, OS keychain, or replacement for process sandboxing. Vault records are
+encrypted with a host-local wrapping key file protected by local filesystem permissions; that
+protects against casual offline disclosure but not malware, a compromised daemon, a debugger, or a
+same-user process. App secret values, identity private keys, signing payloads, private insert URIs,
+vault storage paths, browser session tokens, app process tokens, and form passwords must not appear
+in public JSON, Web Shell summaries, app audit events, release-certification reports, diagnostics,
+or logs. App browser principals are limited to identity metadata and grant-request workflows by
+default; raw secret read/write and identity-use operations are app-process routes unless a future
+contract explicitly broadens that surface with tests and docs.
+
 Static UI code should run on its isolated per-app loopback origin when available. Browser app
 sessions improve server-side attribution and capability enforcement for SDK/API calls, and the
 isolated origin separates app JavaScript from the Web Shell/admin origin. The compatibility

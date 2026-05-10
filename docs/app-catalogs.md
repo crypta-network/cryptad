@@ -133,6 +133,12 @@ Permission rationales explain why the catalog version declares a permission. The
 permissions and do not replace the signed bundle manifest's permission list or server-side
 Platform API authorization checks.
 
+Vault capabilities (`vault.secrets.*` and `vault.identities.*`) are experimental app-platform
+capabilities. Catalog entries that advertise them should include permission rationales and, for
+identity-use or secret access, trusted review receipt evidence appropriate to the catalog policy.
+Catalog metadata never grants a shared identity by itself; the local operator grant in the identity
+vault remains app-id-bound, scope-bound, revocable, and separate from the signed catalog.
+
 ## Trusted review receipts
 
 Catalog entries may carry an inline review receipt under `app.<id>.review.receipt.*`. The receipt

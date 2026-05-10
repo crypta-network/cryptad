@@ -73,6 +73,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -261,6 +262,38 @@ class CoreHttpShellRuntimeSupportTest {
     assertEquals(expectedDataDir.toAbsolutePath(), layout.dataDir());
     assertEquals(expectedCacheDir.toAbsolutePath(), layout.cacheDir());
     assertEquals(expectedRunDir.toAbsolutePath(), layout.runDir());
+    verify(shutdownHook).addEarlyJob(any(Thread.class));
+  }
+
+  @Test
+  void appVaultService_whenVaultStorageUnavailable_expectRuntimeStartsWithVaultUnavailable(
+      @TempDir Path tempDir) throws IOException {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    Files.createDirectories(nodeDataDir.resolve("apps"));
+    Files.writeString(nodeDataDir.resolve("apps").resolve("vault"), "not-a-directory");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+
+    CoreHttpShellRuntimeSupport runtimeSupport;
+    try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+        mockStatic(SemiOrderedShutdownHook.class)) {
+      stubShutdownHookLookup(shutdownHooks, shutdownHook);
+      runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    }
+
+    assertNotNull(runtimeSupport.appHost());
+    assertNull(runtimeSupport.appVaultService());
     verify(shutdownHook).addEarlyJob(any(Thread.class));
   }
 

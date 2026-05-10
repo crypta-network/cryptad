@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":2"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":3"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(2, version.contractVersion());
+    assertEquals(3, version.contractVersion());
   }
 
   @Test
@@ -61,8 +61,7 @@ class PlatformApiContractTest {
       assertTrue(
           knownCapabilities.containsAll(endpoint.requiredCapabilities()), endpoint.routeTemplate());
       assertEquals(expectedSinceContractVersion(endpoint), endpoint.sinceContractVersion());
-      assertEquals(
-          PlatformApiStabilityLevel.STABLE, endpoint.stability(), endpoint.routeTemplate());
+      assertEquals(expectedStability(endpoint), endpoint.stability(), endpoint.routeTemplate());
     }
   }
 
@@ -103,7 +102,20 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().startsWith("/app-vault")
+        || endpoint.routeTemplate().startsWith("/identity-vault")) {
+      return 3;
+    }
     return endpoint.routeTemplate().startsWith("/apps/{appId}/updates") ? 2 : 1;
+  }
+
+  private static PlatformApiStabilityLevel expectedStability(
+      PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().startsWith("/app-vault")
+        || endpoint.routeTemplate().startsWith("/identity-vault")) {
+      return PlatformApiStabilityLevel.EXPERIMENTAL;
+    }
+    return PlatformApiStabilityLevel.STABLE;
   }
 
   private static PlatformApiRequest appRequest(

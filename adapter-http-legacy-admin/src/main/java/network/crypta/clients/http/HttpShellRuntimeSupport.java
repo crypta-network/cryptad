@@ -4,6 +4,7 @@ import java.io.File;
 import network.crypta.config.Config;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
@@ -62,6 +63,17 @@ public interface HttpShellRuntimeSupport {
    * @return shared app-catalog manager, or {@code null} when catalog support is unavailable
    */
   AppCatalogManager appCatalogManager();
+
+  /**
+   * Returns the long-lived app vault used by Platform API vault routes.
+   *
+   * <p>The vault is shared across app lifecycle, app-facing vault routes, and operator-facing
+   * identity-grant management. It owns local at-rest envelope storage and must not be recreated per
+   * request.
+   *
+   * @return shared app-vault service, or {@code null} when vault support is unavailable
+   */
+  AppVaultService appVaultService();
 
   /**
    * Creates the legacy push-data manager used by the shell's interval push flow.

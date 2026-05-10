@@ -105,6 +105,23 @@ class ToadletContextImplTest {
   }
 
   @Test
+  void isMethodAllowedInRestrictedMode_whenPutTargetsPlatformApi_returnsTrue() {
+    URI uri =
+        URI.create("http://localhost" + PlatformApiPaths.API_V1_PREFIX + "app-vault/secrets/name");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("PUT", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenPatchTargetsPlatformApi_returnsTrue() {
+    URI uri =
+        URI.create(
+            "http://localhost" + PlatformApiPaths.API_V1_PREFIX + "identity-vault/grants/grant-1");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("PATCH", uri));
+  }
+
+  @Test
   void isMethodAllowedInRestrictedMode_whenHeadTargetsAppUi_returnsTrue() {
     URI uri = URI.create("http://localhost/apps/demo-app/");
 
@@ -123,6 +140,13 @@ class ToadletContextImplTest {
     URI uri = URI.create("http://localhost/downloads/");
 
     assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenPutTargetsNonPlatformRoute_returnsFalse() {
+    URI uri = URI.create("http://localhost/downloads/");
+
+    assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("PUT", uri));
   }
 
   @Test

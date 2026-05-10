@@ -255,6 +255,22 @@
     return apiPostForm("queue/inserts/directory", formDataOrParams, options);
   }
 
+  function listVaultIdentities(options) {
+    return apiGet("app-vault/identities", options);
+  }
+
+  function getVaultIdentity(identityId, options) {
+    return apiGet(`app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}`, options);
+  }
+
+  function listVaultGrants(options) {
+    return apiGet("app-vault/grants", options);
+  }
+
+  function requestVaultGrant(request, options) {
+    return apiPostForm("app-vault/grants/request", normalizeVaultGrantRequest(request), options);
+  }
+
   function sanitizeFragment(html, options) {
     const parser = new DOMParser();
     const parsed = parser.parseFromString(typeof html === "string" ? html : "", "text/html");
@@ -621,6 +637,59 @@
     return normalized;
   }
 
+  function vaultPathSegment(value) {
+    if (typeof value !== "string") {
+      throw new Error("Vault identity id must be a string.");
+    }
+    const normalized = value.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{0,191}$/.test(normalized)) {
+      throw new Error("Vault identity id must be one normalized local path segment.");
+    }
+    return normalized;
+  }
+
+  function normalizeVaultGrantRequest(request) {
+    const source = request && typeof request === "object" ? request : {};
+    const params = {
+      identityId: vaultPathSegment(source.identityId),
+      scopes: normalizeVaultGrantScopes(source.scopes),
+    };
+    if (typeof source.reason === "string" && source.reason.trim()) {
+      params.reason = source.reason.trim();
+    }
+    return params;
+  }
+
+  function normalizeVaultGrantScopes(scopes) {
+    if (typeof scopes === "string") {
+      return scopes
+        .split(",")
+        .map((scope) => normalizeVaultGrantScope(scope))
+        .join(",");
+    }
+    if (Array.isArray(scopes)) {
+      return scopes.map((scope) => normalizeVaultGrantScope(scope)).join(",");
+    }
+    return "";
+  }
+
+  function normalizeVaultGrantScope(scope) {
+    if (typeof scope !== "string") {
+      throw new Error("Vault grant scopes must be strings.");
+    }
+    const normalized = scope.trim().toLowerCase();
+    if (
+      normalized !== "metadata.read" &&
+      normalized !== "sign.domain-separated" &&
+      normalized !== "publish.content" &&
+      normalized !== "publish.profile" &&
+      normalized !== "use.external-reference"
+    ) {
+      throw new Error("Unsupported vault grant scope.");
+    }
+    return normalized;
+  }
+
   function sanitizeBootstrap(data) {
     const source = data && typeof data === "object" ? data : {};
     const bootstrap = {};
@@ -677,6 +746,16 @@
     content: Object.freeze({
       insertFile,
       insertDirectory,
+    }),
+    vault: Object.freeze({
+      identities: Object.freeze({
+        list: listVaultIdentities,
+        get: getVaultIdentity,
+      }),
+      grants: Object.freeze({
+        list: listVaultGrants,
+        request: requestVaultGrant,
+      }),
     }),
     dom: Object.freeze({
       sanitizeFragment,

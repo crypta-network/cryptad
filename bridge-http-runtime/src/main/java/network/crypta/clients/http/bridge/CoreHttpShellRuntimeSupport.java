@@ -40,6 +40,7 @@ import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
@@ -59,9 +60,13 @@ import org.slf4j.LoggerFactory;
  * @param core daemon core that backs delegated shell services and browse bootstrap wiring
  * @param appHost shared AppHost instance used by the platform control plane
  * @param appCatalogManager shared signed app-catalog manager used by the platform control plane
+ * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
-    NodeClientCore core, AppHost appHost, AppCatalogManager appCatalogManager)
+    NodeClientCore core,
+    AppHost appHost,
+    AppCatalogManager appCatalogManager,
+    AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
   private static final String APPHOST_ALLOW_UNSIGNED_PROPERTY = "cryptad.apphost.allowUnsigned";
@@ -95,7 +100,7 @@ public record CoreHttpShellRuntimeSupport(
   }
 
   private CoreHttpShellRuntimeSupport(NodeClientCore core, AppPlatformServices services) {
-    this(core, services.appHost(), services.appCatalogManager());
+    this(core, services.appHost(), services.appCatalogManager(), services.appVaultService());
   }
 
   /**
@@ -106,7 +111,7 @@ public record CoreHttpShellRuntimeSupport(
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
   public CoreHttpShellRuntimeSupport(NodeClientCore core, AppHost appHost) {
-    this(core, appHost, null);
+    this(core, appHost, null, null);
   }
 
   /**
@@ -117,11 +122,30 @@ public record CoreHttpShellRuntimeSupport(
    * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
+  @SuppressWarnings("unused")
   public CoreHttpShellRuntimeSupport(
       NodeClientCore core, AppHost appHost, AppCatalogManager appCatalogManager) {
+    this(core, appHost, appCatalogManager, null);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @param appVaultService shared app-vault service, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.appCatalogManager = appCatalogManager;
+    this.appVaultService = appVaultService;
   }
 
   @Override
@@ -294,7 +318,17 @@ public record CoreHttpShellRuntimeSupport(
         new LocalProcessAppHost(layout, createInstallVerificationPolicy(trustConfiguration));
     AppCatalogManager appCatalogManager =
         createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
-    return new AppPlatformServices(appHost, appCatalogManager);
+    AppVaultService appVaultService = createAppVaultService(layout);
+    return new AppPlatformServices(appHost, appCatalogManager, appVaultService);
+  }
+
+  private static AppVaultService createAppVaultService(AppHostLayout layout) {
+    try {
+      return AppVaultService.open(layout.dataDir().resolve("apps").resolve("vault"));
+    } catch (IOException _) {
+      LOG.warn("App vault initialization failed; vault Platform API routes will be unavailable.");
+      return null;
+    }
   }
 
   /**
@@ -456,7 +490,8 @@ public record CoreHttpShellRuntimeSupport(
       String publicKeyBase64,
       String publicKeyFile) {}
 
-  private record AppPlatformServices(AppHost appHost, AppCatalogManager appCatalogManager) {}
+  private record AppPlatformServices(
+      AppHost appHost, AppCatalogManager appCatalogManager, AppVaultService appVaultService) {}
 
   /**
    * Creates the shutdown job that stops any AppHost-managed child processes on node exit.

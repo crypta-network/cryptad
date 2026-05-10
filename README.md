@@ -399,6 +399,10 @@ policy defaults to advisory display, with stricter modes available for explicit 
 trusted-positive receipt requirements. See
 [docs/app-update-lifecycle.md](docs/app-update-lifecycle.md) for manual apply, review gates, and
 rollback scope.
+Apps that request local vault access use `vault.secrets.*` and `vault.identities.*` capabilities.
+Those grants distinguish app-owned identities from operator-shared identities and carry separate
+process/browser, lifecycle, audit, and redaction rules; see
+[docs/app-secret-and-identity-vault.md](docs/app-secret-and-identity-vault.md).
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
 inputs.
 
@@ -446,7 +450,10 @@ crypta-app compat verify \
 `crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
 scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available and copy the
 canonical app UI design-system assets into `static/crypta-ui/`. The CLI is local developer
-tooling; it does not add hot reload or a daemon-side install command.
+tooling; it does not add hot reload or a daemon-side install command. Devtools validation and UI
+lint recognize the app-vault capability names so vault-aware apps can disclose
+`vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
+`vault.identities.create`, `vault.identities.use`, and `vault.identities.manage` before signing.
 
 `crypta-app catalog create` descriptors can author optional store metadata such as homepage,
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
@@ -499,6 +506,7 @@ Key docs:
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
 - [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
 - [App permissions and audit](docs/app-permissions-and-audit.md)
+- [App secret and identity vault](docs/app-secret-and-identity-vault.md)
 - [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
 - [Release certification](docs/release-certification.md)
 
@@ -568,7 +576,8 @@ tools/release-certification/run-release-certification.sh \
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`, and
-`app-review.first-party-catalog`, waivers, optional live-node evidence, and redaction rules.
+`app-review.first-party-catalog`, app-vault capability/redaction evidence, waivers, optional
+live-node evidence, and redaction rules.
 
 ## Testing
 

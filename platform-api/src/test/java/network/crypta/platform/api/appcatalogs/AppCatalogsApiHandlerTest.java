@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
@@ -34,6 +35,12 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.appvault.AppIdentityGrant;
+import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityGrantStatus;
+import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
+import network.crypta.platform.appvault.AppVaultService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -441,6 +448,116 @@ class AppCatalogsApiHandlerTest {
     assertEquals(409, exception.statusCode());
     assertEquals("app_review_rejected", exception.errorCode());
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void update_whenCatalogUpdateRemovesVaultUsePermission_expectMatchingGrantInactive()
+      throws Exception {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    AppIdentityGrant grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.ADVISORY),
+            TrustedReviewerKeys::empty,
+            vaultService);
+    AppCatalogEntry entry = richCatalogEntry();
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID))
+        .thenReturn(
+            Optional.of(installedSnapshot("1.1.0", List.of("queue.read", "vault.identities.use"))));
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+        .thenReturn(installedSnapshot("1.2.0", List.of("queue.read", "vault.identities.read")));
+
+    handler.update("core", APP_ID);
+
+    assertEquals(
+        AppIdentityGrantStatus.INACTIVE,
+        vaultService.listGrantsForApp(APP_ID).stream()
+            .filter(candidate -> candidate.grantId().equals(grant.grantId()))
+            .findFirst()
+            .orElseThrow()
+            .status());
+  }
+
+  @Test
+  void update_whenVaultGrantCleanupFailsAfterCatalogUpdate_expectWarning() throws Exception {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    AppIdentityGrant grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    Files.writeString(
+        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        grantId=%s
+        identityId=%s
+        appId=%s
+        scopes=sign.domain-separated
+        status=not-a-status
+        createdAt=%s
+        updatedAt=%s
+        """
+            .formatted(
+                grant.grantId(),
+                grant.identityId(),
+                grant.appId(),
+                grant.createdAt(),
+                grant.updatedAt()));
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            new AppReviewPolicy(AppReviewPolicyMode.ADVISORY),
+            TrustedReviewerKeys::empty,
+            vaultService);
+    AppCatalogEntry entry = richCatalogEntry();
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID))
+        .thenReturn(
+            Optional.of(installedSnapshot("1.1.0", List.of("queue.read", "vault.identities.use"))));
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+        .thenReturn(installedSnapshot("1.2.0", List.of("queue.read", "vault.identities.read")));
+
+    Map<String, Object> summary = handler.update("core", APP_ID);
+
+    assertEquals(
+        List.of("Vault grant cleanup failed and requires operator review."),
+        summary.get("warnings"));
   }
 
   private Map<String, Object> listRichInstalledCatalogApp() throws Exception {

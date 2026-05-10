@@ -48,6 +48,12 @@ class PlatformApiCapabilitiesTest {
             "security.write",
             "updates.read",
             "updates.write",
+            "vault.identities.create",
+            "vault.identities.manage",
+            "vault.identities.read",
+            "vault.identities.use",
+            "vault.secrets.read",
+            "vault.secrets.write",
             "wizard.read",
             "wizard.write"),
         List.copyOf(PlatformApiCapabilityRegistry.knownCapabilities()));
@@ -131,6 +137,19 @@ class PlatformApiCapabilitiesTest {
     assertEquals("missing_capability", decision.reasonCode());
     assertEquals(
         List.of("apps.manage", "catalogs.manage"), decision.action().requiredCapabilities());
+  }
+
+  @Test
+  void authorize_whenBrowserAppRequestsRawSecret_expectDeniedByDefault() {
+    PlatformApiAuthorizationDecision decision =
+        PlatformApiCapabilities.authorize(
+            browserAppRequest(
+                "GET",
+                List.of("app-vault", "secrets", "api-token"),
+                List.of("vault.secrets.read")));
+
+    assertFalse(decision.allowed());
+    assertEquals("unmapped_route", decision.reasonCode());
   }
 
   @Test
@@ -285,6 +304,30 @@ class PlatformApiCapabilitiesTest {
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
         route(
             "GET",
+            List.of("app-vault", "secrets"),
+            "app-vault",
+            "app-vault.secrets.list",
+            "vault.secrets.read"),
+        route(
+            "PUT",
+            List.of("app-vault", "secrets", "api-token"),
+            "app-vault",
+            "app-vault.secrets.write",
+            "vault.secrets.write"),
+        route(
+            "GET",
+            List.of("app-vault", "identities"),
+            "app-vault",
+            "app-vault.identities.list",
+            "vault.identities.read"),
+        route(
+            "POST",
+            List.of("app-vault", "identities", "id-sample", "use"),
+            "app-vault",
+            "app-vault.identities.use",
+            "vault.identities.use"),
+        route(
+            "GET",
             List.of("platform", "contract"),
             "platform",
             "platform.contract.read",
@@ -342,6 +385,7 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("GET", List.of("apps", "alpha", "unknown")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "logs")),
         new UnmappedRouteCase("POST", List.of("apps", "alpha", "updates", "policy")),
+        new UnmappedRouteCase("GET", List.of("identity-vault", "identities")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "refresh")),
         new UnmappedRouteCase(

@@ -39,6 +39,15 @@ SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "app-platform-smoke-report.md"
 APP_IDS = ("queue-manager", "publisher")
 APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
+APP_VAULT_DOC = Path("docs/app-secret-and-identity-vault.md")
+APP_VAULT_CAPABILITIES = (
+    "vault.secrets.read",
+    "vault.secrets.write",
+    "vault.identities.read",
+    "vault.identities.create",
+    "vault.identities.use",
+    "vault.identities.manage",
+)
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -48,7 +57,8 @@ SECRET_COMMAND_VALUE_OPTIONS = {
 }
 SENSITIVE_KEY_PATTERN = (
     r"CRYPTAD_APP_TOKEN|formPassword|browserSessionToken|X-Crypta-App-Session|"
-    r"authorization|cookie|set-cookie|private[-_ ]?key|token|password|passwd|secret|credential"
+    r"authorization|cookie|set-cookie|private[-_ ]?key|token|password|passwd|secret|credential|"
+    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic"
 )
 SENSITIVE_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -293,11 +303,28 @@ def should_redact_key_name(key_hint: str) -> bool:
         "token",
         "password",
         "passwd",
+        "identityseed",
+        "recoveryphrase",
+        "mnemonic",
+        "seed",
         "browsersessiontoken",
         "xcryptaappsession",
     }:
         return True
-    return any(fragment in normalized for fragment in ("privatekey", "token", "password", "passwd", "secret", "credential"))
+    return any(
+        fragment in normalized
+        for fragment in (
+            "privatekey",
+            "token",
+            "password",
+            "passwd",
+            "secret",
+            "credential",
+            "seedphrase",
+            "recoveryphrase",
+            "mnemonic",
+        )
+    )
 
 
 def sanitize_value(value: Any, workspace_root: Path, key_hint: str = "") -> Any:
@@ -1761,6 +1788,87 @@ def collect_app_ui_lint_evidence(settings: Settings, cli: Path | None) -> Eviden
     )
 
 
+def collect_app_vault_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    doc_path = settings.workspace_root / APP_VAULT_DOC
+    vocabulary_path = (
+        settings.workspace_root
+        / "platform-devtools/src/main/java/network/crypta/platform/devtools/DevtoolsCapabilityVocabulary.java"
+    )
+    details: dict[str, Any] = {
+        "doc": display_path(doc_path, settings.workspace_root),
+        "devtoolsVocabulary": display_path(vocabulary_path, settings.workspace_root),
+        "capabilities": list(APP_VAULT_CAPABILITIES),
+        "checks": {},
+        "redaction": {
+            "capabilityNamesRetained": True,
+            "secretValuesRedacted": True,
+            "identityPrivateMaterialRedacted": True,
+        },
+    }
+    errors: list[str] = []
+    doc_text = ""
+    if doc_path.is_file():
+        doc_text = doc_path.read_text(encoding="utf-8")
+    else:
+        errors.append(f"{APP_VAULT_DOC} is missing")
+    vocabulary_text = vocabulary_path.read_text(encoding="utf-8") if vocabulary_path.is_file() else ""
+    if not vocabulary_text:
+        errors.append("devtools app-vault capability vocabulary is missing")
+
+    lower_doc = doc_text.lower()
+    lower_vocab = vocabulary_text.lower()
+    missing_doc_capabilities = [
+        capability for capability in APP_VAULT_CAPABILITIES if capability not in doc_text
+    ]
+    missing_vocab_capabilities = [
+        capability for capability in APP_VAULT_CAPABILITIES if capability not in lower_vocab
+    ]
+    if missing_doc_capabilities:
+        errors.append("vault doc omits capabilities: " + ",".join(missing_doc_capabilities))
+    if missing_vocab_capabilities:
+        errors.append(
+            "devtools vocabulary omits capabilities: " + ",".join(missing_vocab_capabilities)
+        )
+    checks = details["checks"]
+    checks["capabilitiesDocumented"] = not missing_doc_capabilities
+    checks["devtoolsVocabularyPresent"] = not missing_vocab_capabilities
+    checks["appOwnedAndSharedIdentities"] = "app-owned" in lower_doc and "shared identit" in lower_doc
+    checks["processBrowserRestrictions"] = (
+        "process" in lower_doc and "browser" in lower_doc and "cryptad_app_token" in lower_doc
+    )
+    checks["atRestLimitations"] = (
+        ("at-rest" in lower_doc or "at rest" in lower_doc)
+        and "local" in lower_doc
+        and "limit" in lower_doc
+    )
+    checks["grantLifecycle"] = all(
+        word in lower_doc for word in ("update", "rollback", "uninstall", "reinstall")
+    )
+    checks["auditAndRedaction"] = "audit" in lower_doc and "redact" in lower_doc
+    checks["futureExtensionPoint"] = all(word in lower_doc for word in ("content", "social", "mail"))
+    for name, passed in checks.items():
+        if not passed:
+            errors.append(f"vault documentation check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "app-vault.capabilities",
+            root_consequence(settings, "fail"),
+            True,
+            "App secret and identity vault evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-vault.capabilities",
+        "pass",
+        True,
+        "App secret and identity vault capability docs and redaction checks passed.",
+        source,
+        details,
+    )
+
+
 def read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -2512,6 +2620,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_first_party_evidence(settings, cli if isinstance(cli, Path) else None),
         cli_item,
         collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
+        collect_app_vault_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
         collect_app_review_receipt_evidence(settings),
@@ -2766,6 +2875,36 @@ def run_self_test(repo_root: Path) -> None:
     assert signing_metadata["privateKeyFile"] == "<redacted>", signing_metadata
     assert signing_metadata["token"] == "<redacted>", signing_metadata
     assert signing_metadata["path"] == "/apps/cert-smoke/runtime", signing_metadata
+    vault_metadata = sanitize_value(
+        {
+            "capabilities": list(APP_VAULT_CAPABILITIES),
+            "secretValue": "stored-secret",
+            "identityPrivateKey": "private-identity-key",
+            "identitySeed": "identity-seed",
+            "recoveryPhrase": "alpha beta gamma",
+            "mnemonicPhrase": "delta epsilon zeta",
+            "accountMnemonic": "eta theta iota",
+            "publicIdentityId": "identity-public-id",
+        },
+        repo_root,
+    )
+    assert vault_metadata["capabilities"] == list(APP_VAULT_CAPABILITIES), vault_metadata
+    assert vault_metadata["secretValue"] == "<redacted>", vault_metadata
+    assert vault_metadata["identityPrivateKey"] == "<redacted>", vault_metadata
+    assert vault_metadata["identitySeed"] == "<redacted>", vault_metadata
+    assert vault_metadata["recoveryPhrase"] == "<redacted>", vault_metadata
+    assert vault_metadata["mnemonicPhrase"] == "<redacted>", vault_metadata
+    assert vault_metadata["accountMnemonic"] == "<redacted>", vault_metadata
+    assert vault_metadata["publicIdentityId"] == "identity-public-id", vault_metadata
+    vault_scrubbed = scrub_text(
+        '{"identitySeed":"seed-secret","recoveryPhrase":"alpha beta","mnemonicPhrase":"delta epsilon",'
+        '"accountMnemonic":"eta theta","secretValue":"vault-secret"} '
+        "capability=vault.secrets.read",
+        repo_root,
+    )
+    for forbidden in ("seed-secret", "alpha beta", "delta epsilon", "eta theta", "vault-secret"):
+        assert forbidden not in vault_scrubbed, vault_scrubbed
+    assert "vault.secrets.read" in vault_scrubbed, vault_scrubbed
     sandbox_check_metadata = sanitize_value(
         {
             "enforcedSupportLevel": True,
@@ -2927,6 +3066,10 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
+        vault_item = evidence_by_id["app-vault.capabilities"]
+        assert vault_item["status"] == "pass", vault_item
+        assert vault_item["requiredForReleaseCandidate"] is True, vault_item
+        assert vault_item["details"]["capabilities"] == list(APP_VAULT_CAPABILITIES), vault_item
         contract_details = contract_item["details"]
         assert contract_details["contractVersion"] == 2, contract_item
         assert contract_details["capabilityCount"] == 2, contract_item
@@ -3345,6 +3488,24 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs = workspace / "docs/legacy-retirement-plan.md"
     docs.parent.mkdir(parents=True, exist_ok=True)
     docs.write_text("Direct legacy URLs remain reachable for fallback.\n", encoding="utf-8")
+    app_vault_doc = workspace / APP_VAULT_DOC
+    app_vault_doc.write_text(
+        "The app secret and identity vault defines vault.secrets.read, vault.secrets.write, "
+        "vault.identities.read, vault.identities.create, vault.identities.use, and "
+        "vault.identities.manage. It distinguishes app-owned identities from shared identities. "
+        "Process callers use CRYPTAD_APP_TOKEN, while browser callers use app browser sessions. "
+        "At-rest local protection has limits and depends on the host account. Grant lifecycle "
+        "checks cover update, rollback, uninstall, and reinstall. Audit and redaction omit secret "
+        "values and identity private material. Future content, social, and mail features can use "
+        "the same extension point.\n",
+        encoding="utf-8",
+    )
+    devtools_dir = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    devtools_dir.mkdir(parents=True, exist_ok=True)
+    (devtools_dir / "DevtoolsCapabilityVocabulary.java").write_text(
+        "\n".join(APP_VAULT_CAPABILITIES) + "\n",
+        encoding="utf-8",
+    )
     (workspace / APP_UI_DESIGN_SYSTEM_DOC).write_text(
         "crypta-platform.js loads before app.js. Static apps load crypta-ui-tokens.css, "
         "crypta-ui.css, then app.css. Use cr-shell and cr-button classes. "

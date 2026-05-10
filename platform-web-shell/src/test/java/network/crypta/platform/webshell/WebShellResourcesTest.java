@@ -104,6 +104,7 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".app-card-actions {"));
     assertTrue(stylesheet.contains(".app-log-tail {"));
     assertTrue(stylesheet.contains(".permission-list {"));
+    assertTrue(stylesheet.contains(".vault-grant-form {"));
     assertTrue(stylesheet.contains(".app-audit-event.is-denied {"));
     assertTrue(stylesheet.contains(".catalog-app-card {"));
     assertTrue(stylesheet.contains(".catalog-app-card.is-update-available {"));
@@ -319,6 +320,8 @@ class WebShellResourcesTest {
 
     assertTrue(script.contains("appsSnapshot: null"));
     assertTrue(script.contains("appCatalogsSnapshot: null"));
+    assertTrue(script.contains("identityVaultSnapshot: null"));
+    assertTrue(script.contains("const vaultCapabilityPrefix = \"vault.\";"));
     assertTrue(script.contains("let appsLoadGeneration = 0;"));
     assertTrue(script.contains("apps: document.getElementById(\"apps-body\")"));
     assertTrue(script.contains("appsStatus: document.getElementById(\"apps-status\")"));
@@ -392,6 +395,16 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const uninstallForm = runtimeStoppable"));
     assertTrue(script.contains("Runtime log tail"));
     assertTrue(script.contains("Declared permissions"));
+    assertTrue(script.contains("Vault status"));
+    assertTrue(script.contains("function appVaultStatus(app)"));
+    assertTrue(script.contains("function appVaultPermissions(app)"));
+    assertTrue(script.contains("function appVaultDetailsNode(app)"));
+    assertTrue(script.contains("function buildIdentityVaultGrantForm("));
+    assertTrue(script.contains("function buildIdentityVaultRevokeForm(grant)"));
+    assertTrue(script.contains("function identityVaultGrantPath(grantId)"));
+    assertTrue(script.contains("function renderIdentityVault("));
+    assertTrue(script.contains("function renderIdentityVaultCard(identity, grants)"));
+    assertTrue(script.contains("function renderIdentityGrantCard(grant)"));
     assertTrue(script.contains("Recent app audit"));
     assertTrue(script.contains("function appAuditDetailsNode(audit, auditError)"));
     assertTrue(script.contains("app-log-tail"));
@@ -402,6 +415,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function catalogFetchFailed(catalog)"));
     assertTrue(script.contains("function catalogFetchWarningNode(catalog)"));
     assertTrue(script.contains("Catalogs unavailable: ${catalogError}"));
+    assertTrue(script.contains("Identity vault"));
+    assertTrue(script.contains("Vault summary"));
     assertTrue(script.contains("function renderCatalogCard(catalog)"));
     assertTrue(script.contains("function renderCatalogAppCard(catalog, app)"));
     assertTrue(script.contains("async function loadCatalogApps(catalog)"));
@@ -415,6 +430,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("loadJson(apiUrl(\"apps\"))"));
     assertTrue(script.contains("installedSnapshot.apps.map(loadAppRuntimeDetails)"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/identities\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/grants\"))"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
     assertTrue(script.contains("typeof catalog.sourceKind === \"string\" && catalog.sourceKind"));
     assertTrue(script.contains("typeof catalog.sourceType === \"string\" && catalog.sourceType"));
@@ -444,9 +461,13 @@ class WebShellResourcesTest {
     assertTrue(
         script.contains(
             "return `app-catalogs/${encodedCatalogId}/apps/${encodedAppId}/${action}`;"));
+    assertTrue(script.contains("`identity-vault/grants/${encodeURIComponent(grantId)}`"));
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
     assertTrue(script.contains("Catalog actions unavailable in read-only mode."));
+    assertTrue(script.contains("Identity vault actions unavailable in read-only mode."));
+    assertTrue(script.contains("Identity grant created."));
+    assertTrue(script.contains("Identity grant revoked."));
   }
 
   private static void assertAppUpdateLifecycleMarkersPresent(String script) {
@@ -601,7 +622,9 @@ class WebShellResourcesTest {
         script.indexOf("if (loadGeneration !== appsLoadGeneration) {", catalogErrorIndex);
     int renderAppsIndex =
         script.indexOf(
-            "renderApps({ ...installedSnapshot, catalogs, catalogError });", successGuardIndex);
+            "renderApps({ ...installedSnapshot, catalogs, catalogError, identityVault,"
+                + " identityVaultError });",
+            successGuardIndex);
 
     assertTrue(loadAppsIndex >= 0);
     assertTrue(installedAwaitIndex > loadAppsIndex);

@@ -241,7 +241,7 @@ public final class CryptaAppCli implements Runnable {
           PlatformApiContractVerifier.verify(
               validation.manifest().apiCompatibility(),
               validation.manifest().permissions(),
-              PlatformApiContract.current(),
+              DevtoolsCapabilityVocabulary.currentValidationContract(),
               strict);
       printCompatibilityFindings(super.commandLine(), compatibility);
       if (compatibility.hasErrors()) {
@@ -422,7 +422,7 @@ public final class CryptaAppCli implements Runnable {
 
     private static PlatformApiContract loadContract(Path contractFile) throws java.io.IOException {
       if (contractFile == null) {
-        return PlatformApiContract.current();
+        return DevtoolsCapabilityVocabulary.currentValidationContract();
       }
       return PlatformApiContractJson.parse(Files.readString(contractFile, StandardCharsets.UTF_8));
     }

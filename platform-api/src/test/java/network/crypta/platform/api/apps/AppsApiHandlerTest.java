@@ -34,12 +34,20 @@ import network.crypta.platform.apphost.sandbox.AppSandboxSupportLevel;
 import network.crypta.platform.appui.AppUiOrigin;
 import network.crypta.platform.appui.AppUiOriginBinding;
 import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityGrantStatus;
+import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
+import network.crypta.platform.appvault.AppVaultException;
+import network.crypta.platform.appvault.AppVaultService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class AppsApiHandlerTest {
@@ -287,6 +295,66 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void update_whenVaultCleanupFailsAfterReplacement_expectCommittedSummaryWithWarning()
+      throws IOException {
+    InstalledAppSnapshot updatedSnapshot = snapshot(AppUiMode.NONE, null);
+    SingleAppHost appHost = new SingleAppHost(updatedSnapshot);
+    appHost.updateResult = updatedSnapshot;
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    var grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    Files.writeString(
+        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        grantId=%s
+        identityId=%s
+        appId=%s
+        scopes=sign.domain-separated
+        status=not-a-status
+        createdAt=%s
+        updatedAt=%s
+        """
+            .formatted(
+                grant.grantId(),
+                grant.identityId(),
+                grant.appId(),
+                grant.createdAt(),
+                grant.updatedAt()),
+        StandardCharsets.UTF_8);
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+    Path stagedDir = stageApp(tempDir.resolve("staged-vault-cleanup-update"));
+    Map<String, List<String>> updateParameters =
+        Map.of(STAGED_DIR_PARAMETER, List.of(stagedDir.toString()));
+
+    Map<String, Object> summary = handler.update(APP_ID, updateParameters);
+
+    assertEquals(1, appHost.updateCalls);
+    assertEquals(APP_ID, summary.get("appId"));
+    assertEquals(
+        List.of("Vault grant cleanup failed and requires operator review."),
+        summary.get("warnings"));
+    Map<String, Object> vault = (Map<String, Object>) summary.get("vault");
+    assertEquals("unavailable", vault.get("status"));
+    assertEquals("unsupported_grant_status", vault.get("errorCode"));
+  }
+
+  @Test
   void get_whenNoUiAppInstalled_expectUiUrlIsNull() {
     AppsApiHandler handler = new AppsApiHandler(new SingleAppHost(snapshot(AppUiMode.NONE, null)));
 
@@ -439,6 +507,203 @@ class AppsApiHandlerTest {
     assertEquals(true, sandbox.get("active"));
     assertFalse(runtime.toString().contains("secret-token"));
     assertFalse(runtime.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void get_whenVaultHasSecretsAndGrants_expectSummaryShowsOnlyAvailability() throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    vaultService.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+        "operator",
+        "test grant",
+        null,
+        null);
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "raw-secret-value".getBytes(StandardCharsets.UTF_8),
+        Map.of("label", "primary"));
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+
+    Map<String, Object> app = handler.get(APP_ID, false);
+
+    Map<String, Object> vault = (Map<String, Object>) app.get("vault");
+    assertEquals(Map.of("available", true), vault);
+    String summary = app.toString();
+    assertFalse(summary.contains("api-token"));
+    assertFalse(summary.contains("raw-secret-value"));
+    assertFalse(summary.contains(identity.identityId()));
+    assertFalse(summary.contains("secretNames"));
+    assertFalse(summary.contains("recentAudit"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void uninstall_whenVaultMaterialExists_expectPurgesSecretsAndRevokesGrants() throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    vaultService.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+        "operator",
+        "test grant",
+        null,
+        null);
+    AppIdentityRecord appOwnedIdentity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID, AppIdentityKind.LOCAL_ED25519_SIGNING, "App signing key", null);
+    var otherAppGrant =
+        vaultService.grantIdentity(
+            appOwnedIdentity.identityId(),
+            "other.app",
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "shared app-owned identity",
+            null,
+            null);
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "raw-secret-value".getBytes(StandardCharsets.UTF_8),
+        Map.of("label", "primary"));
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+
+    Map<String, Object> app = handler.uninstall(APP_ID, false);
+
+    Map<String, Object> vault = (Map<String, Object>) app.get("vault");
+    assertEquals(false, app.get("installed"));
+    assertEquals(1, appHost.uninstallCalls);
+    assertEquals(Map.of("available", true), vault);
+    assertTrue(vaultService.listSecrets(APP_ID).isEmpty());
+    assertEquals(
+        "secret_not_found",
+        assertThrows(
+                AppVaultException.class, () -> vaultService.readSecretValue(APP_ID, "api-token"))
+            .errorCode());
+    assertTrue(
+        vaultService.listGrantsForApp(APP_ID).stream()
+            .allMatch(grant -> grant.status() == AppIdentityGrantStatus.REVOKED));
+    assertEquals(
+        AppIdentityGrantStatus.REVOKED,
+        vaultService.listGrants().stream()
+            .filter(grant -> grant.grantId().equals(otherAppGrant.grantId()))
+            .findFirst()
+            .orElseThrow()
+            .status());
+    String appOwnedIdentityId = appOwnedIdentity.identityId();
+    assertEquals(
+        "identity_not_found",
+        assertThrows(AppVaultException.class, () -> vaultService.getIdentity(appOwnedIdentityId))
+            .errorCode());
+    assertFalse(vaultService.hasRetainedAppState(APP_ID));
+  }
+
+  @Test
+  void uninstall_whenVaultAccessBlockCannotBeWritten_expectAppHostNotMutated() throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    Path vaultRoot = tempDir.resolve("vault-block-failure");
+    AppVaultService vaultService = AppVaultService.open(vaultRoot);
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "raw-secret-value".getBytes(StandardCharsets.UTF_8),
+        Map.of("label", "primary"));
+    Path accessBlocksRoot = vaultRoot.resolve("app-access-blocks");
+    Files.delete(accessBlocksRoot);
+    Files.writeString(accessBlocksRoot, "not-a-directory", StandardCharsets.UTF_8);
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+
+    AppVaultException exception =
+        assertThrows(AppVaultException.class, () -> handler.uninstall(APP_ID, false));
+
+    assertEquals("vault_storage_failed", exception.errorCode());
+    assertEquals(0, appHost.uninstallCalls);
+    assertTrue(appHost.installed);
+    assertEquals(
+        "raw-secret-value",
+        new String(vaultService.readSecretValue(APP_ID, "api-token"), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void uninstall_whenAppHostFailsAfterVaultBlock_expectVaultAccessRestored() throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.uninstallFailure = new AppHostException("cannot uninstall now");
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "raw-secret-value".getBytes(StandardCharsets.UTF_8),
+        Map.of("label", "primary"));
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.uninstall(APP_ID, false));
+
+    assertEquals("internal_error", exception.errorCode());
+    assertEquals(1, appHost.uninstallCalls);
+    assertTrue(appHost.installed);
+    assertFalse(vaultService.appAccessBlocked(APP_ID));
+    assertEquals(
+        "raw-secret-value",
+        new String(vaultService.readSecretValue(APP_ID, "api-token"), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void uninstall_whenAppAlreadyMissingButVaultStateRetained_expectRetriesVaultCleanup()
+      throws IOException {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    appHost.installed = false;
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "raw-secret-value".getBytes(StandardCharsets.UTF_8),
+        Map.of("label", "primary"));
+    vaultService.disableAppAccess(APP_ID, "app_uninstall_cleanup");
+    AppsApiHandler handler =
+        new AppsApiHandler(
+            appHost, new AppAuditLog(), AppUiOriginRegistry.sameOriginOnly(), vaultService);
+
+    Map<String, Object> app = handler.uninstall(APP_ID, false);
+
+    Map<String, Object> vault = (Map<String, Object>) app.get("vault");
+    assertEquals(false, app.get("installed"));
+    assertEquals(1, appHost.uninstallCalls);
+    assertEquals(Map.of("available", true), vault);
+    assertFalse(vaultService.appAccessBlocked(APP_ID));
+    assertFalse(vaultService.hasRetainedAppState(APP_ID));
+    assertTrue(vaultService.listSecrets(APP_ID).isEmpty());
   }
 
   @Test
@@ -738,6 +1003,7 @@ class AppsApiHandlerTest {
   private static final class SingleAppHost implements AppHost {
     private final InstalledAppSnapshot snapshot;
     private InstalledAppSnapshot updateResult;
+    private boolean installed = true;
     private AppRuntimeStatusSnapshot runtimeStatus;
     private RunningAppSnapshot runningStatus;
     private AppSandboxStatus inactiveSandboxStatus;
@@ -745,7 +1011,9 @@ class AppsApiHandlerTest {
     private IOException describeFailure;
     private IOException runtimeStatusFailure;
     private IOException startFailure;
+    private AppHostException uninstallFailure;
     private int updateCalls;
+    private int uninstallCalls;
     private boolean stopResult;
     private int stopCalls;
 
@@ -772,13 +1040,20 @@ class AppsApiHandlerTest {
     }
 
     @Override
-    public void uninstall(String appId) {
-      throw new UnsupportedOperationException();
+    public void uninstall(String appId) throws IOException {
+      uninstallCalls++;
+      if (uninstallFailure != null) {
+        throw uninstallFailure;
+      }
+      if (!APP_ID.equals(appId) || !installed) {
+        throw new AppHostException("app is not installed: " + appId);
+      }
+      installed = false;
     }
 
     @Override
     public List<InstalledAppSnapshot> listInstalled() {
-      return List.of(snapshot);
+      return installed ? List.of(snapshot) : List.of();
     }
 
     @Override
@@ -786,7 +1061,7 @@ class AppsApiHandlerTest {
       if (describeFailure != null) {
         throw describeFailure;
       }
-      return APP_ID.equals(appId) ? Optional.of(snapshot) : Optional.empty();
+      return APP_ID.equals(appId) && installed ? Optional.of(snapshot) : Optional.empty();
     }
 
     @Override

@@ -21,7 +21,7 @@ class PlatformApiContractVerifierTest {
 
     assertEquals("unknown", summary.get("status"));
     assertEquals(false, summary.get("declared"));
-    assertEquals(2, summary.get("currentVersion"));
+    assertEquals(3, summary.get("currentVersion"));
     assertEquals(List.of(), summary.get("warnings"));
   }
 
@@ -73,7 +73,7 @@ class PlatformApiContractVerifierTest {
   @Test
   void verify_whenStrictRangeAndUnknownCapabilities_expectErrorFindings() {
     AppApiCompatibilityMetadata metadata =
-        new AppApiCompatibilityMetadata(3, 3, List.of("future.optional"), false);
+        new AppApiCompatibilityMetadata(4, 4, List.of("future.optional"), false);
 
     CompatibilityVerificationResult result =
         PlatformApiContractVerifier.verify(

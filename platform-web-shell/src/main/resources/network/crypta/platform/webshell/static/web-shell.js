@@ -16,6 +16,7 @@
     alertsSnapshot: null,
     appCatalogsSnapshot: null,
     appsSnapshot: null,
+    identityVaultSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
     securitySnapshot: null,
@@ -26,6 +27,14 @@
   const isolatedLaunchParameter = "cryptadIsolatedLaunch";
   const isolatedOriginProbePath = "/.well-known/cryptad-origin.json";
   const publisherDefaultCompatibilityMode = "COMPAT_CURRENT";
+  const vaultCapabilityPrefix = "vault.";
+  const vaultGrantScopes = [
+    "metadata.read",
+    "sign.domain-separated",
+    "publish.content",
+    "publish.profile",
+    "use.external-reference",
+  ];
   const queueState = {
     page: "downloads",
     advancedMode: false,
@@ -959,6 +968,12 @@
     return null;
   }
 
+  function identityVaultGrantPath(grantId) {
+    return typeof grantId === "string" && grantId.length > 0
+      ? `identity-vault/grants/${encodeURIComponent(grantId)}`
+      : null;
+  }
+
   function appUiHref(app) {
     const isolatedFallbackHref = isolatedAppUiFallbackHref(app);
     if (isolatedFallbackHref || isolatedAppUiActive(app)) {
@@ -1311,6 +1326,89 @@
     appendReviewAcknowledgement(form, reviewTrust, action);
     form.append(submit);
     return form;
+  }
+
+  function buildIdentityVaultGrantForm(identities, apps) {
+    if (!formPassword || !identities.length || !apps.length) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "vault-grant-form";
+    form.dataset.identityVaultAction = "grant";
+
+    form.append(
+      selectField(
+        "Identity",
+        "identityId",
+        identities.map((identity) => [
+          scalar(identity.identityId),
+          `${scalar(identity.label || identity.identityId)} (${scalar(identity.fingerprint)})`,
+        ]),
+      ),
+      selectField(
+        "App",
+        "appId",
+        apps
+          .filter((app) => app && typeof app.appId === "string" && app.appId)
+          .map((app) => [app.appId, appDisplayName(app)]),
+      ),
+      selectField(
+        "Scope",
+        "scopes",
+        vaultGrantScopes.map((scope) => [scope, scope]),
+      ),
+    );
+
+    const reasonField = document.createElement("label");
+    reasonField.className = "queue-field";
+    reasonField.append(text("span", "", "Reason"));
+    const reasonInput = document.createElement("input");
+    reasonInput.name = "reason";
+    reasonInput.type = "text";
+    reasonInput.autocomplete = "off";
+    reasonInput.placeholder = "operator grant";
+    reasonField.append(reasonInput);
+    form.append(reasonField);
+
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = "Grant";
+    form.append(submit);
+    return form;
+  }
+
+  function buildIdentityVaultRevokeForm(grant) {
+    if (!formPassword || typeof grant.grantId !== "string" || !grant.grantId) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.identityVaultAction = "revoke";
+    form.dataset.grantId = grant.grantId;
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = "Revoke";
+    form.append(submit);
+    return form;
+  }
+
+  function selectField(label, name, options) {
+    const field = document.createElement("label");
+    field.className = "queue-field";
+    field.append(text("span", "", label));
+    const select = document.createElement("select");
+    select.name = name;
+    select.required = true;
+    options.forEach(([value, display]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = display;
+      select.append(option);
+    });
+    field.append(select);
+    return field;
   }
 
   function stringList(value) {
@@ -1884,6 +1982,8 @@
     const quota = appQuotaStatus(app, runtime);
     const updateState = appUpdateState(app);
     const hasUpdateState = appHasUpdateState(updateState);
+    const vault = appVaultStatus(app);
+    const vaultPermissions = appVaultPermissions(app);
 
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -1936,6 +2036,20 @@
         pills.append(createPill("Rollback available", "is-warning"));
       }
     }
+    if (vaultPermissions.length) {
+      pills.append(createPill("Vault permissions", "is-warning"));
+    }
+    if (vault.appOwnedSecrets > 0) {
+      pills.append(createPill(`${vault.appOwnedSecrets} vault secrets`));
+    }
+    if (vault.activeIdentityGrants > 0) {
+      pills.append(createPill(`${vault.activeIdentityGrants} active grants`, "is-success"));
+    } else if (vault.identityGrants > 0) {
+      pills.append(createPill(`${vault.identityGrants} inactive grants`, "is-warning"));
+    }
+    if (vault.retainedAfterUninstall) {
+      pills.append(createPill("Vault retained", "is-warning"));
+    }
     header.append(heading, pills);
     card.append(header);
 
@@ -1969,6 +2083,10 @@
       ["Last exit at", runtime ? formatIsoTimestamp(runtime.lastExitAt) : "Unavailable"],
       ["Restart attempts", runtime ? scalar(runtime.currentRestartAttempt) : "Unavailable"],
       ["Denied app calls", scalar(deniedCount)],
+      ["Vault permissions", formatPermissions(vaultPermissions)],
+      ["App-owned secrets", scalar(vault.appOwnedSecrets || 0)],
+      ["Identity grants", appVaultGrantSummary(vault)],
+      ["Vault retained", vault.retainedAfterUninstall ? "Yes" : "No"],
       ["Process log size", logs && logs.available ? formatBytes(logs.sizeBytes) : formatBytes(runtime && runtime.logSizeBytes)],
       ["Process log limit", quota ? formatBytes(quota.processLogMaxBytes) : "Unavailable"],
       ["Process log tail limit", logs ? formatBytes(logs.maxBytes) : "Unavailable"],
@@ -1998,6 +2116,7 @@
     card.append(definitionList(entries));
     card.append(apiCompatibilityDetailsNode(app));
     card.append(appPermissionsDetailsNode(app));
+    card.append(appVaultDetailsNode(app));
     const updateDetails = appUpdateDetailsNode(app, updateState);
     if (updateDetails) {
       card.append(updateDetails);
@@ -2054,6 +2173,85 @@
     });
     details.append(list);
     return details;
+  }
+
+  function appVaultStatus(app) {
+    return recordValue(app.vault);
+  }
+
+  function appVaultPermissions(app) {
+    return stringList(app.permissions).filter((permission) =>
+      permission.startsWith(vaultCapabilityPrefix),
+    );
+  }
+
+  function appVaultGrantSummary(vault) {
+    const total = typeof vault.identityGrants === "number" ? vault.identityGrants : 0;
+    const active =
+      typeof vault.activeIdentityGrants === "number" ? vault.activeIdentityGrants : 0;
+    return total ? `${active} active / ${total} total` : "None";
+  }
+
+  function appVaultDetailsNode(app) {
+    const vault = appVaultStatus(app);
+    const vaultPermissions = appVaultPermissions(app);
+    const hasVaultStatus =
+      vaultPermissions.length ||
+      vault.appOwnedSecrets ||
+      vault.identityGrants ||
+      vault.retainedAfterUninstall;
+    const details = document.createElement("details");
+    details.className = "json-details app-vault-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Vault status";
+    details.append(summary);
+    if (!hasVaultStatus) {
+      details.append(text("p", "empty-state", "No vault permissions or retained vault material."));
+      return details;
+    }
+    details.append(
+      definitionList([
+        ["Declared vault permissions", formatPermissions(vaultPermissions)],
+        ["App-owned secrets", scalar(vault.appOwnedSecrets || 0)],
+        ["Identity grants", appVaultGrantSummary(vault)],
+        ["Retained after uninstall", vault.retainedAfterUninstall ? "Yes" : "No"],
+      ]),
+    );
+    appendVaultAuditEvents(details, vault.recentAudit);
+    return details;
+  }
+
+  function appendVaultAuditEvents(details, eventsValue) {
+    const events = Array.isArray(eventsValue) ? eventsValue : [];
+    if (!events.length) {
+      details.append(text("p", "empty-state", "No recent vault audit events."));
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "app-audit-list";
+    events.slice(0, 8).forEach((event) => {
+      const safeEvent = recordValue(event);
+      const item = document.createElement("div");
+      item.className = "app-audit-event";
+      const header = document.createElement("div");
+      header.className = "app-audit-event-header";
+      header.append(
+        createPill(normalizedStatus(safeEvent.operation, "Vault event")),
+        text("span", "app-audit-action", scalar(safeEvent.targetId)),
+      );
+      item.append(header);
+      item.append(
+        definitionList([
+          ["Time", formatIsoTimestamp(safeEvent.timestamp)],
+          ["App ID", scalar(safeEvent.appId)],
+          ["Target", scalar(safeEvent.targetType)],
+          ["Outcome", scalar(safeEvent.outcome)],
+          ["Reason", scalar(safeEvent.reasonCode)],
+        ]),
+      );
+      list.append(item);
+    });
+    details.append(list);
   }
 
   function appAuditDetailsNode(audit, auditError) {
@@ -2128,19 +2326,33 @@
   function renderApps(data) {
     shellState.appsSnapshot = data;
     shellState.appCatalogsSnapshot = Array.isArray(data.catalogs) ? data.catalogs : null;
+    shellState.identityVaultSnapshot = recordValue(data.identityVault);
     updateAppsToolbar();
     clear(sections.apps);
 
     const apps = Array.isArray(data.apps) ? data.apps : [];
     const catalogs = Array.isArray(data.catalogs) ? data.catalogs : [];
     const catalogError = typeof data.catalogError === "string" ? data.catalogError : "";
+    const identityVault = recordValue(data.identityVault);
+    const identityVaultError =
+      typeof data.identityVaultError === "string" ? data.identityVaultError : "";
+    const vaultIdentities = Array.isArray(identityVault.identities) ? identityVault.identities : [];
+    const vaultGrants = Array.isArray(identityVault.grants) ? identityVault.grants : [];
     const runningApps = apps.filter((app) => app && typeof app === "object" && app.running).length;
     const summaryEntries = [
       ["Installed apps", `${apps.length}`],
       ["Running apps", `${runningApps}`],
       ["Catalogs", `${catalogs.length}`],
+      ["Vault identities", `${vaultIdentities.length}`],
+      ["Identity grants", `${vaultGrants.length}`],
       ["Scope", formPassword ? "Shell-native" : "Read-only"],
-      ...topLevelFieldEntries(data, ["apps", "catalogs"]),
+      ...topLevelFieldEntries(data, [
+        "apps",
+        "catalogs",
+        "identityVault",
+        "catalogError",
+        "identityVaultError",
+      ]),
     ];
     sections.apps.append(summaryCard("Apps summary", summaryEntries, apps.length ? "" : "is-warning"));
 
@@ -2155,7 +2367,136 @@
       sections.apps.append(text("p", "empty-state", "No installed apps were returned."));
     }
 
+    renderIdentityVault(identityVault, identityVaultError, apps);
     renderCatalogs(catalogs, catalogError);
+  }
+
+  function renderIdentityVault(identityVault, identityVaultError, apps) {
+    sections.apps.append(text("h3", "app-card-title", "Identity vault"));
+    if (identityVaultError) {
+      sections.apps.append(
+        text("p", "error-state", `Identity vault unavailable: ${identityVaultError}`),
+      );
+      return;
+    }
+    const identities = Array.isArray(identityVault.identities) ? identityVault.identities : [];
+    const grants = Array.isArray(identityVault.grants) ? identityVault.grants : [];
+    sections.apps.append(
+      summaryCard(
+        "Vault summary",
+        [
+          ["Identities", `${identities.length}`],
+          ["Grants", `${grants.length}`],
+          ["Active grants", `${grants.filter((grant) => grant.status === "active").length}`],
+        ],
+        identities.length || grants.length ? "" : "is-warning",
+      ),
+    );
+    const grantForm = buildIdentityVaultGrantForm(identities, apps);
+    if (grantForm) {
+      sections.apps.append(grantForm);
+    }
+    if (!identities.length && !grants.length) {
+      sections.apps.append(text("p", "empty-state", "No vault identities or grants were returned."));
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    identities.forEach((identity) => {
+      list.append(renderIdentityVaultCard(identity, grants));
+    });
+    grants
+      .filter((grant) => !identities.some((identity) => identity.identityId === grant.identityId))
+      .forEach((grant) => {
+        list.append(renderIdentityGrantCard(grant));
+      });
+    sections.apps.append(list);
+  }
+
+  function renderIdentityVaultCard(identity, grants) {
+    const card = document.createElement("article");
+    card.className = "app-card";
+    const identityGrants = grants.filter((grant) => grant.identityId === identity.identityId);
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h3", "app-card-title", scalar(identity.label || identity.identityId)),
+      text("p", "app-card-subtitle", scalar(identity.identityId)),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(scalar(identity.kind)));
+    pills.append(createPill(`${identityGrants.length} grants`));
+    if (identity.ownerAppId) {
+      pills.append(createPill("App-owned"));
+    } else {
+      pills.append(createPill("Operator-managed"));
+    }
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Kind", scalar(identity.kind)],
+        ["Owner app", scalar(identity.ownerAppId)],
+        ["Fingerprint", scalar(identity.fingerprint)],
+        ["Public summary", scalar(identity.publicSummary)],
+        ["Usage scopes", formatPermissions(identity.usageScopes)],
+        ["Created", formatIsoTimestamp(identity.createdAt)],
+        ["Updated", formatIsoTimestamp(identity.updatedAt)],
+      ]),
+    );
+    if (identityGrants.length) {
+      const grantsList = document.createElement("div");
+      grantsList.className = "catalog-app-list";
+      identityGrants.forEach((grant) => {
+        grantsList.append(renderIdentityGrantCard(grant));
+      });
+      card.append(grantsList);
+    }
+    return card;
+  }
+
+  function renderIdentityGrantCard(grant) {
+    const card = document.createElement("section");
+    card.className = "catalog-app-card";
+    const status = typeof grant.status === "string" ? grant.status : "";
+    if (status && status !== "active") {
+      card.className += " is-update-available";
+    }
+    const header = document.createElement("div");
+    header.className = "catalog-app-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h4", "catalog-app-title", scalar(grant.appId)),
+      text("p", "app-card-subtitle", scalar(grant.grantId)),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(normalizedStatus(status, "grant"), status === "active" ? "is-success" : "is-warning"));
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Identity", scalar(grant.identityId)],
+        ["App ID", scalar(grant.appId)],
+        ["Scopes", formatPermissions(grant.scopes)],
+        ["Granted by", scalar(grant.grantedBy)],
+        ["Reason", scalar(grant.reason)],
+        ["Expires", formatIsoTimestamp(grant.expiresAt)],
+        ["Review receipt", scalar(grant.sourceReviewReceiptId)],
+      ]),
+    );
+    const revokeForm = buildIdentityVaultRevokeForm(grant);
+    if (revokeForm) {
+      const actions = document.createElement("div");
+      actions.className = "app-card-actions";
+      actions.append(revokeForm);
+      card.append(actions);
+    }
+    return card;
   }
 
   function renderCatalogs(catalogs, catalogError) {
@@ -3495,6 +3836,7 @@
     const loadGeneration = ++appsLoadGeneration;
     shellState.appsSnapshot = null;
     shellState.appCatalogsSnapshot = null;
+    shellState.identityVaultSnapshot = null;
     clear(sections.apps);
     sections.apps.append(text("p", "loading", "Loading installed apps and catalogs..."));
     updateAppsToolbar();
@@ -3530,10 +3872,29 @@
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
 
+    let identityVault = {};
+    let identityVaultError = "";
+    try {
+      const [identitySnapshot, grantSnapshot] = await Promise.all([
+        loadOptionalJson(apiUrl("identity-vault/identities")),
+        loadOptionalJson(apiUrl("identity-vault/grants")),
+      ]);
+      identityVault = {
+        identities:
+          identitySnapshot && Array.isArray(identitySnapshot.identities)
+            ? identitySnapshot.identities
+            : [],
+        grants: grantSnapshot && Array.isArray(grantSnapshot.grants) ? grantSnapshot.grants : [],
+      };
+    } catch (error) {
+      identityVaultError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+
     if (loadGeneration !== appsLoadGeneration) {
       return;
     }
-    renderApps({ ...installedSnapshot, catalogs, catalogError });
+    renderApps({ ...installedSnapshot, catalogs, catalogError, identityVault, identityVaultError });
   }
 
   async function loadAppRuntimeDetails(app) {
@@ -3731,6 +4092,34 @@
         await postForm(path, new FormData(form), "Catalog actions unavailable in read-only mode.");
       }
       setAppsStatus(`Catalog action completed: ${action}.`, "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitIdentityVaultMutation(form, action) {
+    try {
+      if (action === "grant") {
+        await postForm(
+          "identity-vault/grants",
+          new FormData(form),
+          "Identity vault actions unavailable in read-only mode.",
+        );
+        setAppsStatus("Identity grant created.", "is-success");
+      } else if (action === "revoke") {
+        const path = identityVaultGrantPath(form.dataset.grantId || "");
+        if (!path) {
+          setAppsStatus("Identity grant revoke action unavailable.", "is-error");
+          return;
+        }
+        await deleteForm(
+          path,
+          new FormData(form),
+          "Identity vault actions unavailable in read-only mode.",
+        );
+        setAppsStatus("Identity grant revoked.", "is-success");
+      }
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -4354,6 +4743,12 @@
     sections.apps.addEventListener("submit", async (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      const identityVaultAction = form.dataset.identityVaultAction;
+      if (identityVaultAction) {
+        event.preventDefault();
+        await submitIdentityVaultMutation(form, identityVaultAction);
         return;
       }
       const catalogAction = form.dataset.catalogAction;

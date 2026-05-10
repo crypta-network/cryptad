@@ -79,6 +79,7 @@ app-platform.devtools-cli
 app-platform.signed-bundles
 catalog.smoke
 platform-api.contract
+app-vault.capabilities
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
@@ -92,7 +93,7 @@ app-review.policy
 app-review.first-party-catalog
 ```
 
-`platform-api.contract`, `app-ui.design-system`, `app-ui.lint`,
+`platform-api.contract`, `app-vault.capabilities`, `app-ui.design-system`, `app-ui.lint`,
 `app-ui.first-party-adoption`, `apphost.sandbox-provider`, `app-update.lifecycle`,
 `app-update.rollback`, `app-review.trusted-receipts`, and `app-review.policy` use deterministic
 source checks, fixtures, and fake/offline tests; they do not require a live node or host-installed
@@ -118,8 +119,9 @@ release-candidate gate from failing for that item.
 
 The app-platform smoke runner validates first-party staged app manifests, static app UI/SDK
 coherence, canonical design-system asset staging, strict `crypta-app ui lint` JSON summaries, the
-`crypta-app` developer CLI, Platform API contract snapshots and compatibility verification, signed
-bundle evidence when signing inputs are present, signed catalog authoring/verification, AppHost
+`crypta-app` developer CLI, Platform API contract snapshots and compatibility verification,
+app-vault capability documentation and redaction evidence, signed bundle evidence when signing
+inputs are present, signed catalog authoring/verification, AppHost
 sandbox-provider evidence, app-update lifecycle/rollback evidence, independent app-review receipt
 evidence, and the legacy-admin retirement map.
 
@@ -178,6 +180,7 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - browser-session tokens;
 - the host/operator form password;
 - raw request bodies;
+- raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;

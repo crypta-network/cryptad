@@ -84,6 +84,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
+| `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | Queue Manager and Publisher source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
@@ -108,6 +109,14 @@ or operator form password.
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract
 evidence, or strict compatibility verifier failure is a blocker unless a release-manager waiver is
 recorded.
+
+`app-vault.capabilities` is deterministic offline evidence. The app-platform smoke runner checks
+that [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) documents the six vault
+capabilities, app-owned versus shared identities, process/browser restrictions, at-rest local
+limitations, update/rollback/uninstall/reinstall grant behavior, audit/redaction, and the future
+content/social/mail extension point. The runner also checks that devtools recognizes the same
+capability names and that certification redaction keeps capability names while removing vault
+secret values, identity private material, seed phrases, and recovery phrases.
 
 App-review evidence is separate from signed catalog and signed bundle evidence. In
 release-candidate mode, the app-platform smoke runner requires reviewer inputs for first-party
@@ -182,6 +191,7 @@ The report and copied artifacts must not contain:
 - app browser session tokens;
 - the host/operator form password;
 - raw request bodies;
+- raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;

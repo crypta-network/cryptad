@@ -36,6 +36,11 @@ import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.apphost.sandbox.AppSandboxProviders;
+import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.AlertFeedPort;
 import network.crypta.runtime.spi.AlertListSnapshot;
 import network.crypta.runtime.spi.AlertMutationPort;
@@ -322,7 +327,10 @@ class PlatformApiRouterTest {
                 List.of("platform", "contract"), Map.of(), List.of("platform.contract.read")));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"contractVersion\":2"));
+    assertTrue(
+        response
+            .body()
+            .contains("\"contractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION));
   }
 
   @Test
@@ -2247,6 +2255,147 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenUninstallVaultCleanupFailsAfterCommit_expectUpdateStateCleared() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Operator publisher",
+            null,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    var grant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "test grant",
+            null,
+            null);
+    Files.writeString(
+        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        grantId=%s
+        identityId=%s
+        appId=%s
+        scopes=sign.domain-separated
+        status=not-a-status
+        createdAt=%s
+        updatedAt=%s
+        """
+            .formatted(
+                grant.grantId(),
+                grant.identityId(),
+                grant.appId(),
+                grant.createdAt(),
+                grant.updatedAt()));
+    vaultService.putSecret(
+        APP_ID,
+        "api-token",
+        "generic",
+        "retained-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        Map.of());
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            vaultService);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-vault-cleanup-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.empty())
+          .thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+      PlatformApiResponse retainedSecretResponse =
+          updateRouter.route(
+              new PlatformApiRequest(
+                  "GET",
+                  List.of("app-vault", "secrets", "api-token"),
+                  Map.of(),
+                  PlatformApiPrincipal.appToken(APP_ID, List.of("vault.secrets.read"))));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(400, uninstallResponse.statusCode());
+      assertTrue(uninstallResponse.body().contains("unsupported_grant_status"));
+      assertEquals(200, summaryResponse.statusCode());
+      assertEquals(403, retainedSecretResponse.statusCode());
+      assertTrue(retainedSecretResponse.body().contains("app_vault_access_disabled"));
+      assertFalse(retainedSecretResponse.body().contains("retained-secret"));
+      assertFalse(Files.exists(scratchDir));
+      assertTrue(summaryResponse.body().contains("\"status\":\"none\""));
+      assertFalse(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertFalse(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+    }
+  }
+
+  @Test
+  void route_whenUninstallVaultPreBlockFails_expectUpdateStatePreserved() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    Path vaultRoot = tempDir.resolve("vault-preblock-failure");
+    AppVaultService vaultService = AppVaultService.open(vaultRoot);
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            vaultService);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-uninstall-vault-preblock-stage-scratch");
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    try (AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+      when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+      when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+      when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+      PlatformApiResponse stageResponse =
+          updateRouter.route(
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+      Path accessBlocksRoot = vaultRoot.resolve("app-access-blocks");
+      Files.delete(accessBlocksRoot);
+      Files.writeString(accessBlocksRoot, "not-a-directory");
+      PlatformApiResponse uninstallResponse =
+          updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+      PlatformApiResponse summaryResponse =
+          updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+      assertEquals(200, stageResponse.statusCode());
+      assertEquals(500, uninstallResponse.statusCode());
+      assertTrue(uninstallResponse.body().contains("vault_storage_failed"));
+      assertEquals(200, summaryResponse.statusCode());
+      assertTrue(summaryResponse.body().contains("\"status\":\"staged\""));
+      assertTrue(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
+      verify(appHost, never()).uninstall(APP_ID);
+    }
+  }
+
+  @Test
   void route_whenAppUpdateApplyRequestedWhileRunning_expectConflictJson() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
@@ -3599,7 +3748,7 @@ class PlatformApiRouterTest {
       boolean running,
       Long pid,
       Instant startedAt) {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(21);
     summary.put("appId", appId);
     summary.put("name", appName);
     summary.put("version", appVersion);
@@ -3620,11 +3769,12 @@ class PlatformApiRouterTest {
     summary.put("startedAt", startedAt == null ? null : startedAt.toString());
     summary.put("recentDeniedCount", 0L);
     summary.put("audit", emptyAuditSummary(appId));
+    summary.put("vault", Map.of("available", false));
     return summary;
   }
 
   private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(20);
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(21);
     summary.put("appId", APP_ID);
     summary.put("name", null);
     summary.put("version", null);
@@ -3645,6 +3795,7 @@ class PlatformApiRouterTest {
     summary.put("startedAt", null);
     summary.put("recentDeniedCount", 0L);
     summary.put("audit", emptyAuditSummary(APP_ID));
+    summary.put("vault", Map.of("available", false));
     return summary;
   }
 

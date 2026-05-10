@@ -23,6 +23,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("api:"));
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
+    assertTrue(script.contains("vault:"));
     assertTrue(script.contains("dom:"));
     assertTrue(script.contains("sanitizeFragment"));
     assertTrue(script.contains("browserSessionToken"));
@@ -94,6 +95,29 @@ class CryptaPlatformSdkResourceTest {
     assertFalse(script.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(script.contains("localStorage"));
     assertFalse(script.contains("sessionStorage"));
+    assertFalse(script.contains("valueBase64"));
+    assertFalse(script.contains("signatureBase64"));
+    assertFalse(script.contains("privateKey"));
+  }
+
+  @Test
+  void classpathResource_whenVaultRequested_expectMetadataOnlyBrowserHelpers() throws IOException {
+    String script = readSdkScript();
+
+    assertTrue(script.contains("function listVaultIdentities(options)"));
+    assertTrue(script.contains("return apiGet(\"app-vault/identities\", options);"));
+    assertTrue(script.contains("function getVaultIdentity(identityId, options)"));
+    assertTrue(script.contains("function listVaultGrants(options)"));
+    assertTrue(script.contains("return apiGet(\"app-vault/grants\", options);"));
+    assertTrue(script.contains("function requestVaultGrant(request, options)"));
+    assertTrue(script.contains("return apiPostForm(\"app-vault/grants/request\""));
+    assertTrue(script.contains("function normalizeVaultGrantRequest(request)"));
+    assertTrue(script.contains("function normalizeVaultGrantScope(scope)"));
+    assertTrue(script.contains("normalized !== \"sign.domain-separated\""));
+    assertTrue(script.contains("identities: Object.freeze({"));
+    assertTrue(script.contains("grants: Object.freeze({"));
+    assertFalse(script.contains("app-vault/secrets"));
+    assertFalse(script.contains("useIdentity"));
   }
 
   @Test

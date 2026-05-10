@@ -23,6 +23,7 @@ import network.crypta.platform.appui.AppBrowserSessionVerifier;
 import network.crypta.platform.appui.AppUiOriginBinding;
 import network.crypta.platform.appui.AppUiOriginMode;
 import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
@@ -72,15 +73,18 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String ACCESS_CONTROL_ALLOW_HEADERS_HEADER = "Access-Control-Allow-Headers";
   private static final String ACCESS_CONTROL_MAX_AGE_HEADER = "Access-Control-Max-Age";
   private static final String VARY_HEADER = "Vary";
-  private static final String ALLOWED_CORS_METHODS = "GET, POST, DELETE";
+  private static final String ALLOWED_CORS_METHODS = "GET, POST, PUT, PATCH, DELETE";
   private static final String ALLOWED_CORS_HEADERS = "X-Crypta-App-Session, Accept, Content-Type";
   private static final String CORS_VARY_VALUE =
       "Origin, Access-Control-Request-Method, Access-Control-Request-Headers";
   private static final String BEARER_PREFIX = "bearer";
   private static final String DELETE_METHOD = "DELETE";
+  private static final String PATCH_METHOD = "PATCH";
+  private static final String PUT_METHOD = "PUT";
   private static final String ALERTS_SEGMENT = "alerts";
   private static final String APP_CATALOGS_SEGMENT = "app-catalogs";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
+  private static final String IDENTITY_VAULT_SEGMENT = "identity-vault";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
   private static final String PEERS_SEGMENT = "peers";
@@ -187,12 +191,39 @@ public final class PlatformApiToadlet extends Toadlet {
       AppBrowserSessionVerifier appBrowserSessionVerifier,
       AppUiOriginRegistry appUiOriginRegistry) {
     this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        appBrowserSessionVerifier,
+        appUiOriginRegistry,
+        null);
+  }
+
+  /**
+   * Creates a platform API toadlet backed by app services, browser sessions, origins, and vault.
+   *
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
+   * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   * @param appBrowserSessionVerifier verifier shared with the app-owned UI bootstrap route
+   * @param appUiOriginRegistry registry of active isolated app UI origins
+   * @param appVaultService shared app-vault service for vault endpoint families
+   */
+  public PlatformApiToadlet(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppBrowserSessionVerifier appBrowserSessionVerifier,
+      AppUiOriginRegistry appUiOriginRegistry,
+      AppVaultService appVaultService) {
+    this(
         new PlatformApiRouter(
             runtimePorts,
             appHost,
             appCatalogManager,
             LegacyAdminUsageRecorder.defaultRecorder(),
-            appUiOriginRegistry),
+            appUiOriginRegistry,
+            appVaultService),
         appHost,
         appBrowserSessionVerifier,
         appUiOriginRegistry);
@@ -306,7 +337,7 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public void handleMethodPUT(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    writePlatformApiResponse("PUT", uri, request, ctx);
+    writePlatformApiResponse(PUT_METHOD, uri, request, ctx);
   }
 
   /**
@@ -324,7 +355,7 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
-   * Returns a JSON {@code 405} error for unsupported PATCH requests.
+   * Routes PATCH requests through the Platform API router.
    *
    * @param uri request target as seen by the legacy HTTP shell
    * @param request decoded legacy HTTP request wrapper
@@ -334,7 +365,7 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   public void handleMethodPATCH(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    writePlatformApiResponse("PATCH", uri, request, ctx);
+    writePlatformApiResponse(PATCH_METHOD, uri, request, ctx);
   }
 
   /**
@@ -502,7 +533,10 @@ public final class PlatformApiToadlet extends Toadlet {
    * @return {@code true} when the bridge should inspect the request path for a mutating route
    */
   private static boolean requiresFormPasswordEligibleMethod(String method) {
-    return "POST".equals(method) || DELETE_METHOD.equals(method);
+    return "POST".equals(method)
+        || DELETE_METHOD.equals(method)
+        || PATCH_METHOD.equals(method)
+        || PUT_METHOD.equals(method);
   }
 
   /**
@@ -559,8 +593,25 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresConfigFormPassword(method, pathSegments)
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
+        || requiresIdentityVaultFormPassword(method, pathSegments)
         || requiresAlertsFormPassword(method, pathSegments)
         || requiresWizardFormPassword(method, pathSegments);
+  }
+
+  private static boolean requiresIdentityVaultFormPassword(
+      String method, List<String> pathSegments) {
+    if (pathSegments.isEmpty() || !IDENTITY_VAULT_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if ("POST".equals(method)) {
+      return pathSegments.size() == 2
+          && ("identities".equals(pathSegments.get(1)) || "grants".equals(pathSegments.get(1)));
+    }
+    if (PATCH_METHOD.equals(method) || DELETE_METHOD.equals(method)) {
+      return pathSegments.size() == 3
+          && ("identities".equals(pathSegments.get(1)) || "grants".equals(pathSegments.get(1)));
+    }
+    return false;
   }
 
   /**
@@ -1227,6 +1278,8 @@ public final class PlatformApiToadlet extends Toadlet {
     private static boolean allowedCorsMethod(String method) {
       return "GET".equalsIgnoreCase(method)
           || "POST".equalsIgnoreCase(method)
+          || PUT_METHOD.equalsIgnoreCase(method)
+          || PATCH_METHOD.equalsIgnoreCase(method)
           || DELETE_METHOD.equalsIgnoreCase(method);
     }
 

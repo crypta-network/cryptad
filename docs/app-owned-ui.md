@@ -163,6 +163,14 @@ Instead, app-owned bootstrap issues a browser session token for `X-Crypta-App-Se
 API requests with that header become app browser principals and use the same central capability
 matrix as process app tokens.
 
+Vault secret values remain process-only by default. Static browser UI may list granted identity
+metadata and submit token-free grant requests through the browser-safe vault routes, but it should
+not read raw app secrets, private identity material, AppHost launch tokens, or local vault files.
+The browser SDK exposes only metadata/request helpers for `crypta.vault.identities.*` and
+`crypta.vault.grants.*`; process apps use the Platform API directly with their launch token for
+secret read/write and identity-use operations. See
+[app-secret-and-identity-vault.md](app-secret-and-identity-vault.md).
+
 ## First-party app bootstrap
 
 On an isolated app origin, static app UIs fetch bootstrap from their current origin:

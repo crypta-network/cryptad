@@ -1060,12 +1060,37 @@ End
     assertEquals("No Content", replyHeaders.reasonPhrase());
     assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
     assertEquals(
-        "GET, POST, DELETE", replyHeaders.headers().getFirst("Access-Control-Allow-Methods"));
+        "GET, POST, PUT, PATCH, DELETE",
+        replyHeaders.headers().getFirst("Access-Control-Allow-Methods"));
     assertEquals(
         "X-Crypta-App-Session, Accept, Content-Type",
         replyHeaders.headers().getFirst("Access-Control-Allow-Headers"));
     assertEquals("600", replyHeaders.headers().getFirst("Access-Control-Max-Age"));
     verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"PUT", "PATCH"})
+  void handleMethodOPTIONS_whenRegisteredAppOriginPreflightsWriteMethod_expectCors204(String method)
+      throws Exception {
+    AppUiOriginBinding binding = isolatedBinding("alpha", 12345);
+    toadlet =
+        new PlatformApiToadlet(router, appHost, appBrowserSessionVerifier, registryWith(binding));
+    when(request.getHeader("origin")).thenReturn(binding.origin());
+    when(request.getHeader("access-control-request-method")).thenReturn(method);
+    when(request.getHeader("access-control-request-headers"))
+        .thenReturn("X-Crypta-App-Session, Content-Type");
+
+    toadlet.handleMethodOPTIONS(
+        URI.create("http://localhost/api/v1/app-vault/secrets/demo"), request, ctx);
+
+    verifyNoInteractions(router);
+    ReplyHeadersCapture replyHeaders = captureForcedReplyHeaders();
+    assertEquals(204, replyHeaders.statusCode());
+    assertEquals(binding.origin(), replyHeaders.headers().getFirst("Access-Control-Allow-Origin"));
+    assertEquals(
+        "GET, POST, PUT, PATCH, DELETE",
+        replyHeaders.headers().getFirst("Access-Control-Allow-Methods"));
   }
 
   @Test

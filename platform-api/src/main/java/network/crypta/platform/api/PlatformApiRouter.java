@@ -1,8 +1,8 @@
 package network.crypta.platform.api;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import network.crypta.platform.api.alerts.AlertsApiHandler;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
@@ -20,6 +20,7 @@ import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -41,8 +42,21 @@ public final class PlatformApiRouter {
   /** Shared 405 message for routes that only support POST. */
   private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
 
+  /** Shared allow-list label for routes that support both GET and POST. */
+  private static final String METHODS_GET_POST = "GET, POST";
+
+  /** Shared 405 message for routes that support both GET and POST. */
+  private static final String GET_POST_ONLY_MESSAGE =
+      "Platform API v1 supports GET and POST requests only.";
+
   /** HTTP-style method name for DELETE routes. */
   private static final String METHOD_DELETE = "DELETE";
+
+  /** HTTP-style method name for GET routes. */
+  private static final String METHOD_GET = "GET";
+
+  /** HTTP-style method name for POST routes. */
+  private static final String METHOD_POST = "POST";
 
   /** Envelope key for one catalog summary. */
   private static final String CATALOG_ENVELOPE_KEY = "catalog";
@@ -83,6 +97,9 @@ public final class PlatformApiRouter {
   /** Handler for the {@code /diagnostics} endpoint family. */
   private final DiagnosticsApiHandler diagnosticsApiHandler;
 
+  /** AppHost used to confirm app lifecycle state after post-commit cleanup failures. */
+  private final AppHost appHost;
+
   /** Handler for the {@code /apps/...} endpoint family, when AppHost support is available. */
   private final AppsApiHandler appsApiHandler;
 
@@ -91,6 +108,9 @@ public final class PlatformApiRouter {
 
   /** App-update lifecycle coordinator shared by update routes and app uninstall cleanup. */
   private final AppUpdateService appUpdateService;
+
+  /** Router for app-vault and identity-vault endpoint families, when configured. */
+  private final PlatformApiVaultRouter vaultRouter;
 
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
@@ -169,19 +189,41 @@ public final class PlatformApiRouter {
    * @param legacyAdminUsage optional process-local legacy admin usage source
    * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
    */
+  @SuppressWarnings("unused")
   public PlatformApiRouter(
       RuntimePorts runtimePorts,
       AppHost appHost,
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage,
       AppUiOriginRegistry appUiOriginRegistry) {
+    this(runtimePorts, appHost, appCatalogManager, legacyAdminUsage, appUiOriginRegistry, null);
+  }
+
+  /**
+   * Creates a router backed by runtime ports, app services, origin metadata, and the app vault.
+   *
+   * @param runtimePorts detached runtime-port aggregate used to resolve API requests
+   * @param appHost detached AppHost used by app lifecycle and catalog install/update routes
+   * @param appCatalogManager signed catalog manager used by the catalog endpoint family
+   * @param legacyAdminUsage optional process-local legacy admin usage source
+   * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
+   * @param appVaultService optional app-vault service used by vault endpoint families
+   */
+  public PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage,
+      AppUiOriginRegistry appUiOriginRegistry,
+      AppVaultService appVaultService) {
     this(
         runtimePorts,
         appHost,
         appCatalogManager,
         legacyAdminUsage,
         new AppAuditLog(),
-        appUiOriginRegistry);
+        appUiOriginRegistry,
+        appVaultService);
   }
 
   PlatformApiRouter(
@@ -206,9 +248,27 @@ public final class PlatformApiRouter {
       LegacyAdminUsagePort legacyAdminUsage,
       AppAuditLog appAuditLog,
       AppUiOriginRegistry appUiOriginRegistry) {
-    Objects.requireNonNull(runtimePorts, "runtimePorts");
-    this.appAuditLog = Objects.requireNonNull(appAuditLog, "appAuditLog");
-    Objects.requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
+    this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        legacyAdminUsage,
+        appAuditLog,
+        appUiOriginRegistry,
+        null);
+  }
+
+  PlatformApiRouter(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      LegacyAdminUsagePort legacyAdminUsage,
+      AppAuditLog appAuditLog,
+      AppUiOriginRegistry appUiOriginRegistry,
+      AppVaultService appVaultService) {
+    requireNonNull(runtimePorts, "runtimePorts");
+    this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
+    requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
     peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(runtimePorts.config());
@@ -228,18 +288,23 @@ public final class PlatformApiRouter {
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
+    this.appHost = appHost;
     appsApiHandler =
-        appHost == null ? null : new AppsApiHandler(appHost, this.appAuditLog, appUiOriginRegistry);
+        appHost == null
+            ? null
+            : new AppsApiHandler(appHost, this.appAuditLog, appUiOriginRegistry, appVaultService);
     appUpdateService =
         appHost == null || appCatalogManager == null
             ? null
-            : new AppUpdateService(appHost, appCatalogManager);
+            : new AppUpdateService(appHost, appCatalogManager, appVaultService);
     appUpdatesApiHandler =
         appUpdateService == null ? null : new AppUpdatesApiHandler(appUpdateService);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
-            : new AppCatalogsApiHandler(appCatalogManager, appHost, this::currentCryptaVersion);
+            : new AppCatalogsApiHandler(
+                appCatalogManager, appHost, this::currentCryptaVersion, appVaultService);
+    vaultRouter = appVaultService == null ? null : new PlatformApiVaultRouter(appVaultService);
   }
 
   /**
@@ -253,7 +318,7 @@ public final class PlatformApiRouter {
    * @return JSON response for the routed endpoint
    */
   public PlatformApiResponse route(PlatformApiRequest request) {
-    PlatformApiRequest checkedRequest = Objects.requireNonNull(request, "request");
+    PlatformApiRequest checkedRequest = requireNonNull(request, "request");
     PlatformApiAuthorizationDecision authorization =
         PlatformApiCapabilities.authorize(checkedRequest);
     if (!authorization.allowed()) {
@@ -278,17 +343,12 @@ public final class PlatformApiRouter {
           response.statusCode(),
           "route_completed");
       return response;
-    } catch (PlatformApiException e) {
-      PlatformApiResponse response =
-          PlatformApiResponse.error(e.statusCode(), e.errorCode(), e.getMessage());
-      appAuditLog.appendDecision(
-          checkedRequest,
-          authorization,
-          AppAuditDecision.ALLOWED,
-          response.statusCode(),
-          e.errorCode());
-      return response;
     } catch (RuntimeException e) {
+      PlatformApiResponse structuredFailure =
+          structuredFailureResponse(checkedRequest, authorization, e);
+      if (structuredFailure != null) {
+        return structuredFailure;
+      }
       LOG.log(System.Logger.Level.ERROR, "Unexpected Platform API failure", e);
       PlatformApiResponse response =
           PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
@@ -300,6 +360,41 @@ public final class PlatformApiRouter {
           "internal_error");
       return response;
     }
+  }
+
+  private PlatformApiResponse structuredFailureResponse(
+      PlatformApiRequest checkedRequest,
+      PlatformApiAuthorizationDecision authorization,
+      RuntimeException exception) {
+    if (exception instanceof PlatformApiException platformException) {
+      return structuredFailureResponse(
+          checkedRequest,
+          authorization,
+          platformException.statusCode(),
+          platformException.errorCode(),
+          platformException.getMessage());
+    }
+    if (PlatformApiVaultRouter.isVaultException(exception)) {
+      return structuredFailureResponse(
+          checkedRequest,
+          authorization,
+          PlatformApiVaultRouter.statusCode(exception),
+          PlatformApiVaultRouter.errorCode(exception),
+          exception.getMessage());
+    }
+    return null;
+  }
+
+  private PlatformApiResponse structuredFailureResponse(
+      PlatformApiRequest checkedRequest,
+      PlatformApiAuthorizationDecision authorization,
+      int statusCode,
+      String errorCode,
+      String message) {
+    PlatformApiResponse response = PlatformApiResponse.error(statusCode, errorCode, message);
+    appAuditLog.appendDecision(
+        checkedRequest, authorization, AppAuditDecision.ALLOWED, response.statusCode(), errorCode);
+    return response;
   }
 
   /**
@@ -323,6 +418,12 @@ public final class PlatformApiRouter {
     }
     if ("apps".equals(firstSegment)) {
       return routeAppsRequest(segments, request);
+    }
+    if ("app-vault".equals(firstSegment)) {
+      return routeAppVaultRequest(segments, request);
+    }
+    if ("identity-vault".equals(firstSegment)) {
+      return routeIdentityVaultRequest(segments, request);
     }
     if ("queue".equals(firstSegment)) {
       return routeQueueRequest(segments, request);
@@ -364,6 +465,54 @@ public final class PlatformApiRouter {
   private String currentCryptaVersion() {
     var greeting = nodeApiHandler.rawGreeting();
     return greeting == null ? null : Integer.toString(greeting.buildNumber());
+  }
+
+  /**
+   * Routes app-principal requests beneath the {@code /app-vault} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including principal and query parameters
+   * @return JSON response for the selected app-vault endpoint
+   */
+  private PlatformApiResponse routeAppVaultRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (vaultRouter == null) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    return vaultRouter.routeAppVaultRequest(segments, request, requireAppPrincipal(request));
+  }
+
+  /**
+   * Routes host/operator requests beneath the {@code /identity-vault} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including principal and query parameters
+   * @return JSON response for the selected identity-vault endpoint
+   */
+  private PlatformApiResponse routeIdentityVaultRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (vaultRouter == null) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    requireHostOperator(request);
+    return vaultRouter.routeIdentityVaultRequest(segments, request);
+  }
+
+  private static String requireAppPrincipal(PlatformApiRequest request) {
+    if (!request.principal().isApp() || request.principal().appId() == null) {
+      throw new PlatformApiException(
+          403, "app_principal_required", "This Platform API route requires an app principal.");
+    }
+    return request.principal().appId();
+  }
+
+  private static void requireHostOperator(PlatformApiRequest request) {
+    if (request.principal().isApp()) {
+      throw new PlatformApiException(
+          403,
+          "host_operator_required",
+          "This Platform API route requires a host/operator principal.");
+    }
   }
 
   private PlatformApiResponse routeGetOnlyRequest(
@@ -570,7 +719,7 @@ public final class PlatformApiRouter {
     }
 
     return switch (segments.size()) {
-      case 1 -> routeAppsCollection(request.method());
+      case 1 -> routeAppsCollection(request);
       case 2 -> routeAppsResource(segments.get(1), request);
       case 3 -> routeAppsAction(segments.get(1), segments.get(2), request);
       case 4 -> routeAppsNestedAction(segments.get(1), segments.get(2), segments.get(3), request);
@@ -581,14 +730,15 @@ public final class PlatformApiRouter {
   /**
    * Routes the {@code /apps} collection endpoint.
    *
-   * @param method HTTP-style request method
+   * @param request full request metadata, including the caller principal
    * @return JSON response for the app collection
    */
-  private PlatformApiResponse routeAppsCollection(String method) {
-    if (!"GET".equals(method)) {
+  private PlatformApiResponse routeAppsCollection(PlatformApiRequest request) {
+    if (!"GET".equals(request.method())) {
       return methodNotAllowed("GET", GET_ONLY_MESSAGE);
     }
-    return PlatformApiResponse.ok(envelope("apps", appsApiHandler.list()));
+    return PlatformApiResponse.ok(
+        envelope("apps", appsApiHandler.list(includeVaultDetails(request))));
   }
 
   /**
@@ -603,7 +753,7 @@ public final class PlatformApiRouter {
     if ("install".equals(resourceSegment) && !targetsInstalledAppResource(request.method())) {
       return routeAppsInstall(request);
     }
-    return routeInstalledApp(resourceSegment, request.method());
+    return routeInstalledApp(resourceSegment, request);
   }
 
   /**
@@ -617,30 +767,33 @@ public final class PlatformApiRouter {
       return methodNotAllowed("POST", POST_ONLY_MESSAGE);
     }
     return PlatformApiResponse.created(
-        envelope("app", appsApiHandler.install(request.queryParameters())));
+        envelope(
+            "app",
+            appsApiHandler.install(request.queryParameters(), includeVaultDetails(request))));
   }
 
   /**
    * Routes one installed app resource at {@code /apps/{appId}}.
    *
    * @param appId normalized app identifier segment
-   * @param method HTTP-style request method
+   * @param request full request metadata, including the caller principal
    * @return JSON response for the requested app resource
    */
-  private PlatformApiResponse routeInstalledApp(String appId, String method) {
-    if ("GET".equals(method)) {
-      return PlatformApiResponse.ok(envelope("app", appsApiHandler.get(appId)));
+  private PlatformApiResponse routeInstalledApp(String appId, PlatformApiRequest request) {
+    if ("GET".equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope("app", appsApiHandler.get(appId, includeVaultDetails(request))));
     }
-    if (METHOD_DELETE.equals(method)) {
-      return uninstallInstalledApp(appId);
+    if (METHOD_DELETE.equals(request.method())) {
+      return uninstallInstalledApp(appId, includeVaultDetails(request));
     }
     return methodNotAllowed(
         "GET, DELETE", "Platform API v1 supports GET and DELETE requests only.");
   }
 
-  private PlatformApiResponse uninstallInstalledApp(String appId) {
+  private PlatformApiResponse uninstallInstalledApp(String appId, boolean includeVaultDetails) {
     try {
-      Map<String, Object> app = appsApiHandler.uninstall(appId);
+      Map<String, Object> app = appsApiHandler.uninstall(appId, includeVaultDetails);
       clearAppUpdateState(appId);
       return PlatformApiResponse.ok(envelope("app", app));
     } catch (PlatformApiException exception) {
@@ -648,6 +801,25 @@ public final class PlatformApiRouter {
         clearAppUpdateState(appId);
       }
       throw exception;
+    } catch (RuntimeException exception) {
+      if (!PlatformApiVaultRouter.isVaultException(exception)) {
+        throw exception;
+      }
+      if (!appStillInstalled(appId)) {
+        clearAppUpdateState(appId);
+      }
+      throw exception;
+    }
+  }
+
+  private boolean appStillInstalled(String appId) {
+    if (appsApiHandler == null) {
+      return true;
+    }
+    try {
+      return appHost.describe(appId).isPresent();
+    } catch (IOException _) {
+      return true;
     }
   }
 
@@ -655,6 +827,10 @@ public final class PlatformApiRouter {
     if (appUpdateService != null) {
       appUpdateService.clearAppState(appId);
     }
+  }
+
+  private static boolean includeVaultDetails(PlatformApiRequest request) {
+    return !request.principal().isApp();
   }
 
   /**
@@ -723,20 +899,25 @@ public final class PlatformApiRouter {
         if (!"POST".equals(method)) {
           yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
         }
-        yield PlatformApiResponse.ok(envelope("app", appsApiHandler.start(appId)));
+        yield PlatformApiResponse.ok(
+            envelope("app", appsApiHandler.start(appId, includeVaultDetails(request))));
       }
       case "stop" -> {
         if (!"POST".equals(method)) {
           yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
         }
-        yield PlatformApiResponse.ok(envelope("app", appsApiHandler.stop(appId)));
+        yield PlatformApiResponse.ok(
+            envelope("app", appsApiHandler.stop(appId, includeVaultDetails(request))));
       }
       case "update" -> {
         if (!"POST".equals(method)) {
           yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
         }
         yield PlatformApiResponse.ok(
-            envelope("app", appsApiHandler.update(appId, request.queryParameters())));
+            envelope(
+                "app",
+                appsApiHandler.update(
+                    appId, request.queryParameters(), includeVaultDetails(request))));
       }
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
@@ -790,17 +971,17 @@ public final class PlatformApiRouter {
   }
 
   private PlatformApiResponse routeAppUpdatesPolicy(String appId, PlatformApiRequest request) {
-    if ("GET".equals(request.method())) {
+    if (METHOD_GET.equals(request.method())) {
       return PlatformApiResponse.ok(
           envelope(POLICY_ROUTE_SEGMENT, appUpdatesApiHandler.policy(appId)));
     }
-    if ("POST".equals(request.method())) {
+    if (METHOD_POST.equals(request.method())) {
       return PlatformApiResponse.ok(
           envelope(
               POLICY_ROUTE_SEGMENT,
               appUpdatesApiHandler.setPolicy(appId, request.queryParameters())));
     }
-    return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
+    return methodNotAllowed(METHODS_GET_POST, GET_POST_ONLY_MESSAGE);
   }
 
   /**
@@ -1139,6 +1320,13 @@ public final class PlatformApiRouter {
           PlatformApiResponse.ok(peersApiHandler.remove(peerIdentity, request.queryParameters()));
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };
+  }
+
+  private static <T> T requireNonNull(T value, String parameterName) {
+    if (value == null) {
+      throw new NullPointerException(parameterName);
+    }
+    return value;
   }
 
   /**

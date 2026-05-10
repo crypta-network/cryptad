@@ -87,6 +87,14 @@ Contract version 2 adds the installed-app update lifecycle endpoints under
 descriptors keep `sinceContractVersion=1` so tooling can distinguish old and newly introduced
 surface area.
 
+The app secret and identity vault capability names are also part of the app permission vocabulary:
+`vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
+`vault.identities.create`, `vault.identities.use`, and `vault.identities.manage`. They are
+documented in [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md). Developer
+tooling recognizes those names for manifest validation and UI permission disclosure. Runtime route
+authorization still depends on the endpoint descriptors exposed by the node's selected contract
+snapshot.
+
 Catalog-backed update lifecycle mutations preserve the catalog capability boundary for app
 principals. App principals need `apps.manage` plus `catalogs.manage` for update `check`, `stage`,
 and `apply` actions because those routes can refresh signed catalogs, prepare catalog install

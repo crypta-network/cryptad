@@ -498,6 +498,7 @@ public final class SimpleToadletServer
             runtimePorts,
             runtimeSupportRef.appHost(),
             runtimeSupportRef.appCatalogManager(),
+            runtimeSupportRef.appVaultService(),
             runtimeSupportRef.config(),
             bootstrap.browseRoot(),
             bootstrap.browseRouteRegistrar(),

@@ -363,7 +363,8 @@ a {
 }
 
 .queue-create-form,
-.peer-create-form {
+.peer-create-form,
+.vault-grant-form {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(140px, auto) auto;
   gap: 14px;
@@ -416,6 +417,8 @@ a {
 .queue-field input,
 .queue-field textarea,
 .queue-field select,
+.vault-grant-form input,
+.vault-grant-form select,
 .queue-key-text,
 .queue-html input[type="text"],
 .queue-html textarea,

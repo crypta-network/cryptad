@@ -86,6 +86,24 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to read the public compatibility contract. */
   static final String PLATFORM_CONTRACT_READ = "platform.contract.read";
 
+  /** Manifest permission that allows app process principals to read app-owned secret values. */
+  static final String VAULT_SECRETS_READ = "vault.secrets.read";
+
+  /** Manifest permission that allows app process principals to create or replace app secrets. */
+  static final String VAULT_SECRETS_WRITE = "vault.secrets.write";
+
+  /** Manifest permission that allows app principals to read granted identity metadata. */
+  static final String VAULT_IDENTITIES_READ = "vault.identities.read";
+
+  /** Manifest permission that allows app process principals to create app-owned identities. */
+  static final String VAULT_IDENTITIES_CREATE = "vault.identities.create";
+
+  /** Manifest permission that allows app process principals to use granted vault identities. */
+  static final String VAULT_IDENTITIES_USE = "vault.identities.use";
+
+  /** Manifest permission reserved for tightly scoped identity-grant management. */
+  static final String VAULT_IDENTITIES_MANAGE = "vault.identities.manage";
+
   private PlatformApiCapabilities() {}
 
   /**
