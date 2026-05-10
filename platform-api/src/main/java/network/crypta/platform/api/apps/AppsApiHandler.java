@@ -867,7 +867,7 @@ public final class AppsApiHandler {
 
   private void blockVaultForUninstallIfNeeded(String appId, InstalledAppSnapshot installed) {
     if (appVaultService == null) {
-      return;
+      throw vaultUnavailableForUninstall();
     }
     if (installed != null || appVaultService.hasRetainedAppState(appId)) {
       appVaultService.disableAppAccess(appId, "app_uninstall_cleanup");
@@ -1305,5 +1305,12 @@ public final class AppsApiHandler {
    */
   private static PlatformApiException internalError(String message) {
     return new PlatformApiException(500, "internal_error", message);
+  }
+
+  private static PlatformApiException vaultUnavailableForUninstall() {
+    return new PlatformApiException(
+        409,
+        "app_vault_unavailable",
+        "App vault cleanup is unavailable; app uninstall cannot safely proceed.");
   }
 }

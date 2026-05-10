@@ -195,6 +195,21 @@ class PlatformApiRouterTest {
     router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
+  private PlatformApiRouter routerWithVault() throws IOException {
+    return routerWithVault(null);
+  }
+
+  private PlatformApiRouter routerWithVault(AppCatalogManager appCatalogManager)
+      throws IOException {
+    return new PlatformApiRouter(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        null,
+        AppUiOriginRegistry.sameOriginOnly(),
+        AppVaultService.open(tempDir.resolve("router-vault")));
+  }
+
   private void stubQueueInsertCompatibilityModes() {
     when(queueSupportPort.supportedInsertCompatibilityModes())
         .thenReturn(
@@ -2176,7 +2191,7 @@ class PlatformApiRouterTest {
   @Test
   void route_whenAppUpdatesRequested_expectUpdateEnvelopeAndRollbackSummary() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
-    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.rollbackStatus(APP_ID))
@@ -2222,7 +2237,7 @@ class PlatformApiRouterTest {
   @Test
   void route_whenStagedAppUpdateThenAppUninstalled_expectUpdateStateCleared() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
-    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
     Path stagedDir = scratchDir.resolve("bundle");
@@ -2774,11 +2789,10 @@ class PlatformApiRouterTest {
     when(appHost.status(INSTALL_ROUTE_APP_ID)).thenReturn(Optional.empty());
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", INSTALL_ROUTE_APP_ID), Map.of()));
 
     assertEquals(200, response.statusCode());
-    assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", installRouteSummary(false))), response.body());
+    assertUninstallSummary(response.body(), INSTALL_ROUTE_APP_ID);
   }
 
   @Test
@@ -3246,41 +3260,43 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
     assertEquals(200, response.statusCode());
-    assertEquals(
-        PlatformApiJsonWriter.write(Map.of("app", summary(false, false, null, null))),
-        response.body());
+    assertUninstallSummary(response.body(), APP_ID);
   }
 
   @Test
-  void route_whenAppManifestUnreadableDuringUninstall_expectCleanupSummaryJson() throws Exception {
+  void route_whenAppManifestUnreadableDuringUninstallAndVaultUnavailable_expectConflictJson()
+      throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
 
     PlatformApiResponse response =
         router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
-    assertEquals(200, response.statusCode());
-    assertEquals("OK", response.reasonPhrase());
-    assertEquals(PlatformApiJsonWriter.write(Map.of("app", unknownSummary())), response.body());
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_vault_unavailable\",\"message\":\"App vault cleanup is"
+            + " unavailable; app uninstall cannot safely proceed.\"}}",
+        response.body());
   }
 
   @Test
-  void route_whenAppUninstallRacesToMissing_expectNotFoundJson() throws Exception {
+  void route_whenAppUninstallRacesToMissingAfterVaultBlock_expectCleanupSummaryJson()
+      throws Exception {
     InstalledAppSnapshot installed = installedSnapshot();
     when(appHost.describe(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(installed, null));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     doThrow(new AppHostException("app is not installed: alpha")).when(appHost).uninstall(APP_ID);
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
-    assertEquals(404, response.statusCode());
-    assertEquals("Not Found", response.reasonPhrase());
-    assertEquals(
-        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    assertEquals(200, response.statusCode());
+    assertEquals("OK", response.reasonPhrase());
+    assertUninstallSummary(response.body(), APP_ID);
   }
 
   @Test
@@ -3296,7 +3312,7 @@ class PlatformApiRouterTest {
         .uninstall(APP_ID);
 
     PlatformApiResponse response =
-        router.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
+        routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
 
     assertEquals(409, response.statusCode());
     assertEquals("Conflict", response.reasonPhrase());
@@ -3773,30 +3789,13 @@ class PlatformApiRouterTest {
     return summary;
   }
 
-  private static Map<String, Object> unknownSummary() {
-    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(21);
-    summary.put("appId", APP_ID);
-    summary.put("name", null);
-    summary.put("version", null);
-    summary.put("uiMode", "none");
-    summary.put("uiEntry", null);
-    summary.put("uiUrl", null);
-    summary.put("uiOrigin", null);
-    summary.put("uiOriginMode", null);
-    summary.put("uiOriginStatus", null);
-    summary.put("sameOriginFallbackUrl", null);
-    summary.put("permissions", List.of());
-    summary.put("apiCompatibility", undeclaredApiCompatibility(List.of()));
-    summary.put("quota", unknownQuotaSummary());
-    summary.put("sandbox", sandboxSummary());
-    summary.put("installed", false);
-    summary.put("running", false);
-    summary.put("pid", null);
-    summary.put("startedAt", null);
-    summary.put("recentDeniedCount", 0L);
-    summary.put("audit", emptyAuditSummary(APP_ID));
-    summary.put("vault", Map.of("available", false));
-    return summary;
+  private static void assertUninstallSummary(String body, String appId) {
+    assertTrue(body.contains("\"appId\":\"" + appId + "\""));
+    assertTrue(body.contains("\"installed\":false"));
+    assertTrue(body.contains("\"running\":false"));
+    assertTrue(body.contains("\"vault\":{"));
+    assertTrue(body.contains("\"available\":true"));
+    assertFalse(body.contains("secret-token"));
   }
 
   private static Map<String, Object> undeclaredApiCompatibilityForLegacyPermissions() {
@@ -3904,10 +3903,6 @@ class PlatformApiRouterTest {
     quota.put("processLogSizeBytes", null);
     quota.put("warnings", List.of());
     return quota;
-  }
-
-  private static Map<String, Object> unknownQuotaSummary() {
-    return unlimitedQuotaSummary(null, null);
   }
 
   private static String uiMode(String appUiEntry) {

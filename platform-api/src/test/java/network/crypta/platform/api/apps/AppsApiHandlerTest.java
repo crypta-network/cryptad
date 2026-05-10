@@ -651,6 +651,22 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  void uninstall_whenVaultUnavailableAndAppDeclaresVaultPermission_expectAppHostNotMutated() {
+    SingleAppHost appHost =
+        new SingleAppHost(
+            snapshot(AppUiMode.NONE, null, List.of("vault.secrets.read", "vault.secrets.write")));
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.uninstall(APP_ID, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_vault_unavailable", exception.errorCode());
+    assertEquals(0, appHost.uninstallCalls);
+    assertTrue(appHost.installed);
+  }
+
+  @Test
   void uninstall_whenAppHostFailsAfterVaultBlock_expectVaultAccessRestored() throws IOException {
     SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
     appHost.uninstallFailure = new AppHostException("cannot uninstall now");
@@ -851,7 +867,21 @@ class AppsApiHandlerTest {
   }
 
   private InstalledAppSnapshot snapshot(
+      AppUiMode uiMode, String uiEntry, List<String> permissions) {
+    return snapshot(uiMode, uiEntry, permissions, null, null);
+  }
+
+  private InstalledAppSnapshot snapshot(
       AppUiMode uiMode, String uiEntry, Long dataQuotaBytes, Long cacheQuotaBytes) {
+    return snapshot(uiMode, uiEntry, List.of(), dataQuotaBytes, cacheQuotaBytes);
+  }
+
+  private InstalledAppSnapshot snapshot(
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes) {
     AppManifest manifest =
         new AppManifest(
             1,
@@ -861,7 +891,7 @@ class AppsApiHandlerTest {
             "bin/launch.sh",
             uiMode,
             uiEntry,
-            List.of(),
+            permissions,
             dataQuotaBytes,
             cacheQuotaBytes);
     InstalledAppPaths paths =

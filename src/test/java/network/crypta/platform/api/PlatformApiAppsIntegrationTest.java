@@ -30,6 +30,8 @@ import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
+import network.crypta.platform.appui.AppUiOriginRegistry;
+import network.crypta.platform.appvault.AppVaultService;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +58,7 @@ class PlatformApiAppsIntegrationTest {
   private PlatformApiRouter router;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws Exception {
     appHostLayout =
         new AppHostLayout(
             tempDir.resolve("data"), tempDir.resolve("cache"), tempDir.resolve("run"));
@@ -324,14 +326,27 @@ class PlatformApiAppsIntegrationTest {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
   }
 
-  private PlatformApiRouter createRouter(AppHost appHost) {
+  private PlatformApiRouter createRouter(AppHost appHost) throws Exception {
     RuntimePorts runtimePorts = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
-    return new PlatformApiRouter(runtimePorts, appHost);
+    return new PlatformApiRouter(
+        runtimePorts,
+        appHost,
+        null,
+        null,
+        AppUiOriginRegistry.sameOriginOnly(),
+        AppVaultService.open(tempDir.resolve("router-vault")));
   }
 
-  private PlatformApiRouter createRouter(AppHost appHost, AppCatalogManager appCatalogManager) {
+  private PlatformApiRouter createRouter(AppHost appHost, AppCatalogManager appCatalogManager)
+      throws Exception {
     RuntimePorts runtimePorts = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
-    return new PlatformApiRouter(runtimePorts, appHost, appCatalogManager);
+    return new PlatformApiRouter(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        null,
+        AppUiOriginRegistry.sameOriginOnly(),
+        AppVaultService.open(tempDir.resolve("router-vault")));
   }
 
   private AppHost allowUnsignedHost() {
