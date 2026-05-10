@@ -3,6 +3,7 @@ package network.crypta.platform.appvault;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
@@ -260,7 +261,7 @@ public record AppVaultEnvelope(
           decoder.decode(required(values, "aad")),
           decoder.decode(required(values, "ciphertext")),
           Instant.parse(required(values, "createdAt")));
-    } catch (IllegalArgumentException _) {
+    } catch (DateTimeException | IllegalArgumentException _) {
       throw new AppVaultException(400, "invalid_vault_envelope", "Invalid vault envelope.");
     }
   }

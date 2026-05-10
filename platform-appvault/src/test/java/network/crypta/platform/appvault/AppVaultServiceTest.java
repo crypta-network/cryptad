@@ -489,6 +489,23 @@ class AppVaultServiceTest {
   }
 
   @Test
+  void readSecretValue_whenEnvelopeTimestampMalformed_expectSafeFailure() throws IOException {
+    AppVaultService service = service();
+    service.putSecret(APP_ID, SECRET_NAME, SECRET_KIND_GENERIC, bytes(SECRET_VALUE), Map.of());
+    Path envelopePath = paths().secretEnvelopePath(APP_ID, SECRET_NAME);
+    String envelopeJson = Files.readString(envelopePath, StandardCharsets.UTF_8);
+    Files.writeString(
+        envelopePath,
+        envelopeJson.replaceFirst("\"createdAt\":\"[^\"]+\"", "\"createdAt\":\"not-an-instant\""),
+        StandardCharsets.UTF_8);
+
+    assertEquals(
+        "invalid_vault_envelope",
+        assertThrows(AppVaultException.class, () -> service.readSecretValue(APP_ID, SECRET_NAME))
+            .errorCode());
+  }
+
+  @Test
   void useIdentity_whenGrantAllowsSigning_expectDomainSeparatedEd25519Signature()
       throws IOException, GeneralSecurityException {
     AppVaultService service = service();

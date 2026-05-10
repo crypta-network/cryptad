@@ -667,6 +667,21 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void uninstall_whenVaultUnavailableAndAppHasNoVaultPermission_expectAppHostUninstalled() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> app = handler.uninstall(APP_ID, false);
+
+    Map<String, Object> vault = (Map<String, Object>) app.get("vault");
+    assertEquals(false, app.get("installed"));
+    assertEquals(Map.of("available", false), vault);
+    assertEquals(1, appHost.uninstallCalls);
+    assertFalse(appHost.installed);
+  }
+
+  @Test
   void uninstall_whenAppHostFailsAfterVaultBlock_expectVaultAccessRestored() throws IOException {
     SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
     appHost.uninstallFailure = new AppHostException("cannot uninstall now");

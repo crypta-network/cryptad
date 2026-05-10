@@ -88,6 +88,7 @@ public final class AppsApiHandler {
       "Staged app bundle must pass trusted signature verification.";
   private static final String VAULT_GRANT_CLEANUP_WARNING =
       "Vault grant cleanup failed and requires operator review.";
+  private static final String VAULT_PERMISSION_PREFIX = "vault.";
 
   /** Detached AppHost core used for app lifecycle and inventory operations. */
   private final AppHost appHost;
@@ -867,11 +868,19 @@ public final class AppsApiHandler {
 
   private void blockVaultForUninstallIfNeeded(String appId, InstalledAppSnapshot installed) {
     if (appVaultService == null) {
-      throw vaultUnavailableForUninstall();
+      if (installed == null || declaresVaultPermissions(installed)) {
+        throw vaultUnavailableForUninstall();
+      }
+      return;
     }
     if (installed != null || appVaultService.hasRetainedAppState(appId)) {
       appVaultService.disableAppAccess(appId, "app_uninstall_cleanup");
     }
+  }
+
+  private static boolean declaresVaultPermissions(InstalledAppSnapshot installed) {
+    return installed.manifest().permissions().stream()
+        .anyMatch(permission -> permission.startsWith(VAULT_PERMISSION_PREFIX));
   }
 
   private boolean cleanupVaultForMissingApp(String appId) {
