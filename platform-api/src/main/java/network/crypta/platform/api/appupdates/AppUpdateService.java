@@ -353,7 +353,7 @@ public final class AppUpdateService {
 
     InstalledAppSnapshot updated = null;
     HealthFailureState healthFailureState = new HealthFailureState();
-    boolean vaultCleanupFailed = false;
+    boolean vaultCleanupFailed;
     try {
       if (wasRunning) {
         appHost.stop(normalizedAppId);
