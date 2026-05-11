@@ -9,7 +9,12 @@ The generated artifacts are:
 ```text
 build/release-certification/release-certification-summary.json
 build/release-certification/release-certification-report.md
+build/release-certification/history-comparison.json
+build/release-certification/history-comparison.md
 build/release-certification/artifacts/
+build/release-certification/app-platform-smoke/summary.json
+build/release-certification/app-platform-smoke/app-platform-smoke-report.md
+build/release-certification/app-platform-smoke/artifacts/
 ```
 
 The Markdown report is intended for human release review.  The JSON summary is the stable
@@ -52,6 +57,19 @@ tools/release-certification/run-release-certification.sh \
   --mode release-candidate \
   --out-dir build/release-certification
 ```
+
+Compare a release candidate with the previous certified release:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --previous-summary path/to/previous/release-certification-summary.json \
+  --out-dir build/release-certification
+```
+
+Use `--require-history` when the release-candidate run must fail if the previous summary is
+missing or malformed. Without `--require-history`, missing history is skipped in `pr` mode and
+recorded as a warning in `nightly` and `release-candidate` modes.
 
 The wrapper consumes the existing gate outputs when present:
 
@@ -167,6 +185,81 @@ demo. Release evidence must not claim `vault.identities.*` coverage for Site Pub
 app declares the capabilities, shows permission rationale, uses an operator-granted identity
 without exporting private material, and passes the app-vault redaction checks.
 
+## Historical comparison
+
+Historical comparison combines the current evidence list with a previous certified
+`release-certification-summary.json`. The output contract is stable and path-free:
+
+```text
+historyComparison.status
+historyComparison.previous.generatedAt
+historyComparison.previous.gitSha
+historyComparison.previous.releaseVersion
+historyComparison.current.generatedAt
+historyComparison.evidenceDiffs[]
+historyComparison.ecosystemGates[]
+```
+
+Each evidence diff records the evidence id, previous status, current status, classification
+(`regression`, `improvement`, `unchanged`, `new`, or `removed`), release-blocker flag, and reason.
+Required evidence that changes from `pass` to `fail`, `missing`, or `skip` is a
+release-candidate blocker unless a waiver applies. Required evidence that changes from `pass` to
+`warn` remains visible as a warning. New required evidence is not automatically waived; its current
+status determines whether it passes, warns, or blocks. Removed optional evidence is a warning;
+removed required evidence is a blocker.
+
+Local history storage is optional and does not make network calls:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --previous-summary build/release-certification-history/latest-summary.json \
+  --write-history \
+  --history-label 2026.05.0
+```
+
+`--write-history` writes sanitized summaries under `build/release-certification-history/`,
+including `latest-summary.json`, `latest-history-comparison.json`, and
+`releases/<history-label>/`. Only non-failing, promotable runs update those latest and release
+baselines; failed or non-promotable attempts are preserved under `failed/<history-label>/`. These
+generated files are release-manager artifacts; do not commit them by default. If CI cannot
+download a prior artifact safely, restore it manually before running the workflow and pass the
+manual `previous-summary-path` input. The manual workflow also exposes `require-history`,
+`write-history`, `history-label`, and `waiver-file-path` inputs; it does not attempt brittle
+cross-run artifact downloads.
+
+## Ecosystem gates
+
+The certification summary embeds deterministic ecosystem gates so release managers can review
+app-platform regressions without reading every evidence detail. The current gate ids are:
+
+```text
+ecosystem.required-evidence-regressions
+ecosystem.platform-api-compatibility
+ecosystem.first-party-apps
+ecosystem.app-ui-quality
+ecosystem.app-review-trust
+ecosystem.app-update-rollback
+ecosystem.app-vault
+ecosystem.sandbox-provider
+ecosystem.reference-content-apps
+ecosystem.legacy-retirement
+```
+
+The gates are intentionally conservative. Platform API compatibility blocks on contract status
+failure, contract version rollback, or available stable endpoint/capability removals. First-party
+app gates require `queue-manager`, `publisher`, and `site-publisher`, and block when a previously
+certified first-party app disappears without a waiver. App UI gates block failing or missing
+first-party strict lint/design-system evidence and warn when lint warning counts increase. Review
+trust gates block trusted receipt, review-policy, or first-party review catalog regressions. Update
+rollback gates block lifecycle or rollback evidence regressions and warn if rollback scope cannot
+be proven as installed-bundle-only. Vault gates block missing capability/redaction evidence.
+Sandbox gates warn when enforced evidence regresses to best-effort, and block in
+`release-candidate` mode when enforced evidence is required but absent. Reference-content gates
+block if Site Publisher evidence disappears or no longer proves content API helper usage. Legacy
+retirement gates block missing removal-wave evidence or failed retained browse safety evidence and
+warn on removed-route count changes without update-note metadata.
+
 ## Waivers
 
 Use waivers sparingly and only with a concrete release-manager reason:
@@ -179,9 +272,42 @@ tools/release-certification/run-release-certification.sh \
 
 A waiver turns that evidence item into `warn`, records `details.waived=true`, and includes the
 reason in `details.waiverReason`.  Waivers are visible in both the report and the JSON summary.
+For schema-version 1 summaries, the top-level `waivers` field remains the CLI waiver map; full
+CLI and structured waiver records are emitted under `waiverRecords`.
 
 Do not use waivers to hide failed required smoke evidence.  Fix the failing gate or record a
 release-manager decision that explicitly accepts the risk.
+
+Structured waiver files are also supported:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --waiver-file docs/release-waivers/2026.05.0.json
+```
+
+```json
+{
+  "version": 1,
+  "release": "2026.05.0",
+  "waivers": [
+    {
+      "id": "ecosystem.sandbox-provider.best-effort-only",
+      "evidenceId": "ecosystem.sandbox-provider",
+      "status": "approved",
+      "approvedBy": "release-manager",
+      "reason": "Bubblewrap evidence is not required for this developer preview release.",
+      "expiresAt": "2026-06-30T00:00:00Z",
+      "allowReleaseCandidate": true
+    }
+  ]
+}
+```
+
+Structured waivers are merged with CLI `--waive` records and remain visible in the report,
+summary, and history comparison. Active waivers downgrade matching evidence or ecosystem gate
+blockers to `warn`; they do not erase the gate. Expired or malformed waivers do not apply.
+Malformed waiver files fail `release-candidate` mode and warn in `pr` or `nightly` mode.
 
 ## Optional live-node evidence
 
@@ -205,6 +331,8 @@ tokens.
 The report and copied artifacts must not contain:
 
 - private signing keys;
+- private reviewer keys;
+- raw trusted reviewer public key bytes;
 - app process tokens;
 - app browser session tokens;
 - the host/operator form password;

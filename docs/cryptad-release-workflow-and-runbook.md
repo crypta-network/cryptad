@@ -57,9 +57,15 @@ Treat these as release blockers, in order:
      --out-dir build/release-certification
    ```
    Preserve `build/release-certification/release-certification-summary.json`,
-   `build/release-certification/release-certification-report.md`, and the sanitized
-   `build/release-certification/artifacts/` directory as release-candidate evidence. The workflow
-   is documented in [release-certification.md](release-certification.md).
+   `build/release-certification/release-certification-report.md`,
+   `build/release-certification/history-comparison.json`,
+   `build/release-certification/history-comparison.md`, and the sanitized
+   `build/release-certification/artifacts/` directory as release-candidate evidence. Restore the
+   previous release's sanitized summary and add
+   `--previous-summary build/release-certification-history/latest-summary.json` when it is
+   available. If the previous summary is not available, record that limitation in the release log;
+   use `--require-history` for promotion runs where historical regression context is mandatory.
+   The workflow is documented in [release-certification.md](release-certification.md).
 3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
 5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
@@ -246,14 +252,20 @@ Treat these as release blockers, in order:
     --mode release-candidate \
     --out-dir build/release-certification
   ```
+  Add `--previous-summary build/release-certification-history/latest-summary.json` after restoring
+  the previous release's sanitized summary locally or in CI.
   Inspect `build/release-certification/release-certification-report.md` and
-  `build/release-certification/release-certification-summary.json`. Missing required evidence,
-  failed required evidence, missing signed bundle/catalog/review evidence, missing app UI
-  design-system/lint evidence, or missing `apphost.sandbox-provider` evidence blocks
-  release-candidate promotion unless a release manager records an explicit waiver. Do not attach
-  `artifacts/private-insert-uris.json`, private signing keys, private reviewer keys, form
-  passwords, app tokens, browser session tokens, raw request bodies, raw trusted reviewer public key
-  bytes, or unsanitized local paths to the release record.
+  `build/release-certification/release-certification-summary.json`,
+  `build/release-certification/history-comparison.md`, and
+  `build/release-certification/history-comparison.json`. Missing required evidence, failed
+  required evidence, missing signed bundle/catalog/review evidence, missing app UI
+  design-system/lint evidence, missing `apphost.sandbox-provider` evidence, required evidence
+  regressions, or failing ecosystem gates block release-candidate promotion unless a release
+  manager records an explicit waiver. Do not attach `artifacts/private-insert-uris.json`, private
+  signing keys, private reviewer keys, form passwords, app tokens, browser session tokens, raw
+  request bodies, raw trusted reviewer public key bytes, or unsanitized local paths to the release
+  record. CI uploads contain sanitized certification artifacts only; preserve raw local or CI gate
+  failure directories separately when deeper diagnostics are needed.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.
