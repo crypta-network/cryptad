@@ -89,13 +89,24 @@ Release-candidate mode requires these evidence ids:
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | Queue Manager and Publisher source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
-| `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and direct fallback URLs remain documented. |
+| `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
+| `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
 | `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
 | `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
 | `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence signs, verifies, and embeds an independent review receipt with configured reviewer inputs, without private reviewer key material in the report. |
+
+`legacy-admin.removal-wave-1` is deterministic offline evidence. It proves that `/downloads/`,
+`/uploads/`, `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
+`/connectivity/` are removed by default when their replacements are reachable, that `GET` and
+`HEAD` return replacement responses in that state, that mutating methods are blocked before legacy
+handlers execute in that state, that unavailable replacements fall back to legacy rendering with
+fallback diagnostics, that FProxy browse remains retained, and that diagnostics expose aggregate
+counters without query strings, form data, file paths, peer refs, Freenet/Crypta URIs, tokens,
+request bodies, or remote addresses. Optional live-node checks may record status codes for the
+same routes, but normal PR and release-candidate certification do not require a live node.
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require

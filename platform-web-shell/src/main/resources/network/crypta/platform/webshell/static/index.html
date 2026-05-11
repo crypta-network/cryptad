@@ -24,7 +24,7 @@
           <a class="button button-secondary" href="#publisher">Publisher</a>
           <a class="button button-secondary" href="/api/v1/alerts">Alerts JSON</a>
           <a class="button button-secondary" href="/api/v1/diagnostics">Diagnostics JSON</a>
-          <a class="button button-secondary" href="/">Legacy root</a>
+          <a class="button button-secondary" href="/">FProxy browse root</a>
         </div>
       </header>
 
@@ -134,8 +134,9 @@
             <h2>Threat levels</h2>
           </div>
           <p class="panel-description">
-            Review and adjust the node threat levels from the shell. Legacy warning-heavy and
-            password-management flows remain available through the legacy page when needed.
+            Review and adjust the node threat levels from the shell. Warning-heavy and
+            password-management flows that still need legacy support remain outside the first
+            removal wave.
           </p>
           <div class="queue-status" id="security-status" aria-live="polite"></div>
           <p class="panel-description" hidden id="security-readonly-hint">
@@ -599,7 +600,8 @@
         </div>
         <p class="panel-description">
           Detached queue snapshots come from Platform API v1. Supported queue actions stay in the
-          shell and unsupported legacy-only controls can still fall back to the historical pages.
+          shell and first-party Queue Manager; removed legacy queue pages now return replacement
+          responses by default.
         </p>
         <div class="queue-toolbar">
           <div class="toggle-group" aria-label="Queue page">
@@ -651,7 +653,7 @@
       <section class="panel panel-wide" id="legacy-panel">
         <div class="panel-header">
           <p class="panel-kicker">Legacy tools</p>
-          <h2>Fallback and retained legacy pages</h2>
+          <h2>Retained and pending legacy tools</h2>
         </div>
         <p class="panel-description">
           Retained browse-adjacent tools and pending migration gaps stay reachable here. Replaced

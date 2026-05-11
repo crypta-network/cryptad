@@ -20,11 +20,10 @@ import static network.crypta.runtime.updater.UpdaterPaths.CORE_UPDATE_PATH;
  * longest known prefix, which keeps configurable config and queue subpaths attributed to their
  * parent surface without storing request parameters.
  *
- * <p>The list is intentionally static for PR-200. It gives notices, Web Shell fallback links, and
- * usage diagnostics one shared source of truth while legacy pages continue to exist. Callers should
- * treat the returned entries as policy metadata, not route registrations. The actual toadlet
- * registration still lives in the legacy HTTP container, and app/UI replacements remain owned by
- * their platform modules.
+ * <p>The list gives notices, Web Shell fallback links, removal decisions, and usage diagnostics one
+ * shared source of truth. Callers should treat the returned entries as policy metadata, not route
+ * registrations. The actual toadlet registration still lives in the legacy HTTP container, and
+ * app/UI replacements remain owned by their platform modules.
  *
  * <p>The registry is immutable after class initialization and is safe to read from request-handling
  * threads. Any future change to a route's state should update this registry, the retirement-plan
@@ -52,6 +51,14 @@ public final class LegacyAdminRetirementRegistry {
   private static final String SEND_N2NTM_PATH = localPath("send_n2ntm");
   private static final String CHAT_PATH = localPath("chat");
   private static final String HELP_PATH = localPath("help");
+  private static final int NO_REMOVAL_WAVE = 0;
+  private static final int REMOVAL_WAVE_1 = 1;
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_1 = "phase-6-pr-8";
+  private static final String FALLBACK_POLICY_NONE = "none";
+  private static final String FALLBACK_POLICY_RENDER_LEGACY = "render-legacy";
+  private static final String FALLBACK_POLICY_RETAINED = "retained";
+  private static final String FALLBACK_POLICY_PENDING = "pending";
+  private static final String FALLBACK_POLICY_INFRASTRUCTURE = "infrastructure";
 
   private static final List<LegacyAdminSurface> SURFACES =
       List.of(
@@ -82,56 +89,56 @@ public final class LegacyAdminRetirementRegistry {
               SHELL_ALERTS_URL,
               "Web Shell alerts",
               "Web Shell lists and dismisses alerts through Platform API v1."),
-          replaced(
+          wave1Redirect(
               "queue-downloads",
               "Download queue",
               QueueToadlet.PATH_DOWNLOADS,
               QUEUE_MANAGER_URL,
               "Queue Manager app",
               "Queue Manager and the Web Shell queue panel are the primary transfer views."),
-          replaced(
+          wave1Redirect(
               "queue-uploads",
               "Upload queue",
               QueueToadlet.PATH_UPLOADS,
               QUEUE_MANAGER_URL,
               "Queue Manager app",
               "Queue Manager and Publisher cover upload-queue monitoring and insert creation."),
-          replaced(
+          wave1Redirect(
               "file-insert",
               "File insert wizard",
               FileInsertWizardToadlet.PATH,
               PUBLISHER_URL,
               "Publisher app",
               "Publisher is the primary first-party UI for local file and directory inserts."),
-          replaced(
+          wave1Redirect(
               "local-file-insert",
               "Local upload file browser",
               LocalFileInsertToadlet.INSERT_BROWSE_PATH,
               PUBLISHER_URL,
               "Publisher app",
-              "The route remains for legacy upload forms and operator fallback."),
-          replaced(
+              "Publisher owns the primary local insert flow; helper subpaths remain untouched."),
+          wave1Redirect(
               "friends",
               "Friends",
               LegacyHttpPaths.FRIENDS_PATH,
               SHELL_PEERS_URL,
               WEB_SHELL_PEER_CONTROL_LABEL,
               "Web Shell peer control covers darknet peer roster and mutations."),
-          replaced(
+          wave1Redirect(
               "add-friend",
               "Add friend",
               DarknetAddRefToadlet.PATH,
               SHELL_PEERS_URL,
               WEB_SHELL_PEER_CONTROL_LABEL,
               "Web Shell peer add handles the primary noderef import flow."),
-          replaced(
+          wave1Redirect(
               "strangers",
               "Strangers",
               "/strangers/",
               SHELL_PEERS_URL,
               WEB_SHELL_PEER_CONTROL_LABEL,
               "Opennet peer visibility belongs with the shell peer control plane."),
-          replaced(
+          wave1Redirect(
               "connectivity",
               "Connectivity",
               ConnectivityToadlet.CONNECTIVITY_PATH,
@@ -252,8 +259,8 @@ public final class LegacyAdminRetirementRegistry {
    *
    * <p>The diagnostics list excludes infrastructure bridges and helpers such as static assets,
    * Platform API, Web Shell, and app UI mounts. It does include replaced, retained, and pending
-   * user-facing surfaces so later retirement PRs can see which fallback pages are still used after
-   * process start.
+   * user-facing surfaces so later retirement PRs can see which legacy renders, replacement
+   * responses, and blocked mutations are still observed after process start.
    *
    * @return immutable list of surfaces that should appear in diagnostics output
    */
@@ -275,10 +282,24 @@ public final class LegacyAdminRetirementRegistry {
   }
 
   /**
+   * Returns the surfaces removed by default in a specific execution wave.
+   *
+   * <p>Removal waves are an execution policy and must not be inferred from retirement state alone.
+   * This method is primarily used by tests and release-certification evidence so future waves can
+   * prove the active route set without duplicating path lists outside the registry.
+   *
+   * @param removalWave removal wave number to select
+   * @return immutable list of surfaces whose current removal metadata belongs to the wave
+   */
+  public static List<LegacyAdminSurface> removalWaveSurfaces(int removalWave) {
+    return SURFACES.stream().filter(surface -> surface.removalWave() == removalWave).toList();
+  }
+
+  /**
    * Indicates whether a legacy route should still be promoted in the legacy navigation menus.
    *
-   * <p>Primary-replaced routes remain registered as direct fallback and debug URLs, but normal
-   * navigation should lead operators to the Web Shell or first-party app replacement. Unknown
+   * <p>Primary-replaced routes are not promoted as normal navigation targets. Some still render as
+   * later-wave legacy fallback pages, while wave-1 routes return replacement responses. Unknown
    * routes are treated as visible because they are outside this retirement map and may belong to
    * retained browse-owned surfaces.
    *
@@ -376,6 +397,33 @@ public final class LegacyAdminRetirementRegistry {
         replacementUrl,
         replacementLabel,
         notes,
+        LegacyAdminRemovalMode.RENDER_LEGACY,
+        NO_REMOVAL_WAVE,
+        null,
+        FALLBACK_POLICY_RENDER_LEGACY,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface wave1Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        REMOVAL_WAVE_1,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_1,
+        FALLBACK_POLICY_NONE,
         true,
         false);
   }
@@ -402,6 +450,10 @@ public final class LegacyAdminRetirementRegistry {
         replacementUrl,
         replacementLabel,
         notes,
+        LegacyAdminRemovalMode.PENDING,
+        NO_REMOVAL_WAVE,
+        null,
+        FALLBACK_POLICY_PENDING,
         true,
         includeInWebShellFallbackLinks);
   }
@@ -409,7 +461,19 @@ public final class LegacyAdminRetirementRegistry {
   private static LegacyAdminSurface retained(
       String id, String title, String legacyPath, String notes) {
     return new LegacyAdminSurface(
-        id, title, legacyPath, LegacyAdminRetirementState.RETAINED, null, null, notes, true, true);
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.RETAINED,
+        null,
+        null,
+        notes,
+        LegacyAdminRemovalMode.RETAINED,
+        NO_REMOVAL_WAVE,
+        null,
+        FALLBACK_POLICY_RETAINED,
+        true,
+        true);
   }
 
   private static LegacyAdminSurface infrastructure(
@@ -422,6 +486,10 @@ public final class LegacyAdminRetirementRegistry {
         null,
         null,
         notes,
+        LegacyAdminRemovalMode.INFRASTRUCTURE,
+        NO_REMOVAL_WAVE,
+        null,
+        FALLBACK_POLICY_INFRASTRUCTURE,
         false,
         false);
   }

@@ -38,6 +38,16 @@ DEFAULT_OUT_DIR = Path("build/release-certification/app-platform-smoke")
 SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "app-platform-smoke-report.md"
 APP_IDS = ("queue-manager", "publisher")
+LEGACY_REMOVAL_WAVE_ONE_IDS = (
+    "queue-downloads",
+    "queue-uploads",
+    "file-insert",
+    "local-file-insert",
+    "friends",
+    "add-friend",
+    "strangers",
+    "connectivity",
+)
 APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
 APP_VAULT_DOC = Path("docs/app-secret-and-identity-vault.md")
 APP_VAULT_CAPABILITIES = (
@@ -1942,7 +1952,7 @@ def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
     end = text.index("private static final Map", start)
     block = text[start:end]
     return {
-        "PRIMARY_REPLACED": len(re.findall(r"\n\s+replaced\(", block)),
+        "PRIMARY_REPLACED": len(re.findall(r"\n\s+(?:replaced|wave1Redirect)\(", block)),
         "PENDING": len(re.findall(r"\n\s+pendingWizard\(", block)) + len(re.findall(r"\n\s+pending\(", block)),
         "RETAINED": len(re.findall(r"\n\s+retained\(", block)),
         "INFRASTRUCTURE": len(re.findall(r"\n\s+infrastructure\(", block)),
@@ -1976,12 +1986,8 @@ def legacy_fallback_link_checks(text: str) -> dict[str, bool]:
     fallback_body = java_method_body(text, "webShellFallbackSurfaces")
     replaced_body = java_method_body(text, "replaced")
     navigation_body = java_method_body(text, "shouldPromoteInLegacyNavigation")
-    replaced_marks_no_fallback = bool(
-        re.search(
-            r"LegacyAdminRetirementState\.PRIMARY_REPLACED\b.*?,\s*true\s*,\s*false\s*\)\s*;",
-            replaced_body,
-            re.DOTALL,
-        )
+    replaced_marks_no_fallback = "FALLBACK_POLICY_RENDER_LEGACY" in replaced_body and bool(
+        re.search(r",\s*true\s*,\s*false\s*\)\s*;", replaced_body, re.DOTALL)
     )
     fallback_filters_include_flag = bool(
         re.search(r"\.filter\s*\(\s*LegacyAdminSurface::includeInWebShellFallbackLinks\s*\)", fallback_body)
@@ -2031,18 +2037,117 @@ def collect_legacy_evidence(settings: Settings) -> EvidenceItem:
             "primaryReplacedAbsentFromPrimaryNavigation"
         ]
         docs_text = re.sub(r"\s+", " ", docs.read_text(encoding="utf-8")) if docs.is_file() else ""
-        details["fallbackDirectUrlsRemainDocumented"] = "Direct legacy URLs remain reachable" in docs_text
+        details["retainedPendingRoutesDocumented"] = (
+            "retained and pending legacy routes remain reachable" in docs_text.lower()
+        )
         if counts["PRIMARY_REPLACED"] < 1:
             errors.append("No PRIMARY_REPLACED surfaces were found")
         if not details["primaryReplacedAbsentFromFallbackLinks"]:
             errors.append("PRIMARY_REPLACED surfaces may still appear in Web Shell fallback links")
         if not details["primaryReplacedAbsentFromPrimaryNavigation"]:
             errors.append("PRIMARY_REPLACED surfaces may still appear in primary legacy navigation")
-        if not details["fallbackDirectUrlsRemainDocumented"]:
-            errors.append("Legacy fallback/direct URL behavior is not documented")
+        if not details["retainedPendingRoutesDocumented"]:
+            errors.append("Retained/pending legacy route behavior is not documented")
     if errors:
         return EvidenceItem("legacy.retirement", "fail", True, "Legacy-admin retirement evidence is incomplete.", source, {"errors": errors, **details})
     return EvidenceItem("legacy.retirement", "pass", True, "Legacy-admin retirement map is visible and stable.", source, details)
+
+
+def legacy_removal_wave_one_ids(registry_text: str) -> list[str]:
+    return re.findall(r"\n\s+wave1Redirect\(\s*\"([^\"]+)\"", registry_text)
+
+
+def collect_legacy_removal_wave_one_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "response": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminReplacementResponse.java",
+        "recorder": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminUsageRecorder.java",
+        "usageDto": root / "runtime-spi/src/main/java/network/crypta/runtime/spi/LegacyAdminSurfaceUsage.java",
+        "diagnostics": root / "platform-api/src/main/java/network/crypta/platform/api/diagnostics/DiagnosticsApiHandler.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    wave_ids = legacy_removal_wave_one_ids(text["registry"])
+    checks = {
+        "waveOneIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "redirectModeDeclared": "LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT" in text["registry"],
+        "canonicalOnlyPolicy": "matchesCanonicalPageOrSlashlessAlias" in text["policy"],
+        "safeReadRedirects": "GET" in text["policy"] and "HEAD" in text["policy"] and "redirect(" in text["policy"],
+        "mutatingRequestsBlocked": "BLOCKED_MUTATING_REQUEST" in text["policy"] or "blockedMutation" in text["policy"],
+        "replacementAvailabilityGate": "replacementAvailable" in text["policy"]
+        and "isStaticAppUiAvailable" in text["policy"]
+        and "primaryUiRoot" in text["policy"],
+        "replacementResponsesRecorded": "REPLACEMENT_RESPONSE" in text["recorder"] or "REPLACEMENT_RESPONSE" in text["policy"],
+        "diagnosticsCarriesReplacementCounter": "replacementResponseCount" in text["diagnostics"] and "replacementResponseCount" in text["usageDto"],
+        "diagnosticsCarriesBlockedCounter": "blockedMutatingRequestCount" in text["diagnostics"] and "blockedMutatingRequestCount" in text["usageDto"],
+        "diagnosticsCarriesFallbackCounter": "fallbackRenderCount" in text["diagnostics"] and "fallbackRenderCount" in text["usageDto"],
+        "docsDescribeWave": "legacy-admin.removal-wave-1" in text["docs"],
+        "docsDescribeAvailabilityFallback": "replacement is reachable" in text["docs"]
+        or "replacement is unavailable" in text["docs"],
+        "docsRetainBrowse": "FProxy browse remains retained" in text["docs"],
+        "liveNodeNotRequired": True,
+    }
+    redaction = {
+        "queryStringsExcluded": True,
+        "requestBodiesExcluded": True,
+        "formPasswordsExcluded": True,
+        "remoteAddressesExcluded": True,
+        "tokensExcluded": True,
+        "privateUrisExcluded": True,
+        "localPathsExcluded": True,
+    }
+    details = {
+        "removedByDefaultRouteIds": wave_ids,
+        "expectedRouteIds": list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "replacementUrls": {
+            "queue-downloads": "/apps/queue-manager/",
+            "queue-uploads": "/apps/queue-manager/",
+            "file-insert": "/apps/publisher/",
+            "local-file-insert": "/apps/publisher/",
+            "friends": "/app/node/#peers",
+            "add-friend": "/app/node/#peers",
+            "strangers": "/app/node/#peers",
+            "connectivity": "/app/node/#connectivity",
+        },
+        "statusBehavior": {
+            "safeRead": "303 See Other when replacement is available; legacy fallback when unavailable",
+            "mutating": "410 Gone when replacement is available; legacy fallback when unavailable",
+        },
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.removal-wave-1",
+            "fail",
+            True,
+            "Legacy-admin removal wave 1 evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.removal-wave-1",
+        "pass",
+        True,
+        "Legacy-admin removal wave 1 replacement behavior is documented and observable.",
+        source,
+        details,
+    )
 
 
 def collect_sandbox_provider_evidence(settings: Settings) -> EvidenceItem:
@@ -2466,6 +2571,17 @@ def diagnostics_body_summary(body: Any) -> dict[str, Any]:
                 if isinstance(surface, dict) and isinstance(surface.get("count"), int)
             ]
             summary["legacyAdminTotalCount"] = sum(counts)
+            for output_key, field_name in (
+                ("legacyAdminReplacementResponseTotal", "replacementResponseCount"),
+                ("legacyAdminBlockedMutatingRequestTotal", "blockedMutatingRequestCount"),
+                ("legacyAdminFallbackRenderTotal", "fallbackRenderCount"),
+                ("legacyAdminRetainedOrPendingRenderTotal", "retainedOrPendingRenderCount"),
+            ):
+                summary[output_key] = sum(
+                    surface.get(field_name)
+                    for surface in surfaces
+                    if isinstance(surface, dict) and isinstance(surface.get(field_name), int)
+                )
     if not summary:
         summary["diagnosticsBodyReceived"] = True
     return summary
@@ -2631,6 +2747,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_ui_first_party_adoption_evidence(settings),
         collect_app_ui_evidence(settings),
         collect_legacy_evidence(settings),
+        collect_legacy_removal_wave_one_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_rollback_evidence(settings),
@@ -2699,7 +2816,7 @@ def run_self_test(repo_root: Path) -> None:
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
-        "PRIMARY_REPLACED": 2,
+        "PRIMARY_REPLACED": 9,
         "PENDING": 2,
         "RETAINED": 1,
         "INFRASTRUCTURE": 1,
@@ -3064,6 +3181,8 @@ def run_self_test(repo_root: Path) -> None:
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
         vault_item = evidence_by_id["app-vault.capabilities"]
@@ -3385,8 +3504,26 @@ def run_self_test(repo_root: Path) -> None:
                     ],
                     "legacyAdmin": {
                         "surfaces": [
-                            {"id": "queue", "path": "/queue/", "state": "PRIMARY_REPLACED", "count": 3},
-                            {"id": "stats", "path": "/stats/", "state": "PENDING", "count": 2},
+                            {
+                                "id": "queue",
+                                "path": "/queue/",
+                                "state": "PRIMARY_REPLACED",
+                                "count": 3,
+                                "replacementResponseCount": 2,
+                                "blockedMutatingRequestCount": 1,
+                                "fallbackRenderCount": 0,
+                                "retainedOrPendingRenderCount": 0,
+                            },
+                            {
+                                "id": "stats",
+                                "path": "/stats/",
+                                "state": "PENDING",
+                                "count": 2,
+                                "replacementResponseCount": 0,
+                                "blockedMutatingRequestCount": 0,
+                                "fallbackRenderCount": 0,
+                                "retainedOrPendingRenderCount": 2,
+                            },
                         ]
                     },
                 }
@@ -3405,6 +3542,10 @@ def run_self_test(repo_root: Path) -> None:
             "sectionCount": 2,
             "legacyAdminSurfaceCount": 2,
             "legacyAdminTotalCount": 5,
+            "legacyAdminReplacementResponseTotal": 2,
+            "legacyAdminBlockedMutatingRequestTotal": 1,
+            "legacyAdminFallbackRenderTotal": 0,
+            "legacyAdminRetainedOrPendingRenderTotal": 2,
         }, diagnostics_step
         assert "body" not in diagnostics_step, diagnostics_step
         live_success_encoded = json.dumps(live_success_item.to_json(), sort_keys=True)
@@ -3487,7 +3628,43 @@ def make_self_test_workspace(workspace: Path) -> None:
     registry.write_text((Path(__file__).parent / "fixtures" / "self-test-legacy-registry.java-fragment").read_text(encoding="utf-8"), encoding="utf-8")
     docs = workspace / "docs/legacy-retirement-plan.md"
     docs.parent.mkdir(parents=True, exist_ok=True)
-    docs.write_text("Direct legacy URLs remain reachable for fallback.\n", encoding="utf-8")
+    docs.write_text(
+        "legacy-admin.removal-wave-1 documents that removed routes return replacement responses "
+        "when the replacement is reachable and render legacy fallback when the replacement is unavailable. "
+        "FProxy browse remains retained, and retained and pending legacy routes remain reachable.\n",
+        encoding="utf-8",
+    )
+    legacy_admin_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
+    (legacy_admin_dir / "LegacyAdminRemovalPolicy.java").write_text(
+        'class LegacyAdminRemovalPolicy { boolean matchesCanonicalPageOrSlashlessAlias; '
+        'boolean replacementAvailable; boolean isStaticAppUiAvailable; boolean primaryUiRoot; '
+        'String m = "GET HEAD"; Object d = LegacyAdminRemovalDecision.redirect(null); '
+        'Object b = LegacyAdminRemovalDecision.blockedMutation(null); }\n',
+        encoding="utf-8",
+    )
+    (legacy_admin_dir / "LegacyAdminReplacementResponse.java").write_text(
+        'class LegacyAdminReplacementResponse { String link = "replacementUrl"; }\n',
+        encoding="utf-8",
+    )
+    (legacy_admin_dir / "LegacyAdminUsageRecorder.java").write_text(
+        "class LegacyAdminUsageRecorder { Object a = LegacyAdminUsageEvent.REPLACEMENT_RESPONSE; }\n",
+        encoding="utf-8",
+    )
+    usage_dto = workspace / "runtime-spi/src/main/java/network/crypta/runtime/spi/LegacyAdminSurfaceUsage.java"
+    usage_dto.parent.mkdir(parents=True, exist_ok=True)
+    usage_dto.write_text(
+        "record LegacyAdminSurfaceUsage(long replacementResponseCount, "
+        "long blockedMutatingRequestCount, long fallbackRenderCount, "
+        "long retainedOrPendingRenderCount) {}\n",
+        encoding="utf-8",
+    )
+    diagnostics_handler = workspace / "platform-api/src/main/java/network/crypta/platform/api/diagnostics/DiagnosticsApiHandler.java"
+    diagnostics_handler.parent.mkdir(parents=True, exist_ok=True)
+    diagnostics_handler.write_text(
+        "class DiagnosticsApiHandler { String a = \"replacementResponseCount "
+        "blockedMutatingRequestCount fallbackRenderCount retainedOrPendingRenderCount\"; }\n",
+        encoding="utf-8",
+    )
     app_vault_doc = workspace / APP_VAULT_DOC
     app_vault_doc.write_text(
         "The app secret and identity vault defines vault.secrets.read, vault.secrets.write, "

@@ -217,6 +217,29 @@
     },
     {
       "details": {
+        "removedByDefaultRouteIds": [
+          "queue-downloads",
+          "queue-uploads",
+          "file-insert",
+          "local-file-insert",
+          "friends",
+          "add-friend",
+          "strangers",
+          "connectivity"
+        ],
+        "statusBehavior": {
+          "mutating": "410 Gone when replacement is available; legacy fallback when unavailable",
+          "safeRead": "303 See Other when replacement is available; legacy fallback when unavailable"
+        }
+      },
+      "id": "legacy-admin.removal-wave-1",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin removal wave 1 replacement behavior is documented and observable."
+    },
+    {
+      "details": {
         "fixtureBacked": true,
         "hostBubblewrapProbe": {
           "enabled": false

@@ -582,6 +582,7 @@ def app_platform_evidence(
         "app-ui.first-party-adoption",
         "app-ui.smoke",
         "legacy.retirement",
+        "legacy-admin.removal-wave-1",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.rollback",
@@ -892,6 +893,7 @@ def render_report(summary: dict[str, Any]) -> str:
         append_detail(lines, summary, evidence_id)
     lines.extend(["", "## Legacy Admin Retirement", ""])
     append_detail(lines, summary, "legacy.retirement")
+    append_detail(lines, summary, "legacy-admin.removal-wave-1")
     lines.extend(
         [
             "",
@@ -1071,6 +1073,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-vault.capabilities"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-vault.capabilities"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [

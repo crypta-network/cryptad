@@ -4,6 +4,7 @@ import java.io.File;
 import java.net.InetAddress;
 import java.net.URI;
 import network.crypta.clients.http.PageMaker.THEME;
+import network.crypta.fs.readiness.LauncherReadinessInfo;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BucketFactory;
 
@@ -240,6 +241,36 @@ public interface ToadletContainer {
    * @return {@code true} when JavaScript support is allowed in FProxy pages
    */
   boolean isFProxyJavascriptEnabled();
+
+  /**
+   * Returns the primary browser route currently advertised by this container.
+   *
+   * <p>The default reports the historical legacy root for small test containers and embedders that
+   * do not host Web Shell. Full server implementations should override this with the same route
+   * used by launcher readiness so request policy does not redirect users to a shell entry point
+   * that is unavailable in the current configuration.
+   *
+   * @return primary browser-facing UI route
+   */
+  default String primaryUiRoot() {
+    return LauncherReadinessInfo.DEFAULT_UI_ROOT;
+  }
+
+  /**
+   * Reports whether an installed app exposes a static browser UI that can receive replacement
+   * redirects.
+   *
+   * <p>The default is conservative so lightweight test containers and embeddings without AppHost
+   * keep rendering legacy fallbacks instead of producing dead replacement links. Implementations
+   * with AppHost access should check the installed app manifest and return {@code true} only when
+   * the requested app id has a static UI.
+   *
+   * @param appId stable installed-app identifier
+   * @return {@code true} when the app has a reachable static UI
+   */
+  default boolean isStaticAppUiAvailable(String appId) {
+    return false;
+  }
 
   /**
    * Determine whether FProxy server push or WebSocket-style features are enabled.

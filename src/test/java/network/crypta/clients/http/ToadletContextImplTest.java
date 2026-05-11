@@ -17,7 +17,9 @@ import java.util.Locale;
 import java.util.Map;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.platform.api.PlatformApiPaths;
+import network.crypta.platform.webshell.routes.WebShellPaths;
 import network.crypta.runtime.alerts.UserAlertSurface;
+import network.crypta.runtime.spi.LegacyAdminSurfaceUsage;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.BucketFactory;
@@ -42,6 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ToadletContextImplTest {
   private static final String QUEUE_DOWNLOADS_SURFACE_ID = "queue-downloads";
+  private static final String FRIENDS_SURFACE_ID = "friends";
+  private static final String QUEUE_MANAGER_APP_ID = "queue-manager";
+  private static final String CONFIG_SURFACE_ID = "config";
   private static final String WRONG_FORM_PASSWORD_BODY = "formPassword=wrong&confirm=true";
 
   @Mock private BucketFactory bucketFactory;
@@ -137,16 +142,23 @@ class ToadletContextImplTest {
 
   @Test
   void isMethodAllowedInRestrictedMode_whenDeleteTargetsNonPlatformRoute_returnsFalse() {
-    URI uri = URI.create("http://localhost/downloads/");
+    URI uri = URI.create("http://localhost/chat/");
 
     assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
   }
 
   @Test
   void isMethodAllowedInRestrictedMode_whenPutTargetsNonPlatformRoute_returnsFalse() {
-    URI uri = URI.create("http://localhost/downloads/");
+    URI uri = URI.create("http://localhost/chat/");
 
     assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("PUT", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenMutatingMethodTargetsRemovedRoute_returnsTrue() {
+    URI uri = URI.create("http://localhost/downloads/");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
   }
 
   @Test
@@ -212,12 +224,14 @@ class ToadletContextImplTest {
   @Test
   void handle_whenLegacyGetAccepted_recordsLegacyAdminUsage() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
-      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
-      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+      configureDispatch(new DispatchTestToadlet(LegacyHttpPaths.CONFIG_PATH, 200));
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.CONFIG_PATH), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(1L, queueDownloadsUsageCount());
+      LegacyAdminSurfaceUsage usage = usage(CONFIG_SURFACE_ID);
+      assertEquals(1L, usage.count());
+      assertEquals(1L, usage.fallbackRenderCount());
     }
   }
 
@@ -225,12 +239,12 @@ class ToadletContextImplTest {
   void handle_whenSlashlessLegacyRequestGetsCanonicalRedirect_recordsLegacyAdminUsage()
       throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
-      configurePermanentRedirect(URI.create(QueueToadlet.PATH_DOWNLOADS));
-      Socket socket = new FakeSocket(rawSlashlessDownloadsGetRequest(), outputStream);
+      configurePermanentRedirect(URI.create(LegacyHttpPaths.CONFIG_PATH));
+      Socket socket = new FakeSocket(rawGetRequest("/config"), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(1L, queueDownloadsUsageCount());
+      assertEquals(1L, usage(CONFIG_SURFACE_ID).count());
       assertEquals(
           "301",
           parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
@@ -242,11 +256,11 @@ class ToadletContextImplTest {
       throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
       configurePermanentRedirect(URI.create(FirstTimeWizardToadlet.TOADLET_URL));
-      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.CONFIG_PATH), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(0L, queueDownloadsUsageCount());
+      assertEquals(0L, usage(CONFIG_SURFACE_ID).count());
       assertEquals(
           "301",
           parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
@@ -256,39 +270,219 @@ class ToadletContextImplTest {
   @Test
   void handle_whenLegacyRequestRedirectsToHelper_recordsOriginalLegacySurface() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
-      URI helperUri = URI.create(LocalDirectoryToadlet.basePath() + QueueToadlet.PATH_DOWNLOADS);
+      URI helperUri = URI.create(LocalDirectoryToadlet.basePath() + LegacyHttpPaths.CONFIG_PATH);
       configureRedirectDispatch(
-          new RedirectingToadlet(QueueToadlet.PATH_DOWNLOADS, helperUri),
+          new RedirectingToadlet(LegacyHttpPaths.CONFIG_PATH, helperUri),
           new DispatchTestToadlet(LocalDirectoryToadlet.basePath(), 200));
-      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.CONFIG_PATH), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(1L, queueDownloadsUsageCount());
+      assertEquals(1L, usage(CONFIG_SURFACE_ID).count());
     }
   }
 
   @Test
   void handle_whenPostFormPasswordDenied_doesNotRecordLegacyAdminUsage() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new DispatchTestToadlet(LegacyHttpPaths.CONFIG_PATH, 200));
+      Socket socket = new FakeSocket(rawDeniedConfigPostRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(0L, usage(CONFIG_SURFACE_ID).count());
+    }
+  }
+
+  @Test
+  void handle_whenRemovedLegacyGetRequested_redirectsToReplacementAndRecordsEvent()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureQueueManagerReplacementAvailable();
+      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      LegacyAdminSurfaceUsage usage = usage(QUEUE_DOWNLOADS_SURFACE_ID);
+      assertEquals("303", headers.get("__status").getFirst());
+      assertEquals("/apps/queue-manager/", headers.get("location").getFirst());
+      assertEquals(0L, usage.count());
+      assertEquals(1L, usage.replacementResponseCount());
+      assertEquals(0L, usage.blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenWizardGateRedirectsRemovedLegacyGet_honorsWizardRedirect() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(FirstTimeWizardToadlet.TOADLET_URL));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      assertEquals("301", headers.get("__status").getFirst());
+      assertEquals(FirstTimeWizardToadlet.TOADLET_URL, headers.get("location").getFirst());
+      assertEquals(0L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+      assertEquals(0L, usage(QUEUE_DOWNLOADS_SURFACE_ID).blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenWizardGateRedirectsRemovedLegacyPost_honorsWizardRedirect() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configurePermanentRedirect(URI.create(FirstTimeWizardToadlet.TOADLET_URL));
+      Socket socket = new FakeSocket(rawDeniedDownloadsPostRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      assertEquals("301", headers.get("__status").getFirst());
+      assertEquals(FirstTimeWizardToadlet.TOADLET_URL, headers.get("location").getFirst());
+      assertEquals(0L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+      assertEquals(0L, usage(QUEUE_DOWNLOADS_SURFACE_ID).blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenRemovedLegacySlashlessCanonicalRedirect_redirectsToReplacement()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureQueueManagerReplacementAvailable();
+      configurePermanentRedirect(URI.create(QueueToadlet.PATH_DOWNLOADS));
+      Socket socket = new FakeSocket(rawGetRequest("/downloads"), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      assertEquals("303", headers.get("__status").getFirst());
+      assertEquals("/apps/queue-manager/", headers.get("location").getFirst());
+      assertEquals(1L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
+  void handle_whenRemovedLegacyPostRequested_blocksMutationAndRecordsEvent() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureQueueManagerReplacementAvailable();
       configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
       Socket socket = new FakeSocket(rawDeniedDownloadsPostRequest(), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(0L, queueDownloadsUsageCount());
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      LegacyAdminSurfaceUsage usage = usage(QUEUE_DOWNLOADS_SURFACE_ID);
+      assertEquals("410", headers.get("__status").getFirst());
+      assertEquals(0L, usage.count());
+      assertEquals(0L, usage.replacementResponseCount());
+      assertEquals(1L, usage.blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenRemovedLegacyHeadRequested_redirectsWithoutBody() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureQueueManagerReplacementAvailable();
+      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
+      Socket socket = new FakeSocket(rawDownloadsHeadRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      String rawResponse = outputStream.toString(StandardCharsets.UTF_8);
+      Map<String, List<String>> headers = parseHeaders(rawResponse);
+      assertEquals("303", headers.get("__status").getFirst());
+      assertEquals("/apps/queue-manager/", headers.get("location").getFirst());
+      assertFalse(rawResponse.contains("Legacy page replaced"));
+      assertEquals(1L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
+  void handle_whenStaticAppReplacementUnavailable_rendersLegacyFallback() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureQueueManagerReplacementUnavailable();
+      configureDispatch(new DispatchTestToadlet(QueueToadlet.PATH_DOWNLOADS, 200));
+      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      LegacyAdminSurfaceUsage usage = usage(QUEUE_DOWNLOADS_SURFACE_ID);
+      assertEquals("200", headers.get("__status").getFirst());
+      assertEquals(1L, usage.count());
+      assertEquals(1L, usage.fallbackRenderCount());
+      assertEquals(0L, usage.replacementResponseCount());
+      assertEquals(0L, usage.blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenWebShellReplacementUnavailable_rendersLegacyFallback() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureWebShellReplacementUnavailable();
+      configureDispatch(new DispatchTestToadlet(LegacyHttpPaths.FRIENDS_PATH, 200));
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.FRIENDS_PATH), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      LegacyAdminSurfaceUsage usage = usage(FRIENDS_SURFACE_ID);
+      assertEquals("200", headers.get("__status").getFirst());
+      assertEquals(1L, usage.count());
+      assertEquals(1L, usage.fallbackRenderCount());
+      assertEquals(0L, usage.replacementResponseCount());
+      assertEquals(0L, usage.blockedMutatingRequestCount());
+    }
+  }
+
+  @Test
+  void handle_whenBrowseRootRequested_doesNotApplyRemovalPolicy() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new DispatchTestToadlet("/", 200));
+      Socket socket = new FakeSocket(rawGetRequest("/"), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(
+          "200",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
+      assertEquals(0L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
+  void handle_whenPendingWizardRequested_doesNotApplyRemovalPolicy() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureDispatch(new DispatchTestToadlet(FirstTimeWizardToadlet.TOADLET_URL, 200));
+      Socket socket =
+          new FakeSocket(rawGetRequest(FirstTimeWizardToadlet.TOADLET_URL), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      assertEquals(
+          "200",
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8)).get("__status").getFirst());
     }
   }
 
   @Test
   void handle_whenFullAccessDenied_doesNotRecordLegacyAdminUsage() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
-      configureDispatch(new FullAccessCheckingToadlet(QueueToadlet.PATH_DOWNLOADS));
-      Socket socket = new FakeSocket(rawDownloadsGetRequest(), outputStream);
+      configureDispatch(new FullAccessCheckingToadlet(LegacyHttpPaths.CONFIG_PATH));
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.CONFIG_PATH), outputStream);
 
       ToadletContextImpl.handle(socket, newRequestServices());
 
-      assertEquals(0L, queueDownloadsUsageCount());
+      assertEquals(0L, usage(CONFIG_SURFACE_ID).count());
     }
   }
 
@@ -460,6 +654,32 @@ class ToadletContextImplTest {
     return new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
   }
 
+  private void configureQueueManagerReplacementAvailable() {
+    org.mockito.Mockito.when(
+            container.isAllowedFullAccess(org.mockito.ArgumentMatchers.any(InetAddress.class)))
+        .thenReturn(true);
+    org.mockito.Mockito.when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    org.mockito.Mockito.when(container.isStaticAppUiAvailable(QUEUE_MANAGER_APP_ID))
+        .thenReturn(true);
+  }
+
+  private void configureQueueManagerReplacementUnavailable() {
+    org.mockito.Mockito.when(
+            container.isAllowedFullAccess(org.mockito.ArgumentMatchers.any(InetAddress.class)))
+        .thenReturn(true);
+    org.mockito.Mockito.when(container.isFProxyJavascriptEnabled()).thenReturn(true);
+    org.mockito.Mockito.when(container.isStaticAppUiAvailable(QUEUE_MANAGER_APP_ID))
+        .thenReturn(false);
+  }
+
+  private void configureWebShellReplacementUnavailable() {
+    org.mockito.Mockito.when(
+            container.isAllowedFullAccess(org.mockito.ArgumentMatchers.any(InetAddress.class)))
+        .thenReturn(true);
+    org.mockito.Mockito.when(container.primaryUiRoot())
+        .thenReturn(WebShellPaths.SHELL_ROOT + "off");
+  }
+
   private void configureDispatch(Toadlet toadlet) throws Exception {
     org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
     org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
@@ -495,12 +715,13 @@ class ToadletContextImplTest {
     return rawGetRequest(QueueToadlet.PATH_DOWNLOADS);
   }
 
-  private static byte[] rawSlashlessDownloadsGetRequest() {
-    return rawGetRequest("/downloads");
-  }
-
   private static byte[] rawGetRequest(String path) {
     return ("GET " + path + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .getBytes(StandardCharsets.US_ASCII);
+  }
+
+  private static byte[] rawDownloadsHeadRequest() {
+    return ("HEAD " + QueueToadlet.PATH_DOWNLOADS + " HTTP/1.1\r\nHost: localhost\r\n\r\n")
         .getBytes(StandardCharsets.US_ASCII);
   }
 
@@ -515,12 +736,22 @@ class ToadletContextImplTest {
         .getBytes(StandardCharsets.US_ASCII);
   }
 
-  private static long queueDownloadsUsageCount() {
+  private static byte[] rawDeniedConfigPostRequest() {
+    return ("POST "
+            + LegacyHttpPaths.CONFIG_PATH
+            + " HTTP/1.1\r\nHost: localhost\r\nContent-Type: "
+            + "application/x-www-form-urlencoded; charset=UTF-8\r\nContent-Length: "
+            + WRONG_FORM_PASSWORD_BODY.length()
+            + "\r\n\r\n"
+            + WRONG_FORM_PASSWORD_BODY)
+        .getBytes(StandardCharsets.US_ASCII);
+  }
+
+  private static LegacyAdminSurfaceUsage usage(String surfaceId) {
     return LegacyAdminUsageRecorder.defaultRecorder().snapshot().surfaces().stream()
-        .filter(surface -> surface.surfaceId().equals(QUEUE_DOWNLOADS_SURFACE_ID))
+        .filter(surface -> surface.surfaceId().equals(surfaceId))
         .findFirst()
-        .orElseThrow()
-        .count();
+        .orElseThrow();
   }
 
   private static LegacyAdminUsageScope clearedLegacyAdminUsage() {

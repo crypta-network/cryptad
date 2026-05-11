@@ -13,8 +13,9 @@ import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
  * Thread-safe process-local usage recorder for legacy admin HTTP surfaces.
  *
  * <p>The recorder is bounded by {@link LegacyAdminRetirementRegistry}. It only counts known surface
- * ids and records the latest observation time. It does not persist data and does not store request
- * parameters, bodies, peer references, URIs, filesystem paths, or remote addresses.
+ * ids and records the latest observation time. Replacement responses and blocked mutating requests
+ * are counted separately from rendered legacy pages. It does not persist data and does not store
+ * request parameters, bodies, peer references, URIs, filesystem paths, or remote addresses.
  *
  * <p>The legacy HTTP adapter records a visit only after a request has passed the container-level
  * gates and produced an accepted response. This class assumes that policy decision has already
@@ -88,11 +89,27 @@ public final class LegacyAdminUsageRecorder implements LegacyAdminUsagePort {
    * @param surface surface metadata resolved by the registry before recording
    */
   public void recordSurface(LegacyAdminSurface surface) {
+    recordSurface(surface, acceptedRenderEvent(surface));
+  }
+
+  /**
+   * Records one bounded handling event for a registry surface.
+   *
+   * <p>The event controls which aggregate counter is incremented. This method never stores request
+   * details and ignores surfaces that the registry excludes from diagnostics.
+   *
+   * @param surface surface metadata resolved by the registry before recording
+   * @param event handling event to aggregate
+   */
+  void recordSurface(LegacyAdminSurface surface, LegacyAdminUsageEvent event) {
     if (!surface.includeInUsageDiagnostics()) {
       return;
     }
+    if (event == null) {
+      throw new NullPointerException("event");
+    }
     Counter counter = counters.computeIfAbsent(surface.id(), _ -> new Counter());
-    counter.increment(clock.millis());
+    counter.increment(event, clock.millis());
   }
 
   /** Clears all counters. Intended for focused tests. */
@@ -126,21 +143,72 @@ public final class LegacyAdminUsageRecorder implements LegacyAdminUsagePort {
         surface.legacyPath(),
         surface.state().name(),
         surface.replacementUrl(),
+        surface.removalMode().name(),
+        surface.removalWave(),
+        surface.removedByDefaultSince(),
+        surface.fallbackPolicy(),
         counter == null ? 0L : counter.count(),
+        counter == null ? 0L : counter.replacementResponseCount(),
+        counter == null ? 0L : counter.blockedMutatingRequestCount(),
+        counter == null ? 0L : counter.fallbackRenderCount(),
+        counter == null ? 0L : counter.retainedOrPendingRenderCount(),
         counter == null ? 0L : counter.lastSeenEpochMillis());
+  }
+
+  private static LegacyAdminUsageEvent acceptedRenderEvent(LegacyAdminSurface surface) {
+    if (surface.state() == LegacyAdminRetirementState.PRIMARY_REPLACED) {
+      return LegacyAdminUsageEvent.FALLBACK_RENDERED;
+    }
+    if (surface.state() == LegacyAdminRetirementState.RETAINED
+        || surface.state() == LegacyAdminRetirementState.PENDING) {
+      return LegacyAdminUsageEvent.RETAINED_OR_PENDING_RENDERED;
+    }
+    return LegacyAdminUsageEvent.RENDERED_LEGACY;
   }
 
   private static final class Counter {
     private final AtomicLong count = new AtomicLong();
+    private final AtomicLong replacementResponseCount = new AtomicLong();
+    private final AtomicLong blockedMutatingRequestCount = new AtomicLong();
+    private final AtomicLong fallbackRenderCount = new AtomicLong();
+    private final AtomicLong retainedOrPendingRenderCount = new AtomicLong();
     private final AtomicLong lastSeenEpochMillis = new AtomicLong();
 
-    void increment(long observedEpochMillis) {
-      count.incrementAndGet();
+    void increment(LegacyAdminUsageEvent event, long observedEpochMillis) {
+      switch (event) {
+        case RENDERED_LEGACY -> count.incrementAndGet();
+        case FALLBACK_RENDERED -> {
+          count.incrementAndGet();
+          fallbackRenderCount.incrementAndGet();
+        }
+        case RETAINED_OR_PENDING_RENDERED -> {
+          count.incrementAndGet();
+          retainedOrPendingRenderCount.incrementAndGet();
+        }
+        case REPLACEMENT_RESPONSE -> replacementResponseCount.incrementAndGet();
+        case BLOCKED_MUTATING_REQUEST -> blockedMutatingRequestCount.incrementAndGet();
+      }
       lastSeenEpochMillis.updateAndGet(previous -> Math.max(previous, observedEpochMillis));
     }
 
     long count() {
       return count.get();
+    }
+
+    long replacementResponseCount() {
+      return replacementResponseCount.get();
+    }
+
+    long blockedMutatingRequestCount() {
+      return blockedMutatingRequestCount.get();
+    }
+
+    long fallbackRenderCount() {
+      return fallbackRenderCount.get();
+    }
+
+    long retainedOrPendingRenderCount() {
+      return retainedOrPendingRenderCount.get();
     }
 
     long lastSeenEpochMillis() {

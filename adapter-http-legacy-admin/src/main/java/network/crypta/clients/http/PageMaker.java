@@ -284,7 +284,8 @@ public final class PageMaker {
   /**
    * Adds a navigation category whose root can fall back and be hidden at render time.
    *
-   * <p>{@code rootLinkEnabled} decides whether a root-only category should be rendered at all.
+   * <p>{@code rootLinkEnabled} decides whether the category root link should be rendered. If child
+   * links remain visible while it is disabled, the category label is shown without an anchor.
    * {@code primaryLinkEnabled} decides whether that rendered root should use {@code link} or {@code
    * fallbackLink}.
    *
@@ -293,11 +294,12 @@ public final class PageMaker {
    * @param title tooltip text describing the category's purpose
    * @param fallbackLink alternate target when the primary link is disabled; {@code null} reuses
    *     {@code link}
-   * @param fullOnly whether a root-only category requires full-access permission
+   * @param fullOnly whether a root category with no visible children requires full-access
+   *     permission
    * @param primaryLinkEnabled callback that decides whether {@code link} is usable for the request;
    *     {@code null} always uses {@code link}
-   * @param rootLinkEnabled callback that decides whether a root-only category should render; {@code
-   *     null} always allows rendering
+   * @param rootLinkEnabled callback that decides whether the root link should render; {@code null}
+   *     always allows rendering
    */
   public synchronized void addNavigationCategory(
       String link,
@@ -931,17 +933,18 @@ public final class PageMaker {
       nonEmpty = true;
       isSelected = renderNavigationItem(subnavlist, activePath, navigationLink, menu) || isSelected;
     }
-    if (nonEmpty || shouldRenderCategoryRoot(fullAccess, ctx, menu)) {
-      HTMLNode listItem = createMenuListItem(ctx, menu, subnavlist, isSelected);
+    boolean renderCategoryRoot = shouldRenderCategoryRoot(fullAccess, ctx, menu, nonEmpty);
+    if (nonEmpty || renderCategoryRoot) {
+      HTMLNode listItem = createMenuListItem(ctx, menu, subnavlist, isSelected, renderCategoryRoot);
       navbarUl.addChild(listItem);
     }
     return isSelected;
   }
 
   private static boolean shouldRenderCategoryRoot(
-      boolean fullAccess, ToadletContext ctx, SubMenu menu) {
+      boolean fullAccess, ToadletContext ctx, SubMenu menu, boolean hasVisibleChildren) {
     String defaultLink = menu.defaultNavigationLink(ctx);
-    return (fullAccess || !menu.isDefaultNavigationFullOnly())
+    return (hasVisibleChildren || fullAccess || !menu.isDefaultNavigationFullOnly())
         && menu.isDefaultNavigationEnabled(ctx)
         && defaultLink != null
         && !defaultLink.isBlank();
@@ -1001,7 +1004,11 @@ public final class PageMaker {
   }
 
   private HTMLNode createMenuListItem(
-      ToadletContext ctx, SubMenu menu, HTMLNode subnavlist, boolean isSelected) {
+      ToadletContext ctx,
+      SubMenu menu,
+      HTMLNode subnavlist,
+      boolean isSelected,
+      boolean renderCategoryRoot) {
     HTMLNode listItem;
     if (isSelected) {
       subnavlist.addAttribute(ATTR_CLASS, "subnavlist-selected");
@@ -1016,11 +1023,15 @@ public final class PageMaker {
     menuItemTitle = NodeL10n.getBase().getString(menuItemTitle);
     text = NodeL10n.getBase().getString(text);
 
-    listItem.addChild(
-        TAG_A,
-        new String[] {"href", ATTR_TITLE},
-        new String[] {menu.defaultNavigationLink(ctx), menuItemTitle},
-        text);
+    if (renderCategoryRoot) {
+      listItem.addChild(
+          TAG_A,
+          new String[] {"href", ATTR_TITLE},
+          new String[] {menu.defaultNavigationLink(ctx), menuItemTitle},
+          text);
+    } else {
+      listItem.addChild("span", ATTR_TITLE, menuItemTitle, text);
+    }
     listItem.addChild(subnavlist);
     return listItem;
   }
@@ -1552,7 +1563,7 @@ public final class PageMaker {
     /** Runtime check for whether the default target should be used. */
     private final LinkEnabledCallback primaryLinkEnabled;
 
-    /** Runtime check for whether the category root should be rendered. */
+    /** Runtime check for whether the category root link should be rendered. */
     private final LinkEnabledCallback rootLinkEnabled;
 
     /** Tooltip */

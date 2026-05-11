@@ -96,13 +96,21 @@ public final class DiagnosticsApiHandler {
   }
 
   private static Map<String, Object> legacySurfaceUsageToJson(LegacyAdminSurfaceUsage surface) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
     json.put("id", surface.surfaceId());
     json.put("title", surface.title());
     json.put("path", surface.legacyPath());
     json.put("state", surface.state());
     json.put("replacementUrl", surface.replacementUrl());
+    json.put("removalMode", surface.removalMode());
+    json.put("removalWave", surface.removalWave());
+    json.put("removedByDefaultSince", surface.removedByDefaultSince());
+    json.put("fallbackPolicy", surface.fallbackPolicy());
     json.put("count", surface.count());
+    json.put("replacementResponseCount", surface.replacementResponseCount());
+    json.put("blockedMutatingRequestCount", surface.blockedMutatingRequestCount());
+    json.put("fallbackRenderCount", surface.fallbackRenderCount());
+    json.put("retainedOrPendingRenderCount", surface.retainedOrPendingRenderCount());
     json.put("lastSeenEpochMillis", surface.lastSeenEpochMillis());
     return json;
   }

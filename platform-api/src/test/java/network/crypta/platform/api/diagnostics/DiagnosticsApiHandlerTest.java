@@ -60,21 +60,22 @@ class DiagnosticsApiHandlerTest {
     List<Map<String, Object>> surfaces =
         (List<Map<String, Object>>) legacyAdmin(response).get("surfaces");
     assertEquals(
-        Map.of(
-            "id",
-            "queue-downloads",
-            TITLE_FIELD,
-            "Download queue",
-            "path",
-            "/downloads/",
-            "state",
-            "PRIMARY_REPLACED",
-            "replacementUrl",
-            "/apps/queue-manager/",
-            "count",
-            12L,
-            "lastSeenEpochMillis",
-            1_770_000_000_000L),
+        Map.ofEntries(
+            Map.entry("id", "queue-downloads"),
+            Map.entry(TITLE_FIELD, "Download queue"),
+            Map.entry("path", "/downloads/"),
+            Map.entry("state", "PRIMARY_REPLACED"),
+            Map.entry("replacementUrl", "/apps/queue-manager/"),
+            Map.entry("removalMode", "REDIRECT_TO_REPLACEMENT"),
+            Map.entry("removalWave", 1),
+            Map.entry("removedByDefaultSince", "phase-6-pr-8"),
+            Map.entry("fallbackPolicy", "none"),
+            Map.entry("count", 12L),
+            Map.entry("replacementResponseCount", 4L),
+            Map.entry("blockedMutatingRequestCount", 1L),
+            Map.entry("fallbackRenderCount", 0L),
+            Map.entry("retainedOrPendingRenderCount", 0L),
+            Map.entry("lastSeenEpochMillis", 1_770_000_000_000L)),
         surfaces.getFirst());
   }
 
@@ -91,7 +92,15 @@ class DiagnosticsApiHandlerTest {
                             "/downloads/",
                             "PRIMARY_REPLACED",
                             "/apps/queue-manager/",
+                            "REDIRECT_TO_REPLACEMENT",
+                            1,
+                            "phase-6-pr-8",
+                            "none",
                             12L,
+                            4L,
+                            1L,
+                            0L,
+                            0L,
                             1_770_000_000_000L))));
     return handler.snapshot();
   }

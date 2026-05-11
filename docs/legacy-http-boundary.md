@@ -42,18 +42,23 @@ the platform leaves own installed-app lookup, UI-mode interpretation, path norma
 types, and static asset confinement.
 
 Legacy admin retirement metadata also stays in `:adapter-http-legacy-admin`. The registry records
-which admin pages are primary-replaced, pending, retained, or infrastructure, renders fallback
-notices for replaced pages, and feeds process-local usage counters into Platform API diagnostics.
+which admin pages are primary-replaced, pending, retained, or infrastructure, and it now carries a
+separate removal policy for the current execution wave. Retirement state describes product
+ownership; removal mode decides whether the request dispatcher renders the legacy toadlet, returns
+a replacement redirect, returns a gone-with-replacement page, or blocks a mutating legacy request.
 The retirement plan is documented in [legacy-retirement-plan.md](legacy-retirement-plan.md).
-PR-211 consumes the existing registry rather than replacing it: `PRIMARY_REPLACED` pages are hidden
-from legacy navigation, while their toadlets remain registered so direct fallback and debug URLs
-continue to work. `RETAINED` browse/FProxy surfaces and `PENDING` admin routes stay in their current
-legacy entry points until a later batch proves a complete replacement. Shell-backed category roots
-only use Web Shell targets while that shell is the advertised primary UI; JavaScript-disabled
-sessions keep direct legacy fallback roots. The app-backed Queue category uses the Queue Manager
-route only when the app UI is installed and usable for the current request; otherwise it keeps the
-legacy downloads root as the category fallback only for clients that would already see legacy queue
-navigation. Public-gateway non-full sessions keep the Queue category hidden.
+Wave 1, reported as `legacy-admin.removal-wave-1` in release certification, redirects safe reads
+for `/downloads/`, `/uploads/`, `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`,
+`/strangers/`, and `/connectivity/` to their Web Shell or first-party app replacements and blocks
+mutating requests before old handlers run when those replacements are reachable for the current
+request. Queue Manager and Publisher redirects require full operator access, enabled FProxy
+JavaScript, and an installed static app UI; Web Shell redirects require full operator access and
+Web Shell to be the advertised primary UI. If those checks fail, legacy fallbacks continue to
+render and are counted as fallback usage. `RETAINED` browse/FProxy surfaces and `PENDING` admin
+routes stay in their current legacy entry points until a later batch proves a complete replacement.
+Queue and Friends category roots no longer use wave-1 legacy URLs as normal fallbacks. Status and
+Config retain their later-wave fallbacks in this batch because alerts, security levels, core
+updates, stats, diagnostics, and config routes are not removed by default yet.
 
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

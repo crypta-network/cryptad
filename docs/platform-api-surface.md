@@ -190,9 +190,11 @@ The shell currently includes these first-party panels and surfaces:
 - Publisher and Queue Manager open as independent first-party app UIs when installed.
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.
-- Legacy links for pages that remain fallback or debug surfaces.
-- Replaced legacy admin pages are not primary shell navigation targets; their current retirement
-  state is tracked in [legacy-retirement-plan.md](legacy-retirement-plan.md).
+- Legacy links for retained or pending tools that remain legitimate legacy entry points.
+- Replaced legacy admin pages are not primary shell navigation targets. The first removal wave now
+  returns replacement responses for selected canonical admin URLs instead of rendering the old
+  pages by default; the current state and wave list are tracked in
+  [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
 The shell is hosted by `:adapter-http-legacy-admin`, but its route constants, HTML template, CSS,
 JavaScript, and bootstrap model are owned by `:platform-web-shell`.
@@ -201,10 +203,16 @@ JavaScript, and bootstrap model are owned by `:platform-web-shell`.
 
 Platform API v1 does not replace legacy HTTP or FCP in the current platform work.
 
-Legacy HTTP remains the current transport and authentication boundary for `/api/v1/` and
-`/app/node/`. The shared admin shell, admin toadlets, updater actions, and fallback pages remain in
+Legacy HTTP remains the current transport and authentication boundary for `/api/v1/`,
+`/app/node/`, and `/apps/{appId}/`. The shared admin shell, retained and pending admin toadlets,
+updater actions that are not in the current removal wave, and replacement-response gate remain in
 `:adapter-http-legacy-admin`; concrete browse/FProxy routes remain in
 `:adapter-http-legacy-browse`; concrete runtime HTTP bindings remain in `:bridge-http-runtime`.
+Wave-1 admin URLs return `303 See Other` for safe reads or `410 Gone` for mutating requests with a
+same-origin replacement link when the replacement UI is reachable for the current request. If the
+replacement app is not installed, FProxy JavaScript is disabled, or Web Shell is not the advertised
+primary UI, the legacy fallback remains reachable and diagnostics record fallback rendering. FProxy
+browse remains retained and is not owned by Platform API v1.
 
 FCP remains a separate compatibility and automation protocol. The detached FCP protocol surface is
 owned by `:adapter-fcp`, and runtime bindings are owned by `:bridge-fcp-runtime`. The Platform API

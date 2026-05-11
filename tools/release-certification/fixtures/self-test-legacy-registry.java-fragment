@@ -3,7 +3,14 @@ final class LegacyAdminRetirementRegistry {
       List.of(
           infrastructure("web-shell", "Web Shell", "/app/node/", "Shell."),
           replaced("alerts", "Alerts", "/alerts/", "/app/node/#alerts", "Shell alerts", "Done."),
-          replaced("downloads", "Downloads", "/downloads/", "/apps/queue-manager/", "Queue Manager", "Done."),
+          wave1Redirect("queue-downloads", "Downloads", "/downloads/", "/apps/queue-manager/", "Queue Manager", "Done."),
+          wave1Redirect("queue-uploads", "Uploads", "/uploads/", "/apps/queue-manager/", "Queue Manager", "Done."),
+          wave1Redirect("file-insert", "Insert file", "/insertfile/", "/apps/publisher/", "Publisher", "Done."),
+          wave1Redirect("local-file-insert", "Insert browse", "/insert-browse/", "/apps/publisher/", "Publisher", "Done."),
+          wave1Redirect("friends", "Friends", "/friends/", "/app/node/#peers", "Peers", "Done."),
+          wave1Redirect("add-friend", "Add friend", "/addfriend/", "/app/node/#peers", "Peers", "Done."),
+          wave1Redirect("strangers", "Strangers", "/strangers/", "/app/node/#peers", "Peers", "Done."),
+          wave1Redirect("connectivity", "Connectivity", "/connectivity/", "/app/node/#connectivity", "Connectivity", "Done."),
           pendingWizard("first-time-wizard", "First-time wizard", "/wizard/", "Pending."),
           pending("node-to-node-message", "N2NTM", "/send_n2ntm/", null, null, "Pending.", true),
           retained("help", "Help", "/help/", "Retained."));
@@ -35,6 +42,33 @@ final class LegacyAdminRetirementRegistry {
         replacementUrl,
         replacementLabel,
         notes,
+        LegacyAdminRemovalMode.RENDER_LEGACY,
+        0,
+        null,
+        FALLBACK_POLICY_RENDER_LEGACY,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface wave1Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        1,
+        "phase-6-pr-8",
+        "none",
         true,
         false);
   }

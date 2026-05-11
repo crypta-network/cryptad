@@ -18,6 +18,9 @@ import java.util.Objects;
  * <p>Two boolean inclusion flags keep policy decisions explicit. A surface can be counted in
  * diagnostics without appearing in the Web Shell fallback list, and infrastructure entries can be
  * registered for matching while remaining excluded from both user-facing telemetry and navigation.
+ * Removal metadata is separate from the retirement state so {@link
+ * LegacyAdminRetirementState#PRIMARY_REPLACED} can continue to mean "has a primary replacement"
+ * even when a route is still intentionally rendered by legacy code.
  *
  * @param id stable machine-readable identifier used by diagnostics and tests
  * @param title human-readable surface title suitable for notices and link labels
@@ -26,6 +29,10 @@ import java.util.Objects;
  * @param replacementUrl primary same-origin Web Shell or app URL when known
  * @param replacementLabel visible label for the replacement URL when present
  * @param notes short maintainer note describing the classification and migration context
+ * @param removalMode current execution policy for the canonical legacy route
+ * @param removalWave first removal wave number, or {@code 0} when not removed by default
+ * @param removedByDefaultSince stable release/phase marker for removal-by-default, or {@code null}
+ * @param fallbackPolicy path-free description of temporary fallback behavior
  * @param includeInUsageDiagnostics whether process-local usage diagnostics should include this
  *     surface
  * @param includeInWebShellFallbackLinks whether the Web Shell should show this as a fallback link
@@ -38,6 +45,10 @@ public record LegacyAdminSurface(
     String replacementUrl,
     String replacementLabel,
     String notes,
+    LegacyAdminRemovalMode removalMode,
+    int removalWave,
+    String removedByDefaultSince,
+    String fallbackPolicy,
     boolean includeInUsageDiagnostics,
     boolean includeInWebShellFallbackLinks) {
   /**
@@ -63,19 +74,30 @@ public record LegacyAdminSurface(
       requireText(replacementLabel, "replacementLabel");
     }
     requireText(notes, "notes");
+    Objects.requireNonNull(removalMode, "removalMode");
+    if (removalWave < 0) {
+      throw new IllegalArgumentException("removalWave must not be negative");
+    }
+    if (removedByDefaultSince != null) {
+      requireText(removedByDefaultSince, "removedByDefaultSince");
+    }
+    requireText(fallbackPolicy, "fallbackPolicy");
   }
 
   /**
    * Returns whether this surface should render a retirement notice on legacy HTML pages.
    *
-   * <p>Only primary-replaced surfaces with a concrete replacement URL render notices. Pending and
-   * retained pages intentionally stay quiet so operators are not pushed away from flows whose
-   * replacement is incomplete or intentionally out of scope.
+   * <p>Only primary-replaced surfaces with a concrete replacement URL and a render-legacy execution
+   * mode render notices. Pending and retained pages intentionally stay quiet so operators are not
+   * pushed away from flows whose replacement is incomplete or intentionally out of scope. Removed
+   * pages emit a separate replacement response before legacy rendering starts.
    *
    * @return {@code true} when the surface has a primary replacement and replacement link
    */
   public boolean rendersNotice() {
-    return state == LegacyAdminRetirementState.PRIMARY_REPLACED && replacementUrl != null;
+    return state == LegacyAdminRetirementState.PRIMARY_REPLACED
+        && removalMode == LegacyAdminRemovalMode.RENDER_LEGACY
+        && replacementUrl != null;
   }
 
   private static void requireText(String value, String label) {

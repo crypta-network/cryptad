@@ -10,15 +10,22 @@ class LegacyAdminRetirementNoticeTest {
   @Test
   void render_whenSurfacePrimaryReplaced_expectFallbackNoticeWithReplacementLink() {
     String html =
-        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("friends"))
+        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("config"))
             .orElseThrow()
             .generate();
 
     assertTrue(html.contains("Legacy fallback page"));
     assertTrue(html.contains("This legacy page remains available as a fallback and debug view."));
     assertTrue(html.contains("The primary flow is now in"));
-    assertTrue(html.contains("href=\"/app/node/#peers\""));
-    assertTrue(html.contains("Web Shell peer control"));
+    assertTrue(html.contains("href=\"/app/node/#config\""));
+    assertTrue(html.contains("Web Shell config"));
+  }
+
+  @Test
+  void render_whenSurfaceRemovedByDefault_expectNoFallbackNotice() {
+    assertFalse(
+        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("friends"))
+            .isPresent());
   }
 
   @Test

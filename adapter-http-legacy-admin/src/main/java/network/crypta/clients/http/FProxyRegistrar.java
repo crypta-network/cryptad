@@ -75,19 +75,22 @@ final class FProxyRegistrar {
     browseRouteRegistrar.registerRoutes(
         LegacyHttpBrowseRouteRegistrar.Phase.ROOT_MENU, browseContext, server);
     LinkEnabledCallback webShellPrimary = webShellPrimary(server);
+    LinkEnabledCallback queueManagerAvailable = queueManagerAvailable(dependencies.appHost());
     server.registerMenu(
         QUEUE_MANAGER_URL,
         LegacyHttpCategories.CATEGORY_QUEUE,
         "FProxyToadlet.categoryTitleQueue",
-        QueueToadlet.PATH_DOWNLOADS,
+        null,
         false,
-        queueManagerAvailable(dependencies.appHost()),
-        legacyQueueNavigationAvailable());
+        queueManagerAvailable,
+        queueManagerAvailable);
     server.registerMenu(
         SHELL_PEERS_URL,
         LegacyHttpCategories.CATEGORY_FRIENDS,
         "FProxyToadlet.categoryTitleFriends",
-        LegacyHttpPaths.FRIENDS_PATH,
+        null,
+        true,
+        webShellPrimary,
         webShellPrimary);
     server.registerMenu("/chat/", "FProxyToadlet.categoryChat", "FProxyToadlet.categoryTitleChat");
     server.registerMenu(
@@ -449,10 +452,5 @@ final class FProxyRegistrar {
         return false;
       }
     };
-  }
-
-  private static LinkEnabledCallback legacyQueueNavigationAvailable() {
-    return ctx ->
-        ctx != null && (!ctx.getContainer().publicGatewayMode() || ctx.isAllowedFullAccess());
   }
 }

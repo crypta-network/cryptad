@@ -13,16 +13,13 @@ class LegacyAdminSurfaceTest {
     assertThrows(
         IllegalArgumentException.class,
         () ->
-            new LegacyAdminSurface(
+            surface(
                 " ",
                 "Queue",
                 "/downloads/",
                 LegacyAdminRetirementState.PRIMARY_REPLACED,
                 "/apps/queue-manager/",
-                "Queue Manager",
-                "notes",
-                true,
-                false));
+                "Queue Manager"));
   }
 
   @Test
@@ -30,16 +27,13 @@ class LegacyAdminSurfaceTest {
     assertThrows(
         IllegalArgumentException.class,
         () ->
-            new LegacyAdminSurface(
+            surface(
                 "queue",
                 "Queue",
                 "/downloads/",
                 LegacyAdminRetirementState.PRIMARY_REPLACED,
                 "https://example.test/apps/queue-manager/",
-                "Queue Manager",
-                "notes",
-                true,
-                false));
+                "Queue Manager"));
   }
 
   @Test
@@ -47,20 +41,31 @@ class LegacyAdminSurfaceTest {
     assertThrows(
         IllegalArgumentException.class,
         () ->
-            new LegacyAdminSurface(
+            surface(
                 "queue",
                 "Queue",
                 "/downloads/",
                 LegacyAdminRetirementState.PRIMARY_REPLACED,
                 "//example.test/apps/queue-manager/",
-                "Queue Manager",
-                "notes",
-                true,
-                false));
+                "Queue Manager"));
   }
 
   @Test
   void rendersNotice_whenPrimaryReplacedWithReplacement_expectTrue() {
+    LegacyAdminSurface surface =
+        surface(
+            "queue",
+            "Queue",
+            "/downloads/",
+            LegacyAdminRetirementState.PRIMARY_REPLACED,
+            "/apps/queue-manager/",
+            "Queue Manager");
+
+    assertTrue(surface.rendersNotice());
+  }
+
+  @Test
+  void rendersNotice_whenPrimaryReplacedRemovedByDefault_expectFalse() {
     LegacyAdminSurface surface =
         new LegacyAdminSurface(
             "queue",
@@ -70,25 +75,26 @@ class LegacyAdminSurfaceTest {
             "/apps/queue-manager/",
             "Queue Manager",
             "notes",
+            LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+            1,
+            "phase-6-pr-8",
+            "none",
             true,
             false);
 
-    assertTrue(surface.rendersNotice());
+    assertFalse(surface.rendersNotice());
   }
 
   @Test
   void rendersNotice_whenPrimaryReplacedWithoutReplacement_expectFalse() {
     LegacyAdminSurface surface =
-        new LegacyAdminSurface(
+        surface(
             "queue",
             "Queue",
             "/downloads/",
             LegacyAdminRetirementState.PRIMARY_REPLACED,
             null,
-            null,
-            "notes",
-            true,
-            false);
+            null);
 
     assertFalse(surface.rendersNotice());
   }
@@ -96,17 +102,37 @@ class LegacyAdminSurfaceTest {
   @Test
   void rendersNotice_whenPendingWithReplacement_expectFalse() {
     LegacyAdminSurface surface =
-        new LegacyAdminSurface(
+        surface(
             "wizard",
             "Wizard",
             "/wizard/",
             LegacyAdminRetirementState.PENDING,
             "/app/node/#wizard",
-            "Web Shell wizard",
-            "notes",
-            true,
-            false);
+            "Web Shell wizard");
 
     assertFalse(surface.rendersNotice());
+  }
+
+  private static LegacyAdminSurface surface(
+      String id,
+      String title,
+      String legacyPath,
+      LegacyAdminRetirementState state,
+      String replacementUrl,
+      String replacementLabel) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        state,
+        replacementUrl,
+        replacementLabel,
+        "notes",
+        LegacyAdminRemovalMode.RENDER_LEGACY,
+        0,
+        null,
+        "render-legacy",
+        true,
+        false);
   }
 }

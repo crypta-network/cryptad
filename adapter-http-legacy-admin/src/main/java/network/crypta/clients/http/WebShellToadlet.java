@@ -106,9 +106,9 @@ public final class WebShellToadlet extends Toadlet {
   /**
    * Returns the default legacy deep links exposed by the Web Shell.
    *
-   * <p>The list is sourced from the retirement registry so primary-replaced legacy admin pages stop
-   * appearing as shell fallback links. Only retained or pending pages that still need a legacy
-   * entry point remain here.
+   * <p>The list is sourced from the retirement registry so primary-replaced and removed-by-default
+   * legacy admin pages do not appear as shell fallback links. Only retained or pending tools that
+   * still need a legacy entry point remain here.
    *
    * @return ordered fallback links for retained or pending legacy pages
    */
