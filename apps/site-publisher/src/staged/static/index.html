@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Publisher</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+  <main class="cr-shell site-publisher-layout">
+    <header class="cr-header">
+      <div>
+        <p class="cr-label">Crypta content app</p>
+        <h1>Site Publisher</h1>
+      </div>
+      <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+        Refresh queue
+      </button>
+    </header>
+
+    <section class="cr-card intro-panel" aria-labelledby="intro-title">
+      <h2 id="intro-title">Local site publishing</h2>
+      <p>
+        Queue a static site directory or a single file through Platform API content insert routes.
+        Browser code sends only the operator-entered form fields and does not read arbitrary local
+        files directly.
+      </p>
+      <p>
+        Submitted local paths and insert URIs are not written to browser storage or recent action
+        history by this page.
+      </p>
+    </section>
+
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>queue.read</code> reads upload queue snapshots for publish progress.</li>
+        <li><code>queue.write</code> creates insert queue requests for publish operations.</li>
+        <li><code>content.insert</code> submits local file and directory content to the insert pipeline.</li>
+      </ul>
+    </section>
+
+    <section class="publish-grid" aria-label="Publishing forms">
+      <form class="cr-card publish-form publish-form--primary" id="directory-form" data-source-type="directory">
+        <div class="form-heading">
+          <p class="cr-label">Recommended workflow</p>
+          <h2>Publish site directory</h2>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Site directory path</span>
+          <input
+            class="cr-input"
+            name="sourcePath"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI or key type</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@site-name"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Compatibility mode</span>
+          <input
+            class="cr-input"
+            name="compatibilityMode"
+            type="text"
+            value="COMPAT_CURRENT"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-checkbox">
+          <input name="compress" type="checkbox" checked>
+          <span>Compress content</span>
+        </label>
+        <button class="cr-button cr-button--primary publish-submit" type="submit">
+          Queue directory publish
+        </button>
+      </form>
+
+      <form class="cr-card publish-form publish-form--compact" id="file-form" data-source-type="file">
+        <div class="form-heading">
+          <p class="cr-label">Optional</p>
+          <h2>Publish one file</h2>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">File path</span>
+          <input
+            class="cr-input"
+            name="sourcePath"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI or key type</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@site-file"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Compatibility mode</span>
+          <input
+            class="cr-input"
+            name="compatibilityMode"
+            type="text"
+            value="COMPAT_CURRENT"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Content type</span>
+          <input
+            class="cr-input"
+            name="contentType"
+            type="text"
+            placeholder="text/html"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Target filename</span>
+          <input
+            class="cr-input"
+            name="targetFilename"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-checkbox">
+          <input name="compress" type="checkbox" checked>
+          <span>Compress content</span>
+        </label>
+        <button class="cr-button cr-button--secondary publish-submit" type="submit">
+          Queue file publish
+        </button>
+      </form>
+    </section>
+
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+
+    <section class="results-grid" aria-label="Publishing status">
+      <section class="cr-card result-panel" aria-labelledby="result-title">
+        <h2 id="result-title">Queued result</h2>
+        <div id="result">
+          <p class="cr-empty">Queue a directory or file publish to see the local result.</p>
+        </div>
+      </section>
+
+      <section class="cr-card recent-panel" aria-labelledby="recent-title">
+        <h2 id="recent-title">Recent local actions</h2>
+        <div id="recent-actions">
+          <p class="cr-empty">Recent actions are kept only in this page's memory.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="cr-card queue-panel" aria-labelledby="queue-title">
+      <div class="panel-heading">
+        <h2 id="queue-title">Upload queue preview</h2>
+        <button class="cr-button cr-button--secondary" id="secondary-refresh-queue-button" type="button">
+          Refresh
+        </button>
+      </div>
+      <div class="legacy-fragment" id="queue-preview">
+        <p class="cr-empty">Upload queue data loads after the app opens.</p>
+      </div>
+    </section>
+
+    <section class="cr-card limitations-panel" aria-labelledby="limitations-title">
+      <h2 id="limitations-title">Troubleshooting and limits</h2>
+      <ul>
+        <li>Local path access is performed by the node-side insert route, not by browser file APIs.</li>
+        <li>Queue actions beyond creating publish requests should be handled in Queue Manager.</li>
+        <li>Identity-backed profile publishing is future work and is not requested by this app.</li>
+      </ul>
+    </section>
+  </main>
+  <script src="./crypta-platform.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

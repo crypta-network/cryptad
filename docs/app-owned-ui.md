@@ -272,9 +272,11 @@ one app cannot authenticate another app's origin. Requests from a registered app
 host/operator Web Shell authentication. Requests with a mismatched origin fail with
 `403 origin_mismatch`.
 
-Queue Manager and Publisher are also the primary replacements for the legacy queue and insert
-admin pages in the current retirement map. The full map is maintained in
-[legacy-retirement-plan.md](legacy-retirement-plan.md).
+Queue Manager and legacy Publisher are also the primary replacements for the legacy queue and
+insert admin pages in the current retirement map. Site Publisher is the first content reference app
+for new app-platform publishing flows. It shares content-insert capabilities with legacy Publisher,
+but it is documented as a reference app rather than as the legacy insert-page compatibility
+surface. The full map is maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
 ## Platform API summary fields
 
@@ -364,6 +366,27 @@ app.permissions=queue.read,queue.write,content.insert
 quota.data.bytes=0
 quota.cache.bytes=0
 ```
+
+First content reference app bundle:
+
+```properties
+manifest.version=1
+app.id=site-publisher
+app.name=Site Publisher
+app.version=1.0.0
+app.exec=bin/site-publisher.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=queue.read,queue.write,content.insert
+quota.data.bytes=0
+quota.cache.bytes=0
+```
+
+Site Publisher needs `content.insert` to submit operator-selected local site content to the insert
+pipeline, `queue.write` to create the resulting insert requests, and `queue.read` to show publish
+progress. It does not request vault identity capabilities; identity-backed profile publishing
+remains future work until a browser-safe grant flow can use identity metadata without exporting
+private material.
 
 Transitional shell-panel bundle:
 

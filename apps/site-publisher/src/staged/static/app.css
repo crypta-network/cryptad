@@ -1,0 +1,137 @@
+.site-publisher-layout {
+  display: grid;
+  gap: var(--cr-space-4);
+}
+
+.intro-panel,
+.limitations-panel {
+  display: grid;
+  gap: var(--cr-space-2);
+}
+
+.intro-panel p,
+.limitations-panel ul {
+  margin: 0;
+}
+
+.publish-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: var(--cr-space-4);
+  align-items: start;
+}
+
+.publish-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cr-space-3);
+}
+
+.publish-form--compact {
+  grid-template-columns: 1fr;
+}
+
+.form-heading,
+.publish-submit,
+.publish-form .cr-checkbox {
+  grid-column: 1 / -1;
+}
+
+.form-heading {
+  display: grid;
+  gap: var(--cr-space-1);
+}
+
+.form-heading h2,
+.panel-heading h2,
+.result-panel h2,
+.recent-panel h2,
+.limitations-panel h2 {
+  margin: 0;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cr-space-4);
+}
+
+.result-panel,
+.recent-panel,
+.queue-panel {
+  min-height: 220px;
+}
+
+.result-panel,
+.recent-panel {
+  display: grid;
+  gap: var(--cr-space-3);
+  align-content: start;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cr-space-3);
+  margin-bottom: var(--cr-space-3);
+}
+
+.summary,
+.recent-list {
+  display: grid;
+  gap: var(--cr-space-2);
+}
+
+.summary p,
+.recent-list p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.recent-item {
+  border-bottom: var(--cr-border);
+  padding-bottom: var(--cr-space-2);
+}
+
+.recent-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.legacy-fragment {
+  overflow: auto;
+}
+
+.legacy-fragment table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.legacy-fragment th,
+.legacy-fragment td {
+  border-bottom: var(--cr-border);
+  padding: var(--cr-space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legacy-fragment a {
+  color: var(--cr-color-accent);
+}
+
+.legacy-fragment input,
+.legacy-fragment select {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .publish-grid,
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .publish-form {
+    grid-template-columns: 1fr;
+  }
+}

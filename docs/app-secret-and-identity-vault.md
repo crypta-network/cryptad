@@ -9,6 +9,10 @@ not a remote key-management service, a hardware-backed secure enclave, a browser
 or an OS process sandbox. AppHost sandboxing, app-owned browser origins, and app-token
 authorization still apply as separate controls.
 
+The local vault model and storage value types live in `:platform-appvault` under
+`network.crypta.platform.appvault`. Platform API handlers consume that leaf but remain responsible
+for route authentication, capability checks, and response redaction.
+
 The vault capability names are:
 
 | Capability | Purpose |

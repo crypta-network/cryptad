@@ -31,8 +31,9 @@ Build: 2
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include the release certification report, first-party app
   staging/signing/verification, catalog and trusted app-review receipt smoke, app-owned UI
-  design-system/lint smoke, `crypta-app` CLI smoke, legacy-admin retirement evidence, Hyphanet
-  interop smoke/soak evidence, and the packaged-node performance smoke.
+  design-system/lint smoke, app-vault capability evidence, Site Publisher reference-content
+  evidence, `crypta-app` CLI smoke, legacy-admin retirement/removal evidence, Hyphanet interop
+  smoke/soak evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -95,9 +96,10 @@ git push origin v<build-number>
       passed or has an explicit release-manager waiver.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
-- [ ] Signed catalog, trusted app-review receipt, Platform API contract, app UI design-system/lint,
-      app-owned UI smoke, AppHost sandbox-provider, app-update lifecycle, app-update rollback, and
-      legacy-admin retirement evidence are present in the certification summary.
+- [ ] Signed catalog, trusted app-review receipt, Platform API contract, app-vault capability,
+      app UI design-system/lint, app-owned UI smoke, Site Publisher reference-content, AppHost
+      sandbox-provider, app-update lifecycle, app-update rollback, and legacy-admin
+      retirement/removal evidence are present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or

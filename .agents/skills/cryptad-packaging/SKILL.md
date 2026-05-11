@@ -24,10 +24,11 @@ Use this skill when working on:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
-  `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
-  `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
+  `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`, `:platform-appdist`,
+  `:platform-appcatalog`, `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`,
+  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:bridge-fcp-runtime`, `:bridge-http-runtime`, `:adapter-http-legacy-admin`,
+  `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - Extracted leaf modules contribute jars and resources through the root runtime classpath.
 - `:foundation-support` and `:foundation-store-contracts` contribute shared runtime classes via
@@ -41,12 +42,14 @@ Use this skill when working on:
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
 - The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, compatibility
-  contract, and app-update lifecycle coordination, and the `:platform-apphost` JAR contributes the
-  transport-neutral local AppHost core, sandbox-provider selection, and durable bundle rollback used
-  by that API.
+  contract, app-vault route handlers, and app-update lifecycle coordination, and the
+  `:platform-apphost` JAR contributes the transport-neutral local AppHost core, sandbox-provider
+  selection, and durable bundle rollback used by that API.
 - The `:platform-app-ui` JAR contributes app-owned static UI route/origin helpers used by the
   legacy HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`
   compatibility fallback.
+- The `:platform-appvault` JAR contributes app secret and identity vault records, local wrapping-key
+  provider, grant metadata, and audit/redaction value types used by Platform API app/vault routes.
 - The `:platform-appdist` JAR contributes signed local app bundle digest, signature, verifier,
   trusted-key, packager, and distribution-tool classes used by first-party app tasks, developer
   tooling, and AppHost validation.
@@ -86,11 +89,12 @@ Use this skill when working on:
   helper package.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
-- First-party app projects such as `:apps:queue-manager` and `:apps:publisher` provide staged app
-  bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
-  artifacts and AppHost install inputs; they are not daemon entrypoints inside
-  `build/cryptad-dist`. Their static UI staging copies the current `:platform-sdk-js` browser
-  resource and canonical `:platform-design-system` assets into each bundle's `static/` assets.
+- First-party app projects such as `:apps:queue-manager`, `:apps:publisher`, and
+  `:apps:site-publisher` provide staged app bundles through their `stageApp`, `signApp`, and
+  `verifyApp` tasks. Those bundles are release artifacts and AppHost install inputs; they are not
+  daemon entrypoints inside `build/cryptad-dist`. Their static UI staging copies the current
+  `:platform-sdk-js` browser resource and canonical `:platform-design-system` assets into each
+  bundle's `static/` assets.
 
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.

@@ -20,6 +20,7 @@ Load only the docs needed for the change:
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
 - App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
+- App secret and identity vault: `docs/app-secret-and-identity-vault.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
@@ -29,8 +30,8 @@ Load only the docs needed for the change:
 
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
-  authorization decisions, capabilities, bounded app audit log, and the local app-update lifecycle
-  service above AppHost/catalog primitives.
+  authorization decisions, capabilities, app-vault route handlers, bounded app audit log, and the
+  local app-update lifecycle service above AppHost/catalog/vault primitives.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -42,6 +43,8 @@ Load only the docs needed for the change:
   first-party static app bundles.
 - `:platform-design-system` owns canonical local app UI CSS/JS assets and safe asset metadata/copy
   helpers used by scaffolds, first-party staging, UI lint, and release evidence.
+- `:platform-appvault` owns app secret and identity vault storage records, metadata/grant value
+  types, local wrapping-key provider, audit/redaction helpers, and deterministic vault tests.
 - `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
   deterministic bundle packaging, manifest sandbox/quota fields, and first-party
   signing/verification tooling.
@@ -58,7 +61,9 @@ Load only the docs needed for the change:
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
   and legacy admin retirement notices and diagnostics counters.
-- `:apps:queue-manager` and `:apps:publisher` stage first-party static UI bundles.
+- `:apps:queue-manager` stages the first-party queue-control static UI bundle.
+- `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
+- `:apps:site-publisher` stages the first-party content reference static UI bundle.
 
 ## Guardrails
 
@@ -117,9 +122,10 @@ Load only the docs needed for the change:
 - `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack`, Platform
-  API contract snapshots, signed bundle evidence, signed catalog evidence, trusted app-review
-  receipt evidence, sandbox-provider evidence, app-update lifecycle/rollback evidence,
-  legacy-admin retirement state, and optional localhost-only live AppHost lifecycle evidence.
+  API contract snapshots, app-vault capability evidence, signed bundle evidence, signed catalog
+  evidence, trusted app-review receipt evidence, sandbox-provider evidence, app-update
+  lifecycle/rollback evidence, Site Publisher reference-content evidence, legacy-admin retirement
+  state, and optional localhost-only live AppHost lifecycle evidence.
 - `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
   downloads, or production credentials.
 - `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
@@ -138,12 +144,14 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
 ./gradlew :platform-design-system:test
+./gradlew :platform-appvault:test
 ./gradlew :platform-devtools:test
 ./gradlew :platform-sdk-js:test
 ./gradlew :platform-web-shell:test
 ./gradlew :adapter-http-legacy-admin:test
 ./gradlew :apps:queue-manager:test
 ./gradlew :apps:publisher:test
+./gradlew :apps:site-publisher:test
 ./gradlew stageFirstPartyApps
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
@@ -156,8 +164,9 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
 
 When changing signed bundle/catalog, app-review receipts, static UI, design-system assets, UI lint,
-SDK, Platform API contract, AppHost lifecycle, app-update lifecycle/rollback, sandbox-provider
-evidence, or legacy-admin retirement evidence behavior, also run:
+SDK, Platform API contract, AppHost lifecycle, app-vault capabilities, app-update
+lifecycle/rollback, sandbox-provider evidence, reference content apps, or legacy-admin retirement
+evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_smoke.py --self-test

@@ -17,8 +17,8 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager and Publisher bundles receive `crypta-platform.js` during their
-Gradle `stageApp` tasks. The canonical source lives in
+The first-party Queue Manager, Publisher, and Site Publisher bundles receive `crypta-platform.js`
+during their Gradle `stageApp` tasks. The canonical source lives in
 `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
 The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
@@ -212,6 +212,10 @@ const formData = new FormData(fileForm);
 const result = await CryptaPlatform.content.insertFile(formData);
 ```
 
-Both apps keep their own UI state, sort handling, key export behavior, and legacy form filtering.
+These apps keep their own UI state, sort handling, key export behavior, and legacy form filtering.
 The SDK owns only bootstrap, app-browser API transport, mutation form submission, error parsing,
 and conservative fragment sanitization.
+
+Site Publisher uses the same browser SDK content helpers for a content-oriented reference workflow:
+`CryptaPlatform.content.insertDirectory`, `CryptaPlatform.content.insertFile`, and
+`CryptaPlatform.queue.snapshot({ page: "uploads" })`.

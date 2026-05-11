@@ -265,6 +265,35 @@ api.optionalCapabilities=alerts.read,diagnostics.read
 api.experimentalCapabilitiesAccepted=false
 ```
 
+A Site Publisher local catalog descriptor should include explicit permission rationales:
+
+```properties
+artifact.path=/abs/path/to/dist/apps/site-publisher-1.0.0.zip
+bundle.uri=file:/abs/path/to/dist/apps/site-publisher-1.0.0.zip
+summary=Reference app for publishing a local static site through Crypta.
+name=Site Publisher
+version=1.0.0
+permissions=queue.read,queue.write,content.insert
+app.id=site-publisher
+homepage=https://example.invalid/apps/site-publisher
+source=https://example.invalid/src/site-publisher
+license=GPL-3.0-only
+categories=publishing,content
+review.status=reviewed
+review.note=First-party content reference app.
+permissions.rationale.content.insert=Submits selected local site content to the insert pipeline.
+permissions.rationale.queue.write=Creates insert requests for the publish operation.
+permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
+changelog.summary=Adds the first content reference app.
+api.minimumVersion=3
+api.maximumTestedVersion=3
+api.experimentalCapabilitiesAccepted=false
+```
+
+Do not include `vault.identities.*` permissions for Site Publisher until an identity-profile demo
+is implemented. Identity-profile publishing remains future work until the app can request an
+operator grant and use identity metadata without exporting private material.
+
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and
 `version` values are optional consistency checks and must match the artifact manifest. The `name`
@@ -413,11 +442,15 @@ projects:
 ./gradlew :apps:publisher:stageApp
 ./gradlew :apps:publisher:signApp
 ./gradlew :apps:publisher:verifyApp
+
+./gradlew :apps:site-publisher:stageApp
+./gradlew :apps:site-publisher:signApp
+./gradlew :apps:site-publisher:verifyApp
 ```
 
 Those `signApp` and `verifyApp` tasks still require the signing inputs documented in
 [app-distribution.md](app-distribution.md). Use the root `stageFirstPartyApps`,
-`signFirstPartyApps`, and `verifyFirstPartyApps` tasks when you need to process both first-party
+`signFirstPartyApps`, and `verifyFirstPartyApps` tasks when you need to process all first-party
 apps together.
 
 ## Related docs

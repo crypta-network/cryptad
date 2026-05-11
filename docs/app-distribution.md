@@ -71,10 +71,11 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-The repo-owned Queue Manager and Publisher bundles use `app.ui.mode=static` and
-`app.ui.entry=static/index.html`, so installed copies open through isolated app origins when
-available, with `/apps/queue-manager/static/` and `/apps/publisher/static/` retained as
-compatibility fallbacks.
+The repo-owned Queue Manager, legacy Publisher, and Site Publisher bundles use
+`app.ui.mode=static` and `app.ui.entry=static/index.html`, so installed copies open through
+isolated app origins when available. Queue Manager and legacy Publisher remain compatibility
+fallbacks for the current retirement map; Site Publisher is the first content reference app for
+new publishing workflows.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
@@ -116,8 +117,8 @@ quota.cache.bytes=0
 
 Both fields are optional non-negative byte counts. AppHost enforces a data or cache quota only when
 the value is positive. A missing field and an explicit `0` both mean unlimited or no explicit app
-quota. This preserves compatibility with the first-party Queue Manager and Publisher staged
-manifests, which currently declare `quota.data.bytes=0` and
+quota. This preserves compatibility with the first-party Queue Manager, Publisher, and Site
+Publisher staged manifests, which currently declare `quota.data.bytes=0` and
 `quota.cache.bytes=0`.
 
 Quota enforcement is scoped to AppHost-managed app data and cache directories. It does not apply to
@@ -197,8 +198,8 @@ static template copies or vendors the browser SDK as `static/crypta-platform.js`
 is available, and copies canonical design-system assets into `static/crypta-ui/`. See
 [app-dev-cli.md](app-dev-cli.md) for the full scaffold, lint, pack, and catalog flow.
 
-The CLI does not replace the first-party Gradle workflow. Queue Manager and Publisher can keep
-using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`, and `verifyApp` tasks.
+The CLI does not replace the first-party Gradle workflow. Queue Manager, legacy Publisher, and Site
+Publisher can keep using their `stageApp`, `signApp`, and `verifyApp` tasks.
 
 ## Catalog Store Metadata
 
@@ -229,6 +230,9 @@ Per app:
 - `:apps:publisher:stageApp`
 - `:apps:publisher:signApp`
 - `:apps:publisher:verifyApp`
+- `:apps:site-publisher:stageApp`
+- `:apps:site-publisher:signApp`
+- `:apps:site-publisher:verifyApp`
 
 Root convenience tasks:
 
@@ -285,10 +289,24 @@ Stage an unsigned bundle:
 ./gradlew :apps:queue-manager:stageApp
 ```
 
+Stage the Site Publisher reference app:
+
+```bash
+./gradlew :apps:site-publisher:stageApp
+```
+
 Sign it with a local development key pair:
 
 ```bash
 ./gradlew :apps:queue-manager:signApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+```
+
+Sign Site Publisher with the same local development key pair:
+
+```bash
+./gradlew :apps:site-publisher:signApp \
   -PcryptadAppSigningKeyId=dev-local \
   -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
 ```
@@ -301,7 +319,17 @@ Verify it with the matching public key:
   -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
 ```
 
-Stage, sign, and verify both first-party apps:
+Verify Site Publisher with the matching public key:
+
+```bash
+./gradlew :apps:site-publisher:verifyApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+```
+
+Stage, sign, and verify all first-party apps:
+
+The root first-party tasks include Site Publisher.
 
 ```bash
 ./gradlew \

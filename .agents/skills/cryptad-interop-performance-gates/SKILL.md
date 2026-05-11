@@ -41,8 +41,8 @@ INTEROP_MODE=extended INTEROP_SKIP_BUILD=1 tools/interop/run-hyphanet-interop-sm
 ## Performance regression gate
 
 - The performance gate records lightweight packaged-node startup, local FCP/Platform API timing,
-  distribution size, Web Shell asset size, SDK asset size, and first-party static app asset size
-  signals. It is not a broad benchmark suite.
+  distribution size, Web Shell asset size, SDK asset size, and first-party static app source and
+  staged-bundle size signals, including Site Publisher. It is not a broad benchmark suite.
 - The runner requires Python 3.12 or newer.
 - Normal local commands:
 
@@ -72,9 +72,10 @@ build/release-certification/artifacts/
 
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
-  for the Platform API contract, signed catalogs, trusted app-review receipts, app-owned UI origin
-  behavior, app UI design-system/lint evidence, sandbox provider selection, and app-update
-  lifecycle/rollback.
+  for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review
+  receipts, app-owned UI origin behavior, app UI design-system/lint evidence, Site Publisher
+  reference-content coverage, legacy-admin retirement/removal evidence, sandbox provider
+  selection, and app-update lifecycle/rollback.
 - The wrapper resolves relative `--out-dir` values under the repository root, then runs the
   app-platform smoke collector before aggregation.
 - Normal local commands:
@@ -88,8 +89,11 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
 
 - Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
   or failing unless a release-manager waiver is recorded. Required app-platform evidence now
-  includes `platform-api.contract`, `catalog.smoke`, `app-ui.design-system`, `app-ui.lint`,
-  `app-ui.first-party-adoption`, `app-ui.smoke`, `apphost.sandbox-provider`,
+  includes `app-platform.first-party`, `app-platform.devtools-cli`,
+  `app-platform.signed-bundles`, `catalog.smoke`, `platform-api.contract`,
+  `app-vault.capabilities`, `app-ui.design-system`, `app-ui.lint`,
+  `app-ui.first-party-adoption`, `app-ui.smoke`, `reference-apps.content`,
+  `legacy.retirement`, `legacy-admin.removal-wave-1`, `apphost.sandbox-provider`,
   `app-update.lifecycle`, `app-update.rollback`, `app-review.trusted-receipts`,
   `app-review.policy`, and `app-review.first-party-catalog`.
 - Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw

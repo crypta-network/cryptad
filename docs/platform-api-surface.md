@@ -176,8 +176,8 @@ gate error codes include `app_review_missing`, `app_review_untrusted`, `app_revi
 
 The Web Shell uses the Platform API for node management, queue control, peer control, alerts,
 diagnostics, config, updater, security levels, wizard, and installed-app lifecycle work. The
-repo-owned Publisher and Queue Manager apps now use the same Platform API from their own static
-routes under `/apps/publisher/` and `/apps/queue-manager/`.
+repo-owned Queue Manager, Publisher, and Site Publisher apps use the same Platform API from their
+own static routes under `/apps/queue-manager/`, `/apps/publisher/`, and `/apps/site-publisher/`.
 
 The shell currently includes these first-party panels and surfaces:
 
@@ -187,7 +187,8 @@ The shell currently includes these first-party panels and surfaces:
   install/update.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
-- Publisher and Queue Manager open as independent first-party app UIs when installed.
+- Queue Manager, Publisher, and Site Publisher open as independent first-party app UIs when
+  installed.
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.
 - Legacy links for retained or pending tools that remain legitimate legacy entry points.

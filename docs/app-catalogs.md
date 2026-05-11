@@ -38,7 +38,7 @@ catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
-catalog.entries=queue-manager,publisher
+catalog.entries=queue-manager,publisher,site-publisher
 
 app.queue-manager.id=queue-manager
 app.queue-manager.name=Queue Manager
@@ -65,6 +65,29 @@ app.queue-manager.api.minimumVersion=1
 app.queue-manager.api.maximumTestedVersion=1
 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
+
+app.site-publisher.id=site-publisher
+app.site-publisher.name=Site Publisher
+app.site-publisher.version=1.0.0
+app.site-publisher.summary=Reference app for publishing a local static site through Crypta.
+app.site-publisher.bundle.uri=https://example.invalid/apps/site-publisher-1.0.0.zip
+app.site-publisher.bundle.sha256=<lowercase-hex-sha256-of-zip>
+app.site-publisher.bundle.size.bytes=12345
+app.site-publisher.bundle.type=zip
+app.site-publisher.permissions=queue.read,queue.write,content.insert
+app.site-publisher.homepage=https://example.invalid/apps/site-publisher
+app.site-publisher.source=https://example.invalid/src/site-publisher
+app.site-publisher.license=GPL-3.0-only
+app.site-publisher.categories=publishing,content
+app.site-publisher.review.status=reviewed
+app.site-publisher.review.note=First-party content reference app.
+app.site-publisher.permissions.rationale.content.insert=Submits selected local site content to the insert pipeline.
+app.site-publisher.permissions.rationale.queue.write=Creates insert requests for the publish operation.
+app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
+app.site-publisher.changelog.summary=Adds the first content reference app.
+app.site-publisher.api.minimumVersion=3
+app.site-publisher.api.maximumTestedVersion=3
+app.site-publisher.api.experimentalCapabilitiesAccepted=false
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
 app.queue-manager.review.receipt.app.version=1.0.0
@@ -138,6 +161,11 @@ capabilities. Catalog entries that advertise them should include permission rati
 identity-use or secret access, trusted review receipt evidence appropriate to the catalog policy.
 Catalog metadata never grants a shared identity by itself; the local operator grant in the identity
 vault remains app-id-bound, scope-bound, revocable, and separate from the signed catalog.
+
+If Site Publisher does not yet implement identity-profile publishing, its catalog entry should not
+declare `vault.identities.*` capabilities. Identity-profile publishing should remain future work
+until the app can request an operator grant, use the identity without exporting private material,
+and expose matching permission rationale and audit behavior.
 
 ## Trusted review receipts
 
@@ -286,6 +314,36 @@ crypta-app catalog verify \
 The catalog signature authenticates the exact bytes of `cryptad-app-catalog.properties`. Do not
 rewrite, sort, or reformat the catalog after signing. See
 [app-dev-cli.md](app-dev-cli.md) for the full standalone app CLI workflow.
+
+For a local Site Publisher catalog, use a `file:` `bundle.uri` that points at the signed ZIP
+artifact, create and sign the catalog, then add the catalog source through Platform API:
+
+```bash
+crypta-app catalog create \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-id local-site-publisher \
+  --name "Local Site Publisher" \
+  --entry site-publisher-catalog-entry.properties \
+  --review-receipt review-receipt.properties
+
+crypta-app catalog sign \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --key-id dev-local \
+  --private-key-file /abs/path/to/dev-app-signing-private.pem
+
+crypta-app catalog verify \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --trusted-key-id dev-local \
+  --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+```
+
+Add the local catalog source and install Site Publisher with the existing app-catalog routes:
+
+```text
+POST /api/v1/app-catalogs/add?source=<local-catalog-properties-path>
+POST /api/v1/app-catalogs/local-site-publisher/refresh
+POST /api/v1/app-catalogs/local-site-publisher/apps/site-publisher/install
+```
 
 ## Catalog signatures
 

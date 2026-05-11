@@ -79,7 +79,7 @@ Release-candidate mode requires these evidence ids:
 | --- | --- | --- |
 | `interop.smoke` | `build/interop-smoke/summary.json` | Tier 1 Hyphanet interop smoke passed with CHK, SSK, USK, peer exchange, and restart-recovery coverage. |
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
-| `app-platform.first-party` | App-platform smoke summary. | First-party staged apps have valid manifests, launchers, static UI assets, and SDK wiring. |
+| `app-platform.first-party` | App-platform smoke summary. | First-party staged apps, including Site Publisher, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
@@ -87,8 +87,9 @@ Release-candidate mode requires these evidence ids:
 | `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
-| `app-ui.first-party-adoption` | App-platform smoke summary. | Queue Manager and Publisher source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
+| `app-ui.first-party-adoption` | App-platform smoke summary. | First-party source/staged UIs, including Site Publisher, load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
+| `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and documents identity-profile publishing as future work unless implemented. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
@@ -96,7 +97,7 @@ Release-candidate mode requires these evidence ids:
 | `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
 | `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
-| `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence signs, verifies, and embeds an independent review receipt with configured reviewer inputs, without private reviewer key material in the report. |
+| `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence packs every staged first-party app, then signs, verifies, and embeds an independent review receipt for each catalog entry with configured reviewer inputs, without private reviewer key material in the report. |
 
 `legacy-admin.removal-wave-1` is deterministic offline evidence. It proves that `/downloads/`,
 `/uploads/`, `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
@@ -146,19 +147,25 @@ CRYPTAD_APP_REVIEW_POLICY_VERSION
 `CRYPTAD_APP_REVIEW_POLICY_ID` defaults to `crypta-app-review-v1` and
 `CRYPTAD_APP_REVIEW_POLICY_VERSION` defaults to `1`. The runner uses `crypta-app review sign`,
 `crypta-app review verify`, and `crypta-app catalog create --review-receipt` to prove that
-review receipt evidence can be created and consumed offline. The release report summarizes the
-configured review policy, whether first-party receipt evidence blocks promotion, and the receipt
+review receipt evidence can be created and consumed offline for every staged first-party app. The
+release report summarizes the configured review policy, whether first-party receipt evidence blocks
+promotion, the first-party catalog apps inspected, and the receipt
 coverage categories: trusted positive, missing, expired, mismatched, unknown reviewer, and trusted
 rejected. Reports may include reviewer key ids, reviewer display names, policy ids, and key
 fingerprints; they must not include private reviewer keys, raw public key bytes, local evidence
 paths, app/session/process tokens, or local staging paths.
 
 App UI design evidence is offline. Release-candidate mode treats first-party strict UI lint errors
-as blocking evidence because Queue Manager and Publisher ship with the node. Advisory
+as blocking evidence because first-party apps ship with the node. Advisory
 third-party-style warnings are recorded by `crypta-app ui lint` but are not turned into a global
 release blocker by default. The app-platform smoke report must keep UI lint output sanitized:
 relative bundle paths and finding ids are acceptable, while tokens, form passwords, query strings,
 private file paths, and local file contents are not.
+
+Site Publisher identity-profile publishing is future work unless a release includes an implemented
+demo. Release evidence must not claim `vault.identities.*` coverage for Site Publisher until the
+app declares the capabilities, shows permission rationale, uses an operator-granted identity
+without exporting private material, and passes the app-vault redaction checks.
 
 ## Waivers
 
