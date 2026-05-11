@@ -65,11 +65,13 @@ Use this skill when you need to:
     `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
-    compatibility contract, app capabilities/audit, and app-update lifecycle)
+    compatibility contract, app capabilities/audit, app-vault routes, and app-update lifecycle)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
     resolution helpers, isolated origin metadata, and browser-session helpers)
+  - `:platform-appvault` → `network.crypta.platform.appvault` (app secret and identity vault
+    records, grants, local wrapping-key provider, and audit/redaction value types)
   - `:platform-design-system` → `network.crypta.platform.designsystem` (canonical local app UI
     CSS/JS resources plus asset metadata and safe bundle-copy helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
@@ -112,6 +114,8 @@ Use this skill when you need to:
     an isolated app origin when available, with `/apps/queue-manager/static/` as fallback
   - `:apps:publisher` → staged Publisher AppHost bundle with a static UI under
     an isolated app origin when available, with `/apps/publisher/static/` as fallback
+  - `:apps:site-publisher` → staged Site Publisher content reference AppHost bundle with a static
+    UI under an isolated app origin when available, with `/apps/site-publisher/static/` as fallback
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -138,8 +142,10 @@ Use this skill when you need to:
   `:kernel-content` owns the compile-neutral phase-1 client/content slice,
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
-  `:platform-api` owns the transport-neutral Platform API surface, `:platform-apphost` owns the
-  transport-neutral AppHost core, `:platform-app-ui` owns app-owned static UI route helpers,
+  `:platform-api` owns the transport-neutral Platform API surface including app-vault route
+  handlers, `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
+  app-owned static UI route helpers,
+  `:platform-appvault` owns app secret and identity vault records/grants,
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
   browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
   `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
@@ -334,11 +340,11 @@ Use this skill when you need to:
 ### Platform control/UI modules
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
-  apps, app updates, app-catalog control-plane families, and the deterministic Platform API
-  compatibility contract, and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It
-  also owns the central app-token authorization matrix, browser-session authorization decisions,
-  bounded process-local app audit log, and local app-update lifecycle coordination above AppHost
-  and signed catalog primitives.
+  apps, app updates, app-catalog control-plane families, app-vault route handlers, and the
+  deterministic Platform API compatibility contract, and is currently mounted at `/api/v1/` by the
+  legacy HTTP adapter. It also owns the central app-token authorization matrix, browser-session
+  authorization decisions, bounded process-local app audit log, and local app-update lifecycle
+  coordination above AppHost, signed catalog, and vault primitives.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
@@ -353,6 +359,10 @@ Use this skill when you need to:
   URLs, resolves bundle assets, rejects traversal/symlink/reparse escapes, and supplies
   deterministic content-type, security-header, launch-proof bootstrap, and browser-session helpers
   for HTTP adapters.
+- `:platform-appvault` owns `network.crypta.platform.appvault`, the local app secret and identity
+  vault model. It provides encrypted record envelopes, local wrapping-key lookup, app-owned and
+  shared identity metadata, grant records, identity-use result types, and audit/redaction values
+  used by Platform API app and vault workflows without exporting raw private material.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
   app bundles. It wraps route bootstrap, same-origin Platform API reads, form-password mutations,
   error parsing, and conservative legacy HTML fragment sanitization; it is not an authority or
@@ -496,6 +506,7 @@ Use this skill when you need to:
 - `:platform-api`: `network.crypta.platform.api`
 - `:platform-apphost`: `network.crypta.platform.apphost`
 - `:platform-app-ui`: `network.crypta.platform.appui`
+- `:platform-appvault`: `network.crypta.platform.appvault`
 - `:platform-sdk-js`: browser SDK resource under `network/crypta/platform/sdk/js`
 - `:platform-appdist`: `network.crypta.platform.appdist`
 - `:platform-appcatalog`: `network.crypta.platform.appcatalog`

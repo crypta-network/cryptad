@@ -17,11 +17,11 @@ Use this skill when you:
 ## Java layout rules
 - Java sources go under `src/*/java/` (for example `src/main/java`, `src/test/java`).
 - For extracted production leaves such as `:runtime-node`, `:kernel-content`, `:platform-api`,
-  `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-devtools`, `:platform-web-shell`, and the adapter modules, keep `package-info.java`
-  in each production package you add or move. Boundary tests currently enforce this for the
-  runtime, kernel, platform, FCP, and HTTP leaves, and the adapter packages follow the same
-  convention.
+  `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`, `:platform-design-system`,
+  `:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`, `:platform-web-shell`, and
+  the adapter modules, keep `package-info.java` in each production package you add or move.
+  Boundary tests currently enforce this for the runtime, kernel, platform, FCP, and HTTP leaves,
+  and the adapter packages follow the same convention.
 - Resource-owned leaves such as `:platform-sdk-js` still keep Java tests under `src/test/java`.
   Add `package-info.java` only when a production Java package is added.
 

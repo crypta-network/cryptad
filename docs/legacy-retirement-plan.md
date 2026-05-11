@@ -109,7 +109,8 @@ by `:adapter-http-legacy-browse`.
 Web Shell is the primary local operator UI for node status, peers, queue and transfers, config,
 updates, alerts, diagnostics, installed apps, and first-time setup controls where startup state
 allows it. Queue Manager and Publisher are app-owned static UIs under `/apps/queue-manager/` and
-`/apps/publisher/`.
+`/apps/publisher/`. Site Publisher is also an app-owned static UI under `/apps/site-publisher/`,
+but it is a content reference app rather than a legacy admin replacement target.
 
 Primary-replaced legacy admin pages that are not removed by default still render a non-blocking
 notice that links to the Web Shell or first-party app replacement. Wave-1 pages do not render that

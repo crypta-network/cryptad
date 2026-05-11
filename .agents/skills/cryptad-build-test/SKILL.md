@@ -22,13 +22,14 @@ Use this skill when you need to:
   `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
-  `:platform-apphost`, `:platform-app-ui`, `:platform-appdist`, `:platform-appcatalog`,
-  `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`,
-  `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`, `:platform-appdist`,
+  `:platform-appcatalog`, `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`,
+  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
-- First-party app bundle projects live under `:apps:queue-manager` and `:apps:publisher`.
+- First-party app bundle projects live under `:apps:queue-manager`, `:apps:publisher`, and
+  `:apps:site-publisher`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -90,14 +91,17 @@ Use this skill when you need to:
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
-  app capability/audit decisions, and app-update lifecycle service. Its focused leaf tests now live
-  under `platform-api/src/test/java`.
+  app capability/audit decisions, app-vault route handlers, and app-update lifecycle service. Its
+  focused leaf tests now live under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
   data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.
 - `:platform-app-ui` owns app-owned static UI route, isolated origin metadata, path, content-type,
   header, asset resolver, launch-proof bootstrap, and browser-session helpers plus focused tests
   under `platform-app-ui/src/test/java`.
+- `:platform-appvault` owns the app secret and identity vault records, local key provider, grant
+  metadata, redaction/audit value types, and focused tests under
+  `platform-appvault/src/test/java`.
 - `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest,
   deterministic packager, and distribution-tool code plus focused tests under
   `platform-appdist/src/test/java`.
@@ -171,6 +175,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-api:test`
   - `./gradlew :platform-apphost:test`
   - `./gradlew :platform-app-ui:test`
+  - `./gradlew :platform-appvault:test`
   - `./gradlew :platform-appdist:test`
   - `./gradlew :platform-appcatalog:test`
   - `./gradlew :platform-design-system:test`
@@ -237,6 +242,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-apphost:compileJava`
 - Compile the app-owned static UI leaf when you touched `network.crypta.platform.appui`:
   - `./gradlew :platform-app-ui:compileJava`
+- Compile the app vault leaf when you touched `network.crypta.platform.appvault`:
+  - `./gradlew :platform-appvault:compileJava`
 - Compile the app distribution leaf when you touched `network.crypta.platform.appdist`:
   - `./gradlew :platform-appdist:compileJava`
 - Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
@@ -269,12 +276,14 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew compileJava compileTestJava`
 
 ## First-party app bundle checks
-- Stage first-party app bundles, especially after changing `:platform-sdk-js` because Queue
-  Manager and Publisher copy the SDK into staged static assets:
+- Stage first-party app bundles, especially after changing `:platform-sdk-js` or
+  `:platform-design-system` because Queue Manager, Publisher, and Site Publisher copy those assets
+  into staged static UI bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:
   - `./gradlew :apps:queue-manager:test`
   - `./gradlew :apps:publisher:test`
+  - `./gradlew :apps:site-publisher:test`
 - Sign and verify staged bundles only when signing/trusted-key inputs are available:
   - `./gradlew signFirstPartyApps`
   - `./gradlew verifyFirstPartyApps`

@@ -242,7 +242,7 @@ Cryptad now uses a partial multi-project Gradle build.
   and local AppHost control operations as JSON-oriented responses, and is currently mounted at
   `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The current Phase
   3 surface covers node, connectivity, queue, peers, config, security levels, updates,
-  wizard/welcome, alerts, diagnostics, apps, app catalogs, and the deterministic
+  wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, and the deterministic
   `/api/v1/platform/contract` compatibility snapshot; `GET /api/v1/config` defaults to the
   effective `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
@@ -254,6 +254,10 @@ Cryptad now uses a partial multi-project Gradle build.
   origins with `/apps/{appId}/` as a compatibility fallback, resolves installed-bundle assets,
   issues origin-bound short-lived browser sessions for static app API calls, and enforces
   traversal, symlink, and content-type boundaries before the HTTP adapter streams files.
+- `:platform-appvault` owns app secret and identity vault records under
+  `network.crypta.platform.appvault`. It provides local vault storage models, wrapping-key lookup,
+  app-owned/shared identity grants, and audit/redaction value types without exposing raw secret
+  values or private identity material to browser UI.
 - `:platform-design-system` owns the canonical local app UI design-system resources under
   `network.crypta.platform.designsystem`, including CSS tokens, base `cr-*` classes, optional
   progressive-enhancement JavaScript, and safe asset metadata/copy helpers for staged static app
@@ -625,6 +629,8 @@ leaf ownership and import rules:
 ./gradlew :platform-api:test
 ./gradlew :platform-apphost:test
 ./gradlew :platform-app-ui:test
+./gradlew :platform-appvault:test
+./gradlew :platform-design-system:test
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
 ./gradlew :platform-devtools:test
@@ -658,8 +664,8 @@ Additional root and mixed verification slices remain available:
 ```
 
 Platform checks now live in `:platform-api`, `:platform-apphost`, `:platform-app-ui`,
-`:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`,
-`:platform-sdk-js`, and `:platform-web-shell`.
+`:platform-appvault`, `:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`,
+`:platform-devtools`, `:platform-sdk-js`, and `:platform-web-shell`.
 
 ## Code Quality
 
@@ -948,8 +954,8 @@ Root build also includes:
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
   Its current family-level surface covers node, connectivity, queue, peers, config, security
-  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, and the platform
-  compatibility contract.
+  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, and
+  the platform compatibility contract.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged and verified catalog app updates now flow through this core. It also reports sandbox
   provider status, selects the Linux bubblewrap provider for enforced restricted-process launches
@@ -959,6 +965,8 @@ Root build also includes:
   HTTP admin adapter to serve isolated per-app loopback origins and the `/apps/{appId}/`
   compatibility path without exposing data/cache/run directories or traversal paths. It also owns
   origin-bound browser session issuance and verification for static app API calls.
+- `:platform-appvault`: local app secret and identity vault records, grant metadata, wrapping-key
+  provider, and audit/redaction values used by app/vault Platform API workflows.
 - `:platform-design-system`: canonical CSS token, base class, and optional JavaScript resources
   for local app-owned static UI, plus safe helper APIs for copying and hashing those assets.
 - `:platform-sdk-js`: browser-native SDK resource for app-owned static UI bootstrap, Platform API
@@ -1070,8 +1078,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:foundation-store-contracts`, `:foundation-crypto-keys`, `:interop-wire`,
     `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
-    `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-design-system`,
-    `:platform-appdist`, `:platform-appcatalog`, `:platform-devtools`, `:platform-sdk-js`,
+    `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`,
+    `:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`,
+    `:platform-devtools`, `:platform-sdk-js`,
     `:platform-web-shell`,
     `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
@@ -1217,16 +1226,17 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   `:runtime-alerts` provides the extracted leaf-safe `network.crypta.runtime.alerts`
   feed/model subset plus the detached `UserAlertSurface`;
   `:platform-api` provides the transport-neutral Platform API v1, the deterministic platform
-  compatibility contract, and the minimal AppHost control-plane routes; `:platform-apphost`
-  provides the transport-neutral out-of-process AppHost
+  compatibility contract, app vault routes, and the AppHost control-plane routes;
+  `:platform-apphost` provides the transport-neutral out-of-process AppHost
   v1 core for installed local apps; `:platform-app-ui` provides app-owned static UI route,
-  asset-resolution, and browser-session helpers; `:platform-design-system` provides canonical
-  app UI assets for local static bundles; `:platform-sdk-js` provides the browser SDK resource for
-  app-owned static UI; `:platform-appdist` provides the local app bundle digest, signing,
-  packaging, and verification tooling; `:platform-appcatalog` provides signed catalog source,
-  app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP staging
-  support; `:platform-devtools` provides the standalone `crypta-app` developer CLI including
-  offline UI linting, API contract, and compatibility checks;
+  asset-resolution, and browser-session helpers; `:platform-appvault` provides local app secret
+  and identity vault records, grants, and redaction value types; `:platform-design-system`
+  provides canonical app UI assets for local static bundles; `:platform-sdk-js` provides the
+  browser SDK resource for app-owned static UI; `:platform-appdist` provides the local app bundle
+  digest, signing, packaging, and verification tooling; `:platform-appcatalog` provides signed
+  catalog source, app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP
+  staging support; `:platform-devtools` provides the standalone `crypta-app` developer CLI,
+  including offline UI linting, API contract, and compatibility checks;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
   provides the extracted daemon runtime body across the remaining cyclic/high-level

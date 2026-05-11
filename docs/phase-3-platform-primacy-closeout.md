@@ -51,7 +51,7 @@ The Phase 3 platform path is split across focused modules:
   JDK-only boundary between shell/API code and daemon-backed runtime implementations.
 - `:platform-api` owns the transport-neutral Platform API v1 router, JSON response/error helpers,
   and endpoint handlers for node, connectivity, queue, peers, config, security levels, updates,
-  wizard, alerts, diagnostics, and apps.
+  wizard, alerts, diagnostics, apps, app updates, app catalogs, and app-vault routes.
 - `:platform-web-shell` owns the browser-facing Web Shell v1 page contract, bootstrap model, route
   constants, and static browser assets. The current shell is mounted at `/app/node/`.
 - `:platform-apphost` owns the transport-neutral local AppHost core: manifest parsing, installed
@@ -59,6 +59,8 @@ The Phase 3 platform path is split across focused modules:
   reporting, data/cache quota checks, and bounded process-log handling.
 - `:platform-app-ui` owns app-owned static UI route helpers and short-lived browser sessions for
   static app Platform API calls.
+- `:platform-appvault` owns local app secret and identity vault records, grant metadata,
+  wrapping-key lookup, and audit/redaction value types used by app/vault Platform API workflows.
 - `:platform-sdk-js` owns the browser SDK resource staged into first-party static UI bundles.
 - `:platform-appdist` owns the local app distribution tooling used to digest, sign, package, and
   verify staged bundles.
@@ -72,6 +74,9 @@ The Phase 3 platform path is split across focused modules:
 - `apps/publisher` owns the Publisher first-party app bundle. Current staged bundles declare
   `app.ui.mode=static` and open through an isolated app origin when available, with
   `/apps/publisher/static/` retained as the compatibility fallback.
+- `apps/site-publisher` owns the Site Publisher first-party content reference app bundle. Current
+  staged bundles declare `app.ui.mode=static` and open through an isolated app origin when
+  available, with `/apps/site-publisher/static/` retained as the compatibility fallback.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
 - `:bridge-fcp-runtime` owns the concrete runtime bindings for FCP.
@@ -93,6 +98,7 @@ First-party app bundles are staged by their app modules and by root convenience 
 
 - `./gradlew :apps:queue-manager:stageApp`
 - `./gradlew :apps:publisher:stageApp`
+- `./gradlew :apps:site-publisher:stageApp`
 - `./gradlew stageFirstPartyApps`
 
 Signing and verification are separate release gates:
@@ -180,7 +186,8 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
   fallback.
 - Standalone developer tooling has landed through the `crypta-app` CLI for scaffolding,
   validation, signing, packaging, verification, and catalog authoring.
-- Broader first-party app catalog remains future work.
+- The first content-oriented reference app has landed as Site Publisher. Broader first-party app
+  catalog depth beyond Queue Manager, Publisher, and Site Publisher remains future work.
 - App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
   [app-permissions-and-audit.md](app-permissions-and-audit.md).
 - Legacy admin and browse retirement plan.
