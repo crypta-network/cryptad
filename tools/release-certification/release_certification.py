@@ -1183,13 +1183,12 @@ def stable_named_set(details: dict[str, Any], list_key: str, fallback_key: str) 
                 stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
                 if stability and stability != "stable":
                     continue
-                name = (
-                    value.get("id")
-                    or value.get("name")
-                    or value.get("routeTemplate")
-                    or value.get("path")
-                    or value.get("route")
-                )
+                route_template = value.get("routeTemplate")
+                if route_template:
+                    method = str(value.get("method", "")).strip().upper()
+                    name = f"{method} {route_template}" if method else route_template
+                else:
+                    name = value.get("id") or value.get("name") or value.get("path") or value.get("route")
                 if name:
                     result.add(str(name))
             elif isinstance(value, str):
@@ -3151,7 +3150,8 @@ def run_self_test(repo_root: Path) -> None:
                     "endpointCount": len(routes),
                     "stabilityCounts": {"stable": stable_count},
                     "endpoints": [
-                        {"routeTemplate": route, "stability": "stable"} for route in routes
+                        {"method": "GET", "routeTemplate": route, "stability": "stable"}
+                        for route in routes
                     ],
                 }
             )
@@ -3192,7 +3192,7 @@ def run_self_test(repo_root: Path) -> None:
             raw_endpoint_removal_summary, "ecosystem.platform-api-compatibility"
         )
         assert raw_endpoint_removal_gate["status"] == "fail", raw_endpoint_removal_gate
-        assert "/apps/{appId}/old" in raw_endpoint_removal_gate["summary"], raw_endpoint_removal_gate
+        assert "GET /apps/{appId}/old" in raw_endpoint_removal_gate["summary"], raw_endpoint_removal_gate
 
         first_party_apps_map_path = write_app_summary_variant(
             "first-party-apps-map",
