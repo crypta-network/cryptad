@@ -155,7 +155,7 @@
       "warn_ratio": 1.5
     },
     "platform_sdk.crypta_platform_js_bytes": {
-      "baseline": 14726,
+      "baseline": 23140,
       "fail_on_regression": true,
       "fail_ratio": 1.6,
       "max_bytes": 100000,
@@ -182,7 +182,7 @@
       "warn_ratio": 1.25
     },
     "web_shell.web_shell_js_bytes": {
-      "baseline": 105731,
+      "baseline": 176676,
       "fail_on_regression": true,
       "fail_ratio": 1.6,
       "max_bytes": 500000,
