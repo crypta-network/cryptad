@@ -4,7 +4,8 @@
       "details": {
         "apps": [
           "queue-manager",
-          "publisher"
+          "publisher",
+          "site-publisher"
         ]
       },
       "id": "app-platform.first-party",
@@ -115,21 +116,39 @@
     },
     {
       "details": {
+        "firstPartyApps": [
+          "queue-manager",
+          "publisher",
+          "site-publisher"
+        ],
         "coverage": {
-          "catalogAppsInspected": 1,
+          "catalogAppsInspected": 3,
           "expiredOrMismatchedOrUnknownReviewer": 0,
           "missingReceipts": 0,
           "promotionBlocked": false,
-          "trustedPositiveReceipts": 1,
+          "trustedPositiveReceipts": 3,
           "trustedRejectedReceipts": 0
         },
-        "policyMode": "release-candidate requires trusted positive receipts"
+        "catalog": {
+          "inspectedAppIds": [
+            "publisher",
+            "queue-manager",
+            "site-publisher"
+          ],
+          "receiptStatuses": {
+            "publisher": "reviewed",
+            "queue-manager": "reviewed",
+            "site-publisher": "reviewed"
+          }
+        },
+        "policyMode": "release-candidate requires trusted positive receipts",
+        "referenceContentApp": "site-publisher"
       },
       "id": "app-review.first-party-catalog",
       "requiredForReleaseCandidate": true,
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
-      "summary": "First-party catalog review receipt evidence passed."
+      "summary": "First-party catalog review receipt evidence covered all first-party apps."
     },
     {
       "details": {
@@ -167,6 +186,13 @@
               "notes": 0,
               "warnings": 0
             }
+          },
+          "site-publisher": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
           }
         }
       },
@@ -183,6 +209,9 @@
             "usesDesignSystemClasses": true
           },
           "queue-manager": {
+            "usesDesignSystemClasses": true
+          },
+          "site-publisher": {
             "usesDesignSystemClasses": true
           }
         }
@@ -202,6 +231,39 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "App-owned UI and SDK smoke passed."
+    },
+    {
+      "details": {
+        "appId": "site-publisher",
+        "checks": {
+          "identityProfileDemoDocumentedFutureWork": true,
+          "manifestDeclaresContentPermissions": true,
+          "manifestDeclaresSitePublisher": true,
+          "moduleExists": true,
+          "noPersistentBrowserStorage": true,
+          "noRawAdminApiReference": true,
+          "noVaultCapabilitiesDeclared": true,
+          "permissionDisclosureMentionsDeclaredPermissions": true,
+          "sourceStaticUiPresent": true,
+          "stagedDesignSystemPresent": true,
+          "stagedManifestPresent": true,
+          "stagedSdkPresent": true,
+          "usesContentInsertDirectory": true,
+          "usesContentInsertFile": true,
+          "usesSdkBootstrap": true,
+          "usesUploadQueueSnapshot": true
+        },
+        "expectedPermissions": [
+          "content.insert",
+          "queue.read",
+          "queue.write"
+        ]
+      },
+      "id": "reference-apps.content",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Site Publisher reference content app evidence passed."
     },
     {
       "details": {

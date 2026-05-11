@@ -63,6 +63,10 @@ The update review surface includes:
 - changelog metadata when present;
 - permission rationales and a permission delta with added, removed, and unchanged permissions.
 
+Site Publisher uses the same update lifecycle as other catalog-installed apps: updates are
+detected from signed catalog metadata, reviewed with permission deltas and review receipt status,
+staged as verified bundles, and applied only under the configured app-update policy.
+
 Catalog review metadata and compatibility metadata are review gates, not trust gates. They do not
 replace signature verification. `review.status=reviewed` is a publisher claim unless a separate
 review receipt verifies with a locally trusted reviewer key. A compatible newer candidate can still

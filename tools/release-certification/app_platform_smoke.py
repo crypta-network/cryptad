@@ -37,7 +37,7 @@ MODES = ("pr", "nightly", "release-candidate")
 DEFAULT_OUT_DIR = Path("build/release-certification/app-platform-smoke")
 SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "app-platform-smoke-report.md"
-APP_IDS = ("queue-manager", "publisher")
+APP_IDS = ("queue-manager", "publisher", "site-publisher")
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -395,6 +395,14 @@ def parse_properties(path: Path) -> dict[str, str]:
     return result
 
 
+def parse_permission_set(raw_permissions: str) -> set[str]:
+    return {
+        permission.strip()
+        for permission in raw_permissions.split(",")
+        if permission.strip()
+    }
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -507,6 +515,19 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
         },
+        {
+            "appId": "site-publisher",
+            "name": "Site Publisher",
+            "stagedDir": (
+                settings.workspace_root
+                / "apps/site-publisher/build/cryptad-app/site-publisher"
+            ),
+            "sourceDir": settings.workspace_root / "apps/site-publisher/src/staged",
+            "launcher": "bin/site-publisher.sh",
+            "permissions": {"queue.read", "queue.write", "content.insert"},
+            "apiMinimumVersion": 3,
+            "apiMaximumTestedVersion": 3,
+        },
     ]
 
 
@@ -528,7 +549,9 @@ def validate_app_bundle(bundle_dir: Path, spec: dict[str, Any], settings: Settin
         "version": manifest.get("app.version"),
         "uiMode": manifest.get("app.ui.mode"),
         "uiEntry": manifest.get("app.ui.entry"),
-        "permissions": sorted(filter(None, manifest.get("app.permissions", "").split(","))),
+        "permissions": sorted(parse_permission_set(manifest.get("app.permissions", ""))),
+        "apiMinimumVersion": manifest.get("api.minimumVersion"),
+        "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
     }
     for key in ("app.id", "app.name", "app.version"):
         if not manifest.get(key):
@@ -541,9 +564,17 @@ def validate_app_bundle(bundle_dir: Path, spec: dict[str, Any], settings: Settin
         errors.append("app.ui.mode must be static")
     if manifest.get("app.ui.entry") != "static/index.html":
         errors.append("app.ui.entry must be static/index.html")
-    declared_permissions = set(filter(None, manifest.get("app.permissions", "").split(",")))
+    declared_permissions = parse_permission_set(manifest.get("app.permissions", ""))
     if not spec["permissions"].issubset(declared_permissions):
         errors.append("manifest permissions are incomplete")
+    if "apiMinimumVersion" in spec and manifest.get("api.minimumVersion") != str(
+        spec["apiMinimumVersion"]
+    ):
+        errors.append("api.minimumVersion does not match expected first-party metadata")
+    if "apiMaximumTestedVersion" in spec and manifest.get("api.maximumTestedVersion") != str(
+        spec["apiMaximumTestedVersion"]
+    ):
+        errors.append("api.maximumTestedVersion does not match expected first-party metadata")
     for relative in (spec["launcher"], "static/index.html", "static/app.js", "static/app.css", "static/crypta-platform.js"):
         if not (bundle_dir / relative).is_file():
             errors.append(f"{relative} is missing")
@@ -1428,13 +1459,58 @@ def collect_app_review_policy_evidence(settings: Settings) -> EvidenceItem:
     return EvidenceItem("app-review.policy", "pass", True, "App-review policy gates passed deterministic evidence checks.", source, details)
 
 
+def write_first_party_review_descriptor(
+    descriptor: Path,
+    spec: dict[str, Any],
+    manifest: dict[str, str],
+    artifact_zip: Path,
+) -> None:
+    app_id = manifest.get("app.id", spec["appId"])
+    app_name = manifest.get("app.name", spec["name"])
+    permissions = ",".join(sorted(parse_permission_set(manifest.get("app.permissions", ""))))
+    lines = [
+        f"artifact.path={artifact_zip.resolve()}",
+        f"bundle.uri={artifact_zip.resolve().as_uri()}",
+        f"summary=First-party release-candidate review target for {app_name}.",
+        f"name={app_name}",
+        f"permissions={permissions}",
+        f"app.id={app_id}",
+        f"version={manifest.get('app.version', '')}",
+        "review.status=reviewed",
+        "review.note=First-party app review receipt required for release promotion.",
+        "changelog.summary=Release certification first-party catalog evidence.",
+    ]
+    if manifest.get("api.minimumVersion"):
+        lines.append(f"api.minimumVersion={manifest['api.minimumVersion']}")
+    if manifest.get("api.maximumTestedVersion"):
+        lines.append(f"api.maximumTestedVersion={manifest['api.maximumTestedVersion']}")
+    if manifest.get("api.experimentalCapabilitiesAccepted"):
+        lines.append(
+            "api.experimentalCapabilitiesAccepted="
+            + manifest["api.experimentalCapabilitiesAccepted"]
+        )
+    descriptor.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def collect_app_review_first_party_catalog_evidence(settings: Settings, sample_paths: dict[str, Path]) -> EvidenceItem:
     source = summary_source(settings)
     cli = sample_paths.get("cli")
-    sample_zip = sample_paths.get("zip")
-    details: dict[str, Any] = {"policyMode": "release-candidate requires trusted positive receipts"}
-    if not cli or not sample_zip or not sample_zip.is_file():
-        return EvidenceItem("app-review.first-party-catalog", root_consequence(settings, "missing"), True, "Sample ZIP or crypta-app CLI is unavailable for app-review catalog evidence.", source, details)
+    specs = first_party_app_specs(settings)
+    details: dict[str, Any] = {
+        "policyMode": "release-candidate requires trusted positive receipts",
+        "firstPartyApps": [spec["appId"] for spec in specs],
+        "referenceContentApp": "site-publisher",
+        "coverage": {
+            "catalogAppsInspected": 0,
+            "trustedPositiveReceipts": 0,
+            "missingReceipts": len(specs),
+            "expiredOrMismatchedOrUnknownReviewer": 0,
+            "trustedRejectedReceipts": 0,
+            "promotionBlocked": True,
+        },
+    }
+    if not cli:
+        return EvidenceItem("app-review.first-party-catalog", root_consequence(settings, "missing"), True, "crypta-app CLI is unavailable for first-party review catalog evidence.", source, details)
     inputs = reviewer_inputs(os.environ)
     details["reviewerInputs"] = {
         "keyIdPresent": bool(inputs["keyId"]),
@@ -1454,27 +1530,8 @@ def collect_app_review_first_party_catalog_evidence(settings: Settings, sample_p
         )
     review_dir = sample_workspace(settings) / "app-review"
     review_dir.mkdir(parents=True, exist_ok=True)
-    descriptor = review_dir / "entry.properties"
-    receipt_file = review_dir / "review-receipt.properties"
     trusted_keys_file = review_dir / "trusted-reviewers.properties"
     catalog_file = review_dir / "cryptad-app-catalog.properties"
-    sample_app_id = "cert-smoke"
-    sample_app_prefix = f"app.{sample_app_id}."
-    descriptor.write_text(
-        "\n".join(
-            [
-                f"artifact.path={sample_zip.resolve()}",
-                f"bundle.uri={sample_zip.resolve().as_uri()}",
-                "summary=Certification review smoke app.",
-                "name=Certification Review Smoke",
-                "permissions=queue.read",
-                f"app.id={sample_app_id}",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    remove_existing_path(receipt_file)
     remove_existing_path(catalog_file)
     try:
         write_trusted_reviewer_keys(trusted_keys_file, inputs)
@@ -1490,54 +1547,149 @@ def collect_app_review_first_party_catalog_evidence(settings: Settings, sample_p
             source,
             details,
         )
-    sign_result = run_cli(cli, review_sign_args(descriptor, receipt_file, inputs), settings, "crypta-app-review-sign")
-    verify_result = run_cli(cli, review_verify_args(descriptor, receipt_file, trusted_keys_file), settings, "crypta-app-review-verify")
-    create_result = run_cli(
-        cli,
-        [
-            "catalog",
-            "create",
-            "--catalog-file",
-            str(catalog_file),
-            "--catalog-id",
-            "cert-review-smoke",
-            "--name",
-            "Certification Review Smoke Apps",
-            "--generated-at",
-            "2026-05-01T00:00:00Z",
-            "--entry",
-            str(descriptor),
-            "--review-receipt",
-            str(receipt_file),
-            "--overwrite",
-        ],
-        settings,
-        "crypta-app-review-catalog-create",
-    )
-    details["sign"] = command_details(sign_result, settings)
-    details["verify"] = command_details(verify_result, settings)
+
+    failures: list[str] = []
+    entry_files: list[Path] = []
+    receipt_files: list[Path] = []
+    details["apps"] = {}
+    for spec in specs:
+        app_id = spec["appId"]
+        app_details: dict[str, Any] = {
+            "stagedDir": display_path(spec["stagedDir"], settings.workspace_root),
+        }
+        details["apps"][app_id] = app_details
+        manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+        if not manifest_path.is_file():
+            failures.append(f"{app_id}: staged manifest is missing")
+            continue
+        try:
+            manifest = parse_properties(manifest_path)
+        except ValueError as exc:
+            failures.append(f"{app_id}: {exc}")
+            continue
+        version = manifest.get("app.version", "unknown")
+        artifact_zip = review_dir / f"{app_id}-{version}.zip"
+        descriptor = review_dir / f"{app_id}.properties"
+        receipt_file = review_dir / f"{app_id}-review-receipt.properties"
+        remove_existing_path(artifact_zip)
+        remove_existing_path(descriptor)
+        remove_existing_path(receipt_file)
+        pack_result = run_cli(
+            cli,
+            [
+                "pack",
+                "--bundle-dir",
+                str(spec["stagedDir"]),
+                "--output",
+                str(artifact_zip),
+                "--overwrite",
+            ],
+            settings,
+            f"crypta-app-review-pack-{app_id}",
+        )
+        app_details["pack"] = command_details(pack_result, settings)
+        app_details["artifact"] = display_path(artifact_zip, settings.workspace_root, settings.out_dir)
+        if pack_result.exit_code != 0 or not artifact_zip.is_file():
+            failures.append(f"{app_id}: first-party bundle pack failed")
+            continue
+        write_first_party_review_descriptor(descriptor, spec, manifest, artifact_zip)
+        sign_result = run_cli(
+            cli,
+            review_sign_args(descriptor, receipt_file, inputs),
+            settings,
+            f"crypta-app-review-sign-{app_id}",
+        )
+        verify_result = run_cli(
+            cli,
+            review_verify_args(descriptor, receipt_file, trusted_keys_file),
+            settings,
+            f"crypta-app-review-verify-{app_id}",
+        )
+        app_details["descriptor"] = display_path(descriptor, settings.workspace_root, settings.out_dir)
+        app_details["receipt"] = display_path(receipt_file, settings.workspace_root, settings.out_dir)
+        app_details["sign"] = command_details(sign_result, settings)
+        app_details["verify"] = command_details(verify_result, settings)
+        if sign_result.exit_code != 0:
+            failures.append(f"{app_id}: review receipt signing failed")
+        if verify_result.exit_code != 0:
+            failures.append(f"{app_id}: review receipt verification failed")
+        if sign_result.exit_code == 0 and verify_result.exit_code == 0:
+            entry_files.append(descriptor)
+            receipt_files.append(receipt_file)
+    if failures:
+        return EvidenceItem(
+            "app-review.first-party-catalog",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "First-party review catalog preparation failed.",
+            source,
+            {"failures": failures, **details},
+        )
+
+    create_args = [
+        "catalog",
+        "create",
+        "--catalog-file",
+        str(catalog_file),
+        "--catalog-id",
+        "cert-first-party-review",
+        "--name",
+        "Certification First-Party Apps",
+        "--generated-at",
+        "2026-05-01T00:00:00Z",
+    ]
+    for entry_file in entry_files:
+        create_args.extend(["--entry", str(entry_file)])
+    for receipt_file in receipt_files:
+        create_args.extend(["--review-receipt", str(receipt_file)])
+    create_args.append("--overwrite")
+    create_result = run_cli(cli, create_args, settings, "crypta-app-review-catalog-create")
     details["catalogCreate"] = command_details(create_result, settings)
     catalog = parse_properties(catalog_file) if catalog_file.is_file() else {}
-    receipt_status = catalog.get(sample_app_prefix + "review.receipt.status")
+    catalog_entries = parse_permission_set(catalog.get("catalog.entries", ""))
+    expected_app_ids = {spec["appId"] for spec in specs}
+    inspected_app_ids = {
+        app_id
+        for app_id in expected_app_ids
+        if catalog.get(f"app.{app_id}.id") == app_id or app_id in catalog_entries
+    }
+    receipt_statuses = {
+        app_id: catalog.get(f"app.{app_id}.review.receipt.status")
+        for app_id in expected_app_ids
+    }
+    trusted_positive_receipts = sum(
+        1 for status in receipt_statuses.values() if status == "reviewed"
+    )
+    trusted_rejected_receipts = sum(
+        1 for status in receipt_statuses.values() if status == "rejected"
+    )
+    missing_receipts = sum(1 for status in receipt_statuses.values() if not status)
+    verify_failures = sum(
+        1
+        for app_details in details["apps"].values()
+        if app_details.get("verify", {}).get("exitCode") != 0
+    )
     details["coverage"] = {
-        "catalogAppsInspected": 1,
-        "trustedPositiveReceipts": 1 if verify_result.exit_code == 0 and receipt_status == "reviewed" else 0,
-        "missingReceipts": 0 if receipt_status else 1,
-        "expiredOrMismatchedOrUnknownReviewer": 0 if verify_result.exit_code == 0 else 1,
-        "trustedRejectedReceipts": 1 if receipt_status == "rejected" else 0,
-        "promotionBlocked": verify_result.exit_code != 0 or receipt_status != "reviewed",
+        "catalogAppsInspected": len(inspected_app_ids),
+        "trustedPositiveReceipts": trusted_positive_receipts,
+        "missingReceipts": missing_receipts,
+        "expiredOrMismatchedOrUnknownReviewer": verify_failures,
+        "trustedRejectedReceipts": trusted_rejected_receipts,
+        "promotionBlocked": (
+            create_result.exit_code != 0
+            or inspected_app_ids != expected_app_ids
+            or trusted_positive_receipts != len(expected_app_ids)
+        ),
     }
     details["catalog"] = {
         "catalogId": catalog.get("catalog.id"),
-        "appId": catalog.get(sample_app_prefix + "id"),
-        "receiptStatus": receipt_status,
-        "reviewerKeyId": catalog.get(sample_app_prefix + "review.receipt.reviewer.key.id"),
-        "policyId": catalog.get(sample_app_prefix + "review.receipt.policy.id"),
-        "policyVersion": catalog.get(sample_app_prefix + "review.receipt.policy.version"),
+        "entries": sorted(catalog_entries),
+        "inspectedAppIds": sorted(inspected_app_ids),
+        "receiptStatuses": receipt_statuses,
     }
-    if sign_result.exit_code != 0 or verify_result.exit_code != 0 or create_result.exit_code != 0 or receipt_status != "reviewed":
+    if details["coverage"]["promotionBlocked"]:
         return EvidenceItem("app-review.first-party-catalog", "fail" if settings.mode == "release-candidate" else "warn", True, "Trusted first-party review receipt catalog evidence failed.", source, details)
-    return EvidenceItem("app-review.first-party-catalog", "pass", True, "First-party catalog review receipt evidence passed.", source, details)
+    return EvidenceItem("app-review.first-party-catalog", "pass", True, "First-party catalog review receipt evidence covered all first-party apps.", source, details)
 
 
 def design_system_source_dir(settings: Settings) -> Path:
@@ -1945,6 +2097,131 @@ def collect_app_ui_evidence(settings: Settings) -> EvidenceItem:
             {"errors": errors, **details},
         )
     return EvidenceItem("app-ui.smoke", "pass", True, "App-owned UI and SDK smoke passed.", source, details)
+
+
+def collect_reference_content_app_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "site-publisher"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {
+        "appId": "site-publisher",
+        "checks": {},
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-apps.content",
+            root_consequence(settings, "fail"),
+            True,
+            "Site Publisher first-party app spec is missing.",
+            source,
+            details,
+        )
+
+    app_dir = settings.workspace_root / "apps/site-publisher"
+    source_static_dir = spec["sourceDir"] / "static"
+    staged_static_dir = spec["stagedDir"] / "static"
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_index = read_source(source_static_dir / "index.html")
+    source_app_js = read_source(source_static_dir / "app.js")
+    app_readme = read_source(app_dir / "README.md")
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    details.update(
+        {
+            "sourceDir": display_path(spec["sourceDir"], settings.workspace_root),
+            "stagedDir": display_path(spec["stagedDir"], settings.workspace_root),
+            "expectedPermissions": sorted(spec["permissions"]),
+        }
+    )
+    checks = details["checks"]
+    checks["moduleExists"] = app_dir.is_dir()
+    checks["stagedManifestPresent"] = manifest_path.is_file()
+    checks["sourceStaticUiPresent"] = (source_static_dir / "index.html").is_file() and (
+        source_static_dir / "app.js"
+    ).is_file()
+    checks["stagedSdkPresent"] = (staged_static_dir / "crypta-platform.js").is_file()
+    checks["stagedDesignSystemPresent"] = all(
+        (staged_static_dir / "crypta-ui" / asset_name).is_file()
+        for asset_name in design_system_asset_names()
+    )
+    checks["usesContentInsertDirectory"] = "CryptaPlatform.content.insertDirectory" in source_app_js
+    checks["usesContentInsertFile"] = "CryptaPlatform.content.insertFile" in source_app_js
+    checks["usesUploadQueueSnapshot"] = "CryptaPlatform.queue.snapshot" in source_app_js
+    checks["usesSdkBootstrap"] = "CryptaPlatform.bootstrap.load({ appId })" in source_app_js
+    checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
+    checks["noPersistentBrowserStorage"] = all(
+        forbidden not in source_app_js
+        for forbidden in ("localStorage.setItem", "sessionStorage.setItem")
+    )
+    checks["noVaultCapabilitiesDeclared"] = bool(manifest) and not any(
+        permission.startswith("vault.") for permission in manifest_permissions
+    )
+    disclosure = permission_disclosure_block(source_index)
+    mentioned_permissions = set(
+        re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
+    )
+    checks["permissionDisclosureMentionsDeclaredPermissions"] = manifest_permissions.issubset(
+        mentioned_permissions
+    )
+    checks["identityProfileDemoDocumentedFutureWork"] = (
+        "Identity-backed" in app_readme and "future work" in app_readme
+    )
+    if manifest:
+        details["manifest"] = {
+            "appId": manifest.get("app.id"),
+            "name": manifest.get("app.name"),
+            "uiMode": manifest.get("app.ui.mode"),
+            "uiEntry": manifest.get("app.ui.entry"),
+            "permissions": sorted(manifest_permissions),
+            "apiMinimumVersion": manifest.get("api.minimumVersion"),
+            "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+        }
+        checks["manifestDeclaresSitePublisher"] = (
+            manifest.get("app.id") == "site-publisher"
+            and manifest.get("app.name") == "Site Publisher"
+            and manifest.get("app.ui.mode") == "static"
+            and manifest.get("app.ui.entry") == "static/index.html"
+        )
+        checks["manifestDeclaresContentPermissions"] = spec["permissions"].issubset(
+            manifest_permissions
+        )
+    else:
+        checks["manifestDeclaresSitePublisher"] = False
+        checks["manifestDeclaresContentPermissions"] = False
+
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"reference content app check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-apps.content",
+            root_consequence(settings, "fail"),
+            True,
+            "Site Publisher reference content app evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-apps.content",
+        "pass",
+        True,
+        "Site Publisher reference content app evidence passed.",
+        source,
+        details,
+    )
 
 
 def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
@@ -2746,6 +3023,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_ui_lint_evidence(settings, cli if isinstance(cli, Path) else None),
         collect_app_ui_first_party_adoption_evidence(settings),
         collect_app_ui_evidence(settings),
+        collect_reference_content_app_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
         collect_sandbox_provider_evidence(settings),
@@ -3199,6 +3477,47 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
+        assert evidence_by_id["reference-apps.content"]["status"] == "pass"
+        review_env_names = (
+            "CRYPTAD_APP_REVIEWER_KEY_ID",
+            "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+            "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64",
+            "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE",
+            "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64",
+            "CRYPTAD_APP_REVIEW_POLICY_ID",
+            "CRYPTAD_APP_REVIEW_POLICY_VERSION",
+        )
+        previous_review_env = {name: os.environ.get(name) for name in review_env_names}
+        os.environ["CRYPTAD_APP_REVIEWER_KEY_ID"] = "cert-review"
+        os.environ.pop("CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE", None)
+        os.environ["CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64"] = "ZmFrZQ=="
+        os.environ.pop("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE", None)
+        os.environ["CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64"] = "ZmFrZQ=="
+        os.environ["CRYPTAD_APP_REVIEW_POLICY_ID"] = "crypta-app-review-v1"
+        os.environ["CRYPTAD_APP_REVIEW_POLICY_VERSION"] = "1"
+        try:
+            first_party_review_item = collect_app_review_first_party_catalog_evidence(
+                dataclasses.replace(
+                    settings,
+                    out_dir=(workspace / "build/first-party-review-catalog-smoke").resolve(),
+                    mode="release-candidate",
+                ),
+                {"cli": fake_cli},
+            )
+        finally:
+            for name, value in previous_review_env.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        assert first_party_review_item.status == "pass", first_party_review_item
+        assert first_party_review_item.details["coverage"]["catalogAppsInspected"] == len(
+            APP_IDS
+        ), first_party_review_item
+        assert first_party_review_item.details["coverage"]["trustedPositiveReceipts"] == len(
+            APP_IDS
+        ), first_party_review_item
+        assert set(first_party_review_item.details["catalog"]["inspectedAppIds"]) == set(APP_IDS)
 
         def collect_ui_lint_with_fake_env(
             env_name: str, out_leaf: str
@@ -3572,11 +3891,36 @@ def make_self_test_workspace(workspace: Path) -> None:
     (design_dir / "crypta-ui-tokens.css").write_text(":root{--cr-space-4:1rem;}\n", encoding="utf-8")
     (design_dir / "crypta-ui.css").write_text(".cr-app{}.cr-shell{}.cr-button{}\n", encoding="utf-8")
     (design_dir / "crypta-ui-components.js").write_text('window.CryptaUi={version:"1"};\n', encoding="utf-8")
-    for app_id, display_name, launcher, permissions in (
-        ("queue-manager", "Queue Manager", "queue-manager.sh", "queue.read,queue.write"),
-        ("publisher", "Publisher", "publisher.sh", "queue.read,queue.write,content.insert"),
+    for project, app_id, display_name, launcher, permissions, app_js in (
+        (
+            "queue-manager",
+            "queue-manager",
+            "Queue Manager",
+            "queue-manager.sh",
+            "queue.read,queue.write",
+            "CryptaPlatform.bootstrap.load({ appId: 'queue-manager' });\n",
+        ),
+        (
+            "publisher",
+            "publisher",
+            "Publisher",
+            "publisher.sh",
+            "queue.read,queue.write,content.insert",
+            "CryptaPlatform.bootstrap.load({ appId: 'publisher' });\n",
+        ),
+        (
+            "site-publisher",
+            "site-publisher",
+            "Site Publisher",
+            "site-publisher.sh",
+            "queue.read,queue.write,content.insert",
+            "const appId = 'site-publisher';\n"
+            "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.content.insertDirectory(new FormData());\n"
+            "CryptaPlatform.content.insertFile(new FormData());\n"
+            "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+        ),
     ):
-        project = "queue-manager" if app_id == "queue-manager" else "publisher"
         source = workspace / f"apps/{project}/src/staged"
         staged = workspace / f"apps/{project}/build/cryptad-app/{app_id}"
         for root in (source, staged):
@@ -3598,7 +3942,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 encoding="utf-8",
             )
             (root / "static/app.js").write_text(
-                f"CryptaPlatform.bootstrap.load({{ appId: '{app_id}' }});\n",
+                app_js,
                 encoding="utf-8",
             )
             (root / "static/app.css").write_text("body { color: #111; }\n", encoding="utf-8")
@@ -3612,6 +3956,9 @@ def make_self_test_workspace(workspace: Path) -> None:
                     f"app.id={app_id}",
                     f"app.name={display_name}",
                     "app.version=0.1.0",
+                    "api.minimumVersion=3",
+                    "api.maximumTestedVersion=3",
+                    "api.experimentalCapabilitiesAccepted=false",
                     f"app.exec=bin/{launcher}",
                     "app.ui.mode=static",
                     "app.ui.entry=static/index.html",
@@ -3623,6 +3970,12 @@ def make_self_test_workspace(workspace: Path) -> None:
             + "\n",
             encoding="utf-8",
         )
+        if app_id == "site-publisher":
+            (workspace / "apps/site-publisher/README.md").write_text(
+                "Site Publisher is the first content reference app. "
+                "Identity-backed publishing is future work.\n",
+                encoding="utf-8",
+            )
     registry = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java"
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text((Path(__file__).parent / "fixtures" / "self-test-legacy-registry.java-fragment").read_text(encoding="utf-8"), encoding="utf-8")
@@ -3688,8 +4041,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "crypta-ui.css, then app.css. Use cr-shell and cr-button classes. "
         "Content-Security-Policy includes connect-src. Accessibility requires aria labels. "
         "Permission disclosure mirrors app.permissions. Run crypta-app ui lint --bundle-dir. "
-        "First-party Queue Manager and Publisher use this guidance. Warnings become failure "
-        "in release-candidate evidence.\n",
+        "First-party Queue Manager, Publisher, and Site Publisher use this guidance. Warnings "
+        "become failure in release-candidate evidence.\n",
         encoding="utf-8",
     )
     sandbox_dir = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"
@@ -4093,25 +4446,63 @@ def create_catalog(args):
         return 0
     if not catalog_text:
         return 2
+    entries = []
+    review_receipts = []
+    catalog_id = option_value(args, "--catalog-id") or "cert-smoke"
+    catalog_name = option_value(args, "--name") or "Certification Smoke Apps"
+    generated_at = option_value(args, "--generated-at") or "2026-05-01T00:00:00Z"
+    index = 0
+    while index < len(args):
+        if args[index] == "--entry" and index + 1 < len(args):
+            entries.append(Path(args[index + 1]))
+            index += 2
+            continue
+        if args[index] == "--review-receipt" and index + 1 < len(args):
+            review_receipts.append(Path(args[index + 1]))
+            index += 2
+            continue
+        index += 1
+    if not entries:
+        entries = [Path("cert-smoke-entry.properties")]
     catalog = Path(catalog_text)
-    write_text(
-        catalog,
-        """catalog.version=1
-catalog.id=cert-smoke
-catalog.name=Certification Smoke Apps
-catalog.generatedAt=2026-05-01T00:00:00Z
-catalog.entries=cert-smoke
-app.cert-smoke.id=cert-smoke
-app.cert-smoke.name=Certification Smoke
-app.cert-smoke.version=0.1.0
-app.cert-smoke.summary=Certification smoke app.
-app.cert-smoke.bundle.uri=file:///tmp/cert-smoke.zip
-app.cert-smoke.bundle.sha256=0000000000000000000000000000000000000000000000000000000000000000
-app.cert-smoke.bundle.size.bytes=3
-app.cert-smoke.bundle.type=zip
-app.cert-smoke.permissions=queue.read
-""",
-    )
+    app_ids = []
+    lines = [
+        "catalog.version=1",
+        f"catalog.id={catalog_id}",
+        f"catalog.name={catalog_name}",
+        f"catalog.generatedAt={generated_at}",
+    ]
+    app_lines = []
+    for descriptor in entries:
+        app_id = property_value(descriptor, "app.id") or "cert-smoke"
+        app_ids.append(app_id)
+        artifact_path = Path(property_value(descriptor, "artifact.path") or "/tmp/cert-smoke.zip")
+        artifact_size = artifact_path.stat().st_size if artifact_path.is_file() else 3
+        app_lines.extend(
+            [
+                f"app.{app_id}.id={app_id}",
+                f"app.{app_id}.name={property_value(descriptor, 'name') or 'Certification Smoke'}",
+                f"app.{app_id}.version={property_value(descriptor, 'version') or '0.1.0'}",
+                f"app.{app_id}.summary={property_value(descriptor, 'summary') or 'Certification smoke app.'}",
+                f"app.{app_id}.bundle.uri={property_value(descriptor, 'bundle.uri') or 'file:///tmp/cert-smoke.zip'}",
+                "app." + app_id + ".bundle.sha256=0000000000000000000000000000000000000000000000000000000000000000",
+                f"app.{app_id}.bundle.size.bytes={artifact_size}",
+                f"app.{app_id}.bundle.type=zip",
+                f"app.{app_id}.permissions={property_value(descriptor, 'permissions') or 'queue.read'}",
+            ]
+        )
+        if review_receipts:
+            app_lines.extend(
+                [
+                    f"app.{app_id}.review.receipt.status=reviewed",
+                    f"app.{app_id}.review.receipt.reviewer.key.id=cert-review",
+                    f"app.{app_id}.review.receipt.policy.id=crypta-app-review-v1",
+                    f"app.{app_id}.review.receipt.policy.version=1",
+                ]
+            )
+    lines.append("catalog.entries=" + ",".join(app_ids))
+    lines.extend(app_lines)
+    write_text(catalog, "\n".join(lines) + "\n")
     return 0
 
 
@@ -4315,29 +4706,82 @@ case "$cmd" in
     sub="$1"; shift
     case "$sub" in
       create)
-        catalog=""
-        while [ "$#" -gt 0 ]; do
-          if [ "$1" = "--catalog-file" ]; then catalog="$2"; shift 2; else shift; fi
-        done
         if [ "${CRYPTAD_APP_SMOKE_FAKE_SKIP_CATALOG_OUTPUT:-0}" = "1" ]; then
           exit 0
         fi
-        cat > "$catalog" <<'CATALOG'
-catalog.version=1
-catalog.id=cert-smoke
-catalog.name=Certification Smoke Apps
-catalog.generatedAt=2026-05-01T00:00:00Z
-catalog.entries=cert-smoke
-app.cert-smoke.id=cert-smoke
-app.cert-smoke.name=Certification Smoke
-app.cert-smoke.version=0.1.0
-app.cert-smoke.summary=Certification smoke app.
-app.cert-smoke.bundle.uri=file:///tmp/cert-smoke.zip
-app.cert-smoke.bundle.sha256=0000000000000000000000000000000000000000000000000000000000000000
-app.cert-smoke.bundle.size.bytes=3
-app.cert-smoke.bundle.type=zip
-app.cert-smoke.permissions=queue.read
-CATALOG
+        python3 - "$@" <<'PY'
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+
+def option(name, default=""):
+    for index, value in enumerate(args):
+        if value == name and index + 1 < len(args):
+            return args[index + 1]
+    return default
+
+def values(name):
+    found = []
+    index = 0
+    while index < len(args):
+        if args[index] == name and index + 1 < len(args):
+            found.append(Path(args[index + 1]))
+            index += 2
+        else:
+            index += 1
+    return found
+
+def prop(path, name):
+    if not path.is_file():
+        return ""
+    prefix = name + "="
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped.split("=", 1)[1]
+    return ""
+
+catalog_text = option("--catalog-file")
+if not catalog_text:
+    raise SystemExit(2)
+catalog = Path(catalog_text)
+entries = values("--entry") or [Path("cert-smoke-entry.properties")]
+review_receipts = values("--review-receipt")
+app_ids = []
+lines = [
+    "catalog.version=1",
+    "catalog.id=" + option("--catalog-id", "cert-smoke"),
+    "catalog.name=" + option("--name", "Certification Smoke Apps"),
+    "catalog.generatedAt=" + option("--generated-at", "2026-05-01T00:00:00Z"),
+]
+app_lines = []
+for descriptor in entries:
+    app_id = prop(descriptor, "app.id") or "cert-smoke"
+    app_ids.append(app_id)
+    artifact = Path(prop(descriptor, "artifact.path") or "/tmp/cert-smoke.zip")
+    size = artifact.stat().st_size if artifact.is_file() else 3
+    app_lines.extend([
+        f"app.{app_id}.id={app_id}",
+        f"app.{app_id}.name={prop(descriptor, 'name') or 'Certification Smoke'}",
+        f"app.{app_id}.version={prop(descriptor, 'version') or '0.1.0'}",
+        f"app.{app_id}.summary={prop(descriptor, 'summary') or 'Certification smoke app.'}",
+        f"app.{app_id}.bundle.uri={prop(descriptor, 'bundle.uri') or 'file:///tmp/cert-smoke.zip'}",
+        f"app.{app_id}.bundle.sha256=0000000000000000000000000000000000000000000000000000000000000000",
+        f"app.{app_id}.bundle.size.bytes={size}",
+        f"app.{app_id}.bundle.type=zip",
+        f"app.{app_id}.permissions={prop(descriptor, 'permissions') or 'queue.read'}",
+    ])
+    if review_receipts:
+        app_lines.extend([
+            f"app.{app_id}.review.receipt.status=reviewed",
+            f"app.{app_id}.review.receipt.reviewer.key.id=cert-review",
+            f"app.{app_id}.review.receipt.policy.id=crypta-app-review-v1",
+            f"app.{app_id}.review.receipt.policy.version=1",
+        ])
+catalog.parent.mkdir(parents=True, exist_ok=True)
+catalog.write_text("\\n".join(lines + ["catalog.entries=" + ",".join(app_ids)] + app_lines) + "\\n", encoding="utf-8")
+PY
         ;;
       sign|verify)
         exit 0

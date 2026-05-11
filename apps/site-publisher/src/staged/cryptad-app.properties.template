@@ -1,0 +1,13 @@
+manifest.version=1
+app.id=site-publisher
+app.name=Site Publisher
+app.version=${appVersion}
+api.minimumVersion=3
+api.maximumTestedVersion=3
+api.experimentalCapabilitiesAccepted=false
+app.exec=bin/site-publisher.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=queue.read,queue.write,content.insert
+quota.data.bytes=0
+quota.cache.bytes=0

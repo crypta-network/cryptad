@@ -380,10 +380,14 @@ Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` rem
 compatibility fallback, and shell-panel bundles keep existing local links such as
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
 origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
-asset boundary. The repo-owned Queue Manager and Publisher bundles now stage static UIs that open
-through the isolated app UI path when available, including the browser SDK described in
-[`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and the canonical UI design-system assets
-described in [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md).
+asset boundary. The repo-owned Queue Manager, legacy Publisher, and Site Publisher bundles now
+stage static UIs that open through the isolated app UI path when available, including the browser
+SDK described in [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and the canonical UI
+design-system assets described in [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md).
+Site Publisher is the first content reference app: it demonstrates signed bundles, app-owned
+static UI, content insert permissions, catalog metadata, review evidence, and update certification
+for publishing workflows. Legacy Publisher remains the compatibility replacement for old insert
+admin pages.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -467,9 +471,10 @@ receipt properties files offline. `crypta-app catalog create --review-receipt` e
 into the generated catalog entry so Platform API responses can expose `reviewTrust` alongside the
 legacy advisory `review` object.
 
-First-party apps can keep using `:apps:queue-manager` and `:apps:publisher` `stageApp`, `signApp`,
-and `verifyApp` tasks. See [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow
-and [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
+First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`, and
+`:apps:site-publisher` `stageApp`, `signApp`, and `verifyApp` tasks. See
+[docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow and
+[docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
 
 ## Platform Closeout & API Surface
 
@@ -483,7 +488,8 @@ as normal fallback surfaces.
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
 sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
-Manager and Publisher UIs. Phase 6 adds isolated per-app loopback origins for static app UIs while
+Manager, Publisher, and Site Publisher UIs. Phase 6 adds isolated per-app loopback origins for
+static app UIs while
 retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
 process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
 apps can be launched through `/app/node/` shell-panel links or through isolated app UI URLs when the
@@ -495,6 +501,8 @@ manifests, signed catalogs, developer tooling, and release certification compare
 versions without changing endpoint behavior. The Web Shell Apps section uses
 `/api/v1/app-catalogs` metadata to show source, license, category, review, permission-rationale,
 version-difference, API compatibility, and changelog details before install or update.
+PR-221 adds Site Publisher as the first content reference app without changing peer protocol
+behavior or wiring it into the legacy insert-page retirement map.
 Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
 `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
 `/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue

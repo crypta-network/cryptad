@@ -151,6 +151,12 @@ local secret values and identity private material. See
 identities, process/browser restrictions, local at-rest limitations, update/rollback/uninstall
 grant behavior, and future content/social/mail extension points.
 
+Site Publisher, the first content reference app, requests only the capabilities needed for its
+implemented publishing flow. A basic local-site publishing flow needs `content.insert` to submit
+content, `queue.write` to create insert requests, and `queue.read` to display queue progress.
+Identity-profile publishing should request `vault.identities.read` or `vault.identities.use` only
+when an implemented app can use an operator-granted identity without exporting private material.
+
 ## Audit trail
 
 The Platform API records app-originated allowed and denied authorization decisions in a bounded

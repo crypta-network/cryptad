@@ -519,6 +519,7 @@ tasks.register("stageFirstPartyApps") {
   description = "Stages the repo-owned first-party AppHost bundles."
   dependsOn(":apps:queue-manager:stageApp")
   dependsOn(":apps:publisher:stageApp")
+  dependsOn(":apps:site-publisher:stageApp")
 }
 
 tasks.register("signFirstPartyApps") {
@@ -526,6 +527,7 @@ tasks.register("signFirstPartyApps") {
   description = "Signs the repo-owned first-party AppHost bundles."
   dependsOn(":apps:queue-manager:signApp")
   dependsOn(":apps:publisher:signApp")
+  dependsOn(":apps:site-publisher:signApp")
 }
 
 tasks.register("verifyFirstPartyApps") {
@@ -533,6 +535,7 @@ tasks.register("verifyFirstPartyApps") {
   description = "Verifies the signed repo-owned first-party AppHost bundles."
   dependsOn(":apps:queue-manager:verifyApp")
   dependsOn(":apps:publisher:verifyApp")
+  dependsOn(":apps:site-publisher:verifyApp")
   mustRunAfter("signFirstPartyApps")
 }
 

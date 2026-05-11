@@ -84,6 +84,7 @@ app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
 app-ui.smoke
+reference-apps.content
 legacy.retirement
 apphost.sandbox-provider
 app-update.lifecycle
@@ -94,13 +95,14 @@ app-review.first-party-catalog
 ```
 
 `platform-api.contract`, `app-vault.capabilities`, `app-ui.design-system`, `app-ui.lint`,
-`app-ui.first-party-adoption`, `apphost.sandbox-provider`, `app-update.lifecycle`,
-`app-update.rollback`, `app-review.trusted-receipts`, and `app-review.policy` use deterministic
-source checks, fixtures, and fake/offline tests; they do not require a live node or host-installed
-bubblewrap in normal CI. `app-review.first-party-catalog` also runs offline, but
-release-candidate mode requires explicit reviewer key inputs so the runner can sign, verify, and
-embed a first-party review receipt. `interop.extended` and `apphost.live` are recorded as optional
-stronger evidence. Extended interop is still required by the release runbook when
+`app-ui.first-party-adoption`, `reference-apps.content`, `apphost.sandbox-provider`,
+`app-update.lifecycle`, `app-update.rollback`, `app-review.trusted-receipts`, and
+`app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
+require a live node or host-installed bubblewrap in normal CI. `app-review.first-party-catalog`
+also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
+can pack every staged first-party app and sign, verify, and embed a matching first-party review
+receipt for each catalog entry. `interop.extended` and `apphost.live`
+are recorded as optional stronger evidence. Extended interop is still required by the release runbook when
 compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
 normal PR CI must not require a running node or operator credentials.
 
@@ -153,7 +155,7 @@ CRYPTAD_APP_REVIEW_POLICY_VERSION
 
 In `pr` and `nightly` modes, missing reviewer inputs are recorded as skipped or warning evidence.
 In `release-candidate` mode, missing first-party review receipt evidence is a failing required
-item. The report records reviewer key ids, policy ids, receipt status counts, and redacted command
+item. The report records reviewer key ids, policy ids, first-party catalog coverage, receipt status counts, and redacted command
 metadata; it must not include reviewer private keys, raw public key bytes, local evidence paths, or
 app/session/process tokens.
 

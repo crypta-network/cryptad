@@ -503,6 +503,12 @@ def collect_asset_metrics(settings: Settings, metrics: dict[str, dict[str, Any]]
     )
     collect_directory_size(
         metrics,
+        "apps.site_publisher_static_bytes",
+        root / "apps/site-publisher/src/staged/static",
+        root,
+    )
+    collect_directory_size(
+        metrics,
         "apphost.queue_manager_staged_bundle_bytes",
         root / "apps/queue-manager/build/cryptad-app/queue-manager",
         root,
@@ -511,6 +517,12 @@ def collect_asset_metrics(settings: Settings, metrics: dict[str, dict[str, Any]]
         metrics,
         "apphost.publisher_staged_bundle_bytes",
         root / "apps/publisher/build/cryptad-app/publisher",
+        root,
+    )
+    collect_directory_size(
+        metrics,
+        "apphost.site_publisher_staged_bundle_bytes",
+        root / "apps/site-publisher/build/cryptad-app/site-publisher",
         root,
     )
 
