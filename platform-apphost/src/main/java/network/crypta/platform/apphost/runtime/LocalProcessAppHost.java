@@ -1225,7 +1225,7 @@ public final class LocalProcessAppHost implements AppHost {
     if (runningProcess == null) {
       return null;
     }
-    RunningProcess refreshedRunningProcess = runningProcess.refresh();
+    RunningProcess refreshedRunningProcess = refreshRunningProcess(runningProcess);
     if (refreshedRunningProcess == null) {
       refreshedRunningProcess = recoverTrackedRunningProcess(runningProcess);
     }
@@ -1242,7 +1242,7 @@ public final class LocalProcessAppHost implements AppHost {
 
   private StartupAcceptance acceptStartupRunningProcess(
       String appId, RunningProcess runningProcess, CompletableFuture<Void> exitCleanup) {
-    RunningProcess refreshedRunningProcess = runningProcess.refresh();
+    RunningProcess refreshedRunningProcess = refreshRunningProcess(runningProcess);
     if (refreshedRunningProcess == null) {
       refreshedRunningProcess = recoverTrackedRunningProcess(runningProcess);
     }
@@ -1259,6 +1259,16 @@ public final class LocalProcessAppHost implements AppHost {
       }
     }
     return StartupAcceptance.failed();
+  }
+
+  private RunningProcess refreshRunningProcess(RunningProcess runningProcess) {
+    return runningProcess.refresh(timing.trackedProcessPostExitCaptureGracePeriod());
+  }
+
+  private RunningProcess refreshRunningProcessFromTree(
+      RunningProcess runningProcess, List<ProcessHandle> processTree) {
+    return runningProcess.tryWithProcessTree(
+        processTree, timing.trackedProcessPostExitCaptureGracePeriod());
   }
 
   private boolean startupRestartScheduled(String appId, RunningProcess runningProcess) {
@@ -1830,6 +1840,8 @@ public final class LocalProcessAppHost implements AppHost {
       refreshObservedProcessTree(appId, process);
       TimeUnit.NANOSECONDS.sleep(timing.startupProcessPollInterval().toNanos());
     }
+    TimeUnit.NANOSECONDS.sleep(timing.startupProcessPollInterval().toNanos());
+    refreshObservedProcessTree(appId, process);
   }
 
   private void capturePostExitProcessTree(
@@ -1872,7 +1884,7 @@ public final class LocalProcessAppHost implements AppHost {
           if (activeProcess.process() != process) {
             return activeProcess;
           }
-          RunningProcess refreshed = activeProcess.refresh();
+          RunningProcess refreshed = refreshRunningProcess(activeProcess);
           if (refreshed == null) {
             refreshed = recoverTrackedRunningProcess(activeProcess);
           }
@@ -2614,7 +2626,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private boolean preserveRunningState(String appId, RunningProcess runningProcess) {
-    RunningProcess refreshedRunningProcess = runningProcess.refresh();
+    RunningProcess refreshedRunningProcess = refreshRunningProcess(runningProcess);
     if (refreshedRunningProcess == null) {
       runningApps.remove(appId, runningProcess);
       return false;
@@ -2625,7 +2637,8 @@ public final class LocalProcessAppHost implements AppHost {
 
   private RunningProcess trackRunningProcessForStop(String appId, RunningProcess runningProcess) {
     List<ProcessHandle> processTree = runningProcess.processTree();
-    RunningProcess trackedRunningProcess = runningProcess.tryWithProcessTree(processTree);
+    RunningProcess trackedRunningProcess =
+        refreshRunningProcessFromTree(runningProcess, processTree);
     if (trackedRunningProcess == null) {
       if (runningApps.remove(appId, runningProcess)) {
         recordProcessExit(
@@ -2645,7 +2658,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private RunningProcess refreshTrackedRunningProcess(String appId, RunningProcess runningProcess) {
-    RunningProcess refreshedRunningProcess = runningProcess.refresh();
+    RunningProcess refreshedRunningProcess = refreshRunningProcess(runningProcess);
     if (refreshedRunningProcess == null) {
       refreshedRunningProcess = recoverTrackedRunningProcess(runningProcess);
     }
@@ -2688,7 +2701,7 @@ public final class LocalProcessAppHost implements AppHost {
     if (recoveredHandles.isEmpty()) {
       return null;
     }
-    return runningProcess.tryWithProcessTree(recoveredHandles);
+    return refreshRunningProcessFromTree(runningProcess, recoveredHandles);
   }
 
   private List<ProcessHandle> recoverTrackedProcesses(
@@ -3420,13 +3433,15 @@ public final class LocalProcessAppHost implements AppHost {
 
   @SuppressWarnings("ClassCanBeRecord")
   private static final class RunningProcess {
+    private static final long NO_ROOT_HANDOFF_CANDIDATE = -1L;
+
     private final Process process;
     private final RunningAppSnapshot snapshot;
     private final CompletableFuture<Void> exitCleanup;
     private final List<ProcessHandle> trackedHandles;
     private final int restartCount;
     private final int currentRestartAttempt;
-    private final boolean representativeProcessHandoff;
+    private final RootHandoffState rootHandoffState;
 
     private RunningProcess(
         Process process,
@@ -3436,13 +3451,31 @@ public final class LocalProcessAppHost implements AppHost {
         int restartCount,
         int currentRestartAttempt,
         boolean representativeProcessHandoff) {
+      this(
+          process,
+          snapshot,
+          exitCleanup,
+          trackedHandles,
+          restartCount,
+          currentRestartAttempt,
+          new RootHandoffState(representativeProcessHandoff, NO_ROOT_HANDOFF_CANDIDATE));
+    }
+
+    private RunningProcess(
+        Process process,
+        RunningAppSnapshot snapshot,
+        CompletableFuture<Void> exitCleanup,
+        List<ProcessHandle> trackedHandles,
+        int restartCount,
+        int currentRestartAttempt,
+        RootHandoffState rootHandoffState) {
       this.process = Objects.requireNonNull(process, "process");
       this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
       this.exitCleanup = Objects.requireNonNull(exitCleanup, "exitCleanup");
       this.trackedHandles = List.copyOf(Objects.requireNonNull(trackedHandles, "trackedHandles"));
       this.restartCount = restartCount;
       this.currentRestartAttempt = currentRestartAttempt;
-      this.representativeProcessHandoff = representativeProcessHandoff;
+      this.rootHandoffState = Objects.requireNonNull(rootHandoffState, "rootHandoffState");
     }
 
     private Process process() {
@@ -3466,11 +3499,11 @@ public final class LocalProcessAppHost implements AppHost {
     }
 
     private boolean isRepresentativeProcessHandoff() {
-      return representativeProcessHandoff;
+      return rootHandoffState.confirmed();
     }
 
     private RunningProcess withObservedRootHandoff() {
-      if (representativeProcessHandoff
+      if (isRepresentativeProcessHandoff()
           || !hasTrackedDescendant()
           || isEffectivelyAlive(process.toHandle())) {
         return this;
@@ -3500,23 +3533,25 @@ public final class LocalProcessAppHost implements AppHost {
       return deduplicateHandles(seedHandles);
     }
 
-    private RunningProcess refresh() {
+    private RunningProcess refresh(Duration rootHandoffConfirmationGrace) {
       List<ProcessHandle> currentProcessTree = aliveHandles(processTree());
       if (currentProcessTree.isEmpty()) {
         return null;
       }
-      return tryWithAliveProcessTree(currentProcessTree);
+      return tryWithAliveProcessTree(currentProcessTree, rootHandoffConfirmationGrace);
     }
 
-    private RunningProcess tryWithProcessTree(List<ProcessHandle> newProcessTree) {
+    private RunningProcess tryWithProcessTree(
+        List<ProcessHandle> newProcessTree, Duration rootHandoffConfirmationGrace) {
       List<ProcessHandle> aliveProcessTree = aliveHandles(newProcessTree);
       if (aliveProcessTree.isEmpty()) {
         return null;
       }
-      return tryWithAliveProcessTree(aliveProcessTree);
+      return tryWithAliveProcessTree(aliveProcessTree, rootHandoffConfirmationGrace);
     }
 
-    private RunningProcess tryWithAliveProcessTree(List<ProcessHandle> aliveProcessTree) {
+    private RunningProcess tryWithAliveProcessTree(
+        List<ProcessHandle> aliveProcessTree, Duration rootHandoffConfirmationGrace) {
       boolean rootProcessExited = rootProcessExited(aliveProcessTree);
       if (!rootProcessExited && !isEffectivelyAlive(process.toHandle())) {
         aliveProcessTree = withoutRootProcess(aliveProcessTree);
@@ -3525,8 +3560,8 @@ public final class LocalProcessAppHost implements AppHost {
         }
         rootProcessExited = true;
       }
-      boolean updatedRepresentativeProcessHandoff =
-          representativeProcessHandoff || rootProcessExited;
+      RootHandoffState updatedRootHandoffState =
+          rootHandoffState(rootProcessExited, rootHandoffConfirmationGrace);
       long updatedPid = representativePid(aliveProcessTree, snapshot.pid(), false);
       RunningAppSnapshot updatedSnapshot =
           updatedPid == snapshot.pid()
@@ -3540,7 +3575,7 @@ public final class LocalProcessAppHost implements AppHost {
                   snapshot.sandboxStatus());
       if (trackedHandlePids().equals(handlePids(aliveProcessTree))
           && updatedPid == snapshot.pid()
-          && updatedRepresentativeProcessHandoff == representativeProcessHandoff) {
+          && updatedRootHandoffState.equals(rootHandoffState)) {
         return this;
       }
       return new RunningProcess(
@@ -3550,7 +3585,33 @@ public final class LocalProcessAppHost implements AppHost {
           aliveProcessTree,
           restartCount,
           currentRestartAttempt,
-          updatedRepresentativeProcessHandoff);
+          updatedRootHandoffState);
+    }
+
+    private RootHandoffState rootHandoffState(
+        boolean rootProcessExited, Duration rootHandoffConfirmationGrace) {
+      if (isRepresentativeProcessHandoff()) {
+        return new RootHandoffState(true, NO_ROOT_HANDOFF_CANDIDATE);
+      }
+      if (!rootProcessExited) {
+        return new RootHandoffState(false, NO_ROOT_HANDOFF_CANDIDATE);
+      }
+      // A clean wrapper can briefly leave stale descendant handles while it reaps a child.
+      // Confirm the handoff only after the existing post-exit capture grace keeps seeing it.
+      long candidateAtNanos = rootHandoffState.candidateAtNanos();
+      long nowNanos = System.nanoTime();
+      if (candidateAtNanos == NO_ROOT_HANDOFF_CANDIDATE) {
+        candidateAtNanos = nowNanos;
+      }
+      if (rootHandoffCandidateExpired(candidateAtNanos, rootHandoffConfirmationGrace, nowNanos)) {
+        return new RootHandoffState(true, NO_ROOT_HANDOFF_CANDIDATE);
+      }
+      return new RootHandoffState(false, candidateAtNanos);
+    }
+
+    private static boolean rootHandoffCandidateExpired(
+        long candidateAtNanos, Duration rootHandoffConfirmationGrace, long nowNanos) {
+      return nowNanos - candidateAtNanos >= rootHandoffConfirmationGrace.toNanos();
     }
 
     private boolean rootProcessExited(List<ProcessHandle> aliveProcessTree) {
@@ -3575,5 +3636,7 @@ public final class LocalProcessAppHost implements AppHost {
     private static List<Long> handlePids(List<ProcessHandle> processHandles) {
       return processHandles.stream().map(ProcessHandle::pid).sorted().toList();
     }
+
+    private record RootHandoffState(boolean confirmed, long candidateAtNanos) {}
   }
 }
