@@ -17,6 +17,31 @@ on:
         required: true
         default: false
         type: boolean
+      previous-summary-path:
+        description: Optional local path to a previous release-certification-summary.json checked out or restored before this job.
+        required: false
+        default: ''
+        type: string
+      require-history:
+        description: Fail release-candidate certification when no previous summary is available.
+        required: true
+        default: false
+        type: boolean
+      write-history:
+        description: Write sanitized current summaries under build/release-certification-history.
+        required: true
+        default: false
+        type: boolean
+      history-label:
+        description: Optional release or git-ref label for write-history output.
+        required: false
+        default: ''
+        type: string
+      waiver-file-path:
+        description: Optional local path to a structured release waiver JSON file.
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '47 5 * * *'
   push:
@@ -33,6 +58,11 @@ jobs:
     env:
       CERT_MODE: ${{ github.event_name == 'push' && 'release-candidate' || github.event.inputs.mode || 'nightly' }}
       RUN_EXTENDED_GATES: ${{ github.event.inputs['extended-gates'] || 'false' }}
+      PREVIOUS_SUMMARY_PATH: ${{ github.event.inputs['previous-summary-path'] || '' }}
+      REQUIRE_HISTORY: ${{ github.event.inputs['require-history'] || 'false' }}
+      WRITE_HISTORY: ${{ github.event.inputs['write-history'] || 'false' }}
+      HISTORY_LABEL: ${{ github.event.inputs['history-label'] || '' }}
+      WAIVER_FILE_PATH: ${{ github.event.inputs['waiver-file-path'] || '' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -96,10 +126,34 @@ jobs:
           CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE }}
           CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE }}
+          CRYPTAD_APP_REVIEWER_KEY_ID: ${{ secrets.CRYPTAD_APP_REVIEWER_KEY_ID }}
+          CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64 }}
+          CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64 }}
+          CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE }}
+          CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE: ${{ secrets.CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE }}
+          CRYPTAD_APP_REVIEW_POLICY_ID: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_ID }}
+          CRYPTAD_APP_REVIEW_POLICY_VERSION: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_VERSION }}
         run: |
-          tools/release-certification/run-release-certification.sh \
-            --mode "$CERT_MODE" \
+          cert_args=(
+            --mode "$CERT_MODE"
             --out-dir build/release-certification
+          )
+          if [[ -n "$PREVIOUS_SUMMARY_PATH" ]]; then
+            cert_args+=(--previous-summary "$PREVIOUS_SUMMARY_PATH")
+          fi
+          if [[ "$REQUIRE_HISTORY" == "true" ]]; then
+            cert_args+=(--require-history)
+          fi
+          if [[ "$WRITE_HISTORY" == "true" ]]; then
+            cert_args+=(--write-history)
+          fi
+          if [[ -n "$HISTORY_LABEL" ]]; then
+            cert_args+=(--history-label "$HISTORY_LABEL")
+          fi
+          if [[ -n "$WAIVER_FILE_PATH" ]]; then
+            cert_args+=(--waiver-file "$WAIVER_FILE_PATH")
+          fi
+          tools/release-certification/run-release-certification.sh "${cert_args[@]}"
 
       - name: Upload release certification artifacts
         if: always()
@@ -109,10 +163,13 @@ jobs:
           path: |
             build/release-certification/release-certification-summary.json
             build/release-certification/release-certification-report.md
+            build/release-certification/history-comparison.json
+            build/release-certification/history-comparison.md
             build/release-certification/artifacts/
             build/release-certification/app-platform-smoke/summary.json
             build/release-certification/app-platform-smoke/app-platform-smoke-report.md
             build/release-certification/app-platform-smoke/artifacts/
+            build/release-certification-history/
             !**/private-insert-uris.json
           if-no-files-found: warn
           retention-days: 30

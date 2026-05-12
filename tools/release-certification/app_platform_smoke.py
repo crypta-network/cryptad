@@ -1029,6 +1029,36 @@ def collect_cli_evidence(settings: Settings, cli: Path | None) -> tuple[Evidence
     )
 
 
+def stable_capability_names(capabilities: list[Any]) -> list[str]:
+    names: list[str] = []
+    for entry in capabilities:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("stability", "unknown")).lower() != "stable":
+            continue
+        name = str(entry.get("name") or entry.get("id") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return sorted(names)
+
+
+def stable_endpoint_identities(endpoints: list[Any]) -> list[str]:
+    identities: list[str] = []
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("stability", "unknown")).lower() != "stable":
+            continue
+        route = str(entry.get("routeTemplate") or entry.get("path") or entry.get("route") or "").strip()
+        if not route:
+            continue
+        method = str(entry.get("method", "")).strip().upper()
+        identity = f"{method} {route}" if method else route
+        if identity not in identities:
+            identities.append(identity)
+    return sorted(identities)
+
+
 def collect_platform_api_contract_evidence(
     settings: Settings, cli: Path | None, sample_paths: dict[str, Path]
 ) -> EvidenceItem:
@@ -1090,6 +1120,8 @@ def collect_platform_api_contract_evidence(
     details["apiVersion"] = api_version
     details["capabilityCount"] = len(capabilities)
     details["endpointCount"] = len(endpoints)
+    details["stableCapabilities"] = stable_capability_names(capabilities)
+    details["stableEndpoints"] = stable_endpoint_identities(endpoints)
     details["stabilityCounts"] = stability_counts
     details["flaggedStability"] = flagged
     if contract:
@@ -3471,6 +3503,11 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_details["contractVersion"] == 2, contract_item
         assert contract_details["capabilityCount"] == 2, contract_item
         assert contract_details["endpointCount"] == 1, contract_item
+        assert contract_details["stableCapabilities"] == [
+            "platform.contract.read",
+            "queue.read",
+        ], contract_item
+        assert contract_details["stableEndpoints"] == ["GET /queue"], contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}

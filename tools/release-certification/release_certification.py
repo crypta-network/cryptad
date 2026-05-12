@@ -26,8 +26,11 @@ from typing import Any
 TOOL_NAME = "release-certification"
 SCHEMA_VERSION = 1
 DEFAULT_OUT_DIR = Path("build/release-certification")
+DEFAULT_HISTORY_DIR = Path("build/release-certification-history")
 SUMMARY_FILE_NAME = "release-certification-summary.json"
 REPORT_FILE_NAME = "release-certification-report.md"
+HISTORY_COMPARISON_FILE_NAME = "history-comparison.json"
+HISTORY_COMPARISON_REPORT_FILE_NAME = "history-comparison.md"
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
@@ -101,6 +104,87 @@ class EvidenceItem:
 
 
 @dataclasses.dataclass(frozen=True)
+class WaiverRecord:
+    """Approved release-manager waiver loaded from the CLI or a structured file."""
+
+    id: str
+    evidence_id: str
+    reason: str
+    source: str
+    status: str = "approved"
+    approved_by: str = ""
+    expires_at: str = ""
+    allow_release_candidate: bool = False
+    active: bool = True
+    expired: bool = False
+    applies_to_release_candidate: bool = True
+    validation_error: str = ""
+
+    def matches(self, target_id: str, issue_ids: list[str] | None = None) -> bool:
+        candidates = {target_id}
+        if issue_ids:
+            candidates.update(issue_ids)
+        return self.id in candidates or self.evidence_id in candidates
+
+    def to_json(self) -> dict[str, Any]:
+        value = {
+            "id": self.id,
+            "evidenceId": self.evidence_id,
+            "status": self.status,
+            "approvedBy": self.approved_by,
+            "reason": self.reason,
+            "source": self.source,
+            "active": self.active,
+            "expired": self.expired,
+            "allowReleaseCandidate": self.allow_release_candidate,
+            "appliesToReleaseCandidate": self.applies_to_release_candidate,
+        }
+        if self.expires_at:
+            value["expiresAt"] = self.expires_at
+        if self.validation_error:
+            value["validationError"] = self.validation_error
+        return value
+
+
+@dataclasses.dataclass(frozen=True)
+class WaiverContext:
+    """Resolved waiver state used by evidence and ecosystem gate evaluation."""
+
+    records: list[WaiverRecord] = dataclasses.field(default_factory=list)
+    errors: list[str] = dataclasses.field(default_factory=list)
+
+    def active_records(self, mode: str) -> list[WaiverRecord]:
+        return [
+            record
+            for record in self.records
+            if record.active
+            and not record.expired
+            and record.status == "approved"
+            and (mode != "release-candidate" or record.allow_release_candidate)
+        ]
+
+
+@dataclasses.dataclass(frozen=True)
+class GateResult:
+    """Deterministic ecosystem release gate result."""
+
+    id: str
+    status: str
+    release_blocker: bool
+    summary: str
+    details: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "status": self.status,
+            "releaseBlocker": self.release_blocker,
+            "summary": self.summary,
+            "details": self.details,
+        }
+
+
+@dataclasses.dataclass(frozen=True)
 class Settings:
     workspace_root: Path
     out_dir: Path
@@ -112,6 +196,12 @@ class Settings:
     waivers: dict[str, str]
     metadata: dict[str, str]
     skip_git_metadata: bool
+    previous_summary: Path | None = None
+    require_history: bool = False
+    history_dir: Path = DEFAULT_HISTORY_DIR
+    write_history: bool = False
+    history_label: str = ""
+    waiver_files: tuple[Path, ...] = ()
 
 
 def utc_now() -> str:
@@ -349,26 +439,6 @@ def normalize_evidence_status(status: str) -> str:
     return "missing"
 
 
-def with_waiver(
-    item: EvidenceItem, waivers: dict[str, str], workspace_root: Path, out_dir: Path
-) -> EvidenceItem:
-    reason = waivers.get(item.id)
-    if not reason or item.status == "pass":
-        return item
-    safe_reason = scrub_text(reason, workspace_root, out_dir)
-    details = dict(item.details)
-    details["waived"] = True
-    details["waiverReason"] = safe_reason
-    return EvidenceItem(
-        id=item.id,
-        status="warn",
-        required_for_release_candidate=item.required_for_release_candidate,
-        summary=f"{item.summary} Waiver recorded: {safe_reason}",
-        source=item.source,
-        details=details,
-    )
-
-
 def sanitize_evidence_item(item: EvidenceItem, workspace_root: Path, out_dir: Path) -> EvidenceItem:
     return EvidenceItem(
         id=item.id,
@@ -377,6 +447,200 @@ def sanitize_evidence_item(item: EvidenceItem, workspace_root: Path, out_dir: Pa
         summary=scrub_text(item.summary, workspace_root, out_dir),
         source=scrub_text(item.source, workspace_root, out_dir),
         details=dict(sanitize_value(item.details, workspace_root, out_dir)),
+    )
+
+
+def parse_expiry(value: str) -> dt.datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime) -> tuple[list[WaiverRecord], list[str]]:
+    source = display_path(path, settings.workspace_root, settings.out_dir)
+    value = read_json(path)
+    if value is None:
+        return [], [f"Waiver file {source} is missing or malformed."]
+    records = value.get("waivers", [])
+    if value.get("version") != 1 or not isinstance(records, list):
+        return [], [f"Waiver file {source} must use version 1 and a waivers array."]
+    loaded: list[WaiverRecord] = []
+    errors: list[str] = []
+    for index, entry in enumerate(records):
+        if not isinstance(entry, dict):
+            errors.append(f"Waiver file {source} entry {index} is not an object.")
+            continue
+        waiver_id = str(entry.get("id", "")).strip()
+        evidence_id = str(entry.get("evidenceId", waiver_id)).strip()
+        reason = str(entry.get("reason", "")).strip()
+        raw_status = str(entry.get("status", "")).strip().lower()
+        status = raw_status if raw_status == "approved" else ("pending" if not raw_status else "invalid")
+        approved_by = str(entry.get("approvedBy", "")).strip()
+        raw_expires_at = str(entry.get("expiresAt", "")).strip()
+        allow_release_candidate_value = entry.get("allowReleaseCandidate", False)
+        allow_release_candidate = (
+            allow_release_candidate_value if isinstance(allow_release_candidate_value, bool) else False
+        )
+        validation_errors: list[str] = []
+        if not waiver_id:
+            validation_errors.append("id is required")
+        if not evidence_id:
+            validation_errors.append("evidenceId is required")
+        if not reason:
+            validation_errors.append("reason is required")
+        if status != "approved":
+            validation_errors.append("status must be approved")
+        if not isinstance(allow_release_candidate_value, bool):
+            validation_errors.append("allowReleaseCandidate must be a boolean")
+        expiry = parse_expiry(raw_expires_at)
+        if raw_expires_at and expiry is None:
+            validation_errors.append("expiresAt must be an ISO-8601 timestamp")
+        expired = bool(expiry and expiry <= now)
+        if expired:
+            validation_errors.append("waiver is expired")
+        safe_reason = scrub_text(reason, settings.workspace_root, settings.out_dir)
+        safe_waiver_id = scrub_text(waiver_id, settings.workspace_root, settings.out_dir)
+        safe_evidence_id = scrub_text(evidence_id, settings.workspace_root, settings.out_dir)
+        safe_approved_by = scrub_text(approved_by, settings.workspace_root, settings.out_dir)
+        safe_expires_at = (
+            scrub_text(raw_expires_at, settings.workspace_root, settings.out_dir)
+            if expiry is not None
+            else ("<invalid>" if raw_expires_at else "")
+        )
+        safe_error = "; ".join(validation_errors)
+        if validation_errors:
+            errors.append(f"Waiver {safe_waiver_id or index} in {source}: {safe_error}.")
+        loaded.append(
+            WaiverRecord(
+                id=safe_waiver_id or f"{source}#{index}",
+                evidence_id=safe_evidence_id or safe_waiver_id or f"{source}#{index}",
+                reason=safe_reason,
+                source=source,
+                status=status,
+                approved_by=safe_approved_by,
+                expires_at=safe_expires_at,
+                allow_release_candidate=allow_release_candidate,
+                active=not validation_errors,
+                expired=expired,
+                applies_to_release_candidate=allow_release_candidate,
+                validation_error=safe_error,
+            )
+        )
+    return loaded, errors
+
+
+def load_waiver_context(settings: Settings, now: dt.datetime) -> WaiverContext:
+    records: list[WaiverRecord] = []
+    errors: list[str] = []
+    for waiver_file in settings.waiver_files:
+        loaded, file_errors = load_structured_waiver_file(waiver_file, settings, now)
+        records.extend(loaded)
+        errors.extend(file_errors)
+    for waiver_id, reason in settings.waivers.items():
+        safe_reason = scrub_text(reason, settings.workspace_root, settings.out_dir)
+        safe_waiver_id = scrub_text(waiver_id, settings.workspace_root, settings.out_dir)
+        records.append(
+            WaiverRecord(
+                id=safe_waiver_id,
+                evidence_id=safe_waiver_id,
+                reason=safe_reason,
+                source="cli",
+                status="approved",
+                approved_by="cli",
+                allow_release_candidate=True,
+                active=True,
+                applies_to_release_candidate=True,
+            )
+        )
+    return WaiverContext(records=records, errors=errors)
+
+
+def active_waiver_for(
+    context: WaiverContext, target_id: str, issue_ids: list[str] | None, mode: str
+) -> WaiverRecord | None:
+    for record in reversed(context.active_records(mode)):
+        if record.matches(target_id, issue_ids):
+            return record
+    return None
+
+
+def unique_non_empty_strings(values: Any) -> list[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    result: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def active_waivers_for_all(
+    context: WaiverContext, target_ids: list[str], mode: str
+) -> list[WaiverRecord]:
+    records: list[WaiverRecord] = []
+    for target_id in target_ids:
+        waiver = active_waiver_for(context, target_id, None, mode)
+        if waiver is None:
+            return []
+        records.append(waiver)
+    return records
+
+
+def with_waiver_record(item: EvidenceItem, waiver: WaiverRecord | None) -> EvidenceItem:
+    if waiver is None or item.status == "pass":
+        return item
+    details = dict(item.details)
+    details["waived"] = True
+    details["waiverId"] = waiver.id
+    details["waiverReason"] = waiver.reason
+    details["waiverSource"] = waiver.source
+    return EvidenceItem(
+        id=item.id,
+        status="warn",
+        required_for_release_candidate=item.required_for_release_candidate,
+        summary=f"{item.summary} Waiver recorded: {waiver.reason}",
+        source=item.source,
+        details=details,
+    )
+
+
+def apply_waiver_to_gate(gate: GateResult, context: WaiverContext, mode: str) -> GateResult:
+    if gate.id == "ecosystem.waivers":
+        return gate
+    issue_ids = [str(value) for value in gate.details.get("issueIds", []) if value]
+    waiver = active_waiver_for(context, gate.id, issue_ids, mode)
+    waived_evidence_ids: list[str] = []
+    if waiver is None and gate.status == "fail":
+        failure_evidence_ids = unique_non_empty_strings(gate.details.get("failureEvidenceIds", []))
+        evidence_waivers = active_waivers_for_all(context, failure_evidence_ids, mode)
+        if evidence_waivers:
+            waiver = evidence_waivers[-1]
+            waived_evidence_ids = failure_evidence_ids
+    if waiver is None or gate.status == "pass":
+        return gate
+    details = dict(gate.details)
+    details["waived"] = True
+    details["waiverId"] = waiver.id
+    details["waiverReason"] = waiver.reason
+    details["waiverSource"] = waiver.source
+    if waived_evidence_ids:
+        details["waivedEvidenceIds"] = waived_evidence_ids
+    return GateResult(
+        id=gate.id,
+        status="warn",
+        release_blocker=False,
+        summary=f"{gate.summary} Waiver recorded: {waiver.reason}",
+        details=details,
     )
 
 
@@ -771,6 +1035,1046 @@ def evidence_counts(evidence: list[EvidenceItem]) -> dict[str, int]:
     return counts
 
 
+STATUS_SEVERITY = {"pass": 0, "warn": 1, "skip": 2, "missing": 2, "fail": 3}
+EXPECTED_FIRST_PARTY_APPS = ("queue-manager", "publisher", "site-publisher")
+EXPECTED_VAULT_CAPABILITIES = (
+    "vault.secrets.read",
+    "vault.secrets.write",
+    "vault.identities.read",
+    "vault.identities.create",
+    "vault.identities.use",
+    "vault.identities.manage",
+)
+
+
+def evidence_map_from_items(evidence: list[EvidenceItem]) -> dict[str, dict[str, Any]]:
+    return {item.id: item.to_json() for item in evidence}
+
+
+def evidence_map_from_summary(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return {}
+    evidence = summary.get("evidence", [])
+    if not isinstance(evidence, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for entry in evidence:
+        if isinstance(entry, dict) and entry.get("id"):
+            result[str(entry["id"])] = entry
+    return result
+
+
+def evidence_status(entry: dict[str, Any] | None) -> str:
+    if not isinstance(entry, dict):
+        return "missing"
+    return normalize_evidence_status(str(entry.get("status", "missing")))
+
+
+def evidence_required(entry: dict[str, Any] | None) -> bool:
+    return isinstance(entry, dict) and bool(entry.get("requiredForReleaseCandidate", False))
+
+
+def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {}
+    details = entry.get("details", {})
+    return details if isinstance(details, dict) else {}
+
+
+def status_severity(status: str) -> int:
+    return STATUS_SEVERITY.get(normalize_evidence_status(status), 2)
+
+
+def sorted_strings(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return sorted(dict.fromkeys(str(item) for item in value))
+    if isinstance(value, tuple):
+        return sorted(dict.fromkeys(str(item) for item in value))
+    return []
+
+
+def app_ids_from_details(details: dict[str, Any], key: str = "apps") -> set[str]:
+    value = details.get(key)
+    if isinstance(value, dict):
+        return {str(app_id) for app_id in value.keys()}
+    return set(sorted_strings(value))
+
+
+def nested_dict(value: dict[str, Any], key: str) -> dict[str, Any]:
+    child = value.get(key, {})
+    return child if isinstance(child, dict) else {}
+
+
+def int_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def detail_int(details: dict[str, Any], key: str) -> int | None:
+    return int_value(details.get(key))
+
+
+def stable_descriptor_count(details: dict[str, Any]) -> int | None:
+    explicit = detail_int(details, "stableDescriptorCount")
+    if explicit is not None:
+        return explicit
+    stability_counts = nested_dict(details, "stabilityCounts")
+    return int_value(stability_counts.get("stable"))
+
+
+def total_ui_warnings(details: dict[str, Any]) -> int | None:
+    apps = details.get("apps")
+    if not isinstance(apps, dict):
+        return None
+    total = 0
+    found = False
+    for app in apps.values():
+        if not isinstance(app, dict):
+            continue
+        summary = app.get("summary")
+        if not isinstance(summary, dict):
+            summary = app.get("report", {}).get("summary") if isinstance(app.get("report"), dict) else {}
+        warning_count = int_value(summary.get("warnings") if isinstance(summary, dict) else None)
+        if warning_count is not None:
+            total += warning_count
+            found = True
+    return total if found else None
+
+
+def all_boolean_checks_pass(details: dict[str, Any]) -> bool | None:
+    checks = details.get("checks")
+    if not isinstance(checks, dict):
+        return None
+    boolean_values = [value for value in checks.values() if isinstance(value, bool)]
+    if not boolean_values:
+        return None
+    return all(boolean_values)
+
+
+def set_from_detail(details: dict[str, Any], *keys: str) -> set[str]:
+    for key in keys:
+        value = details.get(key)
+        if isinstance(value, list):
+            return {str(item) for item in value}
+        if isinstance(value, dict):
+            return {str(item) for item in value.keys()}
+    return set()
+
+
+def stable_named_set(details: dict[str, Any], list_key: str, fallback_key: str) -> set[str]:
+    direct = set_from_detail(details, list_key)
+    if direct:
+        return direct
+    values = details.get(fallback_key)
+    result: set[str] = set()
+    if isinstance(values, list):
+        for value in values:
+            if isinstance(value, dict):
+                stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+                if stability and stability != "stable":
+                    continue
+                route_template = value.get("routeTemplate")
+                if route_template:
+                    method = str(value.get("method", "")).strip().upper()
+                    name = f"{method} {route_template}" if method else route_template
+                else:
+                    name = value.get("id") or value.get("name") or value.get("path") or value.get("route")
+                if name:
+                    result.add(str(name))
+            elif isinstance(value, str):
+                result.add(value)
+    if isinstance(values, dict):
+        for key, value in values.items():
+            if isinstance(value, dict):
+                stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+                if stability and stability != "stable":
+                    continue
+            result.add(str(key))
+    return result
+
+
+def stable_named_set_reported(details: dict[str, Any], list_key: str, fallback_key: str) -> bool:
+    for key in (list_key, fallback_key):
+        value = details.get(key)
+        if isinstance(value, (dict, list)):
+            return True
+    return False
+
+
+def release_metadata_note_present(metadata: dict[str, Any], *keys: str) -> bool:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+        if isinstance(value, bool) and value:
+            return True
+    return False
+
+
+def summary_identity(
+    summary: dict[str, Any] | None,
+    workspace_root: Path,
+    out_dir: Path,
+    source: str = "",
+) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {"source": source} if source else {}
+    metadata = summary.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    git_sha = (
+        metadata.get("gitCommit")
+        or metadata.get("githubSha")
+        or summary.get("gitSha")
+        or summary.get("commit")
+        or ""
+    )
+    release_version = (
+        metadata.get("releaseVersion")
+        or metadata.get("version")
+        or summary.get("releaseVersion")
+        or summary.get("version")
+        or ""
+    )
+    identity = {
+        "source": source,
+        "generatedAt": summary.get("generatedAt", ""),
+        "gitSha": git_sha,
+        "releaseVersion": release_version,
+    }
+    return {key: sanitize_value(value, workspace_root, out_dir) for key, value in identity.items()}
+
+
+def current_identity(generated_at: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    git_sha = metadata.get("gitCommit") or metadata.get("githubSha") or ""
+    release_version = metadata.get("releaseVersion") or metadata.get("version") or ""
+    return {
+        "generatedAt": generated_at,
+        "gitSha": git_sha,
+        "releaseVersion": release_version,
+    }
+
+
+def classify_evidence_diff(
+    evidence_id: str,
+    previous: dict[str, Any] | None,
+    current: dict[str, Any] | None,
+    waiver_context: WaiverContext,
+    mode: str,
+) -> dict[str, Any]:
+    previous_status = evidence_status(previous)
+    current_status = evidence_status(current)
+    previous_present = previous is not None
+    current_present = current is not None
+    current_required = evidence_required(current)
+    previous_required = evidence_required(previous)
+    if not previous_present and current_present:
+        classification = "new"
+    elif previous_present and not current_present:
+        classification = "removed"
+    elif status_severity(current_status) > status_severity(previous_status):
+        classification = "regression"
+    elif status_severity(current_status) < status_severity(previous_status):
+        classification = "improvement"
+    else:
+        classification = "unchanged"
+
+    issue_ids = [
+        f"history.{classification}.{evidence_id}",
+        f"history.evidence.{evidence_id}",
+    ]
+    waived = bool(current and evidence_details(current).get("waived"))
+    waiver = active_waiver_for(waiver_context, evidence_id, issue_ids, mode)
+    release_blocker = False
+    reason = "Evidence status is unchanged."
+    if classification == "new":
+        reason = "New evidence item is present in the current certification."
+        if current_required and current_status in {"fail", "missing", "skip"}:
+            release_blocker = True
+            reason = "New required evidence is not passing."
+        elif current_required and current_status == "warn":
+            reason = "New required evidence is warning."
+    elif classification == "removed":
+        reason = "Evidence item was present in the previous certification but is absent now."
+        release_blocker = previous_required
+    elif classification == "regression":
+        reason = f"Evidence regressed from {previous_status} to {current_status}."
+        if (previous_required or current_required) and previous_status == "pass" and current_status in {
+            "fail",
+            "missing",
+            "skip",
+        }:
+            release_blocker = True
+        elif previous_required or current_required:
+            reason = f"Required evidence regressed from {previous_status} to {current_status}."
+    elif classification == "improvement":
+        reason = f"Evidence improved from {previous_status} to {current_status}."
+
+    if waiver is not None or waived:
+        release_blocker = False
+        if waiver is not None:
+            reason = f"{reason} Waiver recorded: {waiver.reason}"
+
+    return {
+        "id": evidence_id,
+        "previousStatus": previous_status if previous_present else "missing",
+        "currentStatus": current_status if current_present else "missing",
+        "classification": classification,
+        "requiredForReleaseCandidate": bool(current_required or previous_required),
+        "releaseBlocker": release_blocker,
+        "reason": reason,
+    }
+
+
+def load_previous_summary(settings: Settings) -> tuple[dict[str, Any] | None, str, str]:
+    history_dir = resolve_path(settings.workspace_root, settings.history_dir)
+    path: Path | None = settings.previous_summary
+    if path is None:
+        candidate = history_dir / "latest-summary.json"
+        if candidate.is_file():
+            path = candidate
+    if path is None:
+        return None, "", ""
+    source = display_path(path, settings.workspace_root, settings.out_dir)
+    value = read_json(path)
+    if value is None:
+        if path.is_file():
+            return None, source, f"Previous summary {source} is malformed."
+        return None, source, f"Previous summary {source} is missing."
+    contract_error = previous_summary_contract_error(value)
+    if contract_error:
+        return None, source, f"Previous summary {source} is invalid: {contract_error}"
+    sanitized = sanitize_value(value, settings.workspace_root, settings.out_dir)
+    return sanitized if isinstance(sanitized, dict) else None, source, ""
+
+
+def previous_summary_contract_error(value: dict[str, Any]) -> str:
+    if value.get("tool") != TOOL_NAME:
+        return "not a release-certification summary"
+    if value.get("schemaVersion") != SCHEMA_VERSION:
+        return "unsupported schema version"
+    evidence = value.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return "missing evidence list"
+    if not any(isinstance(entry, dict) and entry.get("id") for entry in evidence):
+        return "evidence list has no evidence ids"
+    return ""
+
+
+def compare_history(
+    settings: Settings,
+    previous_summary: dict[str, Any] | None,
+    previous_source: str,
+    previous_error: str,
+    current_evidence: list[EvidenceItem],
+    generated_at: str,
+    metadata: dict[str, Any],
+    waiver_context: WaiverContext,
+) -> dict[str, Any]:
+    previous_identity = summary_identity(
+        previous_summary, settings.workspace_root, settings.out_dir, previous_source
+    )
+    current = current_identity(generated_at, metadata)
+    if previous_summary is None:
+        if previous_error:
+            status = "fail" if settings.mode == "release-candidate" or settings.require_history else "warn"
+            summary = previous_error
+        elif settings.require_history:
+            status = "fail"
+            summary = "Previous certified baseline is required but was not provided."
+        elif settings.mode == "pr":
+            status = "skip"
+            summary = "Previous certified baseline was not provided."
+        else:
+            status = "warn"
+            summary = "Previous certified baseline was not provided; historical regression context is unavailable."
+        return {
+            "version": 1,
+            "status": status,
+            "summary": summary,
+            "previous": previous_identity,
+            "current": current,
+            "evidenceDiffs": [],
+            "ecosystemGates": [],
+            "waivers": [record.to_json() for record in waiver_context.records],
+        }
+
+    previous_evidence = evidence_map_from_summary(previous_summary)
+    current_evidence_map = evidence_map_from_items(current_evidence)
+    all_ids = sorted(set(previous_evidence) | set(current_evidence_map))
+    diffs = [
+        classify_evidence_diff(
+            evidence_id,
+            previous_evidence.get(evidence_id),
+            current_evidence_map.get(evidence_id),
+            waiver_context,
+            settings.mode,
+        )
+        for evidence_id in all_ids
+    ]
+    has_blocker = any(diff["releaseBlocker"] for diff in diffs)
+    has_warning = any(
+        diff["classification"] in {"regression", "new", "removed"} and diff["currentStatus"] != "pass"
+        for diff in diffs
+    )
+    status = "fail" if has_blocker else ("warn" if has_warning else "pass")
+    return {
+        "version": 1,
+        "status": status,
+        "summary": "Historical comparison completed." if status == "pass" else "Historical comparison found release-relevant changes.",
+        "previous": previous_identity,
+        "current": current,
+        "evidenceDiffs": diffs,
+        "ecosystemGates": [],
+        "waivers": [record.to_json() for record in waiver_context.records],
+    }
+
+
+def gate_from_issues(gate_id: str, summary: str, failures: list[str], warnings: list[str], details: dict[str, Any]) -> GateResult:
+    if failures:
+        status = "fail"
+        release_blocker = True
+        message = f"{summary} Blockers: {'; '.join(failures)}"
+    elif warnings:
+        status = "warn"
+        release_blocker = False
+        message = f"{summary} Warnings: {'; '.join(warnings)}"
+    else:
+        status = "pass"
+        release_blocker = False
+        message = summary
+    if failures:
+        details["failures"] = failures
+    if warnings:
+        details["warnings"] = warnings
+    issue_ids = [f"{gate_id}.{slugify_issue(issue)}" for issue in failures + warnings]
+    if issue_ids:
+        details["issueIds"] = issue_ids
+    return GateResult(gate_id, status, release_blocker, message, details)
+
+
+def add_evidence_issue(details: dict[str, Any], key: str, evidence_id: str) -> None:
+    values = details.setdefault(key, [])
+    if isinstance(values, list) and evidence_id not in values:
+        values.append(evidence_id)
+
+
+def slugify_issue(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug[:80] or "issue"
+
+
+def evaluate_required_evidence_regressions(diffs: list[dict[str, Any]]) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details = {"regressions": [], "newRequiredEvidence": [], "removedEvidence": []}
+    for diff in diffs:
+        classification = diff["classification"]
+        required = bool(diff.get("requiredForReleaseCandidate"))
+        current_status = diff["currentStatus"]
+        if classification == "regression" and required:
+            details["regressions"].append(diff)
+            if diff.get("releaseBlocker"):
+                failures.append(f"{diff['id']} regressed from {diff['previousStatus']} to {current_status}")
+                add_evidence_issue(details, "failureEvidenceIds", str(diff["id"]))
+            else:
+                warnings.append(f"{diff['id']} regressed from {diff['previousStatus']} to {current_status}")
+                add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
+        elif classification == "regression":
+            details["regressions"].append(diff)
+            warnings.append(f"Optional evidence {diff['id']} regressed")
+            add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
+        elif classification == "new" and required:
+            details["newRequiredEvidence"].append(diff)
+            if current_status in {"fail", "missing", "skip"}:
+                failures.append(f"New required evidence {diff['id']} is {current_status}")
+                add_evidence_issue(details, "failureEvidenceIds", str(diff["id"]))
+            elif current_status == "warn":
+                warnings.append(f"New required evidence {diff['id']} is warning")
+                add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
+        elif classification == "removed":
+            details["removedEvidence"].append(diff)
+            if required and diff.get("releaseBlocker"):
+                failures.append(f"Required evidence {diff['id']} was removed")
+                add_evidence_issue(details, "failureEvidenceIds", str(diff["id"]))
+            elif required:
+                warnings.append(f"Required evidence {diff['id']} was removed")
+                add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
+            else:
+                warnings.append(f"Optional evidence {diff['id']} was removed")
+                add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
+    return gate_from_issues(
+        "ecosystem.required-evidence-regressions",
+        "Required release-candidate evidence did not regress.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_platform_api_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    current_item = current.get("platform-api.contract")
+    previous_item = previous.get("platform-api.contract")
+    current_status = evidence_status(current_item)
+    details = {"currentStatus": current_status}
+    failures: list[str] = []
+    warnings: list[str] = []
+    if current_status in {"fail", "missing", "skip"}:
+        failures.append("Platform API contract evidence is not passing")
+    elif current_status == "warn":
+        warnings.append("Platform API contract evidence is warning")
+    current_details = evidence_details(current_item)
+    previous_details = evidence_details(previous_item)
+    details["current"] = {
+        "contractVersion": current_details.get("contractVersion"),
+        "endpointCount": current_details.get("endpointCount"),
+        "capabilityCount": current_details.get("capabilityCount"),
+        "stableDescriptorCount": stable_descriptor_count(current_details),
+        "flaggedStability": current_details.get("flaggedStability", []),
+    }
+    if previous_details:
+        details["previous"] = {
+            "contractVersion": previous_details.get("contractVersion"),
+            "endpointCount": previous_details.get("endpointCount"),
+            "capabilityCount": previous_details.get("capabilityCount"),
+            "stableDescriptorCount": stable_descriptor_count(previous_details),
+        }
+    previous_version = detail_int(previous_details, "contractVersion")
+    current_version = detail_int(current_details, "contractVersion")
+    if previous_version is not None and current_version is not None and current_version < previous_version:
+        failures.append(f"Contract version moved backward from {previous_version} to {current_version}")
+    compared_typed_stable_counts = False
+    for count_key, label in (("stableEndpointCount", "endpoint"), ("stableCapabilityCount", "capability")):
+        previous_count = detail_int(previous_details, count_key)
+        current_count = detail_int(current_details, count_key)
+        if previous_count is None or current_count is None:
+            continue
+        compared_typed_stable_counts = True
+        if current_count < previous_count:
+            failures.append(f"Stable {label} count decreased from {previous_count} to {current_count}")
+    if not compared_typed_stable_counts:
+        previous_stable_count = stable_descriptor_count(previous_details)
+        current_stable_count = stable_descriptor_count(current_details)
+        if (
+            previous_stable_count is not None
+            and current_stable_count is not None
+            and current_stable_count < previous_stable_count
+        ):
+            failures.append(
+                "Stable Platform API descriptor count decreased from "
+                f"{previous_stable_count} to {current_stable_count}"
+            )
+    previous_endpoints = stable_named_set(previous_details, "stableEndpoints", "endpoints")
+    current_endpoints = stable_named_set(current_details, "stableEndpoints", "endpoints")
+    current_endpoints_reported = stable_named_set_reported(current_details, "stableEndpoints", "endpoints")
+    removed_endpoints = (
+        sorted(previous_endpoints - current_endpoints)
+        if previous_endpoints and current_endpoints_reported
+        else []
+    )
+    if removed_endpoints:
+        failures.append(f"Stable endpoints were removed: {', '.join(removed_endpoints)}")
+    previous_capabilities = stable_named_set(previous_details, "stableCapabilities", "capabilities")
+    current_capabilities = stable_named_set(current_details, "stableCapabilities", "capabilities")
+    current_capabilities_reported = stable_named_set_reported(
+        current_details, "stableCapabilities", "capabilities"
+    )
+    removed_capabilities = (
+        sorted(previous_capabilities - current_capabilities)
+        if previous_capabilities and current_capabilities_reported
+        else []
+    )
+    if removed_capabilities:
+        failures.append(f"Stable capabilities were removed: {', '.join(removed_capabilities)}")
+    if current_details.get("flaggedStability"):
+        warnings.append("Contract evidence contains stability warnings")
+    if not previous_details:
+        warnings.append("Previous Platform API contract details were unavailable; comparison is status-limited")
+    if failures:
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.contract")
+    if warnings:
+        add_evidence_issue(details, "warningEvidenceIds", "platform-api.contract")
+    return gate_from_issues(
+        "ecosystem.platform-api-compatibility",
+        "Platform API compatibility evidence is stable.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_first_party_apps_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    current_item = current.get("app-platform.first-party")
+    previous_item = previous.get("app-platform.first-party")
+    current_details = evidence_details(current_item)
+    previous_details = evidence_details(previous_item)
+    current_apps = app_ids_from_details(current_details)
+    previous_apps = app_ids_from_details(previous_details)
+    required_apps = set(EXPECTED_FIRST_PARTY_APPS)
+    failures: list[str] = []
+    warnings: list[str] = []
+    status = evidence_status(current_item)
+    if status in {"fail", "missing", "skip"}:
+        failures.append("First-party app evidence is not passing")
+    elif status == "warn":
+        warnings.append("First-party app evidence is warning")
+    missing_required = sorted(required_apps - current_apps)
+    if missing_required:
+        failures.append(f"Required first-party apps are absent: {', '.join(missing_required)}")
+    disappeared = sorted(previous_apps - current_apps) if previous_apps else []
+    if disappeared:
+        failures.append(f"Previously certified first-party apps disappeared: {', '.join(disappeared)}")
+    gate_details = {
+        "currentApps": sorted(current_apps),
+        "previousApps": sorted(previous_apps),
+        "requiredApps": sorted(required_apps),
+    }
+    if failures:
+        add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.first-party")
+    if warnings:
+        add_evidence_issue(gate_details, "warningEvidenceIds", "app-platform.first-party")
+    return gate_from_issues(
+        "ecosystem.first-party-apps",
+        "First-party app evidence covers required apps.",
+        failures,
+        warnings,
+        gate_details,
+    )
+
+
+def evaluate_app_ui_quality_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {}
+    for evidence_id in ("app-ui.lint", "app-ui.design-system", "app-ui.first-party-adoption"):
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    current_warnings = total_ui_warnings(evidence_details(current.get("app-ui.lint")))
+    previous_warnings = total_ui_warnings(evidence_details(previous.get("app-ui.lint")))
+    details["lintWarnings"] = {"current": current_warnings, "previous": previous_warnings}
+    if current_warnings is not None and previous_warnings is not None and current_warnings > previous_warnings:
+        warnings.append(f"UI lint warnings increased from {previous_warnings} to {current_warnings}")
+        add_evidence_issue(details, "warningEvidenceIds", "app-ui.lint")
+    return gate_from_issues(
+        "ecosystem.app-ui-quality",
+        "First-party app UI lint and design-system evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_app_review_trust_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]], metadata: dict[str, Any], mode: str
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {}
+    for evidence_id in ("app-review.trusted-receipts", "app-review.policy", "app-review.first-party-catalog"):
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    catalog_details = evidence_details(current.get("app-review.first-party-catalog"))
+    coverage = nested_dict(catalog_details, "coverage")
+    first_party_apps = sorted_strings(catalog_details.get("firstPartyApps"))
+    trusted_positive = int_value(coverage.get("trustedPositiveReceipts"))
+    missing_receipts = int_value(coverage.get("missingReceipts"))
+    details["firstPartyReceiptCoverage"] = {
+        "firstPartyApps": first_party_apps,
+        "trustedPositiveReceipts": trusted_positive,
+        "missingReceipts": missing_receipts,
+    }
+    if mode == "release-candidate":
+        if trusted_positive is None or trusted_positive < len(first_party_apps):
+            failures.append("First-party catalog lacks trusted positive review receipts for every app")
+            add_evidence_issue(details, "failureEvidenceIds", "app-review.first-party-catalog")
+        if missing_receipts and missing_receipts > 0:
+            failures.append("First-party catalog has missing trusted review receipts")
+            add_evidence_issue(details, "failureEvidenceIds", "app-review.first-party-catalog")
+    policy_details = evidence_details(current.get("app-review.policy"))
+    previous_policy_details = evidence_details(previous.get("app-review.policy"))
+    policy_marker = policy_details.get("policyId") or policy_details.get("policyVersion") or policy_details.get("mode")
+    previous_policy_marker = (
+        previous_policy_details.get("policyId")
+        or previous_policy_details.get("policyVersion")
+        or previous_policy_details.get("mode")
+    )
+    if previous_policy_marker and policy_marker and previous_policy_marker != policy_marker:
+        if not release_metadata_note_present(metadata, "releaseNotes", "reviewPolicyChange", "reviewPolicyVersion"):
+            warnings.append("Review policy marker changed without release-note metadata")
+            add_evidence_issue(details, "warningEvidenceIds", "app-review.policy")
+    return gate_from_issues(
+        "ecosystem.app-review-trust",
+        "Trusted app-review receipt and policy evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_app_update_rollback_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {}
+    for evidence_id in ("app-update.lifecycle", "app-update.rollback"):
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    rollback_details = evidence_details(current.get("app-update.rollback"))
+    details["rollbackScope"] = rollback_details.get("rollbackScope")
+    details["preservesDataCacheRun"] = rollback_details.get("preservesDataCacheRun")
+    if rollback_details.get("rollbackScope") != "installed-bundle-only":
+        warnings.append("Rollback evidence does not prove installed-bundle-only scope")
+        add_evidence_issue(details, "warningEvidenceIds", "app-update.rollback")
+    if rollback_details.get("preservesDataCacheRun") is not True:
+        warnings.append("Rollback evidence does not prove data/cache/run preservation")
+        add_evidence_issue(details, "warningEvidenceIds", "app-update.rollback")
+    return gate_from_issues(
+        "ecosystem.app-update-rollback",
+        "App-update lifecycle and rollback evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_app_vault_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    item = current.get("app-vault.capabilities")
+    previous_item = previous.get("app-vault.capabilities")
+    status = evidence_status(item)
+    previous_status = evidence_status(previous_item)
+    vault_details = evidence_details(item)
+    details: dict[str, Any] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
+    if status in {"fail", "missing", "skip"}:
+        failures.append("Vault capability evidence is not passing")
+        add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    elif status == "warn":
+        warnings.append("Vault capability evidence is warning")
+        add_evidence_issue(details, "warningEvidenceIds", "app-vault.capabilities")
+    if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+        failures.append(f"Vault capability evidence regressed from pass to {status}")
+        add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    capabilities = set(sorted_strings(vault_details.get("capabilities")))
+    missing_capabilities = sorted(set(EXPECTED_VAULT_CAPABILITIES) - capabilities)
+    if missing_capabilities:
+        failures.append(f"Vault capability evidence is missing capabilities: {', '.join(missing_capabilities)}")
+        add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    checks_pass = all_boolean_checks_pass(vault_details)
+    if checks_pass is False:
+        failures.append("Vault capability checks are not all passing")
+        add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    redaction = nested_dict(vault_details, "redaction")
+    for key in ("secretValuesRedacted", "identityPrivateMaterialRedacted"):
+        if redaction.get(key) is not True:
+            failures.append(f"Vault redaction check {key} failed or missing")
+            add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    details.update(
+        {"currentStatus": status, "previousStatus": previous_status, "capabilities": sorted(capabilities)}
+    )
+    return gate_from_issues(
+        "ecosystem.app-vault",
+        "App-vault capability and redaction evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_sandbox_provider_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]], mode: str, metadata: dict[str, Any]
+) -> GateResult:
+    item = current.get("apphost.sandbox-provider")
+    previous_item = previous.get("apphost.sandbox-provider")
+    sandbox_details = evidence_details(item)
+    previous_details = evidence_details(previous_item)
+    status = evidence_status(item)
+    previous_status = evidence_status(previous_item)
+    support_level = str(sandbox_details.get("supportLevel", "")).lower()
+    previous_support_level = str(previous_details.get("supportLevel", "")).lower()
+    enforcement_required = mode == "release-candidate" or str(metadata.get("sandboxEnforcementRequired", "")).lower() == "true"
+    issue_details: dict[str, Any] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
+    if status in {"fail", "missing", "skip"}:
+        if enforcement_required:
+            failures.append("Sandbox-provider evidence is not passing")
+            add_evidence_issue(issue_details, "failureEvidenceIds", "apphost.sandbox-provider")
+        else:
+            warnings.append("Sandbox-provider evidence is not passing")
+            add_evidence_issue(issue_details, "warningEvidenceIds", "apphost.sandbox-provider")
+    elif status == "warn":
+        warnings.append("Sandbox-provider evidence is warning")
+        add_evidence_issue(issue_details, "warningEvidenceIds", "apphost.sandbox-provider")
+    if previous_status == "pass" and status in {"fail", "missing", "skip"} and enforcement_required:
+        failures.append(f"Sandbox-provider evidence regressed from pass to {status}")
+        add_evidence_issue(issue_details, "failureEvidenceIds", "apphost.sandbox-provider")
+    if previous_support_level == "enforced" and support_level and support_level != "enforced":
+        if enforcement_required:
+            failures.append(f"Sandbox support regressed from enforced to {support_level}")
+            add_evidence_issue(issue_details, "failureEvidenceIds", "apphost.sandbox-provider")
+        else:
+            warnings.append(f"Sandbox support regressed from enforced to {support_level}")
+            add_evidence_issue(issue_details, "warningEvidenceIds", "apphost.sandbox-provider")
+    if enforcement_required and support_level != "enforced":
+        failures.append("Enforced sandbox-provider evidence is required but not present")
+        add_evidence_issue(issue_details, "failureEvidenceIds", "apphost.sandbox-provider")
+    return gate_from_issues(
+        "ecosystem.sandbox-provider",
+        "Sandbox-provider evidence remains enforced where required.",
+        failures,
+        warnings,
+        {
+            "currentStatus": status,
+            "previousStatus": previous_status,
+            "supportLevel": support_level,
+            "previousSupportLevel": previous_support_level,
+            "enforcementRequired": enforcement_required,
+            "failureEvidenceIds": issue_details.get("failureEvidenceIds", []),
+            "warningEvidenceIds": issue_details.get("warningEvidenceIds", []),
+        },
+    )
+
+
+def evaluate_reference_content_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    item = current.get("reference-apps.content")
+    previous_item = previous.get("reference-apps.content")
+    details = evidence_details(item)
+    checks = nested_dict(details, "checks")
+    status = evidence_status(item)
+    previous_status = evidence_status(previous_item)
+    gate_details: dict[str, Any] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
+    if status in {"fail", "missing", "skip"}:
+        failures.append("Site Publisher reference-content evidence is not passing")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-apps.content")
+    elif status == "warn":
+        warnings.append("Site Publisher reference-content evidence is warning")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-apps.content")
+    if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+        failures.append(f"Site Publisher evidence regressed from pass to {status}")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-apps.content")
+    if details.get("appId") not in {"site-publisher", None}:
+        failures.append("Reference content app evidence is not for site-publisher")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-apps.content")
+    if checks:
+        for key in ("usesContentInsertDirectory", "usesContentInsertFile", "usesSdkBootstrap"):
+            if checks.get(key) is not True:
+                failures.append(f"Reference content app check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "reference-apps.content")
+    elif status == "pass":
+        warnings.append("Reference content app coverage lacks detailed staged app checks")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-apps.content")
+    gate_details.update(
+        {"currentStatus": status, "previousStatus": previous_status, "appId": details.get("appId")}
+    )
+    return gate_from_issues(
+        "ecosystem.reference-content-apps",
+        "Site Publisher reference-content app evidence passed.",
+        failures,
+        warnings,
+        gate_details,
+    )
+
+
+def evaluate_legacy_retirement_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {}
+    for evidence_id in ("legacy.retirement", "legacy-admin.removal-wave-1"):
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    current_wave = evidence_details(current.get("legacy-admin.removal-wave-1"))
+    previous_wave = evidence_details(previous.get("legacy-admin.removal-wave-1"))
+    current_routes = set(sorted_strings(current_wave.get("removedByDefaultRouteIds")))
+    previous_routes = set(sorted_strings(previous_wave.get("removedByDefaultRouteIds")))
+    details["removedByDefaultRouteCounts"] = {"current": len(current_routes), "previous": len(previous_routes)}
+    if previous_routes and current_routes != previous_routes:
+        if current_wave.get("docsDescribeWave") or current_wave.get("updateNote"):
+            warnings.append("Removed-by-default route set changed with documentation evidence")
+            add_evidence_issue(details, "warningEvidenceIds", "legacy-admin.removal-wave-1")
+        else:
+            warnings.append("Removed-by-default route set changed without doc/update note metadata")
+            add_evidence_issue(details, "warningEvidenceIds", "legacy-admin.removal-wave-1")
+    safety = current_wave.get("retainedBrowseSafety")
+    if isinstance(safety, dict) and any(value is False for value in safety.values()):
+        failures.append("Retained browse safety evidence failed")
+        add_evidence_issue(details, "failureEvidenceIds", "legacy-admin.removal-wave-1")
+    return gate_from_issues(
+        "ecosystem.legacy-retirement",
+        "Legacy retirement and removal-wave evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
+def evaluate_waiver_validation_gate(context: WaiverContext, mode: str) -> GateResult | None:
+    if not context.errors:
+        return None
+    status = "fail" if mode == "release-candidate" else "warn"
+    return GateResult(
+        "ecosystem.waivers",
+        status,
+        status == "fail",
+        "Structured waiver files contain validation errors.",
+        {"errors": context.errors, "issueIds": ["ecosystem.waivers.validation"]},
+    )
+
+
+def evaluate_ecosystem_gates(
+    settings: Settings,
+    current_evidence: list[EvidenceItem],
+    previous_summary: dict[str, Any] | None,
+    history_comparison: dict[str, Any],
+    metadata: dict[str, Any],
+    waiver_context: WaiverContext,
+) -> list[GateResult]:
+    current = evidence_map_from_items(current_evidence)
+    previous = evidence_map_from_summary(previous_summary)
+    diffs = history_comparison.get("evidenceDiffs", [])
+    if not isinstance(diffs, list):
+        diffs = []
+    gates = [
+        evaluate_required_evidence_regressions([diff for diff in diffs if isinstance(diff, dict)]),
+        evaluate_platform_api_gate(current, previous),
+        evaluate_first_party_apps_gate(current, previous),
+        evaluate_app_ui_quality_gate(current, previous),
+        evaluate_app_review_trust_gate(current, previous, metadata, settings.mode),
+        evaluate_app_update_rollback_gate(current, previous),
+        evaluate_app_vault_gate(current, previous),
+        evaluate_sandbox_provider_gate(current, previous, settings.mode, metadata),
+        evaluate_reference_content_gate(current, previous),
+        evaluate_legacy_retirement_gate(current, previous),
+    ]
+    waiver_gate = evaluate_waiver_validation_gate(waiver_context, settings.mode)
+    if waiver_gate is not None:
+        gates.append(waiver_gate)
+    return [apply_waiver_to_gate(gate, waiver_context, settings.mode) for gate in gates]
+
+
+def history_status_affects_decision(status: str) -> bool:
+    return status in {"warn", "fail", "missing"}
+
+
+def determine_certification_status(
+    mode: str,
+    evidence: list[EvidenceItem],
+    history_comparison: dict[str, Any],
+    ecosystem_gates: list[GateResult],
+) -> tuple[str, bool]:
+    evidence_status_value, evidence_release_passed = determine_overall_status(mode, evidence)
+    history_status = normalize_evidence_status(str(history_comparison.get("status", "missing")))
+    gate_failures = [gate for gate in ecosystem_gates if gate.status == "fail" and gate.release_blocker]
+    gate_warnings = [gate for gate in ecosystem_gates if gate.status in {"warn", "fail", "missing"}]
+    history_warning = history_status_affects_decision(history_status)
+    release_candidate_passed = evidence_release_passed and not gate_failures and history_status != "fail"
+    if mode == "release-candidate":
+        if evidence_status_value == "fail" or gate_failures or history_status == "fail":
+            return "fail", False
+        if evidence_status_value == "warn" or gate_warnings or history_warning:
+            return "warn", release_candidate_passed
+        return "pass", True
+    if mode == "nightly":
+        if evidence_status_value == "fail" or gate_failures:
+            return "fail", False
+        if evidence_status_value == "warn" or gate_warnings or history_warning:
+            return "warn", release_candidate_passed
+        return "pass", True
+    if evidence_status_value == "warn" or gate_warnings or history_warning:
+        return "warn", release_candidate_passed
+    return "pass", release_candidate_passed
+
+
+def promotion_decision(status: str, release_candidate_passed: bool = True) -> str:
+    if not release_candidate_passed:
+        return "FAIL"
+    if status == "pass":
+        return "PASS"
+    if status == "warn":
+        return "PASS WITH WARNINGS"
+    return "FAIL"
+
+
+def report_status_label(status: Any) -> str:
+    normalized = normalize_evidence_status(str(status))
+    if normalized in {"skip", "missing"}:
+        return "NOT AVAILABLE"
+    return normalized.upper()
+
+
+def aggregate_gate_status(gates: list[GateResult]) -> str:
+    if any(gate.status == "fail" for gate in gates):
+        return "fail"
+    if any(gate.status == "warn" for gate in gates):
+        return "warn"
+    return "pass"
+
+
 def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
     artifacts_dir = out_dir / "artifacts"
     if artifacts_dir.exists():
@@ -807,28 +2111,65 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
     return copied
 
 
-def build_summary(settings: Settings, evidence: list[EvidenceItem], copied_artifacts: list[str]) -> dict[str, Any]:
-    status, release_candidate_passed = determine_overall_status(settings.mode, evidence)
+def collect_metadata(settings: Settings) -> dict[str, Any]:
     metadata = {}
     metadata.update(collect_git_metadata(settings))
     metadata.update(collect_ci_metadata(os.environ))
     metadata.update(settings.metadata)
-    sanitized_metadata = sanitize_value(metadata, settings.workspace_root, settings.out_dir)
+    return dict(sanitize_value(metadata, settings.workspace_root, settings.out_dir))
+
+
+def sanitized_cli_waivers(settings: Settings) -> dict[str, str]:
+    return {
+        scrub_text(str(waiver_id), settings.workspace_root, settings.out_dir): scrub_text(
+            reason, settings.workspace_root, settings.out_dir
+        )
+        for waiver_id, reason in settings.waivers.items()
+    }
+
+
+def build_summary(
+    settings: Settings,
+    evidence: list[EvidenceItem],
+    copied_artifacts: list[str],
+    generated_at: str,
+    metadata: dict[str, Any],
+    history_comparison: dict[str, Any],
+    ecosystem_gates: list[GateResult],
+    waiver_context: WaiverContext,
+) -> dict[str, Any]:
+    status, release_candidate_passed = determine_certification_status(
+        settings.mode, evidence, history_comparison, ecosystem_gates
+    )
+    ecosystem_status = aggregate_gate_status(ecosystem_gates)
+    cli_waivers = sanitized_cli_waivers(settings)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
         "mode": settings.mode,
         "status": status,
+        "promotionDecision": promotion_decision(status, release_candidate_passed),
         "releaseCandidatePassed": release_candidate_passed,
-        "generatedAt": utc_now(),
+        "generatedAt": generated_at,
         "workspaceRoot": "<repo>",
         "summaryPath": display_path(settings.out_dir / SUMMARY_FILE_NAME, settings.workspace_root, settings.out_dir),
         "reportPath": display_path(settings.out_dir / REPORT_FILE_NAME, settings.workspace_root, settings.out_dir),
+        "historyComparisonPath": display_path(
+            settings.out_dir / HISTORY_COMPARISON_FILE_NAME, settings.workspace_root, settings.out_dir
+        ),
+        "historyComparisonReportPath": display_path(
+            settings.out_dir / HISTORY_COMPARISON_REPORT_FILE_NAME, settings.workspace_root, settings.out_dir
+        ),
         "artifactsDir": display_path(settings.out_dir / "artifacts", settings.workspace_root, settings.out_dir),
-        "metadata": sanitized_metadata,
-        "waivers": sanitize_value(settings.waivers, settings.workspace_root, settings.out_dir),
+        "metadata": metadata,
+        "waivers": cli_waivers,
+        "cliWaivers": cli_waivers,
+        "waiverRecords": [record.to_json() for record in waiver_context.records],
         "counts": evidence_counts(evidence),
         "evidence": [item.to_json() for item in evidence],
+        "historyComparison": history_comparison,
+        "ecosystemGateStatus": ecosystem_status,
+        "ecosystemGates": [gate.to_json() for gate in ecosystem_gates],
         "copiedArtifacts": copied_artifacts,
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
@@ -840,9 +2181,20 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem], copied_artif
 
 
 def render_report(summary: dict[str, Any]) -> str:
+    history = summary.get("historyComparison", {})
+    history_status = history.get("status", "missing") if isinstance(history, dict) else "missing"
+    decision = summary.get("promotionDecision")
+    if not isinstance(decision, str) or not decision:
+        decision = promotion_decision(
+            str(summary["status"]),
+            bool(summary.get("releaseCandidatePassed", True)),
+        )
     lines = [
         "# Release Certification Report",
         "",
+        f"- Promotion decision: `{decision}`",
+        f"- History comparison: `{report_status_label(history_status)}`",
+        f"- Ecosystem gates: `{report_status_label(summary.get('ecosystemGateStatus', 'missing'))}`",
         f"- Mode: `{summary['mode']}`",
         f"- Status: `{summary['status']}`",
         f"- Release-candidate gate: `{'passed' if summary['releaseCandidatePassed'] else 'failed'}`",
@@ -850,11 +2202,12 @@ def render_report(summary: dict[str, Any]) -> str:
         f"- Summary: `{summary['summaryPath']}`",
         f"- Artifacts: `{summary['artifactsDir']}`",
         "",
-        "## Evidence Summary",
-        "",
-        "| Evidence | Status | Required for RC | Source | Summary |",
-        "| --- | --- | --- | --- | --- |",
     ]
+    append_history_comparison(lines, summary)
+    append_ecosystem_gates(lines, summary)
+    append_waivers(lines, summary)
+    append_regressions(lines, summary)
+    lines.extend(["## Evidence Summary", "", "| Evidence | Status | Required for RC | Source | Summary |", "| --- | --- | --- | --- | --- |"])
     for item in summary["evidence"]:
         required = "yes" if item["requiredForReleaseCandidate"] else "no"
         lines.append(
@@ -911,6 +2264,113 @@ def render_report(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def append_history_comparison(lines: list[str], summary: dict[str, Any]) -> None:
+    history = summary.get("historyComparison", {})
+    if not isinstance(history, dict):
+        return
+    previous = history.get("previous", {}) if isinstance(history.get("previous"), dict) else {}
+    current = history.get("current", {}) if isinstance(history.get("current"), dict) else {}
+    lines.extend(
+        [
+            "## Historical Comparison",
+            "",
+            f"- Status: `{history.get('status', 'missing')}`",
+            f"- Summary: {history.get('summary', 'No historical comparison was produced.')}",
+            f"- Previous generated: `{previous.get('generatedAt', '')}`",
+            f"- Previous git SHA: `{previous.get('gitSha', '')}`",
+            f"- Previous release version: `{previous.get('releaseVersion', '')}`",
+            f"- Current generated: `{current.get('generatedAt', '')}`",
+            f"- Current git SHA: `{current.get('gitSha', '')}`",
+            f"- Current release version: `{current.get('releaseVersion', '')}`",
+            "",
+        ]
+    )
+
+
+def append_ecosystem_gates(lines: list[str], summary: dict[str, Any]) -> None:
+    gates = summary.get("ecosystemGates", [])
+    if not isinstance(gates, list):
+        return
+    lines.extend(["## Ecosystem Gates", "", "| Gate | Status | Blocker | Summary |", "| --- | --- | --- | --- |"])
+    ordered = sorted(
+        [gate for gate in gates if isinstance(gate, dict)],
+        key=lambda gate: (gate.get("status") != "fail", gate.get("status") != "warn", str(gate.get("id", ""))),
+    )
+    for gate in ordered:
+        lines.append(
+            "| `{id}` | `{status}` | {blocker} | {summary_text} |".format(
+                id=gate.get("id", ""),
+                status=gate.get("status", "missing"),
+                blocker="yes" if gate.get("releaseBlocker") else "no",
+                summary_text=str(gate.get("summary", "")).replace("|", "\\|"),
+            )
+        )
+    lines.append("")
+
+
+def append_waivers(lines: list[str], summary: dict[str, Any]) -> None:
+    waivers = summary.get("waiverRecords")
+    if not isinstance(waivers, list):
+        legacy_waivers = summary.get("waivers", [])
+        waivers = legacy_waivers if isinstance(legacy_waivers, list) else []
+    if not isinstance(waivers, list):
+        return
+    lines.extend(["## Waivers", ""])
+    if not waivers:
+        lines.extend(["No waivers were recorded.", ""])
+        return
+    lines.extend(["| Waiver | Evidence/Gate | Active | Expires | Reason |", "| --- | --- | --- | --- | --- |"])
+    for waiver in waivers:
+        if not isinstance(waiver, dict):
+            continue
+        lines.append(
+            "| `{id}` | `{evidence}` | `{active}` | `{expires}` | {reason} |".format(
+                id=waiver.get("id", ""),
+                evidence=waiver.get("evidenceId", ""),
+                active=waiver.get("active", False),
+                expires=waiver.get("expiresAt", ""),
+                reason=str(waiver.get("reason", "")).replace("|", "\\|"),
+            )
+        )
+    lines.append("")
+
+
+def append_regressions(lines: list[str], summary: dict[str, Any]) -> None:
+    history = summary.get("historyComparison", {})
+    if not isinstance(history, dict):
+        return
+    diffs = history.get("evidenceDiffs", [])
+    if not isinstance(diffs, list):
+        return
+    important = [
+        diff
+        for diff in diffs
+        if isinstance(diff, dict) and diff.get("classification") in {"regression", "removed"}
+    ]
+    lines.extend(["## Regressions Since Previous Certified Release", ""])
+    if not important:
+        lines.extend(["No evidence regressions were detected.", ""])
+        return
+    lines.extend(
+        [
+            "| Evidence | Previous | Current | Classification | Blocker | Reason |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for diff in important:
+        lines.append(
+            "| `{id}` | `{previous}` | `{current}` | `{classification}` | {blocker} | {reason} |".format(
+                id=diff.get("id", ""),
+                previous=diff.get("previousStatus", ""),
+                current=diff.get("currentStatus", ""),
+                classification=diff.get("classification", ""),
+                blocker="yes" if diff.get("releaseBlocker") else "no",
+                reason=str(diff.get("reason", "")).replace("|", "\\|"),
+            )
+        )
+    lines.append("")
+
+
 def append_detail(lines: list[str], summary: dict[str, Any], evidence_id: str) -> None:
     item = next((entry for entry in summary["evidence"] if entry["id"] == evidence_id), None)
     if item is None:
@@ -927,7 +2387,7 @@ def append_detail(lines: list[str], summary: dict[str, Any], evidence_id: str) -
     lines.append("")
 
 
-def gather_evidence(settings: Settings) -> list[EvidenceItem]:
+def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[EvidenceItem]:
     evidence = [
         interop_evidence(
             "interop.smoke",
@@ -957,7 +2417,10 @@ def gather_evidence(settings: Settings) -> list[EvidenceItem]:
     )
     return [
         sanitize_evidence_item(
-            with_waiver(item, settings.waivers, settings.workspace_root, settings.out_dir),
+            with_waiver_record(
+                item,
+                active_waiver_for(waiver_context, item.id, [f"evidence.{item.id}"], settings.mode),
+            ),
             settings.workspace_root,
             settings.out_dir,
         )
@@ -965,14 +2428,144 @@ def gather_evidence(settings: Settings) -> list[EvidenceItem]:
     ]
 
 
+def render_history_comparison(history: dict[str, Any]) -> str:
+    lines = [
+        "# Release Certification History Comparison",
+        "",
+        f"- Status: `{history.get('status', 'missing')}`",
+        f"- Summary: {history.get('summary', '')}",
+        "",
+        "## Evidence Diffs",
+        "",
+        "| Evidence | Previous | Current | Classification | Blocker | Reason |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    diffs = history.get("evidenceDiffs", [])
+    if isinstance(diffs, list):
+        for diff in diffs:
+            if not isinstance(diff, dict):
+                continue
+            lines.append(
+                "| `{id}` | `{previous}` | `{current}` | `{classification}` | {blocker} | {reason} |".format(
+                    id=diff.get("id", ""),
+                    previous=diff.get("previousStatus", ""),
+                    current=diff.get("currentStatus", ""),
+                    classification=diff.get("classification", ""),
+                    blocker="yes" if diff.get("releaseBlocker") else "no",
+                    reason=str(diff.get("reason", "")).replace("|", "\\|"),
+                )
+            )
+    gates = history.get("ecosystemGates", [])
+    if isinstance(gates, list):
+        lines.extend(["", "## Ecosystem Gates", "", "| Gate | Status | Blocker | Summary |", "| --- | --- | --- | --- |"])
+        for gate in gates:
+            if not isinstance(gate, dict):
+                continue
+            lines.append(
+                "| `{id}` | `{status}` | {blocker} | {summary_text} |".format(
+                    id=gate.get("id", ""),
+                    status=gate.get("status", "missing"),
+                    blocker="yes" if gate.get("releaseBlocker") else "no",
+                    summary_text=str(gate.get("summary", "")).replace("|", "\\|"),
+                )
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def safe_history_label(summary: dict[str, Any]) -> str:
+    metadata = summary.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    for value in (
+        metadata.get("releaseVersion"),
+        summary.get("historyLabel"),
+        metadata.get("gitCommit"),
+        metadata.get("githubSha"),
+    ):
+        if isinstance(value, str) and value.strip():
+            label = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip("-")
+            if label:
+                return label[:80]
+    return "current"
+
+
+def write_history_artifacts(settings: Settings, summary: dict[str, Any]) -> None:
+    if not settings.write_history:
+        return
+    history_dir = resolve_path(settings.workspace_root, settings.history_dir)
+    comparison = summary.get("historyComparison", {})
+    label = settings.history_label.strip() or safe_history_label(summary)
+    safe_label = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-") if label else "current"
+    if not safe_label:
+        safe_label = "current"
+    if summary.get("status") == "fail" or summary.get("releaseCandidatePassed") is False:
+        failed_dir = history_dir / "failed" / safe_label
+        write_json(failed_dir / SUMMARY_FILE_NAME, summary)
+        if isinstance(comparison, dict):
+            write_json(failed_dir / HISTORY_COMPARISON_FILE_NAME, comparison)
+        return
+    write_json(history_dir / "latest-summary.json", summary)
+    if isinstance(comparison, dict):
+        write_json(history_dir / "latest-history-comparison.json", comparison)
+    release_dir = history_dir / "releases" / safe_label
+    write_json(release_dir / SUMMARY_FILE_NAME, summary)
+    if isinstance(comparison, dict):
+        write_json(release_dir / HISTORY_COMPARISON_FILE_NAME, comparison)
+
+
 def run(settings: Settings) -> tuple[dict[str, Any], int]:
     settings.out_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = utc_now()
+    waiver_context = load_waiver_context(settings, dt.datetime.now(dt.timezone.utc))
+    previous_summary, previous_source, previous_error = load_previous_summary(settings)
     copied = collect_source_artifacts(settings, settings.out_dir)
-    evidence = gather_evidence(settings)
-    summary = build_summary(settings, evidence, copied)
+    evidence = gather_evidence(settings, waiver_context)
+    metadata = collect_metadata(settings)
+    history_comparison = compare_history(
+        settings,
+        previous_summary,
+        previous_source,
+        previous_error,
+        evidence,
+        generated_at,
+        metadata,
+        waiver_context,
+    )
+    ecosystem_gates = evaluate_ecosystem_gates(
+        settings, evidence, previous_summary, history_comparison, metadata, waiver_context
+    )
+    history_comparison["ecosystemGates"] = [gate.to_json() for gate in ecosystem_gates]
+    history_comparison = dict(
+        sanitize_value(history_comparison, settings.workspace_root, settings.out_dir)
+    )
+    ecosystem_gates = [
+        GateResult(
+            id=str(gate["id"]),
+            status=normalize_evidence_status(str(gate["status"])),
+            release_blocker=bool(gate.get("releaseBlocker")),
+            summary=str(gate.get("summary", "")),
+            details=gate.get("details", {}) if isinstance(gate.get("details"), dict) else {},
+        )
+        for gate in history_comparison.get("ecosystemGates", [])
+        if isinstance(gate, dict)
+    ]
+    summary = build_summary(
+        settings,
+        evidence,
+        copied,
+        generated_at,
+        metadata,
+        history_comparison,
+        ecosystem_gates,
+        waiver_context,
+    )
     write_json(settings.out_dir / SUMMARY_FILE_NAME, summary)
+    write_json(settings.out_dir / HISTORY_COMPARISON_FILE_NAME, history_comparison)
+    write_text(settings.out_dir / HISTORY_COMPARISON_REPORT_FILE_NAME, render_history_comparison(history_comparison))
     report = render_report(summary)
     write_text(settings.out_dir / REPORT_FILE_NAME, report)
+    write_history_artifacts(settings, summary)
     exit_code = 1 if summary["status"] == "fail" else 0
     return summary, exit_code
 
@@ -992,6 +2585,9 @@ def parse_key_value(values: list[str]) -> dict[str, str]:
 def settings_from_args(args: argparse.Namespace) -> Settings:
     workspace_root = args.workspace_root.resolve()
     out_dir = (workspace_root / args.out_dir).resolve() if not args.out_dir.is_absolute() else args.out_dir.resolve()
+    previous_summary = resolve_path(workspace_root, args.previous_summary) if args.previous_summary else None
+    history_dir = resolve_path(workspace_root, args.history_dir)
+    waiver_files = tuple(resolve_path(workspace_root, path) for path in args.waiver_file)
     mode = args.mode or os.environ.get("CRYPTAD_CERT_MODE", "pr")
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
@@ -1006,6 +2602,12 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         waivers=parse_key_value(args.waive),
         metadata=parse_key_value(args.metadata),
         skip_git_metadata=args.skip_git_metadata,
+        previous_summary=previous_summary,
+        require_history=args.require_history,
+        history_dir=history_dir,
+        write_history=args.write_history,
+        history_label=args.history_label,
+        waiver_files=waiver_files,
     )
 
 
@@ -1028,6 +2630,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_OUT_DIR / "app-platform-smoke" / "summary.json",
     )
     parser.add_argument("--waive", action="append", default=[], metavar="ID=REASON")
+    parser.add_argument("--waiver-file", action="append", default=[], type=Path)
+    parser.add_argument("--previous-summary", type=Path, default=None)
+    parser.add_argument("--require-history", action="store_true")
+    parser.add_argument("--history-dir", type=Path, default=DEFAULT_HISTORY_DIR)
+    parser.add_argument("--write-history", action="store_true")
+    parser.add_argument("--history-label", default="")
     parser.add_argument("--metadata", action="append", default=[], metavar="KEY=VALUE")
     parser.add_argument("--skip-git-metadata", action="store_true")
     return parser
@@ -1063,11 +2671,18 @@ def run_self_test(repo_root: Path) -> None:
             waivers={},
             metadata={"selfTest": "true"},
             skip_git_metadata=True,
+            history_dir=workspace / "build/no-auto-history",
         )
         summary, exit_code = run(settings)
         assert exit_code == 0, summary
-        assert summary["status"] == "pass", summary
+        assert summary["status"] == "warn", summary
+        assert summary["promotionDecision"] == "PASS WITH WARNINGS", summary
         assert summary["releaseCandidatePassed"] is True, summary
+        assert summary["waivers"] == {}, summary
+        assert summary["waiverRecords"] == [], summary
+        assert summary["historyComparison"]["status"] == "warn", summary
+        assert (out_dir / HISTORY_COMPARISON_FILE_NAME).is_file(), summary
+        assert (out_dir / HISTORY_COMPARISON_REPORT_FILE_NAME).is_file(), summary
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
@@ -1088,11 +2703,791 @@ def run_self_test(repo_root: Path) -> None:
         assert optional_skip_release_passed is True, optional_skip_release_passed
         report = (out_dir / REPORT_FILE_NAME).read_text(encoding="utf-8")
         assert "Release Certification Report" in report
+        assert "Historical Comparison" in report
+        assert "Ecosystem Gates" in report
+        assert "Waivers" in report
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN", "USK@private", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
         interop_item = next(item for item in summary["evidence"] if item["id"] == "interop.smoke")
         assert "artifacts/private-insert-uris.json" not in json.dumps(interop_item)
+
+        previous_good_path = workspace / "build/previous-good/release-certification-summary.json"
+        previous_good = {
+            "schemaVersion": SCHEMA_VERSION,
+            "tool": TOOL_NAME,
+            "mode": "release-candidate",
+            "status": "pass",
+            "generatedAt": "2026-05-01T00:00:00Z",
+            "metadata": {"gitCommit": "previous-sha", "releaseVersion": "2026.05.0"},
+            "evidence": summary["evidence"],
+        }
+        write_json(previous_good_path, previous_good)
+        with_previous_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/with-previous-cert").resolve(),
+            previous_summary=previous_good_path,
+        )
+        with_previous_summary, with_previous_exit_code = run(with_previous_settings)
+        assert with_previous_exit_code == 0, with_previous_summary
+        assert with_previous_summary["status"] == "pass", with_previous_summary
+        assert with_previous_summary["historyComparison"]["status"] == "pass", with_previous_summary
+        assert with_previous_summary["ecosystemGateStatus"] == "pass", with_previous_summary
+
+        history_store = workspace / "build/release-certification-history"
+        write_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/write-history-cert").resolve(),
+            previous_summary=previous_good_path,
+            write_history=True,
+            history_dir=history_store,
+            history_label="2026.05.0",
+        )
+        write_history_summary, write_history_exit_code = run(write_history_settings)
+        assert write_history_exit_code == 0, write_history_summary
+        assert (history_store / "latest-summary.json").is_file(), write_history_summary
+        assert (history_store / "latest-history-comparison.json").is_file(), write_history_summary
+        assert (
+            history_store / "releases/2026.05.0/release-certification-summary.json"
+        ).is_file(), write_history_summary
+        protected_latest_summary = read_json(history_store / "latest-summary.json")
+        assert protected_latest_summary is not None, write_history_summary
+        written_history_encoded = json.dumps(read_json(history_store / "latest-summary.json"), sort_keys=True)
+        assert str(workspace) not in written_history_encoded, written_history_encoded
+
+        def write_app_summary_variant(name: str, mutate: Any) -> Path:
+            app_summary = read_json(settings.app_platform_summary)
+            assert app_summary is not None
+            mutate(app_summary)
+            path = workspace / f"build/{name}/summary.json"
+            write_json(path, app_summary)
+            return path
+
+        def update_evidence(summary_value: dict[str, Any], evidence_id: str, mutate: Any) -> None:
+            evidence_list = summary_value.get("evidence", [])
+            assert isinstance(evidence_list, list)
+            for entry in evidence_list:
+                if isinstance(entry, dict) and entry.get("id") == evidence_id:
+                    mutate(entry)
+                    return
+            raise AssertionError(f"missing evidence {evidence_id}")
+
+        def run_with_previous(name: str, **overrides: Any) -> tuple[dict[str, Any], int]:
+            variant_settings = dataclasses.replace(
+                settings,
+                out_dir=(workspace / f"build/{name}").resolve(),
+                previous_summary=previous_good_path,
+                **overrides,
+            )
+            return run(variant_settings)
+
+        def gate_by_id(summary_value: dict[str, Any], gate_id: str) -> dict[str, Any]:
+            for gate in summary_value.get("ecosystemGates", []):
+                if isinstance(gate, dict) and gate.get("id") == gate_id:
+                    return gate
+            raise AssertionError(f"missing gate {gate_id}")
+
+        failing_history_path = write_app_summary_variant(
+            "write-history-failing-app",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.update({"status": "fail"}),
+            ),
+        )
+        failing_write_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/write-history-failing-cert").resolve(),
+            previous_summary=previous_good_path,
+            app_platform_summary=failing_history_path,
+            write_history=True,
+            history_dir=history_store,
+            history_label="failed-candidate",
+        )
+        failing_write_history_summary, failing_write_history_exit_code = run(
+            failing_write_history_settings
+        )
+        assert failing_write_history_exit_code == 1, failing_write_history_summary
+        assert (
+            read_json(history_store / "latest-summary.json") == protected_latest_summary
+        ), failing_write_history_summary
+        assert (
+            history_store / "failed/failed-candidate/release-certification-summary.json"
+        ).is_file(), failing_write_history_summary
+
+        require_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/require-history-cert").resolve(),
+            require_history=True,
+        )
+        require_history_summary, require_history_exit_code = run(require_history_settings)
+        assert require_history_exit_code == 1, require_history_summary
+        assert require_history_summary["historyComparison"]["status"] == "fail", require_history_summary
+
+        malformed_previous_path = workspace / "build/malformed-previous/summary.json"
+        malformed_previous_path.parent.mkdir(parents=True, exist_ok=True)
+        malformed_previous_path.write_text('{"schemaVersion": 1', encoding="utf-8")
+        malformed_previous_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/malformed-previous-cert").resolve(),
+            previous_summary=malformed_previous_path,
+        )
+        malformed_previous_summary, malformed_previous_exit_code = run(malformed_previous_settings)
+        assert malformed_previous_exit_code == 1, malformed_previous_summary
+        assert malformed_previous_summary["historyComparison"]["status"] == "fail", malformed_previous_summary
+
+        invalid_previous_path = workspace / "build/invalid-previous/summary.json"
+        write_json(invalid_previous_path, {})
+        invalid_previous_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/invalid-previous-cert").resolve(),
+            previous_summary=invalid_previous_path,
+            require_history=True,
+        )
+        invalid_previous_summary, invalid_previous_exit_code = run(invalid_previous_settings)
+        assert invalid_previous_exit_code == 1, invalid_previous_summary
+        assert invalid_previous_summary["historyComparison"]["status"] == "fail", invalid_previous_summary
+
+        app_smoke_as_previous_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/app-smoke-as-previous-cert").resolve(),
+            previous_summary=settings.app_platform_summary,
+            require_history=True,
+        )
+        app_smoke_as_previous_summary, app_smoke_as_previous_exit_code = run(
+            app_smoke_as_previous_settings
+        )
+        assert app_smoke_as_previous_exit_code == 1, app_smoke_as_previous_summary
+        assert (
+            app_smoke_as_previous_summary["historyComparison"]["status"] == "fail"
+        ), app_smoke_as_previous_summary
+
+        platform_fail_path = write_app_summary_variant(
+            "platform-contract-fail",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.update({"status": "fail", "summary": "strict compatibility failed"}),
+            ),
+        )
+        platform_fail_summary, platform_fail_exit_code = run_with_previous(
+            "platform-contract-fail-cert", app_platform_summary=platform_fail_path
+        )
+        assert platform_fail_exit_code == 1, platform_fail_summary
+        platform_diff = next(
+            diff
+            for diff in platform_fail_summary["historyComparison"]["evidenceDiffs"]
+            if diff["id"] == "platform-api.contract"
+        )
+        assert platform_diff["classification"] == "regression", platform_diff
+        assert platform_diff["releaseBlocker"] is True, platform_diff
+
+        ui_warn_path = write_app_summary_variant(
+            "ui-lint-warn",
+            lambda value: update_evidence(
+                value,
+                "app-ui.lint",
+                lambda entry: (
+                    entry.update({"status": "warn"}),
+                    entry.setdefault("details", {})
+                    .setdefault("apps", {})
+                    .setdefault("queue-manager", {})
+                    .setdefault("summary", {})
+                    .update({"warnings": 1}),
+                ),
+            ),
+        )
+        ui_warn_summary, ui_warn_exit_code = run_with_previous(
+            "ui-lint-warn-cert", app_platform_summary=ui_warn_path
+        )
+        assert ui_warn_exit_code == 0, ui_warn_summary
+        assert ui_warn_summary["status"] == "warn", ui_warn_summary
+        assert gate_by_id(ui_warn_summary, "ecosystem.app-ui-quality")["status"] == "warn"
+
+        optional_missing_summary, optional_missing_exit_code = run_with_previous(
+            "optional-interop-missing-cert",
+            interop_extended_summary=workspace / "build/missing-optional-interop/summary.json",
+        )
+        assert optional_missing_exit_code == 0, optional_missing_summary
+        assert optional_missing_summary["status"] == "warn", optional_missing_summary
+        optional_diff = next(
+            diff
+            for diff in optional_missing_summary["historyComparison"]["evidenceDiffs"]
+            if diff["id"] == "interop.extended"
+        )
+        assert optional_diff["classification"] == "regression", optional_diff
+        assert optional_diff["releaseBlocker"] is False, optional_diff
+
+        previous_without_rollback = dict(previous_good)
+        previous_without_rollback["evidence"] = [
+            item for item in previous_good["evidence"] if item["id"] != "app-update.rollback"
+        ]
+        previous_without_rollback_path = workspace / "build/previous-without-rollback/summary.json"
+        write_json(previous_without_rollback_path, previous_without_rollback)
+        new_required_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/new-required-cert").resolve(),
+            previous_summary=previous_without_rollback_path,
+        )
+        new_required_summary, new_required_exit_code = run(new_required_settings)
+        assert new_required_exit_code == 0, new_required_summary
+        new_required_diff = next(
+            diff
+            for diff in new_required_summary["historyComparison"]["evidenceDiffs"]
+            if diff["id"] == "app-update.rollback"
+        )
+        assert new_required_diff["classification"] == "new", new_required_diff
+
+        previous_with_removed_optional = dict(previous_good)
+        previous_with_removed_optional["evidence"] = list(previous_good["evidence"]) + [
+            {
+                "id": "optional.old-evidence",
+                "status": "pass",
+                "requiredForReleaseCandidate": False,
+                "summary": "Old optional evidence.",
+                "source": "<repo>/old.json",
+                "details": {},
+            }
+        ]
+        previous_with_removed_optional_path = workspace / "build/previous-with-removed-optional/summary.json"
+        write_json(previous_with_removed_optional_path, previous_with_removed_optional)
+        removed_optional_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/removed-optional-cert").resolve(),
+            previous_summary=previous_with_removed_optional_path,
+        )
+        removed_optional_summary, removed_optional_exit_code = run(removed_optional_settings)
+        assert removed_optional_exit_code == 0, removed_optional_summary
+        removed_optional_diff = next(
+            diff
+            for diff in removed_optional_summary["historyComparison"]["evidenceDiffs"]
+            if diff["id"] == "optional.old-evidence"
+        )
+        assert removed_optional_diff["classification"] == "removed", removed_optional_diff
+        assert removed_optional_diff["releaseBlocker"] is False, removed_optional_diff
+
+        previous_with_removed_required = dict(previous_good)
+        previous_with_removed_required["evidence"] = list(previous_good["evidence"]) + [
+            {
+                "id": "required.old-evidence",
+                "status": "pass",
+                "requiredForReleaseCandidate": True,
+                "summary": "Old required evidence.",
+                "source": "<repo>/old.json",
+                "details": {},
+            }
+        ]
+        previous_with_removed_required_path = workspace / "build/previous-with-removed-required/summary.json"
+        write_json(previous_with_removed_required_path, previous_with_removed_required)
+        waived_removed_required_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/waived-removed-required-cert").resolve(),
+            previous_summary=previous_with_removed_required_path,
+            waivers={"required.old-evidence": "Release manager accepted removal of retired required evidence."},
+        )
+        waived_removed_required_summary, waived_removed_required_exit_code = run(
+            waived_removed_required_settings
+        )
+        assert waived_removed_required_exit_code == 0, waived_removed_required_summary
+        removed_required_diff = next(
+            diff
+            for diff in waived_removed_required_summary["historyComparison"]["evidenceDiffs"]
+            if diff["id"] == "required.old-evidence"
+        )
+        assert removed_required_diff["classification"] == "removed", removed_required_diff
+        assert removed_required_diff["releaseBlocker"] is False, removed_required_diff
+        assert (
+            gate_by_id(
+                waived_removed_required_summary, "ecosystem.required-evidence-regressions"
+            )["status"]
+            == "warn"
+        )
+
+        previous_contract_v3 = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_v3["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 3
+                entry["details"]["stableCapabilities"] = ["platform.compat.extra", "queue.read"]
+                entry["details"]["stableEndpoints"] = ["/api/v1/apps/old", "/api/v1/apps/current"]
+        previous_contract_v3_path = workspace / "build/previous-contract-v3/summary.json"
+        write_json(previous_contract_v3_path, previous_contract_v3)
+        current_contract_sets_path = write_app_summary_variant(
+            "current-contract-sets",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableCapabilities": ["queue.read"],
+                        "stableEndpoints": ["/api/v1/apps/current"],
+                    }
+                ),
+            ),
+        )
+        contract_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-regression-cert").resolve(),
+            previous_summary=previous_contract_v3_path,
+            app_platform_summary=current_contract_sets_path,
+        )
+        contract_regression_summary, contract_regression_exit_code = run(contract_regression_settings)
+        assert contract_regression_exit_code == 1, contract_regression_summary
+        assert gate_by_id(contract_regression_summary, "ecosystem.platform-api-compatibility")["status"] == "fail"
+
+        previous_contract_nonempty_sets = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_nonempty_sets["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                entry["details"]["stableCapabilities"] = ["queue.read"]
+                entry["details"]["stableEndpoints"] = ["/api/v1/apps/current"]
+        previous_contract_nonempty_sets_path = workspace / "build/previous-contract-nonempty-sets/summary.json"
+        write_json(previous_contract_nonempty_sets_path, previous_contract_nonempty_sets)
+        current_contract_empty_sets_path = write_app_summary_variant(
+            "current-contract-empty-sets",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableCapabilities": [],
+                        "stableEndpoints": [],
+                    }
+                ),
+            ),
+        )
+        empty_sets_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-empty-sets-regression-cert").resolve(),
+            previous_summary=previous_contract_nonempty_sets_path,
+            app_platform_summary=current_contract_empty_sets_path,
+        )
+        empty_sets_regression_summary, empty_sets_regression_exit_code = run(
+            empty_sets_regression_settings
+        )
+        assert empty_sets_regression_exit_code == 1, empty_sets_regression_summary
+        assert (
+            gate_by_id(
+                empty_sets_regression_summary, "ecosystem.platform-api-compatibility"
+            )["status"]
+            == "fail"
+        )
+
+        def set_contract_count_details(
+            entry: dict[str, Any], capability_count: int, endpoint_count: int, stable_count: int
+        ) -> None:
+            contract_details = entry.setdefault("details", {})
+            contract_details.pop("stableCapabilities", None)
+            contract_details.pop("stableEndpoints", None)
+            contract_details.update(
+                {
+                    "contractVersion": 2,
+                    "capabilityCount": capability_count,
+                    "endpointCount": endpoint_count,
+                    "stabilityCounts": {"stable": stable_count},
+                }
+            )
+
+        previous_contract_total_count_drop = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_total_count_drop["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                set_contract_count_details(entry, 20, 80, 75)
+        previous_contract_total_count_drop_path = (
+            workspace / "build/previous-contract-total-count-drop/summary.json"
+        )
+        write_json(previous_contract_total_count_drop_path, previous_contract_total_count_drop)
+        current_contract_total_count_drop_path = write_app_summary_variant(
+            "current-contract-total-count-drop",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: set_contract_count_details(entry, 19, 79, 75),
+            ),
+        )
+        total_count_drop_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-total-count-drop-cert").resolve(),
+            previous_summary=previous_contract_total_count_drop_path,
+            app_platform_summary=current_contract_total_count_drop_path,
+        )
+        total_count_drop_summary, total_count_drop_exit_code = run(total_count_drop_settings)
+        assert total_count_drop_exit_code == 0, total_count_drop_summary
+        assert (
+            gate_by_id(total_count_drop_summary, "ecosystem.platform-api-compatibility")["status"]
+            == "pass"
+        )
+
+        current_contract_stable_count_drop_path = write_app_summary_variant(
+            "current-contract-stable-count-drop",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: set_contract_count_details(entry, 19, 79, 74),
+            ),
+        )
+        stable_count_drop_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-stable-count-drop-cert").resolve(),
+            previous_summary=previous_contract_total_count_drop_path,
+            app_platform_summary=current_contract_stable_count_drop_path,
+        )
+        stable_count_drop_summary, stable_count_drop_exit_code = run(stable_count_drop_settings)
+        assert stable_count_drop_exit_code == 1, stable_count_drop_summary
+        assert (
+            gate_by_id(stable_count_drop_summary, "ecosystem.platform-api-compatibility")["status"]
+            == "fail"
+        )
+
+        def set_contract_raw_endpoint_details(
+            entry: dict[str, Any], routes: list[str], stable_count: int
+        ) -> None:
+            contract_details = entry.setdefault("details", {})
+            contract_details.pop("stableEndpoints", None)
+            contract_details.update(
+                {
+                    "contractVersion": 2,
+                    "endpointCount": len(routes),
+                    "stabilityCounts": {"stable": stable_count},
+                    "endpoints": [
+                        {"method": "GET", "routeTemplate": route, "stability": "stable"}
+                        for route in routes
+                    ],
+                }
+            )
+
+        previous_contract_raw_endpoints = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_raw_endpoints["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                set_contract_raw_endpoint_details(
+                    entry,
+                    ["/apps/{appId}/old", "/apps/{appId}/current"],
+                    2,
+                )
+        previous_contract_raw_endpoints_path = workspace / "build/previous-contract-raw-endpoints/summary.json"
+        write_json(previous_contract_raw_endpoints_path, previous_contract_raw_endpoints)
+        current_contract_raw_endpoint_removal_path = write_app_summary_variant(
+            "current-contract-raw-endpoint-removal",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: set_contract_raw_endpoint_details(
+                    entry,
+                    ["/apps/{appId}/current", "/apps/{appId}/new"],
+                    2,
+                ),
+            ),
+        )
+        raw_endpoint_removal_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-raw-endpoint-removal-cert").resolve(),
+            previous_summary=previous_contract_raw_endpoints_path,
+            app_platform_summary=current_contract_raw_endpoint_removal_path,
+        )
+        raw_endpoint_removal_summary, raw_endpoint_removal_exit_code = run(
+            raw_endpoint_removal_settings
+        )
+        assert raw_endpoint_removal_exit_code == 1, raw_endpoint_removal_summary
+        raw_endpoint_removal_gate = gate_by_id(
+            raw_endpoint_removal_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert raw_endpoint_removal_gate["status"] == "fail", raw_endpoint_removal_gate
+        assert "GET /apps/{appId}/old" in raw_endpoint_removal_gate["summary"], raw_endpoint_removal_gate
+
+        first_party_apps_map_path = write_app_summary_variant(
+            "first-party-apps-map",
+            lambda value: update_evidence(
+                value,
+                "app-platform.first-party",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "apps": {
+                            "queue-manager": {},
+                            "publisher": {},
+                            "site-publisher": {},
+                        }
+                    }
+                ),
+            ),
+        )
+        first_party_apps_map_summary, first_party_apps_map_exit_code = run_with_previous(
+            "first-party-apps-map-cert", app_platform_summary=first_party_apps_map_path
+        )
+        assert first_party_apps_map_exit_code == 0, first_party_apps_map_summary
+        assert gate_by_id(first_party_apps_map_summary, "ecosystem.first-party-apps")["status"] == "pass"
+
+        first_party_missing_path = write_app_summary_variant(
+            "first-party-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.first-party",
+                lambda entry: entry.setdefault("details", {}).update({"apps": ["queue-manager", "publisher"]}),
+            ),
+        )
+        first_party_missing_summary, first_party_missing_exit_code = run_with_previous(
+            "first-party-missing-cert", app_platform_summary=first_party_missing_path
+        )
+        assert first_party_missing_exit_code == 1, first_party_missing_summary
+        assert gate_by_id(first_party_missing_summary, "ecosystem.first-party-apps")["status"] == "fail"
+
+        reference_missing_path = write_app_summary_variant(
+            "reference-missing",
+            lambda value: update_evidence(
+                value,
+                "reference-apps.content",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        reference_missing_summary, reference_missing_exit_code = run_with_previous(
+            "reference-missing-cert", app_platform_summary=reference_missing_path
+        )
+        assert reference_missing_exit_code == 1, reference_missing_summary
+        assert gate_by_id(reference_missing_summary, "ecosystem.reference-content-apps")["status"] == "fail"
+
+        trusted_review_fail_path = write_app_summary_variant(
+            "trusted-review-fail",
+            lambda value: update_evidence(
+                value,
+                "app-review.trusted-receipts",
+                lambda entry: entry.update({"status": "fail"}),
+            ),
+        )
+        trusted_review_fail_summary, trusted_review_fail_exit_code = run_with_previous(
+            "trusted-review-fail-cert", app_platform_summary=trusted_review_fail_path
+        )
+        assert trusted_review_fail_exit_code == 1, trusted_review_fail_summary
+        assert gate_by_id(trusted_review_fail_summary, "ecosystem.app-review-trust")["status"] == "fail"
+
+        rollback_fail_path = write_app_summary_variant(
+            "rollback-fail",
+            lambda value: update_evidence(
+                value,
+                "app-update.rollback",
+                lambda entry: entry.update({"status": "fail"}),
+            ),
+        )
+        rollback_fail_summary, rollback_fail_exit_code = run_with_previous(
+            "rollback-fail-cert", app_platform_summary=rollback_fail_path
+        )
+        assert rollback_fail_exit_code == 1, rollback_fail_summary
+        assert gate_by_id(rollback_fail_summary, "ecosystem.app-update-rollback")["status"] == "fail"
+
+        vault_missing_capability_path = write_app_summary_variant(
+            "vault-missing-capability",
+            lambda value: update_evidence(
+                value,
+                "app-vault.capabilities",
+                lambda entry: entry.setdefault("details", {}).update({"capabilities": ["vault.secrets.read"]}),
+            ),
+        )
+        vault_missing_capability_summary, vault_missing_capability_exit_code = run_with_previous(
+            "vault-missing-capability-cert", app_platform_summary=vault_missing_capability_path
+        )
+        assert vault_missing_capability_exit_code == 1, vault_missing_capability_summary
+        assert gate_by_id(vault_missing_capability_summary, "ecosystem.app-vault")["status"] == "fail"
+        waived_vault_evidence_summary, waived_vault_evidence_exit_code = run_with_previous(
+            "waived-vault-evidence-cert",
+            app_platform_summary=vault_missing_capability_path,
+            waivers={"app-vault.capabilities": "Release manager accepted vault evidence gap."},
+        )
+        assert waived_vault_evidence_exit_code == 0, waived_vault_evidence_summary
+        waived_vault_gate = gate_by_id(waived_vault_evidence_summary, "ecosystem.app-vault")
+        assert waived_vault_gate["status"] == "warn", waived_vault_gate
+        assert waived_vault_gate["releaseBlocker"] is False, waived_vault_gate
+        assert waived_vault_gate["details"]["waived"] is True, waived_vault_gate
+        assert waived_vault_gate["details"]["waivedEvidenceIds"] == ["app-vault.capabilities"], waived_vault_gate
+
+        vault_missing_redaction_path = write_app_summary_variant(
+            "vault-missing-redaction",
+            lambda value: update_evidence(
+                value,
+                "app-vault.capabilities",
+                lambda entry: entry.setdefault("details", {}).pop("redaction", None),
+            ),
+        )
+        vault_missing_redaction_summary, vault_missing_redaction_exit_code = run_with_previous(
+            "vault-missing-redaction-cert", app_platform_summary=vault_missing_redaction_path
+        )
+        assert vault_missing_redaction_exit_code == 1, vault_missing_redaction_summary
+        assert gate_by_id(vault_missing_redaction_summary, "ecosystem.app-vault")["status"] == "fail"
+
+        sandbox_best_effort_path = write_app_summary_variant(
+            "sandbox-best-effort",
+            lambda value: update_evidence(
+                value,
+                "apphost.sandbox-provider",
+                lambda entry: entry.setdefault("details", {}).update({"supportLevel": "best-effort"}),
+            ),
+        )
+        sandbox_best_effort_summary, sandbox_best_effort_exit_code = run_with_previous(
+            "sandbox-best-effort-cert", app_platform_summary=sandbox_best_effort_path
+        )
+        assert sandbox_best_effort_exit_code == 1, sandbox_best_effort_summary
+        assert gate_by_id(sandbox_best_effort_summary, "ecosystem.sandbox-provider")["status"] == "fail"
+        waived_sandbox_evidence_summary, waived_sandbox_evidence_exit_code = run_with_previous(
+            "waived-sandbox-evidence-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waivers={"apphost.sandbox-provider": "Release manager accepted sandbox provider gap."},
+        )
+        assert waived_sandbox_evidence_exit_code == 0, waived_sandbox_evidence_summary
+        waived_sandbox_evidence_gate = gate_by_id(
+            waived_sandbox_evidence_summary, "ecosystem.sandbox-provider"
+        )
+        assert waived_sandbox_evidence_gate["status"] == "warn", waived_sandbox_evidence_gate
+        assert waived_sandbox_evidence_gate["releaseBlocker"] is False, waived_sandbox_evidence_gate
+        assert waived_sandbox_evidence_gate["details"]["waived"] is True, waived_sandbox_evidence_gate
+        assert waived_sandbox_evidence_gate["details"]["waivedEvidenceIds"] == [
+            "apphost.sandbox-provider"
+        ], waived_sandbox_evidence_gate
+
+        legacy_removed_path = write_app_summary_variant(
+            "legacy-wave-removed",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        entry
+                        for entry in value["evidence"]
+                        if entry.get("id") != "legacy-admin.removal-wave-1"
+                    ]
+                }
+            ),
+        )
+        legacy_removed_summary, legacy_removed_exit_code = run_with_previous(
+            "legacy-wave-removed-cert", app_platform_summary=legacy_removed_path
+        )
+        assert legacy_removed_exit_code == 1, legacy_removed_summary
+        assert gate_by_id(legacy_removed_summary, "ecosystem.legacy-retirement")["status"] == "fail"
+
+        waiver_file_path = workspace / "docs/release-waivers/self-test.json"
+        write_json(
+            waiver_file_path,
+            {
+                "version": 1,
+                "release": "self-test",
+                "waivers": [
+                    {
+                        "id": "ecosystem.sandbox-provider",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "status": "approved",
+                        "approvedBy": "release-manager",
+                        "reason": f"token=hunter2 accepted for fixture {workspace}/secret",
+                        "expiresAt": "2099-01-01T00:00:00Z",
+                        "allowReleaseCandidate": True,
+                    }
+                ],
+            },
+        )
+        waived_sandbox_summary, waived_sandbox_exit_code = run_with_previous(
+            "waived-sandbox-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(waiver_file_path,),
+        )
+        assert waived_sandbox_exit_code == 0, waived_sandbox_summary
+        assert waived_sandbox_summary["status"] == "warn", waived_sandbox_summary
+        assert waived_sandbox_summary["waivers"] == {}, waived_sandbox_summary
+        assert len(waived_sandbox_summary["waiverRecords"]) == 1, waived_sandbox_summary
+        waived_sandbox_gate = gate_by_id(waived_sandbox_summary, "ecosystem.sandbox-provider")
+        assert waived_sandbox_gate["status"] == "warn", waived_sandbox_gate
+        assert waived_sandbox_gate["details"]["waived"] is True, waived_sandbox_gate
+        waived_report = (workspace / "build/waived-sandbox-cert" / REPORT_FILE_NAME).read_text(
+            encoding="utf-8"
+        )
+        waived_encoded = json.dumps(waived_sandbox_summary, sort_keys=True) + waived_report
+        for forbidden in ("hunter2", str(workspace)):
+            assert forbidden not in waived_encoded, f"structured waiver leaked {forbidden}"
+
+        malformed_rc_waiver_file_path = workspace / "docs/release-waivers/nonboolean.json"
+        write_json(
+            malformed_rc_waiver_file_path,
+            {
+                "version": 1,
+                "waivers": [
+                    {
+                        "id": "ecosystem.sandbox-provider",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "status": "approved",
+                        "approvedBy": "release-manager",
+                        "reason": "Malformed release-candidate flag.",
+                        "expiresAt": "2099-01-01T00:00:00Z",
+                        "allowReleaseCandidate": "false",
+                    }
+                ],
+            },
+        )
+        malformed_rc_waiver_summary, malformed_rc_waiver_exit_code = run_with_previous(
+            "malformed-rc-waiver-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(malformed_rc_waiver_file_path,),
+        )
+        assert malformed_rc_waiver_exit_code == 1, malformed_rc_waiver_summary
+        assert gate_by_id(malformed_rc_waiver_summary, "ecosystem.waivers")["status"] == "fail"
+        malformed_sandbox_gate = gate_by_id(
+            malformed_rc_waiver_summary, "ecosystem.sandbox-provider"
+        )
+        assert malformed_sandbox_gate["status"] == "fail", malformed_sandbox_gate
+        assert "waived" not in malformed_sandbox_gate["details"], malformed_sandbox_gate
+
+        malformed_waiver_redaction_file_path = workspace / "docs/release-waivers/redaction.json"
+        write_json(
+            malformed_waiver_redaction_file_path,
+            {
+                "version": 1,
+                "waivers": [
+                    {
+                        "id": "ecosystem.sandbox-provider",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "status": f"token=hunter2 {workspace}/status",
+                        "approvedBy": "release-manager",
+                        "reason": "Malformed status and expiry should remain sanitized.",
+                        "expiresAt": f"token=expires-secret {workspace}/expires",
+                        "allowReleaseCandidate": True,
+                    }
+                ],
+            },
+        )
+        malformed_waiver_redaction_summary, malformed_waiver_redaction_exit_code = run_with_previous(
+            "malformed-waiver-redaction-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(malformed_waiver_redaction_file_path,),
+        )
+        assert malformed_waiver_redaction_exit_code == 1, malformed_waiver_redaction_summary
+        malformed_waiver_redaction_report = (
+            workspace / "build/malformed-waiver-redaction-cert" / REPORT_FILE_NAME
+        ).read_text(encoding="utf-8")
+        malformed_waiver_redaction_encoded = (
+            json.dumps(malformed_waiver_redaction_summary, sort_keys=True)
+            + malformed_waiver_redaction_report
+        )
+        for forbidden in ("hunter2", "expires-secret", str(workspace)):
+            assert (
+                forbidden not in malformed_waiver_redaction_encoded
+            ), f"malformed waiver leaked {forbidden}"
+
+        expired_waiver_file_path = workspace / "docs/release-waivers/expired.json"
+        write_json(
+            expired_waiver_file_path,
+            {
+                "version": 1,
+                "waivers": [
+                    {
+                        "id": "ecosystem.sandbox-provider",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "status": "approved",
+                        "approvedBy": "release-manager",
+                        "reason": "Expired waiver.",
+                        "expiresAt": "2000-01-01T00:00:00Z",
+                        "allowReleaseCandidate": True,
+                    }
+                ],
+            },
+        )
+        expired_waiver_summary, expired_waiver_exit_code = run_with_previous(
+            "expired-waiver-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(expired_waiver_file_path,),
+        )
+        assert expired_waiver_exit_code == 1, expired_waiver_summary
+        assert gate_by_id(expired_waiver_summary, "ecosystem.waivers")["status"] == "fail"
         wrong_mode_extended = interop_evidence(
             "interop.extended",
             settings.interop_smoke_summary,
@@ -1392,6 +3787,7 @@ def run_self_test(repo_root: Path) -> None:
         assert pr_missing_exit_code == 0, pr_missing_summary
         assert pr_missing_summary["status"] == "warn", pr_missing_summary
         assert pr_missing_summary["releaseCandidatePassed"] is False, pr_missing_summary
+        assert pr_missing_summary["promotionDecision"] == "FAIL", pr_missing_summary
 
         nightly_missing_settings = dataclasses.replace(
             missing_settings,
@@ -1402,6 +3798,7 @@ def run_self_test(repo_root: Path) -> None:
         assert nightly_missing_exit_code == 0, nightly_missing_summary
         assert nightly_missing_summary["status"] == "warn", nightly_missing_summary
         assert nightly_missing_summary["releaseCandidatePassed"] is False, nightly_missing_summary
+        assert nightly_missing_summary["promotionDecision"] == "FAIL", nightly_missing_summary
 
         failing_perf = read_json(settings.perf_smoke_summary)
         assert failing_perf is not None
@@ -1427,6 +3824,10 @@ def run_self_test(repo_root: Path) -> None:
         waived_summary, waived_exit_code = run(waived_settings)
         assert waived_exit_code == 0, waived_summary
         assert waived_summary["status"] == "warn", waived_summary
+        assert waived_summary["waivers"] == {
+            "interop.smoke": "Release manager accepted CI artifact from upstream run."
+        }, waived_summary
+        assert waived_summary["waiverRecords"][0]["source"] == "cli", waived_summary
         waived_item = next(item for item in waived_summary["evidence"] if item["id"] == "interop.smoke")
         assert waived_item["details"]["waived"] is True
 

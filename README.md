@@ -574,7 +574,8 @@ Release-candidate evidence is aggregated by the release certification tooling un
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
 Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin retirement,
 legacy-admin removal-wave evidence, and CI summaries and writes a redacted report plus a stable
-JSON companion.
+JSON companion. The report also includes historical comparison output and ecosystem gates when a
+previous certified summary is provided.
 
 Fast self-tests:
 
@@ -597,10 +598,13 @@ tools/release-certification/run-release-certification.sh \
   --out-dir build/release-certification
 ```
 
+Add `--previous-summary build/release-certification-history/latest-summary.json` when the previous
+release's sanitized summary has been restored locally or in CI.
+
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`, and
-`app-review.first-party-catalog`, app-vault capability/redaction evidence, waivers, optional
-live-node evidence, and redaction rules.
+`app-review.first-party-catalog`, app-vault capability/redaction evidence, historical comparison,
+ecosystem gates, structured waivers, optional live-node evidence, and redaction rules.
 
 ## Testing
 
