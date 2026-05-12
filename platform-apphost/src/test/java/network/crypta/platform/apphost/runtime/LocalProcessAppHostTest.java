@@ -36,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -82,6 +83,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1806,6 +1808,65 @@ class LocalProcessAppHostTest {
     assertEquals(0, status.restartCount());
     assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
     assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+  }
+
+  @Test
+  void restartPolicy_whenCleanRootExitLeavesTransientChildHandle_expectNoFailureRestart()
+      throws IOException, ReflectiveOperationException {
+    LocalProcessAppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+    Process process = new CleanExitedProcessWithTransientChild(101L, 102L, 2);
+    RunningAppSnapshot snapshot =
+        new RunningAppSnapshot(
+            installation.manifest(),
+            installation.paths(),
+            DEFAULT_TOKEN,
+            process.pid(),
+            Instant.now());
+    injectRunningProcess(
+        host, RUNNER_APP_ID, snapshot, process, CompletableFuture.completedFuture(null));
+
+    AppRuntimeStatusSnapshot runningStatus = host.runtimeStatus(RUNNER_APP_ID);
+    assertEquals(AppRuntimeState.RUNNING, runningStatus.state());
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.EXITED);
+
+    assertEquals(0, status.lastExitCode());
+    assertEquals(0, status.currentRestartAttempt());
+    assertEquals(0, status.restartCount());
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+  }
+
+  @Test
+  void restartPolicy_whenObservedHandoffChildExitsAfterGrace_expectUnknownExitRestarts()
+      throws IOException, ReflectiveOperationException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    LocalProcessAppHost host = allowUnsignedHost();
+    Path stagedApp = stageInstalledRunnerApp(WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+    ControlledProcessHandle childHandle = new ControlledProcessHandle(102L);
+    Process process = new CleanExitedProcessWithTransientChild(101L, childHandle);
+    RunningAppSnapshot snapshot =
+        new RunningAppSnapshot(
+            installation.manifest(),
+            installation.paths(),
+            DEFAULT_TOKEN,
+            process.pid(),
+            Instant.now());
+    injectRunningProcess(
+        host, RUNNER_APP_ID, snapshot, process, CompletableFuture.completedFuture(null));
+
+    invokeCapturePostExitProcessTreeHandoff(host, process);
+    childHandle.markExited();
+
+    AppRuntimeStatusSnapshot restartedStatus = waitForRunnerRestarted(host);
+    assertNull(restartedStatus.lastExitCode());
+    assertEquals(1, restartedStatus.currentRestartAttempt());
+    assertEquals(1, restartedStatus.restartCount());
+    assertTrue(host.stop(RUNNER_APP_ID));
   }
 
   @Test
@@ -3675,6 +3736,16 @@ class LocalProcessAppHostTest {
     return (boolean) preserveRunningState.invoke(host, RUNNER_APP_ID, runningProcess);
   }
 
+  @SuppressWarnings("java:S3011")
+  private static void invokeCapturePostExitProcessTreeHandoff(
+      LocalProcessAppHost host, Process process) throws ReflectiveOperationException {
+    Method capturePostExitProcessTreeHandoff =
+        LocalProcessAppHost.class.getDeclaredMethod(
+            "capturePostExitProcessTreeHandoff", String.class, Process.class);
+    capturePostExitProcessTreeHandoff.setAccessible(true);
+    capturePostExitProcessTreeHandoff.invoke(host, RUNNER_APP_ID, process);
+  }
+
   private static void invokeParseRunnerTokenTrackedProcesses(Process process)
       throws ReflectiveOperationException, IOException {
     MethodHandle parseTokenTrackedProcesses =
@@ -3957,6 +4028,21 @@ class LocalProcessAppHostTest {
       pausePolling("interrupted while waiting for app runtime state: " + RUNNER_APP_ID);
     }
     throw new AssertionError("timed out waiting for app runtime state: " + RUNNER_APP_ID);
+  }
+
+  private static AppRuntimeStatusSnapshot waitForRunnerRestarted(AppHost host) throws IOException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    AppRuntimeStatusSnapshot lastStatus = null;
+    while (System.nanoTime() < deadline) {
+      AppRuntimeStatusSnapshot status = host.runtimeStatus(RUNNER_APP_ID);
+      lastStatus = status;
+      if (status.state() == AppRuntimeState.RUNNING && status.currentRestartAttempt() == 1) {
+        return status;
+      }
+      pausePolling("interrupted while waiting for app runtime restart: " + RUNNER_APP_ID);
+    }
+    throw new AssertionError(
+        "timed out waiting for app runtime restart: " + RUNNER_APP_ID + " last=" + lastStatus);
   }
 
   private static AppRuntimeStatusSnapshot waitForCrashedInactiveSandboxStatus(AppHost host)
@@ -4730,6 +4816,179 @@ class LocalProcessAppHostTest {
     }
   }
 
+  private static final class CleanExitedProcessWithTransientChild extends Process {
+    private final long pid;
+    private final ProcessHandle handle;
+
+    private CleanExitedProcessWithTransientChild(
+        long pid, long childPid, int childAliveChecksBeforeExit) {
+      this(pid, new FadingProcessHandle(childPid, childAliveChecksBeforeExit));
+    }
+
+    private CleanExitedProcessWithTransientChild(long pid, ProcessHandle childHandle) {
+      this.pid = pid;
+      this.handle = new CleanExitedProcessWithTransientChildHandle(childHandle);
+    }
+
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public int waitFor() {
+      return 0;
+    }
+
+    @Override
+    public boolean waitFor(long timeout, TimeUnit unit) {
+      return true;
+    }
+
+    @Override
+    public int exitValue() {
+      return 0;
+    }
+
+    @Override
+    public void destroy() {
+      // Intentionally blank: this fake process already exits.
+    }
+
+    @Override
+    public Process destroyForcibly() {
+      return this;
+    }
+
+    @Override
+    public boolean isAlive() {
+      return false;
+    }
+
+    @Override
+    public long pid() {
+      return pid;
+    }
+
+    @Override
+    public ProcessHandle toHandle() {
+      return handle;
+    }
+
+    private final class CleanExitedProcessWithTransientChildHandle implements ProcessHandle {
+      private final ProcessHandle childHandle;
+
+      private CleanExitedProcessWithTransientChildHandle(ProcessHandle childHandle) {
+        this.childHandle = childHandle;
+      }
+
+      @Override
+      public long pid() {
+        return pid;
+      }
+
+      @Override
+      public Info info() {
+        return new Info() {
+          @Override
+          public java.util.Optional<String> command() {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.Optional<String> commandLine() {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.Optional<String[]> arguments() {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.Optional<Instant> startInstant() {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.Optional<Duration> totalCpuDuration() {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.Optional<String> user() {
+            return java.util.Optional.empty();
+          }
+        };
+      }
+
+      @Override
+      public CompletableFuture<ProcessHandle> onExit() {
+        return CompletableFuture.completedFuture(this);
+      }
+
+      @Override
+      public boolean supportsNormalTermination() {
+        return true;
+      }
+
+      @Override
+      public boolean destroy() {
+        return true;
+      }
+
+      @Override
+      public boolean destroyForcibly() {
+        return true;
+      }
+
+      @Override
+      public boolean isAlive() {
+        return false;
+      }
+
+      @Override
+      public java.util.Optional<ProcessHandle> parent() {
+        return java.util.Optional.empty();
+      }
+
+      @Override
+      public java.util.stream.Stream<ProcessHandle> children() {
+        return java.util.stream.Stream.of(childHandle);
+      }
+
+      @Override
+      public java.util.stream.Stream<ProcessHandle> descendants() {
+        return children();
+      }
+
+      @Override
+      public int compareTo(ProcessHandle other) {
+        return Long.compare(pid, other.pid());
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        return other instanceof ProcessHandle otherHandle && pid == otherHandle.pid();
+      }
+
+      @Override
+      public int hashCode() {
+        return Long.hashCode(pid);
+      }
+    }
+  }
+
   private static final class ExitedProcess extends Process {
     private final long pid;
     private final ProcessHandle handle;
@@ -5251,6 +5510,114 @@ class LocalProcessAppHostTest {
     public boolean isAlive() {
       int checksRemaining = remainingAliveChecks.getAndUpdate(current -> Math.max(0, current - 1));
       return checksRemaining > 0;
+    }
+
+    @Override
+    public java.util.Optional<ProcessHandle> parent() {
+      return java.util.Optional.empty();
+    }
+
+    @Override
+    public java.util.stream.Stream<ProcessHandle> children() {
+      return java.util.stream.Stream.empty();
+    }
+
+    @Override
+    public java.util.stream.Stream<ProcessHandle> descendants() {
+      return java.util.stream.Stream.empty();
+    }
+
+    @Override
+    public int compareTo(ProcessHandle other) {
+      return Long.compare(pid, other.pid());
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof ProcessHandle handle && pid == handle.pid();
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(pid);
+    }
+  }
+
+  private static final class ControlledProcessHandle implements ProcessHandle {
+    private final long pid;
+    private final AtomicBoolean alive = new AtomicBoolean(true);
+
+    private ControlledProcessHandle(long pid) {
+      this.pid = pid;
+    }
+
+    private void markExited() {
+      alive.set(false);
+    }
+
+    @Override
+    public long pid() {
+      return pid;
+    }
+
+    @Override
+    public Info info() {
+      return new Info() {
+        @Override
+        public java.util.Optional<String> command() {
+          return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<String> commandLine() {
+          return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<String[]> arguments() {
+          return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<Instant> startInstant() {
+          return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<Duration> totalCpuDuration() {
+          return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<String> user() {
+          return java.util.Optional.empty();
+        }
+      };
+    }
+
+    @Override
+    public CompletableFuture<ProcessHandle> onExit() {
+      return CompletableFuture.completedFuture(this);
+    }
+
+    @Override
+    public boolean supportsNormalTermination() {
+      return true;
+    }
+
+    @Override
+    public boolean destroy() {
+      return true;
+    }
+
+    @Override
+    public boolean destroyForcibly() {
+      return true;
+    }
+
+    @Override
+    public boolean isAlive() {
+      return alive.get();
     }
 
     @Override
