@@ -29,6 +29,8 @@ import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.RecommendedAppCatalog;
+import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
@@ -80,6 +82,7 @@ public final class AppCatalogsApiHandler {
   private static final String SOURCE_FIELD = "source";
   private static final String SOURCE_TYPE_FIELD = "sourceType";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
+  private static final String CATALOG_ID_FIELD = "catalogId";
   private static final String LAST_ATTEMPT_AT_FIELD = "lastAttemptAt";
   private static final String LAST_SUCCESSFUL_REFRESH_AT_FIELD = "lastSuccessfulRefreshAt";
   private static final String LAST_FETCH_STATUS_FIELD = "lastFetchStatus";
@@ -98,6 +101,17 @@ public final class AppCatalogsApiHandler {
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
   private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
   private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
+  private static final String ERROR_RECOMMENDED_CATALOG_NOT_FOUND = "recommended_catalog_not_found";
+  private static final String ERROR_RECOMMENDED_CATALOG_ALREADY_CONFIGURED =
+      "recommended_catalog_already_configured";
+  private static final String ERROR_RECOMMENDED_CATALOG_SOURCE_MISSING =
+      "recommended_catalog_source_missing";
+  private static final String ERROR_RECOMMENDED_CATALOG_TRUSTED_KEY_MISSING =
+      "recommended_catalog_trusted_key_missing";
+  private static final String ERROR_RECOMMENDED_CATALOG_INVALID_CONFIGURATION =
+      "recommended_catalog_invalid_configuration";
+  private static final String MISSING_SOURCE_CONFIGURATION = "source";
+  private static final String MISSING_TRUSTED_CATALOG_KEY_CONFIGURATION = "trusted_catalog_key";
 
   private final AppCatalogManager catalogManager;
   private final AppHost appHost;
@@ -105,6 +119,7 @@ public final class AppCatalogsApiHandler {
   private final AppReviewPolicy reviewPolicy;
   private final ReviewerKeysProvider reviewerKeysProvider;
   private final AppVaultService appVaultService;
+  private final Supplier<List<RecommendedAppCatalog>> recommendedCatalogsSupplier;
 
   /**
    * Creates a handler backed by a catalog manager and shared AppHost.
@@ -205,6 +220,40 @@ public final class AppCatalogsApiHandler {
       AppReviewPolicy reviewPolicy,
       ReviewerKeysProvider reviewerKeysProvider,
       AppVaultService appVaultService) {
+    this(
+        catalogManager,
+        appHost,
+        currentCryptaVersionSupplier,
+        reviewPolicy,
+        reviewerKeysProvider,
+        appVaultService,
+        RecommendedAppCatalogs::fromSystem);
+  }
+
+  /**
+   * Creates a handler with explicit recommendation and review collaborators.
+   *
+   * <p>Tests and controlled embeddings use this constructor to provide deterministic recommended
+   * catalog descriptors without relying on process-wide system properties. Runtime composition
+   * normally uses {@link RecommendedAppCatalogs#fromSystem()} through the shorter constructors.
+   *
+   * @param catalogManager signed catalog manager owned by runtime composition
+   * @param appHost shared AppHost used for final install and update operations
+   * @param currentCryptaVersionSupplier current node version supplier for compatibility display
+   * @param reviewPolicy local review policy for install/update gates
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   * @param recommendedCatalogsSupplier supplier for configured recommended catalog descriptors
+   */
+  public AppCatalogsApiHandler(
+      AppCatalogManager catalogManager,
+      AppHost appHost,
+      Supplier<String> currentCryptaVersionSupplier,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService,
+      Supplier<List<RecommendedAppCatalog>> recommendedCatalogsSupplier) {
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.currentCryptaVersionSupplier =
@@ -213,6 +262,8 @@ public final class AppCatalogsApiHandler {
     this.reviewerKeysProvider =
         Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
     this.appVaultService = appVaultService;
+    this.recommendedCatalogsSupplier =
+        Objects.requireNonNull(recommendedCatalogsSupplier, "recommendedCatalogsSupplier");
   }
 
   private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
@@ -251,6 +302,74 @@ public final class AppCatalogsApiHandler {
   }
 
   /**
+   * Lists operator-visible recommended catalog descriptors.
+   *
+   * <p>This read path does not fetch remote catalog bytes and does not mutate configured sources.
+   * It combines the recommendation provider with the current configured-catalog ids and trusted-key
+   * hints so the Web Shell can show whether the first-party beta onboarding card is ready to add,
+   * already configured, or missing runtime configuration.
+   *
+   * @return JSON-compatible recommended catalog summaries
+   */
+  public List<Map<String, Object>> listRecommendedCatalogs() {
+    List<RecommendedAppCatalog> recommendedCatalogs = recommendedCatalogs();
+    try {
+      Set<String> configuredIds = configuredCatalogIds();
+      return recommendedCatalogs.stream()
+          .map(recommended -> summarizeRecommendedCatalog(recommended, configuredIds))
+          .toList();
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to list recommended app catalogs.");
+    }
+  }
+
+  /**
+   * Adds one recommended catalog through the verified signed-catalog path.
+   *
+   * <p>The method never installs apps. It checks that the recommendation exists, has a configured
+   * source, has its trusted catalog key hint present in the current trusted-key registry, and is
+   * not already configured. The final mutation delegates to {@link
+   * AppCatalogManager#addSource(String, String)}, which fetches and verifies the signed catalog
+   * before persisting it and enforces that the authenticated catalog id matches the selected
+   * recommendation.
+   *
+   * @param catalogId recommended catalog id from the request path
+   * @return JSON-compatible summary for the newly stored and verified catalog
+   */
+  public Map<String, Object> addRecommended(String catalogId) {
+    RecommendedAppCatalog recommended = recommendedCatalog(catalogId);
+    if (recommended.sourceDisplayUri().isEmpty()) {
+      throw new PlatformApiException(
+          400,
+          ERROR_RECOMMENDED_CATALOG_SOURCE_MISSING,
+          "Recommended catalog source is not configured.");
+    }
+    try {
+      if (configuredCatalogIds().contains(recommended.catalogId())) {
+        throw new PlatformApiException(
+            409,
+            ERROR_RECOMMENDED_CATALOG_ALREADY_CONFIGURED,
+            "Recommended catalog is already configured.");
+      }
+      if (!trustedCatalogKeyConfigured(recommended)) {
+        throw new PlatformApiException(
+            400,
+            ERROR_RECOMMENDED_CATALOG_TRUSTED_KEY_MISSING,
+            "Recommended catalog trusted key is not configured.");
+      }
+      return summarizeCatalog(
+          catalogManager.addSource(
+              recommended.sourceDisplayUri().orElseThrow(), recommended.catalogId()));
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to add recommended app catalog.");
+    }
+  }
+
+  /**
    * Adds a signed catalog source and returns the verified catalog summary.
    *
    * <p>The {@code source} parameter may name a local file, a {@code file:} URI, an HTTPS URI, or a
@@ -272,6 +391,134 @@ public final class AppCatalogsApiHandler {
     }
   }
 
+  private List<RecommendedAppCatalog> recommendedCatalogs() {
+    try {
+      return List.copyOf(recommendedCatalogsSupplier.get());
+    } catch (AppCatalogException _) {
+      throw new PlatformApiException(
+          400,
+          ERROR_RECOMMENDED_CATALOG_INVALID_CONFIGURATION,
+          "Recommended catalog configuration is invalid.");
+    }
+  }
+
+  private RecommendedAppCatalog recommendedCatalog(String catalogId) {
+    String normalizedCatalogId;
+    try {
+      normalizedCatalogId =
+          network.crypta.platform.appcatalog.AppCatalog.normalizeCatalogId(catalogId);
+    } catch (AppCatalogException _) {
+      throw recommendedCatalogNotFound();
+    }
+    return recommendedCatalogs().stream()
+        .filter(recommended -> recommended.catalogId().equals(normalizedCatalogId))
+        .findFirst()
+        .orElseThrow(AppCatalogsApiHandler::recommendedCatalogNotFound);
+  }
+
+  private static PlatformApiException recommendedCatalogNotFound() {
+    return new PlatformApiException(
+        404, ERROR_RECOMMENDED_CATALOG_NOT_FOUND, "Recommended catalog not found.");
+  }
+
+  private Set<String> configuredCatalogIds() throws IOException {
+    LinkedHashSet<String> configuredIds = new LinkedHashSet<>();
+    for (AppCatalogSourceSnapshot snapshot : catalogManager.listCatalogs()) {
+      configuredIds.add(snapshot.catalogId());
+    }
+    return Set.copyOf(configuredIds);
+  }
+
+  private Map<String, Object> summarizeRecommendedCatalog(
+      RecommendedAppCatalog recommended, Set<String> configuredCatalogIds) {
+    boolean configured = configuredCatalogIds.contains(recommended.catalogId());
+    boolean trustedCatalogKeyConfigured = trustedCatalogKeyConfigured(recommended);
+    List<String> missingConfiguration =
+        missingRecommendedCatalogConfiguration(recommended, trustedCatalogKeyConfigured);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
+    json.put(CATALOG_ID_FIELD, recommended.catalogId());
+    json.put("name", recommended.name());
+    json.put("description", recommended.description());
+    json.put("channel", recommended.channel());
+    json.put(SOURCE_KIND_FIELD, recommended.sourceKind().orElse(null));
+    json.put(SOURCE_FIELD, redactedRecommendedSource(recommended));
+    json.put("sourceConfigured", recommended.configured());
+    json.put("configured", configured);
+    json.put("trustedCatalogKeyId", recommended.trustedCatalogKeyId().orElse(null));
+    json.put("trustedCatalogKeyConfigured", trustedCatalogKeyConfigured);
+    json.put("reviewerPolicyHint", recommended.reviewerPolicyHint().orElse(null));
+    json.put("canAdd", !configured && missingConfiguration.isEmpty());
+    json.put("missingConfiguration", missingConfiguration);
+    json.put(FIELD_WARNINGS, recommendedWarnings(configured, missingConfiguration));
+    return json;
+  }
+
+  private boolean trustedCatalogKeyConfigured(RecommendedAppCatalog recommended) {
+    Optional<String> trustedCatalogKeyId = recommended.trustedCatalogKeyId();
+    if (trustedCatalogKeyId.isEmpty()) {
+      return false;
+    }
+    try {
+      return catalogManager.hasTrustedCatalogKey(trustedCatalogKeyId.orElseThrow());
+    } catch (AppCatalogException | IOException _) {
+      return false;
+    }
+  }
+
+  private static List<String> missingRecommendedCatalogConfiguration(
+      RecommendedAppCatalog recommended, boolean trustedCatalogKeyConfigured) {
+    ArrayList<String> missing = new ArrayList<>(2);
+    if (recommended.sourceDisplayUri().isEmpty()) {
+      missing.add(MISSING_SOURCE_CONFIGURATION);
+    }
+    if (!trustedCatalogKeyConfigured) {
+      missing.add(MISSING_TRUSTED_CATALOG_KEY_CONFIGURATION);
+    }
+    return List.copyOf(missing);
+  }
+
+  private static List<String> recommendedWarnings(boolean configured, List<String> missing) {
+    ArrayList<String> warnings = new ArrayList<>();
+    if (configured) {
+      warnings.add(ERROR_RECOMMENDED_CATALOG_ALREADY_CONFIGURED);
+    }
+    for (String missingItem : missing) {
+      warnings.add("missing_" + missingItem);
+    }
+    return List.copyOf(warnings);
+  }
+
+  private static String redactedRecommendedSource(RecommendedAppCatalog recommended) {
+    Optional<String> source = recommended.sourceDisplayUri();
+    if (source.isEmpty()) {
+      return null;
+    }
+    Optional<String> sourceKind = recommended.sourceKind();
+    if (sourceKind.isPresent() && "crypta".equals(sourceKind.orElseThrow())) {
+      return "crypta:<configured>";
+    }
+    if (sourceKind.isPresent() && "file".equals(sourceKind.orElseThrow())) {
+      return "file:<configured>";
+    }
+    URI uri = URI.create(source.orElseThrow());
+    if (uri.getQuery() == null) {
+      return uri.toString();
+    }
+    try {
+      return new URI(
+              uri.getScheme(),
+              null,
+              uri.getHost(),
+              uri.getPort(),
+              uri.getPath(),
+              "<redacted>",
+              null)
+          .toString();
+    } catch (java.net.URISyntaxException _) {
+      return uri.getScheme() + "://<configured>";
+    }
+  }
+
   /**
    * Removes one configured catalog source.
    *
@@ -286,7 +533,7 @@ public final class AppCatalogsApiHandler {
     try {
       catalogManager.remove(catalogId);
       LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
-      json.put("catalogId", catalogId);
+      json.put(CATALOG_ID_FIELD, catalogId);
       json.put("removed", true);
       return json;
     } catch (AppCatalogException exception) {
@@ -585,7 +832,7 @@ public final class AppCatalogsApiHandler {
     String lastSuccessfulRefreshAt =
         timestampField(snapshot, LAST_SUCCESSFUL_REFRESH_AT_FIELD, refreshedAt);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
-    json.put("catalogId", snapshot.catalogId());
+    json.put(CATALOG_ID_FIELD, snapshot.catalogId());
     json.put("name", snapshot.name());
     json.put(SOURCE_FIELD, snapshot.sourceUri().toString());
     json.put(SOURCE_TYPE_FIELD, sourceKind);
@@ -920,9 +1167,9 @@ public final class AppCatalogsApiHandler {
           new PlatformApiException(404, exception.errorCode(), exception.getMessage());
       case "catalog_conflict" ->
           new PlatformApiException(409, exception.errorCode(), exception.getMessage());
-      case "catalog_fetch_unavailable" ->
+      case "catalog_fetch_unavailable", "artifact_fetch_unavailable" ->
           new PlatformApiException(503, exception.errorCode(), exception.getMessage());
-      case "catalog_fetch_failed" ->
+      case "catalog_fetch_failed", "artifact_download_failed" ->
           new PlatformApiException(502, exception.errorCode(), exception.getMessage());
       default -> new PlatformApiException(400, exception.errorCode(), exception.getMessage());
     };

@@ -52,6 +52,9 @@ final class AppCatalogSidecars {
   /** Error code used when a catalog artifact cannot be retrieved or read. */
   static final String ARTIFACT_DOWNLOAD_FAILED = "artifact_download_failed";
 
+  /** Error code used when a Crypta artifact cannot be fetched because no runtime is wired. */
+  static final String ARTIFACT_FETCH_UNAVAILABLE = "artifact_fetch_unavailable";
+
   /** Error code used when artifact size or SHA-256 does not match catalog metadata. */
   static final String ARTIFACT_DIGEST_MISMATCH = "artifact_digest_mismatch";
 
@@ -63,6 +66,9 @@ final class AppCatalogSidecars {
 
   /** Error code used when adding a catalog whose authenticated id is already configured. */
   static final String CATALOG_CONFLICT = "catalog_conflict";
+
+  /** Error code used when a verified catalog id does not match the requested recommendation. */
+  static final String CATALOG_ID_MISMATCH = "catalog_id_mismatch";
 
   /** Error code used when a verified catalog does not contain the requested app id. */
   static final String APP_NOT_FOUND = "app_not_found";
@@ -96,6 +102,12 @@ final class AppCatalogSidecars {
 
   /** URI scheme for Crypta network content sources. */
   private static final String CRYPTA_SCHEME = "crypta";
+
+  /** Prefix used by immutable Crypta content keys. */
+  private static final String CHK_PREFIX = "CHK@";
+
+  /** Operator-facing scheme prefix for Crypta content URIs. */
+  private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
 
   /** Strict lowercase hexadecimal SHA-256 digest grammar for catalog artifact metadata. */
   private static final Pattern LOWERCASE_SHA256_PATTERN = Pattern.compile("[0-9a-f]{64}");
@@ -299,10 +311,32 @@ final class AppCatalogSidecars {
   static URI requireSafeArtifactUri(URI uri) throws AppCatalogException {
     URI normalized = normalizeUri(uri, INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD);
     if (CRYPTA_SCHEME.equalsIgnoreCase(normalized.getScheme())) {
-      throw unsupportedArtifactScheme(normalized.getScheme());
+      requireCryptaChkArtifactUri(normalized);
+      return normalized;
     }
     requireSupportedArtifactScheme(normalized);
     return normalized;
+  }
+
+  /**
+   * Returns the bare immutable Crypta key for a validated artifact URI.
+   *
+   * <p>Catalog app artifacts intentionally accept only {@code crypta:CHK@...} in this PR. Mutable
+   * USK and SSK sources remain available for catalog sidecars, but app ZIP artifacts must be
+   * addressed by immutable CHK keys because the signed catalog already pins the exact size and
+   * lowercase SHA-256 digest. The returned value excludes the operator-facing {@code crypta:}
+   * marker and is suitable for the runtime content-fetch port.
+   *
+   * @param uri authenticated catalog artifact URI
+   * @return bare CHK key used by the runtime content-fetch port
+   * @throws AppCatalogException if the URI is not a CHK-backed Crypta artifact
+   */
+  static String cryptaArtifactFetchKey(URI uri) {
+    URI normalized = requireSafeArtifactUri(uri);
+    if (!CRYPTA_SCHEME.equalsIgnoreCase(normalized.getScheme())) {
+      throw new AppCatalogException(INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD + " is not crypta");
+    }
+    return normalized.toString().substring(CRYPTA_SCHEME_PREFIX.length());
   }
 
   /**
@@ -475,6 +509,23 @@ final class AppCatalogSidecars {
 
   private static AppCatalogException unsupportedArtifactScheme(String scheme) {
     return unsupportedScheme(INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD, scheme);
+  }
+
+  private static void requireCryptaChkArtifactUri(URI uri) {
+    String value = uri.toString();
+    if (!value.toLowerCase(Locale.ROOT).startsWith(CRYPTA_SCHEME_PREFIX)) {
+      throw unsupportedArtifactScheme(uri.getScheme());
+    }
+    String key = value.substring(CRYPTA_SCHEME_PREFIX.length());
+    if (key.indexOf('#') >= 0 || key.indexOf('?') >= 0) {
+      throw new AppCatalogException(
+          INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD + " must be a bare Crypta CHK key");
+    }
+    requireNonBlankSingleLine(key, ARTIFACT_URI_FIELD, INVALID_CATALOG_ENTRY);
+    if (!key.startsWith(CHK_PREFIX)) {
+      throw new AppCatalogException(
+          INVALID_CATALOG_ENTRY, ARTIFACT_URI_FIELD + " must use an immutable CHK key");
+    }
   }
 
   private static AppCatalogException unsupportedScheme(

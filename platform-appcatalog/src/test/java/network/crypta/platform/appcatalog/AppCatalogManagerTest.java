@@ -3,6 +3,7 @@ package network.crypta.platform.appcatalog;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.ProxySelector;
@@ -75,6 +76,8 @@ class AppCatalogManagerTest {
   private static final String CRYPTA_SIGNATURE_KEY =
       "USK@example/catalog/cryptad-app-catalog.signature";
   private static final String CRYPTA_CATALOG_SOURCE = "crypta:" + CRYPTA_CATALOG_KEY;
+  private static final String CRYPTA_ARTIFACT_KEY = "CHK@artifact-key";
+  private static final URI CRYPTA_ARTIFACT_URI = URI.create("crypta:" + CRYPTA_ARTIFACT_KEY);
   private static final String BASIC_CATALOG_PROPERTIES = "catalog.version=1\n";
   private static final String BASIC_CATALOG_SIGNATURE = "catalog.signature.version=1\n";
   private static final String MALFORMED_KEY_VALUE_LINE = "not-a-key-value-line\n";
@@ -688,10 +691,36 @@ class AppCatalogManagerTest {
   }
 
   @Test
-  void entry_whenArtifactUriIsCrypta_expectInvalidCatalogEntry() {
-    URI artifactUri = URI.create("crypta:CHK@bundle-key?signature=CHK@signature-key");
+  void entry_whenArtifactUriIsCryptaChk_expectAccepted() {
     String artifactDigest = "0".repeat(64);
     List<String> permissions = List.of(QUEUE_READ_PERMISSION);
+
+    AppCatalogEntry entry =
+        new AppCatalogEntry(
+            APP_ID,
+            APP_NAME,
+            APP_VERSION,
+            APP_SUMMARY,
+            CRYPTA_ARTIFACT_URI,
+            artifactDigest,
+            1L,
+            AppCatalogEntry.ZIP_BUNDLE_TYPE,
+            permissions);
+
+    assertEquals(CRYPTA_ARTIFACT_URI, entry.bundleUri());
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "crypta:USK@example/apps/queue-manager.zip",
+        "crypta:SSK@example/apps/queue-manager.zip",
+        "crypta:CHK@bundle-key?signature=CHK@signature-key"
+      })
+  void entry_whenArtifactUriIsUnsupportedCryptaForm_expectInvalidCatalogEntry(String uri) {
+    String artifactDigest = "0".repeat(64);
+    List<String> permissions = List.of(QUEUE_READ_PERMISSION);
+    URI artifactUri = URI.create(uri);
 
     AppCatalogException exception =
         assertThrows(
@@ -709,6 +738,179 @@ class AppCatalogManagerTest {
                     permissions));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void prepareInstallPlan_whenCryptaArtifactUsesContentFetchPort_expectVerifiedPlan()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, CRYPTA_ARTIFACT_URI, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME)),
+                CRYPTA_ARTIFACT_KEY,
+                Files.readAllBytes(artifact)));
+    AppCatalogManager manager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            () -> trustedKeys,
+            contentFetchPort);
+
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertTrue(Files.isDirectory(plan.stagedBundleDirectory()));
+    }
+
+    assertEquals(
+        List.of(CRYPTA_CATALOG_KEY, CRYPTA_SIGNATURE_KEY, CRYPTA_ARTIFACT_KEY),
+        contentFetchPort.requestedKeys());
+  }
+
+  @Test
+  void download_whenCryptaArtifactUsesStreamingFetch_expectVerifiedArtifact() throws Exception {
+    byte[] artifactBytes = new byte[] {1, 2, 3};
+    List<String> streamedKeys = new java.util.ArrayList<>();
+    ContentFetchPort contentFetchPort =
+        new ContentFetchPort() {
+          @Override
+          public BoundedContentFetchResult fetchContent(BoundedContentFetchRequest request)
+              throws ContentFetchException {
+            throw new ContentFetchException(
+                ContentFetchException.CATALOG_FETCH_FAILED,
+                "materialized artifact fetch should not be used");
+          }
+
+          @Override
+          public void fetchContent(BoundedContentFetchRequest request, OutputStream destination)
+              throws IOException {
+            streamedKeys.add(request.uri());
+            destination.write(artifactBytes);
+          }
+        };
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-streaming");
+
+    Path downloaded =
+        downloader.download(
+            cryptaEntry(sha256(artifactBytes), artifactBytes.length), scratchDirectory);
+
+    assertEquals(List.of(CRYPTA_ARTIFACT_KEY), streamedKeys);
+    assertEquals(artifactBytes.length, Files.size(downloaded));
+    assertEquals(sha256(artifactBytes), sha256(downloaded));
+  }
+
+  @Test
+  void addSource_whenExpectedCatalogIdDiffers_expectCatalogIdMismatchAndNoStoredSource()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys(keyPair));
+    String catalogSource = catalog.toString();
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class, () -> manager.addSource(catalogSource, "other-catalog"));
+
+    assertEquals(AppCatalogSidecars.CATALOG_ID_MISMATCH, exception.errorCode());
+    assertTrue(manager.listCatalogs().isEmpty());
+  }
+
+  @Test
+  void download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable() {
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)),
+            (ContentFetchPort) null);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-unavailable");
+    AppCatalogEntry entry = cryptaEntry("0".repeat(64), 1L);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_FETCH_UNAVAILABLE, exception.errorCode());
+  }
+
+  @Test
+  void download_whenCryptaFetchFails_expectArtifactDownloadFailed() {
+    ContentFetchPort contentFetchPort =
+        _ -> {
+          throw new ContentFetchException(
+              ContentFetchException.CATALOG_FETCH_FAILED, "content is unavailable");
+        };
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-failed");
+    AppCatalogEntry entry = cryptaEntry("0".repeat(64), 1L);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_DOWNLOAD_FAILED, exception.errorCode());
+  }
+
+  @Test
+  void download_whenCryptaArtifactDigestMismatches_expectArtifactDigestMismatch() {
+    ContentFetchPort contentFetchPort =
+        request -> new BoundedContentFetchResult(new byte[] {1}, request.uri(), null, null);
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-digest");
+    AppCatalogEntry entry = cryptaEntry("0".repeat(64), 1L);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH, exception.errorCode());
+  }
+
+  @Test
+  void download_whenCryptaArtifactByteCountMismatches_expectArtifactDigestMismatch()
+      throws Exception {
+    ContentFetchPort contentFetchPort =
+        request -> new BoundedContentFetchResult(new byte[] {1}, request.uri(), null, null);
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-size");
+    AppCatalogEntry entry = cryptaEntry(sha256(new byte[] {1}), 2L);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH, exception.errorCode());
+  }
+
+  @Test
+  void download_whenCryptaArtifactExceedsDeclaredByteCount_expectArtifactDownloadFailed()
+      throws Exception {
+    byte[] artifactBytes = new byte[] {1, 2};
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(Map.of(CRYPTA_ARTIFACT_KEY, artifactBytes));
+    AppCatalogArtifactDownloader downloader =
+        new AppCatalogArtifactDownloader(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    Path scratchDirectory = tempDir.resolve("scratch-crypta-oversize");
+    AppCatalogEntry entry = cryptaEntry(sha256(artifactBytes), 1L);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> downloader.download(entry, scratchDirectory));
+
+    assertEquals(AppCatalogSidecars.ARTIFACT_DOWNLOAD_FAILED, exception.errorCode());
   }
 
   @Test
@@ -804,9 +1006,10 @@ class AppCatalogManagerTest {
     AppCatalogArtifactDownloader downloader =
         new AppCatalogArtifactDownloader(
             new FixedResponseHttpClient(new InputStreamResponse(200, body, contentLength("2"))),
-            _ -> {
-              throw cleanupFailure;
-            });
+            (AppCatalogArtifactDownloader.ArtifactCleaner)
+                _ -> {
+                  throw cleanupFailure;
+                });
     AppCatalogEntry entry = remoteEntry();
     Path scratchDirectory = tempDir.resolve("scratch-cleanup-failure");
 
@@ -934,6 +1137,12 @@ class AppCatalogManagerTest {
   private Path signedCatalog(
       String catalogId, Path artifact, KeyPair keyPair, String artifactSha256, long artifactSize)
       throws IOException {
+    return signedCatalog(catalogId, artifact.toUri(), keyPair, artifactSha256, artifactSize);
+  }
+
+  private Path signedCatalog(
+      String catalogId, URI artifactUri, KeyPair keyPair, String artifactSha256, long artifactSize)
+      throws IOException {
     Path catalogDir = Files.createDirectories(tempDir.resolve("catalog-" + catalogId));
     Path catalog = catalogDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -967,7 +1176,7 @@ class AppCatalogManagerTest {
                 APP_ID,
                 APP_SUMMARY,
                 APP_ID,
-                artifact.toUri(),
+                artifactUri,
                 APP_ID,
                 artifactSha256,
                 APP_ID,
@@ -1173,6 +1382,19 @@ class AppCatalogManagerTest {
         List.of(QUEUE_READ_PERMISSION));
   }
 
+  private static AppCatalogEntry cryptaEntry(String artifactSha256, long artifactSizeBytes) {
+    return new AppCatalogEntry(
+        APP_ID,
+        APP_NAME,
+        APP_VERSION,
+        APP_SUMMARY,
+        CRYPTA_ARTIFACT_URI,
+        artifactSha256,
+        artifactSizeBytes,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION));
+  }
+
   private static HttpHeaders contentLength(String value) {
     return HttpHeaders.of(Map.of("content-length", List.of(value)), (_, _) -> true);
   }
@@ -1180,6 +1402,12 @@ class AppCatalogManagerTest {
   private static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
     MessageDigest digest = MessageDigest.getInstance("SHA-256");
     digest.update(Files.readAllBytes(path));
+    return HexFormat.of().formatHex(digest.digest());
+  }
+
+  private static String sha256(byte[] bytes) throws NoSuchAlgorithmException {
+    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    digest.update(bytes);
     return HexFormat.of().formatHex(digest.digest());
   }
 

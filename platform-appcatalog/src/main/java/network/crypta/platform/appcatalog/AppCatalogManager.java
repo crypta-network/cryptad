@@ -69,7 +69,7 @@ public final class AppCatalogManager {
         sourceStore,
         trustedKeyProvider,
         new AppCatalogFetcher(contentFetchPort),
-        new AppCatalogArtifactDownloader(),
+        new AppCatalogArtifactDownloader(contentFetchPort),
         new AppCatalogBundleExtractor());
   }
 
@@ -129,11 +129,37 @@ public final class AppCatalogManager {
    * @throws IOException if fetch, signature verification, or persistence fails
    */
   public synchronized AppCatalogSourceSnapshot addSource(String rawSource) throws IOException {
+    return addSource(rawSource, null);
+  }
+
+  /**
+   * Adds a catalog source only if its authenticated catalog id matches an expected id.
+   *
+   * <p>Recommended-catalog onboarding uses this overload to bind an operator action such as "add
+   * the first-party beta catalog" to the catalog id that was actually signed. The source is still
+   * fetched and signature-verified before the id comparison, and a mismatch is rejected before any
+   * catalog bytes are persisted.
+   *
+   * @param rawSource operator-supplied source path or URI
+   * @param expectedCatalogId expected signed catalog id, or {@code null} for no id constraint
+   * @return stored source snapshot for the new catalog
+   * @throws IOException if fetching, signature verification, id validation, or persistence fails
+   */
+  public synchronized AppCatalogSourceSnapshot addSource(String rawSource, String expectedCatalogId)
+      throws IOException {
     AppCatalogSource source = AppCatalogSource.parse(rawSource);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     FetchedCatalog fetched = fetcher.fetch(source);
     AppCatalog catalog =
         AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+    if (expectedCatalogId != null && !expectedCatalogId.isBlank()) {
+      String normalizedExpectedCatalogId = AppCatalog.normalizeCatalogId(expectedCatalogId);
+      if (!normalizedExpectedCatalogId.equals(catalog.catalogId())) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.CATALOG_ID_MISMATCH,
+            "Catalog id does not match the requested catalog.");
+      }
+    }
     if (sourceStore.exists(catalog.catalogId())) {
       throw new AppCatalogException(
           AppCatalogSidecars.CATALOG_CONFLICT,
@@ -301,6 +327,25 @@ public final class AppCatalogManager {
       AppCatalogBundleExtractor.deleteRecursively(scratchRoot);
       throw exception;
     }
+  }
+
+  /**
+   * Returns whether the current trusted app/catalog key registry contains one key id.
+   *
+   * <p>Recommended-catalog onboarding uses this as a configuration check before attempting to add a
+   * first-party source. It does not expose public key bytes or any trusted-key file paths, and it
+   * does not change the verification path: adding or refreshing a catalog still verifies the signed
+   * catalog against the full current registry.
+   *
+   * @param keyId stable catalog signing key id to check
+   * @return {@code true} when the current registry contains {@code keyId}
+   * @throws IOException if trusted-key configuration cannot be read
+   */
+  public synchronized boolean hasTrustedCatalogKey(String keyId) throws IOException {
+    if (keyId == null || keyId.isBlank()) {
+      return false;
+    }
+    return trustedKeyProvider.trustedKeys().find(keyId.trim()).isPresent();
   }
 
   private AppCatalog readVerifiedCatalog(String catalogId) throws IOException {

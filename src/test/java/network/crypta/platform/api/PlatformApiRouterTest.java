@@ -142,6 +142,7 @@ class PlatformApiRouterTest {
   private static final long APP_PID = 4242L;
   private static final long MANIFEST_DATA_QUOTA_BYTES = 4096L;
   private static final long MANIFEST_CACHE_QUOTA_BYTES = 8192L;
+  private static final String FIRST_PARTY_TRUSTED_KEY_ID = "first-party-catalog";
   private static final String CATALOG_MINIMUM_CRYPTA_VERSION = "1400";
 
   @Mock private RuntimePorts runtimePorts;
@@ -2115,6 +2116,90 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenCatalogIdMatchesRecommendedAndDeleteRequested_expectCatalogRemovedJson()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+
+    PlatformApiResponse response =
+        catalogRouter.route(request("DELETE", List.of("app-catalogs", "recommended"), Map.of()));
+
+    verify(catalogManager).remove("recommended");
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(
+            Map.of(
+                "catalog",
+                orderedJson(Map.entry("catalogId", "recommended"), Map.entry("removed", true)))),
+        response.body());
+  }
+
+  @Test
+  void route_whenRecommendedCatalogsRequested_expectRecommendedCatalogEnvelope() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+
+    withFirstPartyCatalogProperties(
+        "https://example.invalid/cryptad-app-catalog.properties",
+        () -> {
+          PlatformApiResponse response =
+              catalogRouter.route(request("GET", List.of("app-catalogs", "recommended"), Map.of()));
+
+          assertEquals(200, response.statusCode());
+          assertTrue(response.body().contains("\"catalogId\":\"crypta-first-party-beta\""));
+          assertTrue(response.body().contains("\"canAdd\":true"));
+          assertTrue(response.body().contains("\"trustedCatalogKeyConfigured\":true"));
+        });
+  }
+
+  @Test
+  void route_whenRecommendedCatalogAddRequested_expectVerifiedAddSourcePath() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    String source = "https://example.invalid/cryptad-app-catalog.properties";
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+    when(catalogManager.addSource(source, "crypta-first-party-beta"))
+        .thenReturn(recommendedCatalogSourceSnapshot(source));
+
+    withFirstPartyCatalogProperties(
+        source,
+        () -> {
+          PlatformApiResponse response =
+              catalogRouter.route(
+                  request(
+                      "POST",
+                      List.of("app-catalogs", "recommended", "crypta-first-party-beta", "add"),
+                      Map.of()));
+
+          assertEquals(201, response.statusCode());
+          assertTrue(response.body().contains("\"catalogId\":\"crypta-first-party-beta\""));
+          verify(catalogManager).addSource(source, "crypta-first-party-beta");
+          verify(appHost, never()).installFromDirectory(any());
+        });
+  }
+
+  @Test
+  void route_whenRecommendedCatalogHasAppNamedAdd_expectCatalogAppDetailJson() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("recommended", "add")).thenReturn(catalogEntry("add", APP_VERSION));
+    when(appHost.describe("add")).thenReturn(Optional.empty());
+    when(appHost.status("add")).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("GET", List.of("app-catalogs", "recommended", "apps", "add"), Map.of()));
+
+    verify(catalogManager).getApp("recommended", "add");
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"appId\":\"add\""));
+    assertTrue(response.body().contains("\"version\":\"" + APP_VERSION + "\""));
+  }
+
+  @Test
   void route_whenCatalogAppHasMinimumCryptaVersion_expectComparableBuildVersion() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
@@ -3691,8 +3776,12 @@ class PlatformApiRouterTest {
   }
 
   private AppCatalogEntry catalogEntry(String version) {
+    return catalogEntry(APP_ID, version);
+  }
+
+  private AppCatalogEntry catalogEntry(String appId, String version) {
     return new AppCatalogEntry(
-        APP_ID,
+        appId,
         APP_NAME,
         version,
         "Catalog app summary",
@@ -3718,6 +3807,55 @@ class PlatformApiRouterTest {
         Optional.empty(),
         Optional.empty(),
         Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
+  }
+
+  private AppCatalogSourceSnapshot recommendedCatalogSourceSnapshot(String source) {
+    return new AppCatalogSourceSnapshot(
+        "crypta-first-party-beta",
+        "Crypta First-Party Beta Catalog",
+        URI.create(source),
+        STARTED_AT,
+        3,
+        STARTED_AT,
+        STARTED_AT,
+        STARTED_AT,
+        STARTED_AT,
+        AppCatalogFetchStatus.SUCCESS,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(source));
+  }
+
+  private static void withFirstPartyCatalogProperties(String source, ThrowingRunnable action)
+      throws Exception {
+    String previousEnabled = System.getProperty("cryptad.firstPartyCatalog.enabled");
+    String previousSource = System.getProperty("cryptad.firstPartyCatalog.source");
+    String previousTrustedKeyId =
+        System.getProperty("cryptad.firstPartyCatalog.trustedCatalogKeyId");
+    try {
+      System.setProperty("cryptad.firstPartyCatalog.enabled", "true");
+      System.setProperty("cryptad.firstPartyCatalog.source", source);
+      System.setProperty(
+          "cryptad.firstPartyCatalog.trustedCatalogKeyId", FIRST_PARTY_TRUSTED_KEY_ID);
+      action.run();
+    } finally {
+      restoreSystemProperty("cryptad.firstPartyCatalog.enabled", previousEnabled);
+      restoreSystemProperty("cryptad.firstPartyCatalog.source", previousSource);
+      restoreSystemProperty("cryptad.firstPartyCatalog.trustedCatalogKeyId", previousTrustedKeyId);
+    }
+  }
+
+  private static void restoreSystemProperty(String key, String previousValue) {
+    if (previousValue == null) {
+      System.clearProperty(key);
+    } else {
+      System.setProperty(key, previousValue);
+    }
+  }
+
+  @FunctionalInterface
+  private interface ThrowingRunnable {
+    void run() throws Exception;
   }
 
   private AppCatalogEntry catalogEntryWithMinimumCryptaVersion() {

@@ -1,5 +1,6 @@
 package network.crypta.runtime.core;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
@@ -94,6 +95,57 @@ class LegacyContentFetchPortTest {
     assertTrue(bucket.freed());
   }
 
+  @Test
+  void streamResult_whenWithinBound_expectBytesWrittenAndBucketFreed()
+      throws ContentFetchException, IOException {
+    TrackingBucket bucket = new TrackingBucket(new byte[] {1, 2});
+    FetchResult result = FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
+    BoundedContentFetchRequest request =
+        new BoundedContentFetchRequest("CHK@test", 2, Duration.ofSeconds(1), "catalog test");
+    ByteArrayOutputStream destination = new ByteArrayOutputStream();
+
+    long bytesWritten = LegacyContentFetchPort.streamResult(request, result, destination);
+
+    assertEquals(2L, bytesWritten);
+    assertArrayEquals(new byte[] {1, 2}, destination.toByteArray());
+    assertTrue(bucket.freed());
+  }
+
+  @Test
+  void streamResult_whenStreamExceedsBound_expectBucketFreed() {
+    TrackingBucket bucket = new MisreportingBucket(new byte[] {1, 2}, 1L);
+    FetchResult result = FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
+    BoundedContentFetchRequest request =
+        new BoundedContentFetchRequest("CHK@test", 1, Duration.ofSeconds(1), "catalog test");
+    ByteArrayOutputStream destination = new ByteArrayOutputStream();
+
+    ContentFetchException exception =
+        assertThrows(
+            ContentFetchException.class,
+            () -> LegacyContentFetchPort.streamResult(request, result, destination));
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertArrayEquals(new byte[0], destination.toByteArray());
+    assertTrue(bucket.freed());
+  }
+
+  @Test
+  void streamResult_whenBucketReadFails_expectBucketFreed() {
+    ThrowingReadBucket bucket = new ThrowingReadBucket(new byte[] {1});
+    FetchResult result = FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
+    BoundedContentFetchRequest request =
+        new BoundedContentFetchRequest("CHK@test", 1, Duration.ofSeconds(1), "catalog test");
+    ByteArrayOutputStream destination = new ByteArrayOutputStream();
+
+    IOException exception =
+        assertThrows(
+            IOException.class,
+            () -> LegacyContentFetchPort.streamResult(request, result, destination));
+
+    assertEquals("read failed", exception.getMessage());
+    assertTrue(bucket.freed());
+  }
+
   private static class TrackingBucket extends ArrayBucket {
     private boolean freed;
 
@@ -120,6 +172,20 @@ class LegacyContentFetchPortTest {
     @Override
     public InputStream getInputStreamUnbuffered() throws IOException {
       throw new IOException("read failed");
+    }
+  }
+
+  private static final class MisreportingBucket extends TrackingBucket {
+    private final long reportedSize;
+
+    private MisreportingBucket(byte[] initData, long reportedSize) {
+      super(initData);
+      this.reportedSize = reportedSize;
+    }
+
+    @Override
+    public long size() {
+      return reportedSize;
     }
   }
 }

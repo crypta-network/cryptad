@@ -304,6 +304,12 @@ class PlatformApiCapabilitiesTest {
         route("GET", List.of("app-catalogs"), "app-catalogs", "catalogs.read", "catalogs.read"),
         route(
             "GET",
+            List.of("app-catalogs", "recommended"),
+            "app-catalogs",
+            "catalogs.recommended.list",
+            "catalogs.read"),
+        route(
+            "GET",
             List.of("app-vault", "secrets"),
             "app-vault",
             "app-vault.secrets.list",
@@ -349,6 +355,12 @@ class PlatformApiCapabilitiesTest {
             List.of("app-catalogs", "add"),
             "app-catalogs",
             "catalogs.add",
+            "catalogs.manage"),
+        route(
+            "POST",
+            List.of("app-catalogs", "recommended", "crypta-first-party-beta", "add"),
+            "app-catalogs",
+            "catalogs.recommended.add",
             "catalogs.manage"),
         route(
             "POST",

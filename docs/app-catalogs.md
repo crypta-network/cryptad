@@ -400,18 +400,64 @@ Supported catalog sources:
 against a configured trusted catalog key. Install and update flows still verify the catalog entry's
 artifact size and SHA-256, then verify the extracted signed bundle before AppHost receives it.
 
-Remote fetches use the JDK HTTP client with finite timeouts, no automatic redirects, and size caps
-for catalog, signature, and artifact downloads. Artifact bytes are written to catalog-owned scratch
-storage, checked against the catalog size and SHA-256, then extracted into a separate staging
-directory. The extractor rejects artifacts with more than 4096 ZIP entries, absolute ZIP paths,
-`..`, Windows drive prefixes, backslash path separators, duplicate normalized entries, and rootless
-bundles. It drops macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files
-before signed-bundle verification, so those files are not installed as app payload.
+Catalog artifact URIs support:
 
-Current catalog support accepts `crypta:` for catalog sources only. Catalog entry artifact URIs
-still use `file:`, `https:`, or loopback `http:` sources. A catalog entry with
-`app.<id>.bundle.uri=crypta:...` is rejected with a stable unsupported artifact URI scheme error
-unless `platform-appcatalog` adds explicit Crypta artifact fetching in a later change.
+- Local `file:` URIs.
+- Remote `https:` URIs.
+- Loopback-only `http:` URIs for local development.
+- Immutable Crypta artifact URIs in the form `crypta:CHK@<artifact-key>`.
+
+Crypta app ZIP artifacts must use bare CHK keys. `crypta:USK@...`, `crypta:SSK@...`, fragments,
+and `?signature=...` companion queries are rejected for catalog entry artifacts. Mutable USK/SSK
+keys remain supported for catalog sidecars, where they point to signed catalog bytes and sibling
+signature sidecars.
+
+`crypta:CHK@...` is a transport location, not a trust boundary. The runtime fetches those bytes
+through `ContentFetchPort`, enforces the declared `bundle.size.bytes` and catalog artifact cap, and
+then checks the lowercase `bundle.sha256` before extraction. The extracted bundle signature and
+manifest id/version checks still run exactly as they do for `file:`, `https:`, and loopback `http:`
+artifacts.
+
+Remote fetches use finite timeouts, no automatic redirects, and size caps for catalog, signature,
+and artifact downloads. Artifact bytes are written to catalog-owned scratch storage, checked
+against the catalog size and SHA-256, then extracted into a separate staging directory. The
+extractor rejects artifacts with more than 4096 ZIP entries, absolute ZIP paths, `..`, Windows drive
+prefixes, backslash path separators, duplicate normalized entries, and rootless bundles. It drops
+macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files before
+signed-bundle verification, so those files are not installed as app payload.
+
+## First-party beta catalog onboarding
+
+Cryptad exposes a recommended first-party beta catalog descriptor for the Web Shell and Platform
+API. The descriptor is an onboarding hint, not an app store ranking system and not a trust bypass.
+It is visible even when packaging has not configured a source, so operators can see why the catalog
+is unavailable.
+
+Recommended catalog configuration:
+
+| Setting | Environment variable | Meaning |
+| --- | --- | --- |
+| `cryptad.firstPartyCatalog.enabled` | `CRYPTAD_FIRST_PARTY_CATALOG_ENABLED` | Set to `false` to hide the recommendation. |
+| `cryptad.firstPartyCatalog.id` | `CRYPTAD_FIRST_PARTY_CATALOG_ID` | Expected signed catalog id. Defaults to `crypta-first-party-beta`. |
+| `cryptad.firstPartyCatalog.source` | `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` | Source URI for `cryptad-app-catalog.properties`, usually `crypta:USK@.../cryptad-app-catalog.properties`. |
+| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | Trusted catalog signing key id that must be present in the normal AppHost trusted-key registry. |
+| `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
+
+The first-party beta catalog is expected to contain the current first-party apps:
+`queue-manager`, `publisher`, and `site-publisher`. Entries should include source/review/API,
+sandbox, permission rationale, and changelog metadata, for example `permissions.rationale.*`,
+`api.minimumVersion`, `api.maximumTestedVersion`, and `changelog.summary`. First-party public
+artifacts should be published as immutable CHK ZIP artifacts and referenced as:
+
+```properties
+app.queue-manager.bundle.uri=crypta:CHK@<artifact-key>
+app.queue-manager.bundle.sha256=<lowercase-sha256-of-zip>
+app.queue-manager.bundle.size.bytes=<exact-size>
+app.queue-manager.bundle.type=zip
+```
+
+No private keys are shipped in the repository. Packagers or release maintainers provide trusted
+public key configuration to the runtime and keep signing/reviewer private keys outside the tree.
 
 ## Platform API flow
 
@@ -419,7 +465,9 @@ Operators can manage catalogs through Platform API v1:
 
 ```text
 GET    /api/v1/app-catalogs
+GET    /api/v1/app-catalogs/recommended
 POST   /api/v1/app-catalogs/add?source=<uri-or-path>
+POST   /api/v1/app-catalogs/recommended/{catalogId}/add
 DELETE /api/v1/app-catalogs/{catalogId}
 POST   /api/v1/app-catalogs/{catalogId}/refresh
 GET    /api/v1/app-catalogs/{catalogId}/apps

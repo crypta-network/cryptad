@@ -80,6 +80,7 @@ app-platform.first-party
 app-platform.devtools-cli
 app-platform.signed-bundles
 catalog.smoke
+app-catalog.first-party-beta
 platform-api.contract
 app-vault.capabilities
 app-ui.design-system
@@ -101,9 +102,11 @@ app-review.first-party-catalog
 `platform-api.contract`, `app-vault.capabilities`, `app-ui.design-system`, `app-ui.lint`,
 `app-ui.first-party-adoption`, `reference-apps.content`, `apphost.sandbox-provider`,
 `app-update.lifecycle`, `app-update.scheduler`, `app-update.rollback`,
-`app-review.trusted-receipts`, and
+`app-catalog.first-party-beta`, `app-review.trusted-receipts`, and
 `app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
-require a live node or host-installed bubblewrap in normal CI. `app-review.first-party-catalog`
+require a live node or host-installed bubblewrap in normal CI. `app-catalog.first-party-beta`
+reports source/key configuration readiness but does not fetch the public Crypta catalog.
+`app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review
 receipt for each catalog entry. `interop.extended` and `apphost.live`

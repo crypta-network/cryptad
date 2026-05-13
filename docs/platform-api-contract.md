@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=2
+contractVersion=4
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 2,
+    "contractVersion": 4,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -83,9 +83,11 @@ so the contract and route-to-capability policy do not maintain separate route li
 | `internal` | Not app-facing; developer tooling treats app use as an error. |
 
 Contract version 2 adds the installed-app update lifecycle endpoints under
-`/apps/{appId}/updates`. Existing version 1 capabilities and endpoints remain stable, and their
-descriptors keep `sinceContractVersion=1` so tooling can distinguish old and newly introduced
-surface area.
+`/apps/{appId}/updates`. Contract version 3 adds the app vault and identity vault descriptors.
+Contract version 4 adds the first-party catalog onboarding routes under
+`/app-catalogs/recommended`. Existing version 1
+capabilities and endpoints remain stable, and their descriptors keep `sinceContractVersion=1` so
+tooling can distinguish old and newly introduced surface area.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -100,6 +102,11 @@ principals. App principals need `apps.manage` plus `catalogs.manage` for update 
 and `apply` actions because those routes can refresh signed catalogs, prepare catalog install
 plans, or apply catalog-staged bundles. Host/operator calls keep the existing local-management
 bypass.
+
+Recommended catalog onboarding follows the catalog capability boundary. Reading recommendations
+requires `catalogs.read`; adding a recommendation through
+`/app-catalogs/recommended/{catalogId}/add` requires `catalogs.manage` and still uses the verified
+signed-catalog add path.
 
 App-update summaries also include scheduler metadata for background catalog refresh and app update
 checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and

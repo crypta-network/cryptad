@@ -1360,6 +1360,161 @@ def collect_catalog_evidence(settings: Settings, sample_paths: dict[str, Path]) 
     return EvidenceItem("catalog.smoke", "pass", True, "Catalog create, sign, and verify smoke passed.", source, details)
 
 
+def collect_first_party_beta_catalog_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    model_text = read_source(appcatalog_dir / "RecommendedAppCatalog.java")
+    provider_text = read_source(appcatalog_dir / "RecommendedAppCatalogs.java")
+    downloader_text = read_source(appcatalog_dir / "AppCatalogArtifactDownloader.java")
+    manager_text = read_source(appcatalog_dir / "AppCatalogManager.java")
+    appcatalog_test_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_tests / "AppCatalogManagerTest.java",
+            appcatalog_tests / "AppCatalogParserTest.java",
+            appcatalog_tests / "AppCatalogEntryDescriptorTest.java",
+            appcatalog_tests / "RecommendedAppCatalogsTest.java",
+        )
+    )
+    api_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    api_routes_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    )
+    api_contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    shell_text = read_source(
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-catalogs.md",
+            "docs/app-dev-cli.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/release-certification.md",
+        )
+    )
+    app_ids = list(APP_IDS)
+    checks = {
+        "recommendedDescriptorPresent": (
+            "public record RecommendedAppCatalog" in model_text
+            and "trustedCatalogKeyId" in model_text
+            and "AppCatalogSource.parse" in model_text
+        ),
+        "firstPartyProviderPresent": (
+            "FIRST_PARTY_BETA_CATALOG_ID" in provider_text
+            and "crypta-first-party-beta" in provider_text
+            and "CRYPTAD_FIRST_PARTY_CATALOG_SOURCE" in provider_text
+        ),
+        "apiRecommendedEndpointsPresent": (
+            "listRecommendedCatalogs" in api_text
+            and "addRecommended" in api_text
+            and "routeRecommendedAppCatalogs" in api_routes_text
+            and "routeRecommendedAppCatalogAddOrApp" in api_routes_text
+            and '"/app-catalogs/recommended"' in api_contract_text
+            and '"/app-catalogs/recommended/{catalogId}/add"' in api_contract_text
+            and "catalogs.recommended.list" in api_contract_text
+            and "catalogs.recommended.add" in api_contract_text
+            and "recommended_catalog_trusted_key_missing" in api_text
+        ),
+        "webShellOnboardingPresent": (
+            "renderRecommendedCatalogs" in shell_text
+            and "renderRecommendedCatalogCard" in shell_text
+            and "app-catalogs/recommended" in shell_text
+            and "addRecommended" in shell_text
+        ),
+        "cryptaArtifactTransportPresent": (
+            "copyCryptaArtifact" in downloader_text
+            and "ContentFetchPort" in downloader_text
+            and "cryptaArtifactFetchKey" in downloader_text
+            and "new AppCatalogArtifactDownloader(contentFetchPort)" in manager_text
+        ),
+        "cryptaArtifactUriTestsPresent": (
+            "entry_whenArtifactUriIsCryptaChk_expectAccepted" in appcatalog_test_text
+            and "prepareInstallPlan_whenCryptaArtifactUsesContentFetchPort_expectVerifiedPlan"
+            in appcatalog_test_text
+            and "download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable"
+            in appcatalog_test_text
+        ),
+        "firstPartyAppMetadataDocumented": all(app_id in docs_text for app_id in app_ids)
+        and "permissions.rationale" in docs_text
+        and "api.minimumVersion" in docs_text
+        and "changelog.summary" in docs_text
+        and "review receipts" in docs_text.lower(),
+        "cryptaArtifactPublicationDocumented": (
+            "crypta:CHK@" in docs_text
+            and "CRYPTAD_FIRST_PARTY_CATALOG_SOURCE" in docs_text
+            and "CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED" in docs_text
+        ),
+        "privateKeysExcludedByDocs": (
+            "No private keys" in docs_text or "no private keys" in docs_text.lower()
+        ),
+    }
+    configuration = {
+        "sourceConfigured": bool(os.environ.get("CRYPTAD_FIRST_PARTY_CATALOG_SOURCE", "").strip()),
+        "trustedCatalogKeyHintConfigured": bool(
+            os.environ.get("CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID", "").strip()
+            or os.environ.get("CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID", "").strip()
+        ),
+        "apphostTrustedKeyConfigured": bool(
+            os.environ.get("CRYPTAD_APPHOST_TRUSTED_KEY_ID", "").strip()
+            or os.environ.get("CRYPTAD_APPHOST_TRUSTED_KEYS_FILE", "").strip()
+            or os.environ.get("CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE", "").strip()
+            or os.environ.get("CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_BASE64", "").strip()
+        ),
+    }
+    details = {
+        "catalogId": "crypta-first-party-beta",
+        "requiredFirstPartyApps": app_ids,
+        "configuration": configuration,
+        "checks": checks,
+        "sources": {
+            "recommendedModel": display_path(appcatalog_dir / "RecommendedAppCatalog.java", workspace),
+            "recommendedProvider": display_path(appcatalog_dir / "RecommendedAppCatalogs.java", workspace),
+            "artifactDownloader": display_path(appcatalog_dir / "AppCatalogArtifactDownloader.java", workspace),
+            "apiHandler": display_path(
+                workspace
+                / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java",
+                workspace,
+            ),
+            "webShell": display_path(
+                workspace
+                / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+                workspace,
+            ),
+            "docs": [
+                display_path(workspace / "docs/app-catalogs.md", workspace),
+                display_path(workspace / "docs/first-party-beta-catalog.md", workspace),
+            ],
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-catalog.first-party-beta",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "First-party beta catalog onboarding evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-catalog.first-party-beta",
+        "pass",
+        True,
+        "First-party beta catalog onboarding evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
 def collect_app_review_receipt_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     appcatalog_dir = settings.workspace_root / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -3232,6 +3387,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_vault_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
+        collect_first_party_beta_catalog_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_first_party_catalog_evidence(settings, sample_paths),
@@ -3696,6 +3852,10 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
+        first_party_beta_item = evidence_by_id["app-catalog.first-party-beta"]
+        assert first_party_beta_item["status"] == "pass", first_party_beta_item
+        assert first_party_beta_item["details"]["catalogId"] == "crypta-first-party-beta"
+        assert first_party_beta_item["details"]["requiredFirstPartyApps"] == list(APP_IDS)
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
@@ -4208,12 +4368,88 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "Identity-backed publishing is future work.\n",
                 encoding="utf-8",
             )
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_dir.mkdir(parents=True, exist_ok=True)
+    (appcatalog_dir / "RecommendedAppCatalog.java").write_text(
+        "public record RecommendedAppCatalog(String trustedCatalogKeyId) { "
+        "Object source = AppCatalogSource.parse(\"crypta:USK@example/cryptad-app-catalog.properties\"); }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "RecommendedAppCatalogs.java").write_text(
+        "final class RecommendedAppCatalogs { static final String FIRST_PARTY_BETA_CATALOG_ID = "
+        "\"crypta-first-party-beta\"; String env = \"CRYPTAD_FIRST_PARTY_CATALOG_SOURCE\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogArtifactDownloader.java").write_text(
+        "final class AppCatalogArtifactDownloader { ContentFetchPort port; "
+        "void copyCryptaArtifact() { Object key = AppCatalogSidecars.cryptaArtifactFetchKey(null); } }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogManager.java").write_text(
+        "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); }\n",
+        encoding="utf-8",
+    )
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    appcatalog_tests.mkdir(parents=True, exist_ok=True)
+    (appcatalog_tests / "AppCatalogManagerTest.java").write_text(
+        "void entry_whenArtifactUriIsCryptaChk_expectAccepted() {}\n"
+        "void prepareInstallPlan_whenCryptaArtifactUsesContentFetchPort_expectVerifiedPlan() {}\n"
+        "void download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable() {}\n",
+        encoding="utf-8",
+    )
+    for test_name in ("AppCatalogParserTest.java", "AppCatalogEntryDescriptorTest.java", "RecommendedAppCatalogsTest.java"):
+        (appcatalog_tests / test_name).write_text("// first-party beta fixture\n", encoding="utf-8")
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    catalog_api_dir = api_dir / "appcatalogs"
+    catalog_api_dir.mkdir(parents=True, exist_ok=True)
+    (catalog_api_dir / "AppCatalogsApiHandler.java").write_text(
+        "final class AppCatalogsApiHandler { void listRecommendedCatalogs() {} void addRecommended() {} "
+        "String e = \"recommended_catalog_trusted_key_missing\"; }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiAppRoutes.java").write_text(
+        "final class PlatformApiAppRoutes { void routeRecommendedAppCatalogs() {} "
+        "void routeRecommendedAppCatalogAddOrApp() {} }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiContract.java").write_text(
+        "final class PlatformApiContract { String list = \"/app-catalogs/recommended\"; "
+        "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
+        "String listAction = \"catalogs.recommended.list\"; "
+        "String addAction = \"catalogs.recommended.add\"; }\n",
+        encoding="utf-8",
+    )
+    shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    shell.parent.mkdir(parents=True, exist_ok=True)
+    shell.write_text(
+        "function renderRecommendedCatalogs(){}\n"
+        "function renderRecommendedCatalogCard(){}\n"
+        "const path = 'app-catalogs/recommended';\n"
+        "const action = 'addRecommended';\n",
+        encoding="utf-8",
+    )
+    docs = workspace / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    first_party_docs = (
+        "No private keys are shipped. "
+        "queue-manager publisher site-publisher use permissions.rationale entries, "
+        "api.minimumVersion, changelog.summary, and review receipts. "
+        "Maintain artifacts as crypta:CHK@artifact and set CRYPTAD_FIRST_PARTY_CATALOG_SOURCE "
+        "with CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID.\n"
+    )
+    for doc_name in (
+        "app-catalogs.md",
+        "app-dev-cli.md",
+        "first-party-beta-catalog.md",
+        "release-certification.md",
+    ):
+        (docs / doc_name).write_text(first_party_docs, encoding="utf-8")
     registry = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java"
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text((Path(__file__).parent / "fixtures" / "self-test-legacy-registry.java-fragment").read_text(encoding="utf-8"), encoding="utf-8")
-    docs = workspace / "docs/legacy-retirement-plan.md"
-    docs.parent.mkdir(parents=True, exist_ok=True)
-    docs.write_text(
+    legacy_docs = workspace / "docs/legacy-retirement-plan.md"
+    legacy_docs.parent.mkdir(parents=True, exist_ok=True)
+    legacy_docs.write_text(
         "legacy-admin.removal-wave-1 documents that removed routes return replacement responses "
         "when the replacement is reachable and render legacy fallback when the replacement is unavailable. "
         "FProxy browse remains retained, and retained and pending legacy routes remain reachable.\n",
@@ -4634,6 +4870,10 @@ class CoreHttpShellRuntimeSupport {
     web_shell.parent.mkdir(parents=True, exist_ok=True)
     web_shell.write_text(
         """
+function renderRecommendedCatalogs(){}
+function renderRecommendedCatalogCard(){}
+const recommendedCatalogPath = "app-catalogs/recommended";
+const recommendedCatalogAction = "addRecommended";
 definitionList([
   ["Scheduler status", scheduler.status],
   ["Scheduler failures", scheduler.failureCount],
@@ -4666,6 +4906,9 @@ class PlatformApiRouterTest {
     catalog_handler.write_text(
         """
 class AppCatalogsApiHandler {
+  String recommendedCatalogError = "recommended_catalog_trusted_key_missing";
+  void listRecommendedCatalogs() {}
+  void addRecommended() {}
   void summarize() {
     json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put("updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));

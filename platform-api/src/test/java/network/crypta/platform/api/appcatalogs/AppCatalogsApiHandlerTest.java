@@ -28,6 +28,8 @@ import network.crypta.platform.appcatalog.AppReviewReceipt;
 import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
 import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
+import network.crypta.platform.appcatalog.RecommendedAppCatalog;
+import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppUiMode;
@@ -65,6 +67,9 @@ class AppCatalogsApiHandlerTest {
   private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
   private static final String REVIEW_POLICY_ID = "crypta-app-review-v1";
   private static final String REVIEW_POLICY_VERSION = "1";
+  private static final String FIRST_PARTY_SOURCE =
+      "crypta:USK@example/catalog/cryptad-app-catalog.properties";
+  private static final String FIRST_PARTY_TRUSTED_KEY_ID = "first-party-catalog";
   private static final Instant REVIEWED_AT = Instant.parse("2026-05-01T00:00:00Z");
 
   @Mock private AppCatalogManager catalogManager;
@@ -113,6 +118,177 @@ class AppCatalogsApiHandlerTest {
     assertNull(catalog.get("lastFetchErrorMessage"));
     assertEquals(
         "https://example.invalid/cryptad-app-catalog.properties", catalog.get("lastResolvedUri"));
+  }
+
+  @Test
+  void listRecommendedCatalogs_whenSourceAndTrustedKeyAreMissing_expectNotConfiguredStatus()
+      throws Exception {
+    AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+
+    Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
+
+    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get("catalogId"));
+    assertEquals("Crypta First-Party Beta Catalog", catalog.get("name"));
+    assertEquals("beta", catalog.get("channel"));
+    assertNull(catalog.get("sourceKind"));
+    assertNull(catalog.get("source"));
+    assertEquals(false, catalog.get("sourceConfigured"));
+    assertEquals(false, catalog.get("configured"));
+    assertEquals(false, catalog.get("trustedCatalogKeyConfigured"));
+    assertEquals(false, catalog.get("canAdd"));
+    assertEquals(List.of("source", "trusted_catalog_key"), catalog.get("missingConfiguration"));
+  }
+
+  @Test
+  void listRecommendedCatalogs_whenConfiguredAndTrusted_expectCanAddAndRedactedSource()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(
+            List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+
+    Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
+
+    assertEquals("crypta", catalog.get("sourceKind"));
+    assertEquals("crypta:<configured>", catalog.get("source"));
+    assertEquals(true, catalog.get("sourceConfigured"));
+    assertEquals(true, catalog.get("trustedCatalogKeyConfigured"));
+    assertEquals(true, catalog.get("canAdd"));
+    assertEquals(List.of(), catalog.get("missingConfiguration"));
+    assertFalse(catalog.toString().contains("USK@example"));
+  }
+
+  @Test
+  void listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted() throws Exception {
+    String sourceWithToken =
+        "https://example.invalid/cryptad-app-catalog.properties?token=secret-value";
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(List.of(recommended(sourceWithToken, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+
+    Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
+
+    assertEquals("https", catalog.get("sourceKind"));
+    assertTrue(((String) catalog.get("source")).contains("redacted"));
+    assertFalse(catalog.toString().contains("secret-value"));
+    assertFalse(catalog.toString().contains("token"));
+  }
+
+  @Test
+  void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() throws Exception {
+    String source = tempDir.resolve("private/catalog.properties").toUri().toString();
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(List.of(recommended(source, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+
+    Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
+
+    assertEquals("file", catalog.get("sourceKind"));
+    assertEquals("file:<configured>", catalog.get("source"));
+    assertFalse(catalog.toString().contains("catalog.properties"));
+  }
+
+  @Test
+  void listRecommendedCatalogs_whenTrustedKeyLookupFails_expectMissingTrustedKeyStatus()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(
+            List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID))
+        .thenThrow(new IOException("trusted key store unavailable"));
+
+    Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
+
+    assertEquals(false, catalog.get("trustedCatalogKeyConfigured"));
+    assertEquals(false, catalog.get("canAdd"));
+    assertEquals(List.of("trusted_catalog_key"), catalog.get("missingConfiguration"));
+    assertEquals(List.of("missing_trusted_catalog_key"), catalog.get("warnings"));
+  }
+
+  @Test
+  void addRecommended_whenConfigurationIsReady_expectVerifiedAddSourceAndNoInstall()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(
+            List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+    when(catalogManager.addSource(
+            FIRST_PARTY_SOURCE, RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID))
+        .thenReturn(snapshot);
+
+    Map<String, Object> catalog =
+        handler.addRecommended(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID);
+
+    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get("catalogId"));
+    verify(catalogManager)
+        .addSource(FIRST_PARTY_SOURCE, RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID);
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void addRecommended_whenSourceIsMissing_expectStableSourceMissingError() {
+    AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.addRecommended(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("recommended_catalog_source_missing", exception.errorCode());
+  }
+
+  @Test
+  void addRecommended_whenTrustedKeyIsMissing_expectStableTrustedKeyError() throws Exception {
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(
+            List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(false);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.addRecommended(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("recommended_catalog_trusted_key_missing", exception.errorCode());
+    verify(catalogManager, never()).addSource(any(), any());
+  }
+
+  @Test
+  void addRecommended_whenAlreadyConfigured_expectStableAlreadyConfiguredError() throws Exception {
+    AppCatalogsApiHandler handler =
+        handlerWithRecommended(
+            List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(firstPartyCatalogSnapshot()));
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.addRecommended(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("recommended_catalog_already_configured", exception.errorCode());
+    verify(catalogManager, never()).addSource(any(), any());
+  }
+
+  @Test
+  void addRecommended_whenIdIsUnknown_expectStableNotFoundError() {
+    AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.addRecommended("unknown"));
+
+    assertEquals(404, exception.statusCode());
+    assertEquals("recommended_catalog_not_found", exception.errorCode());
   }
 
   @Test
@@ -568,6 +744,49 @@ class AppCatalogsApiHandlerTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     return handler.listApps("core").getFirst();
+  }
+
+  private AppCatalogsApiHandler handlerWithRecommended(List<RecommendedAppCatalog> recommended) {
+    return new AppCatalogsApiHandler(
+        catalogManager,
+        appHost,
+        () -> null,
+        AppReviewPolicy.DEFAULT,
+        TrustedReviewerKeys::empty,
+        null,
+        () -> recommended);
+  }
+
+  private static RecommendedAppCatalog recommended(String source, String trustedKeyId) {
+    return RecommendedAppCatalog.fromRawSource(
+        RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID,
+        "Crypta First-Party Beta Catalog",
+        "First-party beta apps maintained by the Crypta project.",
+        "beta",
+        source,
+        trustedKeyId,
+        "first-party-review");
+  }
+
+  private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot() {
+    Instant generatedAt = Instant.parse("2026-04-24T12:00:00Z");
+    Instant addedAt = Instant.parse("2026-04-24T12:01:00Z");
+    Instant refreshedAt = Instant.parse("2026-04-24T12:02:00Z");
+    URI source = URI.create(FIRST_PARTY_SOURCE);
+    return new AppCatalogSourceSnapshot(
+        RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID,
+        "Core Apps",
+        source,
+        generatedAt,
+        2,
+        addedAt,
+        refreshedAt,
+        refreshedAt,
+        refreshedAt,
+        AppCatalogFetchStatus.SUCCESS,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(source.toString()));
   }
 
   private void assertCatalogFailureStatus(String code, int statusCode) throws Exception {

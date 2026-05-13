@@ -1561,7 +1561,7 @@ class CryptaAppCliTest {
   }
 
   @Test
-  void catalogCreate_whenDescriptorUsesCryptaBundleUri_expectUnsupportedArtifactSchemeFailure()
+  void catalogCreate_whenDescriptorUsesCryptaChkBundleUri_expectCatalogWithCryptaArtifact()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");
@@ -1582,7 +1582,53 @@ class CryptaAppCliTest {
         descriptor,
         lines(
             "artifact.path=" + outputZip.toAbsolutePath().normalize(),
-            "bundle.uri=crypta:CHK@sample-bundle?signature=CHK@sample-signature",
+            "bundle.uri=crypta:CHK@sample-bundle",
+            "summary=Sample catalog entry."),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            catalogFile.toString(),
+            "--catalog-id",
+            "dev",
+            "--name",
+            "Development Apps",
+            "--entry",
+            descriptor.toString());
+
+    String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(catalog.contains("app.sample-app.bundle.uri=crypta:CHK@sample-bundle\n"));
+    assertTrue(catalog.contains("app.sample-app.bundle.size.bytes=" + Files.size(outputZip)));
+    assertTrue(catalog.contains("app.sample-app.bundle.sha256=" + sha256Hex(outputZip)));
+  }
+
+  @Test
+  void catalogCreate_whenDescriptorUsesMutableCryptaBundleUri_expectInvalidArtifactFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    Path catalogFile = tempDir.resolve("cryptad-app-catalog.properties");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=crypta:SSK@sample-bundle",
             "summary=Sample catalog entry."),
         StandardCharsets.UTF_8);
 
@@ -1600,7 +1646,7 @@ class CryptaAppCliTest {
             descriptor.toString());
 
     assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
-    assertTrue(result.err().contains("unsupported artifact URI scheme: crypta"));
+    assertTrue(result.err().contains("artifact URI must use an immutable CHK key"));
   }
 
   @Test

@@ -17,6 +17,7 @@
     appCatalogsSnapshot: null,
     appsSnapshot: null,
     identityVaultSnapshot: null,
+    recommendedCatalogsSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
     securitySnapshot: null,
@@ -957,6 +958,9 @@
     }
     if (action === "remove") {
       return `app-catalogs/${encodedCatalogId}`;
+    }
+    if (action === "addRecommended") {
+      return `app-catalogs/recommended/${encodedCatalogId}/add`;
     }
     if (typeof appId !== "string" || appId.length === 0) {
       return null;
@@ -2350,12 +2354,20 @@
     shellState.appsSnapshot = data;
     shellState.appCatalogsSnapshot = Array.isArray(data.catalogs) ? data.catalogs : null;
     shellState.identityVaultSnapshot = recordValue(data.identityVault);
+    shellState.recommendedCatalogsSnapshot = Array.isArray(data.recommendedCatalogs)
+      ? data.recommendedCatalogs
+      : null;
     updateAppsToolbar();
     clear(sections.apps);
 
     const apps = Array.isArray(data.apps) ? data.apps : [];
     const catalogs = Array.isArray(data.catalogs) ? data.catalogs : [];
+    const recommendedCatalogs = Array.isArray(data.recommendedCatalogs)
+      ? data.recommendedCatalogs
+      : [];
     const catalogError = typeof data.catalogError === "string" ? data.catalogError : "";
+    const recommendedCatalogError =
+      typeof data.recommendedCatalogError === "string" ? data.recommendedCatalogError : "";
     const identityVault = recordValue(data.identityVault);
     const identityVaultError =
       typeof data.identityVaultError === "string" ? data.identityVaultError : "";
@@ -2366,14 +2378,17 @@
       ["Installed apps", `${apps.length}`],
       ["Running apps", `${runningApps}`],
       ["Catalogs", `${catalogs.length}`],
+      ["Recommended catalogs", `${recommendedCatalogs.length}`],
       ["Vault identities", `${vaultIdentities.length}`],
       ["Identity grants", `${vaultGrants.length}`],
       ["Scope", formPassword ? "Shell-native" : "Read-only"],
       ...topLevelFieldEntries(data, [
         "apps",
         "catalogs",
+        "recommendedCatalogs",
         "identityVault",
         "catalogError",
+        "recommendedCatalogError",
         "identityVaultError",
       ]),
     ];
@@ -2391,6 +2406,7 @@
     }
 
     renderIdentityVault(identityVault, identityVaultError, apps);
+    renderRecommendedCatalogs(recommendedCatalogs, recommendedCatalogError, catalogs);
     renderCatalogs(catalogs, catalogError);
   }
 
@@ -2538,6 +2554,121 @@
       list.append(renderCatalogCard(catalog && typeof catalog === "object" ? catalog : {}));
     });
     sections.apps.append(list);
+  }
+
+  function renderRecommendedCatalogs(recommendedCatalogs, recommendedCatalogError, catalogs) {
+    sections.apps.append(text("h3", "app-card-title", "Recommended catalogs"));
+    if (recommendedCatalogError) {
+      sections.apps.append(
+        text("p", "error-state", `Recommended catalogs unavailable: ${recommendedCatalogError}`),
+      );
+      return;
+    }
+    if (!Array.isArray(recommendedCatalogs) || recommendedCatalogs.length === 0) {
+      sections.apps.append(text("p", "empty-state", "No recommended app catalogs were returned."));
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    recommendedCatalogs.forEach((catalog) => {
+      list.append(
+        renderRecommendedCatalogCard(
+          catalog && typeof catalog === "object" ? catalog : {},
+          Array.isArray(catalogs) ? catalogs : [],
+        ),
+      );
+    });
+    sections.apps.append(list);
+  }
+
+  function matchingConfiguredCatalog(recommended, catalogs) {
+    const catalogId = typeof recommended.catalogId === "string" ? recommended.catalogId : "";
+    if (!catalogId) {
+      return null;
+    }
+    return (
+      catalogs.find(
+        (catalog) => catalog && typeof catalog === "object" && catalog.catalogId === catalogId,
+      ) || null
+    );
+  }
+
+  function renderRecommendedCatalogCard(recommended, catalogs) {
+    const configuredCatalog = matchingConfiguredCatalog(recommended, catalogs);
+    const sourceKind =
+      typeof recommended.sourceKind === "string" && recommended.sourceKind
+        ? recommended.sourceKind
+        : "unknown";
+    const configured = Boolean(recommended.configured || configuredCatalog);
+    const missingConfiguration = stringList(recommended.missingConfiguration);
+    const warnings = stringList(recommended.warnings);
+    const card = document.createElement("article");
+    card.className = "app-card";
+    const title =
+      typeof recommended.name === "string" && recommended.name
+        ? recommended.name
+        : scalar(recommended.catalogId);
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h3", "app-card-title", title),
+      text("p", "app-card-subtitle", scalar(recommended.catalogId)),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(normalizedStatus(recommended.channel, "Beta")));
+    pills.append(createPill(sourceKind));
+    pills.append(createPill(configured ? "configured" : "not configured", configured ? "is-success" : "is-warning"));
+    pills.append(
+      createPill(
+        recommended.trustedCatalogKeyConfigured ? "trusted key configured" : "trusted key missing",
+        recommended.trustedCatalogKeyConfigured ? "is-success" : "is-warning",
+      ),
+    );
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Description", scalar(recommended.description)],
+        ["Channel", normalizedStatus(recommended.channel, "Beta")],
+        ["Source type", sourceKind],
+        ["Source", scalar(recommended.source)],
+        ["Catalog status", configured ? "Configured" : "Not configured"],
+        ["Last successful refresh", configuredCatalog ? formatIsoTimestamp(catalogLastSuccessfulRefreshAt(configuredCatalog)) : "Unavailable"],
+        ["Last failed attempt", configuredCatalog ? catalogLastFailedAttempt(configuredCatalog) : "Unavailable"],
+        ["Trusted catalog key", scalar(recommended.trustedCatalogKeyId)],
+        ["Reviewer policy", scalar(recommended.reviewerPolicyHint)],
+        ["Missing configuration", missingConfiguration.join(", ") || "None"],
+        ["Warnings", warnings.join(", ") || "None"],
+      ]),
+    );
+    if (configuredCatalog) {
+      const fetchWarning = catalogFetchWarningNode(configuredCatalog);
+      if (fetchWarning) {
+        card.append(fetchWarning);
+      }
+    }
+    if (missingConfiguration.length && !configured) {
+      card.append(
+        text(
+          "p",
+          "status-message is-warning",
+          `Catalog onboarding is waiting for ${missingConfiguration.join(", ")} configuration.`,
+        ),
+      );
+    }
+    if (formPassword && recommended.canAdd) {
+      const actions = document.createElement("div");
+      actions.className = "app-card-actions";
+      const addForm = buildCatalogActionForm(recommended, null, "addRecommended", "Add catalog");
+      if (addForm) {
+        actions.append(addForm);
+        card.append(actions);
+      }
+    }
+    return card;
   }
 
   function catalogSourceKind(catalog) {
@@ -3860,6 +3991,7 @@
     shellState.appsSnapshot = null;
     shellState.appCatalogsSnapshot = null;
     shellState.identityVaultSnapshot = null;
+    shellState.recommendedCatalogsSnapshot = null;
     clear(sections.apps);
     sections.apps.append(text("p", "loading", "Loading installed apps and catalogs..."));
     updateAppsToolbar();
@@ -3895,6 +4027,19 @@
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
 
+    let recommendedCatalogs = [];
+    let recommendedCatalogError = "";
+    try {
+      const recommendedSnapshot = await loadOptionalJson(apiUrl("app-catalogs/recommended"));
+      recommendedCatalogs =
+        recommendedSnapshot && Array.isArray(recommendedSnapshot.catalogs)
+          ? recommendedSnapshot.catalogs
+          : [];
+    } catch (error) {
+      recommendedCatalogError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+
     let identityVault = {};
     let identityVaultError = "";
     try {
@@ -3917,7 +4062,15 @@
     if (loadGeneration !== appsLoadGeneration) {
       return;
     }
-    renderApps({ ...installedSnapshot, catalogs, catalogError, identityVault, identityVaultError });
+    renderApps({
+      ...installedSnapshot,
+      catalogs,
+      catalogError,
+      recommendedCatalogs,
+      recommendedCatalogError,
+      identityVault,
+      identityVaultError,
+    });
   }
 
   async function loadAppRuntimeDetails(app) {
