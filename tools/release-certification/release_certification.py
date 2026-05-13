@@ -850,6 +850,7 @@ def app_platform_evidence(
         "legacy-admin.removal-wave-1",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
+        "app-update.scheduler",
         "app-update.rollback",
         "apphost.live",
     ]
@@ -1753,7 +1754,7 @@ def evaluate_app_update_rollback_gate(
     failures: list[str] = []
     warnings: list[str] = []
     details: dict[str, Any] = {}
-    for evidence_id in ("app-update.lifecycle", "app-update.rollback"):
+    for evidence_id in ("app-update.lifecycle", "app-update.scheduler", "app-update.rollback"):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
         details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
@@ -1777,7 +1778,7 @@ def evaluate_app_update_rollback_gate(
         add_evidence_issue(details, "warningEvidenceIds", "app-update.rollback")
     return gate_from_issues(
         "ecosystem.app-update-rollback",
-        "App-update lifecycle and rollback evidence passed.",
+        "App-update lifecycle, scheduler, and rollback evidence passed.",
         failures,
         warnings,
         details,
@@ -2242,6 +2243,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-apps.content",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
+        "app-update.scheduler",
         "app-update.rollback",
         "apphost.live",
     ):
@@ -2686,6 +2688,8 @@ def run_self_test(repo_root: Path) -> None:
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["app-update.scheduler"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-update.scheduler"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-vault.capabilities"]["status"] == "pass", evidence_by_id
@@ -3272,6 +3276,20 @@ def run_self_test(repo_root: Path) -> None:
         assert rollback_fail_exit_code == 1, rollback_fail_summary
         assert gate_by_id(rollback_fail_summary, "ecosystem.app-update-rollback")["status"] == "fail"
 
+        scheduler_fail_path = write_app_summary_variant(
+            "scheduler-fail",
+            lambda value: update_evidence(
+                value,
+                "app-update.scheduler",
+                lambda entry: entry.update({"status": "fail"}),
+            ),
+        )
+        scheduler_fail_summary, scheduler_fail_exit_code = run_with_previous(
+            "scheduler-fail-cert", app_platform_summary=scheduler_fail_path
+        )
+        assert scheduler_fail_exit_code == 1, scheduler_fail_summary
+        assert gate_by_id(scheduler_fail_summary, "ecosystem.app-update-rollback")["status"] == "fail"
+
         vault_missing_capability_path = write_app_summary_variant(
             "vault-missing-capability",
             lambda value: update_evidence(
@@ -3567,7 +3585,8 @@ def run_self_test(repo_root: Path) -> None:
         missing_update_summary["evidence"] = [
             item
             for item in missing_update_summary["evidence"]
-            if item.get("id") not in {"app-update.lifecycle", "app-update.rollback"}
+            if item.get("id")
+            not in {"app-update.lifecycle", "app-update.scheduler", "app-update.rollback"}
         ]
         write_json(missing_update_evidence_path, missing_update_summary)
         missing_update_items = app_platform_evidence(
@@ -3575,6 +3594,7 @@ def run_self_test(repo_root: Path) -> None:
         )
         missing_update_by_id = {item.id: item for item in missing_update_items}
         assert missing_update_by_id["app-update.lifecycle"].status == "missing", missing_update_by_id
+        assert missing_update_by_id["app-update.scheduler"].status == "missing", missing_update_by_id
         assert missing_update_by_id["app-update.rollback"].status == "missing", missing_update_by_id
         missing_update_settings = dataclasses.replace(
             settings,

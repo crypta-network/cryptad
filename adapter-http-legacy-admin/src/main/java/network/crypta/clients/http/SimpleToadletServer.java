@@ -502,6 +502,7 @@ public final class SimpleToadletServer
             runtimePorts,
             runtimeSupportRef.appHost(),
             runtimeSupportRef.appCatalogManager(),
+            runtimeSupportRef.appUpdateService(),
             runtimeSupportRef.appVaultService(),
             runtimeSupportRef.config(),
             bootstrap.browseRoot(),

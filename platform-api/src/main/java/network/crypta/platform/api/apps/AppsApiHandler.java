@@ -560,6 +560,24 @@ public final class AppsApiHandler {
   }
 
   /**
+   * Returns whether AppHost can confirm that an app still appears installed.
+   *
+   * <p>This is intentionally conservative for cleanup callers that run after a secondary failure. A
+   * successful missing-app read returns {@code false}; an I/O failure returns {@code true} so
+   * callers do not clear related state when the host cannot prove the uninstall committed.
+   *
+   * @param appId stable application identifier
+   * @return {@code false} only when AppHost confirms the app is absent
+   */
+  public boolean stillInstalledBestEffort(String appId) {
+    try {
+      return appHost.describe(appId).isPresent();
+    } catch (IOException _) {
+      return true;
+    }
+  }
+
+  /**
    * Requires that one app is installed and returns its installed snapshot.
    *
    * @param appId stable application identifier extracted from the request path

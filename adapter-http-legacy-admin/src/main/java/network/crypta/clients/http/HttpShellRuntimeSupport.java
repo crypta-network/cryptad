@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import network.crypta.config.Config;
+import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appvault.AppVaultService;
@@ -74,6 +75,21 @@ public interface HttpShellRuntimeSupport {
    * @return shared app-vault service, or {@code null} when vault support is unavailable
    */
   AppVaultService appVaultService();
+
+  /**
+   * Returns the shared app-update lifecycle service used by the scheduler and Platform API.
+   *
+   * <p>A {@code null} value means the embedding has not configured a shared update service. The
+   * Platform API router may still construct its own request-scoped lifecycle service when AppHost
+   * and catalogs are available. The production HTTP runtime returns the same service used by the
+   * background scheduler. That keeps scheduler-triggered checks and manual operations on shared
+   * staged plans, policy, and recent history.
+   *
+   * @return shared app-update service, or {@code null} when unavailable
+   */
+  default AppUpdateService appUpdateService() {
+    return null;
+  }
 
   /**
    * Creates the legacy push-data manager used by the shell's interval push flow.

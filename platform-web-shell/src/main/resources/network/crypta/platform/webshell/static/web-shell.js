@@ -1772,18 +1772,21 @@
   function appUpdateSchedulerValue(updateState, field, nestedField) {
     const scheduler = recordValue(updateState.scheduler);
     const lastCheck = recordValue(updateState.lastCheck);
+    const schedulerValue = Object.prototype.hasOwnProperty.call(scheduler, nestedField)
+      ? scheduler[nestedField]
+      : undefined;
     if (field === "lastCheckAt") {
-      return scheduler[nestedField] || lastCheck.checkedAt || updateState[field];
+      return schedulerValue || lastCheck.checkedAt || updateState[field];
     }
     if (field === "lastCheckResult") {
       return (
-        scheduler[nestedField] ||
+        schedulerValue ||
         lastCheck.status ||
         lastCheck.errorCode ||
         updateState[field]
       );
     }
-    return scheduler[nestedField] || updateState[field];
+    return schedulerValue !== undefined ? schedulerValue : updateState[field];
   }
 
   function rollbackAvailable(updateState) {
@@ -1921,10 +1924,30 @@
           "Last scheduler check",
           formatIsoTimestamp(appUpdateSchedulerValue(updateState, "lastCheckAt", "lastCheckAt")),
         ],
+        [
+          "Scheduler",
+          appUpdateSchedulerValue(updateState, "schedulerEnabled", "enabled") === false
+            ? "Disabled"
+            : appUpdateSchedulerValue(updateState, "schedulerEnabled", "enabled") === true
+              ? "Enabled"
+              : "Unavailable",
+        ],
+        [
+          "Scheduler status",
+          normalizedStatus(appUpdateSchedulerValue(updateState, "schedulerStatus", "status"), "Unavailable"),
+        ],
         ["Last scheduler result", scalar(appUpdateSchedulerValue(updateState, "lastCheckResult", "lastResult"))],
         [
           "Next scheduler check",
           formatIsoTimestamp(appUpdateSchedulerValue(updateState, "nextCheckAt", "nextCheckAt")),
+        ],
+        [
+          "Scheduler failures",
+          scalar(appUpdateSchedulerValue(updateState, "schedulerFailureCount", "failureCount")),
+        ],
+        [
+          "Last scheduler error",
+          scalar(appUpdateSchedulerValue(updateState, "schedulerLastError", "lastErrorCode")),
         ],
       ]),
     );

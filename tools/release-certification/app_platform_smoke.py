@@ -2723,6 +2723,190 @@ def collect_app_update_lifecycle_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+def collect_app_update_scheduler_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    scheduler_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateScheduler.java"
+    )
+    scheduler_config_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateSchedulerConfig.java"
+    )
+    scheduler_state_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateSchedulerState.java"
+    )
+    scheduler_store_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/FileAppUpdateSchedulerStore.java"
+    )
+    update_service_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    scheduler_test_source = (
+        settings.workspace_root
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateSchedulerTest.java"
+    )
+    scheduler_config_test_source = (
+        settings.workspace_root
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateSchedulerConfigTest.java"
+    )
+    runtime_source = (
+        settings.workspace_root
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    web_shell_source = (
+        settings.workspace_root
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    lifecycle_doc = settings.workspace_root / "docs/app-update-lifecycle.md"
+    scheduler_text = read_source(scheduler_source)
+    scheduler_config_text = read_source(scheduler_config_source)
+    scheduler_state_text = read_source(scheduler_state_source)
+    scheduler_store_text = read_source(scheduler_store_source)
+    update_service_text = read_source(update_service_source)
+    scheduler_test_text = read_source(scheduler_test_source)
+    scheduler_config_test_text = read_source(scheduler_config_test_source)
+    runtime_text = read_source(runtime_source)
+    web_shell_text = read_source(web_shell_source)
+    doc_text = read_source(lifecycle_doc)
+    checks = {
+        "schedulerSourcePresent": (
+            "public final class AppUpdateScheduler" in scheduler_text
+            and "AppUpdateSchedulerConfig" in scheduler_text
+            and "AppUpdateSchedulerStore" in scheduler_text
+        ),
+        "schedulerConfigPresent": (
+            "CRYPTAD_APPUPDATES_SCHEDULER_ENABLED" in scheduler_config_text
+            and "cryptad.appupdates.scheduler.appCheckIntervalSeconds" in scheduler_config_text
+            and "defaults()" in scheduler_config_text
+            and "true," in scheduler_config_text
+            and "from(Map<?, ?> properties, Map<String, String> environment)" in scheduler_config_text
+            and "from_whenValuesMalformed_expectDefaultsRetained" in scheduler_config_test_text
+        ),
+        "schedulerSummaryPublished": (
+            'json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId))'
+            in update_service_text
+            and '"lastCheckAt"' in scheduler_state_text
+            and '"nextCheckAt"' in scheduler_state_text
+            and '"failureCount"' in scheduler_state_text
+            and '"lastErrorCode"' in scheduler_state_text
+            and '"concurrency"' in scheduler_state_text
+        ),
+        "schedulerCatalogRefresh": (
+            "catalogManager.listCatalogs()" in scheduler_text
+            and "catalogManager.refresh(catalog.catalogId())" in scheduler_text
+            and "MESSAGE_CATALOG_REFRESH_FAILED" in scheduler_text
+        ),
+        "schedulerDelegatesToUpdateCheck": (
+            "updateService.check(state.appId(), false)" in scheduler_text
+            and "updateService.stage(" not in scheduler_text
+            and "updateService.apply(" not in scheduler_text
+            and "appHost.updateFromDirectory(" not in scheduler_text
+            and "catalogManager.prepareInstallPlan(" not in scheduler_text
+        ),
+        "schedulerManualPolicyDoesNotMutate": (
+            "tick_whenManualPolicy_expectCheckOnlyAndNoStageOrApply" in scheduler_test_text
+            and "verify(catalogManager, never()).prepareInstallPlan" in scheduler_test_text
+            and "verify(appHost, never()).updateFromDirectory" in scheduler_test_text
+        ),
+        "schedulerPolicyDrivenChecks": (
+            "tick_whenStagePolicy_expectVerifiedCandidateStagedByServicePolicy"
+            in scheduler_test_text
+            and "tick_whenApplyWhenStoppedPolicy_expectStoppedAppAppliedByServicePolicy"
+            in scheduler_test_text
+            and "tick_whenApplyWhenStoppedPolicyAndAppRunning_expectRunningAppNotStoppedOrUpdated"
+            in scheduler_test_text
+            and "Policy skipped apply because the app is running." in scheduler_test_text
+        ),
+        "schedulerFailureContained": (
+            "tick_whenCheckFails_expectSanitizedFailureAndBackoff" in scheduler_test_text
+            and "tick_whenCatalogRefreshFails_expectFailureContainedAndAppsStillChecked"
+            in scheduler_test_text
+            and "catalog_refresh_failed" in scheduler_text
+            and "Scheduler update check failed." in scheduler_text
+        ),
+        "schedulerDurableStore": (
+            "public final class FileAppUpdateSchedulerStore" in scheduler_store_text
+            and "ATOMIC_MOVE" in scheduler_store_text
+            and "update-scheduler" in runtime_text
+            and "layout.dataDir().resolve(\"apps\").resolve(\"update-scheduler\")" in runtime_text
+        ),
+        "schedulerPerAppSerialized": (
+            "AtomicBoolean running" in scheduler_text
+            and "alreadyRunning" in scheduler_text
+            and "per-app-serialized" in scheduler_state_text
+            and "summary_whenSchedulerStatePresent_expectPathFreeSchedulerSummary"
+            in scheduler_test_text
+        ),
+        "schedulerPathAndPrivateDataFree": (
+            "summary_whenSchedulerStatePresent_expectPathFreeSchedulerSummary" in scheduler_test_text
+            and "secret-token" in scheduler_test_text
+            and "contains(tempDir.toString())" in scheduler_test_text
+            and "catalog scratch" in scheduler_state_text
+            and "staged bundle path" in scheduler_state_text
+        ),
+        "schedulerRuntimeWiring": (
+            "createAppUpdateScheduler(" in runtime_text
+            and "appUpdateService.setSchedulerSummaryProvider(appUpdateScheduler::summary)"
+            in runtime_text
+            and "appUpdateScheduler.start()" in runtime_text
+            and "createAppUpdateSchedulerShutdownJob" in runtime_text
+        ),
+        "schedulerWebShellDisplay": (
+            "Scheduler status" in web_shell_text
+            and "Scheduler failures" in web_shell_text
+            and "Last scheduler error" in web_shell_text
+        ),
+        "schedulerLifecycleDocumented": (
+            "background scheduler" in doc_text.lower()
+            and "manual remains the default" in doc_text.lower()
+            and "AppUpdateService.check" in doc_text
+            and "app-update.scheduler" in doc_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "policy": "manual default; policy-driven stage/apply only after explicit selection",
+        "silentAutoUpdateDefault": False,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "sources": {
+            "scheduler": display_path(scheduler_source, settings.workspace_root),
+            "schedulerConfig": display_path(scheduler_config_source, settings.workspace_root),
+            "schedulerState": display_path(scheduler_state_source, settings.workspace_root),
+            "schedulerStore": display_path(scheduler_store_source, settings.workspace_root),
+            "updateService": display_path(update_service_source, settings.workspace_root),
+            "schedulerTest": display_path(scheduler_test_source, settings.workspace_root),
+            "schedulerConfigTest": display_path(
+                scheduler_config_test_source, settings.workspace_root
+            ),
+            "runtime": display_path(runtime_source, settings.workspace_root),
+            "webShell": display_path(web_shell_source, settings.workspace_root),
+            "lifecycleDoc": display_path(lifecycle_doc, settings.workspace_root),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-update.scheduler",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "App-update scheduler evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-update.scheduler",
+        "pass",
+        True,
+        "App-update background scheduler passed deterministic offline evidence checks.",
+        source,
+        details,
+    )
+
+
 def collect_app_update_rollback_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     apphost_source = (
@@ -3060,6 +3244,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_removal_wave_one_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
+        collect_app_update_scheduler_evidence(settings),
         collect_app_update_rollback_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
@@ -3645,6 +3830,16 @@ def run_self_test(repo_root: Path) -> None:
         assert lifecycle_checks["lifecycleHandlerRoutesStageAndApply"] is True, lifecycle_checks
         assert lifecycle_checks["lifecycleServiceStagesVerifiedPlan"] is True, lifecycle_checks
         assert lifecycle_checks["lifecycleServiceApplyDelegatesToAppHost"] is True, lifecycle_checks
+        assert evidence_by_id["app-update.scheduler"]["status"] == "pass"
+        assert evidence_by_id["app-update.scheduler"]["requiredForReleaseCandidate"] is True
+        scheduler_checks = evidence_by_id["app-update.scheduler"]["details"]["checks"]
+        assert scheduler_checks["schedulerConfigPresent"] is True, scheduler_checks
+        assert scheduler_checks["schedulerDelegatesToUpdateCheck"] is True, scheduler_checks
+        assert scheduler_checks["schedulerManualPolicyDoesNotMutate"] is True, scheduler_checks
+        assert scheduler_checks["schedulerPolicyDrivenChecks"] is True, scheduler_checks
+        assert scheduler_checks["schedulerPerAppSerialized"] is True, scheduler_checks
+        assert scheduler_checks["schedulerPathAndPrivateDataFree"] is True, scheduler_checks
+        assert scheduler_checks["schedulerLifecycleDocumented"] is True, scheduler_checks
         assert evidence_by_id["app-update.rollback"]["status"] == "pass"
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         rollback_checks = evidence_by_id["app-update.rollback"]["details"]["checks"]
@@ -4255,6 +4450,8 @@ record AppUpdateCandidate() {
     (appupdates_dir / "AppUpdateService.java").write_text(
         """
 class AppUpdateService {
+  AppUpdateService.SchedulerSummaryProvider schedulerSummaryProvider;
+
   public synchronized Map<String, Object> stage(String appId) {
     AppUpdateCandidate candidate = candidateOrDetect(appId, installed);
     AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
@@ -4270,6 +4467,83 @@ class AppUpdateService {
         appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
     closeStage(normalizedAppId);
     return summary(normalizedAppId, updated);
+  }
+
+  Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
+    json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId));
+    return json;
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateSchedulerConfig.java").write_text(
+        """
+class AppUpdateSchedulerConfig {
+  static final String ENABLED_ENV = "CRYPTAD_APPUPDATES_SCHEDULER_ENABLED";
+  static final String APP_CHECK_INTERVAL_PROPERTY = "cryptad.appupdates.scheduler.appCheckIntervalSeconds";
+  static AppUpdateSchedulerConfig defaults() {
+    return new AppUpdateSchedulerConfig(
+        true,
+        Duration.ZERO,
+        Duration.ofSeconds(120),
+        Duration.ofSeconds(60),
+        Duration.ZERO,
+        Duration.ofSeconds(30),
+        Duration.ofSeconds(300));
+  }
+  static AppUpdateSchedulerConfig from(Map<?, ?> properties, Map<String, String> environment) {
+    return defaults();
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateSchedulerState.java").write_text(
+        """
+class AppUpdateSchedulerState {
+  Map<String, Object> toJsonValue() {
+    json.put("lastCheckAt", lastCheckAt);
+    json.put("nextCheckAt", nextCheckAt);
+    json.put("failureCount", failureCount);
+    json.put("lastErrorCode", lastErrorCode);
+    json.put("concurrency", "per-app-serialized");
+    return json;
+  }
+  // catalog scratch paths and staged bundle path values are never exposed here.
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "FileAppUpdateSchedulerStore.java").write_text(
+        """
+public final class FileAppUpdateSchedulerStore {
+  void write(Path source, Path target) throws IOException {
+    Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppUpdateScheduler.java").write_text(
+        """
+public final class AppUpdateScheduler {
+  private final AppUpdateSchedulerConfig config;
+  private final AppUpdateSchedulerStore store;
+  private final AtomicBoolean running = new AtomicBoolean();
+  private static final String ERROR_CATALOG_REFRESH_FAILED = "catalog_refresh_failed";
+  private static final String MESSAGE_CATALOG_REFRESH_FAILED =
+      "Scheduler catalog refresh failed; cached verified catalogs remain in use.";
+  private static final String MESSAGE_APP_CHECK_FAILED = "Scheduler update check failed.";
+  AppUpdateSchedulerTickResult tick(Instant now) {
+    if (!running.compareAndSet(false, true)) {
+      return AppUpdateSchedulerTickResult.alreadyRunning(now);
+    }
+    for (AppCatalogSourceSnapshot catalog : catalogManager.listCatalogs()) {
+      catalogManager.refresh(catalog.catalogId());
+    }
+    updateService.check(state.appId(), false);
+    return result;
   }
 }
 """,
@@ -4300,6 +4574,71 @@ class AppUpdateServiceTest {
     assertEquals("app_running", exception.errorCode());
   }
 }
+""",
+        encoding="utf-8",
+    )
+    (appupdates_test_dir / "AppUpdateSchedulerConfigTest.java").write_text(
+        """
+class AppUpdateSchedulerConfigTest {
+  void from_whenValuesMalformed_expectDefaultsRetained() {}
+}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_test_dir / "AppUpdateSchedulerTest.java").write_text(
+        """
+class AppUpdateSchedulerTest {
+  void tick_whenManualPolicy_expectCheckOnlyAndNoStageOrApply() {
+    verify(catalogManager, never()).prepareInstallPlan(eq(CATALOG_ID), eq(APP_ID));
+    verify(appHost, never()).updateFromDirectory(eq(APP_ID), eq(tempDir));
+  }
+  void tick_whenStagePolicy_expectVerifiedCandidateStagedByServicePolicy() {}
+  void tick_whenApplyWhenStoppedPolicy_expectStoppedAppAppliedByServicePolicy() {}
+  void tick_whenApplyWhenStoppedPolicyAndAppRunning_expectRunningAppNotStoppedOrUpdated() {
+    String message = "Policy skipped apply because the app is running.";
+  }
+  void tick_whenCheckFails_expectSanitizedFailureAndBackoff() {}
+  void tick_whenCatalogRefreshFails_expectFailureContainedAndAppsStillChecked() {}
+  void summary_whenSchedulerStatePresent_expectPathFreeSchedulerSummary() {
+    String token = "secret-token";
+    assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    runtime_source = (
+        workspace
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    runtime_source.parent.mkdir(parents=True, exist_ok=True)
+    runtime_source.write_text(
+        """
+class CoreHttpShellRuntimeSupport {
+  AppUpdateScheduler createAppUpdateScheduler() {
+    return new AppUpdateScheduler(layout.dataDir().resolve("apps").resolve("update-scheduler"));
+  }
+  void wire() {
+    appUpdateService.setSchedulerSummaryProvider(appUpdateScheduler::summary);
+    appUpdateScheduler.start();
+  }
+  Thread createAppUpdateSchedulerShutdownJob() { return new Thread(appUpdateScheduler::close); }
+}
+""",
+        encoding="utf-8",
+    )
+    web_shell = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    web_shell.parent.mkdir(parents=True, exist_ok=True)
+    web_shell.write_text(
+        """
+definitionList([
+  ["Scheduler status", scheduler.status],
+  ["Scheduler failures", scheduler.failureCount],
+  ["Last scheduler error", scheduler.lastErrorCode],
+]);
 """,
         encoding="utf-8",
     )
@@ -4350,6 +4689,8 @@ AppHost v1 uses an `apply_when_stopped` policy.
 Silent automatic update is not the default.
 Applying an update requires an operator or explicit API caller.
 The policy modes are manual, stage, and apply_when_stopped.
+The background scheduler uses AppUpdateService.check and manual remains the default.
+Release evidence is app-update.scheduler.
 Rollback covers only the immutable installed bundle.
 Rollback does not roll back app data directories or app cache directories.
 """,

@@ -15,6 +15,7 @@ import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
@@ -194,6 +195,7 @@ public final class PlatformApiToadlet extends Toadlet {
         runtimePorts,
         appHost,
         appCatalogManager,
+        null,
         appBrowserSessionVerifier,
         appUiOriginRegistry,
         null);
@@ -205,6 +207,7 @@ public final class PlatformApiToadlet extends Toadlet {
    * @param runtimePorts detached runtime ports exposed to the platform API leaf
    * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
    * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   * @param appUpdateService shared app-update service used by scheduler and update routes
    * @param appBrowserSessionVerifier verifier shared with the app-owned UI bootstrap route
    * @param appUiOriginRegistry registry of active isolated app UI origins
    * @param appVaultService shared app-vault service for vault endpoint families
@@ -213,6 +216,7 @@ public final class PlatformApiToadlet extends Toadlet {
       RuntimePorts runtimePorts,
       AppHost appHost,
       AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
       AppBrowserSessionVerifier appBrowserSessionVerifier,
       AppUiOriginRegistry appUiOriginRegistry,
       AppVaultService appVaultService) {
@@ -223,7 +227,8 @@ public final class PlatformApiToadlet extends Toadlet {
             appCatalogManager,
             LegacyAdminUsageRecorder.defaultRecorder(),
             appUiOriginRegistry,
-            appVaultService),
+            appVaultService,
+            appUpdateService),
         appHost,
         appBrowserSessionVerifier,
         appUiOriginRegistry);

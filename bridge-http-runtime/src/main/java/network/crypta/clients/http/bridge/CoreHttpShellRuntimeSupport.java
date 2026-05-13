@@ -27,6 +27,11 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.api.appupdates.AppUpdateScheduler;
+import network.crypta.platform.api.appupdates.AppUpdateSchedulerConfig;
+import network.crypta.platform.api.appupdates.AppUpdateSchedulerStore;
+import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.appupdates.FileAppUpdateSchedulerStore;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
@@ -60,12 +65,16 @@ import org.slf4j.LoggerFactory;
  * @param core daemon core that backs delegated shell services and browse bootstrap wiring
  * @param appHost shared AppHost instance used by the platform control plane
  * @param appCatalogManager shared signed app-catalog manager used by the platform control plane
+ * @param appUpdateService shared app-update service used by update routes and scheduler
+ * @param appUpdateScheduler optional background app-update scheduler
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
     NodeClientCore core,
     AppHost appHost,
     AppCatalogManager appCatalogManager,
+    AppUpdateService appUpdateService,
+    AppUpdateScheduler appUpdateScheduler,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -100,7 +109,13 @@ public record CoreHttpShellRuntimeSupport(
   }
 
   private CoreHttpShellRuntimeSupport(NodeClientCore core, AppPlatformServices services) {
-    this(core, services.appHost(), services.appCatalogManager(), services.appVaultService());
+    this(
+        core,
+        services.appHost(),
+        services.appCatalogManager(),
+        services.appUpdateService(),
+        services.appUpdateScheduler(),
+        services.appVaultService());
   }
 
   /**
@@ -142,9 +157,40 @@ public record CoreHttpShellRuntimeSupport(
       AppHost appHost,
       AppCatalogManager appCatalogManager,
       AppVaultService appVaultService) {
+    this(
+        core,
+        appHost,
+        appCatalogManager,
+        appCatalogManager == null
+            ? null
+            : new AppUpdateService(appHost, appCatalogManager, appVaultService),
+        null,
+        appVaultService);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app-platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @param appUpdateService shared app-update lifecycle service, or {@code null} when unavailable
+   * @param appUpdateScheduler optional background app-update scheduler
+   * @param appVaultService shared app-vault service, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateScheduler appUpdateScheduler,
+      AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.appCatalogManager = appCatalogManager;
+    this.appUpdateService = appUpdateService;
+    this.appUpdateScheduler = appUpdateScheduler;
     this.appVaultService = appVaultService;
   }
 
@@ -293,6 +339,8 @@ public record CoreHttpShellRuntimeSupport(
    */
   private static AppPlatformServices createManagedAppServices(NodeClientCore core) {
     AppPlatformServices services = createAppPlatformServices(core);
+    SemiOrderedShutdownHook.get()
+        .addEarlyJob(createAppUpdateSchedulerShutdownJob(services.appUpdateScheduler()));
     SemiOrderedShutdownHook.get().addEarlyJob(createAppHostShutdownJob(services.appHost()));
     return services;
   }
@@ -319,7 +367,19 @@ public record CoreHttpShellRuntimeSupport(
     AppCatalogManager appCatalogManager =
         createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
     AppVaultService appVaultService = createAppVaultService(layout);
-    return new AppPlatformServices(appHost, appCatalogManager, appVaultService);
+    AppUpdateService appUpdateService =
+        new AppUpdateService(appHost, appCatalogManager, appVaultService);
+    AppUpdateSchedulerConfig schedulerConfig = AppUpdateSchedulerConfig.loadFromSystem();
+    AppUpdateScheduler appUpdateScheduler =
+        createAppUpdateScheduler(
+            layout, appHost, appCatalogManager, appUpdateService, schedulerConfig);
+    appUpdateService.setSchedulerSummaryProvider(appUpdateScheduler::summary);
+    appUpdateService.setSchedulerStateCleaner(appUpdateScheduler::clearAppState);
+    if (schedulerConfig.enabled()) {
+      appUpdateScheduler.start();
+    }
+    return new AppPlatformServices(
+        appHost, appCatalogManager, appUpdateService, appUpdateScheduler, appVaultService);
   }
 
   private static AppVaultService createAppVaultService(AppHostLayout layout) {
@@ -355,6 +415,19 @@ public record CoreHttpShellRuntimeSupport(
         ? new AppCatalogManager(catalogSourceStore, trustedCatalogKeys)
         : new AppCatalogManager(
             catalogSourceStore, trustedCatalogKeys, runtimePorts.contentFetch());
+  }
+
+  private static AppUpdateScheduler createAppUpdateScheduler(
+      AppHostLayout layout,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateSchedulerConfig schedulerConfig) {
+    AppUpdateSchedulerStore schedulerStore =
+        new FileAppUpdateSchedulerStore(
+            layout.dataDir().resolve("apps").resolve("update-scheduler"));
+    return new AppUpdateScheduler(
+        appHost, appCatalogManager, appUpdateService, schedulerConfig, schedulerStore);
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
@@ -491,7 +564,11 @@ public record CoreHttpShellRuntimeSupport(
       String publicKeyFile) {}
 
   private record AppPlatformServices(
-      AppHost appHost, AppCatalogManager appCatalogManager, AppVaultService appVaultService) {}
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateScheduler appUpdateScheduler,
+      AppVaultService appVaultService) {}
 
   /**
    * Creates the shutdown job that stops any AppHost-managed child processes on node exit.
@@ -506,6 +583,11 @@ public record CoreHttpShellRuntimeSupport(
   static Thread createAppHostShutdownJob(AppHost appHost) {
     Objects.requireNonNull(appHost, "appHost");
     return new Thread(() -> stopRunningAppsOnShutdown(appHost), "Shutdown AppHost");
+  }
+
+  static Thread createAppUpdateSchedulerShutdownJob(AppUpdateScheduler appUpdateScheduler) {
+    Objects.requireNonNull(appUpdateScheduler, "appUpdateScheduler");
+    return new Thread(appUpdateScheduler::close, "Shutdown AppUpdateScheduler");
   }
 
   private static void stopRunningAppsOnShutdown(AppHost appHost) {

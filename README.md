@@ -402,11 +402,13 @@ development-only escape hatch for unsigned local testing.
 Do not commit production private signing keys to this repository. Keep local development keys
 outside the repo and pass them through Gradle properties or environment variables. Catalog-backed
 install/update endpoints are available now; catalog-backed candidate detection and explicit
-apply-when-stopped updates are implemented, while silent auto-update is not the default. Review
-policy defaults to advisory display, with stricter modes available for explicit acknowledgement or
-trusted-positive receipt requirements. See
-[docs/app-update-lifecycle.md](docs/app-update-lifecycle.md) for manual apply, review gates, and
-rollback scope.
+apply-when-stopped updates are implemented, and the background scheduler refreshes signed catalogs
+and checks installed apps through the same lifecycle service. Silent auto-update is not the
+default: manual remains the default policy, and automatic staging or apply requires an explicit
+operator-selected policy. Review policy defaults to advisory display, with stricter modes
+available for explicit acknowledgement or trusted-positive receipt requirements. See
+[docs/app-update-lifecycle.md](docs/app-update-lifecycle.md) for scheduler state, manual apply,
+review gates, and rollback scope.
 Apps that request local vault access use `vault.secrets.*` and `vault.identities.*` capabilities.
 Those grants distinguish app-owned identities from operator-shared identities and carry separate
 process/browser, lifecycle, audit, and redaction rules; see
@@ -1068,8 +1070,9 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   same AppHost staged-directory semantics. Static app UIs are served from the installed bundle on
   isolated per-app loopback origins when available, with `/apps/{appId}/` retained as a
   compatibility fallback. Catalog-backed candidate detection and explicit apply-when-stopped
-  updates are implemented; silent automatic update is not the default. Bundle rollback restores
-  only the immutable installed bundle and does not roll back app data or cache.
+  updates are implemented. The background scheduler refreshes configured signed catalogs and checks
+  installed apps, but silent automatic update is not the default. Bundle rollback restores only the
+  immutable installed bundle and does not roll back app data or cache.
 
 ## Architecture Overview
 

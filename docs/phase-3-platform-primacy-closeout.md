@@ -177,10 +177,10 @@ The release runbook records the same gates in
 
 Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 
-- Remote signed app catalogs, verified artifact staging, manual app-update candidate detection,
-  staged apply, and bundle rollback have landed. Silent third-party auto-update remains future
-  work; the current app-update scheduler state is disabled by default and manual checks are the
-  stable trigger.
+- Remote signed app catalogs, verified artifact staging, app-update candidate detection, scheduler
+  refresh/checks, staged apply, and bundle rollback have landed. Silent third-party auto-update is
+  not the default; manual remains the default policy, and policy-driven staging or apply requires
+  explicit operator selection.
 - App-owned static UI routes have landed for installed static bundles, and Phase 6 now provides
   isolated per-app loopback browser origins with `/apps/{appId}/` retained as compatibility
   fallback.
