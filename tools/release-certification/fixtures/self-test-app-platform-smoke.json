@@ -350,6 +350,34 @@
     {
       "details": {
         "checks": {
+          "schedulerCatalogRefresh": true,
+          "schedulerConfigPresent": true,
+          "schedulerDelegatesToUpdateCheck": true,
+          "schedulerDurableStore": true,
+          "schedulerFailureContained": true,
+          "schedulerLifecycleDocumented": true,
+          "schedulerManualPolicyDoesNotMutate": true,
+          "schedulerPathAndPrivateDataFree": true,
+          "schedulerPerAppSerialized": true,
+          "schedulerPolicyDrivenChecks": true,
+          "schedulerRuntimeWiring": true,
+          "schedulerSourcePresent": true,
+          "schedulerSummaryPublished": true,
+          "schedulerWebShellDisplay": true
+        },
+        "liveNodeRequired": false,
+        "policy": "manual default; policy-driven stage/apply only after explicit selection",
+        "silentAutoUpdateDefault": false
+      },
+      "id": "app-update.scheduler",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-update background scheduler passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
           "durableRollbackRoot": true,
           "installedBundleRecordedForRollback": true,
           "managedBackupAllocated": true,

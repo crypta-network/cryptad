@@ -84,6 +84,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -262,7 +263,9 @@ class CoreHttpShellRuntimeSupportTest {
     assertEquals(expectedDataDir.toAbsolutePath(), layout.dataDir());
     assertEquals(expectedCacheDir.toAbsolutePath(), layout.cacheDir());
     assertEquals(expectedRunDir.toAbsolutePath(), layout.runDir());
-    verify(shutdownHook).addEarlyJob(any(Thread.class));
+    assertNotNull(runtimeSupport.appUpdateScheduler());
+    assertNotNull(runtimeSupport.appUpdateService());
+    verify(shutdownHook, times(2)).addEarlyJob(any(Thread.class));
   }
 
   @Test
@@ -294,7 +297,9 @@ class CoreHttpShellRuntimeSupportTest {
 
     assertNotNull(runtimeSupport.appHost());
     assertNull(runtimeSupport.appVaultService());
-    verify(shutdownHook).addEarlyJob(any(Thread.class));
+    assertNotNull(runtimeSupport.appUpdateScheduler());
+    assertNotNull(runtimeSupport.appUpdateService());
+    verify(shutdownHook, times(2)).addEarlyJob(any(Thread.class));
   }
 
   @Test

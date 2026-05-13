@@ -100,11 +100,12 @@ Treat these as release blockers, in order:
    and token/path-free public status. Manual Linux smoke with host-installed `bwrap` is useful
    release-manager evidence when sandbox behavior changed.
 11. **App update lifecycle evidence** - verify the release certification report includes
-   `app-update.lifecycle` and `app-update.rollback`. The required offline evidence must cover
-   manual/stage/apply-when-stopped policy behavior, path-free staged summaries, process health-gated
-   apply, durable previous-bundle rollback, and the rule that rollback does not restore app data or
-   cache. Optional live smoke may exercise install/update/rollback through localhost routes, but
-   normal release-candidate evidence must not require a live node.
+   `app-update.lifecycle`, `app-update.scheduler`, and `app-update.rollback`. The required offline
+   evidence must cover manual/stage/apply-when-stopped policy behavior, background catalog refresh
+   and app checks through the shared update service, path-free staged and scheduler summaries,
+   process health-gated apply, durable previous-bundle rollback, and the rule that rollback does
+   not restore app data or cache. Optional live smoke may exercise install/update/rollback through
+   localhost routes, but normal release-candidate evidence must not require a live node.
 12. **Legacy-admin retirement evidence** - record the current retirement map, removal-wave policy,
    and diagnostics shape before any release promotion. The certification report must include
    primary-replaced, retained, and pending surface counts, confirm primary-replaced surfaces are

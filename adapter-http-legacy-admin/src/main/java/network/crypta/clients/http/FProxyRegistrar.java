@@ -344,6 +344,7 @@ final class FProxyRegistrar {
             runtimePorts,
             dependencies.appHost(),
             dependencies.appCatalogManager(),
+            dependencies.appUpdateService(),
             appBrowserSessionStore,
             appUiOriginServer,
             dependencies.appVaultService());

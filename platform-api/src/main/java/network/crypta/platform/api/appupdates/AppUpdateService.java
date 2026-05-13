@@ -111,12 +111,15 @@ public final class AppUpdateService {
   private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
   private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
   private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
+  private static final String JSON_MESSAGE = "message";
 
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
   private final AppReviewPolicy reviewPolicy;
   private final ReviewerKeysProvider reviewerKeysProvider;
   private final AppVaultService appVaultService;
+  private SchedulerSummaryProvider schedulerSummaryProvider;
+  private SchedulerStateCleaner schedulerStateCleaner = _ -> {};
   private final Map<String, AppUpdatePolicy> policies = new LinkedHashMap<>();
   private final Map<String, AppUpdateCandidate> candidates = new LinkedHashMap<>();
   private final Map<String, StagedUpdate> stagedUpdates = new LinkedHashMap<>();
@@ -153,7 +156,8 @@ public final class AppUpdateService {
         catalogManager,
         AppReviewPolicy.loadFromSystem(),
         trustedReviewerKeysFromSystem(),
-        appVaultService);
+        appVaultService,
+        AppUpdateService::disabledSchedulerSummary);
   }
 
   /**
@@ -188,12 +192,48 @@ public final class AppUpdateService {
       AppReviewPolicy reviewPolicy,
       ReviewerKeysProvider reviewerKeysProvider,
       AppVaultService appVaultService) {
+    this(
+        appHost,
+        catalogManager,
+        reviewPolicy,
+        reviewerKeysProvider,
+        appVaultService,
+        AppUpdateService::disabledSchedulerSummary);
+  }
+
+  /**
+   * Creates an app-update service with explicit review policy, reviewer keys, vault, and scheduler
+   * summaries.
+   *
+   * <p>The scheduler provider is deliberately injected instead of started by the service
+   * constructor. Runtime composition can create one shared service, create the scheduler around
+   * that service, and then attach {@link AppUpdateScheduler#summary(String)} so API summaries and
+   * background checks describe the same lifecycle state. Unit tests can keep the provider disabled
+   * unless they are explicitly testing scheduler metadata.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param reviewPolicy local review policy
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   * @param schedulerSummaryProvider provider for path-free scheduler state
+   */
+  public AppUpdateService(
+      AppHost appHost,
+      AppCatalogManager catalogManager,
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService,
+      SchedulerSummaryProvider schedulerSummaryProvider) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
     this.reviewerKeysProvider =
         Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
     this.appVaultService = appVaultService;
+    this.schedulerSummaryProvider =
+        Objects.requireNonNull(schedulerSummaryProvider, "schedulerSummaryProvider");
   }
 
   private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
@@ -218,6 +258,72 @@ public final class AppUpdateService {
   }
 
   /**
+   * Supplies path-free scheduler metadata for update summaries.
+   *
+   * <p>The update service owns lifecycle state, while the optional background scheduler owns
+   * scheduler timestamps, backoff, and failure counters. This provider keeps the two lifecycles
+   * loosely coupled: services constructed for unit tests or alternate embeddings can use the
+   * disabled default, and the HTTP runtime can attach its durable scheduler after both objects are
+   * constructed.
+   */
+  @FunctionalInterface
+  public interface SchedulerSummaryProvider {
+    /**
+     * Returns path-free scheduler state for one installed app.
+     *
+     * @param appId normalized app id
+     * @return JSON-compatible scheduler summary
+     */
+    Map<String, Object> schedulerSummary(String appId);
+  }
+
+  /**
+   * Clears path-free scheduler metadata for an app whose update lifecycle state is being reset.
+   *
+   * <p>The background scheduler owns durable scheduler timestamps and backoff state. This callback
+   * lets uninstall and missing-app cleanup reset that scheduler-owned metadata together with the
+   * service-owned candidate, policy, staged, and history state.
+   */
+  @FunctionalInterface
+  public interface SchedulerStateCleaner {
+    /**
+     * Clears scheduler metadata for one app.
+     *
+     * @param appId normalized app id
+     */
+    void clearSchedulerState(String appId);
+  }
+
+  /**
+   * Attaches the scheduler summary provider used by later update summaries.
+   *
+   * <p>The method is synchronized to coordinate with the service's summary path. It changes only
+   * display metadata; it does not start background work, check catalogs, stage updates, apply
+   * bundles, or alter per-app update policy.
+   *
+   * @param schedulerSummaryProvider provider for scheduler state
+   */
+  public synchronized void setSchedulerSummaryProvider(
+      SchedulerSummaryProvider schedulerSummaryProvider) {
+    this.schedulerSummaryProvider =
+        Objects.requireNonNull(schedulerSummaryProvider, "schedulerSummaryProvider");
+  }
+
+  /**
+   * Attaches the scheduler-state cleanup callback used when app update state is cleared.
+   *
+   * <p>The callback is separate from summary rendering so embeddings that do not start a background
+   * scheduler can keep the default no-op, while the HTTP runtime can remove durable scheduler
+   * metadata for uninstalled apps.
+   *
+   * @param schedulerStateCleaner callback that clears scheduler metadata for an app
+   */
+  public synchronized void setSchedulerStateCleaner(SchedulerStateCleaner schedulerStateCleaner) {
+    this.schedulerStateCleaner =
+        Objects.requireNonNull(schedulerStateCleaner, "schedulerStateCleaner");
+  }
+
+  /**
    * Discards all local update lifecycle state for an app removed outside this service.
    *
    * <p>The existing app-management endpoint owns uninstall. When it removes an app, this method
@@ -235,13 +341,14 @@ public final class AppUpdateService {
     policies.remove(normalizedAppId);
     lastChecks.remove(normalizedAppId);
     history.remove(normalizedAppId);
+    schedulerStateCleaner.clearSchedulerState(normalizedAppId);
   }
 
   /**
    * Returns the current update lifecycle summary for one app.
    *
    * <p>The summary includes the installed version, running state, policy, candidate, staged update,
-   * rollback availability, last check, scheduler placeholder, and recent history. It also performs
+   * rollback availability, last check, scheduler state, and recent history. It also performs
    * stale-state cleanup: if the app was updated or removed outside this service, incompatible
    * staged plans are closed before the response is built.
    *
@@ -1156,7 +1263,7 @@ public final class AppUpdateService {
     json.put("staged", stagedSummary(appId));
     json.put(ACTION_ROLLBACK, rollbackSummary(appId));
     json.put("lastCheck", lastCheckSummary(appId));
-    json.put("scheduler", schedulerSummary(appId));
+    json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId));
     json.put("history", historySummary(appId));
     return json;
   }
@@ -1223,7 +1330,7 @@ public final class AppUpdateService {
     json.put("retentionLimit", 1);
     json.put("scope", "bundle_only");
     json.put("errorCode", statusErrorCode);
-    json.put("message", statusMessage);
+    json.put(JSON_MESSAGE, statusMessage);
     return json;
   }
 
@@ -1237,16 +1344,22 @@ public final class AppUpdateService {
     json.put("checkedAt", lastCheck == null ? null : lastCheck.checkedAt().toString());
     json.put(JSON_STATUS, lastCheck == null ? "never" : lastCheck.status());
     json.put("errorCode", lastCheck == null ? null : lastCheck.errorCode());
-    json.put("message", lastCheck == null ? null : lastCheck.message());
+    json.put(JSON_MESSAGE, lastCheck == null ? null : lastCheck.message());
     return json;
   }
 
-  private static Map<String, Object> schedulerSummary(String appId) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
+  private static Map<String, Object> disabledSchedulerSummary(String appId) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(11);
     json.put(JSON_APP_ID, appId);
     json.put("enabled", false);
+    json.put(JSON_STATUS, AppUpdateSchedulerStatus.DISABLED.jsonValue());
     json.put("lastCheckAt", null);
     json.put("nextCheckAt", null);
+    json.put("lastResult", AppUpdateSchedulerState.RESULT_NONE);
+    json.put("lastFailureAt", null);
+    json.put("failureCount", 0);
+    json.put("lastErrorCode", null);
+    json.put(JSON_MESSAGE, "Background scheduler is not configured for this service.");
     json.put("concurrency", "per-app-serialized");
     return json;
   }

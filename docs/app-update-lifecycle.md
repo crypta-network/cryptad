@@ -12,15 +12,23 @@ The v1 policy is:
 | Step | Policy | Release evidence |
 | --- | --- | --- |
 | Detect | Catalog detail and listing responses compare the installed app version with the verified catalog entry. | `app-update.lifecycle` |
+| Schedule | The background scheduler refreshes configured signed catalogs and checks installed apps. It delegates app checks to the same lifecycle service used by manual requests. | `app-update.scheduler` |
 | Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, publisher-advisory review notes, trusted review receipt decisions, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
 | Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
 | Apply | Applying an update is manual by default. The target app must be stopped unless an explicit restart request allows stop/start choreography. | `app-update.lifecycle` |
 | Roll back | A successful update records the previous installed bundle as the durable rollback target. If replacement cannot complete, AppHost restores the previous bundle from a managed backup. | `app-update.rollback` |
 
-Silent automatic update is not the default. Catalog refresh can discover candidates and preserve the
-last verified catalog, but applying an update still requires an operator or explicit API caller.
-The update summary exposes scheduler state for clients, but the v1 scheduler is disabled by default
-and manual `check` requests are the stable trigger.
+Silent automatic update is not the default. The background scheduler can refresh configured signed
+catalogs and discover candidates, and catalog refresh preserves the last verified catalog when a
+later refresh fails. Scheduler-triggered app checks delegate to `AppUpdateService.check(...)`.
+Applying an update still requires an operator or explicit API caller unless the operator selected a
+policy mode that allows automatic staging or apply. Manual remains the default policy for every
+app.
+
+The update summary exposes scheduler state for clients. Scheduler summaries include enabled,
+status, last check, next check, last result, last failure, failure count, and sanitized error code
+metadata. They do not expose scheduler store paths, catalog scratch directories, staged bundle
+paths, rollback paths, tokens, private insert URIs, or stack traces.
 
 Host/operator requests can manage the local lifecycle after the HTTP bridge has enforced its
 form-password guard. App principals remain default-deny and must carry the route capabilities
@@ -162,10 +170,13 @@ scope:
 - `app-update.lifecycle` proves the manual/stage/apply-when-stopped policy, candidate detection,
   review metadata, trusted review receipt decisions, permission delta, and compatibility checks are
   represented in source and tests.
+- `app-update.scheduler` proves the background scheduler refreshes signed catalogs, checks
+  installed apps through `AppUpdateService.check(...)`, records durable path-free state, applies
+  failure backoff, and preserves the manual default policy.
 - `app-update.rollback` proves durable installed-bundle backup/restore behavior and confirms data,
   cache, and run directories are outside rollback scope.
 
 The evidence is collected by `tools/release-certification/app_platform_smoke.py` and aggregated by
 `tools/release-certification/release_certification.py`. It does not require a live node. Release
-candidates fail when either evidence item is missing, failing, skipped, or wrong-mode unless a
-release manager records a waiver.
+candidates fail when any required app-update evidence item is missing, failing, skipped, or
+wrong-mode unless a release manager records a waiver.

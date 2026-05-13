@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
@@ -2217,6 +2218,53 @@ class PlatformApiRouterTest {
     assertTrue(response.body().contains("\"previousVersion\":\"1.0.0\""));
     assertFalse(response.body().contains(tempDir.toString()));
     assertFalse(response.body().contains("token-"));
+  }
+
+  @Test
+  void route_whenSharedAppUpdateServiceProvided_expectSharedSchedulerSummary() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppUpdateService sharedService = sharedAppUpdateService(catalogManager);
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            null,
+            sharedService);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollbackStatus(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiResponse response =
+        updateRouter.route(request("GET", List.of("apps", APP_ID, "updates"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"message\":\"shared scheduler summary\""));
+    assertTrue(response.body().contains("\"concurrency\":\"per-app-serialized\""));
+    assertFalse(response.body().contains("Background scheduler is not configured"));
+  }
+
+  private AppUpdateService sharedAppUpdateService(AppCatalogManager catalogManager) {
+    AppUpdateService sharedService = new AppUpdateService(appHost, catalogManager);
+    sharedService.setSchedulerSummaryProvider(
+        appId -> {
+          LinkedHashMap<String, Object> scheduler = LinkedHashMap.newLinkedHashMap(11);
+          scheduler.put("appId", appId);
+          scheduler.put("enabled", true);
+          scheduler.put("status", "success");
+          scheduler.put("lastCheckAt", "2026-05-12T00:00:00Z");
+          scheduler.put("nextCheckAt", "2026-05-12T01:00:00Z");
+          scheduler.put("lastResult", "success");
+          scheduler.put("lastFailureAt", null);
+          scheduler.put("failureCount", 0);
+          scheduler.put("lastErrorCode", null);
+          scheduler.put("message", "shared scheduler summary");
+          scheduler.put("concurrency", "per-app-serialized");
+          return scheduler;
+        });
+    return sharedService;
   }
 
   @Test

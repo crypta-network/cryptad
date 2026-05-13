@@ -112,6 +112,7 @@ Release-candidate mode requires these evidence ids:
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
+| `app-update.scheduler` | App-platform smoke summary. | Offline source and test evidence proves background catalog refresh, installed-app update checks through `AppUpdateService.check(...)`, durable path-free scheduler summaries, failure backoff, and the manual default policy. |
 | `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
 | `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
@@ -130,10 +131,10 @@ same routes, but normal PR and release-candidate certification do not require a 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
 host-installed bubblewrap in normal CI; it uses source checks and fake/offline provider tests.
-`app-update.lifecycle` and `app-update.rollback` do not require a live node; missing update
-evidence blocks release-candidate mode unless a release-manager waiver is recorded. `apphost.live`
-is optional stronger evidence because normal PR and scheduled CI must not require a live local node
-or operator form password.
+`app-update.lifecycle`, `app-update.scheduler`, and `app-update.rollback` do not require a live
+node; missing update evidence blocks release-candidate mode unless a release-manager waiver is
+recorded. `apphost.live` is optional stronger evidence because normal PR and scheduled CI must not
+require a live local node or operator form password.
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. In
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract
@@ -252,8 +253,9 @@ app gates require `queue-manager`, `publisher`, and `site-publisher`, and block 
 certified first-party app disappears without a waiver. App UI gates block failing or missing
 first-party strict lint/design-system evidence and warn when lint warning counts increase. Review
 trust gates block trusted receipt, review-policy, or first-party review catalog regressions. Update
-rollback gates block lifecycle or rollback evidence regressions and warn if rollback scope cannot
-be proven as installed-bundle-only. Vault gates block missing capability/redaction evidence.
+rollback gates block lifecycle, scheduler, or rollback evidence regressions and warn if rollback
+scope cannot be proven as installed-bundle-only. Vault gates block missing capability/redaction
+evidence.
 Sandbox gates warn when enforced evidence regresses to best-effort, and block in
 `release-candidate` mode when enforced evidence is required but absent. Reference-content gates
 block if Site Publisher evidence disappears or no longer proves content API helper usage. Legacy

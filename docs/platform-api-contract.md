@@ -101,6 +101,12 @@ and `apply` actions because those routes can refresh signed catalogs, prepare ca
 plans, or apply catalog-staged bundles. Host/operator calls keep the existing local-management
 bypass.
 
+App-update summaries also include scheduler metadata for background catalog refresh and app update
+checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and
+next check timestamps, result, failure count, sanitized error code, and a short message. The
+scheduler does not add new app-facing routes and does not change the default `manual` update
+policy.
+
 ## App manifest metadata
 
 App manifests may declare optional API compatibility metadata:

@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
@@ -754,6 +755,17 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void clearAppState_whenSchedulerCleanerAttached_expectSchedulerStateCleared() {
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    AtomicReference<String> clearedAppId = new AtomicReference<>();
+    service.setSchedulerStateCleaner(clearedAppId::set);
+
+    service.clearAppState(APP_ID);
+
+    assertEquals(APP_ID, clearedAppId.get());
+  }
+
+  @Test
   void apply_whenSameVersionManifestChangesAfterStage_expectStageInvalidatedAndApplyBlocked()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -1251,6 +1263,39 @@ class AppUpdateServiceTest {
     assertEquals("Rollback state could not be inspected.", rollback.get(MESSAGE));
     assertFalse(summary.toString().contains("bad rollback path"));
     assertFalse(summary.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void summary_whenSchedulerProviderConfigured_expectSchedulerSummaryReflected() throws Exception {
+    AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    service.setSchedulerSummaryProvider(
+        appId ->
+            Map.of(
+                "appId",
+                appId,
+                "enabled",
+                true,
+                STATUS,
+                "success",
+                "lastCheckAt",
+                "2026-05-12T00:00:00Z",
+                "nextCheckAt",
+                "2026-05-12T01:00:00Z",
+                "lastResult",
+                "success",
+                "concurrency",
+                "per-app-serialized"));
+
+    Map<String, Object> summary = service.summary(APP_ID);
+
+    Map<String, Object> scheduler = (Map<String, Object>) summary.get("scheduler");
+    assertEquals(true, scheduler.get("enabled"));
+    assertEquals("success", scheduler.get(STATUS));
+    assertEquals("2026-05-12T00:00:00Z", scheduler.get("lastCheckAt"));
+    assertEquals("2026-05-12T01:00:00Z", scheduler.get("nextCheckAt"));
+    assertEquals("per-app-serialized", scheduler.get("concurrency"));
+    assertFalse(summary.toString().contains(tempDir.toString()));
+    assertFalse(summary.toString().contains("secret-token"));
   }
 
   @Test
