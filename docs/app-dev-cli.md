@@ -286,7 +286,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=3
+api.maximumTestedVersion=4
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -481,7 +481,7 @@ review keys outside the repository.
    permissions=queue.read,queue.write
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=3
+   api.maximumTestedVersion=4
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```

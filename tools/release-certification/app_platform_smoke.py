@@ -526,7 +526,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/site-publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
-            "apiMaximumTestedVersion": 3,
+            "apiMaximumTestedVersion": 4,
         },
     ]
 
@@ -4349,7 +4349,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                     f"app.name={display_name}",
                     "app.version=0.1.0",
                     "api.minimumVersion=3",
-                    "api.maximumTestedVersion=3",
+                    "api.maximumTestedVersion=4",
                     "api.experimentalCapabilitiesAccepted=false",
                     f"app.exec=bin/{launcher}",
                     "app.ui.mode=static",
