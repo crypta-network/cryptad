@@ -152,7 +152,9 @@ final class PlatformApiAppRoutes {
       case 1 -> routeAppCatalogsCollection(request);
       case 2 -> routeAppCatalogsResource(segments.get(1), request);
       case 3 -> routeAppCatalogsActionOrApps(segments.get(1), segments.get(2), request);
-      case 4 -> routeAppCatalogApp(segments.get(1), segments.get(2), segments.get(3), request);
+      case 4 ->
+          routeRecommendedAppCatalogAddOrApp(
+              segments.get(1), segments.get(2), segments.get(3), request);
       case 5 ->
           routeAppCatalogAppAction(
               segments.get(1), segments.get(2), segments.get(3), segments.get(4), request);
@@ -374,6 +376,9 @@ final class PlatformApiAppRoutes {
       return PlatformApiResponse.ok(
           envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.remove(resource)));
     }
+    if ("recommended".equals(resource)) {
+      return routeRecommendedAppCatalogs(request);
+    }
     if ("add".equals(resource)) {
       if (!METHOD_POST.equals(request.method())) {
         return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
@@ -382,6 +387,14 @@ final class PlatformApiAppRoutes {
           envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.add(request.queryParameters())));
     }
     return methodNotAllowed(METHOD_DELETE, "Platform API v1 supports DELETE requests only.");
+  }
+
+  private PlatformApiResponse routeRecommendedAppCatalogs(PlatformApiRequest request) {
+    if (!METHOD_GET.equals(request.method())) {
+      return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(
+        envelope("catalogs", appCatalogsApiHandler.listRecommendedCatalogs()));
   }
 
   private PlatformApiResponse routeAppCatalogsActionOrApps(
@@ -400,6 +413,20 @@ final class PlatformApiAppRoutes {
       return PlatformApiResponse.ok(envelope("apps", appCatalogsApiHandler.listApps(catalogId)));
     }
     throw notFound();
+  }
+
+  private PlatformApiResponse routeRecommendedAppCatalogAddOrApp(
+      String firstSegment, String secondSegment, String thirdSegment, PlatformApiRequest request) {
+    if ("recommended".equals(firstSegment) && "add".equals(thirdSegment)) {
+      if (!METHOD_POST.equals(request.method()) && !"apps".equals(secondSegment)) {
+        return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+      }
+      if (METHOD_POST.equals(request.method())) {
+        return PlatformApiResponse.created(
+            envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.addRecommended(secondSegment)));
+      }
+    }
+    return routeAppCatalogApp(firstSegment, secondSegment, thirdSegment, request);
   }
 
   private PlatformApiResponse routeAppCatalogApp(

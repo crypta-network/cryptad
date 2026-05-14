@@ -101,6 +101,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
+| `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
 | `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
@@ -135,6 +136,11 @@ host-installed bubblewrap in normal CI; it uses source checks and fake/offline p
 node; missing update evidence blocks release-candidate mode unless a release-manager waiver is
 recorded. `apphost.live` is optional stronger evidence because normal PR and scheduled CI must not
 require a live local node or operator form password.
+
+`app-catalog.first-party-beta` reports whether `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and the trusted
+catalog key hints are configured in the certification environment, but it does not fetch a public
+Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic
+`platform-appcatalog` tests for `crypta:CHK@` artifact support.
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. In
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract

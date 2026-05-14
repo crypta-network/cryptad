@@ -112,6 +112,20 @@ class AppCatalogEntryDescriptorTest {
   }
 
   @Test
+  void parse_whenDescriptorUsesCryptaChkArtifactUri_expectAccepted() throws Exception {
+    Path artifact = tempDir.resolve("sample-app.zip").toAbsolutePath().normalize();
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + artifact,
+            "bundle.uri=crypta:CHK@sample-app-artifact",
+            "summary=Sample app catalog entry");
+
+    AppCatalogEntryDescriptor parsed = AppCatalogEntryDescriptor.parse(descriptor);
+
+    assertEquals(URI.create("crypta:CHK@sample-app-artifact"), parsed.bundleUri());
+  }
+
+  @Test
   void parse_whenArtifactPathIsRelative_expectInvalidCatalogEntry() throws Exception {
     Path descriptor =
         Files.writeString(

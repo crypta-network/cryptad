@@ -286,7 +286,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=3
+api.maximumTestedVersion=4
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -452,6 +452,52 @@ Those `signApp` and `verifyApp` tasks still require the signing inputs documente
 [app-distribution.md](app-distribution.md). Use the root `stageFirstPartyApps`,
 `signFirstPartyApps`, and `verifyFirstPartyApps` tasks when you need to process all first-party
 apps together.
+
+## First-party beta catalog publication
+
+The public beta catalog for first-party apps reuses the existing Gradle and `crypta-app` tooling.
+Maintainers should keep generated artifacts under `build/` or `dist/` and keep private signing and
+review keys outside the repository.
+
+1. Stage, sign, and verify the first-party bundles:
+
+   ```bash
+   ./gradlew stageFirstPartyApps
+   ./gradlew signFirstPartyApps
+   ./gradlew verifyFirstPartyApps
+   ./gradlew :platform-devtools:installDist
+   ```
+
+2. Pack `queue-manager`, `publisher`, and `site-publisher` with `crypta-app pack`. Insert each ZIP
+   into Crypta as an immutable CHK artifact through the maintainer publishing workflow.
+
+3. Write catalog descriptors whose public artifact location is the returned CHK:
+
+   ```properties
+   artifact.path=/abs/path/to/queue-manager.zip
+   bundle.uri=crypta:CHK@<artifact-key>
+   summary=Manage local Crypta transfer queues.
+   name=Queue Manager
+   permissions=queue.read,queue.write
+   permissions.rationale.queue.read=Reads local transfer queue state.
+   api.minimumVersion=1
+   api.maximumTestedVersion=4
+   review.status=reviewed
+   changelog.summary=First public beta catalog entry.
+   ```
+
+4. Create, sign, and verify the catalog with `crypta-app catalog create`, `crypta-app catalog
+   sign`, and `crypta-app catalog verify`. Publish both `cryptad-app-catalog.properties` and
+   `cryptad-app-catalog.signature` to the configured catalog USK.
+
+5. Configure runtime onboarding with `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and
+   `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID`, plus the normal `CRYPTAD_APPHOST_*` trusted public
+   key settings. Operators add the catalog through Web Shell or
+   `POST /api/v1/app-catalogs/recommended/crypta-first-party-beta/add`; apps are not installed
+   until the operator confirms an install/update for each entry.
+
+See [first-party-beta-catalog.md](first-party-beta-catalog.md) for the full maintainer and
+operator flow.
 
 ## Related docs
 

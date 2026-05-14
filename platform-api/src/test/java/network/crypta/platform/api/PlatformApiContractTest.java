@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":3"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":4"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(3, version.contractVersion());
+    assertEquals(4, version.contractVersion());
   }
 
   @Test
@@ -105,6 +105,9 @@ class PlatformApiContractTest {
     if (endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/identity-vault")) {
       return 3;
+    }
+    if (endpoint.routeTemplate().startsWith("/app-catalogs/recommended")) {
+      return 4;
     }
     return endpoint.routeTemplate().startsWith("/apps/{appId}/updates") ? 2 : 1;
   }

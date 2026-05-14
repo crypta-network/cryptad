@@ -1,6 +1,8 @@
 package network.crypta.runtime.core;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.time.Duration;
 import java.util.Objects;
@@ -60,6 +62,9 @@ final class LegacyContentFetchPort implements ContentFetchPort {
    */
   private static final int MAX_REDIRECTS = 8;
 
+  /** Buffer size used when streaming fetched buckets into caller-owned destinations. */
+  private static final int STREAM_BUFFER_BYTES = 64 * 1024;
+
   /** Node core used to create transient clients and cancel active getters on timeout. */
   private final NodeClientCore core;
 
@@ -83,15 +88,36 @@ final class LegacyContentFetchPort implements ContentFetchPort {
   @Override
   public BoundedContentFetchResult fetchContent(BoundedContentFetchRequest request)
       throws ContentFetchException {
-    Objects.requireNonNull(request, "request");
-    FreenetURI uri = parseUri(request);
-    HighLevelSimpleClient client = core.makeClient(FETCH_PRIORITY_CLASS, false, false);
-    RequestClient requestClient = (RequestClient) client;
-    FetchOutcome outcome = fetchFollowingRedirects(request, client, requestClient, uri);
+    FetchOutcome outcome = fetchOutcome(request);
     byte[] bytes = materializeResult(request, outcome.result());
     String resolvedUri = outcome.resolvedUri() == null ? null : outcome.resolvedUri().toString();
     return new BoundedContentFetchResult(
         bytes, request.uri(), resolvedUri, "Fetched " + bytes.length + " bytes");
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>This implementation streams the fetched daemon bucket directly into the caller-owned
+   * destination after checking the bucket-reported size. The copy loop enforces the requested byte
+   * limit again while reading, so an inaccurate bucket size cannot stream more than the caller
+   * allowed.
+   */
+  @Override
+  public void fetchContent(BoundedContentFetchRequest request, OutputStream destination)
+      throws ContentFetchException, IOException {
+    Objects.requireNonNull(destination, "destination");
+    FetchOutcome outcome = fetchOutcome(request);
+    streamResult(request, outcome.result(), destination);
+  }
+
+  private FetchOutcome fetchOutcome(BoundedContentFetchRequest request)
+      throws ContentFetchException {
+    Objects.requireNonNull(request, "request");
+    FreenetURI uri = parseUri(request);
+    HighLevelSimpleClient client = core.makeClient(FETCH_PRIORITY_CLASS, false, false);
+    RequestClient requestClient = (RequestClient) client;
+    return fetchFollowingRedirects(request, client, requestClient, uri);
   }
 
   /**
@@ -294,6 +320,65 @@ final class LegacyContentFetchPort implements ContentFetchPort {
           "Failed reading fetched content for " + request.purpose(),
           exception);
     }
+  }
+
+  /**
+   * Streams a bounded fetch result into a caller-owned destination and releases the source bucket.
+   *
+   * <p>The method checks the bucket-reported size before opening a stream, then enforces the same
+   * byte limit while copying. The destination is flushed but not closed because it is owned by the
+   * caller.
+   *
+   * @param request bounded request containing the maximum byte count and purpose
+   * @param result daemon fetch result whose bucket is owned by this adapter
+   * @param destination caller-owned output stream for fetched content
+   * @return number of bytes written
+   * @throws ContentFetchException if the result is oversized
+   * @throws IOException if the result cannot be read or the destination cannot be written
+   */
+  static long streamResult(
+      BoundedContentFetchRequest request, FetchResult result, OutputStream destination)
+      throws ContentFetchException, IOException {
+    Objects.requireNonNull(destination, "destination");
+    try (Bucket bucket = result.asBucket()) {
+      long resultSize = bucket.size();
+      if (resultSize > request.maxBytes()) {
+        throw oversizedContentException(request);
+      }
+      long bytesWritten = streamBucket(request, bucket, destination);
+      destination.flush();
+      return bytesWritten;
+    }
+  }
+
+  private static long streamBucket(
+      BoundedContentFetchRequest request, Bucket bucket, OutputStream destination)
+      throws ContentFetchException, IOException {
+    try (InputStream input = bucket.getInputStreamUnbuffered()) {
+      if (input == null) {
+        return 0L;
+      }
+      return copyBounded(request, input, destination);
+    }
+  }
+
+  private static long copyBounded(
+      BoundedContentFetchRequest request, InputStream input, OutputStream destination)
+      throws ContentFetchException, IOException {
+    byte[] buffer = new byte[STREAM_BUFFER_BYTES];
+    long bytesWritten = 0L;
+    int bytesRead;
+    while ((bytesRead = input.read(buffer)) >= 0) {
+      if (bytesRead == 0) {
+        continue;
+      }
+      if (bytesRead > request.maxBytes() - bytesWritten) {
+        throw oversizedContentException(request);
+      }
+      destination.write(buffer, 0, bytesRead);
+      bytesWritten += bytesRead;
+    }
+    return bytesWritten;
   }
 
   private static ContentFetchException oversizedContentException(

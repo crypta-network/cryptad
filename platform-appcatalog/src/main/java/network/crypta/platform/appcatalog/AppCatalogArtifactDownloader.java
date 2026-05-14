@@ -14,6 +14,9 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.OptionalLong;
+import network.crypta.runtime.spi.BoundedContentFetchRequest;
+import network.crypta.runtime.spi.ContentFetchException;
+import network.crypta.runtime.spi.ContentFetchPort;
 
 /**
  * Downloads one catalog artifact into a host-owned temporary file.
@@ -33,6 +36,7 @@ public final class AppCatalogArtifactDownloader {
   private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(2);
 
   private final HttpClient httpClient;
+  private final ContentFetchPort contentFetchPort;
   private final ArtifactCleaner artifactCleaner;
 
   /**
@@ -47,7 +51,21 @@ public final class AppCatalogArtifactDownloader {
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NEVER)
-            .build());
+            .build(),
+        (ContentFetchPort) null);
+  }
+
+  /**
+   * Creates a downloader with the default HTTP client and a Crypta content fetch collaborator.
+   *
+   * <p>The content fetch port is used only for {@code crypta:CHK@...} app bundle artifacts. The
+   * transport does not authenticate the bundle: the signed catalog size/SHA-256 check and the
+   * extracted signed-bundle verification still run after bytes are fetched.
+   *
+   * @param contentFetchPort runtime content fetch port for Crypta artifact bytes, or {@code null}
+   */
+  public AppCatalogArtifactDownloader(ContentFetchPort contentFetchPort) {
+    this(defaultHttpClient(), contentFetchPort);
   }
 
   /**
@@ -61,12 +79,30 @@ public final class AppCatalogArtifactDownloader {
    * @param httpClient client used for HTTP and HTTPS artifact retrieval
    */
   public AppCatalogArtifactDownloader(HttpClient httpClient) {
-    this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
-    artifactCleaner = Files::deleteIfExists;
+    this(httpClient, (ContentFetchPort) null);
+  }
+
+  /**
+   * Creates a downloader with explicit HTTP and optional Crypta content fetch collaborators.
+   *
+   * <p>Passing {@code null} for the content fetch port preserves the historic file/HTTP behavior
+   * while making Crypta artifact installs fail closed with {@code artifact_fetch_unavailable}.
+   *
+   * @param httpClient client used for HTTP and HTTPS artifact retrieval
+   * @param contentFetchPort runtime content fetch port for Crypta artifact bytes, or {@code null}
+   */
+  public AppCatalogArtifactDownloader(HttpClient httpClient, ContentFetchPort contentFetchPort) {
+    this(httpClient, contentFetchPort, Files::deleteIfExists);
   }
 
   AppCatalogArtifactDownloader(HttpClient httpClient, ArtifactCleaner artifactCleaner) {
+    this(httpClient, null, artifactCleaner);
+  }
+
+  AppCatalogArtifactDownloader(
+      HttpClient httpClient, ContentFetchPort contentFetchPort, ArtifactCleaner artifactCleaner) {
     this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
+    this.contentFetchPort = contentFetchPort;
     this.artifactCleaner = Objects.requireNonNull(artifactCleaner, "artifactCleaner");
   }
 
@@ -113,7 +149,18 @@ public final class AppCatalogArtifactDownloader {
       copyLocalArtifact(entry, uri, destination);
       return;
     }
+    if ("crypta".equals(scheme)) {
+      copyCryptaArtifact(entry, destination);
+      return;
+    }
     copyRemoteArtifact(entry, destination);
+  }
+
+  private static HttpClient defaultHttpClient() {
+    return HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .build();
   }
 
   private static void copyLocalArtifact(AppCatalogEntry entry, URI uri, Path destination) {
@@ -173,6 +220,64 @@ public final class AppCatalogArtifactDownloader {
     }
   }
 
+  private void copyCryptaArtifact(AppCatalogEntry entry, Path destination) {
+    ContentFetchPort port = requireContentFetchPort();
+    String fetchKey = AppCatalogSidecars.cryptaArtifactFetchKey(entry.bundleUri());
+    try {
+      try (VerifyingArtifactOutput output = VerifyingArtifactOutput.open(entry, destination)) {
+        port.fetchContent(
+            new BoundedContentFetchRequest(
+                fetchKey,
+                artifactFetchByteLimit(entry),
+                REQUEST_TIMEOUT,
+                "catalog artifact for app " + entry.appId()),
+            output);
+        output.finish();
+      }
+    } catch (ContentFetchException exception) {
+      throw new AppCatalogException(
+          mapContentFetchErrorCode(exception),
+          "failed to fetch Crypta artifact for app: " + entry.appId(),
+          exception);
+    } catch (IllegalArgumentException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+          "invalid Crypta artifact fetch request for app: " + entry.appId(),
+          exception);
+    } catch (IOException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.ARTIFACT_DOWNLOAD_FAILED,
+          "failed to read Crypta artifact for app: " + entry.appId(),
+          exception);
+    }
+  }
+
+  private ContentFetchPort requireContentFetchPort() {
+    if (contentFetchPort == null) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.ARTIFACT_FETCH_UNAVAILABLE,
+          "Crypta artifact fetch runtime is unavailable");
+    }
+    return contentFetchPort;
+  }
+
+  private static long artifactFetchByteLimit(AppCatalogEntry entry) {
+    long expectedBytes = entry.bundleSizeBytes();
+    return expectedBytes <= 0L
+        ? 1L
+        : Math.min(expectedBytes, AppCatalogSidecars.MAX_ARTIFACT_BYTES);
+  }
+
+  private static String mapContentFetchErrorCode(ContentFetchException exception) {
+    if (ContentFetchException.INVALID_CATALOG_SOURCE.equals(exception.errorCode())) {
+      return AppCatalogSidecars.INVALID_CATALOG_ENTRY;
+    }
+    if (AppCatalogSidecars.ARTIFACT_FETCH_UNAVAILABLE.equals(exception.errorCode())) {
+      return AppCatalogSidecars.ARTIFACT_FETCH_UNAVAILABLE;
+    }
+    return AppCatalogSidecars.ARTIFACT_DOWNLOAD_FAILED;
+  }
+
   private static void validateContentLength(
       AppCatalogEntry entry, HttpResponse<InputStream> response) {
     OptionalLong contentLength;
@@ -199,37 +304,100 @@ public final class AppCatalogArtifactDownloader {
 
   private static void copyAndVerify(AppCatalogEntry entry, InputStream input, Path destination)
       throws IOException {
-    MessageDigest digest = AppCatalogSidecars.newArtifactSha256Digest();
-    long bytesCopied = 0L;
     byte[] buffer = new byte[64 * 1024];
     try (InputStream in = input;
-        OutputStream out = Files.newOutputStream(destination)) {
+        VerifyingArtifactOutput out = VerifyingArtifactOutput.open(entry, destination)) {
       int bytesRead;
       while ((bytesRead = in.read(buffer)) >= 0) {
         if (bytesRead == 0) {
           continue;
         }
-        bytesCopied += bytesRead;
-        if (bytesCopied > entry.bundleSizeBytes()
-            || bytesCopied > AppCatalogSidecars.MAX_ARTIFACT_BYTES) {
-          throw new AppCatalogException(
-              AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
-              "artifact size exceeds catalog entry for app: " + entry.appId());
-        }
-        digest.update(buffer, 0, bytesRead);
         out.write(buffer, 0, bytesRead);
       }
+      out.finish();
     }
-    if (bytesCopied != entry.bundleSizeBytes()) {
-      throw new AppCatalogException(
-          AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
-          "artifact size does not match catalog entry for app: " + entry.appId());
+  }
+
+  private static final class VerifyingArtifactOutput extends OutputStream {
+    private final AppCatalogEntry entry;
+    private final OutputStream delegate;
+    private final MessageDigest digest = AppCatalogSidecars.newArtifactSha256Digest();
+    private long bytesCopied;
+    private boolean finished;
+
+    private VerifyingArtifactOutput(AppCatalogEntry entry, OutputStream delegate) {
+      this.entry = entry;
+      this.delegate = delegate;
     }
-    String actualSha256 = AppCatalogSidecars.lowercaseHex(digest.digest());
-    if (!entry.bundleSha256().equals(actualSha256)) {
-      throw new AppCatalogException(
-          AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
-          "artifact digest does not match catalog entry for app: " + entry.appId());
+
+    private static VerifyingArtifactOutput open(AppCatalogEntry entry, Path destination)
+        throws IOException {
+      return new VerifyingArtifactOutput(entry, Files.newOutputStream(destination));
+    }
+
+    @Override
+    public void write(int value) throws IOException {
+      ensureCanWrite(1);
+      delegate.write(value);
+      digest.update((byte) value);
+      bytesCopied++;
+    }
+
+    @Override
+    public void write(byte[] buffer, int offset, int length) throws IOException {
+      Objects.checkFromIndexSize(offset, length, buffer.length);
+      if (length == 0) {
+        return;
+      }
+      ensureCanWrite(length);
+      delegate.write(buffer, offset, length);
+      digest.update(buffer, offset, length);
+      bytesCopied += length;
+    }
+
+    @Override
+    public void flush() throws IOException {
+      delegate.flush();
+    }
+
+    @Override
+    public void close() throws IOException {
+      delegate.close();
+    }
+
+    private void finish() {
+      if (finished) {
+        return;
+      }
+      validateByteCount();
+      validateDigest();
+      finished = true;
+    }
+
+    private void ensureCanWrite(int length) {
+      if (length > entry.bundleSizeBytes() - bytesCopied
+          || length > AppCatalogSidecars.MAX_ARTIFACT_BYTES - bytesCopied) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
+            "artifact size exceeds catalog entry for app: " + entry.appId());
+      }
+    }
+
+    private void validateByteCount() {
+      if (bytesCopied != entry.bundleSizeBytes()) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
+            "artifact size does not match catalog entry for app: " + entry.appId());
+      }
+    }
+
+    private void validateDigest() {
+      String actualSha256 = AppCatalogSidecars.lowercaseHex(digest.digest());
+      if (!entry.bundleSha256().equals(actualSha256)) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.ARTIFACT_DIGEST_MISMATCH,
+            "artifact digest does not match catalog entry for app: " + entry.appId());
+      }
     }
   }
 

@@ -57,6 +57,33 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogUsesCryptaChkArtifact_expectEntryAccepted() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                """
+                catalog.version=1
+                catalog.id=core
+                catalog.name=Crypta Core Apps
+                catalog.generatedAt=%s
+                catalog.entries=queue-manager
+                app.queue-manager.id=queue-manager
+                app.queue-manager.name=Queue Manager
+                app.queue-manager.version=1.0.0
+                app.queue-manager.summary=Manage transfer queues.
+                app.queue-manager.bundle.uri=crypta:CHK@queue-manager-artifact
+                app.queue-manager.bundle.sha256=%s
+                app.queue-manager.bundle.size.bytes=0
+                app.queue-manager.bundle.type=zip
+                app.queue-manager.permissions=queue.read
+                """
+                    .formatted(GENERATED_AT, SHA256)));
+
+    assertEquals(
+        "crypta:CHK@queue-manager-artifact", catalog.entries().getFirst().bundleUri().toString());
+  }
+
+  @Test
   void parse_whenCatalogHasOptionalStoreMetadata_expectMetadataNormalized() {
     AppCatalog catalog =
         AppCatalogParser.parse(

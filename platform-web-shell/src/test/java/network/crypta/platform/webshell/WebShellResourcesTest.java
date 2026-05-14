@@ -321,6 +321,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("appsSnapshot: null"));
     assertTrue(script.contains("appCatalogsSnapshot: null"));
     assertTrue(script.contains("identityVaultSnapshot: null"));
+    assertTrue(script.contains("recommendedCatalogsSnapshot: null"));
     assertTrue(script.contains("const vaultCapabilityPrefix = \"vault.\";"));
     assertTrue(script.contains("let appsLoadGeneration = 0;"));
     assertTrue(script.contains("apps: document.getElementById(\"apps-body\")"));
@@ -409,12 +410,17 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function appAuditDetailsNode(audit, auditError)"));
     assertTrue(script.contains("app-log-tail"));
     assertTrue(script.contains("function renderApps(data)"));
+    assertTrue(script.contains("function renderRecommendedCatalogs("));
+    assertTrue(script.contains("function renderRecommendedCatalogCard("));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
     assertTrue(script.contains("function catalogSourceKind(catalog)"));
     assertTrue(script.contains("function catalogLastSuccessfulRefreshAt(catalog)"));
     assertTrue(script.contains("function catalogFetchFailed(catalog)"));
     assertTrue(script.contains("function catalogFetchWarningNode(catalog)"));
     assertTrue(script.contains("Catalogs unavailable: ${catalogError}"));
+    assertTrue(script.contains("Recommended catalogs"));
+    assertTrue(script.contains("Recommended catalogs unavailable: ${recommendedCatalogError}"));
+    assertTrue(script.contains("Catalog onboarding is waiting for"));
     assertTrue(script.contains("Identity vault"));
     assertTrue(script.contains("Vault summary"));
     assertTrue(script.contains("function renderCatalogCard(catalog)"));
@@ -430,9 +436,12 @@ class WebShellResourcesTest {
     assertTrue(script.contains("loadJson(apiUrl(\"apps\"))"));
     assertTrue(script.contains("installedSnapshot.apps.map(loadAppRuntimeDetails)"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs/recommended\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/identities\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/grants\"))"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
+    assertTrue(script.contains("recommendedSnapshot.catalogs"));
+    assertTrue(script.contains("renderRecommendedCatalogs("));
     assertTrue(script.contains("typeof catalog.sourceKind === \"string\" && catalog.sourceKind"));
     assertTrue(script.contains("typeof catalog.sourceType === \"string\" && catalog.sourceType"));
     assertTrue(script.contains("pills.append(createPill(sourceKind));"));
@@ -458,6 +467,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/audit`"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/updates`"));
     assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
+    assertTrue(script.contains("return `app-catalogs/recommended/${encodedCatalogId}/add`;"));
     assertTrue(
         script.contains(
             "return `app-catalogs/${encodedCatalogId}/apps/${encodedAppId}/${action}`;"));
@@ -618,13 +628,15 @@ class WebShellResourcesTest {
             "const catalogsSnapshot = await loadOptionalJson(apiUrl(\"app-catalogs\"));",
             renderErrorIndex);
     int catalogErrorIndex = script.indexOf("catalogError =", catalogLoadIndex);
-    int successGuardIndex =
-        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", catalogErrorIndex);
-    int renderAppsIndex =
+    int recommendedLoadIndex =
         script.indexOf(
-            "renderApps({ ...installedSnapshot, catalogs, catalogError, identityVault,"
-                + " identityVaultError });",
-            successGuardIndex);
+            "const recommendedSnapshot = await"
+                + " loadOptionalJson(apiUrl(\"app-catalogs/recommended\"));",
+            catalogErrorIndex);
+    int recommendedErrorIndex = script.indexOf("recommendedCatalogError =", recommendedLoadIndex);
+    int successGuardIndex =
+        script.indexOf("if (loadGeneration !== appsLoadGeneration) {", recommendedErrorIndex);
+    int renderAppsIndex = script.indexOf("renderApps({", successGuardIndex);
 
     assertTrue(loadAppsIndex >= 0);
     assertTrue(installedAwaitIndex > loadAppsIndex);
@@ -632,7 +644,9 @@ class WebShellResourcesTest {
     assertTrue(renderErrorIndex > installedErrorGuardIndex);
     assertTrue(catalogLoadIndex > renderErrorIndex);
     assertTrue(catalogErrorIndex > catalogLoadIndex);
-    assertTrue(successGuardIndex > catalogErrorIndex);
+    assertTrue(recommendedLoadIndex > catalogErrorIndex);
+    assertTrue(recommendedErrorIndex > recommendedLoadIndex);
+    assertTrue(successGuardIndex > recommendedErrorIndex);
     assertTrue(renderAppsIndex > successGuardIndex);
   }
 

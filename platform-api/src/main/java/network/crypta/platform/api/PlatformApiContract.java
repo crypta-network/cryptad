@@ -57,11 +57,12 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 3;
+  public static final int CURRENT_CONTRACT_VERSION = 4;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
   private static final int APP_VAULT_CONTRACT_VERSION = 3;
+  private static final int RECOMMENDED_CATALOG_CONTRACT_VERSION = 4;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -600,6 +601,7 @@ public record PlatformApiContract(
         PlatformApiCapabilities.CATALOGS_READ,
         PlatformApiCapabilities.CATALOGS_READ,
         "List configured app catalogs.");
+    builder.appCatalogRecommendationGet();
     builder.get(
         ROUTE_FAMILY_APP_CATALOGS,
         "/app-catalogs/{catalogId}/apps",
@@ -618,6 +620,7 @@ public record PlatformApiContract(
         "catalogs.add",
         List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
         "Add a signed catalog source.");
+    builder.appCatalogRecommendationPost();
     builder.post(
         ROUTE_FAMILY_APP_CATALOGS,
         "/app-catalogs/{catalogId}/refresh",
@@ -914,6 +917,34 @@ public record PlatformApiContract(
               false,
               false,
               "Update the local app update policy."));
+    }
+
+    private void appCatalogRecommendationGet() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_CATALOGS,
+              METHOD_GET,
+              "/app-catalogs/recommended",
+              "catalogs.recommended.list",
+              List.of(PlatformApiCapabilities.CATALOGS_READ),
+              RECOMMENDED_CATALOG_CONTRACT_VERSION,
+              true,
+              true,
+              "List recommended app catalogs for operator onboarding."));
+    }
+
+    private void appCatalogRecommendationPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_CATALOGS,
+              METHOD_POST,
+              "/app-catalogs/recommended/{catalogId}/add",
+              "catalogs.recommended.add",
+              List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+              RECOMMENDED_CATALOG_CONTRACT_VERSION,
+              true,
+              true,
+              "Add one recommended signed catalog source."));
     }
 
     private void endpoint(EndpointSpec spec) {

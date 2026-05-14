@@ -153,8 +153,7 @@ class AppUpdateServiceTest {
       throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
+    AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -208,8 +207,7 @@ class AppUpdateServiceTest {
   void check_whenLowerCatalogVersionRequiresFuturePlatformApi_expectNotNewerCandidate()
       throws Exception {
     AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
+    AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -402,8 +400,7 @@ class AppUpdateServiceTest {
       throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
+    AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -445,8 +442,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry compatibleEntry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    AppApiCompatibilityMetadata futureContract =
-        new AppApiCompatibilityMetadata(4, 4, List.of(), false);
+    AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     AppCatalogEntry incompatibleEntry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract);
     AppCatalogInstallPlan plan = plan(compatibleEntry);
@@ -1539,6 +1535,12 @@ class AppUpdateServiceTest {
   private static AppApiCompatibilityMetadata compatibleApiMetadata() {
     return new AppApiCompatibilityMetadata(
         1, PlatformApiContract.current().contractVersion(), List.of(), false);
+  }
+
+  private static AppApiCompatibilityMetadata futureApiMetadata() {
+    int futureContractVersion = PlatformApiContract.current().contractVersion() + 1;
+    return new AppApiCompatibilityMetadata(
+        futureContractVersion, futureContractVersion, List.of(), false);
   }
 
   private static AppCatalogEntry entry(

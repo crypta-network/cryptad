@@ -95,6 +95,26 @@
     },
     {
       "details": {
+        "catalogId": "crypta-first-party-beta",
+        "configuration": {
+          "sourceConfigured": false,
+          "trustedCatalogKeyHintConfigured": false,
+          "apphostTrustedKeyConfigured": false
+        },
+        "requiredFirstPartyApps": [
+          "queue-manager",
+          "publisher",
+          "site-publisher"
+        ]
+      },
+      "id": "app-catalog.first-party-beta",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party beta catalog onboarding evidence passed deterministic checks."
+    },
+    {
+      "details": {
         "receiptSchemaVersion": 1,
         "signatureAlgorithm": "Ed25519"
       },
