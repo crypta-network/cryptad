@@ -54,6 +54,31 @@ final class AppTemplateScaffolder {
       .sample-status {
         margin-top: var(--cr-space-3);
       }
+
+      .sample-grid {
+        display: grid;
+        gap: var(--cr-space-3);
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+      }
+
+      .sample-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--cr-space-2);
+      }
+
+      .sample-list {
+        display: grid;
+        gap: var(--cr-space-2);
+        margin: 0;
+        padding: 0;
+      }
+
+      .sample-list li {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--cr-space-3);
+      }
       """;
 
   /** Utility class; template generation is exposed through {@link #scaffold(ScaffoldRequest)}. */
@@ -73,6 +98,11 @@ final class AppTemplateScaffolder {
    */
   static Path scaffold(ScaffoldRequest request) throws IOException {
     ScaffoldRequest checked = Objects.requireNonNull(request, "request").normalize();
+    if (checked.templateKind() != AppTemplateKind.STATIC_BASIC
+        && checked.uiMode() != UiMode.STATIC) {
+      throw new AppDistributionException(
+          "template " + checked.templateKind().cliName() + " requires --ui-mode static");
+    }
     ensureWritableTarget(checked.directory(), checked.overwrite());
     createTemplateDirectory(checked.directory(), "target directory");
     createTemplateDirectory(checked.directory().resolve("bin"), "launcher directory");
@@ -306,6 +336,7 @@ final class AppTemplateScaffolder {
               Connecting to Crypta...
             </p>
           </section>
+          ${TEMPLATE_BODY}
         </main>
         <script src="./crypta-platform.js"></script>
         <script type="module" src="./app.js"></script>
@@ -313,7 +344,73 @@ final class AppTemplateScaffolder {
     </html>
     """
         .replace("${APP_NAME}", escapedName)
-        .replace("${PERMISSION_SUMMARY}", permissionSummary(request.permissions()));
+        .replace("${PERMISSION_SUMMARY}", permissionSummary(request.permissions()))
+        .replace("${TEMPLATE_BODY}", templateBody(request.templateKind()));
+  }
+
+  private static String templateBody(AppTemplateKind templateKind) {
+    return switch (templateKind) {
+      case STATIC_BASIC -> "";
+      case QUEUE_DASHBOARD ->
+          """
+          <section class="cr-card" aria-labelledby="queue-heading">
+            <div class="cr-card__header">
+              <h2 id="queue-heading">Queue</h2>
+              <button class="cr-button cr-button--secondary" type="button" id="refresh-queue">Refresh</button>
+            </div>
+            <ul class="sample-list" id="queue-list" aria-live="polite"></ul>
+            <div class="sample-actions">
+              <button class="cr-button" type="button" id="restart-first">Restart first</button>
+              <button class="cr-button cr-button--secondary" type="button" id="raise-priority">Raise priority</button>
+            </div>
+          </section>
+          """;
+      case PUBLISHER ->
+          """
+          <section class="cr-card" aria-labelledby="publisher-heading">
+            <h2 id="publisher-heading">Publisher</h2>
+            <form class="sample-layout" id="publish-form">
+              <label class="cr-field">
+                <span class="cr-label">Source path</span>
+                <input class="cr-input" name="sourcePath" required autocomplete="off">
+              </label>
+              <label class="cr-field">
+                <span class="cr-label">Insert URI</span>
+                <input class="cr-input" name="insertUri" required autocomplete="off">
+              </label>
+              <label class="cr-field">
+                <span class="cr-label">Queue identifier</span>
+                <input class="cr-input" name="identifier" value="sample-insert">
+              </label>
+              <label class="cr-field">
+                <span class="cr-label">Target filename</span>
+                <input class="cr-input" name="targetFilename" value="welcome.txt">
+              </label>
+              <button class="cr-button" type="submit">Queue insert</button>
+            </form>
+            <ul class="sample-list" id="publish-list" aria-live="polite"></ul>
+          </section>
+          """;
+      case VAULT_PROFILE ->
+          """
+          <section class="cr-card" aria-labelledby="vault-heading">
+            <div class="cr-card__header">
+              <h2 id="vault-heading">Vault profile</h2>
+              <button class="cr-button cr-button--secondary" type="button" id="request-grant">Request grant</button>
+            </div>
+            <div class="sample-grid">
+              <div>
+                <p class="cr-label">Identities</p>
+                <ul class="sample-list" id="identity-list" aria-live="polite"></ul>
+              </div>
+              <div>
+                <p class="cr-label">Grants</p>
+                <ul class="sample-list" id="grant-list" aria-live="polite"></ul>
+              </div>
+            </div>
+          </section>
+          """;
+    };
   }
 
   /**
@@ -323,22 +420,187 @@ final class AppTemplateScaffolder {
    * @return module script content for {@code static/app.js}
    */
   private static String staticJavaScript(ScaffoldRequest request) {
+    return switch (request.templateKind()) {
+      case STATIC_BASIC ->
+          """
+          const status = document.querySelector("#status");
+
+          async function main() {
+            const platform = window.CryptaPlatform;
+            const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
+            status.textContent = `${bootstrap.name} is connected.`;
+            status.className = "cr-status cr-status--success sample-status";
+          }
+
+          main().catch((error) => {
+            status.textContent = error instanceof Error ? error.message : String(error);
+            status.className = "cr-status cr-status--danger sample-status";
+          });
+          """
+              .replace(APP_ID_PLACEHOLDER, request.appId());
+      case QUEUE_DASHBOARD -> queueDashboardJavaScript(request.appId());
+      case PUBLISHER -> publisherJavaScript(request.appId());
+      case VAULT_PROFILE -> vaultProfileJavaScript(request.appId());
+    };
+  }
+
+  private static String queueDashboardJavaScript(String appId) {
     return """
     const status = document.querySelector("#status");
+    const queueList = document.querySelector("#queue-list");
+    const refreshButton = document.querySelector("#refresh-queue");
+    const restartButton = document.querySelector("#restart-first");
+    const priorityButton = document.querySelector("#raise-priority");
+
+    let firstRequestId = "";
+
+    async function loadQueue() {
+      const platform = window.CryptaPlatform;
+      const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
+      const snapshot = await platform.queue.snapshot({ page: "downloads" });
+      const requests = Array.isArray(snapshot.requests) ? snapshot.requests : [];
+      firstRequestId = requests.length > 0 ? String(requests[0].id || "") : "";
+      queueList.replaceChildren(...requests.map(renderRequest));
+      status.textContent = `${bootstrap.name} loaded ${requests.length} queue item(s).`;
+      status.className = "cr-status cr-status--success sample-status";
+    }
+
+    function renderRequest(request) {
+      const item = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent = request.name || request.uri || request.id || "Queued request";
+      const state = document.createElement("strong");
+      state.textContent = request.state || "mocked";
+      item.append(label, state);
+      return item;
+    }
+
+    async function mutateFirst(action) {
+      if (!firstRequestId) {
+        status.textContent = "No queue item is available in the mock data.";
+        return;
+      }
+      const form = new URLSearchParams();
+      form.set("identifier", firstRequestId);
+      if (action === "queue/requests/priority") {
+        form.set("priority", "2");
+      }
+      await window.CryptaPlatform.queue.mutate(action, form);
+      await loadQueue();
+    }
+
+    refreshButton.addEventListener("click", () => loadQueue().catch(showError));
+    restartButton.addEventListener("click", () => mutateFirst("queue/requests/restart").catch(showError));
+    priorityButton.addEventListener("click", () => mutateFirst("queue/requests/priority").catch(showError));
+
+    function showError(error) {
+      status.textContent = window.CryptaPlatform.api.errorMessage(error);
+      status.className = "cr-status cr-status--danger sample-status";
+    }
+
+    loadQueue().catch(showError);
+    """
+        .replace(APP_ID_PLACEHOLDER, appId);
+  }
+
+  private static String publisherJavaScript(String appId) {
+    return """
+    const status = document.querySelector("#status");
+    const form = document.querySelector("#publish-form");
+    const publishList = document.querySelector("#publish-list");
 
     async function main() {
       const platform = window.CryptaPlatform;
       const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
-      status.textContent = `${bootstrap.appName} is connected.`;
+      const snapshot = await platform.queue.snapshot({ page: "uploads" });
+      renderQueue(snapshot);
+      status.textContent = `${bootstrap.name} is ready to queue inserts.`;
       status.className = "cr-status cr-status--success sample-status";
     }
 
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const params = new URLSearchParams();
+      const identifier = String(data.get("identifier") || "").trim() || `sample-insert-${Date.now()}`;
+      params.set("sourcePath", String(data.get("sourcePath") || "").trim());
+      params.set("insertUri", String(data.get("insertUri") || "").trim());
+      params.set("identifier", identifier);
+      const targetFilename = String(data.get("targetFilename") || "").trim();
+      if (targetFilename) {
+        params.set("targetFilename", targetFilename);
+      }
+      const result = await window.CryptaPlatform.content.insertFile(params);
+      status.textContent = result.message || "Insert request queued in the mock API.";
+      await main();
+    });
+
+    function renderQueue(snapshot) {
+      const requests = Array.isArray(snapshot.requests) ? snapshot.requests : [];
+      publishList.replaceChildren(...requests.map((request) => {
+        const item = document.createElement("li");
+        const label = document.createElement("span");
+        label.textContent = request.name || request.id || "Insert request";
+        const state = document.createElement("strong");
+        state.textContent = request.state || "queued";
+        item.append(label, state);
+        return item;
+      }));
+    }
+
     main().catch((error) => {
-      status.textContent = error instanceof Error ? error.message : String(error);
+      status.textContent = window.CryptaPlatform.api.errorMessage(error);
       status.className = "cr-status cr-status--danger sample-status";
     });
     """
-        .replace(APP_ID_PLACEHOLDER, request.appId());
+        .replace(APP_ID_PLACEHOLDER, appId);
+  }
+
+  private static String vaultProfileJavaScript(String appId) {
+    return """
+    const status = document.querySelector("#status");
+    const identityList = document.querySelector("#identity-list");
+    const grantList = document.querySelector("#grant-list");
+    const grantButton = document.querySelector("#request-grant");
+
+    async function main() {
+      const platform = window.CryptaPlatform;
+      const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
+      const identities = await platform.vault.identities.list();
+      const grants = await platform.vault.grants.list();
+      render(identityList, Array.isArray(identities.identities) ? identities.identities : [], "identity");
+      render(grantList, Array.isArray(grants.grants) ? grants.grants : [], "grant");
+      status.textContent = `${bootstrap.name} loaded safe mock vault data.`;
+      status.className = "cr-status cr-status--success sample-status";
+    }
+
+    grantButton.addEventListener("click", async () => {
+      await window.CryptaPlatform.vault.grants.request({
+        identityId: "local-profile",
+        scopes: ["metadata.read", "publish.profile"],
+        reason: "Preview a local beta profile flow.",
+      });
+      await main();
+    });
+
+    function render(target, values, fallback) {
+      target.replaceChildren(...values.map((value) => {
+        const item = document.createElement("li");
+        const label = document.createElement("span");
+        label.textContent = value.displayName || value.id || fallback;
+        const state = document.createElement("strong");
+        state.textContent = value.status || value.kind || "mock";
+        item.append(label, state);
+        return item;
+      }));
+    }
+
+    main().catch((error) => {
+      status.textContent = window.CryptaPlatform.api.errorMessage(error);
+      status.className = "cr-status cr-status--danger sample-status";
+    });
+    """
+        .replace(APP_ID_PLACEHOLDER, appId);
   }
 
   private static String permissionSummary(List<String> permissions) {
@@ -400,18 +662,22 @@ final class AppTemplateScaffolder {
     ## Local workflow
 
     ```bash
-    crypta-app ui lint --bundle-dir . --strict
-    crypta-app validate --bundle-dir . --strict
-    crypta-app sign --bundle-dir . --key-id dev-local --private-key-file /path/to/private.pem
+    crypta-app dev --bundle-dir . --port 0
+    crypta-app test --bundle-dir . --strict
+    crypta-app keys generate --key-id dev-local --private-key-file ../keys/dev-local-private.der --public-key-file ../keys/dev-local-public.der --trusted-keys-file ../keys/trusted-app-keys.properties
+    crypta-app sign --bundle-dir . --key-id dev-local --private-key-file ../keys/dev-local-private.der
     crypta-app pack --bundle-dir . --output ../${APP_ID}-${APP_VERSION}.zip --overwrite
-    crypta-app verify --bundle-dir . --trusted-key-id dev-local --trusted-public-key-file /path/to/public.pem
+    crypta-app verify --bundle-dir . --trusted-keys-file ../keys/trusted-app-keys.properties
     ```
+
+    Template: `${TEMPLATE}`.
 
     Replace `bin/start.sh` with the production launcher before distributing the app.
     """
         .replace("${APP_NAME}", request.name())
         .replace(APP_ID_PLACEHOLDER, request.appId())
-        .replace("${APP_VERSION}", request.version());
+        .replace("${APP_VERSION}", request.version())
+        .replace("${TEMPLATE}", request.templateKind().cliName());
   }
 
   /**
@@ -490,6 +756,7 @@ final class AppTemplateScaffolder {
    * @param name human-readable app name written into the manifest and template UI
    * @param version app version string written into the manifest
    * @param uiMode requested UI template mode, defaulting to static when omitted
+   * @param templateKind named static beta template to render
    * @param permissions manifest permissions requested for the generated app
    * @param overwrite whether an existing non-empty target directory may be reused
    */
@@ -499,6 +766,7 @@ final class AppTemplateScaffolder {
       String name,
       String version,
       UiMode uiMode,
+      AppTemplateKind templateKind,
       List<String> permissions,
       boolean overwrite) {
     /**
@@ -514,6 +782,7 @@ final class AppTemplateScaffolder {
       Objects.requireNonNull(name, "name");
       Objects.requireNonNull(version, "version");
       uiMode = Objects.requireNonNullElse(uiMode, UiMode.STATIC);
+      templateKind = Objects.requireNonNullElse(templateKind, AppTemplateKind.STATIC_BASIC);
       permissions = List.copyOf(Objects.requireNonNull(permissions, "permissions"));
     }
 
@@ -534,8 +803,16 @@ final class AppTemplateScaffolder {
           name.trim(),
           version.trim(),
           uiMode,
-          normalizePermissions(permissions),
+          templateKind,
+          normalizePermissions(templatePermissions(templateKind, permissions)),
           overwrite);
+    }
+
+    private static List<String> templatePermissions(
+        AppTemplateKind templateKind, List<String> permissions) {
+      LinkedHashSet<String> combined = new LinkedHashSet<>(templateKind.defaultPermissions());
+      combined.addAll(permissions);
+      return List.copyOf(combined);
     }
 
     /**
@@ -567,7 +844,9 @@ final class AppTemplateScaffolder {
           .append("api.maximumTestedVersion=")
           .append(currentContractVersion)
           .append('\n')
-          .append("api.experimentalCapabilitiesAccepted=false\n")
+          .append("api.experimentalCapabilitiesAccepted=")
+          .append(templateKind.experimentalCapabilitiesAccepted())
+          .append('\n')
           .append("app.exec=bin/start.sh\n")
           .append("app.ui.mode=")
           .append(uiMode.value)

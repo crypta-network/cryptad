@@ -26,6 +26,34 @@
     },
     {
       "details": {
+        "checks": {
+          "catalogEntryCommand": true,
+          "devCommand": true,
+          "guideCoversFlow": true,
+          "guideExists": true,
+          "keyGeneration": true,
+          "mockSessionRequired": true,
+          "offlineTestSmoke": true,
+          "publishPlanDryRunOnly": true,
+          "publishUskCommand": true,
+          "selfTestsCoverFlow": true,
+          "templates": {
+            "publisher": true,
+            "queue-dashboard": true,
+            "static-basic": true,
+            "vault-profile": true
+          },
+          "testCommand": true
+        }
+      },
+      "id": "app-platform.developer-beta-toolkit",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Developer beta toolkit command, mock-dev, test, catalog, and publication-plan evidence passed."
+    },
+    {
+      "details": {
         "apiVersion": "v1",
         "capabilityCount": 23,
         "contractVersion": 2,

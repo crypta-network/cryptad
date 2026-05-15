@@ -50,6 +50,11 @@ The snapshot is deterministic and excludes raw app process tokens, browser sessi
 bootstrap nonces, form passwords, request bodies, query strings, filesystem paths, sandbox command
 lines, environment variables, private keys, and private insert URIs.
 
+The developer beta toolkit uses the same contract metadata in `crypta-app test` and
+`crypta-app compat verify`. Scaffolded beta templates declare conservative `api.minimumVersion` and
+`api.maximumTestedVersion` values, and catalog entry generation copies the manifest compatibility
+metadata into descriptor output. See [developer-beta-toolkit.md](developer-beta-toolkit.md).
+
 ## Descriptor fields
 
 Capability descriptors contain:

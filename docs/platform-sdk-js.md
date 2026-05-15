@@ -26,6 +26,13 @@ static` can see the SDK resource, its template copies or vendors the file as
 `static/crypta-platform.js` in the staged bundle. The scaffolded HTML should still load it with the
 relative `./crypta-platform.js` path shown above.
 
+The developer beta toolkit also serves scaffolded static bundles through `crypta-app dev`. That
+mock server exposes both `/.well-known/cryptad-bootstrap.json` and
+`/apps/{appId}/.well-known/cryptad-bootstrap.json`, then requires the SDK's
+`X-Crypta-App-Session` header for mock Platform API calls. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md) for the local mock-server flow and its
+limits.
+
 ## Bootstrap
 
 Call `CryptaPlatform.bootstrap.load()` before using API helpers:

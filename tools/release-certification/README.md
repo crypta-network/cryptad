@@ -78,6 +78,7 @@ interop.smoke
 performance.smoke
 app-platform.first-party
 app-platform.devtools-cli
+app-platform.developer-beta-toolkit
 app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
@@ -99,10 +100,11 @@ app-review.policy
 app-review.first-party-catalog
 ```
 
-`platform-api.contract`, `app-vault.capabilities`, `app-ui.design-system`, `app-ui.lint`,
-`app-ui.first-party-adoption`, `reference-apps.content`, `apphost.sandbox-provider`,
-`app-update.lifecycle`, `app-update.scheduler`, `app-update.rollback`,
-`app-catalog.first-party-beta`, `app-review.trusted-receipts`, and
+`platform-api.contract`, `app-vault.capabilities`, `app-platform.developer-beta-toolkit`,
+`app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`,
+`reference-apps.content`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+`app-update.scheduler`, `app-update.rollback`, `app-catalog.first-party-beta`,
+`app-review.trusted-receipts`, and
 `app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
 require a live node or host-installed bubblewrap in normal CI. `app-catalog.first-party-beta`
 reports source/key configuration readiness but does not fetch the public Crypta catalog.

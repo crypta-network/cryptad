@@ -79,6 +79,12 @@ credentials, and do not allow `X-Crypta-App-Token` through app-browser preflight
 registered app origin without `X-Crypta-App-Session` fail as app-browser authentication failures
 and do not fall back to host/operator Web Shell authentication.
 
+The `crypta-app dev` beta mock server intentionally mirrors the browser-session header shape for
+local template development: bootstrap returns a mock browser session, and mock `/api/v1/...` routes
+return `401 invalid_app_browser_session` when the `X-Crypta-App-Session` value is missing or wrong.
+That local session is not a real AppHost process token and does not install or authorize an app on
+a live node. See [developer-beta-toolkit.md](developer-beta-toolkit.md).
+
 ## App principals
 
 When a process token authenticates, the Platform API receives a token-free app principal:

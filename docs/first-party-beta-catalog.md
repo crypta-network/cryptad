@@ -11,6 +11,11 @@ weaken any existing gates. Catalog signatures, bundle signatures, review receipt
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
 
+The third-party developer beta toolkit extends the standalone CLI with scaffold templates, a mock
+dev server, offline app tests, catalog entry generation, and a dry-run USK publication checklist.
+It does not replace this first-party beta catalog flow or its release gates. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md) for the app-author workflow.
+
 `crypta:` transport is not a trust boundary. Crypta-hosted catalog and bundle artifacts still must
 match signed catalog metadata and signed bundle sidecars before AppHost can install or update them.
 

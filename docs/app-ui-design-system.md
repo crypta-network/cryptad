@@ -39,6 +39,12 @@ Static app JavaScript should still load the browser SDK before app code:
 <script type="module" src="./app.js"></script>
 ```
 
+The `crypta-app init --template` beta templates vendor these assets automatically and are expected
+to pass `crypta-app ui lint --strict` and `crypta-app test --strict` before signing. The mock
+development server in `crypta-app dev` serves only staged static assets and does not relax the
+local-resource or permission-disclosure rules. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md).
+
 ## Stable classes
 
 The first stable vocabulary is deliberately narrow:
