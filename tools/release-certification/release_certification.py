@@ -834,6 +834,7 @@ def app_platform_evidence(
     expected_ids = [
         "app-platform.first-party",
         "app-platform.devtools-cli",
+        "app-platform.developer-beta-toolkit",
         "platform-api.contract",
         "app-vault.capabilities",
         "app-platform.signed-bundles",
@@ -2230,6 +2231,7 @@ def render_report(summary: dict[str, Any]) -> str:
     for evidence_id in (
         "app-platform.first-party",
         "app-platform.devtools-cli",
+        "app-platform.developer-beta-toolkit",
         "platform-api.contract",
         "app-vault.capabilities",
         "app-platform.signed-bundles",

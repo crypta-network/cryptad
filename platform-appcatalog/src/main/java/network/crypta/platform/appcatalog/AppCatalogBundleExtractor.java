@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -17,15 +18,19 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipInputStream;
+import network.crypta.platform.appdist.AppBundleDigest;
+import network.crypta.platform.appdist.AppBundleDigestVerifier;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundlePackager;
+import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -80,6 +85,42 @@ public final class AppCatalogBundleExtractor {
   }
 
   /**
+   * Safely inspects a local ZIP artifact and requires signed-bundle sidecars.
+   *
+   * <p>This method is intended for offline catalog-authoring tools before they write catalog entry
+   * descriptors. It expands the artifact through the same ZIP safety path used by install/update
+   * extraction, requires canonical root {@code cryptad-app.digests} and {@code
+   * cryptad-app.signature} entries, validates the signature sidecar format, and verifies that the
+   * digest sidecar matches the extracted bundle contents.
+   *
+   * <p>Because catalog entry generation does not receive a trusted-key registry, this inspection
+   * does not make a publisher trust decision. Runtime install and update paths must continue to use
+   * {@link #extract(AppCatalogEntry, Path, Path, TrustedAppKeys)} so the signed digest is also
+   * verified against trusted app signing keys.
+   *
+   * @param artifactZip local artifact ZIP to inspect
+   * @param scratchDirectory host-owned scratch directory used for temporary extraction
+   * @return parsed artifact manifest after sidecar and digest checks
+   * @throws IOException if filesystem, ZIP, sidecar, or bundle validation fails
+   */
+  public static AppBundleManifest inspectSignedArtifact(Path artifactZip, Path scratchDirectory)
+      throws IOException {
+    Path zipPath = requireReadableArtifactZip(artifactZip);
+    Path scratchRoot =
+        Objects.requireNonNull(scratchDirectory, "scratchDirectory").toAbsolutePath().normalize();
+    Files.createDirectories(scratchRoot);
+    Path stagedRoot = Files.createTempDirectory(scratchRoot, "catalog-bundle-inspect-");
+    try {
+      extractZip(zipPath, stagedRoot);
+      return verifyExtractedSignedArtifact(stagedRoot);
+    } catch (AppDistributionException exception) {
+      throw invalidBundle(exception.getMessage(), exception);
+    } finally {
+      deleteRecursively(stagedRoot);
+    }
+  }
+
+  /**
    * Extracts, verifies, and validates one downloaded ZIP artifact.
    *
    * <p>The method creates a new child directory under {@code scratchDirectory}, expands the ZIP
@@ -111,6 +152,18 @@ public final class AppCatalogBundleExtractor {
       deleteRecursively(stagedRoot);
       throw exception;
     }
+  }
+
+  private static Path requireReadableArtifactZip(Path artifactZip) {
+    Path normalized =
+        Objects.requireNonNull(artifactZip, "artifactZip").toAbsolutePath().normalize();
+    if (Files.isSymbolicLink(normalized)) {
+      throw invalidBundle("zip artifact must not be a symbolic link");
+    }
+    if (!Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS)) {
+      throw invalidBundle("zip artifact must be a regular file");
+    }
+    return normalized;
   }
 
   private static void extractZip(Path zipPath, Path stagedRoot) throws IOException {
@@ -454,6 +507,57 @@ public final class AppCatalogBundleExtractor {
       }
     }
     return false;
+  }
+
+  private static AppBundleManifest verifyExtractedSignedArtifact(Path stagedRoot)
+      throws IOException {
+    Path manifestFile = stagedRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME);
+    if (!Files.isRegularFile(manifestFile, LinkOption.NOFOLLOW_LINKS)) {
+      throw invalidBundle("zip artifact must contain cryptad-app.properties at the root");
+    }
+    requireCanonicalSignedSidecars(stagedRoot);
+    AppBundleVerifier.read(stagedRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
+    AppBundleDigestVerifier.verify(stagedRoot);
+    return AppBundleManifestParser.parse(manifestFile);
+  }
+
+  private static void requireCanonicalSignedSidecars(Path stagedRoot) throws IOException {
+    boolean digest = false;
+    boolean signature = false;
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(stagedRoot)) {
+      for (Path entry : entries) {
+        String name = Objects.requireNonNull(entry.getFileName(), "artifact root entry").toString();
+        String normalized = name.toLowerCase(Locale.ROOT);
+        if (!isRootDistributionSidecar(normalized)) {
+          continue;
+        }
+        if (!name.equals(normalized)) {
+          throw invalidBundle(
+              "zip artifact contains a non-canonical distribution sidecar name: " + name);
+        }
+        switch (normalized) {
+          case AppBundleDigest.DIGEST_FILE_NAME -> digest = true;
+          case AppBundleSignature.SIGNATURE_FILE_NAME -> signature = true;
+          default -> throw invalidBundle("zip artifact must not contain catalog sidecars");
+        }
+      }
+    }
+    if (!digest || !signature) {
+      throw invalidBundle(
+          "zip artifact must contain signed bundle sidecars "
+              + AppBundleDigest.DIGEST_FILE_NAME
+              + " and "
+              + AppBundleSignature.SIGNATURE_FILE_NAME);
+    }
+  }
+
+  private static boolean isRootDistributionSidecar(String normalizedName) {
+    return AppBundleDigest.DIGEST_FILE_NAME.equals(normalizedName)
+        || AppBundleSignature.SIGNATURE_FILE_NAME.equals(normalizedName)
+        || AppCatalogSignature.CATALOG_FILE_NAME.equals(normalizedName)
+        || AppCatalogSignature.SIGNATURE_FILE_NAME.equals(normalizedName)
+        || "cryptad-app.catalog".equals(normalizedName)
+        || "cryptad-app.catalog.signature".equals(normalizedName);
   }
 
   private static void verifyExtractedBundle(

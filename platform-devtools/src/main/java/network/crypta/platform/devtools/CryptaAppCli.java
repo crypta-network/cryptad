@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -45,6 +46,8 @@ import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.AppDistributionTool;
 import network.crypta.platform.appdist.PackagedAppBundle;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.platform.devtools.devserver.CryptaAppDevServer;
+import network.crypta.platform.devtools.devserver.DevServerConfig;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
@@ -72,7 +75,10 @@ import picocli.CommandLine;
     description = "Create, validate, lint, package, sign, and catalog Crypta app bundles.",
     subcommands = {
       CryptaAppCli.InitCommand.class,
+      CryptaAppCli.DevCommand.class,
+      CryptaAppCli.AppTestCommand.class,
       CryptaAppCli.ValidateCommand.class,
+      CryptaAppCli.KeysCommand.class,
       CryptaAppCli.PackCommand.class,
       CryptaAppCli.SignCommand.class,
       CryptaAppCli.VerifyCommand.class,
@@ -80,7 +86,8 @@ import picocli.CommandLine;
       CryptaAppCli.CompatCommand.class,
       CryptaAppCli.UiCommand.class,
       CryptaAppCli.ReviewCommand.class,
-      CryptaAppCli.CatalogCommand.class
+      CryptaAppCli.CatalogCommand.class,
+      CryptaAppCli.PublishUskCommand.class
     })
 public final class CryptaAppCli implements Runnable {
   private CommandSpec spec;
@@ -187,6 +194,14 @@ public final class CryptaAppCli implements Runnable {
         description = "UI template mode: static, shell-panel, or none.")
     private String uiMode;
 
+    @Option(
+        names = "--template",
+        defaultValue = "static-basic",
+        description =
+            "Beta app template: ${COMPLETION-CANDIDATES}. Supported: "
+                + "static-basic, queue-dashboard, publisher, vault-profile.")
+    private String template;
+
     @Option(names = "--permission", description = "Manifest permission to add; repeatable.")
     private List<String> permissions = new ArrayList<>();
 
@@ -203,10 +218,178 @@ public final class CryptaAppCli implements Runnable {
                   name,
                   version,
                   AppTemplateScaffolder.UiMode.parse(uiMode),
+                  AppTemplateKind.parse(template),
                   permissions,
                   overwrite));
       super.commandLine().getOut().println("Initialized app bundle at " + scaffolded);
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app dev} for local static UI and mock Platform API serving. */
+  @Command(name = "dev", description = "Serve a staged static app bundle with a mock Platform API.")
+  static final class DevCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--bundle-dir", required = true, description = "Staged bundle directory.")
+    private Path bundleDir;
+
+    @Option(names = "--host", defaultValue = "127.0.0.1", description = "Listener host.")
+    private String host;
+
+    @Option(names = "--port", defaultValue = "0", description = "Listener port, or 0 for any.")
+    private int port;
+
+    @Option(names = "--fixture-dir", description = "Directory containing JSON mock fixtures.")
+    private Path fixtureDir;
+
+    @Option(
+        names = "--open",
+        defaultValue = "false",
+        arity = "1",
+        description = "Print browser-open hint: true or false.")
+    private boolean open;
+
+    @Option(
+        names = "--session-ttl-seconds",
+        defaultValue = "3600",
+        description = "Mock browser-session lifetime.")
+    private long sessionTtlSeconds;
+
+    @Option(
+        names = "--allow-non-loopback",
+        description = "Allow binding the dev server to a non-loopback host.")
+    private boolean allowNonLoopback;
+
+    @Override
+    public Integer call() throws Exception {
+      try (CryptaAppDevServer server =
+          CryptaAppDevServer.start(
+              new DevServerConfig(
+                  bundleDir,
+                  host,
+                  port,
+                  fixtureDir,
+                  allowNonLoopback,
+                  Duration.ofSeconds(sessionTtlSeconds)))) {
+        Runtime.getRuntime().addShutdownHook(new Thread(server::close, "crypta-app-dev-shutdown"));
+        super.commandLine().getOut().println(server.startupSummary());
+        if (open) {
+          super.commandLine().getOut().println("Open: " + server.uiUrl());
+        }
+        Thread.currentThread().join();
+      }
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app test} for offline developer checks. */
+  @Command(name = "test", description = "Run the offline app developer test suite.")
+  static final class AppTestCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--bundle-dir", required = true, description = "Staged bundle directory.")
+    private Path bundleDir;
+
+    @Option(names = "--strict", description = "Treat warnings as failures.")
+    private boolean strict;
+
+    @Option(names = "--contract", description = "Platform API contract JSON snapshot.")
+    private Path contract;
+
+    @Option(names = "--catalog-entry", description = "Optional catalog entry descriptor.")
+    private Path catalogEntry;
+
+    @Option(names = "--json", description = "Write deterministic JSON report.")
+    private Path jsonOutput;
+
+    @Override
+    public Integer call() throws Exception {
+      AppTestReport report =
+          AppTestSuite.run(new AppTestSuite.Request(bundleDir, strict, contract, catalogEntry));
+      for (AppTestCheck check : report.checks()) {
+        super.commandLine()
+            .getOut()
+            .println(check.id() + " " + check.status().jsonValue() + ": " + check.summary());
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "App test suite "
+                  + report.status().jsonValue()
+                  + ": "
+                  + report.appId()
+                  + " "
+                  + report.version());
+      if (jsonOutput != null) {
+        Path normalizedJsonOutput = jsonOutput.toAbsolutePath().normalize();
+        Path parent = normalizedJsonOutput.getParent();
+        if (parent != null) {
+          Files.createDirectories(parent);
+        }
+        Files.writeString(
+            normalizedJsonOutput, AppTestReportJson.write(report), StandardCharsets.UTF_8);
+      }
+      return report.status() == AppTestStatus.FAIL
+          ? CommandLine.ExitCode.SOFTWARE
+          : CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Parent command for local developer signing key operations. */
+  @Command(
+      name = "keys",
+      description = "Generate local developer app signing keys.",
+      subcommands = {KeysGenerateCommand.class})
+  static final class KeysCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app keys generate}. */
+  @Command(name = "generate", description = "Generate a local Ed25519 app signing key pair.")
+  static final class KeysGenerateCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--key-id", required = true, description = "Signing key id.")
+    private String keyId;
+
+    @Option(names = "--private-key-file", required = true, description = "Private key output file.")
+    private Path privateKeyFile;
+
+    @Option(names = "--public-key-file", required = true, description = "Public key output file.")
+    private Path publicKeyFile;
+
+    @Option(names = "--trusted-keys-file", description = "Trusted app keys properties output.")
+    private Path trustedKeysFile;
+
+    @Option(names = "--overwrite", description = "Replace existing key files.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      printKeyPathWarning(privateKeyFile);
+      printKeyPathWarning(publicKeyFile);
+      if (trustedKeysFile != null) {
+        printKeyPathWarning(trustedKeysFile);
+      }
+      DeveloperKeyGenerator.GeneratedKeys generated =
+          DeveloperKeyGenerator.generate(
+              keyId, privateKeyFile, publicKeyFile, trustedKeysFile, overwrite);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Generated app signing key: "
+                  + keyId
+                  + " public="
+                  + generated.publicKeyFile().getFileName());
+      if (generated.trustedKeysFile() != null) {
+        super.commandLine().getOut().println("Wrote trusted keys file.");
+      }
+      return CommandLine.ExitCode.OK;
+    }
+
+    private void printKeyPathWarning(Path path) {
+      String warning = DeveloperKeyGenerator.repoPathWarning(path);
+      if (!warning.isBlank()) {
+        super.commandLine().getErr().println(warning);
+      }
     }
   }
 
@@ -813,6 +996,7 @@ public final class CryptaAppCli implements Runnable {
       name = "catalog",
       description = "Create, sign, and verify signed app catalogs.",
       subcommands = {
+        CatalogEntryCommand.class,
         CatalogCreateCommand.class,
         CatalogSignCommand.class,
         CatalogVerifyCommand.class
@@ -821,6 +1005,103 @@ public final class CryptaAppCli implements Runnable {
     @Override
     public void run() {
       super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app catalog entry}. */
+  @Command(name = "entry", description = "Generate a catalog entry descriptor for a signed bundle.")
+  static final class CatalogEntryCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(
+        names = "--bundle-dir",
+        required = true,
+        description = "Signed staged bundle directory.")
+    private Path bundleDir;
+
+    @Option(names = "--artifact", required = true, description = "Packaged ZIP artifact.")
+    private Path artifact;
+
+    @Option(names = "--bundle-uri", required = true, description = "Public bundle artifact URI.")
+    private URI bundleUri;
+
+    @Option(names = "--output", required = true, description = "Catalog entry descriptor output.")
+    private Path output;
+
+    @Option(names = "--summary", required = true, description = "Catalog summary.")
+    private String summary;
+
+    @Option(names = "--homepage", description = "App homepage URI.")
+    private URI homepage;
+
+    @Option(names = "--source", description = "Source code URI.")
+    private URI source;
+
+    @Option(names = "--license", description = "License identifier.")
+    private String license;
+
+    @Option(names = "--category", description = "Catalog category list.")
+    private String category;
+
+    @Option(names = "--minimum-crypta-version", description = "Minimum Crypta build/version.")
+    private String minimumCryptaVersion;
+
+    @Option(
+        names = "--review-receipt",
+        description = "Review receipt to copy advisory metadata from.")
+    private Path reviewReceipt;
+
+    @Option(names = "--changelog-summary", description = "Short changelog summary.")
+    private String changelogSummary;
+
+    @Option(
+        names = "--permission-rationale",
+        description = "Permission rationale in permission=text form; repeatable.")
+    private List<String> permissionRationales = new ArrayList<>();
+
+    @Option(names = "--screenshot", description = "Screenshot URI; repeatable.")
+    private List<URI> screenshots = new ArrayList<>();
+
+    @Option(names = "--strict", description = "Require a rationale for every permission.")
+    private boolean strict;
+
+    @Option(names = "--overwrite", description = "Replace an existing descriptor.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      CatalogEntryDescriptorGenerator.Result result =
+          CatalogEntryDescriptorGenerator.write(
+              new CatalogEntryDescriptorGenerator.Request(
+                  bundleDir,
+                  artifact,
+                  bundleUri,
+                  output,
+                  summary,
+                  Optional.ofNullable(homepage),
+                  Optional.ofNullable(source),
+                  Optional.ofNullable(license),
+                  Optional.ofNullable(category),
+                  Optional.ofNullable(minimumCryptaVersion),
+                  reviewReceipt,
+                  Optional.ofNullable(changelogSummary),
+                  CatalogEntryDescriptorGenerator.normalizeRationales(permissionRationales),
+                  screenshots,
+                  strict,
+                  overwrite));
+      for (String permission : result.missingRationales()) {
+        super.commandLine()
+            .getErr()
+            .println("Warning: missing permission rationale for " + permission);
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "Wrote catalog entry descriptor: "
+                  + result.appId()
+                  + " "
+                  + result.version()
+                  + " -> "
+                  + output.toAbsolutePath().normalize().getFileName());
+      return CommandLine.ExitCode.OK;
     }
   }
 
@@ -960,6 +1241,55 @@ public final class CryptaAppCli implements Runnable {
       }
       AppCatalog catalog = AppCatalogVerifier.verify(catalogFile, trustedKeys);
       super.commandLine().getOut().println("Verified catalog: " + catalog.catalogId());
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app publish-usk}. */
+  @Command(name = "publish-usk", description = "Write an offline Crypta USK publication plan.")
+  static final class PublishUskCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--catalog-file", required = true, description = "Catalog properties file.")
+    private Path catalogFile;
+
+    @Option(
+        names = "--catalog-signature-file",
+        required = true,
+        description = "Catalog signature sidecar.")
+    private Path catalogSignatureFile;
+
+    @Option(
+        names = "--catalog-source",
+        required = true,
+        description = "Public crypta:USK catalog source URI.")
+    private String catalogSource;
+
+    @Option(names = "--output", required = true, description = "Publication plan output.")
+    private Path output;
+
+    @Option(names = "--dry-run", description = "Generate a plan without live insertion.")
+    private boolean dryRun;
+
+    @Override
+    public Integer call() throws Exception {
+      PublicationPlanWriter.Result result =
+          PublicationPlanWriter.write(
+              new PublicationPlanWriter.Request(
+                  catalogFile, catalogSignatureFile, catalogSource, output));
+      if (!dryRun) {
+        throw new AppDistributionException(
+            "live_publish_not_supported: wrote offline plan "
+                + result.output().getFileName()
+                + "; perform Crypta inserts with a reviewed insertion workflow");
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "Wrote Crypta USK publication plan: "
+                  + result.catalogId()
+                  + " entries="
+                  + result.entryCount()
+                  + " output="
+                  + result.output().getFileName());
       return CommandLine.ExitCode.OK;
     }
   }

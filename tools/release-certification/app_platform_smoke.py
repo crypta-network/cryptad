@@ -50,6 +50,7 @@ LEGACY_REMOVAL_WAVE_ONE_IDS = (
 )
 APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
 APP_VAULT_DOC = Path("docs/app-secret-and-identity-vault.md")
+DEVELOPER_BETA_TOOLKIT_DOC = Path("docs/developer-beta-toolkit.md")
 APP_VAULT_CAPABILITIES = (
     "vault.secrets.read",
     "vault.secrets.write",
@@ -1026,6 +1027,102 @@ def collect_cli_evidence(settings: Settings, cli: Path | None) -> tuple[Evidence
             details,
         ),
         sample_paths,
+    )
+
+
+def collect_developer_beta_toolkit_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    devtools_dir = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    devserver_dir = devtools_dir / "devserver"
+    test_dir = workspace / "platform-devtools/src/test/java/network/crypta/platform/devtools"
+    docs_path = workspace / DEVELOPER_BETA_TOOLKIT_DOC
+    sources = {
+        "cli": devtools_dir / "CryptaAppCli.java",
+        "templateKind": devtools_dir / "AppTemplateKind.java",
+        "scaffolder": devtools_dir / "AppTemplateScaffolder.java",
+        "testSuite": devtools_dir / "AppTestSuite.java",
+        "devServer": devserver_dir / "CryptaAppDevServer.java",
+        "devServerConfig": devserver_dir / "DevServerConfig.java",
+        "mockApi": devserver_dir / "MockPlatformApi.java",
+        "catalogEntry": devtools_dir / "CatalogEntryDescriptorGenerator.java",
+        "publishPlan": devtools_dir / "PublicationPlanWriter.java",
+        "keyGenerator": devtools_dir / "DeveloperKeyGenerator.java",
+        "toolkitTests": test_dir / "DeveloperBetaToolkitCliTest.java",
+        "docs": docs_path,
+    }
+    text = {name: read_source(path) for name, path in sources.items()}
+    required_templates = {
+        "static-basic": "STATIC_BASIC",
+        "queue-dashboard": "QUEUE_DASHBOARD",
+        "publisher": "PUBLISHER",
+        "vault-profile": "VAULT_PROFILE",
+    }
+    command_checks = {
+        "devCommand": '@Command(name = "dev"' in text["cli"],
+        "testCommand": '@Command(name = "test"' in text["cli"],
+        "keysGenerateCommand": '@Command(name = "generate"' in text["cli"] and "KeysGenerateCommand" in text["cli"],
+        "catalogEntryCommand": '@Command(name = "entry"' in text["cli"] and "CatalogEntryCommand" in text["cli"],
+        "publishUskCommand": '@Command(name = "publish-usk"' in text["cli"],
+    }
+    template_checks = {
+        template: template in text["templateKind"] and enum_name in text["scaffolder"]
+        for template, enum_name in required_templates.items()
+    }
+    flow_checks = {
+        "devServerLoopbackDefault": "127.0.0.1" in text["devServerConfig"] and "allowNonLoopback" in text["devServer"],
+        "mockSessionRequired": "invalid_app_browser_session" in text["mockApi"] and "X-Crypta-App-Session" in text["mockApi"],
+        "offlineTestSmoke": "dev.bootstrap-smoke" in text["testSuite"] and "AppTestReport" in text["testSuite"],
+        "catalogDescriptorGenerator": "artifact.path" in text["catalogEntry"] and "permissions.rationale." in text["catalogEntry"],
+        "publishPlanDryRunOnly": "live_publish_not_supported" in text["cli"] and "Crypta Catalog USK Publication Plan" in text["publishPlan"],
+        "keyGeneration": "Ed25519" in text["keyGenerator"] and "trusted.keys.version=1" in text["keyGenerator"],
+        "selfTestsCoverFlow": (
+            "test_whenFreshStaticTemplateCheckedStrict_expectPassingHumanAndJsonReport" in text["toolkitTests"]
+            and "catalogEntryAndPublishUsk_whenSignedArtifactsPrepared_expectOfflinePlan" in text["toolkitTests"]
+            and "devServer_whenStaticAppServed_expectBootstrapStaticAndSessionProtectedApi" in text["toolkitTests"]
+        ),
+        "guideExists": docs_path.is_file(),
+        "guideCoversFlow": (
+            "crypta-app init" in text["docs"]
+            and "--template queue-dashboard" in text["docs"]
+            and "crypta-app dev --bundle-dir" in text["docs"]
+            and "crypta-app test --bundle-dir" in text["docs"]
+            and "crypta-app keys generate" in text["docs"]
+            and "crypta-app catalog entry" in text["docs"]
+            and "crypta-app publish-usk" in text["docs"]
+        ),
+    }
+    checks = {**command_checks, "templates": template_checks, **flow_checks}
+    missing_files = [
+        name
+        for name, path in sources.items()
+        if not path.is_file()
+    ]
+    failed_checks = [
+        name
+        for name, value in checks.items()
+        if value is False or (isinstance(value, dict) and not all(value.values()))
+    ]
+    details = {
+        "sources": {name: display_path(path, workspace) for name, path in sources.items()},
+        "checks": checks,
+    }
+    if missing_files or failed_checks:
+        return EvidenceItem(
+            "app-platform.developer-beta-toolkit",
+            root_consequence(settings, "fail"),
+            True,
+            "Developer beta toolkit evidence found missing commands, docs, or self-test coverage.",
+            source,
+            {"missingFiles": missing_files, "failedChecks": failed_checks, **details},
+        )
+    return EvidenceItem(
+        "app-platform.developer-beta-toolkit",
+        "pass",
+        True,
+        "Developer beta toolkit command, mock-dev, test, catalog, and publication-plan evidence passed.",
+        source,
+        details,
     )
 
 
@@ -3383,6 +3480,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
     evidence = [
         collect_first_party_evidence(settings, cli if isinstance(cli, Path) else None),
         cli_item,
+        collect_developer_beta_toolkit_evidence(settings),
         collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
         collect_app_vault_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
@@ -3832,6 +3930,10 @@ def run_self_test(repo_root: Path) -> None:
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
         assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
+        toolkit_item = evidence_by_id["app-platform.developer-beta-toolkit"]
+        assert toolkit_item["status"] == "pass", toolkit_item
+        assert toolkit_item["details"]["checks"]["devCommand"] is True, toolkit_item
+        assert toolkit_item["details"]["checks"]["templates"]["queue-dashboard"] is True, toolkit_item
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass"
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         contract_item = evidence_by_id["platform-api.contract"]
@@ -4502,6 +4604,69 @@ def make_self_test_workspace(workspace: Path) -> None:
     devtools_dir.mkdir(parents=True, exist_ok=True)
     (devtools_dir / "DevtoolsCapabilityVocabulary.java").write_text(
         "\n".join(APP_VAULT_CAPABILITIES) + "\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "CryptaAppCli.java").write_text(
+        '@Command(name = "dev") class DevCommand {}\n'
+        '@Command(name = "test") class AppTestCommand {}\n'
+        '@Command(name = "generate") class KeysGenerateCommand {}\n'
+        '@Command(name = "entry") class CatalogEntryCommand {}\n'
+        '@Command(name = "publish-usk") class PublishUskCommand { String e = "live_publish_not_supported"; }\n',
+        encoding="utf-8",
+    )
+    (devtools_dir / "AppTemplateKind.java").write_text(
+        "static-basic queue-dashboard publisher vault-profile\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "AppTemplateScaffolder.java").write_text(
+        "STATIC_BASIC QUEUE_DASHBOARD PUBLISHER VAULT_PROFILE\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "AppTestSuite.java").write_text(
+        "class AppTestSuite { String s = \"dev.bootstrap-smoke AppTestReport\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "DeveloperKeyGenerator.java").write_text(
+        "class DeveloperKeyGenerator { String s = \"Ed25519 trusted.keys.version=1\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "CatalogEntryDescriptorGenerator.java").write_text(
+        "class CatalogEntryDescriptorGenerator { String s = \"artifact.path permissions.rationale.\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "PublicationPlanWriter.java").write_text(
+        "class PublicationPlanWriter { String s = \"Crypta Catalog USK Publication Plan\"; }\n",
+        encoding="utf-8",
+    )
+    devserver_dir = devtools_dir / "devserver"
+    devserver_dir.mkdir(parents=True, exist_ok=True)
+    (devserver_dir / "CryptaAppDevServer.java").write_text(
+        "class CryptaAppDevServer { boolean allowNonLoopback; }\n",
+        encoding="utf-8",
+    )
+    (devserver_dir / "DevServerConfig.java").write_text(
+        "class DevServerConfig { String host = \"127.0.0.1\"; }\n",
+        encoding="utf-8",
+    )
+    (devserver_dir / "MockPlatformApi.java").write_text(
+        "class MockPlatformApi { String s = \"invalid_app_browser_session X-Crypta-App-Session\"; }\n",
+        encoding="utf-8",
+    )
+    toolkit_test_dir = workspace / "platform-devtools/src/test/java/network/crypta/platform/devtools"
+    toolkit_test_dir.mkdir(parents=True, exist_ok=True)
+    (toolkit_test_dir / "DeveloperBetaToolkitCliTest.java").write_text(
+        "void test_whenFreshStaticTemplateCheckedStrict_expectPassingHumanAndJsonReport() {}\n"
+        "void catalogEntryAndPublishUsk_whenSignedArtifactsPrepared_expectOfflinePlan() {}\n"
+        "void devServer_whenStaticAppServed_expectBootstrapStaticAndSessionProtectedApi() {}\n",
+        encoding="utf-8",
+    )
+    (docs / DEVELOPER_BETA_TOOLKIT_DOC.name).write_text(
+        "crypta-app init --template queue-dashboard\n"
+        "crypta-app dev --bundle-dir .\n"
+        "crypta-app test --bundle-dir . --strict\n"
+        "crypta-app keys generate\n"
+        "crypta-app catalog entry\n"
+        "crypta-app publish-usk --dry-run\n",
         encoding="utf-8",
     )
     (workspace / APP_UI_DESIGN_SYSTEM_DOC).write_text(

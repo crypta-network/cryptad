@@ -26,6 +26,12 @@ authenticates the extracted app bundle. A review receipt signature independently
 review evidence from a reviewer key that the local node trusts for app review. Legacy
 `review.status` and `review.note` catalog metadata remains publisher-advisory only.
 
+For third-party app authors, `crypta-app catalog entry` can generate the descriptor input for
+`catalog create`, and `crypta-app publish-usk --dry-run` can produce an offline publication
+checklist for a signed catalog. Those helpers do not change the runtime trust layers described
+here; they only reduce hand-authored descriptor and publication-plan mistakes. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md).
+
 ## Catalog files
 
 A catalog source points at `cryptad-app-catalog.properties`. The matching signature is read from

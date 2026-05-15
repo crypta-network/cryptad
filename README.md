@@ -480,7 +480,9 @@ legacy advisory `review` object.
 First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`, and
 `:apps:site-publisher` `stageApp`, `signApp`, and `verifyApp` tasks. See
 [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow and
-[docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
+[docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification. The
+PR-225 beta toolkit sidecar walkthrough is in
+[docs/developer-beta-toolkit.md](docs/developer-beta-toolkit.md).
 
 ## Platform Closeout & API Surface
 

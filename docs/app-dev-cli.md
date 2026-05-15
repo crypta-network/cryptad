@@ -10,12 +10,17 @@ projects. The command works on a staged bundle directory containing `cryptad-app
 launch files, and optional `static/` assets. The scaffold is a standalone staged bundle directory,
 not a new Gradle subproject.
 
-The CLI is offline filesystem tooling. It does not provide hot reload or a daemon-side install
-command. Install and update flows still go through the Platform API or signed catalog source
-handling described in [app-catalogs.md](app-catalogs.md).
+The signing, packing, validation, and catalog commands are offline filesystem tooling. The beta
+toolkit adds a local mock development server for static app UI iteration, but it is not hot reload
+and it is not a daemon-side install command. Install and update flows still go through the Platform
+API or signed catalog source handling described in [app-catalogs.md](app-catalogs.md).
 
 First-party repo apps can keep using their existing Gradle tasks. See
 [First-party Gradle workflow](#first-party-gradle-workflow).
+
+For the PR-225 beta sidecar workflow, including `init --template queue-dashboard`, the mock
+development server, strict beta test wrapper, local key generation, and `publish-usk --dry-run`,
+see [developer-beta-toolkit.md](developer-beta-toolkit.md).
 
 ## Build and run the command
 
@@ -51,6 +56,7 @@ crypta-app init \
   --app-id <app-id> \
   --name <display-name> \
   --version <version> \
+  [--template static-basic|queue-dashboard|publisher|vault-profile] \
   [--ui-mode static|shell-panel|none] \
   [--permission <capability>] \
   [--overwrite]
@@ -101,6 +107,17 @@ supported `cr-*` vocabulary, local-resource rules, and permission-disclosure gui
 scaffold is created with `--ui-mode none`, no browser UI is declared. If it uses
 `--ui-mode shell-panel`, the manifest points at a shell-panel entry instead of an app-owned static
 route.
+
+`--template` defaults to `static-basic`, which preserves the minimal static scaffold. The beta
+templates `queue-dashboard`, `publisher`, and `vault-profile` are static-only examples that vendor
+the same SDK and design-system assets, declare the permissions they demonstrate, and include visible
+permission disclosure. They are intended as staged bundles for app authors, not new Gradle
+subprojects. The `publisher` template uses the same `sourcePath`, `insertUri`, and `identifier`
+form fields accepted by `/api/v1/queue/inserts/file`; it does not read local files through browser
+file inputs. The `vault-profile` template sets `api.experimentalCapabilitiesAccepted=true` because
+the current vault capabilities are experimental. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md) for the complete mock-dev, offline-test,
+signing, catalog, and dry-run publication flow.
 
 A static scaffold should produce a manifest with fields like:
 
@@ -501,6 +518,9 @@ operator flow.
 
 ## Related docs
 
+- [developer-beta-toolkit.md](developer-beta-toolkit.md) gives the PR-225 beta toolkit walkthrough
+  for queue-dashboard scaffolding, mock dev runs, strict tests, key generation, signing, cataloging,
+  and dry-run USK publication.
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
 - [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and
