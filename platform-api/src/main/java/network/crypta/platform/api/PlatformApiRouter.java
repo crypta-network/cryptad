@@ -792,6 +792,10 @@ public final class PlatformApiRouter {
         case "directory" ->
             PlatformApiResponse.created(
                 queueApiHandler.createLocalDirectoryInsert(request.queryParameters()));
+        case "app-document" ->
+            PlatformApiResponse.created(
+                queueApiHandler.createAppDocumentInsert(
+                    requireAppPrincipalId(request), request.queryParameters()));
         default ->
             throw new PlatformApiException(404, "not_found", "Platform API route not found.");
       };
@@ -819,6 +823,14 @@ public final class PlatformApiRouter {
       };
     }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  private static String requireAppPrincipalId(PlatformApiRequest request) {
+    if (!request.principal().isApp()) {
+      throw new PlatformApiException(
+          403, "forbidden", "This Platform API route requires an app principal.");
+    }
+    return request.principal().appId();
   }
 
   /**

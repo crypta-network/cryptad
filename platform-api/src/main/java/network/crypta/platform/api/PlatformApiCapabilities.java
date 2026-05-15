@@ -28,6 +28,9 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to create local file or directory inserts. */
   static final String CONTENT_INSERT = "content.insert";
 
+  /** Manifest permission that allows app principals to create generated-document inserts. */
+  static final String CONTENT_INSERT_APP_DOCUMENT = "content.insert.app-document";
+
   /** Manifest permission that allows app principals to read peer summaries and peer details. */
   static final String PEERS_READ = "peers.read";
 

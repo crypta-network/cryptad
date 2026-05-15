@@ -41,6 +41,7 @@ final class PlatformApiVaultRouter {
   private static final String VAULT_GRANTS_KEY = "grants";
   private static final String VAULT_IDENTITIES_KEY = "identities";
   private static final String VAULT_IDENTITY_KEY = "identity";
+  private static final String VAULT_PROFILE_DOCUMENT_KEY = "profileDocument";
   private static final String VAULT_SECRET_KEY = "secret";
   private static final String VAULT_SECRETS_KEY = "secrets";
   private static final String VAULT_USAGE_KEY = "usage";
@@ -172,16 +173,26 @@ final class PlatformApiVaultRouter {
 
   private PlatformApiResponse routeAppVaultNestedResource(
       String appId, String collection, String resource, String action, PlatformApiRequest request) {
-    if (!VAULT_IDENTITIES_KEY.equals(collection) || !"use".equals(action)) {
+    if (!VAULT_IDENTITIES_KEY.equals(collection)) {
       throw notFound();
     }
     if (!METHOD_POST.equals(request.method())) {
       return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
     }
-    return PlatformApiResponse.ok(
-        envelope(
-            VAULT_USAGE_KEY,
-            appVaultApiHandler.useIdentity(appId, resource, request.queryParameters())));
+    return switch (action) {
+      case "use" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  VAULT_USAGE_KEY,
+                  appVaultApiHandler.useIdentity(appId, resource, request.queryParameters())));
+      case "profile-document" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  VAULT_PROFILE_DOCUMENT_KEY,
+                  appVaultApiHandler.createProfileDocument(
+                      appId, resource, request.queryParameters())));
+      default -> throw notFound();
+    };
   }
 
   private PlatformApiResponse routeIdentityVaultCollection(

@@ -85,7 +85,8 @@ enum AppTemplateKind {
       case STATIC_BASIC -> List.of();
       case QUEUE_DASHBOARD -> List.of("queue.read", "queue.write");
       case PUBLISHER -> List.of("content.insert", "queue.read", "queue.write");
-      case VAULT_PROFILE -> List.of("vault.identities.read", "vault.identities.use");
+      case VAULT_PROFILE ->
+          List.of("vault.identities.read", "vault.identities.create", "vault.identities.use");
     };
   }
 

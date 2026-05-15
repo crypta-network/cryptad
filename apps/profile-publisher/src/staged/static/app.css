@@ -1,0 +1,152 @@
+.profile-publisher-layout {
+  display: grid;
+  gap: var(--cr-space-4);
+}
+
+.header-actions,
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+  justify-content: flex-end;
+}
+
+.identity-grid,
+.action-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--cr-space-4);
+  align-items: start;
+}
+
+.identity-card,
+.profile-form,
+.publish-form,
+.preview-panel,
+.queue-panel {
+  display: grid;
+  gap: var(--cr-space-3);
+  align-content: start;
+}
+
+.profile-form,
+.publish-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-form__wide,
+.publish-form__wide,
+.panel-heading {
+  grid-column: 1 / -1;
+}
+
+.panel-heading {
+  display: grid;
+  gap: var(--cr-space-1);
+}
+
+.panel-heading--split {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cr-space-3);
+}
+
+.panel-heading h2,
+.panel-heading p {
+  margin: 0;
+}
+
+textarea.cr-input {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.document-preview {
+  min-height: 360px;
+  max-height: 520px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--cr-space-3);
+  border: var(--cr-border);
+  border-radius: var(--cr-radius-md);
+  background: var(--cr-color-surface-muted);
+  color: var(--cr-color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.grant-list,
+.recent-list,
+.summary {
+  display: grid;
+  gap: var(--cr-space-2);
+}
+
+.grant-list:empty {
+  display: none;
+}
+
+.summary p,
+.grant-list p,
+.recent-list p,
+#identity-summary p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.recent-item,
+.grant-item {
+  border-bottom: var(--cr-border);
+  padding-bottom: var(--cr-space-2);
+}
+
+.recent-item:last-child,
+.grant-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.legacy-fragment {
+  overflow: auto;
+}
+
+.legacy-fragment table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.legacy-fragment th,
+.legacy-fragment td {
+  border-bottom: var(--cr-border);
+  padding: var(--cr-space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legacy-fragment a {
+  color: var(--cr-color-accent);
+}
+
+.legacy-fragment input,
+.legacy-fragment select {
+  max-width: 100%;
+}
+
+@media (max-width: 940px) {
+  .identity-grid,
+  .action-grid,
+  .profile-form,
+  .publish-form {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-heading--split {
+    display: grid;
+  }
+
+  .header-actions,
+  .panel-actions {
+    justify-content: flex-start;
+  }
+}

@@ -5,7 +5,8 @@
         "apps": [
           "queue-manager",
           "publisher",
-          "site-publisher"
+          "site-publisher",
+          "profile-publisher"
         ]
       },
       "id": "app-platform.first-party",
@@ -83,16 +84,19 @@
           "appOwnedAndSharedIdentities": true,
           "atRestLimitations": true,
           "auditAndRedaction": true,
+          "browserSafeIdentityCreationRoute": true,
           "capabilitiesDocumented": true,
           "devtoolsVocabularyPresent": true,
           "futureExtensionPoint": true,
+          "profileDocumentRoute": true,
           "grantLifecycle": true,
           "processBrowserRestrictions": true
         },
         "redaction": {
           "capabilityNamesRetained": true,
           "identityPrivateMaterialRedacted": true,
-          "secretValuesRedacted": true
+          "secretValuesRedacted": true,
+          "signatureValuesRedacted": true
         }
       },
       "id": "app-vault.capabilities",
@@ -100,6 +104,64 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "App secret and identity vault capability docs and redaction checks passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "handlerOrTestEvidencePresent": true,
+          "profilePublisherDocumented": true,
+          "redactionDocumented": true,
+          "requiredCapabilitiesDocumented": true,
+          "routeDocumented": true,
+          "routeInContractOrRouter": true,
+          "routeUsesVaultIdentityReadAndUseCapabilities": true
+        },
+        "redaction": {
+          "identityPrivateMaterialRedacted": true,
+          "rawRequestBodiesExcluded": true,
+          "signatureValuesRedacted": true
+        },
+        "requiredCapabilities": [
+          "vault.identities.read",
+          "vault.identities.use"
+        ],
+        "route": "POST /api/v1/app-vault/identities/{identityId}/profile-document"
+      },
+      "id": "app-platform.identity-profile-publish",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Identity profile-document publish route evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "generatedDocumentScopeDocumented": true,
+          "handlerOrTestEvidencePresent": true,
+          "redactionDocumented": true,
+          "requiredCapabilitiesDocumented": true,
+          "routeDocumented": true,
+          "routeInContractOrRouter": true,
+          "routeUsesAppDocumentInsertAndQueueWrite": true,
+          "sdkOrGenericPostDocumented": true
+        },
+        "redaction": {
+          "absoluteStagingPathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawRequestBodiesExcluded": true,
+          "signatureValuesRedacted": true
+        },
+        "requiredCapabilities": [
+          "content.insert.app-document",
+          "queue.write"
+        ],
+        "route": "POST /api/v1/queue/inserts/app-document"
+      },
+      "id": "app-platform.generated-document-insert",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-generated document insert route evidence passed."
     },
     {
       "details": {
@@ -132,7 +194,8 @@
         "requiredFirstPartyApps": [
           "queue-manager",
           "publisher",
-          "site-publisher"
+          "site-publisher",
+          "profile-publisher"
         ]
       },
       "id": "app-catalog.first-party-beta",
@@ -167,23 +230,26 @@
         "firstPartyApps": [
           "queue-manager",
           "publisher",
-          "site-publisher"
+          "site-publisher",
+          "profile-publisher"
         ],
         "coverage": {
-          "catalogAppsInspected": 3,
+          "catalogAppsInspected": 4,
           "expiredOrMismatchedOrUnknownReviewer": 0,
           "missingReceipts": 0,
           "promotionBlocked": false,
-          "trustedPositiveReceipts": 3,
+          "trustedPositiveReceipts": 4,
           "trustedRejectedReceipts": 0
         },
         "catalog": {
           "inspectedAppIds": [
+            "profile-publisher",
             "publisher",
             "queue-manager",
             "site-publisher"
           ],
           "receiptStatuses": {
+            "profile-publisher": "reviewed",
             "publisher": "reviewed",
             "queue-manager": "reviewed",
             "site-publisher": "reviewed"
@@ -235,6 +301,13 @@
               "warnings": 0
             }
           },
+          "profile-publisher": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          },
           "site-publisher": {
             "summary": {
               "errors": 0,
@@ -257,6 +330,9 @@
             "usesDesignSystemClasses": true
           },
           "queue-manager": {
+            "usesDesignSystemClasses": true
+          },
+          "profile-publisher": {
             "usesDesignSystemClasses": true
           },
           "site-publisher": {
@@ -312,6 +388,43 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Site Publisher reference content app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "profile-publisher",
+        "checks": {
+          "manifestAvoidsUnneededVaultManagement": true,
+          "manifestDeclaresProfilePermissions": true,
+          "manifestDeclaresProfilePublisher": true,
+          "moduleExists": true,
+          "noPersistentBrowserStorage": true,
+          "noRawAdminApiReference": true,
+          "permissionDisclosureMentionsDeclaredPermissions": true,
+          "readmeDocumentsProfilePublishingFlow": true,
+          "sourceStaticUiPresent": true,
+          "stagedDesignSystemPresent": true,
+          "stagedManifestPresent": true,
+          "stagedSdkPresent": true,
+          "usesBrowserSafeIdentityCreation": true,
+          "usesGeneratedDocumentInsertRoute": true,
+          "usesProfileDocumentRoute": true,
+          "usesSdkBootstrap": true,
+          "usesUploadQueueSnapshot": true
+        },
+        "expectedPermissions": [
+          "content.insert.app-document",
+          "queue.read",
+          "queue.write",
+          "vault.identities.create",
+          "vault.identities.read",
+          "vault.identities.use"
+        ]
+      },
+      "id": "reference-app.profile-publisher",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Profile Publisher reference app evidence passed."
     },
     {
       "details": {

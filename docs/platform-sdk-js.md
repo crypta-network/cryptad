@@ -17,8 +17,8 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, and Site Publisher bundles receive `crypta-platform.js`
-during their Gradle `stageApp` tasks. The canonical source lives in
+The first-party Queue Manager, Publisher, Site Publisher, and Profile Publisher bundles receive
+`crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source lives in
 `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
 The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
@@ -122,6 +122,45 @@ await CryptaPlatform.queue.mutate("queue/requests/remove", formData);
 await CryptaPlatform.content.insertFile(formData);
 await CryptaPlatform.content.insertDirectory(formData);
 ```
+
+Profile Publisher uses the profile-specific helpers rather than constructing form bodies by hand:
+
+```js
+await CryptaPlatform.vault.identities.create({
+  label: "My profile identity",
+  scopes: ["metadata.read", "sign.domain-separated"],
+});
+
+const signedProfileResponse = await CryptaPlatform.vault.identities.createProfileDocument(
+  identityId,
+  {
+    displayName,
+    bio,
+    website,
+    avatarUri,
+    contactUri,
+    tags,
+  },
+);
+const signedProfile = signedProfileResponse.profileDocument;
+
+await CryptaPlatform.content.insertAppDocument({
+  insertUri,
+  identifier,
+  document: signedProfile,
+  contentType: "application/vnd.crypta.profile+json",
+  targetFilename: "profile.json",
+});
+```
+
+`app-vault/identities` creates an app-owned identity for an authorized static app browser session.
+`app-vault/identities/{identityId}/profile-document` asks Cryptad to create the profile document
+without exporting private identity material. `queue/inserts/app-document` queues app-generated
+document content with `content.insert.app-document` instead of local source-path authority. The SDK
+Base64-encodes the JSON document for `insertAppDocument` and preserves the same
+`X-Crypta-App-Session` header path as other browser mutations. Apps should render returned status
+and queue metadata, but should not persist raw profile documents, signatures, browser-session
+tokens, private insert URIs, or request bodies in browser storage or release evidence.
 
 `CryptaPlatform.api.postForm(path, formDataOrParams)` and
 `CryptaPlatform.api.deleteForm(path, formDataOrParams)` are available for other app-browser

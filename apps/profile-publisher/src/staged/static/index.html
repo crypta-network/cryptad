@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile Publisher</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+  <main class="cr-shell profile-publisher-layout">
+    <header class="cr-header">
+      <div>
+        <p class="cr-label">Crypta profile app</p>
+        <h1>Profile Publisher</h1>
+      </div>
+      <div class="header-actions">
+        <button class="cr-button cr-button--secondary" id="refresh-identities-button" type="button">
+          Refresh identities
+        </button>
+        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+          Refresh queue
+        </button>
+      </div>
+    </header>
+
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>queue.read</code> reads upload queue progress for profile publishes.</li>
+        <li><code>queue.write</code> creates insert queue requests for profile documents.</li>
+        <li><code>content.insert.app-document</code> submits the node-readable profile document to the insert pipeline without local source-path access.</li>
+        <li><code>vault.identities.read</code> reads granted public identity metadata.</li>
+        <li><code>vault.identities.create</code> creates an app-owned profile signing identity.</li>
+        <li><code>vault.identities.use</code> requests domain-separated signatures without exporting private material.</li>
+      </ul>
+    </section>
+
+    <section class="identity-grid" aria-label="Identity workspace">
+      <form class="cr-card identity-card" id="identity-form">
+        <div class="panel-heading">
+          <p class="cr-label">Identity workspace</p>
+          <h2>Create identity</h2>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Identity label</span>
+          <input
+            class="cr-input"
+            name="identityLabel"
+            type="text"
+            value="Profile Publisher signing identity"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <button class="cr-button cr-button--primary" type="submit">
+          Create profile identity
+        </button>
+      </form>
+
+      <section class="cr-card identity-card" aria-labelledby="available-identities-title">
+        <div class="panel-heading panel-heading--split">
+          <div>
+            <p class="cr-label">Granted metadata</p>
+            <h2 id="available-identities-title">Available identities</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="request-grant-button" type="button">
+            Request grant
+          </button>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Profile identity</span>
+          <select class="cr-input" id="identity-select"></select>
+        </label>
+        <div id="identity-summary">
+          <p class="cr-empty">Identity metadata loads after the app opens.</p>
+        </div>
+        <div class="grant-list" id="grant-list" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <form class="cr-card profile-form" id="profile-form">
+      <div class="panel-heading">
+        <p class="cr-label">In-memory draft</p>
+        <h2>Profile composition</h2>
+      </div>
+      <label class="cr-field">
+        <span class="cr-label">Display name</span>
+        <input
+          class="cr-input"
+          name="displayName"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          required>
+      </label>
+      <label class="cr-field">
+        <span class="cr-label">Website</span>
+        <input
+          class="cr-input"
+          name="website"
+          type="text"
+          autocomplete="off"
+          spellcheck="false">
+      </label>
+      <label class="cr-field profile-form__wide">
+        <span class="cr-label">Bio</span>
+        <textarea
+          class="cr-input"
+          name="bio"
+          rows="5"
+          spellcheck="true"
+          required></textarea>
+      </label>
+      <label class="cr-field">
+        <span class="cr-label">Avatar URI</span>
+        <input
+          class="cr-input"
+          name="avatarUri"
+          type="text"
+          autocomplete="off"
+          spellcheck="false">
+      </label>
+      <label class="cr-field">
+        <span class="cr-label">Contact URI</span>
+        <input
+          class="cr-input"
+          name="contactUri"
+          type="text"
+          autocomplete="off"
+          spellcheck="false">
+      </label>
+      <label class="cr-field">
+        <span class="cr-label">Tags</span>
+        <input
+          class="cr-input"
+          name="tags"
+          type="text"
+          autocomplete="off"
+          spellcheck="false">
+      </label>
+    </form>
+
+    <section class="action-grid" aria-label="Profile document actions">
+      <section class="cr-card preview-panel" aria-labelledby="preview-title">
+        <div class="panel-heading panel-heading--split">
+          <div>
+            <p class="cr-label">Signed app document</p>
+            <h2 id="preview-title">Signing preview</h2>
+          </div>
+          <div class="panel-actions">
+            <button class="cr-button cr-button--secondary" id="preview-button" type="button">
+              Preview document
+            </button>
+            <button class="cr-button cr-button--primary" id="sign-button" type="button">
+              Sign preview
+            </button>
+          </div>
+        </div>
+        <pre class="document-preview" id="document-preview" tabindex="0">Compose a profile to build an app-document preview.</pre>
+      </section>
+
+      <form class="cr-card publish-form" id="publish-form">
+        <div class="panel-heading">
+          <p class="cr-label">App-document publish</p>
+          <h2>Publish profile document</h2>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@profile-name"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Content type</span>
+          <input
+            class="cr-input"
+            name="contentType"
+            type="text"
+            value="application/vnd.crypta.profile+json"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Target filename</span>
+          <input
+            class="cr-input"
+            name="targetFilename"
+            type="text"
+            value="profile.json"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <button class="cr-button cr-button--primary publish-form__wide" type="submit">
+          Queue app-document publish
+        </button>
+        <div class="publish-form__wide" id="recent-actions">
+          <p class="cr-empty">Recent publish actions stay only in this page's memory.</p>
+        </div>
+      </form>
+    </section>
+
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+
+    <section class="cr-card queue-panel" aria-labelledby="queue-title">
+      <div class="panel-heading panel-heading--split">
+        <div>
+          <p class="cr-label">Queue progress</p>
+          <h2 id="queue-title">Upload queue progress</h2>
+        </div>
+        <button class="cr-button cr-button--secondary" id="secondary-refresh-queue-button" type="button">
+          Refresh
+        </button>
+      </div>
+      <div class="legacy-fragment" id="queue-preview">
+        <p class="cr-empty">Upload queue data loads after the app opens.</p>
+      </div>
+    </section>
+  </main>
+  <script src="./crypta-ui/crypta-ui-components.js" defer></script>
+  <script src="./crypta-platform.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

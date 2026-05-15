@@ -15,6 +15,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppIdentityGrantScope;
+import network.crypta.platform.appvault.AppIdentityGrantStatus;
 import network.crypta.platform.appvault.AppIdentityKind;
 import network.crypta.platform.appvault.AppIdentityRecord;
 import network.crypta.platform.appvault.AppVaultService;
@@ -99,6 +100,53 @@ class AppVaultApiRouterTest {
                     List.of("app-vault", "identities"),
                     Map.of(),
                     PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
+  }
+
+  @Test
+  void route_whenBrowserCreatesAppOwnedIdentity_expectPublicMetadataOnly() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    PlatformApiRouter router = router(vaultService);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("app-vault", "identities"),
+                Map.of(
+                    "label",
+                    List.of("Profile identity"),
+                    "scopes",
+                    List.of(
+                        AppIdentityGrantScope.METADATA_READ.jsonValue()
+                            + ","
+                            + AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED.jsonValue())),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("vault.identities.create"))));
+
+    assertEquals(201, response.statusCode());
+    assertTrue(response.body().contains("\"identity\":{"));
+    assertTrue(response.body().contains("\"ownerAppId\":\"" + APP_ID + "\""));
+    assertTrue(response.body().contains(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED.jsonValue()));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains("private.envelope"));
+    assertFalse(response.body().contains("seed"));
+    assertEquals(1, vaultService.listGrantsForApp(APP_ID).size());
+  }
+
+  @Test
+  void route_whenBrowserCreatesIdentityWithoutCapability_expectForbidden() throws IOException {
+    PlatformApiResponse response =
+        router(AppVaultService.open(tempDir.resolve("vault")))
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities"),
+                    Map.of("label", List.of("Profile identity")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read"))));
 
     assertEquals(403, response.statusCode());
     assertTrue(response.body().contains("forbidden"));
@@ -206,6 +254,281 @@ class AppVaultApiRouterTest {
     assertEquals("identity.use", audit.getFirst().operation());
     assertEquals(identity.identityId(), audit.getFirst().targetId());
     assertEquals("allowed", audit.getFirst().outcome());
+  }
+
+  @Test
+  void route_whenBrowserCreatesProfileDocument_expectSignedPublicDocument() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    PlatformApiRouter router = router(vaultService);
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                Map.of(
+                    "displayName",
+                    List.of("Ada Example"),
+                    "bio",
+                    List.of("Publishes signed Crypta profile documents."),
+                    "website",
+                    List.of("USK@example/profile/1/"),
+                    "tags",
+                    List.of("crypta,reference")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"profileDocument\":{"));
+    assertTrue(response.body().contains("\"schema\":\"crypta.profile.v1\""));
+    assertTrue(response.body().contains("\"displayName\":\"Ada Example\""));
+    assertTrue(response.body().contains("\"appId\":\"" + APP_ID + "\""));
+    assertTrue(response.body().contains("\"identityId\":\"" + identity.identityId() + "\""));
+    assertTrue(response.body().contains("\"purpose\":\"profile.publish.v1\""));
+    assertTrue(response.body().contains("\"scope\":\"sign.domain-separated\""));
+    assertTrue(response.body().contains("\"signatureBase64\""));
+    assertTrue(
+        response
+            .body()
+            .contains(
+                "\"domainSeparatedPayload\":\"CryptaAppVault:v1:"
+                    + APP_ID
+                    + ":"
+                    + identity.identityId()
+                    + ":profile.publish.v1:"));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains("private.envelope"));
+    assertFalse(response.body().contains("payloadBase64"));
+    assertFalse(response.body().contains(tempDir.toString()));
+  }
+
+  @Test
+  void route_whenProfileDocumentBioHasLineBreaks_expectSignedPublicDocument() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of(
+                        "displayName",
+                        List.of("Ada Example"),
+                        "bio",
+                        List.of("Line one\nLine two\r\nLine three")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"bio\":\"Line one\\nLine two\\r\\nLine three\""));
+    assertTrue(response.body().contains("\"signatureBase64\""));
+  }
+
+  @Test
+  void route_whenProfileDocumentBioHasNonLineBreakControl_expectBadRequest() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of(
+                        "displayName",
+                        List.of("Ada Example"),
+                        "bio",
+                        List.of("Line one" + (char) 0 + "Line two")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_query_parameter"));
+    assertTrue(response.body().contains("bio"));
+  }
+
+  @Test
+  void route_whenBrowserCreatesProfileDocumentWithoutUseCapability_expectForbidden()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of("displayName", List.of("Ada Example")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
+  }
+
+  @Test
+  void route_whenProfileDocumentGrantLacksSigningScope_expectVaultDenial() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Shared profile",
+            null,
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    vaultService.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        java.util.Set.of(AppIdentityGrantScope.METADATA_READ),
+        "operator",
+        "metadata only",
+        null,
+        null);
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of("displayName", List.of("Ada Example")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("identity_grant_denied"));
+    assertFalse(response.body().contains("privateKey"));
+  }
+
+  @Test
+  void route_whenProfileDocumentGrantInactive_expectVaultDenial() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Shared profile",
+            null,
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    vaultService.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        java.util.Set.of(AppIdentityGrantScope.METADATA_READ),
+        "operator",
+        "metadata",
+        null,
+        null);
+    var signGrant =
+        vaultService.grantIdentity(
+            identity.identityId(),
+            APP_ID,
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            "operator",
+            "profile signing",
+            null,
+            null);
+    vaultService.updateGrantStatus(signGrant.grantId(), AppIdentityGrantStatus.INACTIVE);
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of("displayName", List.of("Ada Example")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("identity_grant_denied"));
+  }
+
+  @Test
+  void route_whenProfileDocumentFieldTooLarge_expectDeterministicBadRequest() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "profile-document"),
+                    Map.of("displayName", List.of("x".repeat(81))),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_query_parameter"));
+    assertTrue(response.body().contains("displayName"));
+  }
+
+  @Test
+  void route_whenBrowserCallsGenericIdentityUse_expectProcessOnlyRouteStillDenied()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Profile identity",
+            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "use"),
+                    Map.of(
+                        "purpose",
+                        List.of("profile.publish.v1"),
+                        "payloadBase64",
+                        List.of(
+                            Base64.getEncoder()
+                                .encodeToString("{}".getBytes(StandardCharsets.UTF_8))),
+                        "scope",
+                        List.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED.jsonValue())),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.use"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
   }
 
   @Test

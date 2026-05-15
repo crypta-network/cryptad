@@ -273,10 +273,10 @@ host/operator Web Shell authentication. Requests with a mismatched origin fail w
 `403 origin_mismatch`.
 
 Queue Manager and legacy Publisher are also the primary replacements for the legacy queue and
-insert admin pages in the current retirement map. Site Publisher is the first content reference app
-for new app-platform publishing flows. It shares content-insert capabilities with legacy Publisher,
-but it is documented as a reference app rather than as the legacy insert-page compatibility
-surface. The full map is maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
+insert admin pages in the current retirement map. Site Publisher is the content reference app for
+new app-platform publishing flows. Profile Publisher is the identity-profile reference app for
+vault-backed profile-document publishing. The full legacy map is maintained in
+[legacy-retirement-plan.md](legacy-retirement-plan.md).
 
 ## Platform API summary fields
 
@@ -384,9 +384,29 @@ quota.cache.bytes=0
 
 Site Publisher needs `content.insert` to submit operator-selected local site content to the insert
 pipeline, `queue.write` to create the resulting insert requests, and `queue.read` to show publish
-progress. It does not request vault identity capabilities; identity-backed profile publishing
-remains future work until a browser-safe grant flow can use identity metadata without exporting
-private material.
+progress. It does not request vault identity capabilities.
+
+Identity-profile reference app bundle:
+
+```properties
+manifest.version=1
+app.id=profile-publisher
+app.name=Profile Publisher
+app.version=1.0.0
+app.exec=bin/profile-publisher.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+quota.data.bytes=0
+quota.cache.bytes=0
+```
+
+Profile Publisher needs `vault.identities.create` for browser-safe app-owned identity creation,
+`vault.identities.read` to display identity metadata, `vault.identities.use` to ask Cryptad for a
+profile document, `content.insert.app-document` and `queue.write` to queue the generated app
+document without local source-path authority, and `queue.read` to show publish progress. It must not
+expose tokens, form passwords, private insert URIs, raw request bodies, private keys, signatures, or
+absolute staging paths in UI, logs, or release evidence.
 
 Transitional shell-panel bundle:
 

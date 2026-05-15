@@ -84,11 +84,16 @@ Treat these as release blockers, in order:
    design-system assets, strict UI lint summaries, and visible permission disclosure. The route
    contract is documented in [app-owned-ui.md](app-owned-ui.md); the design-system/lint contract is
    documented in [app-ui-design-system.md](app-ui-design-system.md).
-8. **App-vault and reference-content evidence** - verify the release certification report includes
-   `app-vault.capabilities` and `reference-apps.content`. Site Publisher is the current
-   content-oriented reference app; release evidence must prove its staged bundle, SDK usage,
-   design-system adoption, permission disclosure, content/queue helper usage, and absence of
-   vault/identity permissions unless an identity-profile demo is intentionally implemented.
+8. **App-vault and reference-app evidence** - verify the release certification report includes
+   `app-vault.capabilities`, `app-platform.identity-profile-publish`,
+   `app-platform.generated-document-insert`, `reference-apps.content`, and
+   `reference-app.profile-publisher`. Site Publisher is the content-oriented reference app;
+   release evidence must prove its staged bundle, SDK usage, design-system adoption, permission
+   disclosure, content/queue helper usage, and absence of vault/identity permissions. Profile
+   Publisher is the identity-profile reference app; evidence must prove browser-safe app-owned
+   identity creation, profile-document publishing, app-generated document insertion, declared
+   vault/content/queue permissions, and redaction of tokens, form passwords, private insert URIs,
+   raw request bodies, private keys, signatures, and absolute staging paths.
 9. **Trusted app-review receipt evidence** - verify the release certification report includes
    `app-review.trusted-receipts`, `app-review.policy`, and `app-review.first-party-catalog` when
    first-party catalog evidence is part of the candidate. Review receipt evidence is independent of

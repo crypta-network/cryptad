@@ -44,7 +44,7 @@ catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
-catalog.entries=queue-manager,publisher,site-publisher
+catalog.entries=queue-manager,publisher,site-publisher,profile-publisher
 
 app.queue-manager.id=queue-manager
 app.queue-manager.name=Queue Manager
@@ -92,8 +92,33 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=4
+app.site-publisher.api.maximumTestedVersion=5
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
+
+app.profile-publisher.id=profile-publisher
+app.profile-publisher.name=Profile Publisher
+app.profile-publisher.version=1.0.0
+app.profile-publisher.summary=Reference app for publishing an identity-bound profile document.
+app.profile-publisher.bundle.uri=https://example.invalid/apps/profile-publisher-1.0.0.zip
+app.profile-publisher.bundle.sha256=<lowercase-hex-sha256-of-zip>
+app.profile-publisher.bundle.size.bytes=12345
+app.profile-publisher.bundle.type=zip
+app.profile-publisher.permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+app.profile-publisher.homepage=https://example.invalid/apps/profile-publisher
+app.profile-publisher.source=https://example.invalid/src/profile-publisher
+app.profile-publisher.license=GPL-3.0-only
+app.profile-publisher.categories=publishing,identity
+app.profile-publisher.review.status=reviewed
+app.profile-publisher.review.note=First-party profile reference app.
+app.profile-publisher.permissions.rationale.vault.identities.create=Creates an app-owned profile identity without exporting private material.
+app.profile-publisher.permissions.rationale.vault.identities.use=Asks Cryptad to produce the profile document for the selected identity.
+app.profile-publisher.permissions.rationale.content.insert.app-document=Submits the generated profile document to the insert pipeline without local source-path authority.
+app.profile-publisher.permissions.rationale.queue.write=Creates the generated document insert request.
+app.profile-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
+app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
+app.profile-publisher.api.minimumVersion=5
+app.profile-publisher.api.maximumTestedVersion=5
+app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
 app.queue-manager.review.receipt.app.version=1.0.0
@@ -168,10 +193,15 @@ identity-use or secret access, trusted review receipt evidence appropriate to th
 Catalog metadata never grants a shared identity by itself; the local operator grant in the identity
 vault remains app-id-bound, scope-bound, revocable, and separate from the signed catalog.
 
-If Site Publisher does not yet implement identity-profile publishing, its catalog entry should not
-declare `vault.identities.*` capabilities. Identity-profile publishing should remain future work
-until the app can request an operator grant, use the identity without exporting private material,
-and expose matching permission rationale and audit behavior.
+Site Publisher remains the content-reference app and should not declare `vault.identities.*`
+capabilities. Profile Publisher is the identity-profile reference app. Its catalog entry may
+declare `vault.identities.read`, `vault.identities.create`, and `vault.identities.use` when the
+bundle uses `POST /api/v1/app-vault/identities`,
+`POST /api/v1/app-vault/identities/{identityId}/profile-document`, plus
+`content.insert.app-document` when it uses `POST /api/v1/queue/inserts/app-document` without local
+source-path authority. Catalog metadata and release evidence must not include raw request bodies,
+private keys, raw signatures, private insert URIs, tokens, form passwords, or absolute staging
+paths.
 
 ## Trusted review receipts
 
@@ -450,8 +480,9 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
 The first-party beta catalog is expected to contain the current first-party apps:
-`queue-manager`, `publisher`, and `site-publisher`. Entries should include source/review/API,
-sandbox, permission rationale, and changelog metadata, for example `permissions.rationale.*`,
+`queue-manager`, `publisher`, `site-publisher`, and `profile-publisher`. Entries should include
+source/review/API, sandbox, permission rationale, and changelog metadata, for example
+`permissions.rationale.*`,
 `api.minimumVersion`, `api.maximumTestedVersion`, and `changelog.summary`. First-party public
 artifacts should be published as immutable CHK ZIP artifacts and referenced as:
 

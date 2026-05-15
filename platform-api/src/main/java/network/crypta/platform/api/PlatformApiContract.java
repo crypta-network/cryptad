@@ -57,12 +57,13 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 4;
+  public static final int CURRENT_CONTRACT_VERSION = 5;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
   private static final int APP_VAULT_CONTRACT_VERSION = 3;
   private static final int RECOMMENDED_CATALOG_CONTRACT_VERSION = 4;
+  private static final int PROFILE_PUBLISHING_CONTRACT_VERSION = 5;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -254,6 +255,12 @@ public record PlatformApiContract(
         capability(
             PlatformApiCapabilities.CONTENT_INSERT,
             "Create local file or directory insert requests."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.CONTENT_INSERT_APP_DOCUMENT,
+            PlatformApiStabilityLevel.STABLE,
+            PROFILE_PUBLISHING_CONTRACT_VERSION,
+            null,
+            "Create app-generated document insert requests without local source paths."),
         capability(PlatformApiCapabilities.DIAGNOSTICS_READ, "Read runtime diagnostic reports."),
         capability(
             PlatformApiCapabilities.NODE_READ, "Read node identity, greeting, and reference data."),
@@ -436,6 +443,7 @@ public record PlatformApiContract(
         "queue.inserts.directory",
         List.of(PlatformApiCapabilities.CONTENT_INSERT, PlatformApiCapabilities.QUEUE_WRITE),
         "Create a local directory insert request.");
+    builder.queueAppDocumentPost();
     builder.post(
         ROUTE_FAMILY_QUEUE,
         "/queue/requests/remove",
@@ -669,7 +677,7 @@ public record PlatformApiContract(
         "/app-vault/identities",
         "app-vault.identities.create",
         List.of(PlatformApiCapabilities.VAULT_IDENTITIES_CREATE),
-        false,
+        true,
         "Create an app-owned vault identity.");
     builder.appVaultGet(
         "/app-vault/identities/{identityId}",
@@ -683,6 +691,7 @@ public record PlatformApiContract(
         List.of(PlatformApiCapabilities.VAULT_IDENTITIES_USE),
         false,
         "Use one granted vault identity for a bounded operation.");
+    builder.appVaultProfileDocumentPost();
     builder.appVaultGet(
         "/app-vault/grants",
         "app-vault.grants.list",
@@ -945,6 +954,42 @@ public record PlatformApiContract(
               true,
               true,
               "Add one recommended signed catalog source."));
+    }
+
+    private void queueAppDocumentPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_QUEUE,
+              METHOD_POST,
+              "/queue/inserts/app-document",
+              "queue.inserts.app-document",
+              List.of(
+                  PlatformApiCapabilities.CONTENT_INSERT_APP_DOCUMENT,
+                  PlatformApiCapabilities.QUEUE_WRITE),
+              PROFILE_PUBLISHING_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.STABLE,
+              "Create a bounded app-generated document insert request."));
+    }
+
+    private void appVaultProfileDocumentPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_VAULT,
+              METHOD_POST,
+              "/app-vault/identities/{identityId}/profile-document",
+              "app-vault.identities.profile-document",
+              List.of(
+                  PlatformApiCapabilities.VAULT_IDENTITIES_READ,
+                  PlatformApiCapabilities.VAULT_IDENTITIES_USE),
+              PROFILE_PUBLISHING_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Create a signed bounded profile document for one app-visible vault identity."));
     }
 
     private void endpoint(EndpointSpec spec) {

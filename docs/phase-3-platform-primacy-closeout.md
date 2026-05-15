@@ -77,6 +77,10 @@ The Phase 3 platform path is split across focused modules:
 - `apps/site-publisher` owns the Site Publisher first-party content reference app bundle. Current
   staged bundles declare `app.ui.mode=static` and open through an isolated app origin when
   available, with `/apps/site-publisher/static/` retained as the compatibility fallback.
+- `apps/profile-publisher` owns the Profile Publisher first-party identity-profile reference app
+  bundle. Current staged bundles declare `app.ui.mode=static`, create app-owned identities through
+  app-vault, use the profile-document route for identity-bound profile publishing, and queue the
+  generated profile document through the app-document insert route.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
 - `:bridge-fcp-runtime` owns the concrete runtime bindings for FCP.
@@ -186,8 +190,9 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
   fallback.
 - Standalone developer tooling has landed through the `crypta-app` CLI for scaffolding,
   validation, signing, packaging, verification, and catalog authoring.
-- The first content-oriented reference app has landed as Site Publisher. Broader first-party app
-  catalog depth beyond Queue Manager, Publisher, and Site Publisher remains future work.
+- The first content-oriented reference app has landed as Site Publisher. The first
+  identity-profile reference app has landed as Profile Publisher. Broader first-party app catalog
+  depth beyond Queue Manager, Publisher, Site Publisher, and Profile Publisher remains future work.
 - App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
   [app-permissions-and-audit.md](app-permissions-and-audit.md).
 - Legacy admin and browse retirement plan.

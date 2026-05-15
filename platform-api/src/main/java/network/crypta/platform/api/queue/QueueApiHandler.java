@@ -3,7 +3,12 @@ package network.crypta.platform.api.queue;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +16,7 @@ import java.util.Objects;
 import network.crypta.keys.FreenetURI;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRejectedException;
@@ -60,6 +66,7 @@ public final class QueueApiHandler {
   private static final String PARAMETER_COMPRESS = "compress";
   private static final String PARAMETER_CONTENT_TYPE = "contentType";
   private static final String PARAMETER_DISABLE_FILTER_DATA = "disableFilterData";
+  private static final String PARAMETER_DOCUMENT_BASE64 = "documentBase64";
   private static final String PARAMETER_FETCH_URI = "fetchUri";
   private static final String PARAMETER_FILTER_DATA = "filterData";
   private static final String PARAMETER_IDENTIFIER = "identifier";
@@ -72,11 +79,18 @@ public final class QueueApiHandler {
   private static final String PARAMETER_TARGET_FILENAME = "targetFilename";
   private static final short MINIMUM_PRIORITY_CLASS = 0;
   private static final short MAXIMUM_PRIORITY_CLASS = 6;
+  private static final int MAX_APP_DOCUMENT_BYTES = 64 * 1024;
+  private static final String DEFAULT_APP_DOCUMENT_CONTENT_TYPE =
+      "application/vnd.crypta.profile+json";
+  private static final String DEFAULT_APP_DOCUMENT_TARGET_FILENAME = "profile.json";
+  private static final String OPERATION_APP_DOCUMENT_INSERT = "create_app_document_insert";
   private static final String OPERATION_LOCAL_DIRECTORY_INSERT = "create_local_directory_insert";
   private static final String OPERATION_LOCAL_FILE_INSERT = "create_local_file_insert";
   private static final String QUERY_PARAMETER_PREFIX = "Query parameter '";
+  private static final String REDACTED_RESPONSE_VALUE = "<redacted>";
   private static final String QUEUE_PAGE_DOWNLOADS = "downloads";
   private static final String QUEUE_PAGE_UPLOADS = "uploads";
+  private static final String SOURCE_TYPE_APP_DOCUMENT = "app-document";
   private static final String SOURCE_TYPE_DIRECTORY = "directory";
   private static final String SOURCE_TYPE_FILE = "file";
 
@@ -89,7 +103,7 @@ public final class QueueApiHandler {
   /** Detached download-creation port for new direct downloads. */
   private final QueueDownloadPort queueDownloadPort;
 
-  /** Detached insert-creation port for new local file and directory inserts. */
+  /** Detached insert-creation port for new local, directory, and generated-document inserts. */
   private final QueueInsertPort queueInsertPort;
 
   /** Detached queue support port used for availability checks. */
@@ -98,17 +112,21 @@ public final class QueueApiHandler {
   /** Detached completion tracker startup hook used when a queue side is rendered. */
   private final QueueCompletionPort queueCompletionPort;
 
+  /** Preparation service for bounded app-generated document uploads. */
+  private final AppGeneratedDocumentStagingService appDocumentStagingService;
+
   /**
    * Creates a queue API handler backed by the existing queue runtime ports.
    *
    * <p>All ports are required because even the small initial queue surface spans detached reads,
-   * existing-request mutations, direct-download creation, backend availability checks, and
-   * completion-tracker startup for rendered queue sides.
+   * existing-request mutations, direct-download creation, generated-document insert creation,
+   * backend availability checks, and completion-tracker startup for rendered queue sides.
    *
    * @param queuePagePort detached queue snapshot read port used for queue pages and count views
    * @param queueMutationPort detached mutation port for already-existing queue requests
    * @param queueDownloadPort detached direct-download creation port for new download requests
-   * @param queueInsertPort detached insert-creation port for new local file and directory inserts
+   * @param queueInsertPort detached insert-creation port for new local, directory, and generated
+   *     document inserts
    * @param queueSupportPort detached queue support port used for backend availability checks
    * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
    * @throws NullPointerException if any required detached runtime port reference is {@code null}
@@ -120,12 +138,45 @@ public final class QueueApiHandler {
       QueueInsertPort queueInsertPort,
       QueueSupportPort queueSupportPort,
       QueueCompletionPort queueCompletionPort) {
+    this(
+        queuePagePort,
+        queueMutationPort,
+        queueDownloadPort,
+        queueInsertPort,
+        queueSupportPort,
+        queueCompletionPort,
+        new AppGeneratedDocumentStagingService());
+  }
+
+  /**
+   * Creates a queue API handler backed by runtime ports and an app-document upload service.
+   *
+   * @param queuePagePort detached queue snapshot read port used for queue pages and count views
+   * @param queueMutationPort detached mutation port for already-existing queue requests
+   * @param queueDownloadPort detached direct-download creation port for new download requests
+   * @param queueInsertPort detached insert-creation port for new local, directory, and generated
+   *     document inserts
+   * @param queueSupportPort detached queue support port used for backend availability checks
+   * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
+   * @param appDocumentStagingService upload service for browser/app-generated document bytes
+   * @throws NullPointerException if any required detached runtime port reference is {@code null}
+   */
+  public QueueApiHandler(
+      QueuePagePort queuePagePort,
+      QueueMutationPort queueMutationPort,
+      QueueDownloadPort queueDownloadPort,
+      QueueInsertPort queueInsertPort,
+      QueueSupportPort queueSupportPort,
+      QueueCompletionPort queueCompletionPort,
+      AppGeneratedDocumentStagingService appDocumentStagingService) {
     this.queuePagePort = Objects.requireNonNull(queuePagePort, "queuePagePort");
     this.queueMutationPort = Objects.requireNonNull(queueMutationPort, "queueMutationPort");
     this.queueDownloadPort = Objects.requireNonNull(queueDownloadPort, "queueDownloadPort");
     this.queueInsertPort = Objects.requireNonNull(queueInsertPort, "queueInsertPort");
     this.queueSupportPort = Objects.requireNonNull(queueSupportPort, "queueSupportPort");
     this.queueCompletionPort = Objects.requireNonNull(queueCompletionPort, "queueCompletionPort");
+    this.appDocumentStagingService =
+        Objects.requireNonNull(appDocumentStagingService, "appDocumentStagingService");
   }
 
   /**
@@ -497,6 +548,61 @@ public final class QueueApiHandler {
         outcome);
   }
 
+  /**
+   * Queues one persistent insert backed by bounded app-generated document bytes.
+   *
+   * <p>The browser caller supplies Base64-encoded JSON bytes rather than a local source path. The
+   * handler validates size, UTF-8/JSON syntax for JSON content types, and queue metadata, then
+   * hands detached bytes to the queue browser-upload path so the runtime can copy them into its
+   * trusted persistent bucket storage. The public response redacts the synthetic source path.
+   *
+   * @param appId authenticated app id supplied by the app principal
+   * @param queryParameters decoded request parameters for the app-document insert
+   * @return JSON-compatible creation summary with a redacted source path
+   * @throws PlatformApiException if required parameters are missing, malformed, or rejected
+   */
+  public Map<String, Object> createAppDocumentInsert(
+      String appId, Map<String, List<String>> queryParameters) {
+    String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
+    FreenetURI parsedInsertUri = requireInsertUri(insertUri);
+    String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
+    byte[] document = decodeAppDocument(queryParameters);
+    String contentType = resolveAppDocumentContentType(queryParameters);
+    validateJsonDocumentIfNeeded(contentType, document);
+    String targetFilename =
+        Objects.requireNonNullElse(
+            optionalString(queryParameters, PARAMETER_TARGET_FILENAME),
+            DEFAULT_APP_DOCUMENT_TARGET_FILENAME);
+    QueueInsertOptions options = requireAppDocumentInsertOptions(queryParameters);
+    ensureQueueBackendEnabled();
+
+    AppGeneratedDocumentStagingResult staged =
+        appDocumentStagingService.stage(appId, targetFilename, contentType, document);
+    QueueInsertOutcome outcome;
+    try {
+      String filenameForKey = resolveFilenameForKey(parsedInsertUri, staged.upload().filename());
+      outcome =
+          queueInsertPort.enqueueBrowserUploadInsert(
+              new QueueBrowserUploadInsertRequest(
+                  insertUri, identifier, staged.upload(), options, filenameForKey));
+    } catch (QueueInsertRejectedException e) {
+      throw queueInsertRejected(SOURCE_TYPE_APP_DOCUMENT, e);
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          500, "internal_error", "Failed to enqueue app-document insert.");
+    }
+
+    return insertCreationResult(
+        OPERATION_APP_DOCUMENT_INSERT,
+        SOURCE_TYPE_APP_DOCUMENT,
+        staged.publicSourcePath(),
+        REDACTED_RESPONSE_VALUE,
+        identifier,
+        outcome);
+  }
+
   private void ensureQueueReadable(boolean uploads) {
     ensureQueueBackendEnabled();
     queueCompletionPort.ensureTrackingStarted(uploads);
@@ -601,14 +707,13 @@ public final class QueueApiHandler {
 
   private static String resolveTargetFilename(
       Map<String, List<String>> queryParameters, File sourceFile, FreenetURI insertUri) {
-    if (insertUri.getDocName() != null) {
-      return null;
-    }
     String explicitTargetFilename = optionalString(queryParameters, PARAMETER_TARGET_FILENAME);
-    if (explicitTargetFilename != null) {
-      return explicitTargetFilename;
-    }
-    return sourceFile.getName();
+    return resolveFilenameForKey(
+        insertUri, explicitTargetFilename == null ? sourceFile.getName() : explicitTargetFilename);
+  }
+
+  private static String resolveFilenameForKey(FreenetURI insertUri, String targetFilename) {
+    return insertUri.getDocName() == null ? targetFilename : null;
   }
 
   private static String resolveContentType(
@@ -642,9 +747,29 @@ public final class QueueApiHandler {
         null);
   }
 
+  private QueueInsertOptions requireAppDocumentInsertOptions(
+      Map<String, List<String>> queryParameters) {
+    rejectOverrideSplitfileCryptoKey(queryParameters);
+    return new QueueInsertOptions(
+        readCheckboxBoolean(queryParameters, PARAMETER_COMPRESS),
+        requireCompatibilityModeWithDefault(queryParameters, COMPATIBILITY_MODE_CURRENT),
+        null);
+  }
+
   private String requireCompatibilityMode(Map<String, List<String>> queryParameters) {
-    String compatibilityMode =
-        PlatformApiParameters.requireString(queryParameters, PARAMETER_COMPATIBILITY_MODE);
+    return requireCompatibilityModeWithDefault(queryParameters, null);
+  }
+
+  private String requireCompatibilityModeWithDefault(
+      Map<String, List<String>> queryParameters, String defaultParameterValue) {
+    String compatibilityMode = optionalString(queryParameters, PARAMETER_COMPATIBILITY_MODE);
+    if (compatibilityMode == null) {
+      if (defaultParameterValue == null) {
+        throw invalidQuery(
+            "Missing required query parameter '" + PARAMETER_COMPATIBILITY_MODE + "'.");
+      }
+      compatibilityMode = defaultParameterValue;
+    }
     String defaultCompatibilityMode = queueSupportPort.defaultInsertCompatibilityMode();
     List<String> supportedCompatibilityModes = queueSupportPort.supportedInsertCompatibilityModes();
     if (COMPATIBILITY_MODE_CURRENT.equals(compatibilityMode)
@@ -832,8 +957,6 @@ public final class QueueApiHandler {
   private static PlatformApiException queueInsertRejected(
       String sourceType, QueueInsertRejectedException rejection) {
     QueueInsertFailureReason reason = rejection.reason();
-    String normalizedSourceType =
-        SOURCE_TYPE_DIRECTORY.equals(sourceType) ? SOURCE_TYPE_DIRECTORY : SOURCE_TYPE_FILE;
     return new PlatformApiException(
         400,
         switch (reason) {
@@ -841,11 +964,78 @@ public final class QueueApiHandler {
           case SOURCE_NOT_FOUND -> "queue_insert_rejected_source_not_found";
           case TOO_MANY_FILES -> "queue_insert_rejected_too_many_files";
         },
-        "Local "
-            + normalizedSourceType
+        sourceDescription(sourceType)
             + " insert rejected by the queue backend: "
             + reason.name()
             + ".");
+  }
+
+  private static String sourceDescription(String sourceType) {
+    if (SOURCE_TYPE_DIRECTORY.equals(sourceType)) {
+      return "Local directory";
+    }
+    if (SOURCE_TYPE_APP_DOCUMENT.equals(sourceType)) {
+      return "App-document";
+    }
+    return "Local file";
+  }
+
+  private static byte[] decodeAppDocument(Map<String, List<String>> queryParameters) {
+    String documentBase64 =
+        PlatformApiParameters.requireString(queryParameters, PARAMETER_DOCUMENT_BASE64);
+    byte[] decoded;
+    try {
+      decoded = Base64.getDecoder().decode(documentBase64);
+    } catch (IllegalArgumentException _) {
+      throw invalidQuery("Query parameter 'documentBase64' must be valid Base64.");
+    }
+    if (decoded.length > MAX_APP_DOCUMENT_BYTES) {
+      throw invalidQuery("Query parameter 'documentBase64' decodes to too many bytes.");
+    }
+    return decoded;
+  }
+
+  private static String resolveAppDocumentContentType(Map<String, List<String>> queryParameters) {
+    String contentType =
+        Objects.requireNonNullElse(
+            optionalString(queryParameters, PARAMETER_CONTENT_TYPE),
+            DEFAULT_APP_DOCUMENT_CONTENT_TYPE);
+    validateContentType(contentType);
+    return contentType;
+  }
+
+  private static void validateJsonDocumentIfNeeded(String contentType, byte[] document) {
+    if (!isJsonContentType(contentType)) {
+      return;
+    }
+    String text = decodeUtf8Document(document);
+    try {
+      JsonSyntaxValidator.validate(text);
+    } catch (IllegalArgumentException _) {
+      throw invalidQuery(
+          "Query parameter 'documentBase64' must decode to valid JSON for JSON content types.");
+    }
+  }
+
+  private static boolean isJsonContentType(String contentType) {
+    String normalized = contentType.toLowerCase(java.util.Locale.ROOT);
+    int parameterIndex = normalized.indexOf(';');
+    String base =
+        (parameterIndex >= 0 ? normalized.substring(0, parameterIndex) : normalized).trim();
+    return base.equals("application/json") || base.endsWith("+json");
+  }
+
+  private static String decodeUtf8Document(byte[] document) {
+    try {
+      return StandardCharsets.UTF_8
+          .newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(document))
+          .toString();
+    } catch (CharacterCodingException _) {
+      throw invalidQuery("Query parameter 'documentBase64' must decode to UTF-8 JSON bytes.");
+    }
   }
 
   private static PlatformApiException queueUnavailable() {

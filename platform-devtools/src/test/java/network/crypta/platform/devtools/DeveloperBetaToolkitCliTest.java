@@ -49,9 +49,9 @@ class DeveloperBetaToolkitCliTest {
     assertTemplate(
         "vault-profile",
         "vault-app",
-        "app.permissions=vault.identities.read,vault.identities.use\n",
+        "app.permissions=vault.identities.read,vault.identities.create,vault.identities.use\n",
         "api.experimentalCapabilitiesAccepted=true\n",
-        "loaded safe mock vault data");
+        "window.CryptaPlatform.vault.identities.create");
   }
 
   @Test
@@ -663,6 +663,13 @@ class DeveloperBetaToolkitCliTest {
       assertFalse(script.contains("params.set(\"content\""));
       assertFalse(script.contains("params.set(\"target\""));
     }
+    if ("vault-profile".equals(template)) {
+      assertTrue(index.contains("id=\"create-identity\""));
+      assertTrue(index.contains("id=\"preview-profile\""));
+      assertTrue(index.contains("id=\"profile-document\""));
+      assertTrue(script.contains("window.CryptaPlatform.vault.identities.createProfileDocument"));
+      assertFalse(script.contains("vault.grants.request"));
+    }
     assertFalse(index.contains("https://"));
     assertFalse(index.contains("http://"));
     assertFalse(script.contains("https://"));
@@ -730,6 +737,36 @@ class DeveloperBetaToolkitCliTest {
             URI.create(server.apiRoot() + "queue/inserts/file"),
             sessionToken,
             "sourcePath=sample.txt&insertUri=CHK%40sample&identifier=sample-insert");
+    HttpResponse<String> missingAppDocumentField =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "queue/inserts/app-document"),
+            sessionToken,
+            "insertUri=CHK%40sample&identifier=profile-local");
+    HttpResponse<String> appDocumentInsert =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "queue/inserts/app-document"),
+            sessionToken,
+            "insertUri=CHK%40sample&identifier=profile-local&documentBase64=e30%3D");
+    HttpResponse<String> createIdentity =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "app-vault/identities"),
+            sessionToken,
+            "label=Local+Profile&scopes=metadata.read%2Csign.domain-separated");
+    HttpResponse<String> missingProfileDocumentField =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "app-vault/identities/local-profile/profile-document"),
+            sessionToken,
+            "");
+    HttpResponse<String> profileDocument =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "app-vault/identities/local-profile/profile-document"),
+            sessionToken,
+            "displayName=Local+Profile&bio=Mock+profile");
 
     assertEquals(200, staticUi.statusCode());
     assertTrue(staticUi.body().contains("<title>Queue App</title>"));
@@ -746,6 +783,18 @@ class DeveloperBetaToolkitCliTest {
     assertTrue(missingInsertField.body().contains("insertUri"));
     assertEquals(200, fileInsert.statusCode());
     assertTrue(fileInsert.body().contains("queue.inserts.file"));
+    assertEquals(400, missingAppDocumentField.statusCode());
+    assertTrue(missingAppDocumentField.body().contains("documentBase64"));
+    assertEquals(200, appDocumentInsert.statusCode());
+    assertTrue(appDocumentInsert.body().contains("queue.inserts.app-document"));
+    assertEquals(201, createIdentity.statusCode());
+    assertTrue(createIdentity.body().contains("app-vault.identities.create"));
+    assertTrue(createIdentity.body().contains("mock-created-profile"));
+    assertEquals(400, missingProfileDocumentField.statusCode());
+    assertTrue(missingProfileDocumentField.body().contains("displayName"));
+    assertEquals(200, profileDocument.statusCode());
+    assertTrue(profileDocument.body().contains("\"profileDocument\""));
+    assertTrue(profileDocument.body().contains("\"identityId\":\"local-profile\""));
   }
 
   private static void verifySessionAndStaticSafety(

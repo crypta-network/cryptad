@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":4"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":5"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(4, version.contractVersion());
+    assertEquals(5, version.contractVersion());
   }
 
   @Test
@@ -50,6 +50,12 @@ class PlatformApiContractTest {
     assertEquals(PlatformApiCapabilityRegistry.knownCapabilities(), descriptorNames);
     assertTrue(descriptorNames.contains("platform.contract.read"));
     assertEquals(new TreeSet<>(descriptorNames), descriptorNames);
+    PlatformApiCapabilityDescriptor appDocumentInsertCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("content.insert.app-document"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(5, appDocumentInsertCapability.sinceContractVersion());
   }
 
   @Test
@@ -88,6 +94,23 @@ class PlatformApiContractTest {
     }
   }
 
+  @Test
+  void current_whenInspectingIdentityCreateEndpoint_expectAppVaultSinceVersionAndBrowserAccess() {
+    PlatformApiEndpointDescriptor endpoint =
+        PlatformApiContract.current().endpoints().stream()
+            .filter(
+                descriptor ->
+                    descriptor.method().equals("POST")
+                        && descriptor.routeTemplate().equals("/app-vault/identities"))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(3, endpoint.sinceContractVersion());
+    assertTrue(endpoint.appProcessAllowed());
+    assertTrue(endpoint.appBrowserAllowed());
+    assertEquals(List.of("vault.identities.create"), endpoint.requiredCapabilities());
+  }
+
   private static void assertEndpointAuthorization(
       PlatformApiEndpointDescriptor endpoint,
       PlatformApiAuthorizationDecision decision,
@@ -102,6 +125,10 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
+        || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {
+      return 5;
+    }
     if (endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/identity-vault")) {
       return 3;

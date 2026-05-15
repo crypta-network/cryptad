@@ -24,6 +24,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
     assertTrue(script.contains("vault:"));
+    assertTrue(script.contains("profile:"));
     assertTrue(script.contains("dom:"));
     assertTrue(script.contains("sanitizeFragment"));
     assertTrue(script.contains("browserSessionToken"));
@@ -112,12 +113,53 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("function requestVaultGrant(request, options)"));
     assertTrue(script.contains("return apiPostForm(\"app-vault/grants/request\""));
     assertTrue(script.contains("function normalizeVaultGrantRequest(request)"));
+    assertTrue(script.contains("function createVaultIdentity(options)"));
+    assertTrue(script.contains("return apiPostForm("));
+    assertTrue(script.contains("\"app-vault/identities\""));
+    assertTrue(script.contains("function createProfileDocument(identityId, profile, options)"));
+    assertTrue(script.contains("function normalizeProfileDocument(profile)"));
+    assertTrue(script.contains("copyStringParam(source, params, \"displayName\");"));
+    assertTrue(script.contains("appendTagsParam(source.tags, params);"));
+    assertTrue(script.contains("/profile-document`"));
     assertTrue(script.contains("function normalizeVaultGrantScope(scope)"));
     assertTrue(script.contains("normalized !== \"sign.domain-separated\""));
     assertTrue(script.contains("identities: Object.freeze({"));
+    assertTrue(script.contains("create: createVaultIdentity"));
+    assertTrue(script.contains("createProfileDocument"));
     assertTrue(script.contains("grants: Object.freeze({"));
     assertFalse(script.contains("app-vault/secrets"));
     assertFalse(script.contains("useIdentity"));
+  }
+
+  @Test
+  void classpathResource_whenJsonDocumentHelpersRequested_expectEncodedFormMutations()
+      throws IOException {
+    String script = readSdkScript();
+
+    assertTrue(script.contains("function insertAppDocument(options)"));
+    assertTrue(script.contains("\"queue/inserts/app-document\""));
+    assertTrue(script.contains("function normalizeAppDocumentInsert(options)"));
+    assertTrue(script.contains("params.set(\"documentBase64\""));
+    assertTrue(
+        script.contains("copyStringParamAs(options, params, \"mimeType\", \"contentType\");"));
+    assertTrue(script.contains("jsonDocumentBase64(document, \"App document\")"));
+    assertTrue(script.contains("function jsonDocumentBase64(value, description)"));
+    assertTrue(script.contains("JSON.stringify(value)"));
+    assertTrue(script.contains("function utf8Base64(value)"));
+    assertTrue(script.contains("new TextEncoder().encode(value)"));
+    assertTrue(script.contains("return btoa(binary);"));
+    assertTrue(script.contains("function publishProfile(options)"));
+    assertTrue(script.contains("const profileDocumentResponse = await createProfileDocument("));
+    assertTrue(script.contains("function profilePublishInsertOptions(source, document)"));
+    assertTrue(
+        script.contains("options.identifier = `profile-${vaultPathSegment(source.identityId)}`;"));
+    assertTrue(script.contains("options.targetFilename = \"profile.json\";"));
+    assertTrue(script.contains("application/vnd.crypta.profile+json"));
+    assertTrue(script.contains("insertAppDocument("));
+    assertTrue(script.contains("profile: Object.freeze({"));
+    assertTrue(script.contains("publish: publishProfile"));
+    assertFalse(script.contains("fetch(apiUrl(\"queue/inserts/app-document\""));
+    assertFalse(script.contains("fetch(apiUrl(\"app-vault/identities\""));
   }
 
   @Test

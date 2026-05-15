@@ -303,13 +303,42 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=4
+api.maximumTestedVersion=5
 api.experimentalCapabilitiesAccepted=false
 ```
 
-Do not include `vault.identities.*` permissions for Site Publisher until an identity-profile demo
-is implemented. Identity-profile publishing remains future work until the app can request an
-operator grant and use identity metadata without exporting private material.
+Do not include `vault.identities.*` permissions for Site Publisher. Profile Publisher owns the
+identity-profile reference flow. A Profile Publisher catalog descriptor should include the
+route-specific vault and generated-document rationale:
+
+```properties
+artifact.path=/abs/path/to/dist/apps/profile-publisher-1.0.0.zip
+bundle.uri=file:/abs/path/to/dist/apps/profile-publisher-1.0.0.zip
+summary=Reference app for publishing an identity-bound profile document.
+name=Profile Publisher
+version=1.0.0
+permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+app.id=profile-publisher
+homepage=https://example.invalid/apps/profile-publisher
+source=https://example.invalid/src/profile-publisher
+license=GPL-3.0-only
+categories=publishing,identity
+review.status=reviewed
+review.note=First-party profile reference app.
+permissions.rationale.vault.identities.create=Creates an app-owned profile identity without exporting private material.
+permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
+permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
+permissions.rationale.queue.write=Creates the generated document insert request.
+permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
+changelog.summary=Adds the first identity-profile reference app.
+api.minimumVersion=5
+api.maximumTestedVersion=5
+api.experimentalCapabilitiesAccepted=true
+```
+
+Do not include tokens, form passwords, private insert URIs, raw request bodies, private keys,
+signatures, or absolute staging paths in descriptor notes, generated catalog metadata, or release
+evidence.
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and
@@ -463,6 +492,10 @@ projects:
 ./gradlew :apps:site-publisher:stageApp
 ./gradlew :apps:site-publisher:signApp
 ./gradlew :apps:site-publisher:verifyApp
+
+./gradlew :apps:profile-publisher:stageApp
+./gradlew :apps:profile-publisher:signApp
+./gradlew :apps:profile-publisher:verifyApp
 ```
 
 Those `signApp` and `verifyApp` tasks still require the signing inputs documented in
@@ -485,8 +518,9 @@ review keys outside the repository.
    ./gradlew :platform-devtools:installDist
    ```
 
-2. Pack `queue-manager`, `publisher`, and `site-publisher` with `crypta-app pack`. Insert each ZIP
-   into Crypta as an immutable CHK artifact through the maintainer publishing workflow.
+2. Pack `queue-manager`, `publisher`, `site-publisher`, and `profile-publisher` with
+   `crypta-app pack`. Insert each ZIP into Crypta as an immutable CHK artifact through the
+   maintainer publishing workflow.
 
 3. Write catalog descriptors whose public artifact location is the returned CHK:
 
@@ -498,7 +532,7 @@ review keys outside the repository.
    permissions=queue.read,queue.write
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=4
+   api.maximumTestedVersion=5
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```

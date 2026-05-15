@@ -105,11 +105,14 @@ Release-candidate mode requires these evidence ids:
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
 | `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
+| `app-platform.identity-profile-publish` | App-platform smoke summary. | The profile-document signing route `POST /api/v1/app-vault/identities/{identityId}/profile-document` is present, documented, capability-gated by `vault.identities.read` plus `vault.identities.use`, and covered by redaction evidence. |
+| `app-platform.generated-document-insert` | App-platform smoke summary. | The app-generated document insert route `POST /api/v1/queue/inserts/app-document` is present, documented, capability-gated by `content.insert.app-document` plus `queue.write`, and avoids local file-path request authority. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | First-party source/staged UIs, including Site Publisher, load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
-| `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and documents identity-profile publishing as future work unless implemented. |
+| `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and avoids vault identity permissions. |
+| `reference-app.profile-publisher` | App-platform smoke summary. | Profile Publisher exists as the first identity-profile reference app, declares the expected vault/content/queue permissions, uses the profile-document and app-document insert routes, and keeps release evidence free of signatures and private material. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
@@ -151,10 +154,12 @@ recorded.
 `app-vault.capabilities` is deterministic offline evidence. The app-platform smoke runner checks
 that [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) documents the six vault
 capabilities, app-owned versus shared identities, process/browser restrictions, at-rest local
-limitations, update/rollback/uninstall/reinstall grant behavior, audit/redaction, and the future
-content/social/mail extension point. The runner also checks that devtools recognizes the same
-capability names and that certification redaction keeps capability names while removing vault
-secret values, identity private material, seed phrases, and recovery phrases.
+limitations, update/rollback/uninstall/reinstall grant behavior, audit/redaction, browser-safe
+app-owned identity creation, the profile-document route, and the content/social/mail extension
+point. The runner also checks that devtools recognizes the same capability names and that
+certification redaction keeps capability names while removing vault secret values, identity private
+material, seed phrases, recovery phrases, signatures, raw request bodies, private insert URIs, and
+absolute staging paths.
 
 App-review evidence is separate from signed catalog and signed bundle evidence. In
 release-candidate mode, the app-platform smoke runner requires reviewer inputs for first-party
@@ -188,10 +193,10 @@ release blocker by default. The app-platform smoke report must keep UI lint outp
 relative bundle paths and finding ids are acceptable, while tokens, form passwords, query strings,
 private file paths, and local file contents are not.
 
-Site Publisher identity-profile publishing is future work unless a release includes an implemented
-demo. Release evidence must not claim `vault.identities.*` coverage for Site Publisher until the
-app declares the capabilities, shows permission rationale, uses an operator-granted identity
-without exporting private material, and passes the app-vault redaction checks.
+Profile Publisher supplies the identity-profile publishing reference path. Release evidence must
+prove `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
+`app-platform.generated-document-insert` before a release claims identity-profile support. Site
+Publisher remains the content-reference app and should not claim `vault.identities.*` coverage.
 
 ## Historical comparison
 
@@ -256,16 +261,18 @@ ecosystem.legacy-retirement
 
 The gates are intentionally conservative. Platform API compatibility blocks on contract status
 failure, contract version rollback, or available stable endpoint/capability removals. First-party
-app gates require `queue-manager`, `publisher`, and `site-publisher`, and block when a previously
-certified first-party app disappears without a waiver. App UI gates block failing or missing
+app gates require `queue-manager`, `publisher`, `site-publisher`, and `profile-publisher`, and
+block when a previously certified first-party app disappears without a waiver. App UI gates block failing or missing
 first-party strict lint/design-system evidence and warn when lint warning counts increase. Review
 trust gates block trusted receipt, review-policy, or first-party review catalog regressions. Update
 rollback gates block lifecycle, scheduler, or rollback evidence regressions and warn if rollback
 scope cannot be proven as installed-bundle-only. Vault gates block missing capability/redaction
-evidence.
+evidence or missing profile-document route evidence.
 Sandbox gates warn when enforced evidence regresses to best-effort, and block in
 `release-candidate` mode when enforced evidence is required but absent. Reference-content gates
-block if Site Publisher evidence disappears or no longer proves content API helper usage. Legacy
+block if Site Publisher evidence disappears, Profile Publisher evidence disappears, generated
+document insert evidence disappears, or either reference app no longer proves its required helper
+usage. Legacy
 retirement gates block missing removal-wave evidence or failed retained browse safety evidence and
 warn on removed-route count changes without update-note metadata.
 
@@ -347,10 +354,11 @@ The report and copied artifacts must not contain:
 - the host/operator form password;
 - raw request bodies;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
+- raw profile-document signatures or signed profile-document payloads;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;
-- absolute developer-specific filesystem paths;
+- absolute developer-specific filesystem paths, including absolute staging paths;
 - catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and
   rollback backup paths;
 - non-localhost remote addresses.

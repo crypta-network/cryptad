@@ -82,7 +82,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | --- | --- |
 | Node | `GET /api/v1/node/greeting` and `GET /api/v1/node/reference` expose read-only node metadata and node-reference export. |
 | Connectivity | `GET /api/v1/connectivity` exposes the current connectivity snapshot. |
-| Queue | `GET /api/v1/queue` exposes the queue snapshot. The family also covers count and key-export views, direct downloads, local file/directory inserts, request removal/restart/priority changes, and finished upload/download cleanup. |
+| Queue | `GET /api/v1/queue` exposes the queue snapshot. The family also covers count and key-export views, direct downloads, local file/directory inserts, app-generated document inserts at `POST /api/v1/queue/inserts/app-document`, request removal/restart/priority changes, and finished upload/download cleanup. Local file/directory inserts require `content.insert` plus `queue.write`. App-generated document inserts require the narrower `content.insert.app-document` plus `queue.write`, accept generated document content instead of a local file path, and must keep raw request bodies, private insert URIs, signatures, and absolute staging paths out of certification evidence. |
 | Peers | `GET /api/v1/peers` exposes raw peer lists or the shell summary view. The family also covers peer add, lookup, settings updates, private-note updates, and removal. |
 | Config | `GET /api/v1/config` exports config snapshots. `POST` actions apply overrides and persist the current config. |
 | Security levels | `GET /api/v1/security-levels` exposes threat-level state. The family also covers network warning lookup and current network/physical threat-level mutations, with confirmation-heavy flows still falling back to legacy pages when required. |
@@ -93,7 +93,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | Apps | `GET /api/v1/apps` lists installed apps when `AppHost` is wired into the router, including path-free quota usage, effective limits, process-log size/limit metadata, sandbox status, app-owned UI metadata, and recent audit summary data. Sandbox status reports the requested mode, required flag, provider, active flag, warnings, and support level such as `none`, `best-effort`, `unsupported`, or `enforced`; it does not expose wrapper command lines, executable paths, or launch tokens. The family also covers local staged-bundle install, app lookup, start, stop, update, uninstall, declared permissions at `GET /api/v1/apps/{appId}/permissions`, recent app audit at `GET /api/v1/apps/{appId}/audit`, token-free runtime status at `GET /api/v1/apps/{appId}/runtime`, and bounded token-redacted process logs at `GET /api/v1/apps/{appId}/logs`. Contract version 2 adds app-update lifecycle routes under `GET /api/v1/apps/{appId}/updates` plus `check`, `stage`, `apply`, `rollback`, and policy read/write subroutes; those summaries are path-free and token-free, include background scheduler state, and keep app bundle rollback separate from app data/cache state. |
 | App catalogs | `GET /api/v1/app-catalogs` lists configured signed catalogs when catalog support is wired into the router. `GET /api/v1/app-catalogs/recommended` exposes operator-visible recommended catalogs such as the first-party beta catalog, and `POST /api/v1/app-catalogs/recommended/{catalogId}/add` adds one through the same verified source path. The family also covers source add/remove, refresh, catalog app listing/detail, install/update from a verified catalog artifact, and app-store metadata for install/update review. |
 | Platform contract | `GET /api/v1/platform/contract` exposes the deterministic Platform API compatibility contract. App principals need `platform.contract.read`; host/operator requests use the existing local-admin model. |
-| App vault | Secret and identity vault routes use `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and `vault.identities.manage` when the vault endpoint family is wired. Vault responses and audit entries must remain token-free, path-free, and free of raw secret values or identity private material. See [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md). |
+| App vault | Secret and identity vault routes use `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and `vault.identities.manage` when the vault endpoint family is wired. `POST /api/v1/app-vault/identities` creates app-owned identities for authorized app process or browser principals without returning private material. `POST /api/v1/app-vault/identities/{identityId}/profile-document` uses an identity the app can see and use to create a profile document without exporting the private key. Vault responses and audit entries must remain token-free, path-free, and free of raw secret values, identity private material, request bodies, private keys, and raw signatures. See [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md). |
 
 ## App catalog response metadata
 
@@ -176,8 +176,9 @@ gate error codes include `app_review_missing`, `app_review_untrusted`, `app_revi
 
 The Web Shell uses the Platform API for node management, queue control, peer control, alerts,
 diagnostics, config, updater, security levels, wizard, and installed-app lifecycle work. The
-repo-owned Queue Manager, Publisher, and Site Publisher apps use the same Platform API from their
-own static routes under `/apps/queue-manager/`, `/apps/publisher/`, and `/apps/site-publisher/`.
+repo-owned Queue Manager, Publisher, Site Publisher, and Profile Publisher apps use the same
+Platform API from their own static routes under `/apps/queue-manager/`, `/apps/publisher/`,
+`/apps/site-publisher/`, and `/apps/profile-publisher/`.
 
 The shell currently includes these first-party panels and surfaces:
 
@@ -187,7 +188,7 @@ The shell currently includes these first-party panels and surfaces:
   install/update.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
-- Queue Manager, Publisher, and Site Publisher open as independent first-party app UIs when
+- Queue Manager, Publisher, Site Publisher, and Profile Publisher open as independent first-party app UIs when
   installed.
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.

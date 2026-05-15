@@ -26,6 +26,7 @@ rootProject.name = "cryptad"
 include(
   ":apps:queue-manager",
   ":apps:publisher",
+  ":apps:profile-publisher",
   ":apps:site-publisher",
   ":platform-design-system",
   ":platform-appvault",

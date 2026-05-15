@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=4
+contractVersion=5
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 4,
+    "contractVersion": 5,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -90,9 +90,22 @@ so the contract and route-to-capability policy do not maintain separate route li
 Contract version 2 adds the installed-app update lifecycle endpoints under
 `/apps/{appId}/updates`. Contract version 3 adds the app vault and identity vault descriptors.
 Contract version 4 adds the first-party catalog onboarding routes under
-`/app-catalogs/recommended`. Existing version 1
-capabilities and endpoints remain stable, and their descriptors keep `sinceContractVersion=1` so
-tooling can distinguish old and newly introduced surface area.
+`/app-catalogs/recommended`. Contract version 5 adds profile-publishing support for app-owned
+static UIs:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/app-vault/identities` | `vault.identities.create` | Create an app-owned identity from a browser-safe app principal or app process principal without returning private identity material. |
+| `POST /api/v1/app-vault/identities/{identityId}/profile-document` | `vault.identities.read`, `vault.identities.use` | Ask Cryptad to produce a profile document for an identity the app can see and use, without exporting private keys or recording raw signatures in evidence. |
+| `POST /api/v1/queue/inserts/app-document` | `content.insert.app-document`, `queue.write` | Queue an app-generated document insert without requiring or authorizing a local source path in the request. |
+
+`POST /api/v1/app-vault/identities` keeps `sinceContractVersion=3` because app-process
+identity creation was introduced with the app-vault contract. Contract version 5 expands that
+same descriptor to browser app principals for app-owned identity creation; the complete browser
+profile-publishing workflow still requires the v5 profile-document and app-document routes.
+
+Existing version 1 capabilities and endpoints remain stable, and their descriptors keep
+`sinceContractVersion=1` so tooling can distinguish old and newly introduced surface area.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -216,7 +229,10 @@ maximum-tested version, optional capabilities, and warnings in app/catalog revie
 `tools/release-certification/app_platform_smoke.py` now emits required
 `platform-api.contract` evidence. It generates a contract snapshot with `crypta-app api snapshot`,
 records descriptor counts and non-stable entries, and runs offline `crypta-app compat verify`
-checks for first-party staged apps and the generated sample app.
+checks for first-party staged apps and the generated sample app. Profile publishing also has
+separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,
+`app-platform.generated-document-insert` for the app-generated document insert route, and
+`reference-app.profile-publisher` for the first-party Profile Publisher bundle.
 
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor
 parse failure, or strict compatibility verifier failure blocks promotion unless an explicit
