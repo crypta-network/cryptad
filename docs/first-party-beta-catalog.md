@@ -91,7 +91,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -105,7 +105,7 @@ permissions.rationale.vault.identities.create=Creates an app-owned profile ident
 permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
 permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
 api.minimumVersion=5
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 api.experimentalCapabilitiesAccepted=true
 ```
 

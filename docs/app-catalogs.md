@@ -68,7 +68,7 @@ app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.pn
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
-app.queue-manager.api.maximumTestedVersion=1
+app.queue-manager.api.maximumTestedVersion=6
 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
@@ -92,7 +92,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=5
+app.site-publisher.api.maximumTestedVersion=6
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -117,7 +117,7 @@ app.profile-publisher.permissions.rationale.queue.write=Creates the generated do
 app.profile-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=5
-app.profile-publisher.api.maximumTestedVersion=5
+app.profile-publisher.api.maximumTestedVersion=6
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader

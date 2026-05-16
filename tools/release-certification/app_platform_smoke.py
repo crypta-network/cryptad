@@ -566,7 +566,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/site-publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
-            "apiMaximumTestedVersion": 5,
+            "apiMaximumTestedVersion": 6,
         },
         {
             "appId": "profile-publisher",
@@ -579,7 +579,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/profile-publisher.sh",
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 5,
-            "apiMaximumTestedVersion": 5,
+            "apiMaximumTestedVersion": 6,
         },
         {
             "appId": "feed-reader",
@@ -5203,7 +5203,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
         api_minimum = "6" if is_feed_reader else "5" if is_profile_publisher else "3"
-        api_maximum = "6" if is_feed_reader else "5" if app_id in {"site-publisher", "profile-publisher"} else "4"
+        api_maximum = "6" if app_id in {"feed-reader", "site-publisher", "profile-publisher"} else "4"
         experimental_accepted = "true" if is_profile_publisher else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
