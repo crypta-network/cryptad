@@ -37,6 +37,7 @@ TOOL_NAME = "perf_smoke"
 MIN_PYTHON_VERSION = (3, 12)
 OUTPUT_MARKER = ".cryptad-perf-smoke-output"
 FIRST_PARTY_APP_SIZE_TARGETS = (
+    ("feed_reader", "feed-reader"),
     ("queue_manager", "queue-manager"),
     ("publisher", "publisher"),
     ("profile_publisher", "profile-publisher"),

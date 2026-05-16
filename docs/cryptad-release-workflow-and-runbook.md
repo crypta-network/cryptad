@@ -86,14 +86,19 @@ Treat these as release blockers, in order:
    documented in [app-ui-design-system.md](app-ui-design-system.md).
 8. **App-vault and reference-app evidence** - verify the release certification report includes
    `app-vault.capabilities`, `app-platform.identity-profile-publish`,
-   `app-platform.generated-document-insert`, `reference-apps.content`, and
-   `reference-app.profile-publisher`. Site Publisher is the content-oriented reference app;
+   `app-platform.generated-document-insert`, `app-platform.content-fetch`,
+   `reference-apps.content`, `reference-app.profile-publisher`, and
+   `reference-app.feed-reader`. Site Publisher is the content-oriented reference app;
    release evidence must prove its staged bundle, SDK usage, design-system adoption, permission
    disclosure, content/queue helper usage, and absence of vault/identity permissions. Profile
    Publisher is the identity-profile reference app; evidence must prove browser-safe app-owned
    identity creation, profile-document publishing, app-generated document insertion, declared
    vault/content/queue permissions, and redaction of tokens, form passwords, private insert URIs,
    raw request bodies, private keys, signatures, and absolute staging paths.
+   Feed Reader is the content-fetch reference app; evidence must prove `content.fetch`,
+   `POST /api/v1/content/fetch`, SDK feed-helper usage, generated-feed publication permissions,
+   and redaction of raw feed bodies, raw request bodies, tokens, form passwords, private insert
+   URIs, and local paths.
 9. **Trusted app-review receipt evidence** - verify the release certification report includes
    `app-review.trusted-receipts`, `app-review.policy`, and `app-review.first-party-catalog` when
    first-party catalog evidence is part of the candidate. Review receipt evidence is independent of

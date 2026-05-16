@@ -86,12 +86,14 @@ platform-api.contract
 app-vault.capabilities
 app-platform.identity-profile-publish
 app-platform.generated-document-insert
+app-platform.content-fetch
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
 app-ui.smoke
 reference-apps.content
 reference-app.profile-publisher
+reference-app.feed-reader
 legacy.retirement
 legacy-admin.removal-wave-1
 apphost.sandbox-provider
@@ -104,9 +106,10 @@ app-review.first-party-catalog
 ```
 
 `platform-api.contract`, `app-vault.capabilities`, `app-platform.identity-profile-publish`,
-`app-platform.generated-document-insert`, `app-platform.developer-beta-toolkit`,
+`app-platform.generated-document-insert`, `app-platform.content-fetch`,
+`app-platform.developer-beta-toolkit`,
 `app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`,
-`reference-apps.content`, `reference-app.profile-publisher`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+`reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`, `apphost.sandbox-provider`, `app-update.lifecycle`,
 `app-update.scheduler`, `app-update.rollback`, `app-catalog.first-party-beta`,
 `app-review.trusted-receipts`, and
 `app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
@@ -241,7 +244,8 @@ app-vault capability documentation and redaction evidence, signed bundle evidenc
 inputs are present, signed catalog authoring/verification, AppHost
 sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, independent
 app-review receipt evidence, Profile Publisher identity-profile publishing evidence,
-app-generated document insert evidence, and the legacy-admin retirement map.
+app-generated document insert evidence, content-fetch evidence, Feed Reader reference-app evidence,
+and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -298,6 +302,7 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - browser-session tokens;
 - the host/operator form password;
 - raw request bodies;
+- raw feed bodies;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw profile-document signatures or signed profile-document payloads;
 - raw update or rollback command output;

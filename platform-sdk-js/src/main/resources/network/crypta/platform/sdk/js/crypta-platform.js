@@ -13,6 +13,10 @@
     "script, style, template, iframe, frame, frameset, object, embed, link, meta, base";
   const urlAttributeNames = new Set(["href", "src", "action", "formaction"]);
   const appIdPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
+  const feedSnapshotType = "crypta.feed.snapshot.v1";
+  const feedSnapshotContentType = "application/vnd.crypta.feed+json";
+  const feedSnapshotTargetFilename = "feed.json";
+  const feedSnapshotMaxEntries = 100;
 
   let currentBootstrap = null;
   let currentAppId = null;
@@ -255,6 +259,14 @@
     return apiPostForm("queue/inserts/directory", formDataOrParams, options);
   }
 
+  function fetchText(uriOrOptions, options) {
+    return fetchContent("text", uriOrOptions, options);
+  }
+
+  function fetchBase64(uriOrOptions, options) {
+    return fetchContent("base64", uriOrOptions, options);
+  }
+
   function insertAppDocument(options) {
     const source = requireOptionsObject(options, "App document insert options");
     return apiPostForm(
@@ -312,6 +324,46 @@
       profileDocument: profileDocumentResponse,
       insert: insertResponse,
     };
+  }
+
+  function parseFeedSnapshot(value) {
+    const source = parseJsonObject(value, "Feed snapshot");
+    const type = trimmedString(source.type);
+    if (type !== feedSnapshotType) {
+      throw new Error(`Feed snapshot type must be ${feedSnapshotType}.`);
+    }
+    const items = feedSnapshotItems(source);
+    if (items.length > feedSnapshotMaxEntries) {
+      throw new Error(`Feed snapshot must contain at most ${feedSnapshotMaxEntries} items.`);
+    }
+
+    const normalized = {
+      type: feedSnapshotType,
+      source: normalizeFeedSource(source.source),
+      author: normalizeFeedAuthor(source.author),
+    };
+    copyFeedStringField(source, normalized, "title");
+    copyFeedStringField(source, normalized, "updatedAt");
+    normalized.items = items.map(normalizeFeedItem);
+    return normalized;
+  }
+
+  async function fetchFeedSnapshot(uriOrOptions, options) {
+    const response = await fetchText(uriOrOptions, options);
+    const snapshot = parseFeedSnapshot(response.contentText || "");
+    if (!snapshot.source.uri && response.requestedUri) {
+      snapshot.source.uri = String(response.requestedUri);
+    }
+    if (!snapshot.source.resolvedUri && response.resolvedUri) {
+      snapshot.source.resolvedUri = String(response.resolvedUri);
+    }
+    return { response, snapshot };
+  }
+
+  function publishFeedSnapshot(options) {
+    const source = requireOptionsObject(options, "Feed publish options");
+    const snapshot = parseFeedSnapshot(feedSnapshotDocument(source));
+    return insertAppDocument(feedPublishInsertOptions(source, snapshot));
   }
 
   function sanitizeFragment(html, options) {
@@ -496,6 +548,41 @@
     return options;
   }
 
+  function fetchContent(format, uriOrOptions, options) {
+    const source = contentFetchOptions(uriOrOptions, options);
+    return apiPostForm(
+      "content/fetch",
+      normalizeContentFetchParams(source, format),
+      requestOptionsFrom(source)
+    );
+  }
+
+  function contentFetchOptions(uriOrOptions, options) {
+    if (typeof uriOrOptions === "string") {
+      if (options != null && (typeof options !== "object" || Array.isArray(options))) {
+        throw new Error("Content fetch options must be an object.");
+      }
+      const source = Object.assign({}, options || {});
+      source.uri = uriOrOptions;
+      return source;
+    }
+    return requireOptionsObject(uriOrOptions, "Content fetch options");
+  }
+
+  function normalizeContentFetchParams(source, format) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "uri");
+    copyStringParamAs(source, params, "key", "uri");
+    copyPositiveIntegerParam(source, params, "maxBytes");
+    copyPositiveIntegerParam(source, params, "timeoutMillis");
+    copyStringParam(source, params, "purpose");
+    if (!params.has("uri")) {
+      throw new Error("Content fetch uri is required.");
+    }
+    params.set("format", format);
+    return params;
+  }
+
   function copyRequestOption(source, target, name) {
     if (source && Object.prototype.hasOwnProperty.call(source, name)) {
       target[name] = source[name];
@@ -574,6 +661,27 @@
     }
   }
 
+  function copyPositiveIntegerParam(source, params, name) {
+    if (!source || !Object.prototype.hasOwnProperty.call(source, name)) {
+      return;
+    }
+    const value = source[name];
+    if (typeof value === "number") {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(`${name} must be a positive integer.`);
+      }
+      params.set(name, String(value));
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim();
+      if (!/^[1-9][0-9]*$/.test(normalized)) {
+        throw new Error(`${name} must be a positive integer.`);
+      }
+      params.set(name, normalized);
+    }
+  }
+
   function jsonDocumentBase64(value, description) {
     let json;
     try {
@@ -631,6 +739,111 @@
     if (!nonBlankString(options.contentType)) {
       options.contentType = "application/vnd.crypta.profile+json";
     }
+    return options;
+  }
+
+  function parseJsonObject(value, description) {
+    const source = typeof value === "string" ? parseJsonString(value, description) : value;
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error(`${description} must be a JSON object.`);
+    }
+    return source;
+  }
+
+  function parseJsonString(value, description) {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      throw new Error(`${description} must be valid JSON.`);
+    }
+  }
+
+  function feedSnapshotItems(source) {
+    if (Array.isArray(source.items)) {
+      return source.items;
+    }
+    if (Array.isArray(source.entries)) {
+      return source.entries;
+    }
+    throw new Error("Feed snapshot items must be an array.");
+  }
+
+  function normalizeFeedSource(source) {
+    const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+    const normalized = {};
+    copyFeedStringField(value, normalized, "uri");
+    copyFeedStringField(value, normalized, "resolvedUri");
+    return normalized;
+  }
+
+  function normalizeFeedAuthor(author) {
+    const value = author && typeof author === "object" && !Array.isArray(author) ? author : {};
+    const normalized = {};
+    copyFeedStringField(value, normalized, "name");
+    copyFeedStringField(value, normalized, "profileUri");
+    return normalized;
+  }
+
+  function normalizeFeedItem(item) {
+    const source = parseJsonObject(item, "Feed item");
+    const normalized = {};
+    copyFeedStringField(source, normalized, "id");
+    copyFeedStringField(source, normalized, "title");
+    copyFeedStringField(source, normalized, "summary");
+    copyFeedStringField(source, normalized, "uri");
+    copyFeedStringField(source, normalized, "publishedAt");
+    const tags = normalizeFeedTags(source.tags);
+    if (tags.length > 0) {
+      normalized.tags = tags;
+    }
+    return normalized;
+  }
+
+  function normalizeFeedTags(tags) {
+    const source =
+      typeof tags === "string"
+        ? tags.split(",")
+        : Array.isArray(tags)
+          ? tags
+        : [];
+    const unique = new Set();
+    source.forEach((tag) => {
+      const normalized = trimmedString(tag);
+      if (normalized) {
+        unique.add(normalized);
+      }
+    });
+    return Array.from(unique).sort();
+  }
+
+  function copyFeedStringField(source, target, name) {
+    const value = trimmedString(source[name]);
+    if (value) {
+      target[name] = value;
+    }
+  }
+
+  function trimmedString(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function feedSnapshotDocument(source) {
+    if (Object.prototype.hasOwnProperty.call(source, "snapshot")) {
+      return source.snapshot;
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "feed")) {
+      return source.feed;
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "document")) {
+      return source.document;
+    }
+    throw new Error("Feed publish options must include a snapshot.");
+  }
+
+  function feedPublishInsertOptions(source, snapshot) {
+    const options = Object.assign({}, source, { document: snapshot });
+    options.contentType = feedSnapshotContentType;
+    options.targetFilename = feedSnapshotTargetFilename;
     return options;
   }
 
@@ -952,6 +1165,8 @@
       mutate: queueMutate,
     }),
     content: Object.freeze({
+      fetchText,
+      fetchBase64,
       insertFile,
       insertDirectory,
       insertAppDocument,
@@ -970,6 +1185,11 @@
     }),
     profile: Object.freeze({
       publish: publishProfile,
+    }),
+    feed: Object.freeze({
+      parseSnapshot: parseFeedSnapshot,
+      fetchSnapshot: fetchFeedSnapshot,
+      publishSnapshot: publishFeedSnapshot,
     }),
     dom: Object.freeze({
       sanitizeFragment,

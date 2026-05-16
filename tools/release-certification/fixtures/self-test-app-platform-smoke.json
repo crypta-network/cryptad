@@ -6,7 +6,8 @@
           "queue-manager",
           "publisher",
           "site-publisher",
-          "profile-publisher"
+          "profile-publisher",
+          "feed-reader"
         ]
       },
       "id": "app-platform.first-party",
@@ -165,6 +166,38 @@
     },
     {
       "details": {
+        "checks": {
+          "fetchScopeDocumented": true,
+          "handlerOrTestEvidencePresent": true,
+          "redactionDocumented": true,
+          "requiredCapabilitiesDocumented": true,
+          "routeDocumented": true,
+          "routeInContractOrRouter": true,
+          "routeUsesContentFetchCapability": true,
+          "sdkFeedHelpersPresentOrDocumented": true
+        },
+        "redaction": {
+          "appProcessTokensRedacted": true,
+          "browserSessionTokensRedacted": true,
+          "formPasswordsRedacted": true,
+          "localPathsSanitized": true,
+          "privateInsertUrisExcluded": true,
+          "rawFeedBodiesExcluded": true,
+          "rawRequestBodiesExcluded": true
+        },
+        "requiredCapabilities": [
+          "content.fetch"
+        ],
+        "route": "POST /api/v1/content/fetch"
+      },
+      "id": "app-platform.content-fetch",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Content fetch route evidence passed."
+    },
+    {
+      "details": {
         "keyId": "dev-local"
       },
       "id": "app-platform.signed-bundles",
@@ -195,7 +228,8 @@
           "queue-manager",
           "publisher",
           "site-publisher",
-          "profile-publisher"
+          "profile-publisher",
+          "feed-reader"
         ]
       },
       "id": "app-catalog.first-party-beta",
@@ -231,24 +265,27 @@
           "queue-manager",
           "publisher",
           "site-publisher",
-          "profile-publisher"
+          "profile-publisher",
+          "feed-reader"
         ],
         "coverage": {
-          "catalogAppsInspected": 4,
+          "catalogAppsInspected": 5,
           "expiredOrMismatchedOrUnknownReviewer": 0,
           "missingReceipts": 0,
           "promotionBlocked": false,
-          "trustedPositiveReceipts": 4,
+          "trustedPositiveReceipts": 5,
           "trustedRejectedReceipts": 0
         },
         "catalog": {
           "inspectedAppIds": [
+            "feed-reader",
             "profile-publisher",
             "publisher",
             "queue-manager",
             "site-publisher"
           ],
           "receiptStatuses": {
+            "feed-reader": "reviewed",
             "profile-publisher": "reviewed",
             "publisher": "reviewed",
             "queue-manager": "reviewed",
@@ -287,6 +324,13 @@
     {
       "details": {
         "apps": {
+          "feed-reader": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          },
           "publisher": {
             "summary": {
               "errors": 0,
@@ -326,6 +370,9 @@
     {
       "details": {
         "sourceStaticUi": {
+          "feed-reader": {
+            "usesDesignSystemClasses": true
+          },
           "publisher": {
             "usesDesignSystemClasses": true
           },
@@ -425,6 +472,40 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Profile Publisher reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "feed-reader",
+        "checks": {
+          "docsDescribeFeedReaderFlow": true,
+          "manifestDeclaresFeedPermissions": true,
+          "manifestDeclaresFeedReader": true,
+          "manifestUsesContractV6": true,
+          "moduleExists": true,
+          "noPersistentBrowserStorage": true,
+          "noRawAdminApiReference": true,
+          "permissionDisclosureMentionsDeclaredPermissions": true,
+          "sourceStaticUiPresent": true,
+          "stagedDesignSystemPresent": true,
+          "stagedManifestPresent": true,
+          "stagedSdkPresent": true,
+          "usesContentFetchRouteOrHelper": true,
+          "usesGeneratedDocumentInsertRoute": true,
+          "usesSdkBootstrap": true,
+          "usesUploadQueueSnapshot": true
+        },
+        "expectedPermissions": [
+          "content.fetch",
+          "content.insert.app-document",
+          "queue.read",
+          "queue.write"
+        ]
+      },
+      "id": "reference-app.feed-reader",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Feed Reader reference app evidence passed."
     },
     {
       "details": {

@@ -1,6 +1,15 @@
 {
   "description": "Conservative baseline for the lightweight Cryptad performance smoke gate.",
   "metrics": {
+    "apphost.feed_reader_staged_bundle_bytes": {
+      "baseline": 75648,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
     "apphost.profile_publisher_staged_bundle_bytes": {
       "baseline": 68220,
       "fail_on_regression": true,
@@ -34,6 +43,15 @@
       "fail_ratio": 1.75,
       "max_bytes": 150000,
       "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apps.feed_reader_static_bytes": {
+      "baseline": 31243,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": true,
       "unit": "bytes",
       "warn_ratio": 1.35
     },

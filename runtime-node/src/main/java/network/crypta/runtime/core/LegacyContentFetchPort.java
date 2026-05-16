@@ -384,7 +384,7 @@ final class LegacyContentFetchPort implements ContentFetchPort {
   private static ContentFetchException oversizedContentException(
       BoundedContentFetchRequest request) {
     return new ContentFetchException(
-        ContentFetchException.CATALOG_FETCH_FAILED,
+        ContentFetchException.CATALOG_FETCH_TOO_LARGE,
         "Fetched content exceeded " + request.maxBytes() + " bytes for " + request.purpose());
   }
 
@@ -392,13 +392,24 @@ final class LegacyContentFetchPort implements ContentFetchPort {
    * Converts a non-redirect fetch failure into the runtime SPI error envelope.
    *
    * @param exception daemon fetch exception that should be exposed only through a stable code
-   * @return content-fetch exception with {@code catalog_fetch_failed}
+   * @return content-fetch exception with a stable runtime SPI code
    */
-  private static ContentFetchException mapFetchException(FetchException exception) {
+  static ContentFetchException mapFetchException(FetchException exception) {
+    if (isFetchLayerSizeFailure(exception)) {
+      return new ContentFetchException(
+          ContentFetchException.CATALOG_FETCH_TOO_LARGE,
+          "Fetched content exceeded a configured byte bound.",
+          exception);
+    }
     return new ContentFetchException(
         ContentFetchException.CATALOG_FETCH_FAILED,
         "Content fetch failed: " + exception.getMessage(),
         exception);
+  }
+
+  private static boolean isFetchLayerSizeFailure(FetchException exception) {
+    return exception.getMode() == FetchException.FetchExceptionMode.TOO_BIG
+        || exception.getMode() == FetchException.FetchExceptionMode.TOO_BIG_METADATA;
   }
 
   /**

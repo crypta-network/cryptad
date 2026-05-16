@@ -75,7 +75,7 @@ class LegacyContentFetchPortTest {
             ContentFetchException.class,
             () -> LegacyContentFetchPort.materializeResult(request, result));
 
-    assertEquals(ContentFetchException.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, exception.errorCode());
     assertTrue(bucket.freed());
   }
 
@@ -124,7 +124,7 @@ class LegacyContentFetchPortTest {
             ContentFetchException.class,
             () -> LegacyContentFetchPort.streamResult(request, result, destination));
 
-    assertEquals(ContentFetchException.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, exception.errorCode());
     assertArrayEquals(new byte[0], destination.toByteArray());
     assertTrue(bucket.freed());
   }
@@ -144,6 +144,39 @@ class LegacyContentFetchPortTest {
 
     assertEquals("read failed", exception.getMessage());
     assertTrue(bucket.freed());
+  }
+
+  @Test
+  void mapFetchException_whenFetchLayerReportsTooBig_expectTooLargeCode() {
+    FetchException fetchException =
+        new FetchException(FetchException.FetchExceptionMode.TOO_BIG, 999L, true, "text/plain");
+
+    ContentFetchException exception = LegacyContentFetchPort.mapFetchException(fetchException);
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, exception.errorCode());
+    assertSame(fetchException, exception.getCause());
+  }
+
+  @Test
+  void mapFetchException_whenFetchLayerReportsTooBigMetadata_expectTooLargeCode() {
+    FetchException fetchException =
+        new FetchException(FetchException.FetchExceptionMode.TOO_BIG_METADATA);
+
+    ContentFetchException exception = LegacyContentFetchPort.mapFetchException(fetchException);
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, exception.errorCode());
+    assertSame(fetchException, exception.getCause());
+  }
+
+  @Test
+  void mapFetchException_whenFetchLayerReportsGenericFailure_expectFailedCode() {
+    FetchException fetchException =
+        new FetchException(FetchException.FetchExceptionMode.DATA_NOT_FOUND);
+
+    ContentFetchException exception = LegacyContentFetchPort.mapFetchException(fetchException);
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertSame(fetchException, exception.getCause());
   }
 
   private static class TrackingBucket extends ArrayBucket {

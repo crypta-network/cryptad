@@ -30,6 +30,14 @@ class ContentFetchExceptionTest {
   }
 
   @Test
+  void constructor_whenTooLargeCodeSupplied_expectStableCodeReturned() {
+    ContentFetchException exception =
+        new ContentFetchException(ContentFetchException.CATALOG_FETCH_TOO_LARGE, "too large");
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, exception.errorCode());
+  }
+
+  @Test
   void constructor_whenErrorCodeIsBlank_expectIllegalArgumentException() {
     assertThrows(IllegalArgumentException.class, () -> throwExceptionWithErrorCode(" "));
   }

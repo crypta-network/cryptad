@@ -57,13 +57,14 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 5;
+  public static final int CURRENT_CONTRACT_VERSION = 6;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
   private static final int APP_VAULT_CONTRACT_VERSION = 3;
   private static final int RECOMMENDED_CATALOG_CONTRACT_VERSION = 4;
   private static final int PROFILE_PUBLISHING_CONTRACT_VERSION = 5;
+  private static final int CONTENT_FETCH_CONTRACT_VERSION = 6;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -85,6 +86,7 @@ public record PlatformApiContract(
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
   private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
   private static final String ROUTE_FAMILY_CONFIG = "config";
+  private static final String ROUTE_FAMILY_CONTENT = "content";
   private static final String ROUTE_FAMILY_IDENTITY_VAULT = "identity-vault";
   private static final String ROUTE_FAMILY_PEERS = "peers";
   private static final String ROUTE_FAMILY_QUEUE = "queue";
@@ -252,6 +254,12 @@ public record PlatformApiContract(
         capability(
             PlatformApiCapabilities.CONFIG_WRITE, "Apply and persist configuration changes."),
         capability(PlatformApiCapabilities.CONNECTIVITY_READ, "Read connectivity diagnostics."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.CONTENT_FETCH,
+            PlatformApiStabilityLevel.STABLE,
+            CONTENT_FETCH_CONTRACT_VERSION,
+            null,
+            "Fetch bounded Crypta content documents through app-facing network reads."),
         capability(
             PlatformApiCapabilities.CONTENT_INSERT,
             "Create local file or directory insert requests."),
@@ -444,6 +452,7 @@ public record PlatformApiContract(
         List.of(PlatformApiCapabilities.CONTENT_INSERT, PlatformApiCapabilities.QUEUE_WRITE),
         "Create a local directory insert request.");
     builder.queueAppDocumentPost();
+    builder.contentFetchPost();
     builder.post(
         ROUTE_FAMILY_QUEUE,
         "/queue/requests/remove",
@@ -972,6 +981,20 @@ public record PlatformApiContract(
               true,
               PlatformApiStabilityLevel.STABLE,
               "Create a bounded app-generated document insert request."));
+    }
+
+    private void contentFetchPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_CONTENT,
+              METHOD_POST,
+              "/content/fetch",
+              "content.fetch",
+              List.of(PlatformApiCapabilities.CONTENT_FETCH),
+              CONTENT_FETCH_CONTRACT_VERSION,
+              true,
+              true,
+              "Fetch one bounded Crypta content document."));
     }
 
     private void appVaultProfileDocumentPost() {

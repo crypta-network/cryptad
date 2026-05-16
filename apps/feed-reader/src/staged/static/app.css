@@ -1,0 +1,131 @@
+.feed-reader-layout {
+  display: grid;
+  gap: var(--cr-space-4);
+}
+
+.header-actions,
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+  justify-content: flex-end;
+}
+
+.safe-use-panel,
+.sources-panel,
+.reader-panel,
+.publisher-panel,
+.queue-panel {
+  display: grid;
+  gap: var(--cr-space-3);
+}
+
+.safe-use-panel h2,
+.panel-heading h2,
+.publisher-panel h2,
+.queue-panel h2 {
+  margin: 0;
+}
+
+.safe-use-panel ul,
+.cr-permission-summary ul {
+  margin: 0;
+}
+
+.workspace-grid,
+.publisher-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--cr-space-4);
+  align-items: start;
+}
+
+.source-form,
+.publisher-panel {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.source-form,
+.publisher-panel,
+.source-list,
+.reader-content,
+.queue-content,
+.publish-summary {
+  display: grid;
+  gap: var(--cr-space-3);
+}
+
+.source-form .cr-checkbox,
+.publisher-panel__wide {
+  grid-column: 1 / -1;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cr-space-3);
+}
+
+.source-item,
+.entry-item,
+.queue-item,
+.publish-item {
+  border-bottom: var(--cr-border);
+  display: grid;
+  gap: var(--cr-space-2);
+  padding-bottom: var(--cr-space-3);
+}
+
+.source-item:last-child,
+.entry-item:last-child,
+.queue-item:last-child,
+.publish-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.source-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+}
+
+.summary-row,
+.entry-title,
+.entry-meta,
+.entry-body,
+.source-uri {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-body,
+.source-uri {
+  white-space: pre-wrap;
+}
+
+.reader-content,
+.queue-content {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .workspace-grid,
+  .publisher-grid,
+  .source-form,
+  .publisher-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .cr-header,
+  .panel-heading {
+    align-items: stretch;
+  }
+
+  .header-actions,
+  .panel-actions {
+    justify-content: stretch;
+  }
+}

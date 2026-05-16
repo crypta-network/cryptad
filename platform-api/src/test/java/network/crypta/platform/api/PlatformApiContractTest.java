@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":5"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":6"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(5, version.contractVersion());
+    assertEquals(6, version.contractVersion());
   }
 
   @Test
@@ -56,6 +56,12 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
     assertEquals(5, appDocumentInsertCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor contentFetchCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("content.fetch"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(6, contentFetchCapability.sinceContractVersion());
   }
 
   @Test
@@ -111,6 +117,26 @@ class PlatformApiContractTest {
     assertEquals(List.of("vault.identities.create"), endpoint.requiredCapabilities());
   }
 
+  @Test
+  void current_whenInspectingContentFetchEndpoint_expectContractVersionAndBrowserAccess() {
+    PlatformApiEndpointDescriptor endpoint =
+        PlatformApiContract.current().endpoints().stream()
+            .filter(
+                descriptor ->
+                    descriptor.method().equals("POST")
+                        && descriptor.routeTemplate().equals("/content/fetch"))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(6, endpoint.sinceContractVersion());
+    assertEquals("content", endpoint.routeFamily());
+    assertEquals("content.fetch", endpoint.actionLabel());
+    assertTrue(endpoint.hostOperatorBypassAllowed());
+    assertTrue(endpoint.appProcessAllowed());
+    assertTrue(endpoint.appBrowserAllowed());
+    assertEquals(List.of("content.fetch"), endpoint.requiredCapabilities());
+  }
+
   private static void assertEndpointAuthorization(
       PlatformApiEndpointDescriptor endpoint,
       PlatformApiAuthorizationDecision decision,
@@ -128,6 +154,9 @@ class PlatformApiContractTest {
     if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {
       return 5;
+    }
+    if (endpoint.routeTemplate().equals("/content/fetch")) {
+      return 6;
     }
     if (endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/identity-vault")) {
