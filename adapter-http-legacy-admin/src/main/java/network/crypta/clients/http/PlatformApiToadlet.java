@@ -88,6 +88,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String IDENTITY_VAULT_SEGMENT = "identity-vault";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
+  private static final String CONTENT_SEGMENT = "content";
   private static final String PEERS_SEGMENT = "peers";
   private static final String QUEUE_SEGMENT = "queue";
   private static final String SECURITY_LEVELS_SEGMENT = "security-levels";
@@ -508,9 +509,9 @@ public final class PlatformApiToadlet extends Toadlet {
    *
    * <p>The legacy shell only auto-checks form passwords for POST before dispatch. The Platform API
    * bridge keeps full-access checks ahead of password checks and applies the same legacy password
-   * guard to every currently supported Platform API mutation family. DELETE remains relevant only
-   * for installed-app removal, while the current config, security-levels, updater, wizard, queue,
-   * peer, and app actions use POST.
+   * guard to every currently supported Platform API mutation or resource-consuming POST family.
+   * DELETE remains relevant only for installed-app removal, while the current config,
+   * security-levels, updater, content fetch, wizard, queue, peer, and app actions use POST.
    *
    * @param method HTTP method name forwarded into the router
    * @param uri request target supplied by the legacy HTTP shell
@@ -585,7 +586,8 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   /**
-   * Returns whether the current request targets one of the non-app mutating Platform API routes.
+   * Returns whether the current request targets one of the non-app routes protected by the
+   * form-password guard.
    *
    * @param method HTTP method name forwarded into the router
    * @param pathSegments decoded path segments beneath the Platform API mount point
@@ -593,6 +595,7 @@ public final class PlatformApiToadlet extends Toadlet {
    */
   private static boolean requiresNonAppFormPassword(String method, List<String> pathSegments) {
     return requiresQueueFormPassword(method, pathSegments)
+        || requiresContentFormPassword(method, pathSegments)
         || requiresPeersFormPassword(method, pathSegments)
         || requiresAppCatalogsFormPassword(method, pathSegments)
         || requiresConfigFormPassword(method, pathSegments)
@@ -601,6 +604,13 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresIdentityVaultFormPassword(method, pathSegments)
         || requiresAlertsFormPassword(method, pathSegments)
         || requiresWizardFormPassword(method, pathSegments);
+  }
+
+  private static boolean requiresContentFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 2
+        && CONTENT_SEGMENT.equals(pathSegments.getFirst())
+        && "fetch".equals(pathSegments.get(1));
   }
 
   private static boolean requiresIdentityVaultFormPassword(

@@ -3122,9 +3122,10 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
     )
     checks["usesSdkBootstrap"] = "CryptaPlatform.bootstrap.load" in source_app_js
     checks["usesContentFetchRouteOrHelper"] = (
-        "CryptaPlatform.feed" in source_app_js
+        "CryptaPlatform.content.fetchText" in source_app_js
+        or "CryptaPlatform.content.fetchBase64" in source_app_js
+        or "CryptaPlatform.feed.fetchSnapshot" in source_app_js
         or "content/fetch" in source_app_js
-        or "content.fetch" in source_app_js
     )
     checks["usesGeneratedDocumentInsertRoute"] = (
         "queue/inserts/app-document" in source_app_js
@@ -4692,6 +4693,25 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
+        feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
+        original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
+        try:
+            feed_reader_app_js.write_text(
+                "const appId = 'feed-reader';\n"
+                "CryptaPlatform.bootstrap.load({ appId });\n"
+                "CryptaPlatform.feed.parseSnapshot('{}');\n"
+                "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
+                "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+                encoding="utf-8",
+            )
+            missing_fetch_settings = dataclasses.replace(settings, mode="release-candidate")
+            missing_fetch_item = collect_feed_reader_reference_app_evidence(missing_fetch_settings)
+        finally:
+            feed_reader_app_js.write_text(original_feed_reader_js, encoding="utf-8")
+        assert missing_fetch_item.status == "fail", missing_fetch_item
+        assert (
+            missing_fetch_item.details["checks"]["usesContentFetchRouteOrHelper"] is False
+        ), missing_fetch_item
         review_env_names = (
             "CRYPTAD_APP_REVIEWER_KEY_ID",
             "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
