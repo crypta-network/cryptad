@@ -271,6 +271,8 @@ class FeedReaderBundleStagingTest {
         "pagehide",
         "visibilitychange",
         "textContent",
+        "uri: entryLink(item)",
+        "getAttribute(\"href\")",
         "replaceChildren",
         "DOMParser",
         "buildPublishedSnapshot",

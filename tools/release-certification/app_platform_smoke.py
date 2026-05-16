@@ -333,14 +333,14 @@ def normalize_key_name(key_hint: str) -> str:
     return re.sub(r"[^a-z0-9]", "", key_hint.lower())
 
 
-def should_redact_key_name(key_hint: str) -> bool:
+def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
     normalized = normalize_key_name(key_hint)
     if not normalized:
         return False
+    if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
+        return not (isinstance(value, bool) and normalized.endswith(NON_SECRET_METADATA_SUFFIXES))
     if normalized.endswith(NON_SECRET_METADATA_SUFFIXES):
         return False
-    if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
-        return True
     if normalized in {
         "authorization",
         "cookie",
@@ -382,7 +382,7 @@ def should_redact_key_name(key_hint: str) -> bool:
 
 
 def sanitize_value(value: Any, workspace_root: Path, key_hint: str = "") -> Any:
-    if should_redact_key_name(key_hint):
+    if should_redact_key_name(key_hint, value):
         return "<redacted>"
     if isinstance(value, dict):
         return {str(key): sanitize_value(child, workspace_root, str(key)) for key, child in value.items()}
@@ -4508,8 +4508,11 @@ def run_self_test(repo_root: Path) -> None:
             "rawRequestBody": "uri=SSK@private",
             "requestBodyText": "opaque-request-body-text",
             "feedContentPreview": "opaque-feed-preview",
+            "rawFeedBodySource": "opaque-feed-body-source",
+            "requestBodySource": "opaque-request-body-source",
             "feedSummary": "3 entries",
             "rawFeedBodyRedacted": True,
+            "rawFeedBodiesExcluded": True,
         },
         repo_root,
     )
@@ -4518,8 +4521,11 @@ def run_self_test(repo_root: Path) -> None:
     assert feed_body_metadata["rawRequestBody"] == "<redacted>", feed_body_metadata
     assert feed_body_metadata["requestBodyText"] == "<redacted>", feed_body_metadata
     assert feed_body_metadata["feedContentPreview"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawFeedBodySource"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["requestBodySource"] == "<redacted>", feed_body_metadata
     assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
     assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
+    assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
     credential_scrubbed = scrub_text(
         'Authorization: Bearer app-secret\n'
         'Cookie: session=abc; csrf=def\n'

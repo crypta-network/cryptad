@@ -489,7 +489,7 @@
       publishedAt:
         childText(item, "updated") || childText(item, "published") || childText(item, "pubDate"),
       summary: childText(item, "summary") || childText(item, "description") || childText(item, "content"),
-      uri: childText(item, "link"),
+      uri: entryLink(item),
       tags: [],
     }));
   }
@@ -621,6 +621,14 @@
   function childText(element, selector) {
     const child = element.querySelector(selector);
     return child ? stringValue(child.textContent) : "";
+  }
+
+  function entryLink(element) {
+    const link = element.querySelector("link[rel=\"alternate\"]") || element.querySelector("link");
+    if (!link) {
+      return "";
+    }
+    return stringValue(link.getAttribute("href")) || stringValue(link.textContent);
   }
 
   function fieldValue(form, name) {
