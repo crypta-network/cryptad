@@ -668,6 +668,12 @@ class DeveloperBetaToolkitCliTest {
       assertTrue(index.contains("id=\"preview-profile\""));
       assertTrue(index.contains("id=\"profile-document\""));
       assertTrue(script.contains("window.CryptaPlatform.vault.identities.createProfileDocument"));
+      assertTrue(
+          script.contains(
+              "currentIdentityId = currentIdentityId || firstIdentityId(identityValues);"));
+      assertFalse(
+          script.contains(
+              "currentIdentityId = firstIdentityId(identityValues) || currentIdentityId;"));
       assertFalse(script.contains("vault.grants.request"));
     }
     assertFalse(index.contains("https://"));

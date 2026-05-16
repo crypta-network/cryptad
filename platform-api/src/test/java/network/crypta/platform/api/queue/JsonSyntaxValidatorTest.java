@@ -34,6 +34,14 @@ class JsonSyntaxValidatorTest {
   }
 
   @Test
+  void validate_whenUnicodeEscapeUsesNonAsciiDigits_expectIllegalArgumentException() {
+    String arabicIndicZero = Character.toString('٠');
+    String document = "\"\\u" + arabicIndicZero.repeat(4) + "\"";
+
+    assertThrows(IllegalArgumentException.class, () -> JsonSyntaxValidator.validate(document));
+  }
+
+  @Test
   void validate_whenNestingAtBoundary_expectOnlyTooDeepRejected() {
     String boundaryJson = "[".repeat(64) + "0" + "]".repeat(64);
     String tooDeepJson = "[".repeat(65) + "0" + "]".repeat(65);

@@ -580,7 +580,7 @@ final class AppTemplateScaffolder {
       const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
       const identities = await platform.vault.identities.list();
       const identityValues = Array.isArray(identities.identities) ? identities.identities : [];
-      currentIdentityId = firstIdentityId(identityValues) || currentIdentityId;
+      currentIdentityId = currentIdentityId || firstIdentityId(identityValues);
       render(identityList, identityValues, "identity");
       status.textContent = `${bootstrap.name} loaded ${identityValues.length} mock identity item(s).`;
       status.className = "cr-status cr-status--success sample-status";

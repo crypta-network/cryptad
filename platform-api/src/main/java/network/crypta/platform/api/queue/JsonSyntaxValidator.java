@@ -183,7 +183,7 @@ final class JsonSyntaxValidator {
     char escaped = text.charAt(index++);
     switch (escaped) {
       case '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> {
-        return;
+        // The single-character escape is valid and was consumed above.
       }
       case 'u' -> parseUnicodeEscape();
       default -> throw error();
@@ -191,7 +191,7 @@ final class JsonSyntaxValidator {
   }
 
   /**
-   * Parses the four hexadecimal digits of a JSON unicode escape.
+   * Parses the four ASCII hexadecimal digits of a JSON Unicode escape.
    *
    * @throws IllegalArgumentException when fewer than four hex digits are available
    */
@@ -200,7 +200,7 @@ final class JsonSyntaxValidator {
       throw error();
     }
     for (int offset = 0; offset < 4; offset++) {
-      if (Character.digit(text.charAt(index++), 16) < 0) {
+      if (!isAsciiHexDigit(text.charAt(index++))) {
         throw error();
       }
     }
@@ -229,34 +229,106 @@ final class JsonSyntaxValidator {
    * @throws IllegalArgumentException when the number grammar is not satisfied
    */
   private void parseNumber() {
-    if (consume('-') && index >= text.length()) {
+    consumeOptionalMinus();
+    parseIntegerPart();
+    parseFractionPart();
+    parseExponentPart();
+  }
+
+  /**
+   * Consumes an optional leading minus sign.
+   *
+   * @throws IllegalArgumentException when the document ends immediately after the minus sign
+   */
+  private void consumeOptionalMinus() {
+    if (!consume('-')) {
+      return;
+    }
+    if (index >= text.length()) {
       throw error();
     }
+  }
+
+  /**
+   * Parses the required integer portion of a JSON number.
+   *
+   * <p>The integer portion is either a single {@code 0} or a non-zero leading digit followed by
+   * zero or more ASCII digits. A zero followed by another digit is rejected as a leading-zero
+   * number.
+   *
+   * @throws IllegalArgumentException when no valid integer part is present
+   */
+  private void parseIntegerPart() {
     if (consume('0')) {
-      if (index < text.length() && isAsciiDigit(text.charAt(index))) {
-        throw error();
-      }
-    } else {
-      requireDigit();
-      while (index < text.length() && isAsciiDigit(text.charAt(index))) {
-        index++;
-      }
+      rejectLeadingZero();
+      return;
     }
-    if (consume('.')) {
-      requireDigit();
-      while (index < text.length() && isAsciiDigit(text.charAt(index))) {
-        index++;
-      }
+    requireDigit();
+    consumeAsciiDigits();
+  }
+
+  /**
+   * Rejects an otherwise valid integer part that starts with {@code 0} and continues with a digit.
+   *
+   * @throws IllegalArgumentException when the current offset points at a second integer digit
+   */
+  private void rejectLeadingZero() {
+    if (index < text.length() && isAsciiDigit(text.charAt(index))) {
+      throw error();
     }
-    if (index < text.length() && (text.charAt(index) == 'e' || text.charAt(index) == 'E')) {
+  }
+
+  /**
+   * Parses an optional fractional portion.
+   *
+   * @throws IllegalArgumentException when a decimal point is present without a following digit
+   */
+  private void parseFractionPart() {
+    if (!consume('.')) {
+      return;
+    }
+    requireDigit();
+    consumeAsciiDigits();
+  }
+
+  /**
+   * Parses an optional exponent portion.
+   *
+   * @throws IllegalArgumentException when an exponent marker is present without exponent digits
+   */
+  private void parseExponentPart() {
+    if (!consumeExponentMarker()) {
+      return;
+    }
+    consumeOptionalExponentSign();
+    requireDigit();
+    consumeAsciiDigits();
+  }
+
+  /**
+   * Consumes an optional exponent marker.
+   *
+   * @return {@code true} when {@code e} or {@code E} was present
+   */
+  private boolean consumeExponentMarker() {
+    if (index < text.length() && isExponentMarker(text.charAt(index))) {
       index++;
-      if (index < text.length() && (text.charAt(index) == '+' || text.charAt(index) == '-')) {
-        index++;
-      }
-      requireDigit();
-      while (index < text.length() && isAsciiDigit(text.charAt(index))) {
-        index++;
-      }
+      return true;
+    }
+    return false;
+  }
+
+  /** Consumes an optional exponent sign after an exponent marker. */
+  private void consumeOptionalExponentSign() {
+    if (index < text.length() && isExponentSign(text.charAt(index))) {
+      index++;
+    }
+  }
+
+  /** Advances over zero or more ASCII digits. */
+  private void consumeAsciiDigits() {
+    while (index < text.length() && isAsciiDigit(text.charAt(index))) {
+      index++;
     }
   }
 
@@ -280,6 +352,36 @@ final class JsonSyntaxValidator {
    */
   private static boolean isAsciiDigit(char ch) {
     return ch >= '0' && ch <= '9';
+  }
+
+  /**
+   * Tests whether a character starts a JSON number exponent.
+   *
+   * @param ch character to test
+   * @return {@code true} for {@code e} or {@code E}
+   */
+  private static boolean isExponentMarker(char ch) {
+    return ch == 'e' || ch == 'E';
+  }
+
+  /**
+   * Tests whether a character is a JSON exponent sign.
+   *
+   * @param ch character to test
+   * @return {@code true} for {@code +} or {@code -}
+   */
+  private static boolean isExponentSign(char ch) {
+    return ch == '+' || ch == '-';
+  }
+
+  /**
+   * Tests whether a character is one of the JSON unicode-escape hex digits.
+   *
+   * @param ch character to test without accepting Unicode digit or letter classes
+   * @return {@code true} only for ASCII {@code 0-9}, {@code A-F}, or {@code a-f}
+   */
+  private static boolean isAsciiHexDigit(char ch) {
+    return isAsciiDigit(ch) || (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f');
   }
 
   /**
