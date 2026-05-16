@@ -44,6 +44,35 @@ Apps should treat identity private material as non-exportable. `vault.identities
 preferred shape for signing or identity-bound operations because the app asks Cryptad to perform
 the operation and does not receive the private key bytes.
 
+## Profile publishing routes
+
+Profile Publisher uses the app-vault identity routes to keep profile signing inside Cryptad while
+still allowing a static app UI to drive the workflow.
+
+```text
+POST /api/v1/app-vault/identities
+POST /api/v1/app-vault/identities/{identityId}/profile-document
+```
+
+`POST /api/v1/app-vault/identities` creates an app-owned identity for the calling app. It is
+browser-safe for app-owned static UIs when the browser principal is bound to that app and the
+manifest/grant state includes `vault.identities.create`. The response exposes identity metadata and
+public material only; it does not return private keys, seeds, recovery phrases, process tokens,
+browser-session tokens, form passwords, or local vault paths.
+
+`POST /api/v1/app-vault/identities/{identityId}/profile-document` asks Cryptad to produce a
+profile document for an identity the app is allowed to see and use. The route requires
+`vault.identities.read` plus `vault.identities.use` and must keep private identity material inside
+the vault. It may return a profile document suitable for app display or insertion, but
+release-certification evidence must record only path-free booleans, route names, capability names,
+counts, and sanitized status. Do not place raw request bodies, private keys, identity seeds,
+recovery phrases, signatures, tokens, form passwords, or local staging paths in evidence.
+
+Profile Publisher inserts the generated document through the queue app-document insert route
+instead of writing a temporary local file path into the request. See
+[platform-api-surface.md](platform-api-surface.md) and
+[platform-api-contract.md](platform-api-contract.md) for the route family contract.
+
 ## Process and browser restrictions
 
 App process calls authenticate with the current AppHost launch token in `CRYPTAD_APP_TOKEN`.
@@ -107,12 +136,12 @@ Vault authorization decisions should be visible in the app audit model with the 
 authentication source, route family, action, required capabilities, decision, status, and reason
 code. Audit entries must not include raw secret values, identity private keys, seed phrases,
 recovery phrases, request bodies, full query strings, app process tokens, browser session tokens,
-form passwords, or local filesystem paths.
+form passwords, signatures, or local filesystem paths.
 
 Release-certification and developer-tooling output may record the vault capability names and
 path-free counts or booleans. It must redact secret values, private identity material, recovery
 phrases, private insert URIs, command-line key material, app/session/process tokens, local vault
-paths, and raw request bodies.
+paths, signatures, absolute staging paths, and raw request bodies.
 
 ## Future extension point
 

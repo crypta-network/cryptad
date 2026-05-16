@@ -7,9 +7,10 @@
  * authority for every vault operation.
  *
  * <p>The route family keeps browser-safe workflows separate from process-only material access.
- * Static app UI can list identity metadata and submit token-free grant requests for operator
- * review. Secret reads, secret writes, app-owned identity creation, and identity use remain
- * process-only in the contract so private material is not exposed to browser JavaScript by
+ * Static app UI can list identity metadata, create app-owned identities, submit token-free grant
+ * requests for operator review, and request bounded profile-document signing for identities the app
+ * can use. Secret reads, secret writes, and generic identity use remain process-only in the
+ * contract so private material and arbitrary signing are not exposed to browser JavaScript by
  * accident.
  *
  * <p>Responses from this package are designed for public Platform API JSON. They omit raw private

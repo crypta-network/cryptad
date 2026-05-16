@@ -384,14 +384,15 @@ Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` rem
 compatibility fallback, and shell-panel bundles keep existing local links such as
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
 origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
-asset boundary. The repo-owned Queue Manager, legacy Publisher, and Site Publisher bundles now
-stage static UIs that open through the isolated app UI path when available, including the browser
-SDK described in [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and the canonical UI
-design-system assets described in [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md).
-Site Publisher is the first content reference app: it demonstrates signed bundles, app-owned
-static UI, content insert permissions, catalog metadata, review evidence, and update certification
-for publishing workflows. Legacy Publisher remains the compatibility replacement for old insert
-admin pages.
+asset boundary. The repo-owned Queue Manager, legacy Publisher, Site Publisher, and Profile
+Publisher bundles now stage static UIs that open through the isolated app UI path when available,
+including the browser SDK described in [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and
+the canonical UI design-system assets described in
+[`docs/app-ui-design-system.md`](docs/app-ui-design-system.md). Site Publisher is the content
+reference app for publishing workflows. Profile Publisher is the identity-profile reference app:
+it creates an app-owned identity, asks Cryptad to produce a profile document, and queues the
+generated app document without exporting private keys or recording raw signatures in release
+evidence. Legacy Publisher remains the compatibility replacement for old insert admin pages.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -411,7 +412,10 @@ available for explicit acknowledgement or trusted-positive receipt requirements.
 review gates, and rollback scope.
 Apps that request local vault access use `vault.secrets.*` and `vault.identities.*` capabilities.
 Those grants distinguish app-owned identities from operator-shared identities and carry separate
-process/browser, lifecycle, audit, and redaction rules; see
+process/browser, lifecycle, audit, and redaction rules. Profile publishing uses
+`POST /api/v1/app-vault/identities`,
+`POST /api/v1/app-vault/identities/{identityId}/profile-document`, and
+`POST /api/v1/queue/inserts/app-document`; see
 [docs/app-secret-and-identity-vault.md](docs/app-secret-and-identity-vault.md).
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
 inputs.
@@ -477,8 +481,9 @@ receipt properties files offline. `crypta-app catalog create --review-receipt` e
 into the generated catalog entry so Platform API responses can expose `reviewTrust` alongside the
 legacy advisory `review` object.
 
-First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`, and
-`:apps:site-publisher` `stageApp`, `signApp`, and `verifyApp` tasks. See
+First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`,
+`:apps:site-publisher`, and `:apps:profile-publisher` `stageApp`, `signApp`, and `verifyApp`
+tasks. See
 [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow and
 [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification. The
 PR-225 beta toolkit sidecar walkthrough is in
@@ -496,7 +501,7 @@ as normal fallback surfaces.
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
 sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
-Manager, Publisher, and Site Publisher UIs. Phase 6 adds isolated per-app loopback origins for
+Manager, Publisher, Site Publisher, and Profile Publisher UIs. Phase 6 adds isolated per-app loopback origins for
 static app UIs while
 retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
 process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
@@ -510,7 +515,9 @@ versions without changing endpoint behavior. The Web Shell Apps section uses
 `/api/v1/app-catalogs` metadata to show source, license, category, review, permission-rationale,
 version-difference, API compatibility, and changelog details before install or update.
 PR-221 adds Site Publisher as the first content reference app without changing peer protocol
-behavior or wiring it into the legacy insert-page retirement map.
+behavior or wiring it into the legacy insert-page retirement map. PR-226 adds Profile Publisher as
+the first identity-profile reference app, plus the profile-document and app-document insert routes
+needed for browser-safe profile publishing.
 Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
 `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
 `/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue
@@ -607,8 +614,10 @@ release's sanitized summary has been restored locally or in CI.
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`, and
-`app-review.first-party-catalog`, app-vault capability/redaction evidence, historical comparison,
-ecosystem gates, structured waivers, optional live-node evidence, and redaction rules.
+`app-review.first-party-catalog`, `reference-app.profile-publisher`,
+`app-platform.identity-profile-publish`, `app-platform.generated-document-insert`, app-vault
+capability/redaction evidence, historical comparison, ecosystem gates, structured waivers,
+optional live-node evidence, and redaction rules.
 
 ## Testing
 

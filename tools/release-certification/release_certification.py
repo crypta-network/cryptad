@@ -387,6 +387,10 @@ def should_redact_key_name(key_hint: str) -> bool:
         "xcryptaappsession",
     }:
         return True
+    if "signature" in normalized and any(
+        fragment in normalized for fragment in ("value", "base64", "payload", "document")
+    ):
+        return True
     return any(
         fragment in normalized
         for fragment in (
@@ -837,6 +841,8 @@ def app_platform_evidence(
         "app-platform.developer-beta-toolkit",
         "platform-api.contract",
         "app-vault.capabilities",
+        "app-platform.identity-profile-publish",
+        "app-platform.generated-document-insert",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -848,6 +854,7 @@ def app_platform_evidence(
         "app-ui.first-party-adoption",
         "app-ui.smoke",
         "reference-apps.content",
+        "reference-app.profile-publisher",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "apphost.sandbox-provider",
@@ -1039,7 +1046,7 @@ def evidence_counts(evidence: list[EvidenceItem]) -> dict[str, int]:
 
 
 STATUS_SEVERITY = {"pass": 0, "warn": 1, "skip": 2, "missing": 2, "fail": 3}
-EXPECTED_FIRST_PARTY_APPS = ("queue-manager", "publisher", "site-publisher")
+EXPECTED_FIRST_PARTY_APPS = ("queue-manager", "publisher", "site-publisher", "profile-publisher")
 EXPECTED_VAULT_CAPABILITIES = (
     "vault.secrets.read",
     "vault.secrets.write",
@@ -1821,6 +1828,22 @@ def evaluate_app_vault_gate(
         if redaction.get(key) is not True:
             failures.append(f"Vault redaction check {key} failed or missing")
             add_evidence_issue(details, "failureEvidenceIds", "app-vault.capabilities")
+    for evidence_id in ("app-platform.identity-profile-publish",):
+        route_status = evidence_status(current.get(evidence_id))
+        previous_route_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {
+            "currentStatus": route_status,
+            "previousStatus": previous_route_status,
+        }
+        if route_status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif route_status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_route_status == "pass" and route_status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {route_status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
     details.update(
         {"currentStatus": status, "previousStatus": previous_status, "capabilities": sorted(capabilities)}
     )
@@ -1893,10 +1916,21 @@ def evaluate_reference_content_gate(
 ) -> GateResult:
     item = current.get("reference-apps.content")
     previous_item = previous.get("reference-apps.content")
+    profile_item = current.get("reference-app.profile-publisher")
+    previous_profile_item = previous.get("reference-app.profile-publisher")
+    generated_document_item = current.get("app-platform.generated-document-insert")
+    previous_generated_document_item = previous.get("app-platform.generated-document-insert")
     details = evidence_details(item)
+    profile_details = evidence_details(profile_item)
+    generated_document_details = evidence_details(generated_document_item)
     checks = nested_dict(details, "checks")
+    profile_checks = nested_dict(profile_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
+    profile_status = evidence_status(profile_item)
+    previous_profile_status = evidence_status(previous_profile_item)
+    generated_document_status = evidence_status(generated_document_item)
+    previous_generated_document_status = evidence_status(previous_generated_document_item)
     gate_details: dict[str, Any] = {}
     failures: list[str] = []
     warnings: list[str] = []
@@ -1920,12 +1954,58 @@ def evaluate_reference_content_gate(
     elif status == "pass":
         warnings.append("Reference content app coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-apps.content")
+    for evidence_id, current_status, previous_status_value in (
+        ("reference-app.profile-publisher", profile_status, previous_profile_status),
+        (
+            "app-platform.generated-document-insert",
+            generated_document_status,
+            previous_generated_document_status,
+        ),
+    ):
+        if current_status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(gate_details, "failureEvidenceIds", evidence_id)
+        elif current_status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(gate_details, "warningEvidenceIds", evidence_id)
+        if previous_status_value == "pass" and current_status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {current_status}")
+            add_evidence_issue(gate_details, "failureEvidenceIds", evidence_id)
+    if profile_details.get("appId") not in {"profile-publisher", None}:
+        failures.append("Profile Publisher evidence is not for profile-publisher")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.profile-publisher")
+    if profile_checks:
+        for key in (
+            "usesBrowserSafeIdentityCreation",
+            "usesProfileDocumentRoute",
+            "usesGeneratedDocumentInsertRoute",
+            "usesSdkBootstrap",
+        ):
+            if profile_checks.get(key) is not True:
+                failures.append(f"Profile Publisher reference app check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.profile-publisher")
+    elif profile_status == "pass":
+        warnings.append("Profile Publisher coverage lacks detailed staged app checks")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.profile-publisher")
+    generated_checks = nested_dict(generated_document_details, "checks")
+    if generated_checks and generated_checks.get("routeDocumented") is not True:
+        failures.append("Generated document insert route documentation check failed")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.generated-document-insert")
     gate_details.update(
-        {"currentStatus": status, "previousStatus": previous_status, "appId": details.get("appId")}
+        {
+            "currentStatus": status,
+            "previousStatus": previous_status,
+            "appId": details.get("appId"),
+            "profilePublisherStatus": profile_status,
+            "previousProfilePublisherStatus": previous_profile_status,
+            "generatedDocumentInsertStatus": generated_document_status,
+            "previousGeneratedDocumentInsertStatus": previous_generated_document_status,
+            "profilePublisherAppId": profile_details.get("appId"),
+        }
     )
     return gate_from_issues(
         "ecosystem.reference-content-apps",
-        "Site Publisher reference-content app evidence passed.",
+        "Reference content and profile app evidence passed.",
         failures,
         warnings,
         gate_details,
@@ -2177,6 +2257,10 @@ def build_summary(
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
             "secretMaterialRedacted": True,
+            "formPasswordsRedacted": True,
+            "rawRequestBodiesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "signatureValuesRedacted": True,
             "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
         },
@@ -2234,6 +2318,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.developer-beta-toolkit",
         "platform-api.contract",
         "app-vault.capabilities",
+        "app-platform.identity-profile-publish",
+        "app-platform.generated-document-insert",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -2245,6 +2331,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-ui.first-party-adoption",
         "app-ui.smoke",
         "reference-apps.content",
+        "reference-app.profile-publisher",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -2260,8 +2347,8 @@ def render_report(summary: dict[str, Any]) -> str:
             "",
             "## Redaction Rules",
             "",
-            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw update or rollback command output, and private insert URIs are not included.",
-            "- Local absolute paths are sanitized as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.",
+            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw update or rollback command output, private insert URIs, and raw signatures are not included.",
+            "- Local absolute paths, including absolute staging paths, are sanitized as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.",
             "- Catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and rollback backup paths are sanitized.",
             "- `artifacts/private-insert-uris.json` is excluded even if an interop summary references it.",
             "",
@@ -2698,6 +2785,13 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-vault.capabilities"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-vault.capabilities"]["requiredForReleaseCandidate"] is True
+        assert (
+            evidence_by_id["app-platform.identity-profile-publish"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
+            evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
+        ), evidence_by_id
+        assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
@@ -3213,6 +3307,7 @@ def run_self_test(repo_root: Path) -> None:
                             "queue-manager": {},
                             "publisher": {},
                             "site-publisher": {},
+                            "profile-publisher": {},
                         }
                     }
                 ),
@@ -3734,6 +3829,13 @@ def run_self_test(repo_root: Path) -> None:
         for forbidden in ("seed-secret", "alpha beta", "delta epsilon", "eta theta", "vault-secret"):
             assert forbidden not in vault_scrubbed, vault_scrubbed
         assert "vault.identities.use" in vault_scrubbed, vault_scrubbed
+        signature_scrubbed = scrub_text(
+            "signature.value.base64=raw-signature signature.algorithm=Ed25519",
+            workspace,
+            out_dir,
+        )
+        assert "raw-signature" not in signature_scrubbed, signature_scrubbed
+        assert "Ed25519" in signature_scrubbed, signature_scrubbed
         credential_scrubbed = scrub_text(
             'Authorization: Bearer report-secret\n'
             'Cookie: session=abc; csrf=def\n'

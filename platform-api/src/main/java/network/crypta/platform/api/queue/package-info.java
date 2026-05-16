@@ -11,5 +11,10 @@
  * stable JSON envelopes after request-local placeholders are stripped. Mutations and direct
  * download creation already cross the SPI more directly, which keeps later queue phases free to
  * replace the transitional read model without reworking the basic control-plane routing contract.
+ *
+ * <p>Generated app-document inserts are deliberately narrower than local file inserts. They accept
+ * bounded app-supplied document bytes, hand them to the queue browser-upload path for trusted
+ * persistent bucket storage, and keep local source paths and private insert URI material out of
+ * public responses.
  */
 package network.crypta.platform.api.queue;

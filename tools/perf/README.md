@@ -94,9 +94,11 @@ The smoke profile collects deterministic file-size metrics even when no node sta
 | `platform_sdk.crypta_platform_js_bytes` | bytes | `platform-sdk-js` source `crypta-platform.js`. |
 | `apps.queue_manager_static_bytes` | bytes | Sum of Queue Manager `src/staged/static/` files. |
 | `apps.publisher_static_bytes` | bytes | Sum of Publisher `src/staged/static/` files. |
+| `apps.profile_publisher_static_bytes` | bytes | Sum of Profile Publisher `src/staged/static/` files. |
 | `apps.site_publisher_static_bytes` | bytes | Sum of Site Publisher `src/staged/static/` files. |
 | `apphost.queue_manager_staged_bundle_bytes` | bytes | Staged Queue Manager bundle under `apps/queue-manager/build/cryptad-app/queue-manager`, when present. |
 | `apphost.publisher_staged_bundle_bytes` | bytes | Staged Publisher bundle under `apps/publisher/build/cryptad-app/publisher`, when present. |
+| `apphost.profile_publisher_staged_bundle_bytes` | bytes | Staged Profile Publisher bundle under `apps/profile-publisher/build/cryptad-app/profile-publisher`, when present. |
 | `apphost.site_publisher_staged_bundle_bytes` | bytes | Staged Site Publisher bundle under `apps/site-publisher/build/cryptad-app/site-publisher`, when present. |
 
 When a packaged node can run locally, the smoke profile also attempts environment-sensitive metrics:

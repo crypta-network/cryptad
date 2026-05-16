@@ -84,11 +84,14 @@ catalog.smoke
 app-catalog.first-party-beta
 platform-api.contract
 app-vault.capabilities
+app-platform.identity-profile-publish
+app-platform.generated-document-insert
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
 app-ui.smoke
 reference-apps.content
+reference-app.profile-publisher
 legacy.retirement
 legacy-admin.removal-wave-1
 apphost.sandbox-provider
@@ -100,9 +103,10 @@ app-review.policy
 app-review.first-party-catalog
 ```
 
-`platform-api.contract`, `app-vault.capabilities`, `app-platform.developer-beta-toolkit`,
+`platform-api.contract`, `app-vault.capabilities`, `app-platform.identity-profile-publish`,
+`app-platform.generated-document-insert`, `app-platform.developer-beta-toolkit`,
 `app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`,
-`reference-apps.content`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+`reference-apps.content`, `reference-app.profile-publisher`, `apphost.sandbox-provider`, `app-update.lifecycle`,
 `app-update.scheduler`, `app-update.rollback`, `app-catalog.first-party-beta`,
 `app-review.trusted-receipts`, and
 `app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
@@ -236,7 +240,8 @@ coherence, canonical design-system asset staging, strict `crypta-app ui lint` JS
 app-vault capability documentation and redaction evidence, signed bundle evidence when signing
 inputs are present, signed catalog authoring/verification, AppHost
 sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, independent
-app-review receipt evidence, and the legacy-admin retirement map.
+app-review receipt evidence, Profile Publisher identity-profile publishing evidence,
+app-generated document insert evidence, and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -294,10 +299,11 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - the host/operator form password;
 - raw request bodies;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
+- raw profile-document signatures or signed profile-document payloads;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;
-- developer-specific absolute filesystem paths;
+- developer-specific absolute filesystem paths, including absolute staging paths;
 - catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and
   rollback backup paths;
 - non-localhost remote endpoint metadata.

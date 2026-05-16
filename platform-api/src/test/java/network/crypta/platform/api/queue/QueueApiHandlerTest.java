@@ -1,10 +1,13 @@
 package network.crypta.platform.api.queue;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
 import network.crypta.runtime.spi.QueueDownloadRequest;
@@ -721,6 +724,289 @@ class QueueApiHandlerTest {
         "Local file insert rejected by the queue backend: ACCESS_DENIED.", error.getMessage());
   }
 
+  @Test
+  void createAppDocumentInsert_whenRequested_expectBrowserUploadInsertAndRedactedResponse()
+      throws Exception {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String documentJson = "{\"schema\":\"crypta.profile.v1\",\"displayName\":\"Ada\"}";
+
+    Map<String, Object> result =
+        handler.createAppDocumentInsert(
+            "profile-publisher",
+            orderedParameters(
+                Map.entry("insertUri", List.of("CHK@")),
+                Map.entry("identifier", List.of("profile-publish-1")),
+                Map.entry(
+                    "documentBase64",
+                    List.of(
+                        Base64.getEncoder()
+                            .encodeToString(documentJson.getBytes(StandardCharsets.UTF_8))))));
+
+    assertEquals("create_app_document_insert", result.get("operation"));
+    assertEquals("app-document", result.get("sourceType"));
+    assertEquals("<redacted>", result.get("sourcePath"));
+    assertEquals("<redacted>", result.get("insertUri"));
+    assertEquals("profile-publish-1", result.get("identifier"));
+    assertEquals("STARTED", result.get("outcome"));
+    assertEquals("profile-publish-1", queueInsertPort.lastBrowserUploadRequest.identifier());
+    assertEquals("CHK@", queueInsertPort.lastBrowserUploadRequest.insertUri());
+    assertEquals(
+        "application/vnd.crypta.profile+json",
+        queueInsertPort.lastBrowserUploadRequest.upload().contentType());
+    assertEquals("profile.json", queueInsertPort.lastBrowserUploadRequest.upload().filename());
+    assertEquals("profile.json", queueInsertPort.lastBrowserUploadRequest.filenameForKey());
+    assertEquals("COMPAT_1468", queueInsertPort.lastBrowserUploadRequest.compatibilityMode());
+    try (var input = queueInsertPort.lastBrowserUploadRequest.upload().openStream()) {
+      assertEquals(documentJson, new String(input.readAllBytes(), StandardCharsets.UTF_8));
+    }
+    assertEquals(
+        documentJson.getBytes(StandardCharsets.UTF_8).length,
+        queueInsertPort.lastBrowserUploadRequest.upload().size());
+    assertNull(queueInsertPort.lastLocalFileRequest);
+  }
+
+  @Test
+  void createAppDocumentInsert_whenInsertUriHasDocName_expectFilenameForKeySuppressed() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String documentJson = "{\"schema\":\"crypta.profile.v1\",\"displayName\":\"Ada\"}";
+
+    handler.createAppDocumentInsert(
+        "profile-publisher",
+        orderedParameters(
+            Map.entry("insertUri", List.of("KSK@profile-name")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry(
+                "documentBase64",
+                List.of(
+                    Base64.getEncoder()
+                        .encodeToString(documentJson.getBytes(StandardCharsets.UTF_8))))));
+
+    assertEquals("profile.json", queueInsertPort.lastBrowserUploadRequest.upload().filename());
+    assertNull(queueInsertPort.lastBrowserUploadRequest.filenameForKey());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenTargetFilenameNeedsTrimming_expectSanitizedQueueKeyHint() {
+    RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            queueInsertPort,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+
+    handler.createAppDocumentInsert(
+        "profile-publisher",
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("targetFilename", List.of("\nprofile.json  ")),
+            Map.entry(
+                "documentBase64",
+                List.of(
+                    Base64.getEncoder()
+                        .encodeToString(
+                            "{\"schema\":\"crypta.profile.v1\"}"
+                                .getBytes(StandardCharsets.UTF_8))))));
+
+    assertEquals("profile.json", queueInsertPort.lastBrowserUploadRequest.upload().filename());
+    assertEquals("profile.json", queueInsertPort.lastBrowserUploadRequest.filenameForKey());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenBase64Invalid_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("documentBase64", List.of("%%%")));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Query parameter 'documentBase64' must be valid Base64.", error.getMessage());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenDocumentTooLarge_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    byte[] oversized = new byte[(64 * 1024) + 1];
+    String documentBase64 = Base64.getEncoder().encodeToString(oversized);
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("documentBase64", List.of(documentBase64)));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Query parameter 'documentBase64' decodes to too many bytes.", error.getMessage());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenJsonInvalid_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String documentBase64 =
+        Base64.getEncoder().encodeToString("{".getBytes(StandardCharsets.UTF_8));
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("documentBase64", List.of(documentBase64)));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'documentBase64' must decode to valid JSON for JSON content types.",
+        error.getMessage());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenJsonNumberUsesNonAsciiDigit_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String nonAsciiDigitJson = "١";
+    String documentBase64 =
+        Base64.getEncoder().encodeToString(nonAsciiDigitJson.getBytes(StandardCharsets.UTF_8));
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("documentBase64", List.of(documentBase64)));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'documentBase64' must decode to valid JSON for JSON content types.",
+        error.getMessage());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenJsonNestingTooDeep_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String deeplyNestedJson = "[".repeat(80) + "0" + "]".repeat(80);
+    String documentBase64 =
+        Base64.getEncoder().encodeToString(deeplyNestedJson.getBytes(StandardCharsets.UTF_8));
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("documentBase64", List.of(documentBase64)));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'documentBase64' must decode to valid JSON for JSON content types.",
+        error.getMessage());
+  }
+
+  @Test
+  void createAppDocumentInsert_whenTargetFilenameIsPath_expectBadRequest() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String documentBase64 =
+        Base64.getEncoder().encodeToString("{}".getBytes(StandardCharsets.UTF_8));
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("profile-publish-1")),
+            Map.entry("targetFilename", List.of("../profile.json")),
+            Map.entry("documentBase64", List.of(documentBase64)));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("profile-publisher", parameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals(
+        "Query parameter 'targetFilename' must be a filename, not a path.", error.getMessage());
+  }
+
   @SafeVarargs
   private static Map<String, List<String>> orderedParameters(
       Map.Entry<String, List<String>>... entries) {
@@ -804,16 +1090,20 @@ class QueueApiHandlerTest {
   }
 
   private static final class RecordingQueueInsertPort implements QueueInsertPort {
+    private QueueBrowserUploadInsertRequest lastBrowserUploadRequest;
     private QueueLocalFileInsertRequest lastLocalFileRequest;
     private QueueLocalDirectoryInsertRequest lastLocalDirectoryRequest;
     private QueueInsertOutcome nextOutcome = QueueInsertOutcome.STARTED;
     private QueueInsertRejectedException rejectedException;
 
     @Override
-    public QueueInsertOutcome enqueueBrowserUploadInsert(
-        network.crypta.runtime.spi.QueueBrowserUploadInsertRequest request) {
-      throw new UnsupportedOperationException(
-          "Browser-upload inserts are not exercised by this test double.");
+    public QueueInsertOutcome enqueueBrowserUploadInsert(QueueBrowserUploadInsertRequest request)
+        throws QueueInsertRejectedException {
+      lastBrowserUploadRequest = request;
+      if (rejectedException != null) {
+        throw rejectedException;
+      }
+      return nextOutcome;
     }
 
     @Override

@@ -1,0 +1,16 @@
+manifest.version=1
+app.id=profile-publisher
+app.name=Profile Publisher
+app.version=${appVersion}
+api.minimumVersion=5
+api.maximumTestedVersion=5
+api.experimentalCapabilitiesAccepted=true
+app.exec=bin/profile-publisher.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+sandbox.mode=restricted-process
+sandbox.required=false
+app.restart.policy=never
+quota.data.bytes=1048576
+quota.cache.bytes=1048576

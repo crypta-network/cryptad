@@ -29,6 +29,7 @@ final class MockPlatformApi {
   /** Browser-session header required by all mock API endpoints. */
   static final String SESSION_HEADER = "X-Crypta-App-Session";
 
+  private static final String INSERT_URI_FIELD = "insertUri";
   private static final String IDENTIFIER_FIELD = "identifier";
 
   /** Validator supplied by the dev server's browser-session issuer. */
@@ -126,10 +127,23 @@ final class MockPlatformApi {
   private void routePost(HttpExchange exchange, String suffix) throws IOException {
     if (suffix.startsWith("/queue/")) {
       routeQueuePost(exchange, suffix);
+    } else if (suffix.equals("/app-vault/identities")) {
+      sendJson(exchange, 201, MockPlatformApiFixtures.CREATED_IDENTITY_RESPONSE);
+    } else if (suffix.matches("/app-vault/identities/[^/]+/profile-document")) {
+      routeProfileDocumentPost(exchange, suffix);
     } else if (suffix.equals("/app-vault/grants/request")) {
       sendJson(exchange, 200, fixtures.mutation("app-vault.grants.request"));
     } else {
       throw new UnsupportedOperationException(suffix);
+    }
+  }
+
+  private void routeProfileDocumentPost(HttpExchange exchange, String suffix) throws IOException {
+    if (hasRequiredFormFields(exchange, "displayName")) {
+      int prefixLength = "/app-vault/identities/".length();
+      int suffixLength = "/profile-document".length();
+      String identityId = suffix.substring(prefixLength, suffix.length() - suffixLength);
+      sendJson(exchange, 200, fixtures.profileDocument(identityId));
     }
   }
 
@@ -139,10 +153,15 @@ final class MockPlatformApi {
           sendJson(exchange, 200, fixtures.mutation("queue.downloads.create"));
       case "/queue/inserts/file" ->
           sendFormMutation(
-              exchange, "queue.inserts.file", "sourcePath", "insertUri", IDENTIFIER_FIELD);
+              exchange, "queue.inserts.file", "sourcePath", INSERT_URI_FIELD, IDENTIFIER_FIELD);
       case "/queue/inserts/directory" ->
           sendFormMutation(
-              exchange, "queue.inserts.directory", "sourcePath", "insertUri", IDENTIFIER_FIELD);
+              exchange,
+              "queue.inserts.directory",
+              "sourcePath",
+              INSERT_URI_FIELD,
+              IDENTIFIER_FIELD);
+      case "/queue/inserts/app-document" -> sendAppDocumentInsert(exchange);
       case "/queue/requests/remove" ->
           sendJson(exchange, 200, fixtures.mutation("queue.requests.remove"));
       case "/queue/requests/restart" ->
@@ -150,6 +169,12 @@ final class MockPlatformApi {
       case "/queue/requests/priority" ->
           sendFormMutation(exchange, "queue.requests.priority", IDENTIFIER_FIELD, "priority");
       default -> routeQueueItemMutation(exchange, suffix);
+    }
+  }
+
+  private void sendAppDocumentInsert(HttpExchange exchange) throws IOException {
+    if (hasRequiredFormFields(exchange, INSERT_URI_FIELD, IDENTIFIER_FIELD, "documentBase64")) {
+      sendJson(exchange, 200, MockPlatformApiFixtures.APP_DOCUMENT_INSERT_RESPONSE);
     }
   }
 
@@ -162,20 +187,23 @@ final class MockPlatformApi {
 
   private void sendFormMutation(HttpExchange exchange, String mutation, String... fieldNames)
       throws IOException {
-    if (!rejectMissingFormFields(exchange, fieldNames)) {
+    if (hasRequiredFormFields(exchange, fieldNames)) {
       sendJson(exchange, 200, fixtures.mutation(mutation));
     }
   }
 
   /**
-   * Sends a {@code 400} response when a form mutation omits required fields.
+   * Confirms that a form mutation contains required fields.
+   *
+   * <p>When a field is missing, this method sends the same deterministic {@code 400} response the
+   * live Platform API would surface through the SDK error path.
    *
    * @param exchange mutation request whose body contains form data
    * @param fieldNames required form field names for the endpoint
-   * @return {@code true} when the request was rejected and a response was sent
+   * @return {@code true} when the request can proceed
    * @throws IOException if the request body or rejection response cannot be processed
    */
-  private static boolean rejectMissingFormFields(HttpExchange exchange, String... fieldNames)
+  private static boolean hasRequiredFormFields(HttpExchange exchange, String... fieldNames)
       throws IOException {
     Map<String, List<String>> form = readForm(exchange);
     for (String fieldName : fieldNames) {
@@ -186,10 +214,10 @@ final class MockPlatformApi {
             "{\"error\":{\"code\":\"invalid_mock_form\",\"message\":\"Missing required form field '"
                 + MockPlatformApiFixtures.Json.escape(fieldName)
                 + "'.\"}}");
-        return true;
+        return false;
       }
     }
-    return false;
+    return true;
   }
 
   /**
@@ -248,7 +276,10 @@ final class MockPlatformApi {
   private static String oneIdentity(String identityId) {
     return "{\"id\":\""
         + MockPlatformApiFixtures.Json.escape(identityId)
-        + "\",\"displayName\":\"Local Profile\",\"kind\":\"mock\",\"status\":\"available\"}";
+        + "\",\"identityId\":\""
+        + MockPlatformApiFixtures.Json.escape(identityId)
+        + "\",\"label\":\"Local Profile\",\"displayName\":\"Local"
+        + " Profile\",\"kind\":\"mock\",\"status\":\"available\",\"usageScopes\":[\"metadata.read\",\"sign.domain-separated\"]}";
   }
 
   /**

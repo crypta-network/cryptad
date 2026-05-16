@@ -239,6 +239,36 @@ public final class AppVaultApiHandler {
   }
 
   /**
+   * Builds and signs one bounded Crypta profile document for a visible app identity.
+   *
+   * <p>This route is the browser-safe profile-publishing companion to the process-only generic
+   * identity-use route. It accepts only the documented profile fields, fixes the signing scope and
+   * purpose, canonicalizes the unsigned profile payload with stable JSON field order, and delegates
+   * to the vault service for the actual grant check and domain-separated signature.
+   *
+   * @param appId authenticated app principal id supplied by the router, not request data
+   * @param identityId identity id segment from the request path
+   * @param queryParameters decoded request parameters containing profile fields
+   * @return signed profile document with public verification material only
+   */
+  public Map<String, Object> createProfileDocument(
+      String appId, String identityId, Map<String, List<String>> queryParameters) {
+    appVaultService.requireAppAccessAllowed(appId);
+    AppIdentityRecord identity = appVaultService.getIdentityForApp(appId, identityId);
+    ProfileDocumentRequest profile =
+        ProfileDocumentRequest.fromQuery(appId, identity.identityId(), queryParameters);
+    AppIdentityUsageResult usageResult =
+        appVaultService.useIdentity(
+            new AppIdentityUsageRequest(
+                appId,
+                identity.identityId(),
+                AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED,
+                ProfileDocumentRequest.SIGNING_PURPOSE,
+                profile.canonicalBytes()));
+    return SignedProfileDocumentBuilder.build(profile, identity, usageResult);
+  }
+
+  /**
    * Lists grants for the calling app.
    *
    * <p>This app-facing list omits retained revoked grants from previous installations.

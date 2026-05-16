@@ -1,8 +1,17 @@
 {
   "description": "Conservative baseline for the lightweight Cryptad performance smoke gate.",
   "metrics": {
+    "apphost.profile_publisher_staged_bundle_bytes": {
+      "baseline": 68220,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
     "apphost.publisher_staged_bundle_bytes": {
-      "baseline": 31185,
+      "baseline": 53406,
       "fail_on_regression": true,
       "fail_ratio": 1.75,
       "max_bytes": 150000,
@@ -11,7 +20,7 @@
       "warn_ratio": 1.35
     },
     "apphost.queue_manager_staged_bundle_bytes": {
-      "baseline": 28351,
+      "baseline": 51441,
       "fail_on_regression": true,
       "fail_ratio": 1.75,
       "max_bytes": 150000,
@@ -20,11 +29,20 @@
       "warn_ratio": 1.35
     },
     "apphost.site_publisher_staged_bundle_bytes": {
-      "baseline": 50289,
+      "baseline": 57217,
       "fail_on_regression": true,
       "fail_ratio": 1.75,
       "max_bytes": 150000,
       "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apps.profile_publisher_static_bytes": {
+      "baseline": 31073,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": true,
       "unit": "bytes",
       "warn_ratio": 1.35
     },
@@ -155,7 +173,7 @@
       "warn_ratio": 1.5
     },
     "platform_sdk.crypta_platform_js_bytes": {
-      "baseline": 23140,
+      "baseline": 30068,
       "fail_on_regression": true,
       "fail_ratio": 1.6,
       "max_bytes": 100000,

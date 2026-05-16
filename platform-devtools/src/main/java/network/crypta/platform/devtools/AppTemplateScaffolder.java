@@ -79,6 +79,12 @@ final class AppTemplateScaffolder {
         justify-content: space-between;
         gap: var(--cr-space-3);
       }
+
+      .sample-preview {
+        margin: 0;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
       """;
 
   /** Utility class; template generation is exposed through {@link #scaffold(ScaffoldRequest)}. */
@@ -396,7 +402,10 @@ final class AppTemplateScaffolder {
           <section class="cr-card" aria-labelledby="vault-heading">
             <div class="cr-card__header">
               <h2 id="vault-heading">Vault profile</h2>
-              <button class="cr-button cr-button--secondary" type="button" id="request-grant">Request grant</button>
+              <div class="sample-actions">
+                <button class="cr-button" type="button" id="create-identity">Create identity</button>
+                <button class="cr-button cr-button--secondary" type="button" id="preview-profile">Preview document</button>
+              </div>
             </div>
             <div class="sample-grid">
               <div>
@@ -404,8 +413,8 @@ final class AppTemplateScaffolder {
                 <ul class="sample-list" id="identity-list" aria-live="polite"></ul>
               </div>
               <div>
-                <p class="cr-label">Grants</p>
-                <ul class="sample-list" id="grant-list" aria-live="polite"></ul>
+                <p class="cr-label">Profile document</p>
+                <pre class="sample-preview" id="profile-document" aria-live="polite">{}</pre>
               </div>
             </div>
           </section>
@@ -560,34 +569,54 @@ final class AppTemplateScaffolder {
     return """
     const status = document.querySelector("#status");
     const identityList = document.querySelector("#identity-list");
-    const grantList = document.querySelector("#grant-list");
-    const grantButton = document.querySelector("#request-grant");
+    const profileDocument = document.querySelector("#profile-document");
+    const createButton = document.querySelector("#create-identity");
+    const previewButton = document.querySelector("#preview-profile");
+
+    let currentIdentityId = "local-profile";
 
     async function main() {
       const platform = window.CryptaPlatform;
       const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
       const identities = await platform.vault.identities.list();
-      const grants = await platform.vault.grants.list();
-      render(identityList, Array.isArray(identities.identities) ? identities.identities : [], "identity");
-      render(grantList, Array.isArray(grants.grants) ? grants.grants : [], "grant");
-      status.textContent = `${bootstrap.name} loaded safe mock vault data.`;
+      const identityValues = Array.isArray(identities.identities) ? identities.identities : [];
+      currentIdentityId = currentIdentityId || firstIdentityId(identityValues);
+      render(identityList, identityValues, "identity");
+      status.textContent = `${bootstrap.name} loaded ${identityValues.length} mock identity item(s).`;
       status.className = "cr-status cr-status--success sample-status";
     }
 
-    grantButton.addEventListener("click", async () => {
-      await window.CryptaPlatform.vault.grants.request({
-        identityId: "local-profile",
-        scopes: ["metadata.read", "publish.profile"],
-        reason: "Preview a local beta profile flow.",
+    createButton.addEventListener("click", () => createIdentity().catch(showError));
+    previewButton.addEventListener("click", () => previewProfileDocument().catch(showError));
+
+    async function createIdentity() {
+      const result = await window.CryptaPlatform.vault.identities.create({
+        label: "Local Profile",
+        scopes: ["metadata.read", "sign.domain-separated"],
       });
+      currentIdentityId = identityId(result.identity) || currentIdentityId;
       await main();
-    });
+    }
+
+    async function previewProfileDocument() {
+      const result = await window.CryptaPlatform.vault.identities.createProfileDocument(
+        currentIdentityId,
+        {
+          displayName: "Local Profile",
+          bio: "Mock profile preview",
+          tags: ["local", "mock"],
+        }
+      );
+      profileDocument.textContent = JSON.stringify(result.profileDocument || result, null, 2);
+      status.textContent = `Prepared profile document for ${currentIdentityId}.`;
+      status.className = "cr-status cr-status--success sample-status";
+    }
 
     function render(target, values, fallback) {
       target.replaceChildren(...values.map((value) => {
         const item = document.createElement("li");
         const label = document.createElement("span");
-        label.textContent = value.displayName || value.id || fallback;
+        label.textContent = value.displayName || value.label || identityId(value) || fallback;
         const state = document.createElement("strong");
         state.textContent = value.status || value.kind || "mock";
         item.append(label, state);
@@ -595,10 +624,24 @@ final class AppTemplateScaffolder {
       }));
     }
 
-    main().catch((error) => {
+    function firstIdentityId(values) {
+      const first = values.find((value) => identityId(value));
+      return first ? identityId(first) : "";
+    }
+
+    function identityId(value) {
+      if (!value || typeof value !== "object") {
+        return "";
+      }
+      return String(value.identityId || value.id || "").trim();
+    }
+
+    function showError(error) {
       status.textContent = window.CryptaPlatform.api.errorMessage(error);
       status.className = "cr-status cr-status--danger sample-status";
-    });
+    }
+
+    main().catch(showError);
     """
         .replace(APP_ID_PLACEHOLDER, appId);
   }

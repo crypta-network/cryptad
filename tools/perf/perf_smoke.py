@@ -36,6 +36,12 @@ BASELINE_SCHEMA_VERSION = 1
 TOOL_NAME = "perf_smoke"
 MIN_PYTHON_VERSION = (3, 12)
 OUTPUT_MARKER = ".cryptad-perf-smoke-output"
+FIRST_PARTY_APP_SIZE_TARGETS = (
+    ("queue_manager", "queue-manager"),
+    ("publisher", "publisher"),
+    ("profile_publisher", "profile-publisher"),
+    ("site_publisher", "site-publisher"),
+)
 SENSITIVE_KEY_PATTERN = (
     r"[A-Za-z0-9_.-]*(?:token|password|passwd|secret|credential|authorization|cookie|"
     r"api[_-]?key|access[_-]?key|private[_-]?key|insert[_-]?uri|private[_-]?uri|"
@@ -420,6 +426,17 @@ def directory_size_bytes(path: Path, excluded_top_level: set[str] | None = None)
     return total
 
 
+def first_party_app_size_metric_names() -> tuple[str, ...]:
+    return tuple(
+        metric_name
+        for metric_prefix, _ in FIRST_PARTY_APP_SIZE_TARGETS
+        for metric_name in (
+            f"apps.{metric_prefix}_static_bytes",
+            f"apphost.{metric_prefix}_staged_bundle_bytes",
+        )
+    )
+
+
 def collect_file_size(
     metrics: dict[str, dict[str, Any]],
     metric_name: str,
@@ -489,42 +506,20 @@ def collect_asset_metrics(settings: Settings, metrics: dict[str, dict[str, Any]]
         / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
         root,
     )
-    collect_directory_size(
-        metrics,
-        "apps.queue_manager_static_bytes",
-        root / "apps/queue-manager/src/staged/static",
-        root,
-    )
-    collect_directory_size(
-        metrics,
-        "apps.publisher_static_bytes",
-        root / "apps/publisher/src/staged/static",
-        root,
-    )
-    collect_directory_size(
-        metrics,
-        "apps.site_publisher_static_bytes",
-        root / "apps/site-publisher/src/staged/static",
-        root,
-    )
-    collect_directory_size(
-        metrics,
-        "apphost.queue_manager_staged_bundle_bytes",
-        root / "apps/queue-manager/build/cryptad-app/queue-manager",
-        root,
-    )
-    collect_directory_size(
-        metrics,
-        "apphost.publisher_staged_bundle_bytes",
-        root / "apps/publisher/build/cryptad-app/publisher",
-        root,
-    )
-    collect_directory_size(
-        metrics,
-        "apphost.site_publisher_staged_bundle_bytes",
-        root / "apps/site-publisher/build/cryptad-app/site-publisher",
-        root,
-    )
+    for metric_prefix, app_directory in FIRST_PARTY_APP_SIZE_TARGETS:
+        collect_directory_size(
+            metrics,
+            f"apps.{metric_prefix}_static_bytes",
+            root / "apps" / app_directory / "src/staged/static",
+            root,
+        )
+    for metric_prefix, app_directory in FIRST_PARTY_APP_SIZE_TARGETS:
+        collect_directory_size(
+            metrics,
+            f"apphost.{metric_prefix}_staged_bundle_bytes",
+            root / "apps" / app_directory / "build/cryptad-app" / app_directory,
+            root,
+        )
 
 
 def collect_distribution_metrics(
@@ -1498,6 +1493,10 @@ def run_self_test(settings: Settings) -> tuple[dict[str, Any], int]:
         raise AssertionError("missing smoke baseline was not rejected")
     assert load_baseline(missing_baseline_path, allow_missing=True)["metrics"] == {}
     baseline = load_baseline(fixture_baseline_path)
+    default_baseline = load_baseline(settings.workspace_root / DEFAULT_BASELINE)
+    default_baseline_metrics = default_baseline.get("metrics", {})
+    for metric_name in first_party_app_size_metric_names():
+        assert metric_name in default_baseline_metrics, metric_name
     fixture_summary = json.loads(fixture_summary_path.read_text(encoding="utf-8"))
     pass_metrics = fixture_summary["metrics"]
     pass_comparison = compare_to_baseline(pass_metrics, baseline, fail_on_regression=True)

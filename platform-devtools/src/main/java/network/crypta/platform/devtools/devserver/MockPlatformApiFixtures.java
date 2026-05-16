@@ -36,7 +36,7 @@ final class MockPlatformApiFixtures {
           """,
           "vault-identities.json",
           """
-          {"identities":[{"id":"local-profile","displayName":"Local Profile","kind":"mock","status":"available"}]}
+          {"identities":[{"identityId":"local-profile","id":"local-profile","label":"Local Profile","displayName":"Local Profile","kind":"mock","status":"available","usageScopes":["metadata.read","sign.domain-separated"]}]}
           """,
           "vault-grants.json",
           """
@@ -46,6 +46,18 @@ final class MockPlatformApiFixtures {
           """
           {"appId":"${APP_ID}","name":"${APP_NAME}","version":"${APP_VERSION}","mode":"mock-dev"}
           """);
+
+  /** Deterministic app-owned identity creation response. */
+  static final String CREATED_IDENTITY_RESPONSE =
+      """
+      {"identity":{"identityId":"mock-created-profile","id":"mock-created-profile","label":"Mock Created Profile","displayName":"Mock Created Profile","kind":"mock","status":"available","usageScopes":["metadata.read","sign.domain-separated"]},"mock":true,"action":"app-vault.identities.create"}
+      """;
+
+  /** Deterministic acknowledgement for an app JSON document insert request. */
+  static final String APP_DOCUMENT_INSERT_RESPONSE =
+      """
+      {"status":"ok","mock":true,"action":"queue.inserts.app-document","identifier":"mock-app-document","uri":"CHK@mock-app-document"}
+      """;
 
   /** Optional normalized directory containing user-supplied JSON fixture files. */
   private final Path fixtureDir;
@@ -122,6 +134,22 @@ final class MockPlatformApiFixtures {
    */
   String appsCurrent() throws IOException {
     return fixture("apps-current.json");
+  }
+
+  /**
+   * Builds a deterministic profile document preview response for a mock identity.
+   *
+   * @param identityId identity id segment supplied in the route
+   * @return compact JSON response with path-free, token-free profile document metadata
+   */
+  String profileDocument(String identityId) {
+    String escapedIdentityId = Json.escape(identityId);
+    return "{\"profileDocument\":{\"schema\":\"crypta.profile.v1\",\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"profile\":{\"displayName\":\"Local Profile\",\"bio\":\"Mock profile"
+        + " document\",\"tags\":[\"local\",\"mock\"]},\"identity\":{\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"fingerprint\":\"mock-profile-fingerprint\",\"algorithm\":\"Ed25519\"}},\"mock\":true,\"action\":\"app-vault.identities.profile-document\"}";
   }
 
   /**

@@ -71,11 +71,12 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-The repo-owned Queue Manager, legacy Publisher, and Site Publisher bundles use
+The repo-owned Queue Manager, legacy Publisher, Site Publisher, and Profile Publisher bundles use
 `app.ui.mode=static` and `app.ui.entry=static/index.html`, so installed copies open through
 isolated app origins when available. Queue Manager and legacy Publisher remain compatibility
-fallbacks for the current retirement map; Site Publisher is the first content reference app for
-new publishing workflows.
+fallbacks for the current retirement map. Site Publisher is the content reference app for local
+publishing workflows, and Profile Publisher is the identity-profile reference app for vault-backed
+profile-document publishing.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
@@ -295,6 +296,12 @@ Stage the Site Publisher reference app:
 ./gradlew :apps:site-publisher:stageApp
 ```
 
+Stage the Profile Publisher reference app:
+
+```bash
+./gradlew :apps:profile-publisher:stageApp
+```
+
 Sign it with a local development key pair:
 
 ```bash
@@ -307,6 +314,14 @@ Sign Site Publisher with the same local development key pair:
 
 ```bash
 ./gradlew :apps:site-publisher:signApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+```
+
+Sign Profile Publisher with the same local development key pair:
+
+```bash
+./gradlew :apps:profile-publisher:signApp \
   -PcryptadAppSigningKeyId=dev-local \
   -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
 ```
@@ -327,9 +342,17 @@ Verify Site Publisher with the matching public key:
   -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
 ```
 
+Verify Profile Publisher with the matching public key:
+
+```bash
+./gradlew :apps:profile-publisher:verifyApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+```
+
 Stage, sign, and verify all first-party apps:
 
-The root first-party tasks include Site Publisher.
+The root first-party tasks include Site Publisher and Profile Publisher.
 
 ```bash
 ./gradlew \

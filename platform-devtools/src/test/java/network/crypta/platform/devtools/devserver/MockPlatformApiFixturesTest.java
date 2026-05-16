@@ -29,6 +29,32 @@ class MockPlatformApiFixturesTest {
   }
 
   @Test
+  void appVaultAndDocumentMocks_whenDefaultsRequested_expectDeterministicSafeResponses()
+      throws Exception {
+    Files.createDirectories(tempDir);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+
+    String identities = fixtures.vaultIdentities();
+    String createdIdentity = MockPlatformApiFixtures.CREATED_IDENTITY_RESPONSE;
+    String profileDocument = fixtures.profileDocument("local-profile");
+    String appDocumentInsert = MockPlatformApiFixtures.APP_DOCUMENT_INSERT_RESPONSE;
+
+    assertTrue(identities.contains("\"identityId\":\"local-profile\""));
+    assertTrue(
+        identities.contains("\"usageScopes\":[\"metadata.read\",\"sign.domain-separated\"]"));
+    assertTrue(createdIdentity.contains("\"action\":\"app-vault.identities.create\""));
+    assertTrue(createdIdentity.contains("\"identityId\":\"mock-created-profile\""));
+    assertTrue(profileDocument.contains("\"action\":\"app-vault.identities.profile-document\""));
+    assertTrue(profileDocument.contains("\"identityId\":\"local-profile\""));
+    assertTrue(profileDocument.contains("\"fingerprint\":\"mock-profile-fingerprint\""));
+    assertTrue(appDocumentInsert.contains("\"action\":\"queue.inserts.app-document\""));
+    assertTrue(appDocumentInsert.contains("\"uri\":\"CHK@mock-app-document\""));
+    assertFalse(profileDocument.contains("privateKey"));
+    assertFalse(appDocumentInsert.contains("browserSessionToken"));
+  }
+
+  @Test
   void node_whenFixtureContainsAbsoluteUnixPath_expectRejected() throws Exception {
     Files.writeString(
         tempDir.resolve("node.json"),

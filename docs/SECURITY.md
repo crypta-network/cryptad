@@ -117,8 +117,9 @@ App-originated Platform API calls authenticate with the launch token in `X-Crypt
 Bearer credentials continue through the host/operator path so reverse proxies and shared clients do
 not accidentally convert local management requests into failed app-token attempts. Valid app
 principals are denied by default unless the route is covered by manifest-declared capabilities such
-as `queue.read`, `queue.write`, or `content.insert`. Invalid or stale `X-Crypta-App-Token` values
-fail authentication, and missing capabilities fail authorization without echoing the token.
+as `queue.read`, `queue.write`, `content.insert`, or `content.insert.app-document`. Invalid or stale
+`X-Crypta-App-Token` values fail authentication, and missing capabilities fail authorization without
+echoing the token.
 
 App-owned static browser UI uses a separate browser app session. On isolated app origins, the
 dynamic bootstrap at `/.well-known/cryptad-bootstrap.json` returns route metadata, the absolute
@@ -156,19 +157,24 @@ App-originated allowed and denied Platform API decisions are recorded in a bound
 audit log. Audit events keep route family, action, required capabilities, decision, status, and a
 short reason code. They also include the token-free authentication source so operators can
 distinguish process-token requests from browser-session requests. They must not include raw launch
-tokens, raw browser session tokens, query strings, request bodies, form passwords, or filesystem
-paths.
+tokens, raw browser session tokens, query strings, request bodies, form passwords, signatures, or
+filesystem paths.
 
 The app secret and identity vault is a local at-rest protection boundary, not a remote KMS,
 hardware-backed enclave, OS keychain, or replacement for process sandboxing. Vault records are
 encrypted with a host-local wrapping key file protected by local filesystem permissions; that
 protects against casual offline disclosure but not malware, a compromised daemon, a debugger, or a
 same-user process. App secret values, identity private keys, signing payloads, private insert URIs,
-vault storage paths, browser session tokens, app process tokens, and form passwords must not appear
-in public JSON, Web Shell summaries, app audit events, release-certification reports, diagnostics,
-or logs. App browser principals are limited to identity metadata and grant-request workflows by
-default; raw secret read/write and identity-use operations are app-process routes unless a future
-contract explicitly broadens that surface with tests and docs.
+vault storage paths, browser session tokens, app process tokens, form passwords, and absolute
+staging paths must not appear in public JSON, Web Shell summaries, app audit events,
+release-certification reports, diagnostics, or logs. Profile-document responses may include public
+verification material such as `signature.signatureBase64`; app audit events,
+release-certification evidence, diagnostics, and logs must not record raw signatures or signing
+payloads. App browser principals may create app-owned identities through
+`POST /api/v1/app-vault/identities` when authorized by `vault.identities.create`, and Profile
+Publisher may use the documented profile-document route when authorized by `vault.identities.read`
+plus `vault.identities.use`. Raw secret read/write and broader identity-use operations remain
+restricted unless a contract explicitly broadens that surface with tests and docs.
 
 Static UI code should run on its isolated per-app loopback origin when available. Browser app
 sessions improve server-side attribution and capability enforcement for SDK/API calls, and the

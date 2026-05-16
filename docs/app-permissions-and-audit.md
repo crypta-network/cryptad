@@ -122,6 +122,7 @@ The current capabilities are intentionally conservative:
 | `queue.read` | `GET /api/v1/queue/**` |
 | `queue.write` | queue download creation, request mutation, cleanup |
 | `content.insert` | local file/directory insert routes, together with `queue.write` |
+| `content.insert.app-document` | app-generated document inserts without local source-path authority, together with `queue.write` |
 | `peers.read` | `GET /api/v1/peers/**` |
 | `peers.write` | peer add, settings, note, removal |
 | `config.read` | `GET /api/v1/config` |
@@ -143,8 +144,8 @@ The current capabilities are intentionally conservative:
 | `vault.secrets.read` | read app-granted vault secret metadata and values |
 | `vault.secrets.write` | create, update, rotate, or delete app-owned vault secrets |
 | `vault.identities.read` | read app-granted identity metadata and public identity material |
-| `vault.identities.create` | create app-owned identities |
-| `vault.identities.use` | use an app-granted identity without exporting private identity material |
+| `vault.identities.create` | create app-owned identities, including `POST /api/v1/app-vault/identities` for browser-safe Profile Publisher setup |
+| `vault.identities.use` | use an app-granted identity without exporting private identity material; the profile-document route combines this with `vault.identities.read` |
 | `vault.identities.manage` | manage app-owned identities and app grants for shared identities |
 
 Capability descriptors, endpoint descriptors, and stability levels are described in
@@ -160,8 +161,14 @@ grant behavior, and future content/social/mail extension points.
 Site Publisher, the first content reference app, requests only the capabilities needed for its
 implemented publishing flow. A basic local-site publishing flow needs `content.insert` to submit
 content, `queue.write` to create insert requests, and `queue.read` to display queue progress.
-Identity-profile publishing should request `vault.identities.read` or `vault.identities.use` only
-when an implemented app can use an operator-granted identity without exporting private material.
+
+Profile Publisher is the first identity-profile reference app. Its implemented flow can request
+`vault.identities.read`, `vault.identities.create`, and `vault.identities.use` alongside
+`content.insert.app-document`, `queue.write`, and `queue.read`. It uses the app-vault
+profile-document route for identity-bound profile signing and
+`POST /api/v1/queue/inserts/app-document` for app-generated document insertion without local
+source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
+`vault.secrets.*` unless a later feature needs those broader capabilities.
 
 ## Audit trail
 

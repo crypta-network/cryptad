@@ -37,6 +37,7 @@ class PlatformApiCapabilitiesTest {
             "config.write",
             "connectivity.read",
             "content.insert",
+            "content.insert.app-document",
             "diagnostics.read",
             "node.read",
             "peers.read",
@@ -127,6 +128,21 @@ class PlatformApiCapabilitiesTest {
   }
 
   @Test
+  void authorize_whenAppHasOnlyAppDocumentInsertCapabilityForLocalFile_expectDenied() {
+    PlatformApiAuthorizationDecision decision =
+        PlatformApiCapabilities.authorize(
+            appRequest(
+                "POST",
+                List.of("queue", "inserts", "file"),
+                List.of("content.insert.app-document", "queue.write")));
+
+    assertFalse(decision.allowed());
+    assertEquals("missing_capability", decision.reasonCode());
+    assertEquals(
+        List.of("content.insert", "queue.write"), decision.action().requiredCapabilities());
+  }
+
+  @Test
   void authorize_whenAppUpdateLifecycleLacksCatalogManage_expectDenied() {
     PlatformApiAuthorizationDecision decision =
         PlatformApiCapabilities.authorize(
@@ -203,6 +219,13 @@ class PlatformApiCapabilitiesTest {
             "queue",
             "queue.inserts.file",
             "content.insert",
+            "queue.write"),
+        route(
+            "POST",
+            List.of("queue", "inserts", "app-document"),
+            "queue",
+            "queue.inserts.app-document",
+            "content.insert.app-document",
             "queue.write"),
         route(
             "POST",
@@ -326,6 +349,19 @@ class PlatformApiCapabilitiesTest {
             "app-vault",
             "app-vault.identities.list",
             "vault.identities.read"),
+        route(
+            "POST",
+            List.of("app-vault", "identities"),
+            "app-vault",
+            "app-vault.identities.create",
+            "vault.identities.create"),
+        route(
+            "POST",
+            List.of("app-vault", "identities", "id-sample", "profile-document"),
+            "app-vault",
+            "app-vault.identities.profile-document",
+            "vault.identities.read",
+            "vault.identities.use"),
         route(
             "POST",
             List.of("app-vault", "identities", "id-sample", "use"),

@@ -255,6 +255,15 @@
     return apiPostForm("queue/inserts/directory", formDataOrParams, options);
   }
 
+  function insertAppDocument(options) {
+    const source = requireOptionsObject(options, "App document insert options");
+    return apiPostForm(
+      "queue/inserts/app-document",
+      normalizeAppDocumentInsert(source),
+      requestOptionsFrom(source)
+    );
+  }
+
   function listVaultIdentities(options) {
     return apiGet("app-vault/identities", options);
   }
@@ -263,12 +272,46 @@
     return apiGet(`app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}`, options);
   }
 
+  function createVaultIdentity(options) {
+    const source = options && typeof options === "object" ? options : {};
+    return apiPostForm(
+      "app-vault/identities",
+      normalizeVaultIdentityCreateOptions(source),
+      requestOptionsFrom(source)
+    );
+  }
+
+  function createProfileDocument(identityId, profile, options) {
+    return apiPostForm(
+      `app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}/profile-document`,
+      normalizeProfileDocument(profile),
+      options
+    );
+  }
+
   function listVaultGrants(options) {
     return apiGet("app-vault/grants", options);
   }
 
   function requestVaultGrant(request, options) {
     return apiPostForm("app-vault/grants/request", normalizeVaultGrantRequest(request), options);
+  }
+
+  async function publishProfile(options) {
+    const source = requireOptionsObject(options, "Profile publish options");
+    const requestOptions = requestOptionsFrom(source);
+    const profileDocumentResponse = await createProfileDocument(
+      source.identityId,
+      source.profile,
+      requestOptions
+    );
+    const insertResponse = await insertAppDocument(
+      profilePublishInsertOptions(source, profileDocumentFromResponse(profileDocumentResponse))
+    );
+    return {
+      profileDocument: profileDocumentResponse,
+      insert: insertResponse,
+    };
   }
 
   function sanitizeFragment(html, options) {
@@ -428,6 +471,171 @@
     } else if (typeof value === "number" || typeof value === "boolean") {
       params.append(String(key), String(value));
     }
+  }
+
+  function requireOptionsObject(options, description) {
+    if (
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      typeof options.entries === "function"
+    ) {
+      throw new Error(`${description} must be an object.`);
+    }
+    return options;
+  }
+
+  function requestOptionsFrom(source) {
+    const options = {};
+    copyRequestOption(source, options, "appId");
+    copyRequestOption(source, options, "signal");
+    copyRequestOption(source, options, "headers");
+    copyRequestOption(source, options, "bootstrap");
+    copyRequestOption(source, options, "force");
+    copyRequestOption(source, options, "refreshBootstrap");
+    return options;
+  }
+
+  function copyRequestOption(source, target, name) {
+    if (source && Object.prototype.hasOwnProperty.call(source, name)) {
+      target[name] = source[name];
+    }
+  }
+
+  function normalizeAppDocumentInsert(options) {
+    const params = new URLSearchParams();
+    copyStringParam(options, params, "insertUri");
+    copyStringParam(options, params, "identifier");
+    copyStringParam(options, params, "targetFilename");
+    copyStringParam(options, params, "contentType");
+    copyStringParam(options, params, "compatibilityMode");
+    if (!params.has("contentType")) {
+      copyStringParamAs(options, params, "mimeType", "contentType");
+    }
+    if (typeof options.compress === "boolean") {
+      params.set("compress", options.compress ? "true" : "false");
+    }
+    const document = Object.prototype.hasOwnProperty.call(options, "document")
+      ? options.document
+      : options.profileDocument;
+    params.set("documentBase64", jsonDocumentBase64(document, "App document"));
+    return params;
+  }
+
+  function normalizeVaultIdentityCreateOptions(options) {
+    const params = new URLSearchParams();
+    copyStringParam(options, params, "kind");
+    copyStringParam(options, params, "label");
+    const scopes = normalizeVaultGrantScopes(options.scopes);
+    if (scopes) {
+      params.set("scopes", scopes);
+    }
+    return params;
+  }
+
+  function normalizeProfileDocument(profile) {
+    const source = requireOptionsObject(profile, "Profile document");
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "displayName");
+    copyStringParam(source, params, "bio");
+    copyStringParam(source, params, "website");
+    copyStringParam(source, params, "avatarUri");
+    copyStringParam(source, params, "contactUri");
+    appendTagsParam(source.tags, params);
+    return params;
+  }
+
+  function appendTagsParam(tags, params) {
+    if (typeof tags === "string" && tags.trim()) {
+      params.set("tags", tags.trim());
+      return;
+    }
+    if (Array.isArray(tags)) {
+      const normalized = tags
+        .filter((tag) => typeof tag === "string" && tag.trim())
+        .map((tag) => tag.trim());
+      if (normalized.length > 0) {
+        params.set("tags", normalized.join(","));
+      }
+    }
+  }
+
+  function copyStringParam(source, params, name) {
+    const value = source && source[name];
+    if (typeof value === "string" && value.trim()) {
+      params.set(name, value.trim());
+    }
+  }
+
+  function copyStringParamAs(source, params, sourceName, targetName) {
+    const value = source && source[sourceName];
+    if (typeof value === "string" && value.trim()) {
+      params.set(targetName, value.trim());
+    }
+  }
+
+  function jsonDocumentBase64(value, description) {
+    let json;
+    try {
+      json = JSON.stringify(value);
+    } catch (error) {
+      throw new Error(`${description} must be JSON-serializable.`);
+    }
+    if (typeof json !== "string") {
+      throw new Error(`${description} must be JSON-serializable.`);
+    }
+    return utf8Base64(json);
+  }
+
+  function utf8Base64(value) {
+    if (typeof TextEncoder === "undefined" || typeof btoa !== "function") {
+      throw new Error("JSON document encoding is unavailable in this browser.");
+    }
+    const bytes = new TextEncoder().encode(value);
+    const chunkSize = 32768;
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    return btoa(binary);
+  }
+
+  function profileDocumentFromResponse(response) {
+    if (!response || typeof response !== "object") {
+      return response;
+    }
+    if (response.profileDocument && typeof response.profileDocument === "object") {
+      if (
+        response.profileDocument.document &&
+        typeof response.profileDocument.document === "object"
+      ) {
+        return response.profileDocument.document;
+      }
+      return response.profileDocument;
+    }
+    if (response.document && typeof response.document === "object") {
+      return response.document;
+    }
+    return response;
+  }
+
+  function profilePublishInsertOptions(source, document) {
+    const options = Object.assign({}, source, { document });
+    if (!nonBlankString(options.identifier)) {
+      options.identifier = `profile-${vaultPathSegment(source.identityId)}`;
+    }
+    if (!nonBlankString(options.targetFilename)) {
+      options.targetFilename = "profile.json";
+    }
+    if (!nonBlankString(options.contentType)) {
+      options.contentType = "application/vnd.crypta.profile+json";
+    }
+    return options;
+  }
+
+  function nonBlankString(value) {
+    return typeof value === "string" && !!value.trim();
   }
 
   function jsonHeaders(headers) {
@@ -746,16 +954,22 @@
     content: Object.freeze({
       insertFile,
       insertDirectory,
+      insertAppDocument,
     }),
     vault: Object.freeze({
       identities: Object.freeze({
         list: listVaultIdentities,
         get: getVaultIdentity,
+        create: createVaultIdentity,
+        createProfileDocument,
       }),
       grants: Object.freeze({
         list: listVaultGrants,
         request: requestVaultGrant,
       }),
+    }),
+    profile: Object.freeze({
+      publish: publishProfile,
     }),
     dom: Object.freeze({
       sanitizeFragment,

@@ -6,7 +6,7 @@ catalog.
 ## Scope
 
 The first-party beta catalog is a signed catalog for the current first-party apps:
-`queue-manager`, `publisher`, and `site-publisher`. It does not auto-install apps and does not
+`queue-manager`, `publisher`, `site-publisher`, and `profile-publisher`. It does not auto-install apps and does not
 weaken any existing gates. Catalog signatures, bundle signatures, review receipts, artifact
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
@@ -42,8 +42,8 @@ CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE
 ```
 
 Do not place production private signing keys, reviewer private keys, private insert URIs, process
-tokens, browser session tokens, or form passwords in the repository or in release-certification
-artifacts.
+tokens, browser session tokens, form passwords, raw request bodies, raw profile-document
+signatures, or absolute staging paths in the repository or in release-certification artifacts.
 
 ## Operator flow
 
@@ -91,10 +91,22 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=4
+api.maximumTestedVersion=5
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
+```
+
+Profile Publisher descriptors should include the profile permissions and route-specific rationale:
+
+```properties
+permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+permissions.rationale.vault.identities.create=Creates an app-owned profile identity without exporting private material.
+permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
+permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
+api.minimumVersion=5
+api.maximumTestedVersion=5
+api.experimentalCapabilitiesAccepted=true
 ```
 
 Create, sign, and verify the catalog with the existing CLI:
@@ -108,6 +120,7 @@ platform-devtools/build/install/crypta-app/bin/crypta-app catalog create \
   --entry build/first-party-beta-catalog/queue-manager.properties \
   --entry build/first-party-beta-catalog/publisher.properties \
   --entry build/first-party-beta-catalog/site-publisher.properties \
+  --entry build/first-party-beta-catalog/profile-publisher.properties \
   --overwrite
 
 platform-devtools/build/install/crypta-app/bin/crypta-app catalog sign \
@@ -137,5 +150,8 @@ or `dist/`. Do not check generated signed production catalogs or private keys in
 Release certification records `app-catalog.first-party-beta`. The evidence is deterministic and
 offline: it checks for the recommended descriptor, API/Web Shell onboarding, Crypta CHK artifact
 transport tests, first-party metadata documentation, and whether the certification environment has
-source and key hints configured. It does not fetch a public Crypta network catalog during normal
-unit tests.
+source and key hints configured. Profile Publisher is also covered by
+`reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
+`app-platform.generated-document-insert`. Normal certification must not record tokens, form
+passwords, private insert URIs, raw request bodies, private keys, signatures, or absolute staging
+paths. It does not fetch a public Crypta network catalog during normal unit tests.
