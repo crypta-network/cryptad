@@ -164,15 +164,17 @@ The app secret and identity vault is a local at-rest protection boundary, not a 
 hardware-backed enclave, OS keychain, or replacement for process sandboxing. Vault records are
 encrypted with a host-local wrapping key file protected by local filesystem permissions; that
 protects against casual offline disclosure but not malware, a compromised daemon, a debugger, or a
-same-user process. App secret values, identity private keys, signing payloads, signatures, private
-insert URIs, vault storage paths, browser session tokens, app process tokens, form passwords, and
-absolute staging paths must not appear in public JSON, Web Shell summaries, app audit events,
-release-certification reports, diagnostics, or logs. App browser principals may create app-owned
-identities through `POST /api/v1/app-vault/identities` when authorized by
-`vault.identities.create`, and Profile Publisher may use the documented profile-document route when
-authorized by `vault.identities.read` plus `vault.identities.use`. Raw secret read/write and broader
-identity-use operations remain restricted unless a contract explicitly broadens that surface with
-tests and docs.
+same-user process. App secret values, identity private keys, signing payloads, private insert URIs,
+vault storage paths, browser session tokens, app process tokens, form passwords, and absolute
+staging paths must not appear in public JSON, Web Shell summaries, app audit events,
+release-certification reports, diagnostics, or logs. Profile-document responses may include public
+verification material such as `signature.signatureBase64`; app audit events,
+release-certification evidence, diagnostics, and logs must not record raw signatures or signing
+payloads. App browser principals may create app-owned identities through
+`POST /api/v1/app-vault/identities` when authorized by `vault.identities.create`, and Profile
+Publisher may use the documented profile-document route when authorized by `vault.identities.read`
+plus `vault.identities.use`. Raw secret read/write and broader identity-use operations remain
+restricted unless a contract explicitly broadens that surface with tests and docs.
 
 Static UI code should run on its isolated per-app loopback origin when available. Browser app
 sessions improve server-side attribution and capability enforcement for SDK/API calls, and the
