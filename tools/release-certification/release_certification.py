@@ -81,6 +81,20 @@ NON_SECRET_METADATA_SUFFIXES = (
     "required",
     "source",
 )
+BODY_KEY_FRAGMENTS = (
+    "requestbody",
+    "rawrequestbody",
+    "requestbodies",
+    "rawrequestbodies",
+    "feedbody",
+    "rawfeedbody",
+    "feedbodies",
+    "rawfeedbodies",
+    "feedpayload",
+    "rawfeedpayload",
+    "feedcontent",
+    "rawfeedcontent",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -369,6 +383,8 @@ def should_redact_key_name(key_hint: str) -> bool:
         return False
     if normalized.endswith(NON_SECRET_METADATA_SUFFIXES):
         return False
+    if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
+        return True
     if normalized in {
         "authorization",
         "cookie",
@@ -382,18 +398,6 @@ def should_redact_key_name(key_hint: str) -> bool:
         "recoveryphrase",
         "mnemonic",
         "seed",
-        "requestbody",
-        "rawrequestbody",
-        "requestbodies",
-        "rawrequestbodies",
-        "feedbody",
-        "rawfeedbody",
-        "feedbodies",
-        "rawfeedbodies",
-        "feedpayload",
-        "rawfeedpayload",
-        "feedcontent",
-        "rawfeedcontent",
         "token",
         "password",
         "passwd",
@@ -2880,15 +2884,23 @@ def run_self_test(repo_root: Path) -> None:
         feed_body_metadata = sanitize_value(
             {
                 "rawFeedBody": "<feed><entry>private body</entry></feed>",
+                "rawFeedBodyBase64": "opaque-feed-body-base64",
                 "rawRequestBody": "uri=SSK@private",
+                "requestBodyText": "opaque-request-body-text",
+                "feedContentPreview": "opaque-feed-preview",
                 "feedSummary": "3 entries",
+                "rawFeedBodyRedacted": True,
             },
             workspace,
             out_dir,
         )
         assert feed_body_metadata["rawFeedBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawFeedBodyBase64"] == "<redacted>", feed_body_metadata
         assert feed_body_metadata["rawRequestBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["requestBodyText"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["feedContentPreview"] == "<redacted>", feed_body_metadata
         assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
+        assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
         interop_item = next(item for item in summary["evidence"] if item["id"] == "interop.smoke")
         assert "artifacts/private-insert-uris.json" not in json.dumps(interop_item)
 
