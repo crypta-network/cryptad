@@ -6,7 +6,7 @@ catalog.
 ## Scope
 
 The first-party beta catalog is a signed catalog for the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, and `profile-publisher`. It does not auto-install apps and does not
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader`. It does not auto-install apps and does not
 weaken any existing gates. Catalog signatures, bundle signatures, review receipts, artifact
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
@@ -91,7 +91,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -105,8 +105,25 @@ permissions.rationale.vault.identities.create=Creates an app-owned profile ident
 permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
 permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
 api.minimumVersion=5
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 api.experimentalCapabilitiesAccepted=true
+```
+
+Feed Reader descriptors should include the content-fetch and generated-feed publication
+rationales:
+
+```properties
+permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+permissions.rationale.content.fetch=Fetches subscribed feed documents through POST /api/v1/content/fetch without local source-path authority.
+permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
+permissions.rationale.queue.write=Creates generated feed publication inserts.
+permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+categories=reader,publishing,content
+review.status=reviewed
+review.note=First-party feed reference app.
+api.minimumVersion=6
+api.maximumTestedVersion=6
+api.experimentalCapabilitiesAccepted=false
 ```
 
 Create, sign, and verify the catalog with the existing CLI:
@@ -121,6 +138,7 @@ platform-devtools/build/install/crypta-app/bin/crypta-app catalog create \
   --entry build/first-party-beta-catalog/publisher.properties \
   --entry build/first-party-beta-catalog/site-publisher.properties \
   --entry build/first-party-beta-catalog/profile-publisher.properties \
+  --entry build/first-party-beta-catalog/feed-reader.properties \
   --overwrite
 
 platform-devtools/build/install/crypta-app/bin/crypta-app catalog sign \
@@ -152,6 +170,7 @@ offline: it checks for the recommended descriptor, API/Web Shell onboarding, Cry
 transport tests, first-party metadata documentation, and whether the certification environment has
 source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
-`app-platform.generated-document-insert`. Normal certification must not record tokens, form
-passwords, private insert URIs, raw request bodies, private keys, signatures, or absolute staging
-paths. It does not fetch a public Crypta network catalog during normal unit tests.
+`app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`
+and `app-platform.content-fetch`. Normal certification must not record tokens, form passwords,
+private insert URIs, raw request bodies, raw feed bodies, private keys, signatures, or absolute
+staging paths. It does not fetch a public Crypta network catalog during normal unit tests.

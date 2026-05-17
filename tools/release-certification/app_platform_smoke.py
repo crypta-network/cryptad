@@ -4,8 +4,8 @@
 The smoke runner keeps its self-test Python-only and offline.  Normal runs can
 optionally invoke Gradle and the installed ``crypta-app`` launcher to validate
 first-party staged apps, sample app packaging, signed bundles, signed catalogs,
-app-owned static UI, profile publishing routes, generated document inserts, and
-legacy-admin retirement state.
+app-owned static UI, content fetch and feed-reader routes, profile publishing routes,
+generated document inserts, and legacy-admin retirement state.
 """
 
 from __future__ import annotations
@@ -38,7 +38,13 @@ MODES = ("pr", "nightly", "release-candidate")
 DEFAULT_OUT_DIR = Path("build/release-certification/app-platform-smoke")
 SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "app-platform-smoke-report.md"
-APP_IDS = ("queue-manager", "publisher", "site-publisher", "profile-publisher")
+APP_IDS = (
+    "queue-manager",
+    "publisher",
+    "site-publisher",
+    "profile-publisher",
+    "feed-reader",
+)
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -68,6 +74,12 @@ PROFILE_PUBLISHER_PERMISSIONS = {
     "vault.identities.create",
     "vault.identities.use",
 }
+FEED_READER_PERMISSIONS = {
+    "content.fetch",
+    "content.insert.app-document",
+    "queue.read",
+    "queue.write",
+}
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -78,7 +90,9 @@ SECRET_COMMAND_VALUE_OPTIONS = {
 SENSITIVE_KEY_PATTERN = (
     r"CRYPTAD_APP_TOKEN|formPassword|browserSessionToken|X-Crypta-App-Session|"
     r"authorization|cookie|set-cookie|private[-_ ]?key|token|password|passwd|secret|credential|"
-    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic"
+    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic|"
+    r"raw[-_ ]?request[-_ ]?bod(?:y|ies)|request[-_ ]?bod(?:y|ies)|"
+    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)"
 )
 SENSITIVE_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -118,6 +132,20 @@ NON_SECRET_METADATA_SUFFIXES = (
     "redacted",
     "required",
     "source",
+)
+BODY_KEY_FRAGMENTS = (
+    "requestbody",
+    "rawrequestbody",
+    "requestbodies",
+    "rawrequestbodies",
+    "feedbody",
+    "rawfeedbody",
+    "feedbodies",
+    "rawfeedbodies",
+    "feedpayload",
+    "rawfeedpayload",
+    "feedcontent",
+    "rawfeedcontent",
 )
 
 
@@ -305,10 +333,12 @@ def normalize_key_name(key_hint: str) -> str:
     return re.sub(r"[^a-z0-9]", "", key_hint.lower())
 
 
-def should_redact_key_name(key_hint: str) -> bool:
+def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
     normalized = normalize_key_name(key_hint)
     if not normalized:
         return False
+    if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
+        return not (isinstance(value, bool) and normalized.endswith(NON_SECRET_METADATA_SUFFIXES))
     if normalized.endswith(NON_SECRET_METADATA_SUFFIXES):
         return False
     if normalized in {
@@ -352,7 +382,7 @@ def should_redact_key_name(key_hint: str) -> bool:
 
 
 def sanitize_value(value: Any, workspace_root: Path, key_hint: str = "") -> Any:
-    if should_redact_key_name(key_hint):
+    if should_redact_key_name(key_hint, value):
         return "<redacted>"
     if isinstance(value, dict):
         return {str(key): sanitize_value(child, workspace_root, str(key)) for key, child in value.items()}
@@ -540,7 +570,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/site-publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
-            "apiMaximumTestedVersion": 5,
+            "apiMaximumTestedVersion": 6,
         },
         {
             "appId": "profile-publisher",
@@ -553,7 +583,19 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/profile-publisher.sh",
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 5,
-            "apiMaximumTestedVersion": 5,
+            "apiMaximumTestedVersion": 6,
+        },
+        {
+            "appId": "feed-reader",
+            "name": "Feed Reader & Publisher",
+            "stagedDir": (
+                settings.workspace_root / "apps/feed-reader/build/cryptad-app/feed-reader"
+            ),
+            "sourceDir": settings.workspace_root / "apps/feed-reader/src/staged",
+            "launcher": "bin/feed-reader.sh",
+            "permissions": FEED_READER_PERMISSIONS,
+            "apiMinimumVersion": 6,
+            "apiMaximumTestedVersion": 6,
         },
     ]
 
@@ -2565,6 +2607,127 @@ def collect_generated_document_insert_evidence(settings: Settings) -> EvidenceIt
     )
 
 
+def collect_content_fetch_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    route = "/content/fetch"
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/platform-api-contract.md",
+            "docs/platform-api-surface.md",
+            "docs/platform-sdk-js.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/release-certification.md",
+        )
+    )
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    )
+    handler_text = "\n".join(
+        read_source(path)
+        for path in (
+            workspace / "platform-api/src/main/java/network/crypta/platform/api/content/ContentApiHandler.java",
+            workspace / "platform-api/src/main/java/network/crypta/platform/api/queue/QueueApiHandler.java",
+        )
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    tests_text = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "platform-api/src/test/java").rglob("*.java"))
+        if "Content" in path.name or "Capabilities" in path.name or "Contract" in path.name
+    )
+    lower_docs = docs_text.lower()
+    source_text = "\n".join((contract_text, router_text, handler_text, sdk_text, tests_text))
+    checks = {
+        "routeDocumented": "post /api/v1/content/fetch" in lower_docs,
+        "fetchScopeDocumented": "feed" in lower_docs and "content.fetch" in docs_text,
+        "requiredCapabilitiesDocumented": "content.fetch" in docs_text,
+        "routeInContractOrRouter": route in source_text,
+        "routeUsesContentFetchCapability": (
+            route in contract_text
+            and ("CONTENT_FETCH" in contract_text or "content.fetch" in contract_text)
+        ),
+        "handlerOrTestEvidencePresent": (
+            "content/fetch" in handler_text
+            or "contentFetch" in handler_text
+            or "ContentFetch" in handler_text
+            or "content/fetch" in tests_text
+            or "contentFetch" in tests_text
+            or "ContentFetch" in tests_text
+        ),
+        "sdkFeedHelpersPresentOrDocumented": (
+            "CryptaPlatform.feed" in sdk_text
+            or "CryptaPlatform.feed" in docs_text
+            or "content/fetch" in sdk_text
+            or "content/fetch" in docs_text
+        ),
+        "redactionDocumented": all(
+            phrase in lower_docs
+            for phrase in (
+                "raw feed bodies",
+                "raw request bodies",
+                "private insert uris",
+                "browser-session tokens",
+                "form passwords",
+                "local paths",
+            )
+        ),
+    }
+    details = {
+        "route": "POST /api/v1" + route,
+        "requiredCapabilities": ["content.fetch"],
+        "checks": checks,
+        "redaction": {
+            "rawFeedBodiesExcluded": True,
+            "rawRequestBodiesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "appProcessTokensRedacted": True,
+            "browserSessionTokensRedacted": True,
+            "formPasswordsRedacted": True,
+            "localPathsSanitized": True,
+        },
+        "sources": {
+            "contract": display_path(
+                workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java",
+                workspace,
+            ),
+            "docs": [
+                display_path(workspace / "docs/platform-api-contract.md", workspace),
+                display_path(workspace / "docs/platform-api-surface.md", workspace),
+                display_path(workspace / "docs/platform-sdk-js.md", workspace),
+                display_path(workspace / "docs/feed-reader-reference-app.md", workspace),
+                display_path(workspace / "docs/release-certification.md", workspace),
+            ],
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.content-fetch",
+            root_consequence(settings, "fail"),
+            True,
+            "Content fetch route evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.content-fetch",
+        "pass",
+        True,
+        "Content fetch route evidence passed.",
+        source,
+        details,
+    )
+
+
 def read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -2827,7 +2990,9 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         "profile-document" in source_app_js or "profileDocument" in source_app_js
     )
     checks["usesGeneratedDocumentInsertRoute"] = (
-        "queue/inserts/app-document" in source_app_js or "insertAppDocument" in source_app_js
+        "queue/inserts/app-document" in source_app_js
+        or "insertAppDocument" in source_app_js
+        or "publishSnapshot" in source_app_js
     )
     checks["usesUploadQueueSnapshot"] = "CryptaPlatform.queue.snapshot" in source_app_js
     checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
@@ -2896,6 +3061,145 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         "pass",
         True,
         "Profile Publisher reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "feed-reader"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {
+        "appId": "feed-reader",
+        "checks": {},
+        "expectedPermissions": sorted(FEED_READER_PERMISSIONS),
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.feed-reader",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader first-party app spec is missing.",
+            source,
+            details,
+        )
+
+    app_dir = settings.workspace_root / "apps/feed-reader"
+    source_static_dir = spec["sourceDir"] / "static"
+    staged_static_dir = spec["stagedDir"] / "static"
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_index = read_source(source_static_dir / "index.html")
+    source_app_js = read_source(source_static_dir / "app.js")
+    reference_doc = read_source(settings.workspace_root / "docs/feed-reader-reference-app.md")
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    details.update(
+        {
+            "sourceDir": display_path(spec["sourceDir"], settings.workspace_root),
+            "stagedDir": display_path(spec["stagedDir"], settings.workspace_root),
+        }
+    )
+    checks = details["checks"]
+    checks["moduleExists"] = app_dir.is_dir()
+    checks["stagedManifestPresent"] = manifest_path.is_file()
+    checks["sourceStaticUiPresent"] = (source_static_dir / "index.html").is_file() and (
+        source_static_dir / "app.js"
+    ).is_file()
+    checks["stagedSdkPresent"] = (staged_static_dir / "crypta-platform.js").is_file()
+    checks["stagedDesignSystemPresent"] = all(
+        (staged_static_dir / "crypta-ui" / asset_name).is_file()
+        for asset_name in design_system_asset_names()
+    )
+    checks["usesSdkBootstrap"] = "CryptaPlatform.bootstrap.load" in source_app_js
+    checks["usesContentFetchRouteOrHelper"] = (
+        "CryptaPlatform.content.fetchText" in source_app_js
+        or "CryptaPlatform.content.fetchBase64" in source_app_js
+        or "CryptaPlatform.feed.fetchSnapshot" in source_app_js
+        or "content/fetch" in source_app_js
+    )
+    checks["usesGeneratedDocumentInsertRoute"] = (
+        "queue/inserts/app-document" in source_app_js
+        or "insertAppDocument" in source_app_js
+        or "publishSnapshot" in source_app_js
+    )
+    checks["usesUploadQueueSnapshot"] = "CryptaPlatform.queue.snapshot" in source_app_js
+    checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
+    checks["noPersistentBrowserStorage"] = all(
+        forbidden not in source_app_js
+        for forbidden in ("localStorage.setItem", "sessionStorage.setItem")
+    )
+    checks["docsDescribeFeedReaderFlow"] = (
+        "Feed Reader" in reference_doc
+        and "POST /api/v1/content/fetch" in reference_doc
+        and "content.fetch" in reference_doc
+        and "raw feed bodies" in reference_doc
+    )
+    disclosure = permission_disclosure_block(source_index)
+    mentioned_permissions = set(
+        re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
+    )
+    checks["permissionDisclosureMentionsDeclaredPermissions"] = manifest_permissions.issubset(
+        mentioned_permissions
+    )
+    if manifest:
+        details["manifest"] = {
+            "appId": manifest.get("app.id"),
+            "name": manifest.get("app.name"),
+            "uiMode": manifest.get("app.ui.mode"),
+            "uiEntry": manifest.get("app.ui.entry"),
+            "permissions": sorted(manifest_permissions),
+            "apiMinimumVersion": manifest.get("api.minimumVersion"),
+            "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+        }
+        checks["manifestDeclaresFeedReader"] = (
+            manifest.get("app.id") == "feed-reader"
+            and manifest.get("app.name") == "Feed Reader & Publisher"
+            and manifest.get("app.ui.mode") == "static"
+            and manifest.get("app.ui.entry") == "static/index.html"
+        )
+        checks["manifestDeclaresFeedPermissions"] = FEED_READER_PERMISSIONS.issubset(
+            manifest_permissions
+        )
+        checks["manifestUsesContractV6"] = (
+            manifest.get("api.minimumVersion") == "6"
+            and manifest.get("api.maximumTestedVersion") == "6"
+        )
+    else:
+        checks["manifestDeclaresFeedReader"] = False
+        checks["manifestDeclaresFeedPermissions"] = False
+        checks["manifestUsesContractV6"] = False
+
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"feed reader app check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.feed-reader",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader reference app evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.feed-reader",
+        "pass",
+        True,
+        "Feed Reader reference app evidence passed.",
         source,
         details,
     )
@@ -3858,8 +4162,11 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem]) -> dict[str,
         "redaction": {
             "secretMaterialRedacted": True,
             "formPasswordsRedacted": True,
+            "rawFeedBodiesExcluded": True,
             "rawRequestBodiesExcluded": True,
             "privateInsertUrisExcluded": True,
+            "appProcessTokensRedacted": True,
+            "browserSessionTokensRedacted": True,
             "signatureValuesRedacted": True,
             "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
@@ -3881,6 +4188,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_vault_evidence(settings),
         collect_identity_profile_publish_evidence(settings),
         collect_generated_document_insert_evidence(settings),
+        collect_content_fetch_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
@@ -3893,6 +4201,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_ui_evidence(settings),
         collect_reference_content_app_evidence(settings),
         collect_profile_publisher_reference_app_evidence(settings),
+        collect_feed_reader_reference_app_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
         collect_sandbox_provider_evidence(settings),
@@ -3960,7 +4269,12 @@ def run_self_test(repo_root: Path) -> None:
     registry_fixture = fixture_dir / "self-test-legacy-registry.java-fragment"
     catalog = parse_properties(catalog_fixture)
     assert catalog["catalog.id"] == "cert-smoke"
+    assert "feed-reader" in parse_permission_set(catalog["catalog.entries"])
     assert catalog["app.cert-smoke.bundle.sha256"] == "0" * 64
+    assert catalog["app.feed-reader.permissions"] == (
+        "content.fetch,content.insert.app-document,queue.read,queue.write"
+    )
+    assert catalog["app.feed-reader.api.minimumVersion"] == "6"
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -4187,6 +4501,31 @@ def run_self_test(repo_root: Path) -> None:
     assert sandbox_check_metadata["enforcedSupportLevel"] is True, sandbox_check_metadata
     assert sandbox_check_metadata["noSetenvCommand"] is True, sandbox_check_metadata
     assert sandbox_check_metadata["enforcedStatusToken"] == "<redacted>", sandbox_check_metadata
+    feed_body_metadata = sanitize_value(
+        {
+            "rawFeedBody": "<feed><entry>private body</entry></feed>",
+            "rawFeedBodyBase64": "opaque-feed-body-base64",
+            "rawRequestBody": "uri=SSK@private",
+            "requestBodyText": "opaque-request-body-text",
+            "feedContentPreview": "opaque-feed-preview",
+            "rawFeedBodySource": "opaque-feed-body-source",
+            "requestBodySource": "opaque-request-body-source",
+            "feedSummary": "3 entries",
+            "rawFeedBodyRedacted": True,
+            "rawFeedBodiesExcluded": True,
+        },
+        repo_root,
+    )
+    assert feed_body_metadata["rawFeedBody"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawFeedBodyBase64"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawRequestBody"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["requestBodyText"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["feedContentPreview"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawFeedBodySource"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["requestBodySource"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
+    assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
+    assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
     credential_scrubbed = scrub_text(
         'Authorization: Bearer app-secret\n'
         'Cookie: session=abc; csrf=def\n'
@@ -4349,6 +4688,7 @@ def run_self_test(repo_root: Path) -> None:
         assert vault_item["details"]["capabilities"] == list(APP_VAULT_CAPABILITIES), vault_item
         assert evidence_by_id["app-platform.identity-profile-publish"]["status"] == "pass"
         assert evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
+        assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass"
         contract_details = contract_item["details"]
         assert contract_details["contractVersion"] == 2, contract_item
         assert contract_details["capabilityCount"] == 2, contract_item
@@ -4370,6 +4710,26 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
+        assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
+        feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
+        original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
+        try:
+            feed_reader_app_js.write_text(
+                "const appId = 'feed-reader';\n"
+                "CryptaPlatform.bootstrap.load({ appId });\n"
+                "CryptaPlatform.feed.parseSnapshot('{}');\n"
+                "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
+                "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+                encoding="utf-8",
+            )
+            missing_fetch_settings = dataclasses.replace(settings, mode="release-candidate")
+            missing_fetch_item = collect_feed_reader_reference_app_evidence(missing_fetch_settings)
+        finally:
+            feed_reader_app_js.write_text(original_feed_reader_js, encoding="utf-8")
+        assert missing_fetch_item.status == "fail", missing_fetch_item
+        assert (
+            missing_fetch_item.details["checks"]["usesContentFetchRouteOrHelper"] is False
+        ), missing_fetch_item
         review_env_names = (
             "CRYPTAD_APP_REVIEWER_KEY_ID",
             "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
@@ -4837,6 +5197,18 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.api.postForm('queue/inserts/app-document', { document: 'redacted' });\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
         ),
+        (
+            "feed-reader",
+            "feed-reader",
+            "Feed Reader & Publisher",
+            "feed-reader.sh",
+            "content.fetch,content.insert.app-document,queue.read,queue.write",
+            "const appId = 'feed-reader';\n"
+            "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.feed.fetchSnapshot({ uri: 'CHK@redacted' });\n"
+            "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
+            "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+        ),
     ):
         source = workspace / f"apps/{project}/src/staged"
         staged = workspace / f"apps/{project}/build/cryptad-app/{app_id}"
@@ -4867,8 +5239,9 @@ def make_self_test_workspace(workspace: Path) -> None:
                 shutil.copy2(design_dir / asset_name, root / "static/crypta-ui" / asset_name)
             shutil.copy2(sdk, root / "static/crypta-platform.js")
         is_profile_publisher = app_id == "profile-publisher"
-        api_minimum = "5" if is_profile_publisher else "3"
-        api_maximum = "5" if app_id in {"site-publisher", "profile-publisher"} else "4"
+        is_feed_reader = app_id == "feed-reader"
+        api_minimum = "6" if is_feed_reader else "5" if is_profile_publisher else "3"
+        api_maximum = "6" if app_id in {"feed-reader", "site-publisher", "profile-publisher"} else "4"
         experimental_accepted = "true" if is_profile_publisher else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
@@ -4902,6 +5275,12 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "Profile Publisher creates an app-owned identity, calls the "
                 "profile-document route, and inserts the signed app-document "
                 "without storing raw signatures in release evidence.\n",
+                encoding="utf-8",
+            )
+        if app_id == "feed-reader":
+            (workspace / "apps/feed-reader/README.md").write_text(
+                "Feed Reader uses POST /api/v1/content/fetch through SDK feed helpers, "
+                "then publishes generated feed summaries without storing raw feed bodies.\n",
                 encoding="utf-8",
             )
     appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -4962,7 +5341,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String generatedDocument = \"/queue/inserts/app-document\"; "
         "String generatedAction = \"queue.inserts.app-document\"; "
         "String contentCapability = \"CONTENT_INSERT_APP_DOCUMENT\"; "
-        "String queueCapability = \"QUEUE_WRITE\"; }\n",
+        "String queueCapability = \"QUEUE_WRITE\"; "
+        "String contentFetch = \"/content/fetch\"; "
+        "String contentFetchCapability = \"CONTENT_FETCH\"; }\n",
         encoding="utf-8",
     )
     app_vault_api_dir = api_dir / "appvault"
@@ -4979,6 +5360,12 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String route = \"app-document\"; } }\n",
         encoding="utf-8",
     )
+    content_api_dir = api_dir / "content"
+    content_api_dir.mkdir(parents=True, exist_ok=True)
+    (content_api_dir / "ContentApiHandler.java").write_text(
+        "final class ContentApiHandler { void contentFetch() { String route = \"content/fetch\"; } }\n",
+        encoding="utf-8",
+    )
     platform_api_tests = workspace / "platform-api/src/test/java/network/crypta/platform/api"
     platform_api_tests.mkdir(parents=True, exist_ok=True)
     (platform_api_tests / "AppVaultProfileDocumentApiTest.java").write_text(
@@ -4989,6 +5376,11 @@ def make_self_test_workspace(workspace: Path) -> None:
     (platform_api_tests / "QueueGeneratedDocumentInsertApiTest.java").write_text(
         "void appDocument_whenAppGeneratedBodyQueued_expectNoPrivateInsertUriOrRawBodyEvidence() { "
         "String route = \"app-document\"; }\n",
+        encoding="utf-8",
+    )
+    (platform_api_tests / "ContentFetchApiTest.java").write_text(
+        "void contentFetch_whenFeedFetched_expectNoRawFeedBodyOrRequestBodyEvidence() { "
+        "String route = \"content/fetch\"; String capability = \"content.fetch\"; }\n",
         encoding="utf-8",
     )
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
@@ -5004,8 +5396,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs.mkdir(parents=True, exist_ok=True)
     first_party_docs = (
         "No private keys are shipped. "
-        "queue-manager publisher site-publisher profile-publisher use permissions.rationale entries, "
+        "queue-manager publisher site-publisher profile-publisher feed-reader use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
+        "Feed Reader & Publisher is the content fetch reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot. "
         "api.minimumVersion, changelog.summary, and review receipts. "
         "Maintain artifacts as crypta:CHK@artifact and set CRYPTAD_FIRST_PARTY_CATALOG_SOURCE "
         "with CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID. "
@@ -5014,14 +5407,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "uses vault.identities.read and vault.identities.use for profile document signing. "
         "POST /api/v1/queue/inserts/app-document accepts app-generated document content without a "
         "local file path and requires content.insert.app-document plus queue.write. "
+        "POST /api/v1/content/fetch fetches feed content and requires content.fetch. "
         "Release evidence covers reference-app.profile-publisher, "
+        "reference-app.feed-reader, app-platform.content-fetch, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "It excludes raw request bodies, private keys, signatures, private insert URIs, and "
-        "absolute staging paths.\n"
+        "absolute staging paths. It also excludes raw feed bodies, browser-session tokens, "
+        "form passwords, and local paths.\n"
     )
     for doc_name in (
         "app-catalogs.md",
         "app-dev-cli.md",
+        "feed-reader-reference-app.md",
         "first-party-beta-catalog.md",
         "release-certification.md",
     ):

@@ -151,8 +151,9 @@ a release blocker by default.
 
 `:platform-design-system` owns the canonical asset bytes and metadata helpers. `crypta-app init
 --ui-mode static` copies those assets into new standalone scaffolds. The repo-owned Queue Manager,
-Publisher, Site Publisher, and Profile Publisher Gradle `stageApp` tasks copy the same assets into
-`static/crypta-ui/` during staging instead of duplicating them in `apps/*/src/staged`.
+Publisher, Site Publisher, Profile Publisher, and Feed Reader Gradle `stageApp` tasks copy the same
+assets into `static/crypta-ui/` during staging instead of duplicating them in
+`apps/*/src/staged`.
 
 Release certification records three UI-specific evidence ids:
 

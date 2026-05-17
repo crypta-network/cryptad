@@ -31,6 +31,9 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to create generated-document inserts. */
   static final String CONTENT_INSERT_APP_DOCUMENT = "content.insert.app-document";
 
+  /** Manifest permission that allows app principals to fetch bounded Crypta content documents. */
+  static final String CONTENT_FETCH = "content.fetch";
+
   /** Manifest permission that allows app principals to read peer summaries and peer details. */
   static final String PEERS_READ = "peers.read";
 

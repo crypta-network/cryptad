@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=5
+contractVersion=6
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 5,
+    "contractVersion": 6,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -106,6 +106,28 @@ profile-publishing workflow still requires the v5 profile-document and app-docum
 
 Existing version 1 capabilities and endpoints remain stable, and their descriptors keep
 `sinceContractVersion=1` so tooling can distinguish old and newly introduced surface area.
+
+Contract version 6 adds bounded content fetch support for static feed apps:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/content/fetch` | `content.fetch` | Fetch a bounded Crypta content document for an app workflow such as feed reading without granting queue mutation or local file-path authority. |
+
+The v6 fetch descriptor is separate from insert permissions. `content.fetch` lets the app ask the
+local node to retrieve a specific content URI through the Platform API; it does not grant
+`content.insert`, `content.insert.app-document`, `queue.write`, catalog management, vault access,
+or local filesystem access. Certification evidence for this route must record only sanitized fetch
+metadata and must exclude raw feed bodies, raw request bodies, private insert URIs, app process
+tokens, app browser-session tokens, form passwords, and local paths.
+
+`POST /api/v1/content/fetch` accepts `application/x-www-form-urlencoded` parameters. `uri` is
+required and must be a Crypta/Freenet content key in `CHK@...`, `SSK@...`, `USK@...`, `KSK@...`,
+`crypta:CHK@...`, `crypta:SSK@...`, `crypta:USK@...`, or `crypta:KSK@...` form. Optional `maxBytes`,
+`timeoutMillis`, `format`, and `purpose` values are bounded by the daemon: the default byte cap is
+262144, the hard byte cap is 1048576, the default timeout is 30000 milliseconds, and the hard
+timeout is 60000 milliseconds. `format=text` returns UTF-8 `contentText`; `format=base64` returns
+`contentBase64`. App principals cannot use this route for `file:`, `http:`, `https:`, loopback,
+LAN, or absolute local-path fetches.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -232,7 +254,9 @@ records descriptor counts and non-stable entries, and runs offline `crypta-app c
 checks for first-party staged apps and the generated sample app. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,
 `app-platform.generated-document-insert` for the app-generated document insert route, and
-`reference-app.profile-publisher` for the first-party Profile Publisher bundle.
+`reference-app.profile-publisher` for the first-party Profile Publisher bundle. Content fetch has
+separate release evidence: `app-platform.content-fetch` for `POST /api/v1/content/fetch` and
+`reference-app.feed-reader` for the first-party Feed Reader bundle.
 
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor
 parse failure, or strict compatibility verifier failure blocks promotion unless an explicit

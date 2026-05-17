@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feed Reader &amp; Publisher</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+  <main class="cr-shell feed-reader-layout">
+    <header class="cr-header">
+      <div>
+        <p class="cr-label">Crypta feed app</p>
+        <h1>Feed Reader &amp; Publisher</h1>
+      </div>
+      <div class="header-actions">
+        <button class="cr-button cr-button--secondary" id="refresh-selected-button" type="button">
+          Refresh selected
+        </button>
+        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+          Refresh queue
+        </button>
+      </div>
+    </header>
+
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>content.fetch</code> fetches configured feed sources through SDK helpers.</li>
+        <li><code>content.insert.app-document</code> publishes generated feed snapshots.</li>
+        <li><code>queue.read</code> reads upload queue previews for published snapshots.</li>
+        <li><code>queue.write</code> creates queue entries for published feed snapshots.</li>
+      </ul>
+    </section>
+
+    <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
+      <h2 id="safe-use-title">Safe-use notes</h2>
+      <ul>
+        <li>Feed sources, fetched content, drafts, and publish results are kept only in memory.</li>
+        <li>Fetched content is rendered as text and no untrusted HTML is inserted into the page.</li>
+        <li>USK follow refresh runs only while this tab is open and stops after a bounded count.</li>
+      </ul>
+    </section>
+
+    <section class="workspace-grid" aria-label="Feed workspace">
+      <section class="cr-card sources-panel" aria-labelledby="sources-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">In-memory list</p>
+            <h2 id="sources-title">Feed sources</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="follow-toggle-button" type="button">
+            Start USK follow
+          </button>
+        </div>
+        <form class="source-form" id="source-form">
+          <label class="cr-field">
+            <span class="cr-label">Source label</span>
+            <input
+              class="cr-input"
+              name="label"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              required>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Feed URI</span>
+            <input
+              class="cr-input"
+              name="uri"
+              type="text"
+              placeholder="crypta:USK@feed-key/feed/0/"
+              autocomplete="off"
+              spellcheck="false"
+              required>
+          </label>
+          <label class="cr-checkbox">
+            <input name="followUsk" type="checkbox">
+            <span>Follow USK while tab is open</span>
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">
+            Add source
+          </button>
+        </form>
+        <div class="source-list" id="source-list">
+          <p class="cr-empty">Add a feed source to fetch entries.</p>
+        </div>
+      </section>
+
+      <section class="cr-card reader-panel" aria-labelledby="reader-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Fetched snapshot</p>
+            <h2 id="reader-title">Reader</h2>
+          </div>
+          <p class="cr-status" id="follow-status" role="status" aria-live="polite"></p>
+        </div>
+        <div class="reader-content" id="reader-content">
+          <p class="cr-empty">Fetched feed content appears here as plain text.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="publisher-grid" aria-label="Publishing tools">
+      <form class="cr-card publisher-panel" id="publisher-form">
+        <div class="panel-heading">
+          <p class="cr-label">Snapshot publish</p>
+          <h2>Publisher</h2>
+        </div>
+        <label class="cr-field publisher-panel__wide">
+          <span class="cr-label">Feed title</span>
+          <input
+            class="cr-input"
+            name="feedTitle"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Author name</span>
+          <input
+            class="cr-input"
+            name="authorName"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Author profile URI</span>
+          <input
+            class="cr-input"
+            name="authorProfileUri"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field publisher-panel__wide">
+          <span class="cr-label">Entry title</span>
+          <input
+            class="cr-input"
+            name="entryTitle"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field publisher-panel__wide">
+          <span class="cr-label">Entry summary</span>
+          <textarea class="cr-input" name="entryBody" rows="5" required></textarea>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Entry URI</span>
+          <input
+            class="cr-input"
+            name="entryUri"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Tags</span>
+          <input
+            class="cr-input"
+            name="entryTags"
+            type="text"
+            placeholder="release, reference"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@feed-snapshot"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <button class="cr-button cr-button--primary publisher-panel__wide" type="submit">
+          Publish snapshot
+        </button>
+        <div class="publisher-panel__wide" id="publish-result">
+          <p class="cr-empty">Publish results stay only in this page's memory.</p>
+        </div>
+      </form>
+
+      <section class="cr-card queue-panel" aria-labelledby="queue-title">
+        <div class="panel-heading">
+          <h2 id="queue-title">Queue preview</h2>
+          <button class="cr-button cr-button--secondary" id="secondary-refresh-queue-button" type="button">
+            Refresh
+          </button>
+        </div>
+        <div class="queue-content" id="queue-preview">
+          <p class="cr-empty">Upload queue data loads after the app opens.</p>
+        </div>
+      </section>
+    </section>
+
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script src="./crypta-ui/crypta-ui-components.js" defer></script>
+  <script src="./crypta-platform.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

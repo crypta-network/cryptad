@@ -944,6 +944,7 @@ End
         "http://localhost/api/v1/config/overrides",
         "http://localhost/api/v1/security-levels/network",
         "http://localhost/api/v1/updates/core/download",
+        "http://localhost/api/v1/content/fetch",
         "http://localhost/api/v1/alerts/42/dismiss",
         "http://localhost/api/v1/wizard/first-time/apply",
         "http://localhost/api/v1/app-catalogs/recommended/crypta-first-party-beta/add",

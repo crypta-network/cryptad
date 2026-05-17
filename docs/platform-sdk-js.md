@@ -17,9 +17,9 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, Site Publisher, and Profile Publisher bundles receive
-`crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source lives in
-`platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
+The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader
+bundles receive `crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source
+lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
 The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
 static` can see the SDK resource, its template copies or vendors the file as
@@ -152,6 +152,49 @@ await CryptaPlatform.content.insertAppDocument({
   targetFilename: "profile.json",
 });
 ```
+
+Feed Reader uses the v6 feed helpers instead of constructing fetch forms by hand:
+
+```js
+const text = await CryptaPlatform.content.fetchText({
+  uri: feedUri,
+  maxBytes: 262144,
+  timeoutMillis: 30000,
+  purpose: "feed-source",
+});
+
+const binary = await CryptaPlatform.content.fetchBase64({
+  uri: feedUri,
+  format: "base64",
+});
+
+const fetched = await CryptaPlatform.feed.fetchSnapshot({
+  uri: feedUri,
+  maxBytes: 262144,
+  timeoutMillis: 30000,
+});
+
+const feed = fetched.snapshot;
+
+await CryptaPlatform.feed.publishSnapshot({
+  insertUri,
+  identifier,
+  snapshot: feedDocument,
+});
+```
+
+`CryptaPlatform.feed.fetchSnapshot` wraps `POST /api/v1/content/fetch`, requires
+`content.fetch`, and returns both the raw fetch response and the parsed snapshot.
+`CryptaPlatform.content.fetchText` and `CryptaPlatform.content.fetchBase64` call the same route
+with the app browser session header and return the JSON fetch response. Feed apps should pass
+Crypta content keys only, including `CHK@`, `SSK@`, `USK@`, `KSK@`, and matching `crypta:` forms;
+the daemon rejects local files, arbitrary HTTP(S) URLs, loopback/LAN URLs, and absolute local paths
+for app principals.
+`CryptaPlatform.feed.publishSnapshot` wraps the generated-document insert path and requires
+`content.insert.app-document` plus `queue.write`. Feed apps should render summaries, item counts,
+timestamps, and sanitized errors, but they must not persist raw feed bodies, raw request bodies,
+private insert URIs, app process tokens, browser-session tokens, form passwords, or local paths in
+browser storage or release evidence.
 
 `app-vault/identities` creates an app-owned identity for an authorized static app browser session.
 `app-vault/identities/{identityId}/profile-document` asks Cryptad to create the profile document

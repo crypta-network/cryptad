@@ -44,7 +44,7 @@ catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
-catalog.entries=queue-manager,publisher,site-publisher,profile-publisher
+catalog.entries=queue-manager,publisher,site-publisher,profile-publisher,feed-reader
 
 app.queue-manager.id=queue-manager
 app.queue-manager.name=Queue Manager
@@ -68,7 +68,7 @@ app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.pn
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
-app.queue-manager.api.maximumTestedVersion=1
+app.queue-manager.api.maximumTestedVersion=6
 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
@@ -92,7 +92,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=5
+app.site-publisher.api.maximumTestedVersion=6
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -117,8 +117,32 @@ app.profile-publisher.permissions.rationale.queue.write=Creates the generated do
 app.profile-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=5
-app.profile-publisher.api.maximumTestedVersion=5
+app.profile-publisher.api.maximumTestedVersion=6
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
+
+app.feed-reader.id=feed-reader
+app.feed-reader.name=Feed Reader & Publisher
+app.feed-reader.version=1.0.0
+app.feed-reader.summary=Reference app for reading and publishing feed documents through Crypta.
+app.feed-reader.bundle.uri=https://example.invalid/apps/feed-reader-1.0.0.zip
+app.feed-reader.bundle.sha256=<lowercase-hex-sha256-of-zip>
+app.feed-reader.bundle.size.bytes=12345
+app.feed-reader.bundle.type=zip
+app.feed-reader.permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+app.feed-reader.homepage=https://example.invalid/apps/feed-reader
+app.feed-reader.source=https://example.invalid/src/feed-reader
+app.feed-reader.license=GPL-3.0-only
+app.feed-reader.categories=reader,publishing,content
+app.feed-reader.review.status=reviewed
+app.feed-reader.review.note=First-party feed reference app.
+app.feed-reader.permissions.rationale.content.fetch=Fetches subscribed feed documents through the bounded content fetch route.
+app.feed-reader.permissions.rationale.content.insert.app-document=Submits generated feed documents to the insert pipeline without local source-path authority.
+app.feed-reader.permissions.rationale.queue.write=Creates generated feed publication inserts.
+app.feed-reader.permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
+app.feed-reader.api.minimumVersion=6
+app.feed-reader.api.maximumTestedVersion=6
+app.feed-reader.api.experimentalCapabilitiesAccepted=false
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
 app.queue-manager.review.receipt.app.version=1.0.0
@@ -202,6 +226,12 @@ bundle uses `POST /api/v1/app-vault/identities`,
 source-path authority. Catalog metadata and release evidence must not include raw request bodies,
 private keys, raw signatures, private insert URIs, tokens, form passwords, or absolute staging
 paths.
+
+Feed Reader is the content-fetch reference app. Its catalog entry may declare `content.fetch` for
+`POST /api/v1/content/fetch` and can combine `content.insert.app-document`, `queue.write`, and
+`queue.read` for generated feed publication. Catalog metadata and release evidence must not include
+raw feed bodies, raw request bodies, private insert URIs, tokens, form passwords, browser-session
+tokens, or local paths.
 
 ## Trusted review receipts
 
@@ -480,7 +510,7 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
 The first-party beta catalog is expected to contain the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, and `profile-publisher`. Entries should include
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader`. Entries should include
 source/review/API, sandbox, permission rationale, and changelog metadata, for example
 `permissions.rationale.*`,
 `api.minimumVersion`, `api.maximumTestedVersion`, and `changelog.summary`. First-party public

@@ -82,6 +82,7 @@ parameter; check the handler and tests when adding or changing a specific contra
 | --- | --- |
 | Node | `GET /api/v1/node/greeting` and `GET /api/v1/node/reference` expose read-only node metadata and node-reference export. |
 | Connectivity | `GET /api/v1/connectivity` exposes the current connectivity snapshot. |
+| Content | `POST /api/v1/content/fetch` lets an app principal with `content.fetch` request one bounded content document for app-owned workflows such as feed reading. It accepts form-encoded `uri`, optional `maxBytes`, `timeoutMillis`, `format=text\|base64`, and `purpose`, with daemon-enforced 256 KiB/30 second defaults and 1 MiB/60 second hard caps. App principals may fetch only `CHK@`, `SSK@`, `USK@`, `KSK@`, or matching `crypta:` content-key forms; `file:`, `http:`, `https:`, loopback, LAN, and local-path sources are rejected before the runtime fetch port is called. It is a fetch-only route: it does not grant local file-path access, queue mutation, catalog authority, or app-vault access. Successful responses may include the bounded fetched bytes as `contentText` or `contentBase64` plus sanitized URI diagnostics. Audit records, error diagnostics, and certification evidence must not include raw feed bodies, raw request bodies, private insert URIs, app process tokens, browser-session tokens, form passwords, or local paths. |
 | Queue | `GET /api/v1/queue` exposes the queue snapshot. The family also covers count and key-export views, direct downloads, local file/directory inserts, app-generated document inserts at `POST /api/v1/queue/inserts/app-document`, request removal/restart/priority changes, and finished upload/download cleanup. Local file/directory inserts require `content.insert` plus `queue.write`. App-generated document inserts require the narrower `content.insert.app-document` plus `queue.write`, accept generated document content instead of a local file path, and must keep raw request bodies, private insert URIs, signatures, and absolute staging paths out of certification evidence. |
 | Peers | `GET /api/v1/peers` exposes raw peer lists or the shell summary view. The family also covers peer add, lookup, settings updates, private-note updates, and removal. |
 | Config | `GET /api/v1/config` exports config snapshots. `POST` actions apply overrides and persist the current config. |
@@ -176,9 +177,9 @@ gate error codes include `app_review_missing`, `app_review_untrusted`, `app_revi
 
 The Web Shell uses the Platform API for node management, queue control, peer control, alerts,
 diagnostics, config, updater, security levels, wizard, and installed-app lifecycle work. The
-repo-owned Queue Manager, Publisher, Site Publisher, and Profile Publisher apps use the same
+repo-owned Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader apps use the same
 Platform API from their own static routes under `/apps/queue-manager/`, `/apps/publisher/`,
-`/apps/site-publisher/`, and `/apps/profile-publisher/`.
+`/apps/site-publisher/`, `/apps/profile-publisher/`, and `/apps/feed-reader/`.
 
 The shell currently includes these first-party panels and surfaces:
 
@@ -188,7 +189,7 @@ The shell currently includes these first-party panels and surfaces:
   install/update.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
-- Queue Manager, Publisher, Site Publisher, and Profile Publisher open as independent first-party app UIs when
+- Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader open as independent first-party app UIs when
   installed.
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.

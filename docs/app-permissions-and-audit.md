@@ -121,6 +121,7 @@ The current capabilities are intentionally conservative:
 | `connectivity.read` | `GET /api/v1/connectivity` |
 | `queue.read` | `GET /api/v1/queue/**` |
 | `queue.write` | queue download creation, request mutation, cleanup |
+| `content.fetch` | `POST /api/v1/content/fetch` bounded app content fetches, without insert, queue mutation, or local path authority |
 | `content.insert` | local file/directory insert routes, together with `queue.write` |
 | `content.insert.app-document` | app-generated document inserts without local source-path authority, together with `queue.write` |
 | `peers.read` | `GET /api/v1/peers/**` |
@@ -169,6 +170,13 @@ profile-document route for identity-bound profile signing and
 `POST /api/v1/queue/inserts/app-document` for app-generated document insertion without local
 source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
 `vault.secrets.*` unless a later feature needs those broader capabilities.
+
+Feed Reader is the first content-fetch reference app. Its read flow uses `content.fetch` for
+`POST /api/v1/content/fetch` and should not request `content.insert` or local source-path
+authority. Its publishing flow can combine `content.insert.app-document`, `queue.write`, and
+`queue.read` to publish generated feed documents and display queue progress. Audit and release
+evidence for this route must keep raw feed bodies, raw request bodies, private insert URIs, app
+process tokens, browser-session tokens, form passwords, and local paths out of persisted output.
 
 ## Audit trail
 

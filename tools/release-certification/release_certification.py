@@ -37,7 +37,9 @@ PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
     r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
-    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic"
+    r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic|"
+    r"raw[-_ ]?request[-_ ]?bod(?:y|ies)|request[-_ ]?bod(?:y|ies)|"
+    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)"
 )
 SENSITIVE_KEY_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -78,6 +80,20 @@ NON_SECRET_METADATA_SUFFIXES = (
     "redacted",
     "required",
     "source",
+)
+BODY_KEY_FRAGMENTS = (
+    "requestbody",
+    "rawrequestbody",
+    "requestbodies",
+    "rawrequestbodies",
+    "feedbody",
+    "rawfeedbody",
+    "feedbodies",
+    "rawfeedbodies",
+    "feedpayload",
+    "rawfeedpayload",
+    "feedcontent",
+    "rawfeedcontent",
 )
 
 
@@ -361,10 +377,12 @@ def normalize_key_name(key_hint: str) -> str:
     return re.sub(r"[^a-z0-9]", "", key_hint.lower())
 
 
-def should_redact_key_name(key_hint: str) -> bool:
+def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
     normalized = normalize_key_name(key_hint)
     if not normalized:
         return False
+    if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
+        return not (isinstance(value, bool) and normalized.endswith(NON_SECRET_METADATA_SUFFIXES))
     if normalized.endswith(NON_SECRET_METADATA_SUFFIXES):
         return False
     if normalized in {
@@ -408,7 +426,7 @@ def should_redact_key_name(key_hint: str) -> bool:
 
 
 def sanitize_value(value: Any, workspace_root: Path, out_dir: Path | None = None, key_hint: str = "") -> Any:
-    if should_redact_key_name(key_hint):
+    if should_redact_key_name(key_hint, value):
         return "<redacted>"
     if isinstance(value, dict):
         result: dict[str, Any] = {}
@@ -843,6 +861,7 @@ def app_platform_evidence(
         "app-vault.capabilities",
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
+        "app-platform.content-fetch",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -855,6 +874,7 @@ def app_platform_evidence(
         "app-ui.smoke",
         "reference-apps.content",
         "reference-app.profile-publisher",
+        "reference-app.feed-reader",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "apphost.sandbox-provider",
@@ -1046,7 +1066,13 @@ def evidence_counts(evidence: list[EvidenceItem]) -> dict[str, int]:
 
 
 STATUS_SEVERITY = {"pass": 0, "warn": 1, "skip": 2, "missing": 2, "fail": 3}
-EXPECTED_FIRST_PARTY_APPS = ("queue-manager", "publisher", "site-publisher", "profile-publisher")
+EXPECTED_FIRST_PARTY_APPS = (
+    "queue-manager",
+    "publisher",
+    "site-publisher",
+    "profile-publisher",
+    "feed-reader",
+)
 EXPECTED_VAULT_CAPABILITIES = (
     "vault.secrets.read",
     "vault.secrets.write",
@@ -1918,19 +1944,30 @@ def evaluate_reference_content_gate(
     previous_item = previous.get("reference-apps.content")
     profile_item = current.get("reference-app.profile-publisher")
     previous_profile_item = previous.get("reference-app.profile-publisher")
+    feed_reader_item = current.get("reference-app.feed-reader")
+    previous_feed_reader_item = previous.get("reference-app.feed-reader")
     generated_document_item = current.get("app-platform.generated-document-insert")
     previous_generated_document_item = previous.get("app-platform.generated-document-insert")
+    content_fetch_item = current.get("app-platform.content-fetch")
+    previous_content_fetch_item = previous.get("app-platform.content-fetch")
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
+    feed_reader_details = evidence_details(feed_reader_item)
     generated_document_details = evidence_details(generated_document_item)
+    content_fetch_details = evidence_details(content_fetch_item)
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
+    feed_reader_checks = nested_dict(feed_reader_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
     previous_profile_status = evidence_status(previous_profile_item)
+    feed_reader_status = evidence_status(feed_reader_item)
+    previous_feed_reader_status = evidence_status(previous_feed_reader_item)
     generated_document_status = evidence_status(generated_document_item)
     previous_generated_document_status = evidence_status(previous_generated_document_item)
+    content_fetch_status = evidence_status(content_fetch_item)
+    previous_content_fetch_status = evidence_status(previous_content_fetch_item)
     gate_details: dict[str, Any] = {}
     failures: list[str] = []
     warnings: list[str] = []
@@ -1956,11 +1993,13 @@ def evaluate_reference_content_gate(
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-apps.content")
     for evidence_id, current_status, previous_status_value in (
         ("reference-app.profile-publisher", profile_status, previous_profile_status),
+        ("reference-app.feed-reader", feed_reader_status, previous_feed_reader_status),
         (
             "app-platform.generated-document-insert",
             generated_document_status,
             previous_generated_document_status,
         ),
+        ("app-platform.content-fetch", content_fetch_status, previous_content_fetch_status),
     ):
         if current_status in {"fail", "missing", "skip"}:
             failures.append(f"{evidence_id} evidence is not passing")
@@ -1987,10 +2026,29 @@ def evaluate_reference_content_gate(
     elif profile_status == "pass":
         warnings.append("Profile Publisher coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.profile-publisher")
+    if feed_reader_details.get("appId") not in {"feed-reader", None}:
+        failures.append("Feed Reader evidence is not for feed-reader")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.feed-reader")
+    if feed_reader_checks:
+        for key in (
+            "usesContentFetchRouteOrHelper",
+            "usesGeneratedDocumentInsertRoute",
+            "usesSdkBootstrap",
+        ):
+            if feed_reader_checks.get(key) is not True:
+                failures.append(f"Feed Reader reference app check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.feed-reader")
+    elif feed_reader_status == "pass":
+        warnings.append("Feed Reader coverage lacks detailed staged app checks")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.feed-reader")
     generated_checks = nested_dict(generated_document_details, "checks")
     if generated_checks and generated_checks.get("routeDocumented") is not True:
         failures.append("Generated document insert route documentation check failed")
         add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.generated-document-insert")
+    content_fetch_checks = nested_dict(content_fetch_details, "checks")
+    if content_fetch_checks and content_fetch_checks.get("routeDocumented") is not True:
+        failures.append("Content fetch route documentation check failed")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.content-fetch")
     gate_details.update(
         {
             "currentStatus": status,
@@ -1998,14 +2056,19 @@ def evaluate_reference_content_gate(
             "appId": details.get("appId"),
             "profilePublisherStatus": profile_status,
             "previousProfilePublisherStatus": previous_profile_status,
+            "feedReaderStatus": feed_reader_status,
+            "previousFeedReaderStatus": previous_feed_reader_status,
             "generatedDocumentInsertStatus": generated_document_status,
             "previousGeneratedDocumentInsertStatus": previous_generated_document_status,
+            "contentFetchStatus": content_fetch_status,
+            "previousContentFetchStatus": previous_content_fetch_status,
             "profilePublisherAppId": profile_details.get("appId"),
+            "feedReaderAppId": feed_reader_details.get("appId"),
         }
     )
     return gate_from_issues(
         "ecosystem.reference-content-apps",
-        "Reference content and profile app evidence passed.",
+        "Reference content, profile, and feed app evidence passed.",
         failures,
         warnings,
         gate_details,
@@ -2258,8 +2321,11 @@ def build_summary(
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
             "secretMaterialRedacted": True,
             "formPasswordsRedacted": True,
+            "rawFeedBodiesExcluded": True,
             "rawRequestBodiesExcluded": True,
             "privateInsertUrisExcluded": True,
+            "appProcessTokensRedacted": True,
+            "browserSessionTokensRedacted": True,
             "signatureValuesRedacted": True,
             "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
@@ -2320,6 +2386,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-vault.capabilities",
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
+        "app-platform.content-fetch",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -2332,6 +2399,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-ui.smoke",
         "reference-apps.content",
         "reference-app.profile-publisher",
+        "reference-app.feed-reader",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -2347,7 +2415,7 @@ def render_report(summary: dict[str, Any]) -> str:
             "",
             "## Redaction Rules",
             "",
-            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw update or rollback command output, private insert URIs, and raw signatures are not included.",
+            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw feed bodies, raw update or rollback command output, private insert URIs, and raw signatures are not included.",
             "- Local absolute paths, including absolute staging paths, are sanitized as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.",
             "- Catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and rollback backup paths are sanitized.",
             "- `artifacts/private-insert-uris.json` is excluded even if an interop summary references it.",
@@ -2791,7 +2859,9 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
         ), evidence_by_id
+        assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
@@ -2811,6 +2881,32 @@ def run_self_test(repo_root: Path) -> None:
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN", "USK@private", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
+        feed_body_metadata = sanitize_value(
+            {
+                "rawFeedBody": "<feed><entry>private body</entry></feed>",
+                "rawFeedBodyBase64": "opaque-feed-body-base64",
+                "rawRequestBody": "uri=SSK@private",
+                "requestBodyText": "opaque-request-body-text",
+                "feedContentPreview": "opaque-feed-preview",
+                "rawFeedBodySource": "opaque-feed-body-source",
+                "requestBodySource": "opaque-request-body-source",
+                "feedSummary": "3 entries",
+                "rawFeedBodyRedacted": True,
+                "rawFeedBodiesExcluded": True,
+            },
+            workspace,
+            out_dir,
+        )
+        assert feed_body_metadata["rawFeedBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawFeedBodyBase64"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawRequestBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["requestBodyText"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["feedContentPreview"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawFeedBodySource"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["requestBodySource"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
+        assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
+        assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
         interop_item = next(item for item in summary["evidence"] if item["id"] == "interop.smoke")
         assert "artifacts/private-insert-uris.json" not in json.dumps(interop_item)
 
@@ -3308,6 +3404,7 @@ def run_self_test(repo_root: Path) -> None:
                             "publisher": {},
                             "site-publisher": {},
                             "profile-publisher": {},
+                            "feed-reader": {},
                         }
                     }
                 ),
@@ -3346,6 +3443,42 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert reference_missing_exit_code == 1, reference_missing_summary
         assert gate_by_id(reference_missing_summary, "ecosystem.reference-content-apps")["status"] == "fail"
+
+        feed_reader_missing_path = write_app_summary_variant(
+            "feed-reader-missing",
+            lambda value: update_evidence(
+                value,
+                "reference-app.feed-reader",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        feed_reader_missing_summary, feed_reader_missing_exit_code = run_with_previous(
+            "feed-reader-missing-cert", app_platform_summary=feed_reader_missing_path
+        )
+        assert feed_reader_missing_exit_code == 1, feed_reader_missing_summary
+        assert (
+            gate_by_id(feed_reader_missing_summary, "ecosystem.reference-content-apps")["status"]
+            == "fail"
+        )
+
+        content_fetch_missing_path = write_app_summary_variant(
+            "content-fetch-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.content-fetch",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        content_fetch_missing_summary, content_fetch_missing_exit_code = run_with_previous(
+            "content-fetch-missing-cert", app_platform_summary=content_fetch_missing_path
+        )
+        assert content_fetch_missing_exit_code == 1, content_fetch_missing_summary
+        assert (
+            gate_by_id(content_fetch_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
 
         trusted_review_fail_path = write_app_summary_variant(
             "trusted-review-fail",

@@ -303,7 +303,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -332,13 +332,43 @@ permissions.rationale.queue.write=Creates the generated document insert request.
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=5
-api.maximumTestedVersion=5
+api.maximumTestedVersion=6
 api.experimentalCapabilitiesAccepted=true
 ```
 
 Do not include tokens, form passwords, private insert URIs, raw request bodies, private keys,
 signatures, or absolute staging paths in descriptor notes, generated catalog metadata, or release
 evidence.
+
+A Feed Reader catalog descriptor should include the content-fetch permission, generated-document
+publication permissions, and v6 API compatibility metadata:
+
+```properties
+artifact.path=/abs/path/to/dist/apps/feed-reader-1.0.0.zip
+bundle.uri=file:/abs/path/to/dist/apps/feed-reader-1.0.0.zip
+summary=Reference app for reading and publishing feed documents through Crypta.
+name=Feed Reader & Publisher
+version=1.0.0
+permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+app.id=feed-reader
+homepage=https://example.invalid/apps/feed-reader
+source=https://example.invalid/src/feed-reader
+license=GPL-3.0-only
+categories=reader,publishing,content
+review.status=reviewed
+review.note=First-party feed reference app.
+permissions.rationale.content.fetch=Fetches subscribed feed documents through POST /api/v1/content/fetch without local source-path authority.
+permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
+permissions.rationale.queue.write=Creates generated feed publication inserts.
+permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+changelog.summary=Adds the first feed reader and publisher reference app.
+api.minimumVersion=6
+api.maximumTestedVersion=6
+api.experimentalCapabilitiesAccepted=false
+```
+
+Feed Reader evidence must not include raw feed bodies, raw request bodies, private insert URIs, app
+process tokens, browser-session tokens, form passwords, or local paths.
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and
@@ -496,6 +526,10 @@ projects:
 ./gradlew :apps:profile-publisher:stageApp
 ./gradlew :apps:profile-publisher:signApp
 ./gradlew :apps:profile-publisher:verifyApp
+
+./gradlew :apps:feed-reader:stageApp
+./gradlew :apps:feed-reader:signApp
+./gradlew :apps:feed-reader:verifyApp
 ```
 
 Those `signApp` and `verifyApp` tasks still require the signing inputs documented in
@@ -518,7 +552,7 @@ review keys outside the repository.
    ./gradlew :platform-devtools:installDist
    ```
 
-2. Pack `queue-manager`, `publisher`, `site-publisher`, and `profile-publisher` with
+2. Pack `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader` with
    `crypta-app pack`. Insert each ZIP into Crypta as an immutable CHK artifact through the
    maintainer publishing workflow.
 
@@ -532,7 +566,7 @@ review keys outside the repository.
    permissions=queue.read,queue.write
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=5
+   api.maximumTestedVersion=6
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```

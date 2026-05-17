@@ -65,7 +65,8 @@ Use this skill when you need to:
     `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
-    compatibility contract, app capabilities/audit, app-vault routes, and app-update lifecycle)
+    compatibility contract, app capabilities/audit, app-vault routes, app-generated document
+    inserts, bounded content fetch, and app-update lifecycle/scheduler)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -75,8 +76,8 @@ Use this skill when you need to:
   - `:platform-design-system` → `network.crypta.platform.designsystem` (canonical local app UI
     CSS/JS resources plus asset metadata and safe bundle-copy helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
-    transport helpers, mutation form handling, error parsing, and conservative fragment
-    sanitization
+    transport helpers, mutation form handling, queue/content/vault/feed helpers, error parsing,
+    and conservative fragment sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
     signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
@@ -84,8 +85,8 @@ Use this skill when you need to:
     metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
     verified staging)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
-    CLI for staged-bundle, UI lint, catalog-authoring, API snapshot, and compatibility
-    verification workflows)
+    CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, developer
+    keys, publication plans, API snapshot, and compatibility verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
@@ -116,6 +117,12 @@ Use this skill when you need to:
     an isolated app origin when available, with `/apps/publisher/static/` as fallback
   - `:apps:site-publisher` → staged Site Publisher content reference AppHost bundle with a static
     UI under an isolated app origin when available, with `/apps/site-publisher/static/` as fallback
+  - `:apps:profile-publisher` → staged Profile Publisher identity-profile reference AppHost bundle
+    with a static UI under an isolated app origin when available, using app-vault profile-document
+    creation and app-generated document insertion
+  - `:apps:feed-reader` → staged Feed Reader content-fetch reference AppHost bundle with a static
+    UI under an isolated app origin when available, using bounded Crypta content fetch and
+    app-generated feed document insertion
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -143,7 +150,8 @@ Use this skill when you need to:
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
-  handlers, `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
+  handlers, app-generated document inserts, bounded content fetch, and app-update scheduling,
+  `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
@@ -340,11 +348,12 @@ Use this skill when you need to:
 ### Platform control/UI modules
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
-  apps, app updates, app-catalog control-plane families, app-vault route handlers, and the
-  deterministic Platform API compatibility contract, and is currently mounted at `/api/v1/` by the
-  legacy HTTP adapter. It also owns the central app-token authorization matrix, browser-session
-  authorization decisions, bounded process-local app audit log, and local app-update lifecycle
-  coordination above AppHost, signed catalog, and vault primitives.
+  apps, app updates, app-catalog control-plane families, app-vault route handlers, generated
+  app-document inserts, bounded content fetch, and the deterministic Platform API compatibility
+  contract, and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns the
+  central app-token authorization matrix, browser-session authorization decisions, bounded
+  process-local app audit log, and local app-update lifecycle/scheduler coordination above
+  AppHost, signed catalog, vault, and runtime fetch primitives.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
@@ -364,9 +373,9 @@ Use this skill when you need to:
   shared identity metadata, grant records, identity-use result types, and audit/redaction values
   used by Platform API app and vault workflows without exporting raw private material.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
-  app bundles. It wraps route bootstrap, same-origin Platform API reads, form-password mutations,
-  error parsing, and conservative legacy HTML fragment sanitization; it is not an authority or
-  isolation boundary.
+  app bundles. It wraps route bootstrap, same-origin Platform API reads, app-browser form
+  mutations, queue/content/app-vault/feed helpers, error parsing, and conservative legacy HTML
+  fragment sanitization; it is not an authority or isolation boundary.
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
   sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries,
@@ -380,7 +389,8 @@ Use this skill when you need to:
   delegates verified staged bundles to AppHost install/update flows.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
-  linting, offline UI linting, API contract snapshot/compatibility verification, review receipt
+  linting, offline UI linting, mock dev serving, offline app tests, developer key generation,
+  publication plan dry-runs, API contract snapshot/compatibility verification, review receipt
   signing/verification, and catalog create/sign/verify commands around the platform distribution,
   API, design-system, and catalog libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under

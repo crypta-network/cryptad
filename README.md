@@ -384,15 +384,18 @@ Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` rem
 compatibility fallback, and shell-panel bundles keep existing local links such as
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
 origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
-asset boundary. The repo-owned Queue Manager, legacy Publisher, Site Publisher, and Profile
-Publisher bundles now stage static UIs that open through the isolated app UI path when available,
+asset boundary. The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher,
+and Feed Reader bundles now stage static UIs that open through the isolated app UI path when available,
 including the browser SDK described in [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and
 the canonical UI design-system assets described in
 [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md). Site Publisher is the content
 reference app for publishing workflows. Profile Publisher is the identity-profile reference app:
 it creates an app-owned identity, asks Cryptad to produce a profile document, and queues the
 generated app document without exporting private keys or recording raw signatures in release
-evidence. Legacy Publisher remains the compatibility replacement for old insert admin pages.
+evidence. Feed Reader is the content-fetch reference app: it uses `POST /api/v1/content/fetch`
+through SDK feed helpers and publishes generated feed documents without recording raw feed bodies,
+request bodies, private insert URIs, tokens, form passwords, or local paths. Legacy Publisher
+remains the compatibility replacement for old insert admin pages.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -482,7 +485,7 @@ into the generated catalog entry so Platform API responses can expose `reviewTru
 legacy advisory `review` object.
 
 First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`,
-`:apps:site-publisher`, and `:apps:profile-publisher` `stageApp`, `signApp`, and `verifyApp`
+`:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader` `stageApp`, `signApp`, and `verifyApp`
 tasks. See
 [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow and
 [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification. The
@@ -500,8 +503,9 @@ as normal fallback surfaces.
 
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
-sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
-Manager, Publisher, Site Publisher, and Profile Publisher UIs. Phase 6 adds isolated per-app loopback origins for
+sandbox/quota visibility, the `crypta-app` developer CLI, and the first independent first-party app
+UIs. Later reference-app work adds Queue Manager, Publisher, Site Publisher, Profile Publisher, and
+Feed Reader as the current repo-owned app set. Phase 6 adds isolated per-app loopback origins for
 static app UIs while
 retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
 process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
@@ -517,7 +521,9 @@ version-difference, API compatibility, and changelog details before install or u
 PR-221 adds Site Publisher as the first content reference app without changing peer protocol
 behavior or wiring it into the legacy insert-page retirement map. PR-226 adds Profile Publisher as
 the first identity-profile reference app, plus the profile-document and app-document insert routes
-needed for browser-safe profile publishing.
+needed for browser-safe profile publishing. PR-227 adds Feed Reader as the content-fetch reference
+app, with Platform API v6 `POST /api/v1/content/fetch`, the `content.fetch` permission, and SDK
+feed helpers.
 Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
 `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
 `/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue
@@ -615,7 +621,8 @@ release's sanitized summary has been restored locally or in CI.
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`, and
 `app-review.first-party-catalog`, `reference-app.profile-publisher`,
-`app-platform.identity-profile-publish`, `app-platform.generated-document-insert`, app-vault
+`reference-app.feed-reader`, `app-platform.identity-profile-publish`,
+`app-platform.generated-document-insert`, `app-platform.content-fetch`, app-vault
 capability/redaction evidence, historical comparison, ecosystem gates, structured waivers,
 optional live-node evidence, and redaction rules.
 

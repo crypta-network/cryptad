@@ -109,8 +109,10 @@ public record PlatformApiResponse(
       case 404 -> "Not Found";
       case 405 -> "Method Not Allowed";
       case 409 -> "Conflict";
+      case 415 -> "Unsupported Media Type";
       case 502 -> "Bad Gateway";
       case 503 -> "Service Unavailable";
+      case 504 -> "Gateway Timeout";
       case 500 -> "Internal Server Error";
       default -> "Platform API";
     };

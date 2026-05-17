@@ -23,10 +23,19 @@ public class ContentFetchException extends Exception {
    * Fetch could not complete successfully for a runtime or network reason.
    *
    * <p>Use this code when a bounded request is syntactically valid but the runtime cannot return
-   * bytes: content is unavailable, fetch state fails, a result exceeds the requested byte limit, or
-   * the implementation cannot read the fetched payload.
+   * bytes: content is unavailable, fetch state fails, or the implementation cannot read the fetched
+   * payload.
    */
   public static final String CATALOG_FETCH_FAILED = "catalog_fetch_failed";
+
+  /**
+   * Fetch produced content beyond the caller-supplied byte bound.
+   *
+   * <p>Use this code only for explicit size-limit failures after a syntactically valid request has
+   * started. Generic fetch failures, redirect exhaustion, and retry-limit failures should keep
+   * using {@link #CATALOG_FETCH_FAILED}.
+   */
+  public static final String CATALOG_FETCH_TOO_LARGE = "catalog_fetch_too_large";
 
   /**
    * Fetch did not complete before the caller-supplied timeout.

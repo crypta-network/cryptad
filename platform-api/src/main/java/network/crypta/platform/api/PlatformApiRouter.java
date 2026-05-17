@@ -6,6 +6,7 @@ import network.crypta.platform.api.alerts.AlertsApiHandler;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
+import network.crypta.platform.api.content.ContentApiHandler;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
@@ -17,6 +18,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
+import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -76,6 +78,9 @@ public final class PlatformApiRouter {
 
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
+
+  /** Detached runtime-port aggregate used for lazily resolved optional endpoint families. */
+  private final RuntimePorts runtimePorts;
 
   /**
    * Optional app-platform services supplied by runtime composition.
@@ -300,7 +305,7 @@ public final class PlatformApiRouter {
       AppAuditLog appAuditLog,
       AppUiOriginRegistry appUiOriginRegistry,
       AppServices appServices) {
-    requireNonNull(runtimePorts, "runtimePorts");
+    this.runtimePorts = requireNonNull(runtimePorts, "runtimePorts");
     this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
     requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     AppServices checkedAppServices = requireNonNull(appServices, "appServices");
@@ -456,6 +461,9 @@ public final class PlatformApiRouter {
     }
     if ("queue".equals(firstSegment)) {
       return routeQueueRequest(segments, request);
+    }
+    if ("content".equals(firstSegment)) {
+      return routeContentRequest(segments, request);
     }
     if ("peers".equals(firstSegment)) {
       return routePeersRequest(segments, request);
@@ -658,6 +666,33 @@ public final class PlatformApiRouter {
       return PlatformApiResponse.ok(updatesApiHandler.startCoreDownload());
     }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  /**
+   * Routes requests beneath the {@code /content} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected content endpoint
+   */
+  private PlatformApiResponse routeContentRequest(
+      List<String> segments, PlatformApiRequest request) {
+    if (segments.size() == 2 && "fetch".equals(segments.get(1))) {
+      if (!"POST".equals(request.method())) {
+        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(contentApiHandler().fetch(request.queryParameters()));
+    }
+    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  private ContentApiHandler contentApiHandler() {
+    ContentFetchPort contentFetchPort = runtimePorts.contentFetch();
+    if (contentFetchPort == null) {
+      throw new PlatformApiException(
+          503, "content_fetch_failed", "Content fetch service is unavailable.");
+    }
+    return new ContentApiHandler(contentFetchPort);
   }
 
   /**
