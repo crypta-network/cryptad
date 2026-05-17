@@ -42,7 +42,8 @@ Use this skill when working on:
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
 - The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, compatibility
-  contract, app-vault route handlers, and app-update lifecycle coordination, and the
+  contract, app-vault route handlers, generated app-document inserts, bounded content fetch, and
+  app-update lifecycle/scheduler coordination, and the
   `:platform-apphost` JAR contributes the transport-neutral local AppHost core, sandbox-provider
   selection, and durable bundle rollback used by that API.
 - The `:platform-app-ui` JAR contributes app-owned static UI route/origin helpers used by the
@@ -62,8 +63,9 @@ Use this skill when working on:
   leaf artifact but the CSS/JS bytes are copied into app bundles, not loaded from a daemon-hosted
   CDN.
 - The `:platform-devtools` application builds the standalone `crypta-app` developer CLI
-  distribution with its own `installDist` output. It is developer tooling, not a daemon entrypoint
-  inside `build/cryptad-dist`.
+  distribution with its own `installDist` output, including scaffold, validation, signing,
+  packaging, mock dev server, offline test, catalog, review, developer-key, and publication-plan
+  helpers. It is developer tooling, not a daemon entrypoint inside `build/cryptad-dist`.
 - The `:platform-sdk-js` JAR contributes the browser SDK resource staged into first-party static
   app bundles and loaded by app-owned UIs on isolated loopback origins or the `/apps/{appId}/`
   fallback.
@@ -89,12 +91,12 @@ Use this skill when working on:
   helper package.
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
-- First-party app projects such as `:apps:queue-manager`, `:apps:publisher`, and
-  `:apps:site-publisher` provide staged app bundles through their `stageApp`, `signApp`, and
-  `verifyApp` tasks. Those bundles are release artifacts and AppHost install inputs; they are not
-  daemon entrypoints inside `build/cryptad-dist`. Their static UI staging copies the current
-  `:platform-sdk-js` browser resource and canonical `:platform-design-system` assets into each
-  bundle's `static/` assets.
+- First-party app projects such as `:apps:queue-manager`, `:apps:publisher`,
+  `:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader` provide staged app
+  bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
+  artifacts and AppHost install inputs; they are not daemon entrypoints inside `build/cryptad-dist`.
+  Their static UI staging copies the current `:platform-sdk-js` browser resource and canonical
+  `:platform-design-system` assets into each bundle's `static/` assets.
 
 ## Distributions and Windows wrapper sources
 - `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.

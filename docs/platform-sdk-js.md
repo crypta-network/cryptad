@@ -17,9 +17,9 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, Site Publisher, and Profile Publisher bundles receive
-`crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source lives in
-`platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
+The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader
+bundles receive `crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source
+lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
 The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
 static` can see the SDK resource, its template copies or vendors the file as

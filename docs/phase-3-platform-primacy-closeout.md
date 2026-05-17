@@ -81,6 +81,10 @@ The Phase 3 platform path is split across focused modules:
   bundle. Current staged bundles declare `app.ui.mode=static`, create app-owned identities through
   app-vault, use the profile-document route for identity-bound profile publishing, and queue the
   generated profile document through the app-document insert route.
+- `apps/feed-reader` owns the Feed Reader first-party content-fetch reference app bundle. Current
+  staged bundles declare `app.ui.mode=static`, fetch bounded Crypta feed documents through
+  `content.fetch`, publish generated feed snapshots through the app-document insert route, and keep
+  USK follow behavior scoped to the open browser tab.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
 - `:bridge-fcp-runtime` owns the concrete runtime bindings for FCP.
@@ -103,6 +107,8 @@ First-party app bundles are staged by their app modules and by root convenience 
 - `./gradlew :apps:queue-manager:stageApp`
 - `./gradlew :apps:publisher:stageApp`
 - `./gradlew :apps:site-publisher:stageApp`
+- `./gradlew :apps:profile-publisher:stageApp`
+- `./gradlew :apps:feed-reader:stageApp`
 - `./gradlew stageFirstPartyApps`
 
 Signing and verification are separate release gates:
@@ -190,9 +196,10 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
   fallback.
 - Standalone developer tooling has landed through the `crypta-app` CLI for scaffolding,
   validation, signing, packaging, verification, and catalog authoring.
-- The first content-oriented reference app has landed as Site Publisher. The first
-  identity-profile reference app has landed as Profile Publisher. Broader first-party app catalog
-  depth beyond Queue Manager, Publisher, Site Publisher, and Profile Publisher remains future work.
+- The first content-oriented reference app has landed as Site Publisher, the first
+  identity-profile reference app has landed as Profile Publisher, and the first feed/content-fetch
+  reference app has landed as Feed Reader. Broader first-party app catalog depth beyond Queue
+  Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader remains future work.
 - App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
   [app-permissions-and-audit.md](app-permissions-and-audit.md).
 - Legacy admin and browse retirement plan.

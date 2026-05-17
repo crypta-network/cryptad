@@ -28,8 +28,8 @@ Use this skill when you need to:
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
-- First-party app bundle projects live under `:apps:queue-manager`, `:apps:publisher`, and
-  `:apps:site-publisher`.
+- First-party app bundle projects live under `:apps:queue-manager`, `:apps:publisher`,
+  `:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -277,13 +277,15 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 
 ## First-party app bundle checks
 - Stage first-party app bundles, especially after changing `:platform-sdk-js` or
-  `:platform-design-system` because Queue Manager, Publisher, and Site Publisher copy those assets
-  into staged static UI bundles:
+  `:platform-design-system` because Queue Manager, Publisher, Site Publisher, Profile Publisher,
+  and Feed Reader copy those assets into staged static UI bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:
   - `./gradlew :apps:queue-manager:test`
   - `./gradlew :apps:publisher:test`
   - `./gradlew :apps:site-publisher:test`
+  - `./gradlew :apps:profile-publisher:test`
+  - `./gradlew :apps:feed-reader:test`
 - Sign and verify staged bundles only when signing/trusted-key inputs are available:
   - `./gradlew signFirstPartyApps`
   - `./gradlew verifyFirstPartyApps`

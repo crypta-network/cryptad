@@ -503,8 +503,9 @@ as normal fallback surfaces.
 
 Phase 5 app-platform work added signed catalog sources, Crypta catalog transport, app-owned static
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
-sandbox/quota visibility, the `crypta-app` developer CLI, and independent first-party Queue
-Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader UIs. Phase 6 adds isolated per-app loopback origins for
+sandbox/quota visibility, the `crypta-app` developer CLI, and the first independent first-party app
+UIs. Later reference-app work adds Queue Manager, Publisher, Site Publisher, Profile Publisher, and
+Feed Reader as the current repo-owned app set. Phase 6 adds isolated per-app loopback origins for
 static app UIs while
 retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
 process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
