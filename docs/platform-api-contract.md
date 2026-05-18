@@ -122,12 +122,12 @@ tokens, app browser-session tokens, form passwords, and local paths.
 
 `POST /api/v1/content/fetch` accepts `application/x-www-form-urlencoded` parameters. `uri` is
 required and must be a Crypta/Freenet content key in `CHK@...`, `SSK@...`, `USK@...`, `KSK@...`,
-`crypta:CHK@...`, `crypta:SSK@...`, `crypta:USK@...`, or `crypta:KSK@...` form. Optional `maxBytes`,
-`timeoutMillis`, `format`, and `purpose` values are bounded by the daemon: the default byte cap is
-262144, the hard byte cap is 1048576, the default timeout is 30000 milliseconds, and the hard
-timeout is 60000 milliseconds. `format=text` returns UTF-8 `contentText`; `format=base64` returns
-`contentBase64`. App principals cannot use this route for `file:`, `http:`, `https:`, loopback,
-LAN, or absolute local-path fetches.
+`crypta:CHK@...`, `crypta:SSK@...`, `crypta:USK@...`, or `crypta:KSK@...` form, with the key-type
+prefix accepted case-insensitively. Optional `maxBytes`, `timeoutMillis`, `format`, and `purpose`
+values are bounded by the daemon: the default byte cap is 262144, the hard byte cap is 1048576, the
+default timeout is 30000 milliseconds, and the hard timeout is 60000 milliseconds. `format=text`
+returns UTF-8 `contentText`; `format=base64` returns `contentBase64`. App principals cannot use this
+route for `file:`, `http:`, `https:`, loopback, LAN, or absolute local-path fetches.
 
 Contract version 7 adds the local Trust Graph Preview service and the bounded AppVault
 trust-statement signing route:
