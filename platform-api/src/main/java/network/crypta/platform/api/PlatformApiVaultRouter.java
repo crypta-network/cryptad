@@ -44,6 +44,7 @@ final class PlatformApiVaultRouter {
   private static final String VAULT_PROFILE_DOCUMENT_KEY = "profileDocument";
   private static final String VAULT_SECRET_KEY = "secret";
   private static final String VAULT_SECRETS_KEY = "secrets";
+  private static final String VAULT_TRUST_STATEMENT_KEY = "trustStatement";
   private static final String VAULT_USAGE_KEY = "usage";
 
   private final AppVaultApiHandler appVaultApiHandler;
@@ -190,6 +191,12 @@ final class PlatformApiVaultRouter {
               envelope(
                   VAULT_PROFILE_DOCUMENT_KEY,
                   appVaultApiHandler.createProfileDocument(
+                      appId, resource, request.queryParameters())));
+      case "trust-statement" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  VAULT_TRUST_STATEMENT_KEY,
+                  appVaultApiHandler.createTrustStatement(
                       appId, resource, request.queryParameters())));
       default -> throw notFound();
     };

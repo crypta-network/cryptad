@@ -310,6 +310,143 @@ class AppVaultApiRouterTest {
   }
 
   @Test
+  void route_whenBrowserCreatesTrustStatement_expectSignedPublicTrustDocument() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Trust identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "trust-statement"),
+                    Map.of(
+                        "subjectKind",
+                        List.of("profile"),
+                        "subjectUri",
+                        List.of("USK@example/profile.json"),
+                        "context",
+                        List.of("profile"),
+                        "score",
+                        List.of("50"),
+                        "confidence",
+                        List.of("80"),
+                        "reason",
+                        List.of("known publisher"),
+                        "tags",
+                        List.of("local,preview")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID,
+                        List.of("trust.write", "vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"trustStatement\":{"));
+    assertTrue(response.body().contains("\"type\":\"crypta.trust.statement.v1\""));
+    assertTrue(response.body().contains("\"domain\":\"crypta.trust.statement.v1\""));
+    assertTrue(response.body().contains("\"algorithm\":\"app-vault-ed25519-preview\""));
+    assertTrue(response.body().contains("\"payloadHash\""));
+    assertTrue(response.body().contains("\"publicKeyFingerprint\":\"" + identity.fingerprint()));
+    assertTrue(response.body().contains("\"publicKeyBase64\""));
+    assertTrue(
+        response
+            .body()
+            .contains(
+                "\"issuer\":{\"identityId\":\""
+                    + identity.identityId()
+                    + "\",\"publicKeyFingerprint\":\""
+                    + identity.fingerprint()
+                    + "\",\"publicKeyBase64\""));
+    assertTrue(response.body().contains("\"appId\":\"" + APP_ID + "\""));
+    assertFalse(response.body().contains("CryptaAppVault:v1:"));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains("private.envelope"));
+    assertFalse(response.body().contains("payloadBase64"));
+    assertFalse(response.body().contains(tempDir.toString()));
+  }
+
+  @Test
+  void route_whenBrowserCreatesTrustStatementWithoutTrustWrite_expectForbidden()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Trust identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "trust-statement"),
+                    Map.of(
+                        "subjectKind",
+                        List.of("profile"),
+                        "subjectUri",
+                        List.of("USK@example/profile.json"),
+                        "context",
+                        List.of("profile"),
+                        "score",
+                        List.of("50"),
+                        "confidence",
+                        List.of("80")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
+  }
+
+  @Test
+  void route_whenBrowserCreatesTrustStatementWithInvalidField_expectBadRequest()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Trust identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "trust-statement"),
+                    Map.of(
+                        "subjectKind",
+                        List.of("profile"),
+                        "subjectUri",
+                        List.of("USK@example/profile.json"),
+                        "context",
+                        List.of("profile"),
+                        "score",
+                        List.of("101"),
+                        "confidence",
+                        List.of("80")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID,
+                        List.of("trust.write", "vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_trust_statement"));
+    assertFalse(response.body().contains("internal_error"));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains(tempDir.toString()));
+  }
+
+  @Test
   void route_whenProfileDocumentBioHasLineBreaks_expectSignedPublicDocument() throws IOException {
     AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
     AppIdentityRecord identity =

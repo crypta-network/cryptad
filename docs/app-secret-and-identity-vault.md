@@ -73,6 +73,30 @@ instead of writing a temporary local file path into the request. See
 [platform-api-surface.md](platform-api-surface.md) and
 [platform-api-contract.md](platform-api-contract.md) for the route family contract.
 
+## Trust statement signing route
+
+Trust Graph Preview uses a separate bounded identity-use route:
+
+```text
+POST /api/v1/app-vault/identities/{identityId}/trust-statement
+```
+
+The route requires `trust.write`, `vault.identities.read`, and `vault.identities.use`. It accepts
+only the documented trust statement fields: subject kind/URI, optional subject fingerprint,
+context, score, confidence, reason, tags, optional expiry, and optional issuer profile URI.
+Cryptad generates `issuedAt`, canonicalizes the bounded payload as
+`crypta.trust.statement.v1\n<canonical-payload-json>`, and asks AppVault to sign that domain only.
+The signed payload includes the issuer public verification key so later imports can verify that the
+signature matches the anchored fingerprint before using the statement for scoring.
+
+This route is not generic arbitrary signing and does not make the process-only identity-use route
+browser-safe. The response may include the public trust statement, public identity metadata,
+payload hash, and fixed signing domain. It must not expose private keys, seeds, recovery phrases,
+vault file paths, raw generic signing inputs, app process tokens, browser-session tokens, form
+passwords, or raw request bodies. Release-certification evidence should record the route name,
+capability labels, fixture hashes, and redacted checks rather than raw trust statement bodies or
+raw signatures.
+
 ## Process and browser restrictions
 
 App process calls authenticate with the current AppHost launch token in `CRYPTAD_APP_TOKEN`.

@@ -17,6 +17,9 @@
   const feedSnapshotContentType = "application/vnd.crypta.feed+json";
   const feedSnapshotTargetFilename = "feed.json";
   const feedSnapshotMaxEntries = 100;
+  const trustStatementType = "crypta.trust.statement.v1";
+  const trustStatementContentType = "application/vnd.crypta.trust+json";
+  const trustStatementTargetFilename = "trust.json";
 
   let currentBootstrap = null;
   let currentAppId = null;
@@ -324,6 +327,98 @@
       profileDocument: profileDocumentResponse,
       insert: insertResponse,
     };
+  }
+
+  function trustStatus(options) {
+    return apiGet("trust-graph/status", options).then((response) =>
+      unwrapField(response, "trustGraph")
+    );
+  }
+
+  function listTrustAnchors(options) {
+    return apiGet("trust-graph/anchors", options).then((response) =>
+      unwrapField(response, "anchors")
+    );
+  }
+
+  function addTrustAnchor(request, options) {
+    return apiPostForm("trust-graph/anchors", normalizeTrustAnchor(request), options).then(
+      (response) => unwrapField(response, "anchor")
+    );
+  }
+
+  function removeTrustAnchor(fingerprintOrOptions, options) {
+    const fingerprint =
+      typeof fingerprintOrOptions === "string"
+        ? fingerprintOrOptions
+        : trustAnchorFingerprint(fingerprintOrOptions);
+    return apiDeleteForm(
+      `trust-graph/anchors/${encodeURIComponent(trimmedRequired(fingerprint, "issuerFingerprint"))}`,
+      {},
+      options
+    ).then((response) => unwrapField(response, "anchor"));
+  }
+
+  function importTrustStatement(request, options) {
+    return apiPostForm("trust-graph/import", normalizeTrustImport(request), options).then(
+      (response) => unwrapField(response, "importResult")
+    );
+  }
+
+  function trustSubjects(options) {
+    return apiGet("trust-graph/subjects", options).then((response) =>
+      unwrapField(response, "subjects")
+    );
+  }
+
+  function trustStatements(request, options) {
+    const source = request && typeof request === "object" ? request : {};
+    const requestOptions = Object.assign({}, requestOptionsFrom(source), options || {});
+    requestOptions.params = normalizeTrustQuery(source, false);
+    return apiGet("trust-graph/statements", requestOptions).then((response) =>
+      unwrapField(response, "statements")
+    );
+  }
+
+  function trustScore(request, options) {
+    const source = requireOptionsObject(request, "Trust score query");
+    const requestOptions = Object.assign({}, requestOptionsFrom(source), options || {});
+    requestOptions.params = normalizeTrustQuery(source, true);
+    return apiGet("trust-graph/score", requestOptions).then((response) =>
+      unwrapField(response, "score")
+    );
+  }
+
+  function publishTrustStatement(options) {
+    const source = requireOptionsObject(options, "Trust statement publish options");
+    const insertOptions = Object.assign({}, source, {
+      document: trustStatementDocument(source),
+      contentType: trustStatementContentType,
+      targetFilename: trustStatementTargetFilename,
+    });
+    return insertAppDocument(insertOptions);
+  }
+
+  function createTrustStatement(identityIdOrOptions, payload, options) {
+    let identityId = identityIdOrOptions;
+    let source = payload;
+    let requestOptions = options;
+    if (
+      identityIdOrOptions &&
+      typeof identityIdOrOptions === "object" &&
+      !Array.isArray(identityIdOrOptions) &&
+      typeof identityIdOrOptions.entries !== "function"
+    ) {
+      source = identityIdOrOptions;
+      identityId = source.identityId || source.authorIdentity || source.authorIdentityId;
+      requestOptions = requestOptionsFrom(source);
+    }
+    const request = requireOptionsObject(source, "Trust statement payload");
+    return apiPostForm(
+      `app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}/trust-statement`,
+      normalizeTrustStatementPayload(request),
+      requestOptions || requestOptionsFrom(request)
+    );
   }
 
   function parseFeedSnapshot(value) {
@@ -740,6 +835,172 @@
       options.contentType = "application/vnd.crypta.profile+json";
     }
     return options;
+  }
+
+  function normalizeTrustAnchor(request) {
+    const source = requireOptionsObject(request, "Trust anchor");
+    const params = new URLSearchParams();
+    params.set("issuerFingerprint", trimmedRequired(trustAnchorFingerprint(source), "issuerFingerprint"));
+    copyStringParam(source, params, "label");
+    copyStringParam(source, params, "source");
+    return params;
+  }
+
+  function trustAnchorFingerprint(source) {
+    if (typeof source === "string") {
+      return source;
+    }
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("Trust anchor issuer fingerprint is required.");
+    }
+    return (
+      source.issuerFingerprint ||
+      source.fingerprint ||
+      source.identity ||
+      source.identityId ||
+      source.id
+    );
+  }
+
+  function normalizeTrustImport(request) {
+    const source = requireOptionsObject(request, "Trust import");
+    const params = new URLSearchParams();
+    params.set("document", trustStatementText(source));
+    copyStringParam(source, params, "sourceUri");
+    copyStringParamAs(source, params, "uri", "sourceUri");
+    copyStringParam(source, params, "sourceLabel");
+    copyStringParamAs(source, params, "label", "sourceLabel");
+    return params;
+  }
+
+  function normalizeTrustQuery(source, requireSubject) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "subjectKind");
+    copyStringParamAs(source, params, "kind", "subjectKind");
+    copyStringParam(source, params, "subjectUri");
+    copyStringParamAs(source, params, "uri", "subjectUri");
+    copyStringParamAs(source, params, "subject", "subjectUri");
+    copyStringParam(source, params, "context");
+    copyStringParam(source, params, "issuerFingerprint");
+    if (typeof source.includeEvidence === "boolean") {
+      params.set("includeEvidence", source.includeEvidence ? "true" : "false");
+    }
+    if (
+      requireSubject &&
+      (!params.has("subjectKind") || !params.has("subjectUri") || !params.has("context"))
+    ) {
+      throw new Error("Trust score query requires subjectKind, subjectUri, and context.");
+    }
+    return params;
+  }
+
+  function normalizeTrustStatementPayload(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "subjectKind");
+    copyStringParamAs(source, params, "kind", "subjectKind");
+    copyStringParam(source, params, "subjectUri");
+    copyStringParamAs(source, params, "uri", "subjectUri");
+    copyStringParamAs(source, params, "subject", "subjectUri");
+    copyStringParamAs(source, params, "subjectIdentity", "subjectUri");
+    copyStringParam(source, params, "subjectFingerprint");
+    copyStringParam(source, params, "context");
+    copyIntegerParam(source, params, "score");
+    copyIntegerParamAs(source, params, "value", "score");
+    copyIntegerParam(source, params, "confidence");
+    copyStringParam(source, params, "reason");
+    appendTagsParam(source.tags, params);
+    copyStringParam(source, params, "expiresAt");
+    copyStringParam(source, params, "profileUri");
+    for (const requiredName of ["subjectKind", "subjectUri", "context", "score", "confidence"]) {
+      if (!params.has(requiredName)) {
+        throw new Error(`Trust statement payload requires ${requiredName}.`);
+      }
+    }
+    return params;
+  }
+
+  function trustStatementDocument(source) {
+    const value = Object.prototype.hasOwnProperty.call(source, "statement")
+      ? source.statement
+      : Object.prototype.hasOwnProperty.call(source, "trustStatement")
+        ? source.trustStatement
+        : source.document;
+    let current = parseJsonObject(value, "Trust statement");
+    for (let depth = 0; depth < 4; depth += 1) {
+      if (current.type === trustStatementType) {
+        return current;
+      }
+      if (typeof current.trustStatement === "string") {
+        current = parseJsonObject(current.trustStatement, "Trust statement");
+      } else if (
+        current.trustStatement &&
+        typeof current.trustStatement === "object" &&
+        !Array.isArray(current.trustStatement)
+      ) {
+        current = current.trustStatement;
+      } else {
+        break;
+      }
+    }
+    return current;
+  }
+
+  function trustStatementText(source) {
+    const value = Object.prototype.hasOwnProperty.call(source, "document")
+      ? source.document
+      : Object.prototype.hasOwnProperty.call(source, "trustStatement")
+        ? source.trustStatement
+        : Object.prototype.hasOwnProperty.call(source, "statement")
+          ? source.statement
+          : source.text;
+    if (typeof value === "string") {
+      return trimmedRequired(value, "document");
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return JSON.stringify(trustStatementDocument({ document: value }));
+    }
+    throw new Error("Trust import document is required.");
+  }
+
+  function copyIntegerParam(source, params, name) {
+    copyIntegerParamAs(source, params, name, name);
+  }
+
+  function copyIntegerParamAs(source, params, sourceName, targetName) {
+    if (!source || !Object.prototype.hasOwnProperty.call(source, sourceName)) {
+      return;
+    }
+    const value = source[sourceName];
+    if (typeof value === "number") {
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(`${sourceName} must be an integer.`);
+      }
+      params.set(targetName, String(value));
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim();
+      if (!/^-?[0-9]+$/.test(normalized)) {
+        throw new Error(`${sourceName} must be an integer.`);
+      }
+      params.set(targetName, normalized);
+    }
+  }
+
+  function trimmedRequired(value, name) {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(`${name} is required.`);
+    }
+    return value.trim();
+  }
+
+  function unwrapField(response, fieldName) {
+    return response &&
+      typeof response === "object" &&
+      !Array.isArray(response) &&
+      Object.prototype.hasOwnProperty.call(response, fieldName)
+      ? response[fieldName]
+      : response;
   }
 
   function parseJsonObject(value, description) {
@@ -1177,6 +1438,7 @@
         get: getVaultIdentity,
         create: createVaultIdentity,
         createProfileDocument,
+        createTrustStatement,
       }),
       grants: Object.freeze({
         list: listVaultGrants,
@@ -1190,6 +1452,19 @@
       parseSnapshot: parseFeedSnapshot,
       fetchSnapshot: fetchFeedSnapshot,
       publishSnapshot: publishFeedSnapshot,
+    }),
+    trust: Object.freeze({
+      status: trustStatus,
+      anchors: Object.freeze({
+        list: listTrustAnchors,
+        add: addTrustAnchor,
+        remove: removeTrustAnchor,
+      }),
+      importStatement: importTrustStatement,
+      subjects: trustSubjects,
+      statements: trustStatements,
+      score: trustScore,
+      publishStatement: publishTrustStatement,
     }),
     dom: Object.freeze({
       sanitizeFragment,

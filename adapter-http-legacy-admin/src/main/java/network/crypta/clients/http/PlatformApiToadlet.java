@@ -92,6 +92,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String PEERS_SEGMENT = "peers";
   private static final String QUEUE_SEGMENT = "queue";
   private static final String SECURITY_LEVELS_SEGMENT = "security-levels";
+  private static final String TRUST_GRAPH_SEGMENT = "trust-graph";
   private static final String UPDATES_SEGMENT = "updates";
   private static final String WIZARD_SEGMENT = "wizard";
 
@@ -602,6 +603,7 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
         || requiresIdentityVaultFormPassword(method, pathSegments)
+        || requiresTrustGraphFormPassword(method, pathSegments)
         || requiresAlertsFormPassword(method, pathSegments)
         || requiresWizardFormPassword(method, pathSegments);
   }
@@ -627,6 +629,19 @@ public final class PlatformApiToadlet extends Toadlet {
           && ("identities".equals(pathSegments.get(1)) || "grants".equals(pathSegments.get(1)));
     }
     return false;
+  }
+
+  private static boolean requiresTrustGraphFormPassword(String method, List<String> pathSegments) {
+    if (pathSegments.isEmpty() || !TRUST_GRAPH_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if ("POST".equals(method)) {
+      return pathSegments.size() == 2
+          && ("anchors".equals(pathSegments.get(1)) || "import".equals(pathSegments.get(1)));
+    }
+    return DELETE_METHOD.equals(method)
+        && pathSegments.size() == 3
+        && "anchors".equals(pathSegments.get(1));
   }
 
   /**

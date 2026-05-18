@@ -44,6 +44,7 @@ APP_IDS = (
     "site-publisher",
     "profile-publisher",
     "feed-reader",
+    "trust-graph",
 )
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
@@ -80,6 +81,17 @@ FEED_READER_PERMISSIONS = {
     "queue.read",
     "queue.write",
 }
+TRUST_GRAPH_PERMISSIONS = {
+    "trust.read",
+    "trust.write",
+    "content.fetch",
+    "content.insert.app-document",
+    "queue.read",
+    "queue.write",
+    "vault.identities.read",
+    "vault.identities.create",
+    "vault.identities.use",
+}
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -92,7 +104,8 @@ SENSITIVE_KEY_PATTERN = (
     r"authorization|cookie|set-cookie|private[-_ ]?key|token|password|passwd|secret|credential|"
     r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic|"
     r"raw[-_ ]?request[-_ ]?bod(?:y|ies)|request[-_ ]?bod(?:y|ies)|"
-    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)"
+    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)|"
+    r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
 )
 SENSITIVE_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -146,6 +159,14 @@ BODY_KEY_FRAGMENTS = (
     "rawfeedpayload",
     "feedcontent",
     "rawfeedcontent",
+    "truststatementbody",
+    "rawtruststatementbody",
+    "truststatementbodies",
+    "rawtruststatementbodies",
+    "truststatementpayload",
+    "rawtruststatementpayload",
+    "truststatementcontent",
+    "rawtruststatementcontent",
 )
 
 
@@ -570,7 +591,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/site-publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
-            "apiMaximumTestedVersion": 6,
+            "apiMaximumTestedVersion": 7,
         },
         {
             "appId": "profile-publisher",
@@ -583,7 +604,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/profile-publisher.sh",
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 5,
-            "apiMaximumTestedVersion": 6,
+            "apiMaximumTestedVersion": 7,
         },
         {
             "appId": "feed-reader",
@@ -595,7 +616,20 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/feed-reader.sh",
             "permissions": FEED_READER_PERMISSIONS,
             "apiMinimumVersion": 6,
-            "apiMaximumTestedVersion": 6,
+            "apiMaximumTestedVersion": 7,
+        },
+        {
+            "appId": "trust-graph",
+            "name": "Trust Graph Preview",
+            "stagedDir": (
+                settings.workspace_root / "apps/trust-graph/build/cryptad-app/trust-graph"
+            ),
+            "sourceDir": settings.workspace_root / "apps/trust-graph/src/staged",
+            "launcher": "bin/trust-graph.sh",
+            "permissions": TRUST_GRAPH_PERMISSIONS,
+            "apiMinimumVersion": 7,
+            "apiMaximumTestedVersion": 7,
+            "experimentalCapabilitiesAccepted": True,
         },
     ]
 
@@ -3174,14 +3208,14 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         checks["manifestDeclaresFeedPermissions"] = FEED_READER_PERMISSIONS.issubset(
             manifest_permissions
         )
-        checks["manifestUsesContractV6"] = (
+        checks["manifestUsesCertifiedApiRange"] = (
             manifest.get("api.minimumVersion") == "6"
-            and manifest.get("api.maximumTestedVersion") == "6"
+            and manifest.get("api.maximumTestedVersion") == "7"
         )
     else:
         checks["manifestDeclaresFeedReader"] = False
         checks["manifestDeclaresFeedPermissions"] = False
-        checks["manifestUsesContractV6"] = False
+        checks["manifestUsesCertifiedApiRange"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -3200,6 +3234,349 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         "pass",
         True,
         "Feed Reader reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "trust-graph"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {
+        "appId": "trust-graph",
+        "checks": {},
+        "expectedPermissions": sorted(TRUST_GRAPH_PERMISSIONS),
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.trust-graph",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph Preview first-party app spec is missing.",
+            source,
+            details,
+        )
+
+    app_dir = settings.workspace_root / "apps/trust-graph"
+    source_static_dir = spec["sourceDir"] / "static"
+    staged_static_dir = spec["stagedDir"] / "static"
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_index = read_source(source_static_dir / "index.html")
+    source_app_js = read_source(source_static_dir / "app.js")
+    app_readme = read_source(app_dir / "README.md")
+    reference_doc = read_source(settings.workspace_root / "docs/trust-graph-preview.md")
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    details.update(
+        {
+            "sourceDir": display_path(spec["sourceDir"], settings.workspace_root),
+            "stagedDir": display_path(spec["stagedDir"], settings.workspace_root),
+        }
+    )
+    checks = details["checks"]
+    checks["moduleExists"] = app_dir.is_dir()
+    checks["stagedManifestPresent"] = manifest_path.is_file()
+    checks["sourceStaticUiPresent"] = (source_static_dir / "index.html").is_file() and (
+        source_static_dir / "app.js"
+    ).is_file()
+    checks["stagedSdkPresent"] = (staged_static_dir / "crypta-platform.js").is_file()
+    checks["stagedDesignSystemPresent"] = all(
+        (staged_static_dir / "crypta-ui" / asset_name).is_file()
+        for asset_name in design_system_asset_names()
+    )
+    checks["usesSdkBootstrap"] = "CryptaPlatform.bootstrap.load" in source_app_js
+    checks["usesTrustHelpers"] = all(
+        fragment in source_app_js
+        for fragment in (
+            "CryptaPlatform.trust.status",
+            "CryptaPlatform.trust.anchors.list",
+            "CryptaPlatform.trust.importStatement",
+            "CryptaPlatform.trust.score",
+            "CryptaPlatform.trust.publishStatement",
+        )
+    )
+    checks["usesBoundedTrustSigningHelper"] = (
+        "CryptaPlatform.vault.identities.createTrustStatement" in source_app_js
+    )
+    checks["usesContentFetchAndQueuePreview"] = (
+        "CryptaPlatform.content.fetchText" in source_app_js
+        and "CryptaPlatform.queue.snapshot" in source_app_js
+    )
+    checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
+    checks["noPersistentBrowserStorage"] = all(
+        forbidden not in source_app_js
+        for forbidden in ("localStorage.setItem", "sessionStorage.setItem")
+    )
+    disclosure = permission_disclosure_block(source_index)
+    mentioned_permissions = set(
+        re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
+    )
+    checks["permissionDisclosureMentionsDeclaredPermissions"] = manifest_permissions.issubset(
+        mentioned_permissions
+    )
+    checks["docsDescribePreviewLimits"] = (
+        "Trust Graph Preview" in reference_doc
+        and "not a full Web of Trust" in reference_doc
+        and "Trust anchors are local" in reference_doc
+        and "trust.read" in reference_doc
+        and "trust.write" in reference_doc
+    )
+    checks["readmeDocumentsTrustFlow"] = (
+        "Trust Graph Preview" in app_readme
+        and "trust-statement" in app_readme
+        and "not full WoT" in app_readme
+    )
+    if manifest:
+        details["manifest"] = {
+            "appId": manifest.get("app.id"),
+            "name": manifest.get("app.name"),
+            "uiMode": manifest.get("app.ui.mode"),
+            "uiEntry": manifest.get("app.ui.entry"),
+            "permissions": sorted(manifest_permissions),
+            "apiMinimumVersion": manifest.get("api.minimumVersion"),
+            "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+            "experimentalCapabilitiesAccepted": manifest.get(
+                "api.experimentalCapabilitiesAccepted"
+            ),
+        }
+        checks["manifestDeclaresTrustGraph"] = (
+            manifest.get("app.id") == "trust-graph"
+            and manifest.get("app.name") == "Trust Graph Preview"
+            and manifest.get("app.ui.mode") == "static"
+            and manifest.get("app.ui.entry") == "static/index.html"
+        )
+        checks["manifestDeclaresTrustPermissions"] = TRUST_GRAPH_PERMISSIONS.issubset(
+            manifest_permissions
+        )
+        checks["manifestUsesContractV7"] = (
+            manifest.get("api.minimumVersion") == "7"
+            and manifest.get("api.maximumTestedVersion") == "7"
+            and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
+        )
+    else:
+        checks["manifestDeclaresTrustGraph"] = False
+        checks["manifestDeclaresTrustPermissions"] = False
+        checks["manifestUsesContractV7"] = False
+
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"trust graph app check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.trust-graph",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph Preview reference app evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.trust-graph",
+        "pass",
+        True,
+        "Trust Graph Preview reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    capabilities_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiCapabilities.java"
+    )
+    router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    )
+    handler_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    devtools_text = read_source(
+        workspace
+        / "platform-devtools/src/main/java/network/crypta/platform/devtools/devserver/MockPlatformApi.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-graph-preview.md",
+            "docs/platform-api-contract.md",
+            "docs/platform-sdk-js.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/release-certification.md",
+        )
+    )
+    checks = {
+        "contractVersionV7": "CURRENT_CONTRACT_VERSION = 7" in contract_text,
+        "capabilitiesPresent": "trust.read" in capabilities_text and "trust.write" in capabilities_text,
+        "routesPresent": all(
+            route in contract_text
+            for route in (
+                "/trust-graph/status",
+                "/trust-graph/anchors",
+                "/trust-graph/import",
+                "/trust-graph/subjects",
+                "/trust-graph/statements",
+                "/trust-graph/score",
+            )
+        )
+        and "trust-graph" in router_text
+        and all(
+            f'"{resource}"' in router_text or f"/trust-graph/{resource}" in router_text
+            for resource in ("status", "anchors", "import", "subjects", "statements", "score")
+        ),
+        "capabilityGatesPresent": (
+            "PlatformApiCapabilities.TRUST_READ" in contract_text
+            and "PlatformApiCapabilities.TRUST_WRITE" in contract_text
+        ),
+        "handlerUsesTrustGraphModule": (
+            "TrustStatementParser.parse" in handler_text
+            and "TrustGraphScorer" in handler_text
+            and "InMemoryTrustGraphStore" in handler_text
+        ),
+        "sdkTrustHelpersPresent": all(
+            fragment in sdk_text
+            for fragment in (
+                "function trustStatus",
+                "function addTrustAnchor",
+                "function importTrustStatement",
+                "function trustScore",
+                "function publishTrustStatement",
+            )
+        ),
+        "mockEndpointsPresent": all(
+            fragment in devtools_text
+            for fragment in (
+                "/trust-graph/status",
+                "/trust-graph/anchors",
+                "/trust-graph/import",
+                "/trust-graph/score",
+            )
+        ),
+        "docsDescribeLimits": (
+            "not a full Web of Trust" in docs_text
+            and "old WebOfTrust plugin" in docs_text
+            and "No FNP/FCP/wire protocol" in docs_text
+            and "trust.read" in docs_text
+            and "trust.write" in docs_text
+        ),
+        "redactionDocumented": (
+            "raw trust statement bodies" in docs_text
+            and "browser-session tokens" in docs_text
+            and "form passwords" in docs_text
+        ),
+    }
+    details = {"checks": checks, "routes": ["trust-graph/status", "trust-graph/score"]}
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-graph-preview",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph Preview Platform API evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-graph-preview",
+        "pass",
+        True,
+        "Trust Graph Preview Platform API evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_statement_signing_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    vault_router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiVaultRouter.java"
+    )
+    vault_handler_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/AppVaultApiHandler.java"
+    )
+    request_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-graph-preview.md",
+            "docs/app-secret-and-identity-vault.md",
+            "docs/SECURITY.md",
+            "docs/release-certification.md",
+        )
+    )
+    checks = {
+        "routeInContract": "/app-vault/identities/{identityId}/trust-statement" in contract_text,
+        "capabilitiesInContract": all(
+            fragment in contract_text
+            for fragment in (
+                "PlatformApiCapabilities.TRUST_WRITE",
+                "PlatformApiCapabilities.VAULT_IDENTITIES_READ",
+                "PlatformApiCapabilities.VAULT_IDENTITIES_USE",
+            )
+        ),
+        "routerDispatchesBoundedRoute": "trust-statement" in vault_router_text,
+        "handlerSignsCanonicalPayload": (
+            "TrustStatementRequest.fromQuery" in vault_handler_text
+            and "TrustStatementCanonicalizer.canonicalPayloadBytes" in request_text
+            and "TrustDocumentTypes.TRUST_STATEMENT_V1" in vault_handler_text
+        ),
+        "notGenericSigningRoute": (
+            "not an arbitrary signing API" in request_text
+            or "not generic arbitrary signing" in docs_text
+        ),
+        "docsRedactPrivateMaterial": (
+            "private keys" in docs_text
+            and "raw request bodies" in docs_text
+            and "raw signatures" in docs_text
+        ),
+    }
+    details = {"checks": checks, "route": "app-vault/identities/{identityId}/trust-statement"}
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-statement-signing",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust statement signing evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-statement-signing",
+        "pass",
+        True,
+        "Trust statement signing evidence passed.",
         source,
         details,
     )
@@ -4189,6 +4566,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_identity_profile_publish_evidence(settings),
         collect_generated_document_insert_evidence(settings),
         collect_content_fetch_evidence(settings),
+        collect_trust_graph_preview_evidence(settings),
+        collect_trust_statement_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
@@ -4202,6 +4581,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_reference_content_app_evidence(settings),
         collect_profile_publisher_reference_app_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
+        collect_trust_graph_reference_app_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
         collect_sandbox_provider_evidence(settings),
@@ -4270,11 +4650,17 @@ def run_self_test(repo_root: Path) -> None:
     catalog = parse_properties(catalog_fixture)
     assert catalog["catalog.id"] == "cert-smoke"
     assert "feed-reader" in parse_permission_set(catalog["catalog.entries"])
+    assert "trust-graph" in parse_permission_set(catalog["catalog.entries"])
     assert catalog["app.cert-smoke.bundle.sha256"] == "0" * 64
     assert catalog["app.feed-reader.permissions"] == (
         "content.fetch,content.insert.app-document,queue.read,queue.write"
     )
     assert catalog["app.feed-reader.api.minimumVersion"] == "6"
+    assert catalog["app.trust-graph.permissions"] == (
+        "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
+        "vault.identities.read,vault.identities.create,vault.identities.use"
+    )
+    assert catalog["app.trust-graph.api.minimumVersion"] == "7"
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -4510,6 +4896,11 @@ def run_self_test(repo_root: Path) -> None:
             "feedContentPreview": "opaque-feed-preview",
             "rawFeedBodySource": "opaque-feed-body-source",
             "requestBodySource": "opaque-request-body-source",
+            "rawTrustStatementBody": '{"type":"crypta.trust.statement.v1","signature":{"value":"sig"}}',
+            "trustStatementBodies": ["signed trust statement body"],
+            "trustStatementPayload": {"signature": {"value": "trust-signature"}},
+            "rawTrustStatementBodySource": "opaque-trust-body-source",
+            "trustStatementBodiesExcluded": True,
             "feedSummary": "3 entries",
             "rawFeedBodyRedacted": True,
             "rawFeedBodiesExcluded": True,
@@ -4523,6 +4914,11 @@ def run_self_test(repo_root: Path) -> None:
     assert feed_body_metadata["feedContentPreview"] == "<redacted>", feed_body_metadata
     assert feed_body_metadata["rawFeedBodySource"] == "<redacted>", feed_body_metadata
     assert feed_body_metadata["requestBodySource"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawTrustStatementBody"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["trustStatementBodies"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["trustStatementPayload"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["rawTrustStatementBodySource"] == "<redacted>", feed_body_metadata
+    assert feed_body_metadata["trustStatementBodiesExcluded"] is True, feed_body_metadata
     assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
     assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
     assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
@@ -4711,6 +5107,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
+        assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass"
+        assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"
+        assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
         try:
@@ -5147,7 +5546,13 @@ def run_self_test(repo_root: Path) -> None:
 def make_self_test_workspace(workspace: Path) -> None:
     sdk = workspace / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
     sdk.parent.mkdir(parents=True, exist_ok=True)
-    sdk.write_text("window.CryptaPlatform = {}; const h = 'X-Crypta-App-Session';\n", encoding="utf-8")
+    sdk.write_text(
+        "window.CryptaPlatform = { trust: {}, vault: { identities: { createTrustStatement(){} } } }; "
+        "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
+        "function trustScore(){} function publishTrustStatement(){} "
+        "const h = 'X-Crypta-App-Session';\n",
+        encoding="utf-8",
+    )
     design_dir = workspace / "platform-design-system/src/main/resources/network/crypta/platform/designsystem/static"
     design_dir.mkdir(parents=True, exist_ok=True)
     (design_dir / "crypta-ui-tokens.css").write_text(":root{--cr-space-4:1rem;}\n", encoding="utf-8")
@@ -5209,6 +5614,24 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
         ),
+        (
+            "trust-graph",
+            "trust-graph",
+            "Trust Graph Preview",
+            "trust-graph.sh",
+            "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
+            "vault.identities.read,vault.identities.create,vault.identities.use",
+            "const appId = 'trust-graph';\n"
+            "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.trust.status();\n"
+            "CryptaPlatform.trust.anchors.list();\n"
+            "CryptaPlatform.trust.importStatement({ document: '{}' });\n"
+            "CryptaPlatform.trust.score({ subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile' });\n"
+            "CryptaPlatform.trust.publishStatement({ statement: { type: 'crypta.trust.statement.v1' } });\n"
+            "CryptaPlatform.vault.identities.createTrustStatement('trust-self-test', { subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile', score: 50, confidence: 80 });\n"
+            "CryptaPlatform.content.fetchText({ uri: 'CHK@redacted' });\n"
+            "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+        ),
     ):
         source = workspace / f"apps/{project}/src/staged"
         staged = workspace / f"apps/{project}/build/cryptad-app/{app_id}"
@@ -5240,9 +5663,10 @@ def make_self_test_workspace(workspace: Path) -> None:
             shutil.copy2(sdk, root / "static/crypta-platform.js")
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
-        api_minimum = "6" if is_feed_reader else "5" if is_profile_publisher else "3"
-        api_maximum = "6" if app_id in {"feed-reader", "site-publisher", "profile-publisher"} else "4"
-        experimental_accepted = "true" if is_profile_publisher else "false"
+        is_trust_graph = app_id == "trust-graph"
+        api_minimum = "7" if is_trust_graph else "6" if is_feed_reader else "5" if is_profile_publisher else "3"
+        api_maximum = "7" if app_id in {"feed-reader", "site-publisher", "profile-publisher", "trust-graph"} else "4"
+        experimental_accepted = "true" if is_profile_publisher or is_trust_graph else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
                 [
@@ -5281,6 +5705,12 @@ def make_self_test_workspace(workspace: Path) -> None:
             (workspace / "apps/feed-reader/README.md").write_text(
                 "Feed Reader uses POST /api/v1/content/fetch through SDK feed helpers, "
                 "then publishes generated feed summaries without storing raw feed bodies.\n",
+                encoding="utf-8",
+            )
+        if app_id == "trust-graph":
+            (workspace / "apps/trust-graph/README.md").write_text(
+                "Trust Graph Preview creates an app-owned trust identity, signs a trust-statement "
+                "through AppVault, imports local anchors, and is not full WoT.\n",
                 encoding="utf-8",
             )
     appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -5328,7 +5758,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { String list = \"/app-catalogs/recommended\"; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 7; "
+        "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String listAction = \"catalogs.recommended.list\"; "
         "String addAction = \"catalogs.recommended.add\"; "
@@ -5343,14 +5774,58 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String contentCapability = \"CONTENT_INSERT_APP_DOCUMENT\"; "
         "String queueCapability = \"QUEUE_WRITE\"; "
         "String contentFetch = \"/content/fetch\"; "
-        "String contentFetchCapability = \"CONTENT_FETCH\"; }\n",
+        "String contentFetchCapability = \"CONTENT_FETCH\"; "
+        "String trustStatus = \"/trust-graph/status\"; "
+        "String trustAnchors = \"/trust-graph/anchors\"; "
+        "String trustImport = \"/trust-graph/import\"; "
+        "String trustSubjects = \"/trust-graph/subjects\"; "
+        "String trustStatements = \"/trust-graph/statements\"; "
+        "String trustScore = \"/trust-graph/score\"; "
+        "String trustRead = \"PlatformApiCapabilities.TRUST_READ\"; "
+        "String trustWrite = \"PlatformApiCapabilities.TRUST_WRITE\"; "
+        "String trustStatement = \"/app-vault/identities/{identityId}/trust-statement\"; "
+        "String trustStatementAction = \"app-vault.identities.trust-statement\"; "
+        "String vaultRead = \"PlatformApiCapabilities.VAULT_IDENTITIES_READ\"; "
+        "String vaultUse = \"PlatformApiCapabilities.VAULT_IDENTITIES_USE\"; }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiCapabilities.java").write_text(
+        "final class PlatformApiCapabilities { static final String TRUST_READ = \"trust.read\"; "
+        "static final String TRUST_WRITE = \"trust.write\"; }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiRouter.java").write_text(
+        "final class PlatformApiRouter { String a = \"/trust-graph/status\"; "
+        "String b = \"/trust-graph/anchors\"; String c = \"/trust-graph/import\"; "
+        "String d = \"/trust-graph/subjects\"; String e = \"/trust-graph/statements\"; "
+        "String f = \"/trust-graph/score\"; }\n",
         encoding="utf-8",
     )
     app_vault_api_dir = api_dir / "appvault"
     app_vault_api_dir.mkdir(parents=True, exist_ok=True)
     (app_vault_api_dir / "AppVaultApiHandler.java").write_text(
         "final class AppVaultApiHandler { void createAppOwnedIdentity() {} "
-        "void createProfileDocument() { String route = \"profile-document\"; } }\n",
+        "void createProfileDocument() { String route = \"profile-document\"; } "
+        "void createTrustStatement() { String route = \"trust-statement\"; "
+        "Object request = TrustStatementRequest.fromQuery(null); "
+        "String type = \"TrustDocumentTypes.TRUST_STATEMENT_V1\"; } }\n",
+        encoding="utf-8",
+    )
+    (app_vault_api_dir / "TrustStatementRequest.java").write_text(
+        "final class TrustStatementRequest { // not an arbitrary signing API\n"
+        "byte[] canonicalBytes() { return TrustStatementCanonicalizer.canonicalPayloadBytes(null); } }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiVaultRouter.java").write_text(
+        "final class PlatformApiVaultRouter { String route = \"trust-statement\"; }\n",
+        encoding="utf-8",
+    )
+    trust_api_dir = api_dir / "trust"
+    trust_api_dir.mkdir(parents=True, exist_ok=True)
+    (trust_api_dir / "TrustGraphApiHandler.java").write_text(
+        "final class TrustGraphApiHandler { Object store = new InMemoryTrustGraphStore(); "
+        "void importStatement() { TrustStatementParser.parse(\"{}\"); } "
+        "Object score = new TrustGraphScorer(null, null); }\n",
         encoding="utf-8",
     )
     queue_api_dir = api_dir / "queue"
@@ -5383,6 +5858,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String route = \"content/fetch\"; String capability = \"content.fetch\"; }\n",
         encoding="utf-8",
     )
+    (platform_api_tests / "TrustGraphApiTest.java").write_text(
+        "void trustGraph_whenQueried_expectNoRawTrustStatementBodiesOrSignatures() { "
+        "String route = \"trust-graph/score\"; String capability = \"trust.read\"; }\n",
+        encoding="utf-8",
+    )
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
     shell.parent.mkdir(parents=True, exist_ok=True)
     shell.write_text(
@@ -5396,9 +5876,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs.mkdir(parents=True, exist_ok=True)
     first_party_docs = (
         "No private keys are shipped. "
-        "queue-manager publisher site-publisher profile-publisher feed-reader use permissions.rationale entries, "
+        "queue-manager publisher site-publisher profile-publisher feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
         "Feed Reader & Publisher is the content fetch reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot. "
+        "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, and bounded trust-statement signing. "
+        "Trust anchors are local. "
+        "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
         "api.minimumVersion, changelog.summary, and review receipts. "
         "Maintain artifacts as crypta:CHK@artifact and set CRYPTAD_FIRST_PARTY_CATALOG_SOURCE "
         "with CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID. "
@@ -5408,17 +5891,21 @@ def make_self_test_workspace(workspace: Path) -> None:
         "POST /api/v1/queue/inserts/app-document accepts app-generated document content without a "
         "local file path and requires content.insert.app-document plus queue.write. "
         "POST /api/v1/content/fetch fetches feed content and requires content.fetch. "
+        "POST /api/v1/app-vault/identities/{identityId}/trust-statement signs bounded trust statements. "
+        "GET /api/v1/trust-graph/status and GET /api/v1/trust-graph/score read local trust preview data. "
         "Release evidence covers reference-app.profile-publisher, "
         "reference-app.feed-reader, app-platform.content-fetch, "
-        "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
-        "It excludes raw request bodies, private keys, signatures, private insert URIs, and "
-        "absolute staging paths. It also excludes raw feed bodies, browser-session tokens, "
+        "reference-app.trust-graph, app-platform.trust-graph-preview, "
+        "app-platform.trust-statement-signing, app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
+        "It excludes raw request bodies, private keys, raw signatures, private insert URIs, and "
+        "absolute staging paths. It also excludes raw feed bodies, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
     )
     for doc_name in (
         "app-catalogs.md",
         "app-dev-cli.md",
         "feed-reader-reference-app.md",
+        "trust-graph-preview.md",
         "first-party-beta-catalog.md",
         "release-certification.md",
     ):
@@ -5530,7 +6017,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (devserver_dir / "MockPlatformApi.java").write_text(
-        "class MockPlatformApi { String s = \"invalid_app_browser_session X-Crypta-App-Session\"; }\n",
+        "class MockPlatformApi { String s = \"invalid_app_browser_session X-Crypta-App-Session "
+        "/trust-graph/status /trust-graph/anchors /trust-graph/import /trust-graph/score\"; }\n",
         encoding="utf-8",
     )
     toolkit_test_dir = workspace / "platform-devtools/src/test/java/network/crypta/platform/devtools"

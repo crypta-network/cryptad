@@ -17,7 +17,7 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader
+The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview
 bundles receive `crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source
 lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
@@ -195,6 +195,62 @@ for app principals.
 timestamps, and sanitized errors, but they must not persist raw feed bodies, raw request bodies,
 private insert URIs, app process tokens, browser-session tokens, form passwords, or local paths in
 browser storage or release evidence.
+
+Trust Graph Preview uses the v7 trust helpers:
+
+```js
+const status = await CryptaPlatform.trust.status();
+const anchors = await CryptaPlatform.trust.anchors.list();
+await CryptaPlatform.trust.anchors.add({
+  issuerFingerprint,
+  label,
+  source: "manual",
+});
+await CryptaPlatform.trust.importStatement({
+  document: trustStatementJson,
+  sourceUri,
+  sourceLabel: "fetched",
+});
+const score = await CryptaPlatform.trust.score({
+  subjectKind: "profile",
+  subjectUri,
+  context: "profile",
+  includeEvidence: true,
+});
+```
+
+To create and publish a bounded trust statement, apps should use the AppVault helper and the trust
+publishing helper instead of constructing API forms directly:
+
+```js
+const signed = await CryptaPlatform.vault.identities.createTrustStatement(identityId, {
+  subjectKind: "profile",
+  subjectUri,
+  context: "profile",
+  score: 50,
+  confidence: 80,
+  reason,
+  tags,
+  expiresAt,
+});
+
+await CryptaPlatform.trust.publishStatement({
+  insertUri,
+  identifier,
+  statement: signed,
+});
+```
+
+`CryptaPlatform.trust.publishStatement` wraps `insertAppDocument` and defaults `contentType` to
+`application/vnd.crypta.trust+json` and `targetFilename` to `trust.json`. Trust helpers require
+the corresponding manifest capabilities: `trust.read` for status, anchors, subjects, statements,
+and score reads; `trust.write` for import and anchor mutation; and `trust.write`,
+`vault.identities.read`, and `vault.identities.use` for bounded trust-statement signing. Apps
+should render imported and fetched trust fields as text, keep document sizes bounded, and avoid
+storing raw trust documents from real users, raw request bodies, signatures, private identity
+material, browser-session tokens, form passwords, or local paths in browser storage or release
+evidence. Imported statements that lack a verifiable AppVault preview signature are still visible
+as evidence, but the local scorer marks them non-contributing.
 
 `app-vault/identities` creates an app-owned identity for an authorized static app browser session.
 `app-vault/identities/{identityId}/profile-document` asks Cryptad to create the profile document

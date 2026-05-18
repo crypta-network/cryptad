@@ -1,12 +1,28 @@
 package network.crypta.platform.devtools.devserver;
 
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpContext;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpPrincipal;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import network.crypta.platform.appdist.AppDistributionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,22 +52,64 @@ class MockPlatformApiFixturesTest {
         new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
 
     String identities = fixtures.vaultIdentities();
-    String createdIdentity = MockPlatformApiFixtures.CREATED_IDENTITY_RESPONSE;
     String profileDocument = fixtures.profileDocument("local-profile");
-    String appDocumentInsert = MockPlatformApiFixtures.APP_DOCUMENT_INSERT_RESPONSE;
+    MockPlatformApi api = new MockPlatformApi("mock-session"::equals, fixtures);
+    TestHttpExchange createdIdentity =
+        TestHttpExchange.post(
+            "/api/v1/app-vault/identities",
+            "label=Local+Profile&scopes=metadata.read%2Csign.domain-separated");
+    TestHttpExchange appDocumentInsert =
+        TestHttpExchange.post(
+            "/api/v1/queue/inserts/app-document",
+            "insertUri=CHK%40sample&identifier=profile-local&documentBase64=e30%3D");
+    api.handle(createdIdentity);
+    api.handle(appDocumentInsert);
+    String createdIdentityBody = createdIdentity.responseBody();
+    String appDocumentInsertBody = appDocumentInsert.responseBody();
 
     assertTrue(identities.contains("\"identityId\":\"local-profile\""));
     assertTrue(
         identities.contains("\"usageScopes\":[\"metadata.read\",\"sign.domain-separated\"]"));
-    assertTrue(createdIdentity.contains("\"action\":\"app-vault.identities.create\""));
-    assertTrue(createdIdentity.contains("\"identityId\":\"mock-created-profile\""));
+    assertEquals(201, createdIdentity.responseCode());
+    assertTrue(createdIdentityBody.contains("\"action\":\"app-vault.identities.create\""));
+    assertTrue(createdIdentityBody.contains("\"identityId\":\"mock-created-profile\""));
     assertTrue(profileDocument.contains("\"action\":\"app-vault.identities.profile-document\""));
     assertTrue(profileDocument.contains("\"identityId\":\"local-profile\""));
     assertTrue(profileDocument.contains("\"fingerprint\":\"mock-profile-fingerprint\""));
-    assertTrue(appDocumentInsert.contains("\"action\":\"queue.inserts.app-document\""));
-    assertTrue(appDocumentInsert.contains("\"uri\":\"CHK@mock-app-document\""));
+    assertEquals(200, appDocumentInsert.responseCode());
+    assertTrue(appDocumentInsertBody.contains("\"action\":\"queue.inserts.app-document\""));
+    assertTrue(appDocumentInsertBody.contains("\"uri\":\"CHK@mock-app-document\""));
     assertFalse(profileDocument.contains("privateKey"));
-    assertFalse(appDocumentInsert.contains("browserSessionToken"));
+    assertFalse(appDocumentInsertBody.contains("browserSessionToken"));
+  }
+
+  @Test
+  void trustGraphMocks_whenDefaultsRequested_expectDeterministicPreviewResponses()
+      throws Exception {
+    Files.createDirectories(tempDir);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "trust-graph", "Trust Graph Preview", "0.1.0");
+
+    String status = fixtures.trustGraphStatus();
+    String anchors = fixtures.trustGraphAnchors();
+    String score = fixtures.trustGraphScore();
+    String statement = fixtures.trustStatement("local-profile");
+
+    assertTrue(status.contains("\"service\":\"trust-graph-preview\""));
+    assertTrue(status.contains("\"completeWot\":false"));
+    assertTrue(anchors.contains("\"issuerFingerprint\":\"mock-profile-fingerprint\""));
+    assertTrue(score.contains("\"status\":\"trusted\""));
+    assertTrue(score.contains("\"contributingEvidenceCount\":1"));
+    assertTrue(statement.contains("\"trustStatement\":{\"identity\""));
+    assertTrue(statement.contains("\"action\":\"app-vault.identities.trust-statement\""));
+    assertTrue(statement.contains("\"type\":\"crypta.trust.statement.v1\""));
+    assertTrue(statement.contains("\"appId\":\"trust-graph\""));
+    assertFalse(statement.startsWith("{\"identity\""));
+    assertFalse(status.contains("browserSessionToken"));
+    assertFalse(anchors.contains("privateKey"));
+    assertFalse(score.contains("rawRequestBody"));
+    assertFalse(statement.contains("privateKey"));
+    assertFalse(statement.contains("/work/"));
   }
 
   @Test
@@ -88,5 +146,137 @@ class MockPlatformApiFixturesTest {
 
     assertTrue(exception.getMessage().contains("fixture directory must be a real directory"));
     assertFalse(Files.exists(realFixtureDir.resolve("queue.json")));
+  }
+
+  private static final class TestHttpExchange extends HttpExchange {
+    private final Headers requestHeaders = new Headers();
+    private final Headers responseHeaders = new Headers();
+    private final Map<String, Object> attributes = new HashMap<>();
+    private final String method;
+    private final URI requestUri;
+    private InputStream requestBody;
+    private OutputStream responseBody = new ByteArrayOutputStream();
+    private int responseCode;
+
+    private TestHttpExchange(String method, String path, String body) {
+      this.method = method;
+      this.requestUri = URI.create(path);
+      this.requestBody = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8));
+      requestHeaders.add(MockPlatformApi.SESSION_HEADER, "mock-session");
+    }
+
+    private static TestHttpExchange post(String path, String body) {
+      return new TestHttpExchange("POST", path, body);
+    }
+
+    private int responseCode() {
+      return responseCode;
+    }
+
+    private String responseBody() {
+      if (responseBody instanceof ByteArrayOutputStream buffer) {
+        return buffer.toString(StandardCharsets.UTF_8);
+      }
+      throw new IllegalStateException("Test response body is not backed by an in-memory buffer.");
+    }
+
+    @Override
+    public Headers getRequestHeaders() {
+      return requestHeaders;
+    }
+
+    @Override
+    public Headers getResponseHeaders() {
+      return responseHeaders;
+    }
+
+    @Override
+    public URI getRequestURI() {
+      return requestUri;
+    }
+
+    @Override
+    public String getRequestMethod() {
+      return method;
+    }
+
+    @Override
+    public HttpContext getHttpContext() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void close() {
+      closeStream(requestBody);
+      closeStream(responseBody);
+    }
+
+    @Override
+    public InputStream getRequestBody() {
+      return requestBody;
+    }
+
+    @Override
+    public OutputStream getResponseBody() {
+      return responseBody;
+    }
+
+    @Override
+    public void sendResponseHeaders(int responseCode, long responseLength) {
+      this.responseCode = responseCode;
+    }
+
+    @Override
+    public InetSocketAddress getRemoteAddress() {
+      return InetSocketAddress.createUnresolved("127.0.0.1", 1);
+    }
+
+    @Override
+    public int getResponseCode() {
+      return responseCode;
+    }
+
+    @Override
+    public InetSocketAddress getLocalAddress() {
+      return InetSocketAddress.createUnresolved("127.0.0.1", 2);
+    }
+
+    @Override
+    public String getProtocol() {
+      return "HTTP/1.1";
+    }
+
+    @Override
+    public Object getAttribute(String name) {
+      return attributes.get(name);
+    }
+
+    @Override
+    public void setAttribute(String name, Object value) {
+      attributes.put(name, value);
+    }
+
+    @Override
+    public void setStreams(InputStream input, OutputStream output) {
+      if (input != null) {
+        requestBody = input;
+      }
+      if (output != null) {
+        responseBody = output;
+      }
+    }
+
+    @Override
+    public HttpPrincipal getPrincipal() {
+      return null;
+    }
+
+    private static void closeStream(Closeable stream) {
+      try {
+        stream.close();
+      } catch (IOException exception) {
+        throw new UncheckedIOException(exception);
+      }
+    }
   }
 }

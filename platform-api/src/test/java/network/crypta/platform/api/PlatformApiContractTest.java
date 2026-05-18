@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":6"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":7"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(6, version.contractVersion());
+    assertEquals(7, version.contractVersion());
   }
 
   @Test
@@ -62,6 +62,18 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
     assertEquals(6, contentFetchCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor trustReadCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("trust.read"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(7, trustReadCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor trustWriteCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("trust.write"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(7, trustWriteCapability.sinceContractVersion());
   }
 
   @Test
@@ -137,6 +149,67 @@ class PlatformApiContractTest {
     assertEquals(List.of("content.fetch"), endpoint.requiredCapabilities());
   }
 
+  @Test
+  void current_whenInspectingTrustGraphEndpoints_expectContractV7Capabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.of(
+            "GET /trust-graph/status",
+            List.of("trust.read"),
+            "GET /trust-graph/anchors",
+            List.of("trust.read"),
+            "POST /trust-graph/anchors",
+            List.of("trust.write"),
+            "DELETE /trust-graph/anchors/{fingerprint}",
+            List.of("trust.write"),
+            "POST /trust-graph/import",
+            List.of("trust.write"),
+            "GET /trust-graph/subjects",
+            List.of("trust.read"),
+            "GET /trust-graph/statements",
+            List.of("trust.read"),
+            "GET /trust-graph/score",
+            List.of("trust.read"));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(7, endpoint.sinceContractVersion(), key);
+      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
+  void current_whenInspectingTrustStatementEndpoint_expectBoundedVaultCapabilities() {
+    PlatformApiEndpointDescriptor endpoint =
+        PlatformApiContract.current().endpoints().stream()
+            .filter(
+                descriptor ->
+                    descriptor.method().equals("POST")
+                        && descriptor
+                            .routeTemplate()
+                            .equals("/app-vault/identities/{identityId}/trust-statement"))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(7, endpoint.sinceContractVersion());
+    assertEquals("app-vault", endpoint.routeFamily());
+    assertEquals("app-vault.identities.trust-statement", endpoint.actionLabel());
+    assertTrue(endpoint.appProcessAllowed());
+    assertTrue(endpoint.appBrowserAllowed());
+    assertEquals(
+        List.of("trust.write", "vault.identities.read", "vault.identities.use"),
+        endpoint.requiredCapabilities());
+  }
+
   private static void assertEndpointAuthorization(
       PlatformApiEndpointDescriptor endpoint,
       PlatformApiAuthorizationDecision decision,
@@ -151,6 +224,10 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().startsWith("/trust-graph")
+        || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {
+      return 7;
+    }
     if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {
       return 5;
@@ -170,7 +247,8 @@ class PlatformApiContractTest {
 
   private static PlatformApiStabilityLevel expectedStability(
       PlatformApiEndpointDescriptor endpoint) {
-    if (endpoint.routeTemplate().startsWith("/app-vault")
+    if (endpoint.routeTemplate().startsWith("/trust-graph")
+        || endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/identity-vault")) {
       return PlatformApiStabilityLevel.EXPERIMENTAL;
     }

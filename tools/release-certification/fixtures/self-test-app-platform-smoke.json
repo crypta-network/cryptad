@@ -7,7 +7,8 @@
           "publisher",
           "site-publisher",
           "profile-publisher",
-          "feed-reader"
+          "feed-reader",
+          "trust-graph"
         ]
       },
       "id": "app-platform.first-party",
@@ -198,6 +199,48 @@
     },
     {
       "details": {
+        "checks": {
+          "capabilitiesPresent": true,
+          "capabilityGatesPresent": true,
+          "contractVersionV7": true,
+          "docsDescribeLimits": true,
+          "handlerUsesTrustGraphModule": true,
+          "mockEndpointsPresent": true,
+          "redactionDocumented": true,
+          "routesPresent": true,
+          "sdkTrustHelpersPresent": true
+        },
+        "routes": [
+          "trust-graph/status",
+          "trust-graph/score"
+        ]
+      },
+      "id": "app-platform.trust-graph-preview",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph Preview Platform API evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "capabilitiesInContract": true,
+          "docsRedactPrivateMaterial": true,
+          "handlerSignsCanonicalPayload": true,
+          "notGenericSigningRoute": true,
+          "routeInContract": true,
+          "routerDispatchesBoundedRoute": true
+        },
+        "route": "app-vault/identities/{identityId}/trust-statement"
+      },
+      "id": "app-platform.trust-statement-signing",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust statement signing evidence passed."
+    },
+    {
+      "details": {
         "keyId": "dev-local"
       },
       "id": "app-platform.signed-bundles",
@@ -229,7 +272,8 @@
           "publisher",
           "site-publisher",
           "profile-publisher",
-          "feed-reader"
+          "feed-reader",
+          "trust-graph"
         ]
       },
       "id": "app-catalog.first-party-beta",
@@ -266,14 +310,15 @@
           "publisher",
           "site-publisher",
           "profile-publisher",
-          "feed-reader"
+          "feed-reader",
+          "trust-graph"
         ],
         "coverage": {
-          "catalogAppsInspected": 5,
+          "catalogAppsInspected": 6,
           "expiredOrMismatchedOrUnknownReviewer": 0,
           "missingReceipts": 0,
           "promotionBlocked": false,
-          "trustedPositiveReceipts": 5,
+          "trustedPositiveReceipts": 6,
           "trustedRejectedReceipts": 0
         },
         "catalog": {
@@ -282,14 +327,16 @@
             "profile-publisher",
             "publisher",
             "queue-manager",
-            "site-publisher"
+            "site-publisher",
+            "trust-graph"
           ],
           "receiptStatuses": {
             "feed-reader": "reviewed",
             "profile-publisher": "reviewed",
             "publisher": "reviewed",
             "queue-manager": "reviewed",
-            "site-publisher": "reviewed"
+            "site-publisher": "reviewed",
+            "trust-graph": "reviewed"
           }
         },
         "policyMode": "release-candidate requires trusted positive receipts",
@@ -358,6 +405,13 @@
               "notes": 0,
               "warnings": 0
             }
+          },
+          "trust-graph": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
           }
         }
       },
@@ -383,6 +437,9 @@
             "usesDesignSystemClasses": true
           },
           "site-publisher": {
+            "usesDesignSystemClasses": true
+          },
+          "trust-graph": {
             "usesDesignSystemClasses": true
           }
         }
@@ -480,7 +537,7 @@
           "docsDescribeFeedReaderFlow": true,
           "manifestDeclaresFeedPermissions": true,
           "manifestDeclaresFeedReader": true,
-          "manifestUsesContractV6": true,
+          "manifestUsesCertifiedApiRange": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -506,6 +563,46 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Feed Reader reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "trust-graph",
+        "checks": {
+          "docsDescribePreviewLimits": true,
+          "manifestDeclaresTrustGraph": true,
+          "manifestDeclaresTrustPermissions": true,
+          "manifestUsesContractV7": true,
+          "moduleExists": true,
+          "noPersistentBrowserStorage": true,
+          "noRawAdminApiReference": true,
+          "permissionDisclosureMentionsDeclaredPermissions": true,
+          "readmeDocumentsTrustFlow": true,
+          "sourceStaticUiPresent": true,
+          "stagedDesignSystemPresent": true,
+          "stagedManifestPresent": true,
+          "stagedSdkPresent": true,
+          "usesBoundedTrustSigningHelper": true,
+          "usesContentFetchAndQueuePreview": true,
+          "usesSdkBootstrap": true,
+          "usesTrustHelpers": true
+        },
+        "expectedPermissions": [
+          "content.fetch",
+          "content.insert.app-document",
+          "queue.read",
+          "queue.write",
+          "trust.read",
+          "trust.write",
+          "vault.identities.create",
+          "vault.identities.read",
+          "vault.identities.use"
+        ]
+      },
+      "id": "reference-app.trust-graph",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph Preview reference app evidence passed."
     },
     {
       "details": {

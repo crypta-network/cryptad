@@ -21,6 +21,7 @@ val internalLeafProjects =
     project(":platform-appdist"),
     project(":platform-app-ui"),
     project(":platform-appcatalog"),
+    project(":platform-trustgraph"),
     project(":foundation-support"),
     project(":foundation-store"),
     project(":foundation-store-contracts"),
@@ -109,6 +110,7 @@ dependencies {
   implementation(project(":platform-api"))
   implementation(project(":platform-app-ui"))
   implementation(project(":platform-appcatalog"))
+  implementation(project(":platform-trustgraph"))
   implementation(project(":platform-apphost"))
   implementation(project(":platform-sdk-js"))
   implementation(project(":platform-web-shell"))
@@ -522,6 +524,7 @@ tasks.register("stageFirstPartyApps") {
   dependsOn(":apps:feed-reader:stageApp")
   dependsOn(":apps:profile-publisher:stageApp")
   dependsOn(":apps:site-publisher:stageApp")
+  dependsOn(":apps:trust-graph:stageApp")
 }
 
 tasks.register("signFirstPartyApps") {
@@ -532,6 +535,7 @@ tasks.register("signFirstPartyApps") {
   dependsOn(":apps:feed-reader:signApp")
   dependsOn(":apps:profile-publisher:signApp")
   dependsOn(":apps:site-publisher:signApp")
+  dependsOn(":apps:trust-graph:signApp")
 }
 
 tasks.register("verifyFirstPartyApps") {
@@ -542,6 +546,7 @@ tasks.register("verifyFirstPartyApps") {
   dependsOn(":apps:feed-reader:verifyApp")
   dependsOn(":apps:profile-publisher:verifyApp")
   dependsOn(":apps:site-publisher:verifyApp")
+  dependsOn(":apps:trust-graph:verifyApp")
   mustRunAfter("signFirstPartyApps")
 }
 

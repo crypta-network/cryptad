@@ -12,6 +12,7 @@ import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
 import network.crypta.platform.api.queue.QueueApiHandler;
 import network.crypta.platform.api.security.SecurityLevelsApiHandler;
+import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.api.updates.UpdatesApiHandler;
 import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
@@ -43,6 +44,9 @@ public final class PlatformApiRouter {
   /** Shared route segment and envelope key for app-update lifecycle responses. */
   private static final String UPDATES_ROUTE_SEGMENT = "updates";
 
+  /** Shared route segment and list envelope key for Trust Graph Preview anchors. */
+  private static final String TRUST_GRAPH_ANCHORS_SEGMENT = "anchors";
+
   /** Handler for the {@code /node/...} endpoint family. */
   private final NodeApiHandler nodeApiHandler;
 
@@ -72,6 +76,9 @@ public final class PlatformApiRouter {
 
   /** Handler for the {@code /diagnostics} endpoint family. */
   private final DiagnosticsApiHandler diagnosticsApiHandler;
+
+  /** Handler for the local {@code /trust-graph/...} preview endpoint family. */
+  private final TrustGraphApiHandler trustGraphApiHandler;
 
   /** Routes app, app-catalog, app-update, and vault endpoint families. */
   private final PlatformApiAppRoutes appRoutes;
@@ -330,6 +337,7 @@ public final class PlatformApiRouter {
             runtimePorts.queueCompletion());
     alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
     diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
+    trustGraphApiHandler = new TrustGraphApiHandler();
     appRoutes =
         new PlatformApiAppRoutes(
             appHost,
@@ -464,6 +472,9 @@ public final class PlatformApiRouter {
     }
     if ("content".equals(firstSegment)) {
       return routeContentRequest(segments, request);
+    }
+    if ("trust-graph".equals(firstSegment)) {
+      return routeTrustGraphRequest(segments, request);
     }
     if ("peers".equals(firstSegment)) {
       return routePeersRequest(segments, request);
@@ -693,6 +704,88 @@ public final class PlatformApiRouter {
           503, "content_fetch_failed", "Content fetch service is unavailable.");
     }
     return new ContentApiHandler(contentFetchPort);
+  }
+
+  /**
+   * Routes requests beneath the local {@code /trust-graph} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata, including query parameters
+   * @return JSON response for the selected Trust Graph Preview endpoint
+   */
+  private PlatformApiResponse routeTrustGraphRequest(
+      List<String> segments, PlatformApiRequest request) {
+    return switch (segments.size()) {
+      case 2 -> routeTrustGraphCollection(segments.get(1), request);
+      case 3 -> routeTrustGraphResource(segments.get(1), segments.get(2), request);
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeTrustGraphCollection(
+      String resource, PlatformApiRequest request) {
+    return switch (resource) {
+      case "status" -> {
+        if (!"GET".equals(request.method())) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("trustGraph", trustGraphApiHandler.status()));
+      }
+      case TRUST_GRAPH_ANCHORS_SEGMENT -> routeTrustGraphAnchors(request);
+      case "import" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                "importResult", trustGraphApiHandler.importStatement(request.queryParameters())));
+      }
+      case "subjects" -> {
+        if (!"GET".equals(request.method())) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("subjects", trustGraphApiHandler.subjects()));
+      }
+      case "statements" -> {
+        if (!"GET".equals(request.method())) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("statements", trustGraphApiHandler.statements(request.queryParameters())));
+      }
+      case "score" -> {
+        if (!"GET".equals(request.method())) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("score", trustGraphApiHandler.score(request.queryParameters())));
+      }
+      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    };
+  }
+
+  private PlatformApiResponse routeTrustGraphAnchors(PlatformApiRequest request) {
+    if ("GET".equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope(TRUST_GRAPH_ANCHORS_SEGMENT, trustGraphApiHandler.anchors()));
+    }
+    if ("POST".equals(request.method())) {
+      return PlatformApiResponse.created(
+          envelope("anchor", trustGraphApiHandler.addAnchor(request.queryParameters())));
+    }
+    return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
+  }
+
+  private PlatformApiResponse routeTrustGraphResource(
+      String resource, String resourceId, PlatformApiRequest request) {
+    if (!TRUST_GRAPH_ANCHORS_SEGMENT.equals(resource)) {
+      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
+    }
+    if (!"DELETE".equals(request.method())) {
+      return methodNotAllowed("DELETE", "Platform API v1 supports DELETE requests only.");
+    }
+    return PlatformApiResponse.ok(
+        envelope("anchor", trustGraphApiHandler.removeAnchor(resourceId)));
   }
 
   /**
@@ -973,6 +1066,12 @@ public final class PlatformApiRouter {
       throw new NullPointerException(parameterName);
     }
     return value;
+  }
+
+  private static Map<String, Object> envelope(String key, Object value) {
+    java.util.LinkedHashMap<String, Object> envelope = java.util.LinkedHashMap.newLinkedHashMap(1);
+    envelope.put(key, value);
+    return envelope;
   }
 
   /**

@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=6
+contractVersion=7
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 6,
+    "contractVersion": 7,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -128,6 +128,33 @@ required and must be a Crypta/Freenet content key in `CHK@...`, `SSK@...`, `USK@
 timeout is 60000 milliseconds. `format=text` returns UTF-8 `contentText`; `format=base64` returns
 `contentBase64`. App principals cannot use this route for `file:`, `http:`, `https:`, loopback,
 LAN, or absolute local-path fetches.
+
+Contract version 7 adds the local Trust Graph Preview service and the bounded AppVault
+trust-statement signing route:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/trust-graph/status` | `trust.read` | Read local preview service status and document type metadata. |
+| `GET /api/v1/trust-graph/anchors` | `trust.read` | List local trust anchors. |
+| `POST /api/v1/trust-graph/anchors` | `trust.write` | Add or replace one local trust anchor. |
+| `DELETE /api/v1/trust-graph/anchors/{fingerprint}` | `trust.write` | Remove one local trust anchor. |
+| `POST /api/v1/trust-graph/import` | `trust.write` | Import one bounded `crypta.trust.statement.v1` document into the local preview store and record whether its AppVault preview signature verifies. |
+| `GET /api/v1/trust-graph/subjects` | `trust.read` | List subjects that have imported trust statement evidence. |
+| `GET /api/v1/trust-graph/statements` | `trust.read` | List redacted trust statement summaries with optional filters. |
+| `GET /api/v1/trust-graph/score` | `trust.read` | Query a deterministic local score and optional bounded evidence for one subject/context. |
+| `POST /api/v1/app-vault/identities/{identityId}/trust-statement` | `trust.write`, `vault.identities.read`, `vault.identities.use` | Ask AppVault to sign one bounded trust statement payload without exporting private identity material. |
+
+`trust.read` lets an app read local trust preview scores and evidence; it does not grant import,
+anchor mutation, queue access, vault access, catalog access, moderation authority, or content
+blocking. `trust.write` lets an app import trust statements and manage local anchors; it does not
+publish anything automatically, export private identity material, or create a global trust policy.
+
+The preview service is intentionally not a full Web of Trust implementation and does not provide
+old WebOfTrust plugin compatibility. Trust anchors are local, imported statements are
+non-contributing until anchored, and the scorer uses direct local anchors with a simple
+confidence-weighted average. No FNP/FCP/wire protocol, routing, datastore, peer-management, or
+FProxy browse behavior changes are part of contract v7. See
+[trust-graph-preview.md](trust-graph-preview.md).
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -256,7 +283,10 @@ separate release evidence: `app-platform.identity-profile-publish` for the profi
 `app-platform.generated-document-insert` for the app-generated document insert route, and
 `reference-app.profile-publisher` for the first-party Profile Publisher bundle. Content fetch has
 separate release evidence: `app-platform.content-fetch` for `POST /api/v1/content/fetch` and
-`reference-app.feed-reader` for the first-party Feed Reader bundle.
+`reference-app.feed-reader` for the first-party Feed Reader bundle. Trust Graph Preview has
+separate evidence: `reference-app.trust-graph` for the first-party app,
+`app-platform.trust-graph-preview` for the v7 trust routes and SDK helpers, and
+`app-platform.trust-statement-signing` for the bounded AppVault signing route and redaction checks.
 
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor
 parse failure, or strict compatibility verifier failure blocks promotion unless an explicit

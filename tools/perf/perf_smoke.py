@@ -42,6 +42,7 @@ FIRST_PARTY_APP_SIZE_TARGETS = (
     ("publisher", "publisher"),
     ("profile_publisher", "profile-publisher"),
     ("site_publisher", "site-publisher"),
+    ("trust_graph", "trust-graph"),
 )
 SENSITIVE_KEY_PATTERN = (
     r"[A-Za-z0-9_.-]*(?:token|password|passwd|secret|credential|authorization|cookie|"

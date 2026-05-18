@@ -25,27 +25,47 @@ import network.crypta.platform.appdist.AppDistributionException;
 final class MockPlatformApiFixtures {
   /** Built-in JSON fixtures keyed by the optional fixture file names accepted by the CLI. */
   private static final Map<String, String> DEFAULTS =
-      Map.of(
-          "node.json",
-          """
-          {"nodeName":"Crypta local dev","status":"mock","apiVersion":"v1"}
-          """,
-          "queue.json",
-          """
-          {"page":"downloads","requests":[{"id":"mock-download-1","name":"Example download","state":"running","priority":"normal"},{"id":"mock-insert-1","name":"Example insert","state":"queued","priority":"low"}],"contentHtml":"<p>Mock queue data</p>"}
-          """,
-          "vault-identities.json",
-          """
-          {"identities":[{"identityId":"local-profile","id":"local-profile","label":"Local Profile","displayName":"Local Profile","kind":"mock","status":"available","usageScopes":["metadata.read","sign.domain-separated"]}]}
-          """,
-          "vault-grants.json",
-          """
-          {"grants":[{"id":"grant-local-profile","identityId":"local-profile","scopes":["metadata.read"],"status":"mock-granted"}]}
-          """,
-          "apps-current.json",
-          """
-          {"appId":"${APP_ID}","name":"${APP_NAME}","version":"${APP_VERSION}","mode":"mock-dev"}
-          """);
+      Map.ofEntries(
+          Map.entry(
+              "node.json",
+              """
+              {"nodeName":"Crypta local dev","status":"mock","apiVersion":"v1"}
+              """),
+          Map.entry(
+              "queue.json",
+              """
+              {"page":"downloads","requests":[{"id":"mock-download-1","name":"Example download","state":"running","priority":"normal"},{"id":"mock-insert-1","name":"Example insert","state":"queued","priority":"low"}],"contentHtml":"<p>Mock queue data</p>"}
+              """),
+          Map.entry(
+              "vault-identities.json",
+              """
+              {"identities":[{"identityId":"local-profile","id":"local-profile","label":"Local Profile","displayName":"Local Profile","kind":"mock","status":"available","fingerprint":"mock-profile-fingerprint","usageScopes":["metadata.read","sign.domain-separated"]}]}
+              """),
+          Map.entry(
+              "vault-grants.json",
+              """
+              {"grants":[{"id":"grant-local-profile","identityId":"local-profile","scopes":["metadata.read"],"status":"mock-granted"}]}
+              """),
+          Map.entry(
+              "apps-current.json",
+              """
+              {"appId":"${APP_ID}","name":"${APP_NAME}","version":"${APP_VERSION}","mode":"mock-dev"}
+              """),
+          Map.entry(
+              "trust-graph-status.json",
+              """
+              {"trustGraph":{"available":true,"service":"trust-graph-preview","documentType":"crypta.trust.statement.v1","contentType":"application/vnd.crypta.trust+json","statementCount":1,"anchorCount":1,"scoring":"mock-direct-local-anchor","completeWot":false,"mock":true}}
+              """),
+          Map.entry(
+              "trust-graph-anchors.json",
+              """
+              {"anchors":[{"issuerFingerprint":"mock-profile-fingerprint","label":"Local Profile","source":"manual","addedAt":"2026-05-17T00:00:00Z"}]}
+              """),
+          Map.entry(
+              "trust-graph-score.json",
+              """
+              {"score":{"subject":{"kind":"profile","uri":"USK@mock/profile.json"},"context":"profile","status":"trusted","score":50,"confidence":80,"evidenceCount":1,"contributingEvidenceCount":1,"evidence":[{"issuerFingerprint":"mock-profile-fingerprint","score":50,"confidence":80,"issuedAt":"2026-05-16T00:00:00Z","contributing":true,"source":"mock-fixture"}],"mock":true}}
+              """));
 
   /** Deterministic app-owned identity creation response. */
   static final String CREATED_IDENTITY_RESPONSE =
@@ -57,6 +77,12 @@ final class MockPlatformApiFixtures {
   static final String APP_DOCUMENT_INSERT_RESPONSE =
       """
       {"status":"ok","mock":true,"action":"queue.inserts.app-document","identifier":"mock-app-document","uri":"CHK@mock-app-document"}
+      """;
+
+  /** Deterministic bounded content-fetch response containing a mock trust statement document. */
+  static final String CONTENT_FETCH_TRUST_STATEMENT_RESPONSE =
+      """
+      {"requestedUri":"CHK@mock-trust-statement","resolvedUri":"CHK@mock-trust-statement","format":"text","bytesLength":445,"contentText":"{\\"type\\":\\"crypta.trust.statement.v1\\",\\"payload\\":{\\"issuer\\":{\\"identityId\\":\\"local-profile\\",\\"publicKeyFingerprint\\":\\"mock-profile-fingerprint\\"},\\"subject\\":{\\"kind\\":\\"profile\\",\\"uri\\":\\"USK@mock/profile.json\\"},\\"context\\":\\"profile\\",\\"score\\":50,\\"confidence\\":80,\\"issuedAt\\":\\"2026-05-16T00:00:00Z\\"},\\"signature\\":{\\"algorithm\\":\\"app-vault-ed25519-preview\\",\\"domain\\":\\"crypta.trust.statement.v1\\",\\"value\\":\\"mock-preview-signature\\"}}","mock":true}
       """;
 
   /** Optional normalized directory containing user-supplied JSON fixture files. */
@@ -137,6 +163,36 @@ final class MockPlatformApiFixtures {
   }
 
   /**
+   * Returns Trust Graph Preview status fixture JSON.
+   *
+   * @return fixture-backed or built-in trust graph status JSON
+   * @throws IOException if fixture loading fails
+   */
+  String trustGraphStatus() throws IOException {
+    return fixture("trust-graph-status.json");
+  }
+
+  /**
+   * Returns local trust-anchor fixture JSON.
+   *
+   * @return fixture-backed or built-in anchor list JSON
+   * @throws IOException if fixture loading fails
+   */
+  String trustGraphAnchors() throws IOException {
+    return fixture("trust-graph-anchors.json");
+  }
+
+  /**
+   * Returns deterministic Trust Graph Preview score JSON.
+   *
+   * @return fixture-backed or built-in score JSON
+   * @throws IOException if fixture loading fails
+   */
+  String trustGraphScore() throws IOException {
+    return fixture("trust-graph-score.json");
+  }
+
+  /**
    * Builds a deterministic profile document preview response for a mock identity.
    *
    * @param identityId identity id segment supplied in the route
@@ -150,6 +206,29 @@ final class MockPlatformApiFixtures {
         + " document\",\"tags\":[\"local\",\"mock\"]},\"identity\":{\"identityId\":\""
         + escapedIdentityId
         + "\",\"fingerprint\":\"mock-profile-fingerprint\",\"algorithm\":\"Ed25519\"}},\"mock\":true,\"action\":\"app-vault.identities.profile-document\"}";
+  }
+
+  /**
+   * Builds a deterministic trust-statement preview response for a mock identity.
+   *
+   * @param identityId identity id segment supplied in the route
+   * @return compact JSON response with public trust statement metadata only
+   */
+  String trustStatement(String identityId) {
+    String escapedIdentityId = Json.escape(identityId);
+    return "{\"trustStatement\":{\"identity\":{\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"publicKeyFingerprint\":\"mock-profile-fingerprint\",\"publicKeyBase64\":\"mock-public-key-base64\",\"appId\":\""
+        + Json.escape(appId)
+        + "\"},\"payloadHash\":\"5e1ec6f9a9a04cb4738f711bd49a9b25f6f0d5565d3c0845eb55b443f086c53a"
+        + "\",\"domain\":\"crypta.trust.statement.v1\",\"trustStatement\":{\"type\":\"crypta.trust.statement.v1\","
+        + "\"payload\":{\"issuer\":{\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"publicKeyFingerprint\":\"mock-profile-fingerprint\",\"publicKeyBase64\":\"mock-public-key-base64\"},\"subject\":{\"kind\":\"profile\","
+        + "\"uri\":\"USK@mock/profile.json\"},\"context\":\"profile\",\"score\":50,\"confidence\":80,"
+        + "\"issuedAt\":\"2026-05-16T00:00:00Z\"},\"signature\":{\"algorithm\":\"app-vault-ed25519-preview\","
+        + "\"domain\":\"crypta.trust.statement.v1\",\"value\":\"mock-preview-signature\"}},\"mock\":true,"
+        + "\"action\":\"app-vault.identities.trust-statement\"}}";
   }
 
   /**
