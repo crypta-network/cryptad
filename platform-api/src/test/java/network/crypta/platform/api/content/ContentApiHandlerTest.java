@@ -46,6 +46,39 @@ class ContentApiHandlerTest {
   }
 
   @Test
+  void fetch_whenLowercaseContentKeyPrefixesProvided_expectRuntimeFetchAllowed() {
+    List<String> requestedUris =
+        List.of(
+            "chk@binary-content",
+            "ssk@site/doc",
+            "usk@site/feed/0/feed.json",
+            "ksk@feed-snapshot",
+            "crypta:usk@site/feed/0/feed.json");
+
+    for (String requestedUri : requestedUris) {
+      String expectedRuntimeUri =
+          requestedUri.startsWith("crypta:")
+              ? requestedUri.substring("crypta:".length())
+              : requestedUri;
+      FakeContentFetchPort port =
+          new FakeContentFetchPort(
+              request ->
+                  new BoundedContentFetchResult(
+                      "feed".getBytes(StandardCharsets.UTF_8),
+                      request.uri(),
+                      expectedRuntimeUri,
+                      null));
+
+      Map<String, Object> result =
+          new ContentApiHandler(port).fetch(Map.of("uri", List.of(requestedUri)));
+
+      assertEquals(requestedUri, result.get("requestedUri"), requestedUri);
+      assertEquals(expectedRuntimeUri, result.get("resolvedUri"), requestedUri);
+      assertEquals(expectedRuntimeUri, port.lastRequest.uri(), requestedUri);
+    }
+  }
+
+  @Test
   void fetch_whenBase64Requested_expectBase64Response() {
     FakeContentFetchPort port =
         new FakeContentFetchPort(

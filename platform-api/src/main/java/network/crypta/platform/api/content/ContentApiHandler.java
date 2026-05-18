@@ -273,10 +273,14 @@ public final class ContentApiHandler {
   }
 
   private static boolean isUnsupportedContentKey(String uri) {
-    return !(uri.startsWith(CHK_PREFIX)
-        || uri.startsWith(SSK_PREFIX)
-        || uri.startsWith(USK_PREFIX)
-        || uri.startsWith(KSK_PREFIX));
+    return !(startsWithContentKeyPrefix(uri, CHK_PREFIX)
+        || startsWithContentKeyPrefix(uri, SSK_PREFIX)
+        || startsWithContentKeyPrefix(uri, USK_PREFIX)
+        || startsWithContentKeyPrefix(uri, KSK_PREFIX));
+  }
+
+  private static boolean startsWithContentKeyPrefix(String uri, String prefix) {
+    return uri.regionMatches(true, 0, prefix, 0, prefix.length());
   }
 
   private static PlatformApiException invalidContentSource() {

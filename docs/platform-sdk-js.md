@@ -188,8 +188,8 @@ await CryptaPlatform.feed.publishSnapshot({
 `CryptaPlatform.content.fetchText` and `CryptaPlatform.content.fetchBase64` call the same route
 with the app browser session header and return the JSON fetch response. Feed apps should pass
 Crypta content keys only, including `CHK@`, `SSK@`, `USK@`, `KSK@`, and matching `crypta:` forms;
-the daemon rejects local files, arbitrary HTTP(S) URLs, loopback/LAN URLs, and absolute local paths
-for app principals.
+the key-type prefix is accepted case-insensitively, and the daemon rejects local files, arbitrary
+HTTP(S) URLs, loopback/LAN URLs, and absolute local paths for app principals.
 `CryptaPlatform.feed.publishSnapshot` wraps the generated-document insert path and requires
 `content.insert.app-document` plus `queue.write`. Feed apps should render summaries, item counts,
 timestamps, and sanitized errors, but they must not persist raw feed bodies, raw request bodies,
