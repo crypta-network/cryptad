@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trust Graph Preview</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+  <main class="cr-shell trust-graph-layout">
+    <header class="cr-header">
+      <div>
+        <p class="cr-label">Crypta trust app</p>
+        <h1>Trust Graph Preview</h1>
+      </div>
+      <div class="header-actions">
+        <button class="cr-button cr-button--secondary" id="refresh-status-button" type="button">
+          Refresh status
+        </button>
+        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+          Refresh queue
+        </button>
+      </div>
+    </header>
+
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>trust.read</code> reads status, anchors, imported statements, and scores.</li>
+        <li><code>trust.write</code> imports bounded trust statements and manages local anchors.</li>
+        <li><code>content.fetch</code> fetches statement text through the bounded SDK helper.</li>
+        <li><code>content.insert.app-document</code> stages generated statement documents.</li>
+        <li><code>queue.read</code> previews local queue entries for trust publications.</li>
+        <li><code>queue.write</code> creates queue entries for generated statement documents.</li>
+        <li><code>vault.identities.read</code> lists visible identity metadata.</li>
+        <li><code>vault.identities.create</code> creates app-owned statement identities.</li>
+        <li><code>vault.identities.use</code> requests vault-authored trust statements.</li>
+      </ul>
+    </section>
+
+    <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
+      <h2 id="safe-use-title">Overview</h2>
+      <p>Trust Graph Preview is a local preview, not full WoT or moderation.</p>
+      <p>App id: <code>trust-graph</code>. Platform API contract: <code>7</code>.</p>
+      <ul>
+        <li>Anchors, identities, fetched statements, scores, and results stay in memory.</li>
+        <li>Anchors are local and are not published automatically.</li>
+        <li>Fetched statement content is rendered only as text.</li>
+        <li>Statement authorship uses vault helpers without exposing private signing secrets.</li>
+      </ul>
+    </section>
+
+    <section class="workspace-grid" aria-label="Trust graph workspace">
+      <section class="cr-card status-panel" aria-labelledby="status-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Graph health</p>
+            <h2 id="status-title">Status</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="load-identities-button" type="button">
+            Identities
+          </button>
+        </div>
+        <div class="summary-list" id="status-summary">
+          <p class="cr-empty">Status loads after the app opens.</p>
+        </div>
+        <form class="identity-form" id="identity-form">
+          <label class="cr-field">
+            <span class="cr-label">New identity label</span>
+            <input class="cr-input" name="label" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">Create identity</button>
+        </form>
+        <div class="summary-list" id="identity-list">
+          <p class="cr-empty">Identity metadata appears here.</p>
+        </div>
+      </section>
+
+      <section class="cr-card anchors-panel" aria-labelledby="anchors-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Trust roots</p>
+            <h2 id="anchors-title">Anchors</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="refresh-anchors-button" type="button">
+            Refresh
+          </button>
+        </div>
+        <form class="anchor-form" id="anchor-form">
+          <label class="cr-field">
+            <span class="cr-label">Anchor identity</span>
+            <input
+              class="cr-input"
+              name="identity"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              required>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Label</span>
+            <input class="cr-input" name="label" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">Add anchor</button>
+        </form>
+        <div class="summary-list" id="anchor-list">
+          <p class="cr-empty">Trust anchors load after refresh.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="workflow-grid" aria-label="Statement workflow">
+      <section class="cr-card fetch-panel" aria-labelledby="fetch-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Statement import</p>
+            <h2 id="fetch-title">Fetch and import</h2>
+          </div>
+        </div>
+        <form class="stacked-form" id="fetch-form">
+          <label class="cr-field">
+            <span class="cr-label">Statement URI</span>
+            <input
+              class="cr-input"
+              name="uri"
+              type="text"
+              placeholder="crypta:CHK@statement"
+              autocomplete="off"
+              spellcheck="false">
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Pasted statement JSON</span>
+            <textarea
+              class="cr-input"
+              name="document"
+              rows="7"
+              autocomplete="off"
+              spellcheck="false"></textarea>
+          </label>
+          <div class="button-row">
+            <button class="cr-button cr-button--primary" name="action" value="fetch" type="submit">
+              Fetch statement
+            </button>
+            <button class="cr-button cr-button--secondary" name="action" value="import" type="submit">
+              Import pasted statement
+            </button>
+          </div>
+        </form>
+        <div class="statement-preview" id="statement-preview">
+          <p class="cr-empty">Fetched statement text appears here.</p>
+        </div>
+      </section>
+
+      <section class="cr-card score-panel" aria-labelledby="score-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Trust path</p>
+            <h2 id="score-title">Score</h2>
+          </div>
+        </div>
+        <form class="score-form" id="score-form">
+          <label class="cr-field">
+            <span class="cr-label">Subject kind</span>
+            <select class="cr-input" name="subjectKind">
+              <option value="profile">Profile</option>
+              <option value="feed">Feed</option>
+              <option value="app">App</option>
+              <option value="identity">Identity</option>
+              <option value="uri">URI</option>
+            </select>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Subject URI or identity</span>
+            <input
+              class="cr-input"
+              name="subject"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              required>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Context</span>
+            <input
+              class="cr-input"
+              name="context"
+              type="text"
+              autocomplete="off"
+              spellcheck="false">
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">Calculate score</button>
+        </form>
+        <div class="summary-list" id="score-result">
+          <p class="cr-empty">Trust score results appear here.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="publish-grid" aria-label="Publish trust statement">
+      <form class="cr-card publish-panel" id="publish-form">
+        <div class="panel-heading publish-panel__wide">
+          <div>
+            <p class="cr-label">Generated document</p>
+            <h2>Create Trust Statement</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Author identity</span>
+          <input
+            class="cr-input"
+            name="authorIdentity"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Subject kind</span>
+          <select class="cr-input" name="subjectKind">
+            <option value="profile">Profile</option>
+            <option value="feed">Feed</option>
+            <option value="app">App</option>
+            <option value="identity">Identity</option>
+            <option value="uri">URI</option>
+          </select>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Subject URI or identity</span>
+          <input
+            class="cr-input"
+            name="subjectIdentity"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Trust value</span>
+          <input class="cr-input" name="value" type="number" min="-100" max="100" step="1" required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Context</span>
+          <input class="cr-input" name="context" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="cr-field publish-panel__wide">
+          <span class="cr-label">Reason</span>
+          <textarea class="cr-input" name="reason" rows="4"></textarea>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@trust-statement"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input
+            class="cr-input"
+            name="identifier"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <button class="cr-button cr-button--primary publish-panel__wide" type="submit">
+          Publish statement
+        </button>
+        <div class="summary-list publish-panel__wide" id="publish-result">
+          <p class="cr-empty">Publish results stay only in this page.</p>
+        </div>
+      </form>
+
+      <section class="cr-card queue-panel" aria-labelledby="queue-title">
+        <div class="panel-heading">
+          <h2 id="queue-title">Queue preview</h2>
+          <button
+            class="cr-button cr-button--secondary"
+            id="secondary-refresh-queue-button"
+            type="button">
+            Refresh
+          </button>
+        </div>
+        <div class="summary-list queue-content" id="queue-preview">
+          <p class="cr-empty">Queue data loads after refresh.</p>
+        </div>
+      </section>
+    </section>
+
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script src="./crypta-ui/crypta-ui-components.js" defer></script>
+  <script src="./crypta-platform.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

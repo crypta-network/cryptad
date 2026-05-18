@@ -42,7 +42,7 @@ class ProfilePublisherBundleStagingTest {
           "vault.identities.create",
           "vault.identities.use");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 5;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 6;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 7;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",

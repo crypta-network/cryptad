@@ -6,7 +6,8 @@ catalog.
 ## Scope
 
 The first-party beta catalog is a signed catalog for the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader`. It does not auto-install apps and does not
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and
+`trust-graph`. It does not auto-install apps and does not
 weaken any existing gates. Catalog signatures, bundle signatures, review receipts, artifact
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
@@ -91,7 +92,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -105,7 +106,7 @@ permissions.rationale.vault.identities.create=Creates an app-owned profile ident
 permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
 permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
 api.minimumVersion=5
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -122,8 +123,30 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=6
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=false
+```
+
+Trust Graph Preview descriptors should include trust, vault, content-fetch, and generated-document
+publication rationales, while making clear that the app is a local preview and not full WoT or a
+moderation system:
+
+```properties
+permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use
+permissions.rationale.trust.read=Reads local trust graph scores and evidence for preview queries.
+permissions.rationale.trust.write=Imports local trust statements and manages local trust anchors.
+permissions.rationale.vault.identities.create=Creates an app-owned trust identity without exporting private material.
+permissions.rationale.vault.identities.use=Uses the bounded trust-statement route to sign trust statements.
+permissions.rationale.content.fetch=Fetches bounded Crypta trust documents selected by the user.
+permissions.rationale.content.insert.app-document=Publishes generated trust statements as Crypta content.
+permissions.rationale.queue.write=Creates generated trust statement publication inserts.
+permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+categories=identity,trust,preview
+review.status=reviewed
+review.note=First-party local trust graph preview; not full WoT or moderation.
+api.minimumVersion=7
+api.maximumTestedVersion=7
+api.experimentalCapabilitiesAccepted=true
 ```
 
 Create, sign, and verify the catalog with the existing CLI:
@@ -139,6 +162,7 @@ platform-devtools/build/install/crypta-app/bin/crypta-app catalog create \
   --entry build/first-party-beta-catalog/site-publisher.properties \
   --entry build/first-party-beta-catalog/profile-publisher.properties \
   --entry build/first-party-beta-catalog/feed-reader.properties \
+  --entry build/first-party-beta-catalog/trust-graph.properties \
   --overwrite
 
 platform-devtools/build/install/crypta-app/bin/crypta-app catalog sign \
@@ -171,6 +195,9 @@ transport tests, first-party metadata documentation, and whether the certificati
 source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
 `app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`
-and `app-platform.content-fetch`. Normal certification must not record tokens, form passwords,
-private insert URIs, raw request bodies, raw feed bodies, private keys, signatures, or absolute
-staging paths. It does not fetch a public Crypta network catalog during normal unit tests.
+and `app-platform.content-fetch`. Trust Graph Preview is covered by
+`reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
+`app-platform.trust-statement-signing`. Normal certification must not record tokens, form
+passwords, private insert URIs, raw request bodies, raw feed bodies, raw trust statement bodies
+from real users, private keys, signatures, or absolute staging paths. It does not fetch a public
+Crypta network catalog during normal unit tests.

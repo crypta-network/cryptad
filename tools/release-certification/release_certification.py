@@ -862,6 +862,8 @@ def app_platform_evidence(
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
         "app-platform.content-fetch",
+        "app-platform.trust-graph-preview",
+        "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -875,6 +877,7 @@ def app_platform_evidence(
         "reference-apps.content",
         "reference-app.profile-publisher",
         "reference-app.feed-reader",
+        "reference-app.trust-graph",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "apphost.sandbox-provider",
@@ -1072,6 +1075,7 @@ EXPECTED_FIRST_PARTY_APPS = (
     "site-publisher",
     "profile-publisher",
     "feed-reader",
+    "trust-graph",
 )
 EXPECTED_VAULT_CAPABILITIES = (
     "vault.secrets.read",
@@ -1946,28 +1950,46 @@ def evaluate_reference_content_gate(
     previous_profile_item = previous.get("reference-app.profile-publisher")
     feed_reader_item = current.get("reference-app.feed-reader")
     previous_feed_reader_item = previous.get("reference-app.feed-reader")
+    trust_graph_item = current.get("reference-app.trust-graph")
+    previous_trust_graph_item = previous.get("reference-app.trust-graph")
     generated_document_item = current.get("app-platform.generated-document-insert")
     previous_generated_document_item = previous.get("app-platform.generated-document-insert")
     content_fetch_item = current.get("app-platform.content-fetch")
     previous_content_fetch_item = previous.get("app-platform.content-fetch")
+    trust_graph_preview_item = current.get("app-platform.trust-graph-preview")
+    previous_trust_graph_preview_item = previous.get("app-platform.trust-graph-preview")
+    trust_statement_signing_item = current.get("app-platform.trust-statement-signing")
+    previous_trust_statement_signing_item = previous.get("app-platform.trust-statement-signing")
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
     feed_reader_details = evidence_details(feed_reader_item)
+    trust_graph_details = evidence_details(trust_graph_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
+    trust_graph_preview_details = evidence_details(trust_graph_preview_item)
+    trust_statement_signing_details = evidence_details(trust_statement_signing_item)
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
     feed_reader_checks = nested_dict(feed_reader_details, "checks")
+    trust_graph_checks = nested_dict(trust_graph_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
     previous_profile_status = evidence_status(previous_profile_item)
     feed_reader_status = evidence_status(feed_reader_item)
     previous_feed_reader_status = evidence_status(previous_feed_reader_item)
+    trust_graph_status = evidence_status(trust_graph_item)
+    previous_trust_graph_status = evidence_status(previous_trust_graph_item)
     generated_document_status = evidence_status(generated_document_item)
     previous_generated_document_status = evidence_status(previous_generated_document_item)
     content_fetch_status = evidence_status(content_fetch_item)
     previous_content_fetch_status = evidence_status(previous_content_fetch_item)
+    trust_graph_preview_status = evidence_status(trust_graph_preview_item)
+    previous_trust_graph_preview_status = evidence_status(previous_trust_graph_preview_item)
+    trust_statement_signing_status = evidence_status(trust_statement_signing_item)
+    previous_trust_statement_signing_status = evidence_status(
+        previous_trust_statement_signing_item
+    )
     gate_details: dict[str, Any] = {}
     failures: list[str] = []
     warnings: list[str] = []
@@ -1994,12 +2016,23 @@ def evaluate_reference_content_gate(
     for evidence_id, current_status, previous_status_value in (
         ("reference-app.profile-publisher", profile_status, previous_profile_status),
         ("reference-app.feed-reader", feed_reader_status, previous_feed_reader_status),
+        ("reference-app.trust-graph", trust_graph_status, previous_trust_graph_status),
         (
             "app-platform.generated-document-insert",
             generated_document_status,
             previous_generated_document_status,
         ),
         ("app-platform.content-fetch", content_fetch_status, previous_content_fetch_status),
+        (
+            "app-platform.trust-graph-preview",
+            trust_graph_preview_status,
+            previous_trust_graph_preview_status,
+        ),
+        (
+            "app-platform.trust-statement-signing",
+            trust_statement_signing_status,
+            previous_trust_statement_signing_status,
+        ),
     ):
         if current_status in {"fail", "missing", "skip"}:
             failures.append(f"{evidence_id} evidence is not passing")
@@ -2041,6 +2074,25 @@ def evaluate_reference_content_gate(
     elif feed_reader_status == "pass":
         warnings.append("Feed Reader coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.feed-reader")
+    if trust_graph_details.get("appId") not in {"trust-graph", None}:
+        failures.append("Trust Graph Preview evidence is not for trust-graph")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
+    if trust_graph_checks:
+        for key in (
+            "manifestDeclaresTrustGraph",
+            "manifestDeclaresTrustPermissions",
+            "manifestUsesContractV7",
+            "usesTrustHelpers",
+            "usesBoundedTrustSigningHelper",
+            "usesContentFetchAndQueuePreview",
+            "docsDescribePreviewLimits",
+        ):
+            if trust_graph_checks.get(key) is not True:
+                failures.append(f"Trust Graph Preview reference app check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
+    elif trust_graph_status == "pass":
+        warnings.append("Trust Graph Preview coverage lacks detailed staged app checks")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.trust-graph")
     generated_checks = nested_dict(generated_document_details, "checks")
     if generated_checks and generated_checks.get("routeDocumented") is not True:
         failures.append("Generated document insert route documentation check failed")
@@ -2049,6 +2101,22 @@ def evaluate_reference_content_gate(
     if content_fetch_checks and content_fetch_checks.get("routeDocumented") is not True:
         failures.append("Content fetch route documentation check failed")
         add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.content-fetch")
+    trust_preview_checks = nested_dict(trust_graph_preview_details, "checks")
+    if trust_preview_checks:
+        for key in ("contractVersionV7", "routesPresent", "capabilityGatesPresent"):
+            if trust_preview_checks.get(key) is not True:
+                failures.append(f"Trust graph preview API check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.trust-graph-preview"
+                )
+    trust_signing_checks = nested_dict(trust_statement_signing_details, "checks")
+    if trust_signing_checks:
+        for key in ("routeInContract", "capabilitiesInContract", "handlerSignsCanonicalPayload"):
+            if trust_signing_checks.get(key) is not True:
+                failures.append(f"Trust statement signing check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.trust-statement-signing"
+                )
     gate_details.update(
         {
             "currentStatus": status,
@@ -2058,17 +2126,24 @@ def evaluate_reference_content_gate(
             "previousProfilePublisherStatus": previous_profile_status,
             "feedReaderStatus": feed_reader_status,
             "previousFeedReaderStatus": previous_feed_reader_status,
+            "trustGraphStatus": trust_graph_status,
+            "previousTrustGraphStatus": previous_trust_graph_status,
             "generatedDocumentInsertStatus": generated_document_status,
             "previousGeneratedDocumentInsertStatus": previous_generated_document_status,
             "contentFetchStatus": content_fetch_status,
             "previousContentFetchStatus": previous_content_fetch_status,
+            "trustGraphPreviewStatus": trust_graph_preview_status,
+            "previousTrustGraphPreviewStatus": previous_trust_graph_preview_status,
+            "trustStatementSigningStatus": trust_statement_signing_status,
+            "previousTrustStatementSigningStatus": previous_trust_statement_signing_status,
             "profilePublisherAppId": profile_details.get("appId"),
             "feedReaderAppId": feed_reader_details.get("appId"),
+            "trustGraphAppId": trust_graph_details.get("appId"),
         }
     )
     return gate_from_issues(
         "ecosystem.reference-content-apps",
-        "Reference content, profile, and feed app evidence passed.",
+        "Reference content, profile, feed, and trust app evidence passed.",
         failures,
         warnings,
         gate_details,
@@ -2387,6 +2462,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
         "app-platform.content-fetch",
+        "app-platform.trust-graph-preview",
+        "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "app-catalog.first-party-beta",
@@ -2400,6 +2477,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-apps.content",
         "reference-app.profile-publisher",
         "reference-app.feed-reader",
+        "reference-app.trust-graph",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -2860,8 +2938,20 @@ def run_self_test(repo_root: Path) -> None:
             evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
         ), evidence_by_id
         assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-platform.trust-graph-preview"][
+            "requiredForReleaseCandidate"
+        ] is True
+        assert (
+            evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
+        ), evidence_by_id
+        assert evidence_by_id["app-platform.trust-statement-signing"][
+            "requiredForReleaseCandidate"
+        ] is True
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["reference-app.trust-graph"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
@@ -3405,6 +3495,7 @@ def run_self_test(repo_root: Path) -> None:
                             "site-publisher": {},
                             "profile-publisher": {},
                             "feed-reader": {},
+                            "trust-graph": {},
                         }
                     }
                 ),
@@ -3461,6 +3552,25 @@ def run_self_test(repo_root: Path) -> None:
             == "fail"
         )
 
+        trust_graph_missing_path = write_app_summary_variant(
+            "trust-graph-missing",
+            lambda value: update_evidence(
+                value,
+                "reference-app.trust-graph",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        trust_graph_missing_summary, trust_graph_missing_exit_code = run_with_previous(
+            "trust-graph-missing-cert", app_platform_summary=trust_graph_missing_path
+        )
+        assert trust_graph_missing_exit_code == 1, trust_graph_missing_summary
+        assert (
+            gate_by_id(trust_graph_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
+
         content_fetch_missing_path = write_app_summary_variant(
             "content-fetch-missing",
             lambda value: update_evidence(
@@ -3475,6 +3585,44 @@ def run_self_test(repo_root: Path) -> None:
         assert content_fetch_missing_exit_code == 1, content_fetch_missing_summary
         assert (
             gate_by_id(content_fetch_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
+
+        trust_preview_missing_path = write_app_summary_variant(
+            "trust-preview-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.trust-graph-preview",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        trust_preview_missing_summary, trust_preview_missing_exit_code = run_with_previous(
+            "trust-preview-missing-cert", app_platform_summary=trust_preview_missing_path
+        )
+        assert trust_preview_missing_exit_code == 1, trust_preview_missing_summary
+        assert (
+            gate_by_id(trust_preview_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
+
+        trust_signing_missing_path = write_app_summary_variant(
+            "trust-signing-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.trust-statement-signing",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        trust_signing_missing_summary, trust_signing_missing_exit_code = run_with_previous(
+            "trust-signing-missing-cert", app_platform_summary=trust_signing_missing_path
+        )
+        assert trust_signing_missing_exit_code == 1, trust_signing_missing_summary
+        assert (
+            gate_by_id(trust_signing_missing_summary, "ecosystem.reference-content-apps")[
                 "status"
             ]
             == "fail"

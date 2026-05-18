@@ -1,6 +1,7 @@
 package network.crypta.platform.appvault;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
@@ -712,6 +713,30 @@ public final class AppVaultService {
    *     signature
    */
   public synchronized AppIdentityUsageResult useIdentity(AppIdentityUsageRequest request) {
+    return useIdentity(request, false);
+  }
+
+  /**
+   * Uses a granted identity to sign an already domain-separated bounded payload.
+   *
+   * <p>This internal service method is intended for Platform API document builders that own and
+   * validate a fixed payload format before calling the vault, such as the Trust Graph Preview
+   * trust-statement route. It is not exposed as a generic browser-safe signing endpoint. The caller
+   * must provide bytes that already include the document domain separator; the vault still performs
+   * app access, grant, identity-kind, scope, and size checks before private material is decrypted.
+   *
+   * @param request immutable identity-use request whose payload is the exact domain-separated bytes
+   *     to sign
+   * @return public result containing algorithm, fingerprint, payload hash, signed payload text, and
+   *     signature
+   */
+  public synchronized AppIdentityUsageResult signDomainSeparatedPayload(
+      AppIdentityUsageRequest request) {
+    return useIdentity(request, true);
+  }
+
+  private AppIdentityUsageResult useIdentity(
+      AppIdentityUsageRequest request, boolean signRequestPayload) {
     requireAppAccessAllowed(request.appId());
     requireGrant(request);
     AppIdentityRecord identity = getIdentity(request.identityId());
@@ -734,17 +759,20 @@ public final class AppVaultService {
               .generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
       String payloadHash = sha256Hex(request.payload());
       String domainSeparatedPayload =
-          "CryptaAppVault:v1:"
-              + request.appId()
-              + ":"
-              + request.identityId()
-              + ":"
-              + request.purpose()
-              + ":"
-              + payloadHash;
+          signRequestPayload
+              ? new String(request.payload(), StandardCharsets.UTF_8)
+              : "CryptaAppVault:v1:"
+                  + request.appId()
+                  + ":"
+                  + request.identityId()
+                  + ":"
+                  + request.purpose()
+                  + ":"
+                  + payloadHash;
       Signature signature = Signature.getInstance(ALGORITHM_ED25519);
       signature.initSign(privateKey, secureRandom);
-      signature.update(AppVaultEnvelope.utf8(domainSeparatedPayload));
+      signature.update(
+          signRequestPayload ? request.payload() : AppVaultEnvelope.utf8(domainSeparatedPayload));
       AppIdentityUsageResult result =
           new AppIdentityUsageResult(
               identity.identityId(),

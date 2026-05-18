@@ -542,6 +542,52 @@ class AppVaultServiceTest {
   }
 
   @Test
+  void signDomainSeparatedPayload_whenGrantAllowsSigning_expectExactPayloadSigned()
+      throws IOException, GeneralSecurityException {
+    AppVaultService service = service();
+    AppIdentityRecord identity =
+        service.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            OPERATOR_PUBLISHER_LABEL,
+            null,
+            Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    service.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+        GRANTED_BY_OPERATOR,
+        "test grant",
+        null,
+        null);
+    byte[] canonicalTrustPayload =
+        bytes("crypta.trust.statement.v1\n{\"context\":\"profile\",\"score\":50}");
+
+    AppIdentityUsageResult result =
+        service.signDomainSeparatedPayload(
+            new AppIdentityUsageRequest(
+                APP_ID,
+                identity.identityId(),
+                AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED,
+                "crypta.trust.statement.v1",
+                canonicalTrustPayload));
+
+    assertEquals(
+        new String(canonicalTrustPayload, StandardCharsets.UTF_8), result.domainSeparatedPayload());
+    assertTrue(verify(result, result.domainSeparatedPayload()));
+    assertFalse(
+        verify(
+            result,
+            "CryptaAppVault:v1:"
+                + APP_ID
+                + ":"
+                + identity.identityId()
+                + ":crypta.trust.statement.v1:"
+                + result.payloadSha256()));
+    assertFalse(result.toString().contains(result.signatureBase64()));
+  }
+
+  @Test
   void createLocalSigningIdentity_whenReservedScopeRequested_expectRejectedBeforeStorage()
       throws IOException {
     AppVaultService service = service();

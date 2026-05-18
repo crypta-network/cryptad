@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 6;
+  public static final int CURRENT_CONTRACT_VERSION = 7;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -65,6 +65,7 @@ public record PlatformApiContract(
   private static final int RECOMMENDED_CATALOG_CONTRACT_VERSION = 4;
   private static final int PROFILE_PUBLISHING_CONTRACT_VERSION = 5;
   private static final int CONTENT_FETCH_CONTRACT_VERSION = 6;
+  private static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -91,6 +92,7 @@ public record PlatformApiContract(
   private static final String ROUTE_FAMILY_PEERS = "peers";
   private static final String ROUTE_FAMILY_QUEUE = "queue";
   private static final String ROUTE_FAMILY_SECURITY_LEVELS = "security-levels";
+  private static final String ROUTE_FAMILY_TRUST_GRAPH = "trust-graph";
   private static final String ROUTE_APP_VAULT_SECRET = "/app-vault/secrets/{name}";
   private static final String ROUTE_IDENTITY_VAULT_GRANT = "/identity-vault/grants/{grantId}";
   private static final String METHOD_DELETE = "DELETE";
@@ -286,6 +288,15 @@ public record PlatformApiContract(
         capability(
             PlatformApiCapabilities.SECURITY_READ, "Read security-level state and warnings."),
         capability(PlatformApiCapabilities.SECURITY_WRITE, "Change security-level settings."),
+        experimentalCapabilitySince(
+            PlatformApiCapabilities.TRUST_READ,
+            TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+            "Read local Trust Graph Preview status, anchors, subjects, statements, scores, and"
+                + " bounded evidence."),
+        experimentalCapabilitySince(
+            PlatformApiCapabilities.TRUST_WRITE,
+            TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+            "Import local trust statements and manage local Trust Graph Preview anchors."),
         capability(PlatformApiCapabilities.UPDATES_READ, "Read core update state."),
         capability(PlatformApiCapabilities.UPDATES_WRITE, "Trigger core update actions."),
         experimentalCapability(
@@ -453,6 +464,7 @@ public record PlatformApiContract(
         "Create a local directory insert request.");
     builder.queueAppDocumentPost();
     builder.contentFetchPost();
+    builder.trustGraphPreviewEndpoints();
     builder.post(
         ROUTE_FAMILY_QUEUE,
         "/queue/requests/remove",
@@ -701,6 +713,7 @@ public record PlatformApiContract(
         false,
         "Use one granted vault identity for a bounded operation.");
     builder.appVaultProfileDocumentPost();
+    builder.appVaultTrustStatementPost();
     builder.appVaultGet(
         "/app-vault/grants",
         "app-vault.grants.list",
@@ -758,12 +771,13 @@ public record PlatformApiContract(
 
   private static PlatformApiCapabilityDescriptor experimentalCapability(
       String name, String description) {
+    return experimentalCapabilitySince(name, APP_VAULT_CONTRACT_VERSION, description);
+  }
+
+  private static PlatformApiCapabilityDescriptor experimentalCapabilitySince(
+      String name, int sinceContractVersion, String description) {
     return new PlatformApiCapabilityDescriptor(
-        name,
-        PlatformApiStabilityLevel.EXPERIMENTAL,
-        APP_VAULT_CONTRACT_VERSION,
-        null,
-        description);
+        name, PlatformApiStabilityLevel.EXPERIMENTAL, sinceContractVersion, null, description);
   }
 
   private static String requireText(String value, String fieldName) {
@@ -997,6 +1011,38 @@ public record PlatformApiContract(
               "Fetch one bounded Crypta content document."));
     }
 
+    private void trustGraphPreviewEndpoints() {
+      trustGraphGet(
+          "/trust-graph/status", "trust-graph.status", "Read local Trust Graph Preview status.");
+      trustGraphGet(
+          "/trust-graph/anchors",
+          "trust-graph.anchors.list",
+          "List local Trust Graph Preview anchors.");
+      trustGraphPost(
+          "/trust-graph/anchors",
+          "trust-graph.anchors.add",
+          List.of(PlatformApiCapabilities.TRUST_WRITE),
+          "Add or replace one local Trust Graph Preview anchor.");
+      trustGraphAnchorDelete();
+      trustGraphPost(
+          "/trust-graph/import",
+          "trust-graph.import",
+          List.of(PlatformApiCapabilities.TRUST_WRITE),
+          "Import one bounded trust statement into the local preview store.");
+      trustGraphGet(
+          "/trust-graph/subjects",
+          "trust-graph.subjects",
+          "List subjects with imported trust statements.");
+      trustGraphGet(
+          "/trust-graph/statements",
+          "trust-graph.statements",
+          "List redacted imported trust statement summaries.");
+      trustGraphGet(
+          "/trust-graph/score",
+          "trust-graph.score",
+          "Read a deterministic local Trust Graph Preview score.");
+    }
+
     private void appVaultProfileDocumentPost() {
       endpoint(
           new EndpointSpec(
@@ -1015,6 +1061,25 @@ public record PlatformApiContract(
               "Create a signed bounded profile document for one app-visible vault identity."));
     }
 
+    private void appVaultTrustStatementPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_VAULT,
+              METHOD_POST,
+              "/app-vault/identities/{identityId}/trust-statement",
+              "app-vault.identities.trust-statement",
+              List.of(
+                  PlatformApiCapabilities.TRUST_WRITE,
+                  PlatformApiCapabilities.VAULT_IDENTITIES_READ,
+                  PlatformApiCapabilities.VAULT_IDENTITIES_USE),
+              TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Create a signed bounded trust statement for one app-visible vault identity."));
+    }
+
     private void endpoint(EndpointSpec spec) {
       endpoints.add(
           new PlatformApiEndpointDescriptor(
@@ -1030,6 +1095,55 @@ public record PlatformApiContract(
               spec.sinceContractVersion(),
               null,
               spec.description()));
+    }
+
+    private void trustGraphGet(String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_GET,
+              routeTemplate,
+              actionLabel,
+              List.of(PlatformApiCapabilities.TRUST_READ),
+              TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
+    }
+
+    private void trustGraphPost(
+        String routeTemplate, String actionLabel, List<String> capabilities, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
+    }
+
+    private void trustGraphAnchorDelete() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_DELETE,
+              "/trust-graph/anchors/{fingerprint}",
+              "trust-graph.anchors.remove",
+              List.of(PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Remove one local Trust Graph Preview anchor."));
     }
 
     private void appVaultEndpoint(

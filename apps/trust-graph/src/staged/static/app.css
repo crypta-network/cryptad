@@ -1,0 +1,138 @@
+.trust-graph-layout {
+  display: grid;
+  gap: var(--cr-space-4);
+}
+
+.header-actions,
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+  justify-content: flex-end;
+}
+
+.safe-use-panel,
+.status-panel,
+.anchors-panel,
+.fetch-panel,
+.score-panel,
+.publish-panel,
+.queue-panel {
+  display: grid;
+  gap: var(--cr-space-3);
+}
+
+.safe-use-panel h2,
+.panel-heading h2,
+.publish-panel h2,
+.queue-panel h2 {
+  margin: 0;
+}
+
+.safe-use-panel ul,
+.cr-permission-summary ul {
+  margin: 0;
+}
+
+.workspace-grid,
+.workflow-grid,
+.publish-grid {
+  align-items: start;
+  display: grid;
+  gap: var(--cr-space-4);
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.05fr);
+}
+
+.anchor-form,
+.identity-form,
+.score-form,
+.stacked-form,
+.publish-panel,
+.summary-list,
+.statement-preview {
+  display: grid;
+  gap: var(--cr-space-3);
+}
+
+.publish-panel {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.publish-panel__wide {
+  grid-column: 1 / -1;
+}
+
+.panel-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--cr-space-3);
+  justify-content: space-between;
+}
+
+.summary-item,
+.anchor-item,
+.identity-item,
+.queue-item {
+  border-bottom: var(--cr-border);
+  display: grid;
+  gap: var(--cr-space-2);
+  padding-bottom: var(--cr-space-3);
+}
+
+.summary-item:last-child,
+.anchor-item:last-child,
+.identity-item:last-child,
+.queue-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.anchor-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+}
+
+.summary-row,
+.summary-title,
+.summary-body,
+.statement-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.summary-body,
+.statement-text {
+  white-space: pre-wrap;
+}
+
+.statement-preview,
+.queue-content {
+  max-height: 28rem;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .workspace-grid,
+  .workflow-grid,
+  .publish-grid,
+  .publish-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .cr-header,
+  .panel-heading {
+    align-items: stretch;
+  }
+
+  .header-actions,
+  .panel-actions {
+    justify-content: stretch;
+  }
+}

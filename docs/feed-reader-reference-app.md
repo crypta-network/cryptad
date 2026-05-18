@@ -75,7 +75,7 @@ permissions.rationale.content.insert.app-document=Queues generated feed document
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 api.minimumVersion=6
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=false
 ```
 

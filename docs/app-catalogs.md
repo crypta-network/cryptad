@@ -44,7 +44,7 @@ catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
-catalog.entries=queue-manager,publisher,site-publisher,profile-publisher,feed-reader
+catalog.entries=queue-manager,publisher,site-publisher,profile-publisher,feed-reader,trust-graph
 
 app.queue-manager.id=queue-manager
 app.queue-manager.name=Queue Manager
@@ -68,7 +68,7 @@ app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.pn
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
-app.queue-manager.api.maximumTestedVersion=6
+app.queue-manager.api.maximumTestedVersion=7
 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
@@ -92,7 +92,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=6
+app.site-publisher.api.maximumTestedVersion=7
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -117,7 +117,7 @@ app.profile-publisher.permissions.rationale.queue.write=Creates the generated do
 app.profile-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=5
-app.profile-publisher.api.maximumTestedVersion=6
+app.profile-publisher.api.maximumTestedVersion=7
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader
@@ -141,8 +141,36 @@ app.feed-reader.permissions.rationale.queue.write=Creates generated feed publica
 app.feed-reader.permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=6
-app.feed-reader.api.maximumTestedVersion=6
+app.feed-reader.api.maximumTestedVersion=7
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
+
+app.trust-graph.id=trust-graph
+app.trust-graph.name=Trust Graph Preview
+app.trust-graph.version=1.0.0
+app.trust-graph.summary=Reference app for local trust statements, anchors, and preview scoring.
+app.trust-graph.bundle.uri=https://example.invalid/apps/trust-graph-1.0.0.zip
+app.trust-graph.bundle.sha256=<lowercase-hex-sha256-of-zip>
+app.trust-graph.bundle.size.bytes=12345
+app.trust-graph.bundle.type=zip
+app.trust-graph.permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use
+app.trust-graph.homepage=https://example.invalid/apps/trust-graph
+app.trust-graph.source=https://example.invalid/src/trust-graph
+app.trust-graph.license=GPL-3.0-only
+app.trust-graph.categories=identity,trust,preview
+app.trust-graph.review.status=reviewed
+app.trust-graph.review.note=First-party local trust graph preview; not full WoT or moderation.
+app.trust-graph.permissions.rationale.trust.read=Reads local trust graph scores and evidence for preview queries.
+app.trust-graph.permissions.rationale.trust.write=Imports local trust statements and manages local trust anchors.
+app.trust-graph.permissions.rationale.vault.identities.create=Creates an app-owned trust identity without exporting private material.
+app.trust-graph.permissions.rationale.vault.identities.use=Uses the bounded trust-statement route to sign trust statements.
+app.trust-graph.permissions.rationale.content.fetch=Fetches bounded Crypta trust documents selected by the user.
+app.trust-graph.permissions.rationale.content.insert.app-document=Publishes generated trust statements as Crypta content.
+app.trust-graph.permissions.rationale.queue.write=Creates generated trust statement publication inserts.
+app.trust-graph.permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+app.trust-graph.changelog.summary=Adds the local Trust Graph Preview reference app.
+app.trust-graph.api.minimumVersion=7
+app.trust-graph.api.maximumTestedVersion=7
+app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
 app.queue-manager.review.receipt.app.version=1.0.0
@@ -510,7 +538,8 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
 The first-party beta catalog is expected to contain the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader`. Entries should include
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and
+`trust-graph`. Entries should include
 source/review/API, sandbox, permission rationale, and changelog metadata, for example
 `permissions.rationale.*`,
 `api.minimumVersion`, `api.maximumTestedVersion`, and `changelog.summary`. First-party public

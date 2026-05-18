@@ -34,6 +34,14 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to fetch bounded Crypta content documents. */
   static final String CONTENT_FETCH = "content.fetch";
 
+  /** Manifest permission that allows app principals to read local trust graph preview data. */
+  static final String TRUST_READ = "trust.read";
+
+  /**
+   * Manifest permission that allows app principals to import statements and manage local anchors.
+   */
+  static final String TRUST_WRITE = "trust.write";
+
   /** Manifest permission that allows app principals to read peer summaries and peer details. */
   static final String PEERS_READ = "peers.read";
 

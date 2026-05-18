@@ -18,6 +18,7 @@ dependencies {
   api(project(":platform-apphost"))
   api(project(":platform-appcatalog"))
   api(project(":platform-appvault"))
+  api(project(":platform-trustgraph"))
 
   compileOnly(libs.jetbrainsAnnotations)
 

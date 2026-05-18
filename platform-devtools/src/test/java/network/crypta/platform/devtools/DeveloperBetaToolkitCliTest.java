@@ -773,6 +773,12 @@ class DeveloperBetaToolkitCliTest {
             URI.create(server.apiRoot() + "app-vault/identities/local-profile/profile-document"),
             sessionToken,
             "displayName=Local+Profile&bio=Mock+profile");
+    HttpResponse<String> trustStatement =
+        postFormWithSession(
+            client,
+            URI.create(server.apiRoot() + "app-vault/identities/local-profile/trust-statement"),
+            sessionToken,
+            "subjectKind=profile&subjectUri=USK%40mock%2Fprofile.json&context=profile&score=50&confidence=80");
 
     assertEquals(200, staticUi.statusCode());
     assertTrue(staticUi.body().contains("<title>Queue App</title>"));
@@ -801,6 +807,9 @@ class DeveloperBetaToolkitCliTest {
     assertEquals(200, profileDocument.statusCode());
     assertTrue(profileDocument.body().contains("\"profileDocument\""));
     assertTrue(profileDocument.body().contains("\"identityId\":\"local-profile\""));
+    assertEquals(200, trustStatement.statusCode());
+    assertTrue(trustStatement.body().contains("\"trustStatement\":{\"identity\""));
+    assertFalse(trustStatement.body().startsWith("{\"identity\""));
   }
 
   private static void verifySessionAndStaticSafety(

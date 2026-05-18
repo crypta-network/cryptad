@@ -97,7 +97,7 @@ Release-candidate mode requires these evidence ids:
 | --- | --- | --- |
 | `interop.smoke` | `build/interop-smoke/summary.json` | Tier 1 Hyphanet interop smoke passed with CHK, SSK, USK, peer exchange, and restart-recovery coverage. |
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
-| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, and Feed Reader, have valid manifests, launchers, static UI assets, and SDK wiring. |
+| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, docs, and self-test evidence is present. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
@@ -108,6 +108,8 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.identity-profile-publish` | App-platform smoke summary. | The profile-document signing route `POST /api/v1/app-vault/identities/{identityId}/profile-document` is present, documented, capability-gated by `vault.identities.read` plus `vault.identities.use`, and covered by redaction evidence. |
 | `app-platform.generated-document-insert` | App-platform smoke summary. | The app-generated document insert route `POST /api/v1/queue/inserts/app-document` is present, documented, capability-gated by `content.insert.app-document` plus `queue.write`, and avoids local file-path request authority. |
 | `app-platform.content-fetch` | App-platform smoke summary. | The content fetch route `POST /api/v1/content/fetch` is present, documented, capability-gated by `content.fetch`, and covered by feed-body/request-body/token/path redaction evidence. |
+| `app-platform.trust-graph-preview` | App-platform smoke summary. | The v7 trust graph routes are present, documented, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
+| `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | First-party source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions across the repo-owned static apps. |
@@ -115,6 +117,7 @@ Release-candidate mode requires these evidence ids:
 | `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and avoids vault identity permissions. |
 | `reference-app.profile-publisher` | App-platform smoke summary. | Profile Publisher exists as the first identity-profile reference app, declares the expected vault/content/queue permissions, uses the profile-document and app-document insert routes, and keeps release evidence free of signatures and private material. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-fetch reference app, declares `content.fetch` plus generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
+| `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Preview exists as the local trust-service reference app, declares API v7 trust/content/vault/queue permissions, uses SDK trust helpers and design-system assets, and keeps evidence free of raw trust documents and private material. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
@@ -203,6 +206,12 @@ Feed Reader supplies the content-fetch reference path. Release evidence must pro
 `reference-app.feed-reader` and `app-platform.content-fetch` before a release claims feed-reader
 support. Feed evidence must not include raw feed bodies, raw request bodies, private insert URIs,
 app process tokens, browser-session tokens, form passwords, or local paths.
+Trust Graph Preview supplies the local trust-service reference path. Release evidence must prove
+`reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
+`app-platform.trust-statement-signing` before a release claims trust graph preview support. Trust
+evidence must not include raw trust statement bodies from real users, raw request bodies, raw
+signature values, private identity material, app process tokens, browser-session tokens, form
+passwords, or local paths.
 
 ## Historical comparison
 
@@ -267,8 +276,8 @@ ecosystem.legacy-retirement
 
 The gates are intentionally conservative. Platform API compatibility blocks on contract status
 failure, contract version rollback, or available stable endpoint/capability removals. First-party
-app gates require `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and
-`feed-reader`, and
+app gates require `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`,
+`feed-reader`, and `trust-graph`, and
 block when a previously certified first-party app disappears without a waiver. App UI gates block failing or missing
 first-party strict lint/design-system evidence and warn when lint warning counts increase. Review
 trust gates block trusted receipt, review-policy, or first-party review catalog regressions. Update

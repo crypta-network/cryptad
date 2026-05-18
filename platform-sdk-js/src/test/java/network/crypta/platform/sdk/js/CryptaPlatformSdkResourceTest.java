@@ -32,6 +32,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
     assertTrue(script.contains("feed:"));
+    assertTrue(script.contains("trust:"));
     assertTrue(script.contains("vault:"));
     assertTrue(script.contains("profile:"));
     assertTrue(script.contains("dom:"));
@@ -114,30 +115,8 @@ class CryptaPlatformSdkResourceTest {
   void classpathResource_whenVaultRequested_expectMetadataOnlyBrowserHelpers() throws IOException {
     String script = readSdkScript();
 
-    assertTrue(script.contains("function listVaultIdentities(options)"));
-    assertTrue(script.contains("return apiGet(\"app-vault/identities\", options);"));
-    assertTrue(script.contains("function getVaultIdentity(identityId, options)"));
-    assertTrue(script.contains("function listVaultGrants(options)"));
-    assertTrue(script.contains("return apiGet(\"app-vault/grants\", options);"));
-    assertTrue(script.contains("function requestVaultGrant(request, options)"));
-    assertTrue(script.contains("return apiPostForm(\"app-vault/grants/request\""));
-    assertTrue(script.contains("function normalizeVaultGrantRequest(request)"));
-    assertTrue(script.contains("function createVaultIdentity(options)"));
-    assertTrue(script.contains("return apiPostForm("));
-    assertTrue(script.contains("\"app-vault/identities\""));
-    assertTrue(script.contains("function createProfileDocument(identityId, profile, options)"));
-    assertTrue(script.contains("function normalizeProfileDocument(profile)"));
-    assertTrue(script.contains("copyStringParam(source, params, \"displayName\");"));
-    assertTrue(script.contains("appendTagsParam(source.tags, params);"));
-    assertTrue(script.contains("/profile-document`"));
-    assertTrue(script.contains("function normalizeVaultGrantScope(scope)"));
-    assertTrue(script.contains("normalized !== \"sign.domain-separated\""));
-    assertTrue(script.contains("identities: Object.freeze({"));
-    assertTrue(script.contains("create: createVaultIdentity"));
-    assertTrue(script.contains("createProfileDocument"));
-    assertTrue(script.contains("grants: Object.freeze({"));
-    assertFalse(script.contains("app-vault/secrets"));
-    assertFalse(script.contains("useIdentity"));
+    assertVaultMetadataBrowserHelperFragments(script);
+    assertNoVaultPrivateBrowserHelpers(script);
   }
 
   @Test
@@ -147,6 +126,29 @@ class CryptaPlatformSdkResourceTest {
 
     assertJsonDocumentHelperFragments(script);
     assertNoRawMutationFetches(script);
+  }
+
+  @Test
+  void classpathResource_whenTrustHelpersRequested_expectBrowserSafeTrustSurface()
+      throws IOException {
+    String script = readSdkScript();
+
+    assertTrue(
+        script.contains(
+            "const trustStatementContentType = \"application/vnd.crypta.trust+json\";"));
+    assertTrue(script.contains("const trustStatementTargetFilename = \"trust.json\";"));
+    assertTrue(script.contains("function trustStatus(options)"));
+    assertTrue(script.contains("function listTrustAnchors(options)"));
+    assertTrue(script.contains("function addTrustAnchor(request, options)"));
+    assertTrue(script.contains("function removeTrustAnchor(fingerprintOrOptions, options)"));
+    assertTrue(script.contains("function importTrustStatement(request, options)"));
+    assertTrue(script.contains("function trustSubjects(options)"));
+    assertTrue(script.contains("function trustStatements(request, options)"));
+    assertTrue(script.contains("function trustScore(request, options)"));
+    assertTrue(script.contains("function publishTrustStatement(options)"));
+    assertTrue(script.contains("\"trust-graph/score\""));
+    assertTrue(script.contains("\"trust-graph/import\""));
+    assertTrue(script.contains("/trust-statement`"));
   }
 
   @Test
@@ -307,6 +309,177 @@ class CryptaPlatformSdkResourceTest {
   }
 
   @Test
+  void classpathResource_whenTrustScoreRequested_expectScoreRouteAndQueryParams() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/score"
+              && parsed.searchParams.get("subjectKind") === "profile"
+              && parsed.searchParams.get("subjectUri") === "USK@alice/profile.json"
+              && parsed.searchParams.get("context") === "profile"
+              && parsed.searchParams.get("includeEvidence") === "true"
+              && options.method === "GET";
+          },
+          { score: { status: "trusted", score: 42, confidence: 73 } });
+
+        const result = await CryptaPlatform.trust.score({
+          subjectKind: "profile",
+          subjectUri: "USK@alice/profile.json",
+          context: "profile",
+          includeEvidence: true
+        });
+
+        assert.equal(result.status, "trusted");
+        assert.equal(result.score, 42);
+        assert.equal(calls.length, 2);
+        assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
+        assert.equal(calls[1].credentials, "omit");
+        """);
+  }
+
+  @Test
+  void classpathResource_whenTrustStatementPublished_expectAppDocumentDefaults() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/queue/inserts/app-document"
+              && options.method === "POST";
+          },
+          { requestId: "trust-insert-1" });
+
+        const result = await CryptaPlatform.trust.publishStatement({
+          insertUri: "USK@trust",
+          identifier: "trust-root",
+          statement: {
+            trustStatement: {
+              identity: { identityId: "issuer", publicKeyFingerprint: "fingerprint", appId: "trust-graph" },
+              payloadHash: "metadata-wrapper-hash",
+              domain: "crypta.trust.statement.v1",
+              trustStatement: {
+                type: "crypta.trust.statement.v1",
+                payload: {
+                  issuer: { identityId: "issuer", publicKeyFingerprint: "fingerprint" },
+                  subject: { kind: "profile", uri: "USK@alice/profile.json" },
+                  context: "profile",
+                  score: 50,
+                  confidence: 80,
+                  issuedAt: "2026-05-16T00:00:00Z"
+                },
+                signature: { algorithm: "app-vault-ed25519-preview", domain: "crypta.trust.statement.v1", value: "fixture" }
+              }
+            }
+          },
+          contentType: "text/plain",
+          targetFilename: "unsafe.json"
+        });
+
+        assert.equal(result.requestId, "trust-insert-1");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("insertUri"), "USK@trust");
+        assert.equal(params.get("identifier"), "trust-root");
+        assert.equal(params.get("contentType"), "application/vnd.crypta.trust+json");
+        assert.equal(params.get("targetFilename"), "trust.json");
+        const documentJson = Buffer.from(params.get("documentBase64"), "base64").toString("utf8");
+        const document = JSON.parse(documentJson);
+        assert.equal(document.type, "crypta.trust.statement.v1");
+        assert.equal(document.signature.value, "fixture");
+        assert.equal(document.payloadHash, undefined);
+        """);
+  }
+
+  @Test
+  void classpathResource_whenSerializedTrustStatementResponsePublished_expectInnerDocument()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/queue/inserts/app-document"
+              && options.method === "POST";
+          },
+          { requestId: "trust-insert-serialized" });
+
+        const signedResponse = JSON.stringify({
+          identity: { identityId: "issuer", publicKeyFingerprint: "fingerprint", appId: "trust-graph" },
+          payloadHash: "metadata-wrapper-hash",
+          domain: "crypta.trust.statement.v1",
+          trustStatement: {
+            type: "crypta.trust.statement.v1",
+            payload: {
+              issuer: { identityId: "issuer", publicKeyFingerprint: "fingerprint" },
+              subject: { kind: "profile", uri: "USK@alice/profile.json" },
+              context: "profile",
+              score: 50,
+              confidence: 80,
+              issuedAt: "2026-05-16T00:00:00Z"
+            },
+            signature: { algorithm: "app-vault-ed25519-preview", domain: "crypta.trust.statement.v1", value: "fixture" }
+          }
+        });
+
+        const result = await CryptaPlatform.trust.publishStatement({
+          insertUri: "USK@trust",
+          identifier: "trust-root",
+          statement: signedResponse
+        });
+
+        assert.equal(result.requestId, "trust-insert-serialized");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("contentType"), "application/vnd.crypta.trust+json");
+        assert.equal(params.get("targetFilename"), "trust.json");
+        const documentJson = Buffer.from(params.get("documentBase64"), "base64").toString("utf8");
+        const document = JSON.parse(documentJson);
+        assert.equal(document.type, "crypta.trust.statement.v1");
+        assert.equal(document.signature.value, "fixture");
+        assert.equal(document.payloadHash, undefined);
+        """);
+  }
+
+  @Test
+  void classpathResource_whenTrustStatementSigned_expectBoundedVaultRoute() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-vault/identities/trust-id/trust-statement"
+              && options.method === "POST";
+          },
+          { trustStatement: { type: "crypta.trust.statement.v1" } });
+
+        const result = await CryptaPlatform.vault.identities.createTrustStatement("trust-id", {
+          subjectKind: "profile",
+          subjectUri: "USK@alice/profile.json",
+          context: "profile",
+          score: 50,
+          confidence: 80,
+          reason: "known publisher",
+          tags: ["local", "preview"],
+          expiresAt: "2026-11-16T00:00:00Z"
+        });
+
+        assert.equal(result.trustStatement.type, "crypta.trust.statement.v1");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("subjectKind"), "profile");
+        assert.equal(params.get("subjectUri"), "USK@alice/profile.json");
+        assert.equal(params.get("context"), "profile");
+        assert.equal(params.get("score"), "50");
+        assert.equal(params.get("confidence"), "80");
+        assert.equal(params.get("tags"), "local,preview");
+        assert.equal(params.get("expiresAt"), "2026-11-16T00:00:00Z");
+        """);
+  }
+
+  @Test
   void classpathResource_whenAppIdCanonicalizationRequested_expectComparisonUsesNormalizedIds()
       throws IOException {
     String script = readSdkScript();
@@ -369,6 +542,50 @@ class CryptaPlatformSdkResourceTest {
       assertTrue(
           script.contains(expectedFragment),
           () -> "Expected fragment missing: " + expectedFragment);
+    }
+  }
+
+  private static void assertVaultMetadataBrowserHelperFragments(String script) {
+    String[] expectedFragments = {
+      "function listVaultIdentities(options)",
+      "return apiGet(\"app-vault/identities\", options);",
+      "function getVaultIdentity(identityId, options)",
+      "function listVaultGrants(options)",
+      "return apiGet(\"app-vault/grants\", options);",
+      "function requestVaultGrant(request, options)",
+      "return apiPostForm(\"app-vault/grants/request\"",
+      "function normalizeVaultGrantRequest(request)",
+      "function createVaultIdentity(options)",
+      "return apiPostForm(",
+      "\"app-vault/identities\"",
+      "function createProfileDocument(identityId, profile, options)",
+      "function createTrustStatement(identityIdOrOptions, payload, options)",
+      "function normalizeProfileDocument(profile)",
+      "function normalizeTrustStatementPayload(source)",
+      "copyStringParam(source, params, \"displayName\");",
+      "appendTagsParam(source.tags, params);",
+      "/profile-document`",
+      "function normalizeVaultGrantScope(scope)",
+      "normalized !== \"sign.domain-separated\"",
+      "identities: Object.freeze({",
+      "create: createVaultIdentity",
+      "createProfileDocument",
+      "createTrustStatement",
+      "grants: Object.freeze({"
+    };
+    for (String expectedFragment : expectedFragments) {
+      assertTrue(
+          script.contains(expectedFragment),
+          () -> "Expected vault helper fragment missing: " + expectedFragment);
+    }
+  }
+
+  private static void assertNoVaultPrivateBrowserHelpers(String script) {
+    String[] forbiddenFragments = {"app-vault/secrets", "useIdentity"};
+    for (String forbiddenFragment : forbiddenFragments) {
+      assertFalse(
+          script.contains(forbiddenFragment),
+          () -> "Forbidden vault helper fragment present: " + forbiddenFragment);
     }
   }
 

@@ -130,6 +130,8 @@ The current capabilities are intentionally conservative:
 | `config.write` | config overrides and persist |
 | `security.read` | `GET /api/v1/security-levels/**` |
 | `security.write` | network and physical threat-level mutations |
+| `trust.read` | read local Trust Graph Preview status, anchors, subjects, statement summaries, scores, and bounded evidence |
+| `trust.write` | import bounded trust statements and add/remove local trust anchors |
 | `updates.read` | `GET /api/v1/updates/**` |
 | `updates.write` | core update download trigger |
 | `wizard.read` | `GET /api/v1/wizard/**` |
@@ -177,6 +179,16 @@ authority. Its publishing flow can combine `content.insert.app-document`, `queue
 `queue.read` to publish generated feed documents and display queue progress. Audit and release
 evidence for this route must keep raw feed bodies, raw request bodies, private insert URIs, app
 process tokens, browser-session tokens, form passwords, and local paths out of persisted output.
+
+Trust Graph Preview is the local trust-service reference app. Score/status reads require
+`trust.read`; imports and local anchor changes require `trust.write`; bounded trust-statement
+signing also requires `vault.identities.read` and `vault.identities.use`. `trust.write` covers
+import and anchor management only; it does not publish anchors automatically, export private
+identity material, grant moderation authority, or apply scores to content blocking. Audit entries
+for trust routes should include principal type, app id, trust-graph endpoint family, allowed or
+denied outcome, capability label, and bounded action label, but not raw trust documents, raw
+request bodies, signature values, private keys, app process tokens, browser-session tokens, form
+passwords, or absolute local paths.
 
 ## Audit trail
 

@@ -31,6 +31,7 @@ final class MockPlatformApi {
 
   private static final String INSERT_URI_FIELD = "insertUri";
   private static final String IDENTIFIER_FIELD = "identifier";
+  private static final String APP_VAULT_IDENTITIES_PREFIX = "/app-vault/identities/";
 
   /** Validator supplied by the dev server's browser-session issuer. */
   private final Predicate<String> sessionValidator;
@@ -102,6 +103,7 @@ final class MockPlatformApi {
     switch (method) {
       case "GET" -> routeGet(exchange, suffix);
       case "POST" -> routePost(exchange, suffix);
+      case "DELETE" -> routeDelete(exchange, suffix);
       default -> throw new UnsupportedOperationException(suffix);
     }
   }
@@ -114,11 +116,17 @@ final class MockPlatformApi {
     } else if (suffix.equals("/app-vault/identities")) {
       sendJson(exchange, 200, fixtures.vaultIdentities());
     } else if (suffix.matches("/app-vault/identities/[^/]+")) {
-      sendJson(exchange, 200, oneIdentity(suffix.substring("/app-vault/identities/".length())));
+      sendJson(exchange, 200, oneIdentity(suffix.substring(APP_VAULT_IDENTITIES_PREFIX.length())));
     } else if (suffix.equals("/app-vault/grants")) {
       sendJson(exchange, 200, fixtures.vaultGrants());
     } else if (suffix.equals("/apps/current")) {
       sendJson(exchange, 200, fixtures.appsCurrent());
+    } else if (suffix.equals("/trust-graph/status")) {
+      sendJson(exchange, 200, fixtures.trustGraphStatus());
+    } else if (suffix.equals("/trust-graph/anchors")) {
+      sendJson(exchange, 200, fixtures.trustGraphAnchors());
+    } else if (suffix.equals("/trust-graph/score")) {
+      sendJson(exchange, 200, fixtures.trustGraphScore());
     } else {
       throw new UnsupportedOperationException(suffix);
     }
@@ -127,23 +135,55 @@ final class MockPlatformApi {
   private void routePost(HttpExchange exchange, String suffix) throws IOException {
     if (suffix.startsWith("/queue/")) {
       routeQueuePost(exchange, suffix);
+    } else if (suffix.equals("/content/fetch")) {
+      routeContentFetchPost(exchange);
     } else if (suffix.equals("/app-vault/identities")) {
       sendJson(exchange, 201, MockPlatformApiFixtures.CREATED_IDENTITY_RESPONSE);
     } else if (suffix.matches("/app-vault/identities/[^/]+/profile-document")) {
       routeProfileDocumentPost(exchange, suffix);
+    } else if (suffix.matches("/app-vault/identities/[^/]+/trust-statement")) {
+      routeTrustStatementPost(exchange, suffix);
     } else if (suffix.equals("/app-vault/grants/request")) {
       sendJson(exchange, 200, fixtures.mutation("app-vault.grants.request"));
+    } else if (suffix.equals("/trust-graph/anchors")) {
+      sendFormMutation(exchange, "trust-graph.anchors.add", "issuerFingerprint");
+    } else if (suffix.equals("/trust-graph/import")) {
+      sendFormMutation(exchange, "trust-graph.import", "document");
     } else {
       throw new UnsupportedOperationException(suffix);
     }
   }
 
+  private void routeContentFetchPost(HttpExchange exchange) throws IOException {
+    if (hasRequiredFormFields(exchange, "uri")) {
+      sendJson(exchange, 200, MockPlatformApiFixtures.CONTENT_FETCH_TRUST_STATEMENT_RESPONSE);
+    }
+  }
+
+  private void routeDelete(HttpExchange exchange, String suffix) throws IOException {
+    if (suffix.matches("/trust-graph/anchors/[^/]+")) {
+      sendJson(exchange, 200, fixtures.mutation("trust-graph.anchors.remove"));
+      return;
+    }
+    throw new UnsupportedOperationException(suffix);
+  }
+
   private void routeProfileDocumentPost(HttpExchange exchange, String suffix) throws IOException {
     if (hasRequiredFormFields(exchange, "displayName")) {
-      int prefixLength = "/app-vault/identities/".length();
+      int prefixLength = APP_VAULT_IDENTITIES_PREFIX.length();
       int suffixLength = "/profile-document".length();
       String identityId = suffix.substring(prefixLength, suffix.length() - suffixLength);
       sendJson(exchange, 200, fixtures.profileDocument(identityId));
+    }
+  }
+
+  private void routeTrustStatementPost(HttpExchange exchange, String suffix) throws IOException {
+    if (hasRequiredFormFields(
+        exchange, "subjectKind", "subjectUri", "context", "score", "confidence")) {
+      int prefixLength = APP_VAULT_IDENTITIES_PREFIX.length();
+      int suffixLength = "/trust-statement".length();
+      String identityId = suffix.substring(prefixLength, suffix.length() - suffixLength);
+      sendJson(exchange, 200, fixtures.trustStatement(identityId));
     }
   }
 

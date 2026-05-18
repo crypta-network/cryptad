@@ -1,5 +1,6 @@
 package network.crypta.platform.api.appvault;
 
+import java.time.Clock;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +18,10 @@ import network.crypta.platform.appvault.AppIdentityUsageRequest;
 import network.crypta.platform.appvault.AppIdentityUsageResult;
 import network.crypta.platform.appvault.AppSecretRecord;
 import network.crypta.platform.appvault.AppVaultService;
+import network.crypta.platform.trustgraph.TrustDocumentTypes;
+import network.crypta.platform.trustgraph.TrustGraphException;
+import network.crypta.platform.trustgraph.TrustSignatureEnvelope;
+import network.crypta.platform.trustgraph.TrustStatementDocument;
 
 /**
  * Handles app-principal Platform API calls for vault secrets, identities, and grant requests.
@@ -39,6 +44,7 @@ public final class AppVaultApiHandler {
   private static final String FIELD_APP_ID = "appId";
   private static final String FIELD_CREATED_AT = "createdAt";
   private static final String FIELD_IDENTITY_ID = "identityId";
+  private static final String FIELD_PUBLIC_KEY_BASE64 = "publicKeyBase64";
   private static final String FIELD_REASON = "reason";
   private static final String FIELD_UPDATED_AT = "updatedAt";
   private static final String PARAM_KIND = "kind";
@@ -51,6 +57,7 @@ public final class AppVaultApiHandler {
   private static final String PARAM_VALUE_UTF8 = "valueUtf8";
 
   private final AppVaultService appVaultService;
+  private final Clock clock;
 
   /**
    * Creates an app-facing vault handler backed by the shared local vault service.
@@ -63,6 +70,7 @@ public final class AppVaultApiHandler {
    */
   public AppVaultApiHandler(AppVaultService appVaultService) {
     this.appVaultService = Objects.requireNonNull(appVaultService, "appVaultService");
+    this.clock = Clock.systemUTC();
   }
 
   /**
@@ -269,6 +277,65 @@ public final class AppVaultApiHandler {
   }
 
   /**
+   * Builds and signs one bounded Trust Graph Preview statement.
+   *
+   * <p>This browser-safe route signs only the documented trust statement payload shape with the
+   * fixed trust statement domain. It returns public identity metadata, the payload hash, domain,
+   * and the public trust statement document; it never exposes private key material, generic signing
+   * inputs, local vault paths, or request bodies.
+   *
+   * @param appId authenticated app principal id supplied by the router
+   * @param identityId identity id segment from the request path
+   * @param queryParameters decoded trust-statement request parameters
+   * @return public signed trust statement response
+   */
+  public Map<String, Object> createTrustStatement(
+      String appId, String identityId, Map<String, List<String>> queryParameters) {
+    appVaultService.requireAppAccessAllowed(appId);
+    AppIdentityRecord identity = appVaultService.getIdentityForApp(appId, identityId);
+    TrustStatementRequest trustStatementRequest;
+    try {
+      trustStatementRequest =
+          TrustStatementRequest.fromQuery(
+              appId,
+              identity.identityId(),
+              identity.fingerprint(),
+              identity.publicSummary().get(FIELD_PUBLIC_KEY_BASE64),
+              queryParameters,
+              clock);
+    } catch (TrustGraphException exception) {
+      throw new PlatformApiException(400, exception.errorCode(), exception.getMessage());
+    }
+    AppIdentityUsageResult usageResult =
+        appVaultService.signDomainSeparatedPayload(
+            new AppIdentityUsageRequest(
+                appId,
+                identity.identityId(),
+                AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED,
+                TrustStatementRequest.SIGNING_PURPOSE,
+                trustStatementRequest.canonicalBytes()));
+    TrustStatementDocument document =
+        new TrustStatementDocument(
+            TrustDocumentTypes.TRUST_STATEMENT_V1,
+            trustStatementRequest.payload(),
+            new TrustSignatureEnvelope(
+                TrustDocumentTypes.APP_VAULT_ED25519_PREVIEW_ALGORITHM,
+                TrustDocumentTypes.TRUST_STATEMENT_V1,
+                usageResult.signatureBase64()));
+    LinkedHashMap<String, Object> response = LinkedHashMap.newLinkedHashMap(4);
+    LinkedHashMap<String, Object> identityJson = LinkedHashMap.newLinkedHashMap(4);
+    identityJson.put(FIELD_IDENTITY_ID, identity.identityId());
+    identityJson.put("publicKeyFingerprint", identity.fingerprint());
+    identityJson.put(FIELD_PUBLIC_KEY_BASE64, usageResult.publicKeyBase64());
+    identityJson.put(FIELD_APP_ID, appId);
+    response.put("identity", identityJson);
+    response.put("payloadHash", usageResult.payloadSha256());
+    response.put("domain", TrustDocumentTypes.TRUST_STATEMENT_V1);
+    response.put("trustStatement", document.toJson());
+    return response;
+  }
+
+  /**
    * Lists grants for the calling app.
    *
    * <p>This app-facing list omits retained revoked grants from previous installations.
@@ -365,7 +432,7 @@ public final class AppVaultApiHandler {
     json.put(PARAM_SCOPE, result.scope().jsonValue());
     json.put("algorithm", result.algorithm());
     json.put("fingerprint", result.fingerprint());
-    json.put("publicKeyBase64", result.publicKeyBase64());
+    json.put(FIELD_PUBLIC_KEY_BASE64, result.publicKeyBase64());
     json.put("payloadSha256", result.payloadSha256());
     json.put("domainSeparatedPayload", result.domainSeparatedPayload());
     json.put("signatureBase64", result.signatureBase64());

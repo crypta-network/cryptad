@@ -80,7 +80,9 @@ listed in [app-permissions-and-audit.md](app-permissions-and-audit.md). The deve
 recognizes the app-vault capability names `vault.secrets.read`, `vault.secrets.write`,
 `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and
 `vault.identities.manage`; see [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)
-before requesting them. Use `--overwrite` only when you deliberately want to replace an existing
+before requesting them. It also recognizes Trust Graph Preview capabilities `trust.read` and
+`trust.write`; see [trust-graph-preview.md](trust-graph-preview.md) before using them. Use
+`--overwrite` only when you deliberately want to replace an existing
 scaffolded directory.
 
 The `static` scaffold is expected to produce a bundle shaped like:
@@ -303,7 +305,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -332,7 +334,7 @@ permissions.rationale.queue.write=Creates the generated document insert request.
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=5
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -341,7 +343,7 @@ signatures, or absolute staging paths in descriptor notes, generated catalog met
 evidence.
 
 A Feed Reader catalog descriptor should include the content-fetch permission, generated-document
-publication permissions, and v6 API compatibility metadata:
+publication permissions, and v7 maximum-tested API compatibility metadata:
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/feed-reader-1.0.0.zip
@@ -363,7 +365,7 @@ permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=6
-api.maximumTestedVersion=6
+api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -530,6 +532,10 @@ projects:
 ./gradlew :apps:feed-reader:stageApp
 ./gradlew :apps:feed-reader:signApp
 ./gradlew :apps:feed-reader:verifyApp
+
+./gradlew :apps:trust-graph:stageApp
+./gradlew :apps:trust-graph:signApp
+./gradlew :apps:trust-graph:verifyApp
 ```
 
 Those `signApp` and `verifyApp` tasks still require the signing inputs documented in
@@ -552,7 +558,8 @@ review keys outside the repository.
    ./gradlew :platform-devtools:installDist
    ```
 
-2. Pack `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, and `feed-reader` with
+2. Pack `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and
+   `trust-graph` with
    `crypta-app pack`. Insert each ZIP into Crypta as an immutable CHK artifact through the
    maintainer publishing workflow.
 
@@ -566,7 +573,7 @@ review keys outside the repository.
    permissions=queue.read,queue.write
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=6
+   api.maximumTestedVersion=7
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```
