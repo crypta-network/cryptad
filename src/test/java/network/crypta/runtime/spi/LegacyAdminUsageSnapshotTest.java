@@ -59,6 +59,58 @@ class LegacyAdminUsageSnapshotTest {
                 -1,
                 "phase-6-pr-8",
                 "none",
+                "CANONICAL_AND_SLASHLESS_ALIAS",
+                0,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenRemovalScopeBlank_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurfaceUsage(
+                "queue-downloads",
+                "Download queue",
+                "/downloads/",
+                "PRIMARY_REPLACED",
+                "/apps/queue-manager/",
+                "REDIRECT_TO_REPLACEMENT",
+                1,
+                "phase-6-pr-8",
+                "none",
+                " ",
+                0,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L));
+  }
+
+  @Test
+  void surfaceUsageConstructor_whenScopeExpandedInWaveNegative_expectIllegalArgumentException() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurfaceUsage(
+                "queue-downloads",
+                "Download queue",
+                "/downloads/",
+                "PRIMARY_REPLACED",
+                "/apps/queue-manager/",
+                "REDIRECT_TO_REPLACEMENT",
+                1,
+                "phase-6-pr-8",
+                "none",
+                "CANONICAL_AND_SLASHLESS_ALIAS",
+                -1,
                 0L,
                 0L,
                 0L,
@@ -82,6 +134,8 @@ class LegacyAdminUsageSnapshotTest {
                 1,
                 "phase-6-pr-8",
                 "none",
+                "CANONICAL_AND_SLASHLESS_ALIAS",
+                0,
                 0L,
                 -1L,
                 0L,
@@ -103,6 +157,8 @@ class LegacyAdminUsageSnapshotTest {
             0,
             null,
             "retained",
+            "CANONICAL_AND_SLASHLESS_ALIAS",
+            0,
             0L,
             0L,
             0L,
@@ -126,6 +182,8 @@ class LegacyAdminUsageSnapshotTest {
         1,
         "phase-6-pr-8",
         "none",
+        "CANONICAL_AND_SLASHLESS_ALIAS",
+        0,
         count,
         0L,
         0L,

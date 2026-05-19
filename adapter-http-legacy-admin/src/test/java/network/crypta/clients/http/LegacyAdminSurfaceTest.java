@@ -1,7 +1,10 @@
 package network.crypta.clients.http;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +54,117 @@ class LegacyAdminSurfaceTest {
   }
 
   @Test
+  void constructor_whenExplicitChildrenWithoutExplicitScope_expectIllegalArgumentException() {
+    List<String> explicitChildPaths = List.of("/downloads/listKeys.txt");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurface(
+                "queue",
+                "Queue",
+                "/downloads/",
+                LegacyAdminRetirementState.PRIMARY_REPLACED,
+                "/apps/queue-manager/",
+                "Queue Manager",
+                "notes",
+                LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+                1,
+                "phase-6-pr-8",
+                "none",
+                LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+                0,
+                explicitChildPaths,
+                true,
+                true,
+                false));
+  }
+
+  @Test
+  void constructor_whenScopeExpandedInWaveNegative_expectIllegalArgumentException() {
+    List<String> explicitChildPaths = List.of();
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurface(
+                "queue",
+                "Queue",
+                "/downloads/",
+                LegacyAdminRetirementState.PRIMARY_REPLACED,
+                "/apps/queue-manager/",
+                "Queue Manager",
+                "notes",
+                LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+                1,
+                "phase-6-pr-8",
+                "none",
+                LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+                -1,
+                explicitChildPaths,
+                true,
+                true,
+                false));
+  }
+
+  @Test
+  void constructor_whenExplicitChildPathProtocolRelative_expectIllegalArgumentException() {
+    List<String> explicitChildPaths = List.of("//example.test/listKeys.txt");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new LegacyAdminSurface(
+                "queue",
+                "Queue",
+                "/downloads/",
+                LegacyAdminRetirementState.PRIMARY_REPLACED,
+                "/apps/queue-manager/",
+                "Queue Manager",
+                "notes",
+                LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+                1,
+                "phase-6-pr-8",
+                "none",
+                LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
+                2,
+                explicitChildPaths,
+                true,
+                true,
+                false));
+  }
+
+  @Test
+  void constructor_whenExplicitChildrenSourceMutated_expectDefensiveCopy() {
+    ArrayList<String> childPaths = new ArrayList<>();
+    childPaths.add("/downloads/listKeys.txt");
+
+    LegacyAdminSurface surface =
+        new LegacyAdminSurface(
+            "queue",
+            "Queue",
+            "/downloads/",
+            LegacyAdminRetirementState.PRIMARY_REPLACED,
+            "/apps/queue-manager/",
+            "Queue Manager",
+            "notes",
+            LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+            1,
+            "phase-6-pr-8",
+            "none",
+            LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
+            2,
+            childPaths,
+            true,
+            true,
+            false);
+
+    childPaths.add("/downloads/countRequests.html");
+
+    assertEquals(List.of("/downloads/listKeys.txt"), surface.explicitRemovalChildPaths());
+  }
+
+  @Test
   void rendersNotice_whenPrimaryReplacedWithReplacement_expectTrue() {
     LegacyAdminSurface surface =
         surface(
@@ -79,6 +193,10 @@ class LegacyAdminSurfaceTest {
             1,
             "phase-6-pr-8",
             "none",
+            LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+            0,
+            List.of(),
+            true,
             true,
             false);
 
@@ -132,6 +250,10 @@ class LegacyAdminSurfaceTest {
         0,
         null,
         "render-legacy",
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        0,
+        List.of(),
+        true,
         true,
         false);
   }

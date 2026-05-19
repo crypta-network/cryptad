@@ -53,9 +53,12 @@ public final class LegacyAdminRetirementRegistry {
   private static final String HELP_PATH = localPath("help");
   private static final int NO_REMOVAL_WAVE = 0;
   private static final int REMOVAL_WAVE_1 = 1;
+  private static final int REMOVAL_WAVE_2 = 2;
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_1 = "phase-6-pr-8";
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_2 = "phase-7-pr-230";
   private static final String FALLBACK_POLICY_NONE = "none";
   private static final String FALLBACK_POLICY_RENDER_LEGACY = "render-legacy";
+  private static final String FALLBACK_POLICY_MUTATING_LEGACY = "mutating-legacy-fallback";
   private static final String FALLBACK_POLICY_RETAINED = "retained";
   private static final String FALLBACK_POLICY_PENDING = "pending";
   private static final String FALLBACK_POLICY_INFRASTRUCTURE = "infrastructure";
@@ -82,27 +85,37 @@ public final class LegacyAdminRetirementRegistry {
               "Legacy static assets",
               StaticToadlet.ROOT_URL,
               "Serves shared legacy page assets while fallback pages remain."),
-          replaced(
+          wave2Redirect(
               "alerts",
               "Alerts",
               "/alerts/",
               SHELL_ALERTS_URL,
               "Web Shell alerts",
-              "Web Shell lists and dismisses alerts through Platform API v1."),
+              "Web Shell lists and dismisses individual alerts through Platform API v1; bulk"
+                  + " legacy alert actions remain fallback until API coverage is complete.",
+              canonicalMutationFallback()),
           wave1Redirect(
               "queue-downloads",
               "Download queue",
               QueueToadlet.PATH_DOWNLOADS,
               QUEUE_MANAGER_URL,
               "Queue Manager app",
-              "Queue Manager and the Web Shell queue panel are the primary transfer views."),
+              "Queue Manager and the Web Shell queue panel are the primary transfer views.",
+              scopedCoveredRemoval(
+                  LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
+                  queueHelperPaths(QueueToadlet.PATH_DOWNLOADS),
+                  REMOVAL_WAVE_2)),
           wave1Redirect(
               "queue-uploads",
               "Upload queue",
               QueueToadlet.PATH_UPLOADS,
               QUEUE_MANAGER_URL,
               "Queue Manager app",
-              "Queue Manager and Publisher cover upload-queue monitoring and insert creation."),
+              "Queue Manager and Publisher cover upload-queue monitoring and insert creation.",
+              scopedCoveredRemoval(
+                  LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
+                  queueHelperPaths(QueueToadlet.PATH_UPLOADS),
+                  REMOVAL_WAVE_2)),
           wave1Redirect(
               "file-insert",
               "File insert wizard",
@@ -145,13 +158,16 @@ public final class LegacyAdminRetirementRegistry {
               SHELL_CONNECTIVITY_URL,
               "Web Shell connectivity",
               "Web Shell shows connectivity snapshots through Platform API v1."),
-          replaced(
+          wave2Redirect(
               "config",
               "Configuration",
               LegacyHttpPaths.CONFIG_PATH,
               SHELL_CONFIG_URL,
               "Web Shell config",
-              "Web Shell owns the operator config subset and persistence actions."),
+              "Web Shell config and Platform API v1 own config reads, override writes, and"
+                  + " persistence actions.",
+              scopedCoveredRemoval(
+                  LegacyAdminRemovalScope.PREFIX_FAMILY, List.of(), REMOVAL_WAVE_2)),
           replaced(
               "security-levels",
               "Security levels",
@@ -159,20 +175,26 @@ public final class LegacyAdminRetirementRegistry {
               SHELL_SECURITY_URL,
               "Web Shell security",
               "Web Shell owns the primary security-level view and common mutations."),
-          replaced(
+          wave2Redirect(
               "core-update",
               "Core update actions",
               CORE_UPDATE_PATH,
               SHELL_UPDATES_URL,
               "Web Shell updates",
-              "Web Shell owns the primary updater state and download trigger."),
-          replaced(
+              "Web Shell owns updater status and the manual download trigger; installer and"
+                  + " package-store handoff actions remain legacy fallback.",
+              canonicalMutationFallback()),
+          wave2Redirect(
               "statistics",
               "Statistics",
               StatisticsToadlet.TOADLET_URL,
               SHELL_DIAGNOSTICS_URL,
               "Web Shell diagnostics",
-              "Diagnostics is the primary shell-native operator status surface."),
+              "Diagnostics is the primary shell-native operator status surface.",
+              scopedMutationFallback(
+                  LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
+                  List.of(StatisticsToadlet.TOADLET_URL + "requesters.html"),
+                  REMOVAL_WAVE_2)),
           replaced(
               "diagnostic",
               "Diagnostic report",
@@ -296,6 +318,22 @@ public final class LegacyAdminRetirementRegistry {
   }
 
   /**
+   * Returns surfaces whose path-matching scope was expanded in a specific wave.
+   *
+   * <p>Some later waves can safely expand helper paths for a surface that was already removed by an
+   * earlier canonical-route wave. Keeping that metadata separate preserves the original {@link
+   * #removalWaveSurfaces(int)} evidence while making helper-route expansion reviewable.
+   *
+   * @param removalWave removal wave number to select
+   * @return immutable list of surfaces whose scope expansion metadata belongs to the wave
+   */
+  public static List<LegacyAdminSurface> scopeExpandedInWaveSurfaces(int removalWave) {
+    return SURFACES.stream()
+        .filter(surface -> surface.scopeExpandedInWave() == removalWave)
+        .toList();
+  }
+
+  /**
    * Indicates whether a legacy route should still be promoted in the legacy navigation menus.
    *
    * <p>Primary-replaced routes are not promoted as normal navigation targets. Some still render as
@@ -382,6 +420,54 @@ public final class LegacyAdminRetirementRegistry {
     return "/" + segment + "/";
   }
 
+  private static List<String> queueHelperPaths(String queuePath) {
+    return List.of(queuePath + "countRequests.html", queuePath + "listKeys.txt");
+  }
+
+  private enum MutatingRequestReplacement {
+    COVERED(true, FALLBACK_POLICY_NONE),
+    PARTIAL_LEGACY_FALLBACK(false, FALLBACK_POLICY_MUTATING_LEGACY);
+
+    private final boolean blockLegacyRequests;
+    private final String fallbackPolicy;
+
+    MutatingRequestReplacement(boolean blockLegacyRequests, String fallbackPolicy) {
+      this.blockLegacyRequests = blockLegacyRequests;
+      this.fallbackPolicy = fallbackPolicy;
+    }
+  }
+
+  private record RemovalExecution(
+      LegacyAdminRemovalScope scope,
+      List<String> explicitChildPaths,
+      int scopeExpandedInWave,
+      MutatingRequestReplacement mutatingRequestReplacement) {}
+
+  private static RemovalExecution canonicalCoveredRemoval() {
+    return scopedCoveredRemoval(
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS, List.of(), NO_REMOVAL_WAVE);
+  }
+
+  private static RemovalExecution canonicalMutationFallback() {
+    return scopedMutationFallback(
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS, List.of(), NO_REMOVAL_WAVE);
+  }
+
+  private static RemovalExecution scopedCoveredRemoval(
+      LegacyAdminRemovalScope scope, List<String> explicitChildPaths, int scopeExpandedInWave) {
+    return new RemovalExecution(
+        scope, explicitChildPaths, scopeExpandedInWave, MutatingRequestReplacement.COVERED);
+  }
+
+  private static RemovalExecution scopedMutationFallback(
+      LegacyAdminRemovalScope scope, List<String> explicitChildPaths, int scopeExpandedInWave) {
+    return new RemovalExecution(
+        scope,
+        explicitChildPaths,
+        scopeExpandedInWave,
+        MutatingRequestReplacement.PARTIAL_LEGACY_FALLBACK);
+  }
+
   private static LegacyAdminSurface replaced(
       String id,
       String title,
@@ -401,6 +487,10 @@ public final class LegacyAdminRetirementRegistry {
         NO_REMOVAL_WAVE,
         null,
         FALLBACK_POLICY_RENDER_LEGACY,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        NO_REMOVAL_WAVE,
+        List.of(),
+        true,
         true,
         false);
   }
@@ -412,6 +502,18 @@ public final class LegacyAdminRetirementRegistry {
       String replacementUrl,
       String replacementLabel,
       String notes) {
+    return wave1Redirect(
+        id, title, legacyPath, replacementUrl, replacementLabel, notes, canonicalCoveredRemoval());
+  }
+
+  private static LegacyAdminSurface wave1Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes,
+      RemovalExecution removalExecution) {
     return new LegacyAdminSurface(
         id,
         title,
@@ -424,6 +526,39 @@ public final class LegacyAdminRetirementRegistry {
         REMOVAL_WAVE_1,
         REMOVED_BY_DEFAULT_SINCE_WAVE_1,
         FALLBACK_POLICY_NONE,
+        removalExecution.scope(),
+        removalExecution.scopeExpandedInWave(),
+        removalExecution.explicitChildPaths(),
+        true,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface wave2Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes,
+      RemovalExecution removalExecution) {
+    MutatingRequestReplacement mutatingReplacement = removalExecution.mutatingRequestReplacement();
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        REMOVAL_WAVE_2,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_2,
+        mutatingReplacement.fallbackPolicy,
+        removalExecution.scope(),
+        removalExecution.scopeExpandedInWave(),
+        removalExecution.explicitChildPaths(),
+        mutatingReplacement.blockLegacyRequests,
         true,
         false);
   }
@@ -454,6 +589,10 @@ public final class LegacyAdminRetirementRegistry {
         NO_REMOVAL_WAVE,
         null,
         FALLBACK_POLICY_PENDING,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        NO_REMOVAL_WAVE,
+        List.of(),
+        true,
         true,
         includeInWebShellFallbackLinks);
   }
@@ -472,6 +611,10 @@ public final class LegacyAdminRetirementRegistry {
         NO_REMOVAL_WAVE,
         null,
         FALLBACK_POLICY_RETAINED,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        NO_REMOVAL_WAVE,
+        List.of(),
+        true,
         true,
         true);
   }
@@ -490,6 +633,10 @@ public final class LegacyAdminRetirementRegistry {
         NO_REMOVAL_WAVE,
         null,
         FALLBACK_POLICY_INFRASTRUCTURE,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        NO_REMOVAL_WAVE,
+        List.of(),
+        true,
         false,
         false);
   }

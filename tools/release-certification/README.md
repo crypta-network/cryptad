@@ -96,6 +96,7 @@ reference-app.profile-publisher
 reference-app.feed-reader
 legacy.retirement
 legacy-admin.removal-wave-1
+legacy-admin.removal-wave-2
 apphost.sandbox-provider
 app-update.lifecycle
 app-update.scheduler
@@ -169,6 +170,9 @@ ecosystem.legacy-retirement
 
 Required evidence that regresses from `pass` to `fail`, `missing`, or `skip` blocks
 release-candidate promotion unless a visible waiver applies. `pass` to `warn` is a warning.
+`legacy-admin.removal-wave-2` is required release-candidate evidence and remains deterministic:
+it verifies the wave-2 route ids, route-scope expansion metadata, retained browse safety, raw
+diagnostic export retention, and redacted diagnostics counters without a live node.
 Platform API contract version rollback, stable endpoint/capability removal, first-party app
 disappearance, missing Site Publisher evidence, strict first-party UI lint failure, review receipt
 regression, update rollback regression, vault capability/redaction regression, required enforced

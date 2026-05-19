@@ -2,20 +2,24 @@ final class LegacyAdminRetirementRegistry {
   private static final List<LegacyAdminSurface> SURFACES =
       List.of(
           infrastructure("web-shell", "Web Shell", "/app/node/", "Shell."),
-          replaced("alerts", "Alerts", "/alerts/", "/app/node/#alerts", "Shell alerts", "Done."),
-          wave1Redirect("queue-downloads", "Downloads", "/downloads/", "/apps/queue-manager/", "Queue Manager", "Done."),
-          wave1Redirect("queue-uploads", "Uploads", "/uploads/", "/apps/queue-manager/", "Queue Manager", "Done."),
+          wave2Redirect("alerts", "Alerts", "/alerts/", "/app/node/#alerts", "Shell alerts", "Done.", false),
+          wave1Redirect("queue-downloads", "Downloads", "/downloads/", "/apps/queue-manager/", "Queue Manager", "Done.", LegacyAdminRemovalScope.EXPLICIT_CHILDREN, List.of("/downloads/countRequests.html", "/downloads/listKeys.txt"), REMOVAL_WAVE_2),
+          wave1Redirect("queue-uploads", "Uploads", "/uploads/", "/apps/queue-manager/", "Queue Manager", "Done.", LegacyAdminRemovalScope.EXPLICIT_CHILDREN, List.of("/uploads/countRequests.html", "/uploads/listKeys.txt"), REMOVAL_WAVE_2),
           wave1Redirect("file-insert", "Insert file", "/insertfile/", "/apps/publisher/", "Publisher", "Done."),
           wave1Redirect("local-file-insert", "Insert browse", "/insert-browse/", "/apps/publisher/", "Publisher", "Done."),
           wave1Redirect("friends", "Friends", "/friends/", "/app/node/#peers", "Peers", "Done."),
           wave1Redirect("add-friend", "Add friend", "/addfriend/", "/app/node/#peers", "Peers", "Done."),
           wave1Redirect("strangers", "Strangers", "/strangers/", "/app/node/#peers", "Peers", "Done."),
           wave1Redirect("connectivity", "Connectivity", "/connectivity/", "/app/node/#connectivity", "Connectivity", "Done."),
+          wave2Redirect("config", "Configuration", "/config/", "/app/node/#config", "Shell config", "Done.", LegacyAdminRemovalScope.PREFIX_FAMILY, List.of(), REMOVAL_WAVE_2, true),
+          wave2Redirect("core-update", "Core update", "/core-update/", "/app/node/#updates", "Shell updates", "Done.", false),
+          wave2Redirect("statistics", "Statistics", "/stats/", "/app/node/#diagnostics", "Shell diagnostics", "Done.", LegacyAdminRemovalScope.EXPLICIT_CHILDREN, List.of("/stats/requesters.html"), REMOVAL_WAVE_2, false),
           pendingWizard("first-time-wizard", "First-time wizard", "/wizard/", "Pending."),
           pending("node-to-node-message", "N2NTM", "/send_n2ntm/", null, null, "Pending.", true),
           retained("help", "Help", "/help/", "Retained."));
 
   private static final Map<String, LegacyAdminSurface> SURFACES_BY_ID = surfacesById();
+  private static final int REMOVAL_WAVE_2 = 2;
 
   public static List<LegacyAdminSurface> webShellFallbackSurfaces() {
     return SURFACES.stream().filter(LegacyAdminSurface::includeInWebShellFallbackLinks).toList();
@@ -69,6 +73,58 @@ final class LegacyAdminRetirementRegistry {
         1,
         "phase-6-pr-8",
         "none",
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface wave2Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes,
+      boolean blockMutatingRequests) {
+    return wave2Redirect(
+        id,
+        title,
+        legacyPath,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        List.of(),
+        0,
+        blockMutatingRequests);
+  }
+
+  private static LegacyAdminSurface wave2Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes,
+      LegacyAdminRemovalScope removalScope,
+      List<String> explicitRemovalChildPaths,
+      int scopeExpandedInWave,
+      boolean blockMutatingRequests) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        2,
+        "phase-7-pr-230",
+        blockMutatingRequests ? "none" : "mutating-legacy-fallback",
+        removalScope,
+        scopeExpandedInWave,
+        explicitRemovalChildPaths,
+        blockMutatingRequests,
         true,
         false);
   }

@@ -543,6 +543,12 @@ Manager, Publisher, or Web Shell, while mutating requests are blocked before old
 Configurations without the replacement static app UI, without FProxy JavaScript, or without Web
 Shell as the advertised primary UI keep rendering the legacy fallback and count that usage in
 diagnostics. FProxy browse, retained browse-adjacent tools, and pending routes remain reachable.
+Phase 7 PR-230, tracked as `legacy-admin.removal-wave-2`, extends removal-by-default to safe reads
+for alerts, config, core-update status, statistics, and reviewed queue helper routes when their Web
+Shell or Queue Manager replacements are reachable. Config POST mutations are blocked through the
+replacement gate, while mutating legacy alert bulk actions, core-update installer and package-store
+actions, raw diagnostic export, content filter, FProxy browse, wizard, node-to-node messages,
+translation, help, chat, Platform API, Web Shell, and app-owned UI routes remain reachable.
 
 Key docs:
 
@@ -605,6 +611,8 @@ Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin re
 legacy-admin removal-wave evidence, and CI summaries and writes a redacted report plus a stable
 JSON companion. The report also includes historical comparison output and ecosystem gates when a
 previous certified summary is provided.
+`legacy-admin.removal-wave-2` is release-candidate-blocking deterministic evidence and does not
+require a live node.
 
 Fast self-tests:
 

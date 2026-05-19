@@ -763,6 +763,31 @@
     },
     {
       "details": {
+        "removedByDefaultRouteIds": [
+          "alerts",
+          "config",
+          "core-update",
+          "statistics"
+        ],
+        "scopeExpandedRouteIds": [
+          "queue-downloads",
+          "queue-uploads",
+          "config",
+          "statistics"
+        ],
+        "statusBehavior": {
+          "mutating": "410 Gone only for covered mutations when replacement is available; partial legacy actions remain fallback",
+          "safeRead": "303 See Other when replacement is available; legacy fallback when unavailable"
+        }
+      },
+      "id": "legacy-admin.removal-wave-2",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin removal wave 2 replacement behavior is documented and observable."
+    },
+    {
+      "details": {
         "fixtureBacked": true,
         "hostBubblewrapProbe": {
           "enabled": false

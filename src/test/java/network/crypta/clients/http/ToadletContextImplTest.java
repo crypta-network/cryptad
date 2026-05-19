@@ -162,6 +162,20 @@ class ToadletContextImplTest {
   }
 
   @Test
+  void isMethodAllowedInRestrictedMode_whenMutatingMethodTargetsPartialReplacement_returnsFalse() {
+    URI uri = URI.create("http://localhost/alerts/");
+
+    assertFalse(ToadletContextImpl.isMethodAllowedInRestrictedMode("DELETE", uri));
+  }
+
+  @Test
+  void isMethodAllowedInRestrictedMode_whenHeadTargetsPartialReplacement_returnsTrue() {
+    URI uri = URI.create("http://localhost/alerts/");
+
+    assertTrue(ToadletContextImpl.isMethodAllowedInRestrictedMode("HEAD", uri));
+  }
+
+  @Test
   void hasFormPassword_whenMatches_returnsTrue() {
     org.mockito.Mockito.when(request.getPartAsStringFailsafe("formPassword", 32))
         .thenReturn("secret");
@@ -364,6 +378,25 @@ class ToadletContextImplTest {
       assertEquals("303", headers.get("__status").getFirst());
       assertEquals("/apps/queue-manager/", headers.get("location").getFirst());
       assertEquals(1L, usage(QUEUE_DOWNLOADS_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
+  void handle_whenRemovedConfigGetHasNoConcreteToadlet_redirectsBeforeNoToadlet() throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureWebShellReplacementAvailable();
+      configureNoToadlet();
+      Socket socket = new FakeSocket(rawGetRequest(LegacyHttpPaths.CONFIG_PATH), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      LegacyAdminSurfaceUsage usage = usage(CONFIG_SURFACE_ID);
+      assertEquals("303", headers.get("__status").getFirst());
+      assertEquals("/app/node/#config", headers.get("location").getFirst());
+      assertEquals(0L, usage.count());
+      assertEquals(1L, usage.replacementResponseCount());
     }
   }
 
@@ -672,6 +705,13 @@ class ToadletContextImplTest {
         .thenReturn(false);
   }
 
+  private void configureWebShellReplacementAvailable() {
+    org.mockito.Mockito.when(
+            container.isAllowedFullAccess(org.mockito.ArgumentMatchers.any(InetAddress.class)))
+        .thenReturn(true);
+    org.mockito.Mockito.when(container.primaryUiRoot()).thenReturn(WebShellPaths.SHELL_ROOT);
+  }
+
   private void configureWebShellReplacementUnavailable() {
     org.mockito.Mockito.when(
             container.isAllowedFullAccess(org.mockito.ArgumentMatchers.any(InetAddress.class)))
@@ -686,6 +726,14 @@ class ToadletContextImplTest {
     org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
     org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
         .thenReturn(toadlet);
+  }
+
+  private void configureNoToadlet() throws Exception {
+    org.mockito.Mockito.when(container.getBucketFactory()).thenReturn(new ArrayBucketFactory());
+    org.mockito.Mockito.when(container.allowPosts()).thenReturn(true);
+    org.mockito.Mockito.when(container.generateUniqueID()).thenReturn(1L);
+    org.mockito.Mockito.when(container.findToadlet(org.mockito.ArgumentMatchers.any(URI.class)))
+        .thenReturn(null);
   }
 
   private void configureRedirectDispatch(Toadlet originalToadlet, Toadlet helperToadlet)

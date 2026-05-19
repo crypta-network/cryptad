@@ -15,8 +15,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
@@ -275,18 +284,18 @@ class PageMakerTest {
   void getPageNode_whenActiveToadletMissingAndRequestUriIsReplaced_rendersNotice() {
     PageMaker maker = newPageMaker();
     stubPageRenderingContext(false);
-    when(context.getUri()).thenReturn(URI.create(LegacyHttpPaths.CONFIG_PATH));
+    when(context.getUri()).thenReturn(URI.create(SecurityLevelsToadlet.PATH));
 
     PageNode page =
         maker.getPageNode(
-            "Configuration",
+            "Security",
             context,
             new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
 
     String html = page.generate();
 
     assertTrue(html.contains("legacy-admin-retirement-notice"));
-    assertTrue(html.contains("Web Shell config"));
+    assertTrue(html.contains("Web Shell security"));
   }
 
   @Test

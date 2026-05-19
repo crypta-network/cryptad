@@ -125,6 +125,7 @@ Release-candidate mode requires these evidence ids:
 | `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Preview exists as the local trust-service reference app, declares API v7 trust/content/vault/queue permissions, uses SDK trust helpers and design-system assets, and keeps evidence free of raw trust documents and private material. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
+| `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
 | `app-update.scheduler` | App-platform smoke summary. | Offline source and test evidence proves background catalog refresh, installed-app update checks through `AppUpdateService.check(...)`, durable path-free scheduler summaries, failure backoff, and the manual default policy. |
@@ -142,6 +143,15 @@ fallback diagnostics, that FProxy browse remains retained, and that diagnostics 
 counters without query strings, form data, file paths, peer refs, Freenet/Crypta URIs, tokens,
 request bodies, or remote addresses. Optional live-node checks may record status codes for the
 same routes, but normal PR and release-candidate certification do not require a live node.
+
+`legacy-admin.removal-wave-2` is also deterministic offline evidence. It proves that `/alerts/`,
+`/config/` and `/config/{section}`, `/core-update/`, `/stats/`, `/stats/requesters.html`, and the
+reviewed queue count/key-list helpers are removed by default only when their replacements are
+reachable. It distinguishes covered config POST mutations from mutating legacy alert bulk actions
+and core-update installer and package-store actions that remain fallback. It also proves that
+FProxy browse remains retained, content filter remains retained, pending wizard and node-to-node
+message routes remain out of scope, the raw diagnostic export remains retained, and the new
+diagnostics scope metadata stays bounded and redacted.
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
@@ -305,8 +315,9 @@ Sandbox gates warn when enforced evidence regresses to best-effort, and block in
 block if Site Publisher evidence disappears, Profile Publisher evidence disappears, Feed Reader
 evidence disappears, generated document insert evidence disappears, content-fetch evidence
 disappears, or a reference app no longer proves its required helper usage. Legacy
-retirement gates block missing removal-wave evidence or failed retained browse safety evidence and
-warn on removed-route count changes without update-note metadata.
+retirement gates block missing removal-wave evidence, including
+`legacy-admin.removal-wave-2`, or failed retained browse safety evidence and warn on removed-route
+count changes without update-note metadata.
 
 ## Waivers
 

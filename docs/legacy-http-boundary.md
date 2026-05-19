@@ -54,11 +54,20 @@ mutating requests before old handlers run when those replacements are reachable 
 request. Queue Manager and Publisher redirects require full operator access, enabled FProxy
 JavaScript, and an installed static app UI; Web Shell redirects require full operator access and
 Web Shell to be the advertised primary UI. If those checks fail, legacy fallbacks continue to
-render and are counted as fallback usage. `RETAINED` browse/FProxy surfaces and `PENDING` admin
-routes stay in their current legacy entry points until a later batch proves a complete replacement.
-Queue and Friends category roots no longer use wave-1 legacy URLs as normal fallbacks. Status and
-Config retain their later-wave fallbacks in this batch because alerts, security levels, core
-updates, stats, diagnostics, and config routes are not removed by default yet.
+render and are counted as fallback usage.
+
+Wave 2, reported as `legacy-admin.removal-wave-2`, expands that policy to safe reads for
+`/alerts/`, `/config/` and `/config/{section}`, `/core-update/`, `/stats/`, and
+`/stats/requesters.html` when Web Shell is reachable. It also expands only the reviewed queue
+helper routes `/downloads/countRequests.html`, `/downloads/listKeys.txt`,
+`/uploads/countRequests.html`, and `/uploads/listKeys.txt` when Queue Manager is reachable.
+Config POST mutations are blocked when Web Shell config and Platform API config write endpoints
+are available. Mutating legacy alert bulk actions and core-update installer and package-store
+actions remain fallback because their replacements are incomplete or action-specific routing is not
+yet part of the central policy. `RETAINED` browse/FProxy surfaces, content filter, the raw
+diagnostic export, and `PENDING` admin routes stay in their current legacy entry points until a
+later batch proves a complete replacement. Queue and Friends category roots no longer use removed
+legacy URLs as normal fallbacks.
 
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

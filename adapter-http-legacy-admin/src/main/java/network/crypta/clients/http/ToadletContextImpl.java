@@ -949,7 +949,7 @@ public final class ToadletContextImpl implements ToadletContext {
       case "GET", "POST" -> true;
       case "HEAD" -> isAppUiPath(uri) || LegacyAdminRemovalPolicy.isRemovedCanonicalPath(uri);
       case "DELETE", "PATCH", "PUT" ->
-          isPlatformApiPath(uri) || LegacyAdminRemovalPolicy.isRemovedCanonicalPath(uri);
+          isPlatformApiPath(uri) || LegacyAdminRemovalPolicy.isRemovedMutatingPath(uri);
       default -> false;
     };
   }
@@ -1101,13 +1101,13 @@ public final class ToadletContextImpl implements ToadletContext {
         return;
       }
 
-      Toadlet toadlet = toadletResult.toadlet;
-      if (toadlet == null) {
-        ctx.sendNoToadletError(ctx.shouldDisconnect);
+      if (trySendLegacyAdminRemovalDecision(method, currentUri, ctx)) {
         return;
       }
 
-      if (trySendLegacyAdminRemovalDecision(method, currentUri, ctx)) {
+      Toadlet toadlet = toadletResult.toadlet;
+      if (toadlet == null) {
+        ctx.sendNoToadletError(ctx.shouldDisconnect);
         return;
       }
 
