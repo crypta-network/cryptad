@@ -1,5 +1,6 @@
 package network.crypta.platform.appcatalog;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,8 +15,11 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -111,6 +115,134 @@ class AppReviewReceiptTest {
 
     assertEquals(AppReviewTrustStatus.UNKNOWN_REVIEWER, decision.status());
     assertFalse(decision.trusted());
+  }
+
+  @Test
+  void evaluate_whenReviewerKeyIsRevoked_expectRevokedReviewer() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    TrustedReviewerKeyLifecycle lifecycle =
+        TrustedReviewerKeyLifecycle.of(
+            TrustedReviewerKeyStatus.REVOKED,
+            null,
+            null,
+            Instant.parse("2026-05-02T00:00:00Z"),
+            "Key compromise.",
+            null,
+            null);
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeys(REVIEWER_KEY_ID, keyPair, POLICY_VERSION, lifecycle),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.REVOKED_REVIEWER, decision.status());
+    assertFalse(decision.trusted());
+    assertEquals("revoked", decision.reviewerKeyStatus());
+  }
+
+  @Test
+  void evaluate_whenRetiredReviewerCoversReviewedAt_expectTrustedHistoricalReview()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    TrustedReviewerKeyLifecycle lifecycle =
+        TrustedReviewerKeyLifecycle.of(
+            TrustedReviewerKeyStatus.RETIRED,
+            Instant.parse("2026-04-01T00:00:00Z"),
+            Instant.parse("2026-06-01T00:00:00Z"),
+            null,
+            null,
+            null,
+            null);
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeys(REVIEWER_KEY_ID, keyPair, POLICY_VERSION, lifecycle),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.TRUSTED_REVIEWED, decision.status());
+    assertTrue(decision.trusted());
+    assertEquals("retired", decision.reviewerKeyStatus());
+    assertEquals("retired", decision.policyVersionStatus());
+  }
+
+  @Test
+  void evaluate_whenRetiredReviewerNoLongerCoversReviewedAt_expectRetiredReviewer()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    TrustedReviewerKeyLifecycle lifecycle =
+        TrustedReviewerKeyLifecycle.of(
+            TrustedReviewerKeyStatus.RETIRED,
+            Instant.parse("2026-04-01T00:00:00Z"),
+            REVIEWED_AT,
+            null,
+            null,
+            null,
+            null);
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeys(REVIEWER_KEY_ID, keyPair, POLICY_VERSION, lifecycle),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.RETIRED_REVIEWER, decision.status());
+    assertFalse(decision.trusted());
+  }
+
+  @Test
+  void evaluate_whenRetiredReviewerHasNoValidityEnd_expectRetiredReviewer() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    TrustedReviewerKeyLifecycle lifecycle =
+        TrustedReviewerKeyLifecycle.of(
+            TrustedReviewerKeyStatus.RETIRED,
+            Instant.parse("2026-04-01T00:00:00Z"),
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeys(REVIEWER_KEY_ID, keyPair, POLICY_VERSION, lifecycle),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.RETIRED_REVIEWER, decision.status());
+    assertFalse(decision.trusted());
+  }
+
+  @Test
+  void evaluate_whenPolicyVersionDoesNotMatchReviewerConstraint_expectPolicyMismatch()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeys(REVIEWER_KEY_ID, keyPair, "2", TrustedReviewerKeyLifecycle.ACTIVE),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.REVIEW_POLICY_MISMATCH, decision.status());
+    assertFalse(decision.trusted());
+    assertEquals("rejected", decision.policyVersionStatus());
   }
 
   @Test
@@ -309,6 +441,438 @@ class AppReviewReceiptTest {
     assertEquals(TrustedReviewerKey.SIGNATURE_ALGORITHM, key.algorithm());
     assertEquals(Optional.of("Crypta First-Party Review"), key.displayName());
     assertEquals(Optional.of(POLICY_ID), key.policyId());
+    assertEquals(TrustedReviewerKeyStatus.ACTIVE, key.status());
+  }
+
+  @Test
+  void trustedReviewerKeysLoad_whenV2LifecycleConfigured_expectParsesStatuses() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers-v2.properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=2",
+            reviewerProperties("reviewer.1", keyPair, "active-reviewer"),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active",
+            "reviewer.1.valid.from=2026-04-01T00:00:00Z",
+            "reviewer.1.valid.until=2026-07-01T00:00:00Z",
+            "reviewer.1.rotates.from=retired-reviewer",
+            reviewerProperties("reviewer.2", keyPair, "retired-reviewer"),
+            "reviewer.2.policy.version=1",
+            "reviewer.2.status=retired",
+            "reviewer.2.valid.from=2026-01-01T00:00:00Z",
+            "reviewer.2.valid.until=2026-04-01T00:00:00Z",
+            "reviewer.2.rotates.to=active-reviewer",
+            reviewerProperties("reviewer.3", keyPair, "revoked-reviewer"),
+            "reviewer.3.policy.version=1",
+            "reviewer.3.status=revoked",
+            "reviewer.3.revoked.at=2026-05-01T00:00:00Z",
+            "reviewer.3.revocation.reason=Key compromise."),
+        StandardCharsets.UTF_8);
+
+    TrustedReviewerKeys keys = TrustedReviewerKeys.load(trustedReviewers);
+
+    assertEquals(2, keys.registryVersion());
+    assertEquals(
+        TrustedReviewerKeyStatus.ACTIVE, keys.find("active-reviewer").orElseThrow().status());
+    assertEquals(
+        TrustedReviewerKeyStatus.RETIRED, keys.find("retired-reviewer").orElseThrow().status());
+    assertEquals(
+        TrustedReviewerKeyStatus.REVOKED, keys.find("revoked-reviewer").orElseThrow().status());
+    assertFalse(keys.summaries().getFirst().toJsonValue().containsKey("publicKey"));
+  }
+
+  @Test
+  void trustedReviewerKeysLoad_whenPolicyVersionOmitsPolicyId_expectInvalidCatalogEntry()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers-version-only.properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=2",
+            "reviewer.1.id=version-only-reviewer",
+            "reviewer.1.algorithm=Ed25519",
+            "reviewer.1.public.key.base64="
+                + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active"),
+        StandardCharsets.UTF_8);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> TrustedReviewerKeys.load(trustedReviewers));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+    assertTrue(exception.getMessage().contains("policy.version requires policy.id"));
+  }
+
+  @Test
+  void transparencyLog_whenReceiptObservedTwice_expectReceiptObservationDeduplicated()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
+
+    log.recordCatalogDecision(
+        AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL, "core", entry, decision, List.of());
+    log.recordCatalogDecision(
+        AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL, "core", entry, decision, List.of());
+
+    AppReviewTransparencyPage observed =
+        log.page(
+            new AppReviewTransparencyQuery(
+                10,
+                null,
+                null,
+                null,
+                null,
+                AppReviewTransparencyEventKind.REVIEW_RECEIPT_OBSERVED));
+    assertEquals(1, observed.records().size());
+    assertTrue(log.verify().verified());
+  }
+
+  @Test
+  void transparencyLog_whenMismatchedReceiptObserved_expectReceiptPayloadBinding()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    String receiptAppId = "other-app";
+    String receiptVersion = "9.9.9";
+    String receiptSha256 = "b".repeat(64);
+    long receiptSize = 4321L;
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(
+            payloadWithBinding(receiptAppId, receiptVersion, receiptSha256, receiptSize),
+            keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
+
+    log.recordCatalogDecision(
+        AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL, "core", entry, decision, List.of());
+
+    AppReviewTransparencyPage observed =
+        log.page(
+            new AppReviewTransparencyQuery(
+                10,
+                null,
+                null,
+                null,
+                null,
+                AppReviewTransparencyEventKind.REVIEW_RECEIPT_OBSERVED));
+    assertEquals(AppReviewTrustStatus.APP_MISMATCH, decision.status());
+    assertEquals(1, observed.records().size());
+    AppReviewTransparencyRecord observedRecord = observed.records().getFirst();
+    assertEquals(receiptAppId, observedRecord.appId());
+    assertEquals(receiptVersion, observedRecord.appVersion());
+    assertEquals(receiptSha256, observedRecord.artifactSha256());
+    assertEquals(receiptSize, observedRecord.artifactSizeBytes());
+  }
+
+  @Test
+  void
+      transparencyRecordFromCatalogDecision_whenReceiptAndPublisherStatusesDiffer_expectReceiptStatus()
+          throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REJECTED), keyPair.getPrivate());
+    AppCatalogReviewMetadata publisherReview =
+        new AppCatalogReviewMetadata(
+            AppCatalogReviewStatus.REVIEWED, Optional.of("Publisher says reviewed."));
+    AppCatalogEntry entry = entry(receipt, publisherReview);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+
+    AppReviewTransparencyRecord transparencyRecord =
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of());
+
+    assertEquals(AppReviewTrustStatus.TRUSTED_REJECTED, decision.status());
+    assertEquals("rejected", transparencyRecord.receiptStatus());
+  }
+
+  @Test
+  void transparencyRecordFromCatalogDecision_whenOnlyPublisherReviewExists_expectNoReceiptStatus() {
+    AppCatalogReviewMetadata publisherReview =
+        new AppCatalogReviewMetadata(
+            AppCatalogReviewStatus.REVIEWED, Optional.of("Publisher says reviewed."));
+    AppCatalogEntry entry = entryWithoutReceipt(publisherReview);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, TrustedReviewerKeys.empty(), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+
+    AppReviewTransparencyRecord transparencyRecord =
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of());
+
+    assertEquals(AppReviewTrustStatus.PUBLISHER_CLAIM_ONLY, decision.status());
+    assertNull(transparencyRecord.receiptStatus());
+  }
+
+  @Test
+  void transparencyStoreVerify_whenRecordIsTampered_expectVerificationFailure() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of()));
+    String tampered = Files.readString(logFile).replace("trusted_reviewed", "trusted_rejected");
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("hash mismatch"));
+  }
+
+  @Test
+  void transparencyStoreVerify_whenRecordHasUnknownField_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of()));
+    String original = Files.readString(logFile, StandardCharsets.UTF_8).stripTrailing();
+    String tampered =
+        original.substring(0, original.length() - 1)
+            + ",\"unexpected\":\"value\"}"
+            + System.lineSeparator();
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("invalid review transparency record"));
+  }
+
+  @Test
+  void transparencyStoreVerify_whenRecordHasTrailingData_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of()));
+    String tampered =
+        Files.readString(logFile, StandardCharsets.UTF_8).stripTrailing()
+            + " trailing"
+            + System.lineSeparator();
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("invalid review transparency record"));
+  }
+
+  @Test
+  void transparencyStoreVerify_whenWarningListShapeIsTampered_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of("a", "b")));
+    String original = Files.readString(logFile, StandardCharsets.UTF_8);
+    String tampered = original.replace("\"warnings\":[\"a\",\"b\"]", "\"warnings\":[\"a|b\"]");
+    assertNotEquals(original, tampered);
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("hash mismatch"));
+  }
+
+  @Test
+  void transparencyStoreVerify_whenBooleanFieldHasStringValue_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store =
+        storeWithReceiptObservationForBooleanTamper(logFile, entry);
+    String original = Files.readString(logFile, StandardCharsets.UTF_8);
+    String tampered = original.replace("\"trusted\":null", "\"trusted\":\"true\"");
+    assertNotEquals(original, tampered);
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("invalid review transparency record"));
+  }
+
+  @Test
+  void transparencyStoreVerify_whenSchemaVersionIsOutOfRange_expectVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        AppReviewTransparencyRecord.fromCatalogDecision(
+            AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+            "core",
+            entry,
+            decision,
+            List.of()));
+    String original = Files.readString(logFile, StandardCharsets.UTF_8);
+    String tampered = original.replace("\"schemaVersion\":1", "\"schemaVersion\":4294967297");
+    assertNotEquals(original, tampered);
+    Files.writeString(logFile, tampered, StandardCharsets.UTF_8);
+
+    AppReviewTransparencyVerificationResult result = store.verify();
+
+    assertFalse(result.verified());
+    assertTrue(result.error().contains("invalid review transparency record"));
+  }
+
+  @Test
+  void transparencyLogRecordCatalogDecision_whenExistingLogIsMalformed_expectBestEffort()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    Files.writeString(logFile, "{}" + System.lineSeparator(), StandardCharsets.UTF_8);
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.fileBacked(logFile);
+
+    assertDoesNotThrow(
+        () ->
+            log.recordCatalogDecision(
+                AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
+                "core",
+                entry,
+                decision,
+                List.of()));
+  }
+
+  @Test
+  void transparencyLogRecordCatalogDecision_whenExistingReceiptRecordHasNullId_expectBestEffort()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppCatalogEntry entry = entry(receipt, AppCatalogReviewMetadata.EMPTY);
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry, trustedKeys(keyPair), AppReviewPolicy.DEFAULT, REVIEWED_AT);
+    Path logFile = tempDir.resolve("review-transparency-log.jsonl");
+    AppReviewTransparencyRecord existing =
+        new AppReviewTransparencyRecord(
+            AppReviewTransparencyRecord.SCHEMA_VERSION,
+            1L,
+            null,
+            REVIEWED_AT,
+            AppReviewTransparencyEventKind.REVIEW_RECEIPT_OBSERVED,
+            "app",
+            APP_ID,
+            APP_VERSION,
+            "core",
+            ARTIFACT_SHA256,
+            ARTIFACT_SIZE,
+            REVIEWER_KEY_ID,
+            null,
+            POLICY_ID,
+            POLICY_VERSION,
+            "reviewed",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "",
+            "0".repeat(64),
+            List.of());
+    Files.writeString(
+        logFile, existing.toJsonLine() + System.lineSeparator(), StandardCharsets.UTF_8);
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.fileBacked(logFile);
+
+    assertDoesNotThrow(
+        () ->
+            log.recordCatalogDecision(
+                AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
+                "core",
+                entry,
+                decision,
+                List.of()));
   }
 
   @Test
@@ -370,12 +934,17 @@ class AppReviewReceiptTest {
   }
 
   private static AppReviewReceiptPayload payloadWithBinding(String appId, String sha256) {
+    return payloadWithBinding(appId, APP_VERSION, sha256, ARTIFACT_SIZE);
+  }
+
+  private static AppReviewReceiptPayload payloadWithBinding(
+      String appId, String appVersion, String sha256, long artifactSize) {
     return new AppReviewReceiptPayload(
         AppReviewReceiptPayload.RECEIPT_VERSION,
         appId,
-        APP_VERSION,
+        appVersion,
         sha256,
-        ARTIFACT_SIZE,
+        artifactSize,
         Optional.empty(),
         POLICY_ID,
         POLICY_VERSION,
@@ -425,9 +994,55 @@ class AppReviewReceiptTest {
   }
 
   private static TrustedReviewerKeys trustedKeys(String keyId, KeyPair keyPair) {
+    return trustedKeys(keyId, keyPair, null, TrustedReviewerKeyLifecycle.ACTIVE);
+  }
+
+  private static TrustedReviewerKeys trustedKeys(
+      String keyId, KeyPair keyPair, String policyVersion, TrustedReviewerKeyLifecycle lifecycle) {
     return TrustedReviewerKeys.of(
         TrustedReviewerKey.ed25519(
-            keyId, keyPair.getPublic().getEncoded(), "Crypta First-Party Review", POLICY_ID));
+            keyId,
+            keyPair.getPublic().getEncoded(),
+            "Crypta First-Party Review",
+            POLICY_ID,
+            policyVersion,
+            lifecycle));
+  }
+
+  private static FileAppReviewTransparencyStore storeWithReceiptObservationForBooleanTamper(
+      Path logFile, AppCatalogEntry entry) throws IOException {
+    FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
+    store.append(
+        new AppReviewTransparencyRecord(
+            AppReviewTransparencyRecord.SCHEMA_VERSION,
+            0L,
+            "receipt:test-boolean-type",
+            null,
+            AppReviewTransparencyEventKind.REVIEW_RECEIPT_OBSERVED,
+            "app",
+            entry.appId(),
+            entry.version(),
+            "core",
+            entry.bundleSha256(),
+            entry.bundleSizeBytes(),
+            REVIEWER_KEY_ID,
+            null,
+            POLICY_ID,
+            POLICY_VERSION,
+            "reviewed",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of()));
+    return store;
   }
 
   private static KeyPair reviewerKeyPair() throws Exception {
@@ -439,8 +1054,12 @@ class AppReviewReceiptTest {
   }
 
   private static String reviewerProperties(String prefix, KeyPair keyPair) {
+    return reviewerProperties(prefix, keyPair, REVIEWER_KEY_ID);
+  }
+
+  private static String reviewerProperties(String prefix, KeyPair keyPair, String keyId) {
     return lines(
-        prefix + ".id=" + REVIEWER_KEY_ID,
+        prefix + ".id=" + keyId,
         prefix + ".algorithm=Ed25519",
         prefix
             + ".public.key.base64="

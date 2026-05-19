@@ -1,0 +1,140 @@
+# App Review Governance
+
+Crypta app review governance is local node policy for independent app review receipts. It does not
+replace catalog signatures, bundle signatures, artifact digest checks, Platform API compatibility
+checks, permission-delta handling, sandbox checks, update rollback gates, or operator approval
+flows.
+
+Review receipts are independent of catalog signatures and app bundle signatures:
+
+- Catalog signatures authenticate catalog publisher metadata.
+- Bundle signatures authenticate the signed app bundle.
+- Review receipts authenticate review evidence from a locally trusted reviewer key.
+
+A catalog publisher can include advisory review metadata, but advisory metadata is not trusted
+review evidence unless a receipt verifies against the node-local trusted reviewer-key registry.
+
+## Trusted Reviewer Registries
+
+Registry version 1 remains supported. A v1 entry is treated as an active trusted reviewer key with
+no explicit validity window:
+
+```properties
+trusted.reviewers.version=1
+reviewer.1.id=crypta-first-party-review
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review
+reviewer.1.policy.id=crypta-app-review-v1
+```
+
+Registry version 2 is preferred for governed deployments because it records policy-version
+constraints and key lifecycle state:
+
+```properties
+trusted.reviewers.version=2
+
+reviewer.1.id=crypta-first-party-review-2026q2
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review Q2 2026
+reviewer.1.policy.id=crypta-app-review
+reviewer.1.policy.version=1
+reviewer.1.status=active
+reviewer.1.valid.from=2026-04-01T00:00:00Z
+reviewer.1.valid.until=2026-07-01T00:00:00Z
+reviewer.1.rotates.from=crypta-first-party-review-2026q1
+reviewer.1.rotates.to=crypta-first-party-review-2026q3
+```
+
+Reviewer private keys must never be committed, embedded in catalogs, exposed through Platform API,
+printed by Web Shell, printed by `crypta-app`, or copied into release-certification reports. The
+trusted reviewer registry stores public verification keys only. API, Web Shell, CLI inspection, and
+certification evidence expose redacted summaries: key ids, display names, algorithms, lifecycle
+status, policy constraints, validity bounds, and rotation ids.
+
+## Lifecycle Semantics
+
+Reviewer key statuses are local governance state:
+
+- `active`: receipts can be trusted when their `reviewedAt` timestamp is inside the configured
+  validity window, if one is configured.
+- `retired`: receipts can be trusted only as historical evidence when `reviewedAt` is inside the
+  configured validity window. Receipts outside that window fail as `retired_reviewer`.
+- `revoked`: receipts from the key fail closed as `revoked_reviewer`, including historical
+  receipts. Revocation is distinct from `unknown_reviewer` so operators can see revoked-key
+  evidence.
+
+Validity timestamps are strict ISO-8601 instants. `valid.until` is treated as an exclusive boundary:
+a receipt reviewed at or after that instant is outside the key window.
+
+Rotation metadata (`rotates.from` and `rotates.to`) is informational. It helps operators audit key
+lifecycle continuity, but it does not automatically trust a successor or predecessor key.
+
+## Policy ID And Version
+
+Review receipts carry `policy.id` and `policy.version`. A trusted reviewer-key registry entry can
+constrain both fields:
+
+- If only `policy.id` is configured, any receipt policy version for that policy id can verify.
+- If both `policy.id` and `policy.version` are configured, both must match.
+- A mismatch produces `review_policy_mismatch`, not `unknown_reviewer`.
+
+This lets operators answer which review policy produced a receipt and whether the local registry
+currently accepts that policy id/version for the reviewer key.
+
+## Local Transparency Log
+
+Crypta keeps a host-owned app review transparency log below the app-catalog store. The log is local
+and tamper-evident, not a global public transparency log and not a distributed consensus service.
+
+The log stores redacted review governance events such as receipt observation, trust evaluation,
+install/update review gates, policy apply gates, reviewer-key lifecycle events, and hash-chain
+verification. Each record includes a sequence, previous record hash, and record hash over canonical
+fields. The verifier recomputes the chain and reports sequence gaps or hash mismatches.
+
+The transparency log must not contain secrets, local filesystem paths, app browser sessions, AppHost
+process tokens, private keys, raw public key bytes, raw receipt signatures, form passwords, request
+bodies, or raw exception traces.
+
+## Platform API And Web Shell
+
+Operator-readable review governance routes include:
+
+- `GET /api/v1/app-review/governance`
+- `GET /api/v1/app-review/reviewer-keys`
+- `GET /api/v1/app-review/transparency-log`
+- `GET /api/v1/app-review/transparency-log/verify`
+- `GET /api/v1/app-catalogs/{catalogId}/apps/{appId}/review-history`
+
+Responses are redacted. They expose reviewer key ids and lifecycle summaries, but not public key
+bytes, private keys, registry paths, transparency-log paths, local evidence paths, tokens, or raw
+receipt signatures.
+
+Web Shell displays review governance in the Apps/Catalogs area. Its review status is a local trust
+decision. It can change when local reviewer keys, reviewer lifecycle metadata, policy constraints,
+or review policy mode change, even if the signed catalog bytes remain the same.
+
+## Developer Tooling
+
+`crypta-app review` includes lifecycle and transparency helpers:
+
+```bash
+crypta-app review keys inspect \
+  --trusted-reviewer-keys-file trusted-reviewers.properties
+
+crypta-app review keys migrate \
+  --trusted-reviewer-keys-file trusted-reviewers-v1.properties \
+  --output trusted-reviewers-v2.properties
+
+crypta-app review keys verify-lifecycle \
+  --trusted-reviewer-keys-file trusted-reviewers.properties
+
+crypta-app review transparency verify \
+  --log-file review-transparency-log.jsonl
+```
+
+CLI output is redacted. It may print reviewer key ids, display names, policy ids/versions, lifecycle
+status, counts, warnings, record counts, and latest transparency hashes. It must not print private
+key material, raw public key bytes, raw signatures, local evidence contents, local store paths, or
+tokens.

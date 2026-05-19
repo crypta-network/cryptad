@@ -34,8 +34,10 @@ import java.util.Objects;
  * @param blocksPolicyApply whether local policy blocks policy-driven apply
  * @param reviewerKeyId display-safe reviewer key id, when known
  * @param reviewerDisplayName display-safe reviewer name, when configured
+ * @param reviewerKeyStatus local reviewer-key lifecycle status, when the key is known
  * @param policyId receipt policy id, when known
  * @param policyVersion receipt policy version, when known
+ * @param policyVersionStatus local policy-version governance status, when known
  * @param reviewedAt receipt reviewed-at instant, when known
  * @param expiresAt receipt expiry instant, when known
  * @param evidenceSha256 evidence digest, when supplied
@@ -53,8 +55,10 @@ public record AppReviewTrustDecision(
     boolean blocksPolicyApply,
     String reviewerKeyId,
     String reviewerDisplayName,
+    String reviewerKeyStatus,
     String policyId,
     String policyVersion,
+    String policyVersionStatus,
     Instant reviewedAt,
     Instant expiresAt,
     String evidenceSha256,
@@ -77,8 +81,10 @@ public record AppReviewTrustDecision(
    * @param blocksPolicyApply whether local policy blocks automatic policy-driven apply
    * @param reviewerKeyId reviewer key id from the receipt payload, when available
    * @param reviewerDisplayName reviewer display name from local trust configuration, when available
+   * @param reviewerKeyStatus local reviewer-key lifecycle status, when available
    * @param policyId review policy id from the receipt payload, when available
    * @param policyVersion review policy version from the receipt payload, when available
+   * @param policyVersionStatus local policy-version governance status, when available
    * @param reviewedAt receipt review timestamp, when available
    * @param expiresAt receipt expiry timestamp, when available
    * @param evidenceSha256 receipt evidence digest, when supplied
@@ -102,7 +108,7 @@ public record AppReviewTrustDecision(
    * @return safe review trust JSON object without key bytes, private material, paths, or tokens
    */
   public Map<String, Object> toJsonValue() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(17);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(19);
     json.put("status", status.jsonValue());
     json.put("trusted", trusted);
     json.put("positive", positive);
@@ -112,8 +118,10 @@ public record AppReviewTrustDecision(
     json.put("blocksPolicyApply", blocksPolicyApply);
     json.put("reviewerKeyId", reviewerKeyId);
     json.put("reviewerDisplayName", reviewerDisplayName);
+    json.put("reviewerKeyStatus", reviewerKeyStatus);
     json.put("policyId", policyId);
     json.put("policyVersion", policyVersion);
+    json.put("policyVersionStatus", policyVersionStatus);
     json.put("policyMode", policyMode.jsonValue());
     json.put("reviewedAt", reviewedAt == null ? null : reviewedAt.toString());
     json.put("expiresAt", expiresAt == null ? null : expiresAt.toString());

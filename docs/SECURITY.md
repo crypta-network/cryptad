@@ -71,10 +71,18 @@ Independent app review receipts use a separate trusted reviewer-key registry. A 
 signature binds the reviewer key id, app id, app version, artifact digest, artifact size, review
 policy id/version, reviewer status, timestamps, and optional evidence metadata to canonical receipt
 payload bytes. Do not reuse app or catalog signing trust implicitly for review receipts, and do not
-commit reviewer private keys. Platform API and Web Shell review-trust responses may expose reviewer
-key ids, display names, policy ids, timestamps, evidence digests, and evidence URIs, but must not
-expose reviewer public key bytes, reviewer private key material, local receipt or evidence paths,
-catalog scratch paths, staging paths, browser session tokens, or AppHost process tokens.
+commit reviewer private keys. Reviewer-key registry v1 remains supported, but governed deployments
+should prefer v2 entries with active, retired, or revoked lifecycle state, strict validity windows,
+rotation metadata, and policy-version constraints. Revoked keys fail closed for all receipts;
+retired keys can verify only historical receipts inside their configured windows.
+
+The app-review transparency log is local and tamper-evident. It is not a global public log and does
+not create trust by itself. Platform API, Web Shell, CLI, and release-certification review surfaces
+may expose reviewer key ids, display names, lifecycle status, policy ids/versions, timestamps,
+evidence digests, evidence URIs, record counts, and latest hashes, but must not expose reviewer
+public key bytes, reviewer private key material, raw receipt signatures, local receipt or evidence
+paths, transparency-log paths, catalog scratch paths, staging paths, browser session tokens,
+request bodies, form passwords, or AppHost process tokens.
 
 Catalog fetches support local files, `https:`, and loopback-only `http:` sources. Catalog ZIP
 extraction drops macOS `__MACOSX/**` and AppleDouble `._*` metadata entries before verification;

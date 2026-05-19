@@ -23,6 +23,8 @@ import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
+import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
@@ -434,7 +436,17 @@ public final class AppUpdateService {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     AppUpdateCandidate candidate = candidateOrDetect(normalizedAppId, installed);
-    requireStageableCandidate(candidate, reviewAcknowledged);
+    try {
+      requireStageableCandidate(candidate, reviewAcknowledged);
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "explicit_stage_allowed");
+    } catch (PlatformApiException exception) {
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+          candidate,
+          "explicit_stage_blocked:" + exception.errorCode());
+      throw exception;
+    }
     stageCandidate(normalizedAppId, installed, candidate);
     return summary(normalizedAppId, installed);
   }
@@ -456,7 +468,20 @@ public final class AppUpdateService {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     StagedUpdate staged = requireStagedUpdate(normalizedAppId);
-    boolean wasRunning = validateApplyRequest(normalizedAppId, staged, installed, options);
+    boolean wasRunning;
+    try {
+      wasRunning = validateApplyRequest(normalizedAppId, staged, installed, options);
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          staged.candidate(),
+          "explicit_apply_allowed");
+    } catch (PlatformApiException exception) {
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          staged.candidate(),
+          "explicit_apply_blocked:" + exception.errorCode());
+      throw exception;
+    }
 
     InstalledAppSnapshot updated = null;
     HealthFailureState healthFailureState = new HealthFailureState();
@@ -481,6 +506,10 @@ public final class AppUpdateService {
           staged.candidate().targetVersion(),
           null,
           vaultCleanupFailed ? MESSAGE_APPLY_VAULT_CLEANUP_FAILED : "Staged update applied.");
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          staged.candidate(),
+          "explicit_apply_applied");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
       closeStage(normalizedAppId);
@@ -561,6 +590,10 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_APPLY_FAILED);
+    recordUpdateReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        candidate,
+        "apply_failed:" + errorCode);
   }
 
   private PlatformApiException appHostApplyFailure(
@@ -811,6 +844,10 @@ public final class AppUpdateService {
             candidate.targetVersion(),
             ERROR_APP_RUNNING,
             "Policy skipped apply because the app is running.");
+        recordUpdateReviewGate(
+            AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+            candidate,
+            "policy_apply_skipped:" + ERROR_APP_RUNNING);
         return;
       }
       if (!candidate.reviewTrustAllowsAutomaticApply()) {
@@ -819,6 +856,10 @@ public final class AppUpdateService {
       }
       if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
         appendCompatibilityGateHistory(appId, candidate);
+        recordUpdateReviewGate(
+            AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+            candidate,
+            "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
         return;
       }
       stageCandidate(appId, installed, candidate);
@@ -839,6 +880,10 @@ public final class AppUpdateService {
           candidate.targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Candidate no longer matches the installed app version.");
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+          candidate,
+          "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -857,6 +902,10 @@ public final class AppUpdateService {
           candidate.targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Prepared catalog plan no longer matches the reviewed candidate.");
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+          candidate,
+          "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -872,6 +921,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         null,
         "Verified update candidate staged.");
+    recordUpdateReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "stage_staged");
   }
 
   private AppCatalogInstallPlan prepareStagePlan(String appId, AppUpdateCandidate candidate) {
@@ -899,6 +950,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_STAGE_FAILED);
+    recordUpdateReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "stage_failed:" + errorCode);
   }
 
   private AppUpdateCandidate detectCandidate(
@@ -1028,6 +1081,11 @@ public final class AppUpdateService {
           case "publisher_claim_only" -> 40;
           case "missing_receipt", "not_configured" -> 30;
           case "unknown_reviewer",
+              "retired_reviewer",
+              "revoked_reviewer",
+              "reviewer_not_yet_valid",
+              "reviewer_expired",
+              "review_policy_mismatch",
               "invalid_signature",
               "artifact_mismatch",
               "app_mismatch",
@@ -1072,6 +1130,26 @@ public final class AppUpdateService {
   private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
     return AppReviewReceiptVerifier.evaluate(
         entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  }
+
+  private AppReviewTransparencyLog reviewTransparencyLog() {
+    AppReviewTransparencyLog log = catalogManager.reviewTransparencyLog();
+    return log == null ? AppReviewTransparencyLog.disabled() : log;
+  }
+
+  private void recordUpdateReviewGate(
+      AppReviewTransparencyEventKind kind, AppUpdateCandidate candidate, String phase) {
+    reviewTransparencyLog()
+        .recordReviewTrustMap(
+            kind,
+            new AppReviewTransparencyLog.ReviewTrustMapSubject(
+                candidate.appId(),
+                candidate.targetVersion(),
+                candidate.catalogId(),
+                candidate.bundleSha256(),
+                candidate.bundleSizeBytes()),
+            candidate.reviewTrust(),
+            List.of("phase=" + phase));
   }
 
   private TrustedReviewerKeys trustedReviewerKeysOrEmpty() {
@@ -1224,6 +1302,12 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         reviewGateFailureCode(candidate.reviewTrust()),
         "Policy skipped update because no trusted positive review receipt verified.");
+    recordUpdateReviewGate(
+        ACTION_STAGE.equals(action)
+            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
+            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        candidate,
+        "policy_" + action + "_blocked:" + reviewGateFailureCode(candidate.reviewTrust()));
   }
 
   private void appendCompatibilityGateHistory(String appId, AppUpdateCandidate candidate) {
@@ -1245,7 +1329,7 @@ public final class AppUpdateService {
     return switch (status) {
       case "missing_receipt", "publisher_claim_only", "not_configured" -> ERROR_APP_REVIEW_MISSING;
       case "artifact_mismatch", "app_mismatch" -> ERROR_APP_REVIEW_MISMATCH;
-      case "expired" -> ERROR_APP_REVIEW_EXPIRED;
+      case "expired", "reviewer_expired", "retired_reviewer" -> ERROR_APP_REVIEW_EXPIRED;
       case "trusted_rejected" -> ERROR_APP_REVIEW_REJECTED;
       default -> ERROR_APP_REVIEW_UNTRUSTED;
     };

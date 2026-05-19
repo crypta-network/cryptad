@@ -1750,6 +1750,18 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void reviewTransparencyVerify_whenLogFileIsMissing_expectFailure() {
+    Path missingLog = tempDir.resolve("missing-review-transparency-log.jsonl");
+
+    CliResult result =
+        runCli("review", "transparency", "verify", "--log-file", missingLog.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("review transparency log file not found"));
+    assertFalse(result.out().contains("Verified review transparency log"));
+  }
+
+  @Test
   void catalogSignAndVerify_whenCatalogCliRoundTrips_expectSuccess() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");

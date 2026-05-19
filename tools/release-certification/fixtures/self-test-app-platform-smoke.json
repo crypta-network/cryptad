@@ -305,6 +305,107 @@
     },
     {
       "details": {
+        "checks": {
+          "governanceEndpoint": true,
+          "reviewHistoryEndpoint": true,
+          "reviewerKeysEndpoint": true,
+          "transparencyEndpoint": true,
+          "webShellSurface": true
+        },
+        "redaction": {
+          "browserSessionsExcluded": true,
+          "localPathsExcluded": true,
+          "rawPublicKeysExcluded": true,
+          "reviewerPrivateKeysExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-review.governance",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-review governance API, Web Shell, and redaction evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "activeStatus": true,
+          "policyVersionConstraint": true,
+          "policyVersionRequiresPolicyIdTest": true,
+          "retiredReviewerRequiresWindowTest": true,
+          "retiredStatus": true,
+          "revokedFailClosed": true,
+          "revokedStatus": true,
+          "v1Compatibility": true,
+          "v2RegistryParser": true
+        },
+        "redaction": {
+          "rawPublicKeysExcluded": true,
+          "reviewerPrivateKeysExcluded": true
+        }
+      },
+      "id": "app-review.reviewer-key-lifecycle",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Reviewer-key lifecycle parser and fail-closed evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "dedupTest": true,
+          "bestEffortMalformedLogTest": true,
+          "bestEffortNullRecordIdTest": true,
+          "booleanTypeTamperTest": true,
+          "gateReceiptStatusTest": true,
+          "hashChain": true,
+          "publisherOnlyNoReceiptStatusTest": true,
+          "receiptObservationPayloadBindingTest": true,
+          "redactedRecord": true,
+          "rejectTrailingData": true,
+          "rejectUnknownFields": true,
+          "schemaVersionRangeTest": true,
+          "tamperTest": true,
+          "trailingDataTest": true,
+          "unknownFieldTest": true,
+          "warningListTamperTest": true,
+          "verifyEndpoint": true
+        },
+        "redaction": {
+          "browserSessionsExcluded": true,
+          "localPathsExcluded": true,
+          "rawPublicKeysExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-review.transparency-log",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Review transparency-log hash-chain and redaction evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "historyEndpoint": true,
+          "readOnlyRoutes": true,
+          "reviewTrustCombined": true,
+          "transparencyHistoryCombined": true
+        },
+        "redaction": {
+          "localPathsExcluded": true,
+          "rawPublicKeysExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-review.review-history-api",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Review-history API evidence passed."
+    },
+    {
+      "details": {
         "firstPartyApps": [
           "queue-manager",
           "publisher",
@@ -347,6 +448,27 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "First-party catalog review receipt evidence covered all first-party apps."
+    },
+    {
+      "details": {
+        "checks": {
+          "firstPartyCatalogEvidence": true,
+          "governanceEvidenceRequired": true,
+          "historyApiEvidenceRequired": true,
+          "reviewerLifecycleEvidenceRequired": true,
+          "transparencyEvidenceRequired": true
+        },
+        "redaction": {
+          "catalogScratchPathsExcluded": true,
+          "localEvidencePathsExcluded": true,
+          "reviewerPrivateKeysExcluded": true
+        }
+      },
+      "id": "app-review.first-party-review-chain",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party review-chain governance evidence passed."
     },
     {
       "details": {

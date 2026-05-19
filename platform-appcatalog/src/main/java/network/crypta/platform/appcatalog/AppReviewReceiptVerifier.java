@@ -134,13 +134,31 @@ public final class AppReviewReceiptVerifier {
           List.of("No trusted reviewer keys are configured."));
     }
     TrustedReviewerKey reviewerKey = keys.find(receipt.payload().reviewerKeyId()).orElse(null);
-    if (reviewerKey == null || reviewerPolicyMismatch(reviewerKey, receipt)) {
+    if (reviewerKey == null) {
       return decision(
           AppReviewTrustStatus.UNKNOWN_REVIEWER,
           receipt,
           null,
           checkedPolicy,
           List.of("Review receipt reviewer key is not trusted by this node."));
+    }
+    if (reviewerPolicyMismatch(reviewerKey, receipt)) {
+      return decision(
+          AppReviewTrustStatus.REVIEW_POLICY_MISMATCH,
+          receipt,
+          reviewerKey,
+          checkedPolicy,
+          List.of("Review receipt policy id or version is not accepted for this reviewer key."));
+    }
+    AppReviewTrustStatus lifecycleFailure =
+        reviewerKey.lifecycle().trustFailureAt(receipt.payload().reviewedAt()).orElse(null);
+    if (lifecycleFailure != null) {
+      return decision(
+          lifecycleFailure,
+          receipt,
+          reviewerKey,
+          checkedPolicy,
+          lifecycleWarnings(lifecycleFailure));
     }
     if (!receipt.signature().algorithm().equals(reviewerKey.algorithm())) {
       return decision(
@@ -222,8 +240,22 @@ public final class AppReviewReceiptVerifier {
 
   private static boolean reviewerPolicyMismatch(
       TrustedReviewerKey reviewerKey, AppReviewReceipt receipt) {
-    String reviewerPolicyId = reviewerKey.policyId().orElse(null);
-    return reviewerPolicyId != null && !reviewerPolicyId.equals(receipt.payload().policyId());
+    return !reviewerKey
+        .policyConstraint()
+        .matches(receipt.payload().policyId(), receipt.payload().policyVersion());
+  }
+
+  private static List<String> lifecycleWarnings(AppReviewTrustStatus status) {
+    return switch (status) {
+      case REVOKED_REVIEWER -> List.of("Review receipt reviewer key is revoked by local policy.");
+      case RETIRED_REVIEWER ->
+          List.of("Review receipt reviewer key is retired for this review timestamp.");
+      case REVIEWER_NOT_YET_VALID ->
+          List.of("Review receipt predates the reviewer key validity window.");
+      case REVIEWER_EXPIRED ->
+          List.of("Review receipt was produced after the reviewer key validity window.");
+      default -> List.of("Review receipt reviewer key lifecycle policy rejected the receipt.");
+    };
   }
 
   private static boolean verifySignature(AppReviewReceipt receipt, TrustedReviewerKey reviewerKey) {
@@ -275,14 +307,35 @@ public final class AppReviewReceiptVerifier {
         policy.blocksPolicyApply(status),
         payload == null ? null : payload.reviewerKeyId(),
         reviewerKey == null ? null : reviewerKey.displayName().orElse(null),
+        reviewerKey == null ? null : reviewerKey.status().jsonValue(),
         payload == null ? null : payload.policyId(),
         payload == null ? null : payload.policyVersion(),
+        policyVersionStatus(status, reviewerKey),
         payload == null ? null : payload.reviewedAt(),
         payload == null ? null : payload.expiresAt().orElse(null),
         payload == null ? null : payload.evidenceSha256().orElse(null),
         payload == null ? null : payload.evidenceUri().orElse(null),
         List.copyOf(warnings),
         policy.mode());
+  }
+
+  private static String policyVersionStatus(
+      AppReviewTrustStatus status, TrustedReviewerKey reviewerKey) {
+    if (reviewerKey == null) {
+      return null;
+    }
+    if (status == AppReviewTrustStatus.REVIEW_POLICY_MISMATCH
+        || status == AppReviewTrustStatus.REVOKED_REVIEWER) {
+      return "rejected";
+    }
+    if (status == AppReviewTrustStatus.RETIRED_REVIEWER
+        || reviewerKey.status() == TrustedReviewerKeyStatus.RETIRED) {
+      return "retired";
+    }
+    if (reviewerKey.status() == TrustedReviewerKeyStatus.ACTIVE) {
+      return "active";
+    }
+    return reviewerKey.status().jsonValue();
   }
 
   private record ReviewEvaluationTarget(

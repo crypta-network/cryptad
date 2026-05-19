@@ -28,9 +28,14 @@ import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
+import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
+import network.crypta.platform.appcatalog.AppReviewTransparencyQuery;
+import network.crypta.platform.appcatalog.AppReviewTransparencyVerificationResult;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
+import network.crypta.platform.appcatalog.TrustedReviewerKeySummary;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
@@ -83,6 +88,8 @@ public final class AppCatalogsApiHandler {
   private static final String SOURCE_TYPE_FIELD = "sourceType";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String CATALOG_ID_FIELD = "catalogId";
+  private static final String APP_ID_FIELD = "appId";
+  private static final String INSTALLED_VERSION_FIELD = "installedVersion";
   private static final String LAST_ATTEMPT_AT_FIELD = "lastAttemptAt";
   private static final String LAST_SUCCESSFUL_REFRESH_AT_FIELD = "lastSuccessfulRefreshAt";
   private static final String LAST_FETCH_STATUS_FIELD = "lastFetchStatus";
@@ -605,6 +612,92 @@ public final class AppCatalogsApiHandler {
   }
 
   /**
+   * Returns redacted app-review governance state.
+   *
+   * @return review policy, reviewer registry, and transparency-log status
+   */
+  public Map<String, Object> governance() {
+    TrustedReviewerKeys keys = trustedReviewerKeysOrEmpty();
+    AppReviewTransparencyLog log = reviewTransparencyLog();
+    AppReviewTransparencyVerificationResult verification = log.verify();
+    LinkedHashMap<String, Object> transparency = LinkedHashMap.newLinkedHashMap(4);
+    transparency.put("configured", log.configured());
+    transparency.put("recordCount", log.recordCount());
+    transparency.put("latestRecordHash", log.latestRecordHash());
+    transparency.put("verified", verification.verified());
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put("reviewPolicyMode", reviewPolicy.mode().jsonValue());
+    json.put("trustedReviewerRegistry", keys.summary().toJsonValue());
+    json.put("transparencyLog", transparency);
+    return json;
+  }
+
+  /**
+   * Returns redacted trusted-reviewer key summaries.
+   *
+   * @return reviewer-key list and registry summary
+   */
+  public Map<String, Object> reviewerKeys() {
+    TrustedReviewerKeys keys = trustedReviewerKeysOrEmpty();
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put(
+        "keys", keys.summaries().stream().map(TrustedReviewerKeySummary::toJsonValue).toList());
+    json.put("registry", keys.summary().toJsonValue());
+    return json;
+  }
+
+  /**
+   * Returns one bounded transparency-log page.
+   *
+   * @param queryParameters decoded query parameters
+   * @return redacted transparency page
+   */
+  public Map<String, Object> transparencyLog(Map<String, List<String>> queryParameters) {
+    return reviewTransparencyLog().page(transparencyQuery(queryParameters)).toJsonValue();
+  }
+
+  /**
+   * Verifies the local transparency-log hash chain.
+   *
+   * @return redacted verification result
+   */
+  public Map<String, Object> verifyTransparencyLog() {
+    return reviewTransparencyLog().verify().toJsonValue();
+  }
+
+  /**
+   * Returns review history for one catalog app.
+   *
+   * @param catalogId catalog identifier
+   * @param appId app identifier
+   * @return current review metadata, local trust decision, reviewer summary, and log records
+   */
+  public Map<String, Object> reviewHistory(String catalogId, String appId) {
+    try {
+      AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
+      AppReviewTrustDecision decision = reviewTrust(entry);
+      AppReviewTransparencyQuery query =
+          new AppReviewTransparencyQuery(
+              AppReviewTransparencyQuery.DEFAULT_LIMIT, null, entry.appId(), catalogId, null, null);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(APP_ID_FIELD, entry.appId());
+      json.put("catalogVersion", entry.version());
+      json.put(INSTALLED_VERSION_FIELD, installedVersion(entry.appId()));
+      json.put("review", summarizeReview(entry.review()));
+      json.put(REVIEW_TRUST_FIELD, decision.toJsonValue());
+      json.put("reviewerKey", reviewerKeySummary(decision.reviewerKeyId()));
+      json.put("transparencyLog", reviewTransparencyLog().page(query).toJsonValue());
+      json.put("trustDelta", reviewTrustDelta(entry, decision));
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read catalog app review history.");
+    }
+  }
+
+  /**
    * Installs one catalog app through AppHost.
    *
    * <p>The method first confirms that the catalog entry exists and that the app is not already
@@ -641,6 +734,13 @@ public final class AppCatalogsApiHandler {
         throw conflict(APP_ALREADY_INSTALLED_PREFIX + normalizedAppId);
       }
       initialReviewTrust = reviewTrust(entry);
+      recordReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
+          catalogId,
+          entry,
+          initialReviewTrust,
+          reviewAcknowledged,
+          "catalog_entry");
       requireReviewGate(initialReviewTrust, reviewAcknowledged, true);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
@@ -651,6 +751,13 @@ public final class AppCatalogsApiHandler {
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      recordReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
+          catalogId,
+          plan.entry(),
+          preparedReviewTrust,
+          reviewAcknowledged,
+          "prepared_plan");
       requireReviewGate(
           preparedReviewTrust,
           reviewAcknowledgementStillApplies(
@@ -718,11 +825,25 @@ public final class AppCatalogsApiHandler {
     }
     AppReviewTrustDecision initialReviewTrust = reviewTrust(entry);
     boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
+    recordReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+        catalogId,
+        entry,
+        initialReviewTrust,
+        reviewAcknowledged,
+        "catalog_entry");
     requireReviewGate(initialReviewTrust, reviewAcknowledged, false);
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      recordReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+          catalogId,
+          plan.entry(),
+          preparedReviewTrust,
+          reviewAcknowledged,
+          "prepared_plan");
       requireReviewGate(
           preparedReviewTrust,
           reviewAcknowledgementStillApplies(
@@ -780,11 +901,96 @@ public final class AppCatalogsApiHandler {
         entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
   }
 
+  private void recordReviewGate(
+      AppReviewTransparencyEventKind kind,
+      String catalogId,
+      AppCatalogEntry entry,
+      AppReviewTrustDecision decision,
+      boolean reviewAcknowledged,
+      String phase) {
+    reviewTransparencyLog()
+        .recordCatalogDecision(
+            kind,
+            catalogId,
+            entry,
+            decision,
+            List.of("phase=" + phase, "reviewAcknowledged=" + reviewAcknowledged));
+  }
+
   private TrustedReviewerKeys trustedReviewerKeysOrEmpty() {
     try {
       return reviewerKeysProvider.trustedReviewerKeys();
     } catch (AppCatalogException | IOException _) {
       return TrustedReviewerKeys.empty();
+    }
+  }
+
+  private AppReviewTransparencyLog reviewTransparencyLog() {
+    AppReviewTransparencyLog log = catalogManager.reviewTransparencyLog();
+    return log == null ? AppReviewTransparencyLog.disabled() : log;
+  }
+
+  private Map<String, Object> reviewerKeySummary(String reviewerKeyId) {
+    if (reviewerKeyId == null || reviewerKeyId.isBlank()) {
+      return Map.of();
+    }
+    return trustedReviewerKeysOrEmpty()
+        .find(reviewerKeyId)
+        .map(key -> TrustedReviewerKeySummary.from(key).toJsonValue())
+        .orElseGet(Map::of);
+  }
+
+  private String installedVersion(String appId) {
+    InstalledAppSnapshot installed = installed(appId);
+    return installed == null ? null : installed.manifest().appVersion();
+  }
+
+  private Map<String, Object> reviewTrustDelta(
+      AppCatalogEntry entry, AppReviewTrustDecision decision) {
+    String installedVersion = installedVersion(entry.appId());
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    json.put(INSTALLED_VERSION_FIELD, installedVersion);
+    json.put("catalogVersion", entry.version());
+    json.put(
+        "versionChanged", installedVersion != null && !installedVersion.equals(entry.version()));
+    json.put("reviewerKeyId", decision.reviewerKeyId());
+    json.put("reviewerKeyStatus", decision.reviewerKeyStatus());
+    json.put("trustStatus", decision.status().jsonValue());
+    json.put("policyId", decision.policyId());
+    json.put("policyVersion", decision.policyVersion());
+    return json;
+  }
+
+  private static AppReviewTransparencyQuery transparencyQuery(
+      Map<String, List<String>> queryParameters) {
+    int limit = parseLimit(PlatformApiParameters.readOptionalString(queryParameters, "limit"));
+    String cursor = PlatformApiParameters.readOptionalString(queryParameters, "cursor");
+    String appId = PlatformApiParameters.readOptionalString(queryParameters, APP_ID_FIELD);
+    String catalogId = PlatformApiParameters.readOptionalString(queryParameters, CATALOG_ID_FIELD);
+    String reviewerKeyId =
+        PlatformApiParameters.readOptionalString(queryParameters, "reviewerKeyId");
+    String kindText = PlatformApiParameters.readOptionalString(queryParameters, "kind");
+    AppReviewTransparencyEventKind kind = null;
+    if (kindText != null && !kindText.isBlank()) {
+      try {
+        kind = AppReviewTransparencyEventKind.parse(kindText);
+      } catch (AppCatalogException _) {
+        throw new PlatformApiException(
+            400, "invalid_query_parameter", "kind is not a supported transparency event kind.");
+      }
+    }
+    return new AppReviewTransparencyQuery(limit, cursor, appId, catalogId, reviewerKeyId, kind);
+  }
+
+  private static int parseLimit(String value) {
+    if (value == null || value.isBlank()) {
+      return AppReviewTransparencyQuery.DEFAULT_LIMIT;
+    }
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException _) {
+      throw new PlatformApiException(
+          400, "invalid_query_parameter", "limit must be a positive integer.");
     }
   }
 
@@ -820,7 +1026,7 @@ public final class AppCatalogsApiHandler {
     return switch (status) {
       case "missing_receipt", "publisher_claim_only", "not_configured" -> ERROR_APP_REVIEW_MISSING;
       case "artifact_mismatch", "app_mismatch" -> ERROR_APP_REVIEW_MISMATCH;
-      case "expired" -> ERROR_APP_REVIEW_EXPIRED;
+      case "expired", "reviewer_expired", "retired_reviewer" -> ERROR_APP_REVIEW_EXPIRED;
       case "trusted_rejected" -> ERROR_APP_REVIEW_REJECTED;
       default -> ERROR_APP_REVIEW_UNTRUSTED;
     };
@@ -913,7 +1119,7 @@ public final class AppCatalogsApiHandler {
     RunningAppSnapshot running = appHost.status(entry.appId()).orElse(null);
     String installedVersion = installed == null ? null : installed.manifest().appVersion();
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(28);
-    json.put("appId", entry.appId());
+    json.put(APP_ID_FIELD, entry.appId());
     json.put("name", entry.name());
     json.put("version", entry.version());
     json.put("summary", entry.summary());
@@ -933,7 +1139,7 @@ public final class AppCatalogsApiHandler {
     json.put("screenshots", entry.screenshots().stream().map(URI::toString).toList());
     json.put("bundle", summarizeBundle(entry));
     json.put("installed", installed != null);
-    json.put("installedVersion", installedVersion);
+    json.put(INSTALLED_VERSION_FIELD, installedVersion);
     json.put(
         "versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put(
@@ -1145,7 +1351,7 @@ public final class AppCatalogsApiHandler {
 
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
-    json.put("appId", manifest.appId());
+    json.put(APP_ID_FIELD, manifest.appId());
     json.put("name", manifest.appName());
     json.put("version", manifest.appVersion());
     json.put("uiMode", manifest.uiMode().manifestValue());

@@ -1511,7 +1511,14 @@
     if (trust.positive === true && trust.trusted === true) {
       return "is-success";
     }
-    if (status.includes("reject") || status.includes("mismatch") || status.includes("expired") || status.includes("invalid")) {
+    if (
+      status.includes("reject")
+      || status.includes("mismatch")
+      || status.includes("expired")
+      || status.includes("invalid")
+      || status.includes("revoked")
+      || status.includes("policy")
+    ) {
       return "is-error";
     }
     return "is-warning";
@@ -2373,6 +2380,9 @@
       typeof data.identityVaultError === "string" ? data.identityVaultError : "";
     const vaultIdentities = Array.isArray(identityVault.identities) ? identityVault.identities : [];
     const vaultGrants = Array.isArray(identityVault.grants) ? identityVault.grants : [];
+    const reviewGovernance = recordValue(data.reviewGovernance);
+    const reviewerKeys = recordValue(data.reviewerKeys);
+    const transparencyVerification = recordValue(data.reviewTransparencyVerification);
     const runningApps = apps.filter((app) => app && typeof app === "object" && app.running).length;
     const summaryEntries = [
       ["Installed apps", `${apps.length}`],
@@ -2381,18 +2391,33 @@
       ["Recommended catalogs", `${recommendedCatalogs.length}`],
       ["Vault identities", `${vaultIdentities.length}`],
       ["Identity grants", `${vaultGrants.length}`],
+      ["Review log verified", transparencyVerification.verified === false ? "No" : "Yes"],
+      ["Reviewer keys", `${Array.isArray(reviewerKeys.keys) ? reviewerKeys.keys.length : 0}`],
       ["Scope", formPassword ? "Shell-native" : "Read-only"],
       ...topLevelFieldEntries(data, [
         "apps",
         "catalogs",
         "recommendedCatalogs",
         "identityVault",
+        "reviewGovernance",
+        "reviewerKeys",
+        "reviewTransparencyLog",
+        "reviewTransparencyVerification",
         "catalogError",
         "recommendedCatalogError",
         "identityVaultError",
+        "reviewGovernanceError",
       ]),
     ];
     sections.apps.append(summaryCard("Apps summary", summaryEntries, apps.length ? "" : "is-warning"));
+
+    renderReviewGovernance(
+      reviewGovernance,
+      reviewerKeys,
+      recordValue(data.reviewTransparencyLog),
+      transparencyVerification,
+      typeof data.reviewGovernanceError === "string" ? data.reviewGovernanceError : "",
+    );
 
     if (apps.length) {
       const list = document.createElement("div");
@@ -2408,6 +2433,81 @@
     renderIdentityVault(identityVault, identityVaultError, apps);
     renderRecommendedCatalogs(recommendedCatalogs, recommendedCatalogError, catalogs);
     renderCatalogs(catalogs, catalogError);
+  }
+
+  function renderReviewGovernance(governance, reviewerKeys, transparencyLog, verification, error) {
+    sections.apps.append(text("h3", "app-card-title", "Review governance"));
+    if (error) {
+      sections.apps.append(text("p", "error-state", `Review governance unavailable: ${error}`));
+      return;
+    }
+    const registry = recordValue(governance.trustedReviewerRegistry);
+    const counts = recordValue(registry.counts);
+    const log = recordValue(governance.transparencyLog);
+    const keys = Array.isArray(reviewerKeys.keys) ? reviewerKeys.keys : [];
+    sections.apps.append(
+      summaryCard(
+        "Governance summary",
+        [
+          ["Review policy mode", normalizedStatus(governance.reviewPolicyMode, "Advisory")],
+          ["Registry version", scalar(registry.version)],
+          ["Active reviewers", scalar(counts.active || 0)],
+          ["Retired reviewers", scalar(counts.retired || 0)],
+          ["Revoked reviewers", scalar(counts.revoked || 0)],
+          ["Transparency records", scalar(log.recordCount || transparencyLog.records?.length || 0)],
+          ["Transparency verified", verification.verified === false ? "No" : "Yes"],
+          ["Latest hash", scalar(log.latestRecordHash || verification.latestRecordHash)],
+        ],
+        verification.verified === false ? "is-error" : "",
+      ),
+    );
+    if (keys.length) {
+      const list = document.createElement("div");
+      list.className = "app-card-list";
+      keys.forEach((key) => {
+        const card = document.createElement("article");
+        card.className = "app-card";
+        const header = document.createElement("div");
+        header.className = "app-card-header";
+        const heading = document.createElement("div");
+        heading.className = "app-card-heading";
+        heading.append(
+          text("h4", "catalog-app-title", scalar(key.displayName || key.keyId)),
+          text("p", "app-card-subtitle", scalar(key.keyId)),
+        );
+        const pills = document.createElement("div");
+        pills.className = "app-card-pills";
+        pills.append(createPill(normalizedStatus(key.status, "Active"), reviewerKeyTone(key.status)));
+        pills.append(createPill(scalar(key.algorithm)));
+        header.append(heading, pills);
+        card.append(header);
+        card.append(
+          definitionList([
+            ["Policy", [key.policyId, key.policyVersion].filter((value) => value).join(" ") || "Any"],
+            ["Valid from", formatIsoTimestamp(key.validFrom)],
+            ["Valid until", formatIsoTimestamp(key.validUntil)],
+            ["Rotates from", scalar(key.rotatesFrom)],
+            ["Rotates to", scalar(key.rotatesTo)],
+            ["Revoked at", formatIsoTimestamp(key.revokedAt)],
+          ]),
+        );
+        list.append(card);
+      });
+      sections.apps.append(list);
+    } else {
+      sections.apps.append(text("p", "empty-state", "No trusted reviewer keys are configured."));
+    }
+  }
+
+  function reviewerKeyTone(status) {
+    const normalized = typeof status === "string" ? status.toLowerCase() : "";
+    if (normalized === "active") {
+      return "is-success";
+    }
+    if (normalized === "revoked") {
+      return "is-error";
+    }
+    return "is-warning";
   }
 
   function renderIdentityVault(identityVault, identityVaultError, apps) {
@@ -2808,6 +2908,9 @@
   function catalogReviewDetailsNode(app) {
     const review = recordValue(app.review);
     const reviewTrust = recordValue(app.reviewTrust);
+    const reviewHistory = recordValue(app.reviewHistory);
+    const historyLog = recordValue(reviewHistory.transparencyLog);
+    const historyRecords = Array.isArray(historyLog.records) ? historyLog.records : [];
     const reviewer =
       reviewTrust.reviewerDisplayName || reviewTrust.reviewerKeyId || "Unavailable";
     const policy = [reviewTrust.policyId, reviewTrust.policyVersion].filter((entry) => entry).join(" ");
@@ -2825,7 +2928,9 @@
         ["Trusted review receipt", reviewTrustLabel(reviewTrust)],
         ["Trusted reviewer", scalar(reviewer)],
         ["Reviewer key id", scalar(reviewTrust.reviewerKeyId)],
+        ["Reviewer key status", normalizedStatus(reviewTrust.reviewerKeyStatus, "Unavailable")],
         ["Review policy", scalar(policy)],
+        ["Policy version status", normalizedStatus(reviewTrust.policyVersionStatus, "Unavailable")],
         ["Policy mode", normalizedStatus(reviewTrust.policyMode, "Advisory")],
         ["Reviewed at", formatIsoTimestamp(reviewTrust.reviewedAt)],
         ["Expires at", formatIsoTimestamp(reviewTrust.expiresAt)],
@@ -2833,6 +2938,10 @@
         ["Evidence URI", metadataLinkNode(reviewTrust.evidenceUri)],
         ["Install handling", reviewTrust.blocksInstall ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
         ["Update handling", reviewTrust.blocksUpdate ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+        ["Installed version", scalar(reviewHistory.installedVersion || app.installedVersion)],
+        ["Catalog version", scalar(reviewHistory.catalogVersion || app.version)],
+        ["Transparency entries", scalar(historyRecords.length)],
+        ["Latest transparency hash", scalar(historyRecords.length ? historyRecords[historyRecords.length - 1].recordHash : null)],
         ["Warnings", reviewTrustWarnings(reviewTrust)],
       ]),
     );
@@ -4059,6 +4168,27 @@
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
 
+    let reviewGovernance = {};
+    let reviewerKeys = {};
+    let reviewTransparencyLog = {};
+    let reviewTransparencyVerification = {};
+    let reviewGovernanceError = "";
+    try {
+      const [governanceSnapshot, keysSnapshot, logSnapshot, verifySnapshot] = await Promise.all([
+        loadOptionalJson(apiUrl("app-review/governance")),
+        loadOptionalJson(apiUrl("app-review/reviewer-keys")),
+        loadOptionalJson(apiUrl("app-review/transparency-log?limit=8")),
+        loadOptionalJson(apiUrl("app-review/transparency-log/verify")),
+      ]);
+      reviewGovernance = recordValue(governanceSnapshot && governanceSnapshot.governance);
+      reviewerKeys = recordValue(keysSnapshot && keysSnapshot.reviewerKeys);
+      reviewTransparencyLog = recordValue(logSnapshot && logSnapshot.transparencyLog);
+      reviewTransparencyVerification = recordValue(verifySnapshot && verifySnapshot.verification);
+    } catch (error) {
+      reviewGovernanceError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+
     if (loadGeneration !== appsLoadGeneration) {
       return;
     }
@@ -4070,6 +4200,11 @@
       recommendedCatalogError,
       identityVault,
       identityVaultError,
+      reviewGovernance,
+      reviewerKeys,
+      reviewTransparencyLog,
+      reviewTransparencyVerification,
+      reviewGovernanceError,
     });
   }
 
@@ -4140,11 +4275,31 @@
     }
     try {
       const apps = await loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));
-      return { ...catalog, apps: apps && Array.isArray(apps.apps) ? apps.apps : [] };
+      const catalogApps = apps && Array.isArray(apps.apps) ? apps.apps : [];
+      const appsWithHistory = await Promise.all(
+        catalogApps.map((app) => loadCatalogAppReviewHistory(catalog.catalogId, app)),
+      );
+      return { ...catalog, apps: appsWithHistory };
     } catch (error) {
       const appsError =
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
       return { ...catalog, apps: [], appsError };
+    }
+  }
+
+  async function loadCatalogAppReviewHistory(catalogId, app) {
+    if (!app || typeof app !== "object" || typeof app.appId !== "string") {
+      return app;
+    }
+    try {
+      const snapshot = await loadOptionalJson(
+        apiUrl(
+          `app-catalogs/${encodeURIComponent(catalogId)}/apps/${encodeURIComponent(app.appId)}/review-history`,
+        ),
+      );
+      return { ...app, reviewHistory: snapshot && snapshot.reviewHistory };
+    } catch (_) {
+      return app;
     }
   }
 

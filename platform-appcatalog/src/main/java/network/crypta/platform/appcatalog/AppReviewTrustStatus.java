@@ -54,6 +54,44 @@ public enum AppReviewTrustStatus {
   UNKNOWN_REVIEWER("unknown_reviewer"),
 
   /**
+   * The receipt names a locally known reviewer key that is retired for the receipt timestamp.
+   *
+   * <p>Retired keys may authenticate historical receipts inside their validity window, but receipts
+   * outside that window fail closed with this status.
+   */
+  RETIRED_REVIEWER("retired_reviewer"),
+
+  /**
+   * The receipt names a locally known reviewer key that has been revoked.
+   *
+   * <p>Revoked keys fail closed for all receipts, including historical receipts. This status is
+   * deliberately distinct from {@link #UNKNOWN_REVIEWER} so operators can see revoked-key evidence.
+   */
+  REVOKED_REVIEWER("revoked_reviewer"),
+
+  /**
+   * The receipt was produced before the reviewer key's configured validity window.
+   *
+   * <p>The review timestamp, not the local wall clock, is used for this lifecycle decision.
+   */
+  REVIEWER_NOT_YET_VALID("reviewer_not_yet_valid"),
+
+  /**
+   * The receipt was produced after the reviewer key's configured active validity window.
+   *
+   * <p>For active keys this usually means the receipt was signed after the local key validity end.
+   */
+  REVIEWER_EXPIRED("reviewer_expired"),
+
+  /**
+   * The receipt policy id or policy version does not match the trusted reviewer-key constraint.
+   *
+   * <p>The reviewer key is known locally, but local governance does not accept this key for the
+   * receipt's policy metadata.
+   */
+  REVIEW_POLICY_MISMATCH("review_policy_mismatch"),
+
+  /**
    * The receipt signature is missing, malformed, or does not verify over canonical payload bytes.
    *
    * <p>The receipt might still parse structurally, but the node cannot authenticate the payload

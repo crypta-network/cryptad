@@ -35,14 +35,16 @@ import network.crypta.platform.appdist.AppBundleSignature;
  * @param algorithm signature algorithm supported by the key
  * @param publicKey public verification key used for Ed25519 receipt signatures
  * @param displayName optional operator-facing reviewer name for API and UI summaries
- * @param policyId optional review policy id this reviewer key is trusted for
+ * @param policyConstraint optional review policy id/version this reviewer key is trusted for
+ * @param lifecycle local lifecycle governance metadata for this key
  */
 public record TrustedReviewerKey(
     String keyId,
     String algorithm,
     PublicKey publicKey,
     Optional<String> displayName,
-    Optional<String> policyId) {
+    TrustedReviewerPolicyConstraint policyConstraint,
+    TrustedReviewerKeyLifecycle lifecycle) {
   /**
    * Signature algorithm accepted for review receipt signatures.
    *
@@ -56,7 +58,6 @@ public record TrustedReviewerKey(
       Pattern.compile("-----BEGIN [^-]+-----|-----END [^-]+-----");
   private static final int MAX_KEY_ID_CHARS = 128;
   private static final int MAX_DISPLAY_NAME_CHARS = 128;
-  private static final int MAX_POLICY_ID_CHARS = 128;
 
   /**
    * Creates an Ed25519 reviewer key from base64-encoded X.509 bytes or PEM text.
@@ -74,7 +75,42 @@ public record TrustedReviewerKey(
    */
   public static TrustedReviewerKey ed25519(
       String keyId, String publicKeyMaterial, String displayName, String policyId) {
-    return ed25519(keyId, decodeBase64KeyMaterial(publicKeyMaterial), displayName, policyId);
+    return ed25519(
+        keyId,
+        decodeBase64KeyMaterial(publicKeyMaterial),
+        displayName,
+        policyId,
+        null,
+        TrustedReviewerKeyLifecycle.ACTIVE);
+  }
+
+  /**
+   * Creates an Ed25519 reviewer key from base64-encoded X.509 bytes or PEM text with lifecycle
+   * governance metadata.
+   *
+   * @param keyId stable reviewer key id expected in receipt payloads
+   * @param publicKeyMaterial X.509 public key bytes as base64 or PEM text
+   * @param displayName display name exposed in review-trust summaries, or {@code null} when omitted
+   * @param policyId review policy id this key is trusted for, or {@code null} when omitted
+   * @param policyVersion review policy version this key is trusted for, or {@code null} when
+   *     omitted
+   * @param lifecycle reviewer-key lifecycle metadata
+   * @return decoded trusted reviewer key
+   */
+  public static TrustedReviewerKey ed25519(
+      String keyId,
+      String publicKeyMaterial,
+      String displayName,
+      String policyId,
+      String policyVersion,
+      TrustedReviewerKeyLifecycle lifecycle) {
+    return ed25519(
+        keyId,
+        decodeBase64KeyMaterial(publicKeyMaterial),
+        displayName,
+        policyId,
+        policyVersion,
+        lifecycle);
   }
 
   /**
@@ -92,6 +128,29 @@ public record TrustedReviewerKey(
    */
   public static TrustedReviewerKey ed25519(
       String keyId, byte[] publicKeyBytes, String displayName, String policyId) {
+    return ed25519(
+        keyId, publicKeyBytes, displayName, policyId, null, TrustedReviewerKeyLifecycle.ACTIVE);
+  }
+
+  /**
+   * Creates an Ed25519 reviewer key from X.509 key bytes with lifecycle governance metadata.
+   *
+   * @param keyId stable reviewer key id expected in receipt payloads
+   * @param publicKeyBytes X.509 SubjectPublicKeyInfo key bytes
+   * @param displayName display name exposed in review-trust summaries, or {@code null} when omitted
+   * @param policyId review policy id this key is trusted for, or {@code null} when omitted
+   * @param policyVersion review policy version this key is trusted for, or {@code null} when
+   *     omitted
+   * @param lifecycle reviewer-key lifecycle metadata
+   * @return decoded trusted reviewer key
+   */
+  public static TrustedReviewerKey ed25519(
+      String keyId,
+      byte[] publicKeyBytes,
+      String displayName,
+      String policyId,
+      String policyVersion,
+      TrustedReviewerKeyLifecycle lifecycle) {
     try {
       PublicKey publicKey =
           KeyFactory.getInstance(SIGNATURE_ALGORITHM)
@@ -101,7 +160,8 @@ public record TrustedReviewerKey(
           SIGNATURE_ALGORITHM,
           publicKey,
           Optional.ofNullable(displayName),
-          Optional.ofNullable(policyId));
+          TrustedReviewerPolicyConstraint.of(policyId, policyVersion),
+          Objects.requireNonNullElse(lifecycle, TrustedReviewerKeyLifecycle.ACTIVE));
     } catch (GeneralSecurityException | IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY,
@@ -135,15 +195,35 @@ public record TrustedReviewerKey(
                     "reviewer display name",
                     AppCatalogSidecars.INVALID_CATALOG_ENTRY,
                     MAX_DISPLAY_NAME_CHARS));
-    Objects.requireNonNull(policyId, "policyId");
-    policyId =
-        policyId.map(
-            value ->
-                AppCatalogSidecars.requireBoundedSingleLine(
-                    value,
-                    "reviewer policy id",
-                    AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-                    MAX_POLICY_ID_CHARS));
+    Objects.requireNonNull(policyConstraint, "policyConstraint");
+    Objects.requireNonNull(lifecycle, "lifecycle");
+  }
+
+  /**
+   * Returns the optional policy id constraint for source compatibility with older callers.
+   *
+   * @return configured policy id, when constrained
+   */
+  public Optional<String> policyId() {
+    return policyConstraint.policyId();
+  }
+
+  /**
+   * Returns the optional policy version constraint.
+   *
+   * @return configured policy version, when constrained
+   */
+  public Optional<String> policyVersion() {
+    return policyConstraint.policyVersion();
+  }
+
+  /**
+   * Returns the local lifecycle status.
+   *
+   * @return active, retired, or revoked
+   */
+  public TrustedReviewerKeyStatus status() {
+    return lifecycle.status();
   }
 
   private static byte[] decodeBase64KeyMaterial(String material) {

@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +29,8 @@ import network.crypta.platform.appcatalog.AppReviewReceipt;
 import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
 import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
+import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
+import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
@@ -51,6 +54,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -496,6 +500,172 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void governance_whenReviewRegistryAndTransparencyLogConfigured_expectRedactedStatus()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
+    log.recordReviewTrustMap(
+        AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        trustedReviewTrustMap(),
+        List.of("api-test"));
+    when(catalogManager.reviewTransparencyLog()).thenReturn(log);
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+
+    Map<String, Object> governance = handler.governance();
+
+    assertEquals(AppReviewPolicy.DEFAULT.mode().jsonValue(), governance.get("reviewPolicyMode"));
+    Map<String, Object> registry = (Map<String, Object>) governance.get("trustedReviewerRegistry");
+    assertEquals(true, registry.get("configured"));
+    Map<String, Object> counts = (Map<String, Object>) registry.get("counts");
+    assertEquals(1, counts.get("active"));
+    assertEquals(0, counts.get("retired"));
+    assertEquals(0, counts.get("revoked"));
+    Map<String, Object> transparency = (Map<String, Object>) governance.get("transparencyLog");
+    assertEquals(true, transparency.get("configured"));
+    assertEquals(1L, transparency.get("recordCount"));
+    assertEquals(true, transparency.get("verified"));
+    assertTrue(transparency.get("latestRecordHash") instanceof String);
+    assertRedactsReviewerPublicKey(governance, reviewerKeyPair);
+  }
+
+  @Test
+  void reviewerKeys_whenCalled_expectRedactedKeySummaries() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+
+    Map<String, Object> response = handler.reviewerKeys();
+
+    List<Map<String, Object>> keys = (List<Map<String, Object>>) response.get("keys");
+    assertEquals(1, keys.size());
+    Map<String, Object> key = keys.getFirst();
+    assertEquals(REVIEWER_KEY_ID, key.get("keyId"));
+    assertEquals("Crypta First-Party Review", key.get("displayName"));
+    assertEquals("Ed25519", key.get("algorithm"));
+    assertEquals("active", key.get("status"));
+    assertEquals(REVIEW_POLICY_ID, key.get("policyId"));
+    assertFalse(key.containsKey("publicKey"));
+    assertFalse(key.containsKey("publicKeyBase64"));
+    assertRedactsReviewerPublicKey(response, reviewerKeyPair);
+  }
+
+  @Test
+  void transparencyLog_whenFilteredByKind_expectPagedRedactedRecords() {
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
+    log.recordReviewTrustMap(
+        AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        trustedReviewTrustMap(),
+        List.of("api-test"));
+    log.recordReviewTrustMap(
+        AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
+        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        trustedReviewTrustMap(),
+        List.of("phase=install"));
+    when(catalogManager.reviewTransparencyLog()).thenReturn(log);
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty);
+
+    Map<String, Object> page =
+        handler.transparencyLog(
+            Map.of("kind", List.of("review_gate_install"), "limit", List.of("1")));
+
+    List<Map<String, Object>> records = (List<Map<String, Object>>) page.get("records");
+    assertEquals(1, records.size());
+    Map<String, Object> record = records.getFirst();
+    assertEquals("review_gate_install", record.get("kind"));
+    assertEquals(APP_ID, record.get("appId"));
+    assertEquals("core", record.get("catalogId"));
+    assertEquals("trusted_reviewed", record.get("trustStatus"));
+    assertFalse(page.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void transparencyLog_whenKindIsInvalid_expectBadRequest() {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.transparencyLog(Map.of("kind", List.of("not-a-kind"))));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("invalid_query_parameter", exception.errorCode());
+  }
+
+  @Test
+  void reviewHistory_whenTrustedReceiptExists_expectTrustReviewerAndTransparencyHistory()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogEntry entry = richCatalogEntryWithTrustedReceipt(reviewerKeyPair);
+    AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
+    log.recordReviewTrustMap(
+        AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
+        reviewTrustMapSubject(entry.version(), entry.bundleSha256(), entry.bundleSizeBytes()),
+        trustedReviewTrustMap(),
+        List.of("api-test"));
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.reviewTransparencyLog()).thenReturn(log);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+
+    Map<String, Object> history = handler.reviewHistory("core", APP_ID);
+
+    assertEquals("core", history.get("catalogId"));
+    assertEquals(APP_ID, history.get("appId"));
+    assertEquals("1.2.0", history.get("catalogVersion"));
+    assertEquals("1.1.0", history.get("installedVersion"));
+    Map<String, Object> reviewTrust = (Map<String, Object>) history.get("reviewTrust");
+    assertEquals("trusted_reviewed", reviewTrust.get("status"));
+    assertEquals(true, reviewTrust.get("trusted"));
+    assertEquals(true, reviewTrust.get("positive"));
+    assertEquals(REVIEWER_KEY_ID, reviewTrust.get("reviewerKeyId"));
+    assertEquals("active", reviewTrust.get("reviewerKeyStatus"));
+    assertEquals(REVIEW_POLICY_VERSION, reviewTrust.get("policyVersion"));
+    Map<String, Object> reviewerKey = (Map<String, Object>) history.get("reviewerKey");
+    assertNotNull(reviewerKey);
+    assertEquals(REVIEWER_KEY_ID, reviewerKey.get("keyId"));
+    assertEquals("active", reviewerKey.get("status"));
+    Map<String, Object> transparency = (Map<String, Object>) history.get("transparencyLog");
+    List<Map<String, Object>> records = (List<Map<String, Object>>) transparency.get("records");
+    assertEquals(1, records.size());
+    assertEquals("review_trust_evaluated", records.getFirst().get("kind"));
+    Map<String, Object> delta = (Map<String, Object>) history.get("trustDelta");
+    assertEquals(true, delta.get("versionChanged"));
+    assertEquals("trusted_reviewed", delta.get("trustStatus"));
+    assertRedactsReviewerPublicKey(history, reviewerKeyPair);
+  }
+
+  @Test
   void install_whenPolicyRequiresTrustedReviewAndReceiptIsMissing_expectStableReviewError()
       throws Exception {
     AppCatalogsApiHandler handler =
@@ -893,6 +1063,38 @@ class AppCatalogsApiHandlerTest {
 
   private static Map<String, List<String>> reviewAcknowledgedQuery() {
     return Map.of("reviewAcknowledged", List.of("true"));
+  }
+
+  private static Map<String, Object> trustedReviewTrustMap() {
+    return Map.of(
+        "status",
+        "trusted_reviewed",
+        "trusted",
+        true,
+        "positive",
+        true,
+        "reviewerKeyId",
+        REVIEWER_KEY_ID,
+        "reviewerKeyStatus",
+        "active",
+        "policyId",
+        REVIEW_POLICY_ID,
+        "policyVersion",
+        REVIEW_POLICY_VERSION);
+  }
+
+  private static AppReviewTransparencyLog.ReviewTrustMapSubject reviewTrustMapSubject(
+      String appVersion, String artifactSha256, long artifactSizeBytes) {
+    return new AppReviewTransparencyLog.ReviewTrustMapSubject(
+        APP_ID, appVersion, "core", artifactSha256, artifactSizeBytes);
+  }
+
+  private static void assertRedactsReviewerPublicKey(Object output, KeyPair reviewerKeyPair) {
+    String encodedPublicKey =
+        Base64.getEncoder().encodeToString(reviewerKeyPair.getPublic().getEncoded());
+    String rendered = output.toString();
+    assertFalse(rendered.contains(encodedPublicKey));
+    assertFalse(rendered.contains("public.key.base64"));
   }
 
   private static KeyPair reviewerKeyPair() throws Exception {

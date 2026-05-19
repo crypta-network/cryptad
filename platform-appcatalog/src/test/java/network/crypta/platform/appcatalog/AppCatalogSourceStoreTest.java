@@ -143,7 +143,6 @@ class AppCatalogSourceStoreTest {
     Instant failedAt = REFRESHED_AT.plusSeconds(60);
 
     store.recordRefreshFailure(
-        "core",
         beforeFailure,
         failedAt,
         new AppCatalogException(AppCatalogSidecars.CATALOG_FETCH_FAILED, "fetch failed"));
@@ -171,7 +170,6 @@ class AppCatalogSourceStoreTest {
     String unsafeMessage = "fetch failed\nwith\ttabs\r" + "x".repeat(600);
 
     store.recordRefreshFailure(
-        "core",
         beforeFailure,
         REFRESHED_AT.plusSeconds(60),
         new AppCatalogException(AppCatalogSidecars.CATALOG_FETCH_FAILED, unsafeMessage));

@@ -2,9 +2,12 @@ package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,12 +39,19 @@ import java.util.regex.Pattern;
 public final class TrustedReviewerKeys {
   private static final Pattern REVIEWER_PROPERTY_PATTERN =
       Pattern.compile(
-          "reviewer\\.(\\d+)\\.(id|algorithm|public\\.key\\.base64|display\\.name|policy\\.id)");
-  private static final TrustedReviewerKeys EMPTY = new TrustedReviewerKeys(Map.of());
+          "reviewer\\.(\\d+)\\.(id|algorithm|public\\.key\\.base64|display\\.name|policy\\.id|"
+              + "policy\\.version|status|valid\\.from|valid\\.until|revoked\\.at|"
+              + "revocation\\.reason|rotates\\.from|rotates\\.to)");
+  private static final TrustedReviewerKeys EMPTY = new TrustedReviewerKeys(1, Map.of());
+  private static final String DUPLICATE_KEY_ID_MESSAGE_PREFIX =
+      "duplicate trusted reviewer key id: ";
+  private static final String REVIEWER_ENTRY_PREFIX = "reviewer.";
 
+  private final int registryVersion;
   private final Map<String, TrustedReviewerKey> keysById;
 
-  private TrustedReviewerKeys(Map<String, TrustedReviewerKey> keysById) {
+  private TrustedReviewerKeys(int registryVersion, Map<String, TrustedReviewerKey> keysById) {
+    this.registryVersion = registryVersion;
     this.keysById = Map.copyOf(keysById);
   }
 
@@ -62,11 +72,10 @@ public final class TrustedReviewerKeys {
       TrustedReviewerKey trustedKey = Objects.requireNonNull(key, "key");
       TrustedReviewerKey previous = byId.putIfAbsent(trustedKey.keyId(), trustedKey);
       if (previous != null) {
-        throw AppCatalogSidecars.invalidEntry(
-            "duplicate trusted reviewer key id: " + trustedKey.keyId());
+        throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + trustedKey.keyId());
       }
     }
-    return new TrustedReviewerKeys(byId);
+    return new TrustedReviewerKeys(1, byId);
   }
 
   /**
@@ -100,9 +109,9 @@ public final class TrustedReviewerKeys {
    *
    * <p>The file supports {@code trusted.reviewers.version=1} and contiguous {@code reviewer.N.*}
    * entries with {@code id}, {@code algorithm}, {@code public.key.base64}, and optional {@code
-   * display.name} and {@code policy.id} fields. Indexes may start at either {@code 0} or {@code 1}
-   * so operator examples can use human-friendly numbering while tests can mirror existing app-key
-   * fixtures.
+   * display.name} and {@code policy.id} fields. Version {@code 2} also accepts policy-version and
+   * lifecycle governance fields. Indexes may start at either {@code 0} or {@code 1} so operator
+   * examples can use human-friendly numbering while tests can mirror existing app-key fixtures.
    *
    * <p>Only the Ed25519 review receipt algorithm is accepted. Unknown properties, unsupported
    * algorithms, duplicate ids, and incomplete key entries fail the whole load rather than producing
@@ -123,13 +132,13 @@ public final class TrustedReviewerKeys {
     Map<String, String> properties =
         AppCatalogSidecars.parseKeyValueSidecar(
             AppCatalogSidecars.utf8(bytes), "trusted reviewer keys file");
-    validateVersion(properties.remove("trusted.reviewers.version"));
+    int version = validateVersion(properties.remove("trusted.reviewers.version"));
     SortedMap<Integer, TrustedReviewerKeyBuilder> builders = readBuilders(properties);
     if (!properties.isEmpty()) {
       throw AppCatalogSidecars.invalidEntry(
           "unsupported trusted reviewer keys property: " + properties.keySet().iterator().next());
     }
-    return buildKeys(builders);
+    return buildKeys(version, builders);
   }
 
   /**
@@ -160,6 +169,52 @@ public final class TrustedReviewerKeys {
   }
 
   /**
+   * Returns the trusted-reviewer registry format version.
+   *
+   * @return registry version parsed from the properties file, or {@code 1} for programmatic keys
+   */
+  public int registryVersion() {
+    return registryVersion;
+  }
+
+  /**
+   * Returns configured reviewer keys without exposing public key material through JSON helpers.
+   *
+   * <p>The returned key objects still contain public verifier material for in-process verification,
+   * so callers must use {@link #summaries()} for API, Web Shell, CLI, or certification output.
+   *
+   * @return configured reviewer keys sorted by key id for deterministic output
+   */
+  public List<TrustedReviewerKey> all() {
+    return keysById.values().stream()
+        .sorted(Comparator.comparing(TrustedReviewerKey::keyId))
+        .toList();
+  }
+
+  /**
+   * Returns redacted reviewer-key summaries.
+   *
+   * @return key summaries sorted by key id
+   */
+  public List<TrustedReviewerKeySummary> summaries() {
+    return all().stream().map(TrustedReviewerKeySummary::from).toList();
+  }
+
+  /**
+   * Returns a redacted summary of the registry.
+   *
+   * @return registry version, lifecycle counts, and warnings
+   */
+  public TrustedReviewerRegistrySummary summary() {
+    LinkedHashMap<String, Integer> counts = LinkedHashMap.newLinkedHashMap(3);
+    counts.put("active", count(TrustedReviewerKeyStatus.ACTIVE));
+    counts.put("retired", count(TrustedReviewerKeyStatus.RETIRED));
+    counts.put("revoked", count(TrustedReviewerKeyStatus.REVOKED));
+    return new TrustedReviewerRegistrySummary(
+        !isEmpty(), registryVersion, counts, registryWarnings());
+  }
+
+  /**
    * Returns a new registry with one additional reviewer key.
    *
    * <p>The existing registry is not modified. This is used by configuration loading to combine a
@@ -174,21 +229,50 @@ public final class TrustedReviewerKeys {
     TrustedReviewerKey trustedKey = Objects.requireNonNull(key, "key");
     TrustedReviewerKey previous = combined.putIfAbsent(trustedKey.keyId(), trustedKey);
     if (previous != null) {
-      throw AppCatalogSidecars.invalidEntry(
-          "duplicate trusted reviewer key id: " + trustedKey.keyId());
+      throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + trustedKey.keyId());
     }
-    return new TrustedReviewerKeys(combined);
+    return new TrustedReviewerKeys(registryVersion, combined);
   }
 
-  private static void validateVersion(String versionText) {
+  private int count(TrustedReviewerKeyStatus status) {
+    int count = 0;
+    for (TrustedReviewerKey key : keysById.values()) {
+      if (key.status() == status) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private List<String> registryWarnings() {
+    List<String> warnings = new ArrayList<>();
+    for (TrustedReviewerKey key : all()) {
+      warnings.addAll(
+          key.lifecycle().warnings().stream()
+              .map(warning -> key.keyId() + ": " + warning)
+              .toList());
+      key.lifecycle()
+          .rotatesFrom()
+          .filter(id -> !keysById.containsKey(id))
+          .ifPresent(_ -> warnings.add(key.keyId() + ": rotatesFrom key is not configured."));
+      key.lifecycle()
+          .rotatesTo()
+          .filter(id -> !keysById.containsKey(id))
+          .ifPresent(_ -> warnings.add(key.keyId() + ": rotatesTo key is not configured."));
+    }
+    return List.copyOf(warnings);
+  }
+
+  private static int validateVersion(String versionText) {
     if (versionText == null) {
       throw AppCatalogSidecars.invalidEntry("missing trusted.reviewers.version");
     }
     try {
       int version = Integer.parseInt(versionText);
-      if (version != 1) {
+      if (version != 1 && version != 2) {
         throw AppCatalogSidecars.invalidEntry("unsupported trusted.reviewers.version: " + version);
       }
+      return version;
     } catch (NumberFormatException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY,
@@ -215,9 +299,9 @@ public final class TrustedReviewerKeys {
   }
 
   private static TrustedReviewerKeys buildKeys(
-      SortedMap<Integer, TrustedReviewerKeyBuilder> builders) {
+      int version, SortedMap<Integer, TrustedReviewerKeyBuilder> builders) {
     if (builders.isEmpty()) {
-      return empty();
+      return new TrustedReviewerKeys(version, Map.of());
     }
     int start = builders.firstKey();
     if (start != 0 && start != 1) {
@@ -230,12 +314,20 @@ public final class TrustedReviewerKeys {
       if (builder == null) {
         throw AppCatalogSidecars.invalidEntry("trusted reviewer keys must use contiguous indexes");
       }
-      keys.add(buildKey(builder, index));
+      keys.add(buildKey(version, builder, index));
     }
-    return of(keys);
+    Map<String, TrustedReviewerKey> byId = new LinkedHashMap<>();
+    for (TrustedReviewerKey key : keys) {
+      TrustedReviewerKey previous = byId.putIfAbsent(key.keyId(), key);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + key.keyId());
+      }
+    }
+    return new TrustedReviewerKeys(version, byId);
   }
 
-  private static TrustedReviewerKey buildKey(TrustedReviewerKeyBuilder builder, int index) {
+  private static TrustedReviewerKey buildKey(
+      int registryVersion, TrustedReviewerKeyBuilder builder, int index) {
     if (builder.id == null || builder.algorithm == null || builder.publicKeyBase64 == null) {
       throw AppCatalogSidecars.invalidEntry("trusted reviewer key " + index + " is incomplete");
     }
@@ -243,8 +335,48 @@ public final class TrustedReviewerKeys {
       throw AppCatalogSidecars.invalidEntry(
           "unsupported trusted reviewer key algorithm: " + builder.algorithm);
     }
+    if (registryVersion == 1 && builder.hasV2Fields()) {
+      throw AppCatalogSidecars.invalidEntry(
+          "trusted reviewer key " + index + " uses v2 fields in a v1 registry");
+    }
+    TrustedReviewerKeyStatus status =
+        builder.status == null
+            ? TrustedReviewerKeyStatus.ACTIVE
+            : TrustedReviewerKeyStatus.parse(builder.status);
+    TrustedReviewerKeyLifecycle lifecycle =
+        TrustedReviewerKeyLifecycle.of(
+            status,
+            parseOptionalInstant(builder.validFrom, reviewerFieldName(index, "valid.from")),
+            parseOptionalInstant(builder.validUntil, reviewerFieldName(index, "valid.until")),
+            parseOptionalInstant(builder.revokedAt, reviewerFieldName(index, "revoked.at")),
+            builder.revocationReason,
+            builder.rotatesFrom,
+            builder.rotatesTo);
     return TrustedReviewerKey.ed25519(
-        builder.id, builder.publicKeyBase64, builder.displayName, builder.policyId);
+        builder.id,
+        builder.publicKeyBase64,
+        builder.displayName,
+        builder.policyId,
+        builder.policyVersion,
+        lifecycle);
+  }
+
+  private static Instant parseOptionalInstant(String value, String fieldName) {
+    if (value == null) {
+      return null;
+    }
+    try {
+      return Instant.parse(value);
+    } catch (DateTimeParseException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY,
+          "invalid " + fieldName + ": " + value,
+          exception);
+    }
+  }
+
+  private static String reviewerFieldName(int index, String fieldName) {
+    return REVIEWER_ENTRY_PREFIX + index + "." + fieldName;
   }
 
   private static int parseIndex(String rawIndex, String propertyName) {
@@ -265,6 +397,14 @@ public final class TrustedReviewerKeys {
       case "public.key.base64" -> builder.publicKeyBase64 = value;
       case "display.name" -> builder.displayName = value;
       case "policy.id" -> builder.policyId = value;
+      case "policy.version" -> builder.policyVersion = value;
+      case "status" -> builder.status = value;
+      case "valid.from" -> builder.validFrom = value;
+      case "valid.until" -> builder.validUntil = value;
+      case "revoked.at" -> builder.revokedAt = value;
+      case "revocation.reason" -> builder.revocationReason = value;
+      case "rotates.from" -> builder.rotatesFrom = value;
+      case "rotates.to" -> builder.rotatesTo = value;
       default -> throw new IllegalArgumentException("unsupported trusted reviewer key field");
     }
   }
@@ -275,5 +415,24 @@ public final class TrustedReviewerKeys {
     private String publicKeyBase64;
     private String displayName;
     private String policyId;
+    private String policyVersion;
+    private String status;
+    private String validFrom;
+    private String validUntil;
+    private String revokedAt;
+    private String revocationReason;
+    private String rotatesFrom;
+    private String rotatesTo;
+
+    private boolean hasV2Fields() {
+      return policyVersion != null
+          || status != null
+          || validFrom != null
+          || validUntil != null
+          || revokedAt != null
+          || revocationReason != null
+          || rotatesFrom != null
+          || rotatesTo != null;
+    }
   }
 }

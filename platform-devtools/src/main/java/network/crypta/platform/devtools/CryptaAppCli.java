@@ -14,6 +14,7 @@ import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -39,7 +40,10 @@ import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
 import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTransparencyVerificationResult;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.FileAppReviewTransparencyStore;
+import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppDistributionException;
@@ -90,6 +94,8 @@ import picocli.CommandLine;
       CryptaAppCli.PublishUskCommand.class
     })
 public final class CryptaAppCli implements Runnable {
+  private static final String WARNING_PREFIX = "Warning: ";
+
   private CommandSpec spec;
 
   /**
@@ -417,7 +423,8 @@ public final class CryptaAppCli implements Runnable {
         super.commandLine()
             .getErr()
             .println(
-                "Warning: unknown app permission(s): "
+                WARNING_PREFIX
+                    + "unknown app permission(s): "
                     + String.join(", ", validation.permissionLint().unknownPermissions()));
       }
       CompatibilityVerificationResult compatibility =
@@ -681,7 +688,12 @@ public final class CryptaAppCli implements Runnable {
   @Command(
       name = "review",
       description = "Sign and verify independent app review receipts.",
-      subcommands = {ReviewSignCommand.class, ReviewVerifyCommand.class})
+      subcommands = {
+        ReviewSignCommand.class,
+        ReviewVerifyCommand.class,
+        ReviewKeysCommand.class,
+        ReviewTransparencyCommand.class
+      })
   static final class ReviewCommand extends SpecAwareCommand implements Runnable {
     @Override
     public void run() {
@@ -846,6 +858,239 @@ public final class CryptaAppCli implements Runnable {
                   + decision.reviewerKeyId());
       return CommandLine.ExitCode.OK;
     }
+  }
+
+  /** Parent command for trusted reviewer-key lifecycle tooling. */
+  @Command(
+      name = "keys",
+      description = "Inspect and validate trusted reviewer-key lifecycle registries.",
+      subcommands = {
+        ReviewKeysInspectCommand.class,
+        ReviewKeysMigrateCommand.class,
+        ReviewKeysVerifyLifecycleCommand.class
+      })
+  static final class ReviewKeysCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app review keys inspect}. */
+  @Command(name = "inspect", description = "Inspect a redacted trusted reviewer-key registry.")
+  static final class ReviewKeysInspectCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(
+        names = "--trusted-reviewer-keys-file",
+        required = true,
+        description = "Trusted reviewer keys properties file.")
+    private Path trustedReviewerKeysFile;
+
+    @Override
+    public Integer call() throws Exception {
+      TrustedReviewerKeys keys = TrustedReviewerKeys.load(trustedReviewerKeysFile);
+      PrintWriter out = super.commandLine().getOut();
+      out.println(
+          "Trusted reviewer registry: version="
+              + keys.registryVersion()
+              + " configured="
+              + !keys.isEmpty());
+      for (var summary : keys.summaries()) {
+        out.println(
+            "Reviewer key: "
+                + summary.keyId()
+                + " status="
+                + summary.status().jsonValue()
+                + " algorithm="
+                + summary.algorithm()
+                + " policy="
+                + nullToDash(summary.policyId())
+                + "/"
+                + nullToDash(summary.policyVersion())
+                + " displayName="
+                + nullToDash(summary.displayName()));
+      }
+      List<String> warnings = keys.summary().warnings();
+      out.println("Warnings: " + warnings.size());
+      for (String warning : warnings) {
+        out.println(WARNING_PREFIX + warning);
+      }
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app review keys migrate}. */
+  @Command(name = "migrate", description = "Migrate a trusted reviewer-key registry to v2.")
+  static final class ReviewKeysMigrateCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(
+        names = "--trusted-reviewer-keys-file",
+        required = true,
+        description = "Trusted reviewer keys properties file.")
+    private Path trustedReviewerKeysFile;
+
+    @Option(names = "--output", required = true, description = "Output v2 registry file.")
+    private Path output;
+
+    @Option(names = "--overwrite", description = "Replace an existing output file.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      TrustedReviewerKeys keys = TrustedReviewerKeys.load(trustedReviewerKeysFile);
+      Path normalizedOutput = output.toAbsolutePath().normalize();
+      if (Files.exists(normalizedOutput) && !overwrite) {
+        throw new AppDistributionException("trusted reviewer output already exists: " + output);
+      }
+      Files.createDirectories(normalizedOutput.getParent());
+      Files.writeString(normalizedOutput, serializeV2ReviewerKeys(keys), StandardCharsets.UTF_8);
+      super.commandLine()
+          .getOut()
+          .println("Migrated trusted reviewer registry to v2: keys=" + keys.summaries().size());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private static String serializeV2ReviewerKeys(TrustedReviewerKeys keys) {
+      StringBuilder builder = new StringBuilder("trusted.reviewers.version=2\n\n");
+      int index = 1;
+      for (TrustedReviewerKey key : keys.all()) {
+        int reviewerIndex = index;
+        appendReviewerProperty(builder, reviewerIndex, "id", key.keyId());
+        appendReviewerProperty(builder, reviewerIndex, "algorithm", key.algorithm());
+        appendReviewerProperty(
+            builder,
+            reviewerIndex,
+            "public.key.base64",
+            Base64.getEncoder().encodeToString(key.publicKey().getEncoded()));
+        key.displayName()
+            .ifPresent(
+                value -> appendReviewerProperty(builder, reviewerIndex, "display.name", value));
+        key.policyId()
+            .ifPresent(value -> appendReviewerProperty(builder, reviewerIndex, "policy.id", value));
+        key.policyVersion()
+            .ifPresent(
+                value -> appendReviewerProperty(builder, reviewerIndex, "policy.version", value));
+        appendReviewerProperty(builder, reviewerIndex, "status", key.status().jsonValue());
+        key.lifecycle()
+            .validFrom()
+            .ifPresent(
+                value ->
+                    appendReviewerProperty(builder, reviewerIndex, "valid.from", value.toString()));
+        key.lifecycle()
+            .validUntil()
+            .ifPresent(
+                value ->
+                    appendReviewerProperty(
+                        builder, reviewerIndex, "valid.until", value.toString()));
+        key.lifecycle()
+            .revokedAt()
+            .ifPresent(
+                value ->
+                    appendReviewerProperty(builder, reviewerIndex, "revoked.at", value.toString()));
+        key.lifecycle()
+            .revocationReason()
+            .ifPresent(
+                value ->
+                    appendReviewerProperty(builder, reviewerIndex, "revocation.reason", value));
+        key.lifecycle()
+            .rotatesFrom()
+            .ifPresent(
+                value -> appendReviewerProperty(builder, reviewerIndex, "rotates.from", value));
+        key.lifecycle()
+            .rotatesTo()
+            .ifPresent(
+                value -> appendReviewerProperty(builder, reviewerIndex, "rotates.to", value));
+        builder.append('\n');
+        index++;
+      }
+      return builder.toString();
+    }
+
+    private static void appendReviewerProperty(
+        StringBuilder builder, int index, String field, String value) {
+      builder
+          .append("reviewer.")
+          .append(index)
+          .append('.')
+          .append(field)
+          .append('=')
+          .append(value)
+          .append('\n');
+    }
+  }
+
+  /** Implements {@code crypta-app review keys verify-lifecycle}. */
+  @Command(
+      name = "verify-lifecycle",
+      description = "Validate reviewer-key lifecycle metadata without printing key material.")
+  static final class ReviewKeysVerifyLifecycleCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(
+        names = "--trusted-reviewer-keys-file",
+        required = true,
+        description = "Trusted reviewer keys properties file.")
+    private Path trustedReviewerKeysFile;
+
+    @Override
+    public Integer call() throws Exception {
+      TrustedReviewerKeys keys = TrustedReviewerKeys.load(trustedReviewerKeysFile);
+      List<String> warnings = keys.summary().warnings();
+      PrintWriter out = super.commandLine().getOut();
+      out.println(
+          "Reviewer key lifecycle valid: keys="
+              + keys.summaries().size()
+              + " warnings="
+              + warnings.size());
+      for (String warning : warnings) {
+        out.println(WARNING_PREFIX + warning);
+      }
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Parent command for local review transparency-log tooling. */
+  @Command(
+      name = "transparency",
+      description = "Inspect local review transparency logs.",
+      subcommands = {ReviewTransparencyVerifyCommand.class})
+  static final class ReviewTransparencyCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app review transparency verify}. */
+  @Command(name = "verify", description = "Verify a local review transparency-log hash chain.")
+  static final class ReviewTransparencyVerifyCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(names = "--log-file", required = true, description = "Review transparency JSONL log.")
+    private Path logFile;
+
+    @Override
+    public Integer call() throws Exception {
+      if (!Files.isRegularFile(logFile)) {
+        throw new AppDistributionException("review transparency log file not found");
+      }
+      AppReviewTransparencyVerificationResult result =
+          FileAppReviewTransparencyStore.verifyFile(logFile);
+      if (!result.verified()) {
+        throw new AppDistributionException(
+            "review transparency log verification failed: " + result.error());
+      }
+      super.commandLine()
+          .getOut()
+          .println(
+              "Verified review transparency log: records="
+                  + result.recordCount()
+                  + " latestHash="
+                  + nullToDash(result.latestRecordHash()));
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  private static String nullToDash(String value) {
+    return value == null || value.isBlank() ? "-" : value;
   }
 
   /**
@@ -1090,7 +1335,7 @@ public final class CryptaAppCli implements Runnable {
       for (String permission : result.missingRationales()) {
         super.commandLine()
             .getErr()
-            .println("Warning: missing permission rationale for " + permission);
+            .println(WARNING_PREFIX + "missing permission rationale for " + permission);
       }
       super.commandLine()
           .getOut()
@@ -1313,7 +1558,7 @@ public final class CryptaAppCli implements Runnable {
       CommandLine commandLine, CompatibilityVerificationResult result) {
     for (CompatibilityFinding finding : result.findings()) {
       String prefix =
-          finding.severity() == CompatibilityFindingSeverity.ERROR ? "Error: " : "Warning: ";
+          finding.severity() == CompatibilityFindingSeverity.ERROR ? "Error: " : WARNING_PREFIX;
       commandLine.getErr().println(prefix + finding.message());
     }
   }

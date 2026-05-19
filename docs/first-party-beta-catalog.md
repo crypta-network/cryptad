@@ -20,6 +20,12 @@ It does not replace this first-party beta catalog flow or its release gates. See
 `crypta:` transport is not a trust boundary. Crypta-hosted catalog and bundle artifacts still must
 match signed catalog metadata and signed bundle sidecars before AppHost can install or update them.
 
+First-party review receipts are governed by the node-local trusted reviewer-key registry. Registry
+v1 remains supported, but release candidates should prefer v2 reviewer registries with explicit
+active, retired, or revoked lifecycle state and policy-version constraints. The local review
+transparency log records first-party review-chain events for operator audit; it is local and
+tamper-evident, not a global public transparency service.
+
 ## Runtime configuration
 
 Set the recommended catalog source and trusted key hint in runtime or packaging configuration:
@@ -189,15 +195,20 @@ or `dist/`. Do not check generated signed production catalogs or private keys in
 
 ## Certification evidence
 
-Release certification records `app-catalog.first-party-beta`. The evidence is deterministic and
-offline: it checks for the recommended descriptor, API/Web Shell onboarding, Crypta CHK artifact
-transport tests, first-party metadata documentation, and whether the certification environment has
-source and key hints configured. Profile Publisher is also covered by
+Release certification records `app-catalog.first-party-beta` plus app-review governance evidence
+such as `app-review.governance`, `app-review.reviewer-key-lifecycle`,
+`app-review.transparency-log`, `app-review.review-history-api`, and
+`app-review.first-party-review-chain`. The evidence is deterministic and offline: it checks for the
+recommended descriptor, API/Web Shell onboarding, Crypta CHK artifact transport tests,
+first-party metadata documentation, governed reviewer-key parsing, transparency-log verification,
+review-history routing, and whether the certification environment has source and key hints
+configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
 `app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`
 and `app-platform.content-fetch`. Trust Graph Preview is covered by
 `reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
 `app-platform.trust-statement-signing`. Normal certification must not record tokens, form
 passwords, private insert URIs, raw request bodies, raw feed bodies, raw trust statement bodies
-from real users, private keys, signatures, or absolute staging paths. It does not fetch a public
-Crypta network catalog during normal unit tests.
+from real users, private keys, raw public key bytes, raw receipt signatures, transparency-log
+paths, or absolute staging paths. It does not fetch a public Crypta network catalog during normal
+unit tests.
