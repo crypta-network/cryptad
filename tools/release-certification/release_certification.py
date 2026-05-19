@@ -869,7 +869,12 @@ def app_platform_evidence(
         "app-catalog.first-party-beta",
         "app-review.trusted-receipts",
         "app-review.policy",
+        "app-review.governance",
+        "app-review.reviewer-key-lifecycle",
+        "app-review.transparency-log",
+        "app-review.review-history-api",
         "app-review.first-party-catalog",
+        "app-review.first-party-review-chain",
         "app-ui.design-system",
         "app-ui.lint",
         "app-ui.first-party-adoption",
@@ -1731,12 +1736,24 @@ def evaluate_app_ui_quality_gate(
 
 
 def evaluate_app_review_trust_gate(
-    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]], metadata: dict[str, Any], mode: str
+    current: dict[str, dict[str, Any]],
+    previous: dict[str, dict[str, Any]],
+    metadata: dict[str, Any],
+    mode: str,
 ) -> GateResult:
     failures: list[str] = []
     warnings: list[str] = []
     details: dict[str, Any] = {}
-    for evidence_id in ("app-review.trusted-receipts", "app-review.policy", "app-review.first-party-catalog"):
+    for evidence_id in (
+        "app-review.trusted-receipts",
+        "app-review.policy",
+        "app-review.governance",
+        "app-review.reviewer-key-lifecycle",
+        "app-review.transparency-log",
+        "app-review.review-history-api",
+        "app-review.first-party-catalog",
+        "app-review.first-party-review-chain",
+    ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
         details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
@@ -2469,7 +2486,12 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-catalog.first-party-beta",
         "app-review.trusted-receipts",
         "app-review.policy",
+        "app-review.governance",
+        "app-review.reviewer-key-lifecycle",
+        "app-review.transparency-log",
+        "app-review.review-history-api",
         "app-review.first-party-catalog",
+        "app-review.first-party-review-chain",
         "app-ui.design-system",
         "app-ui.lint",
         "app-ui.first-party-adoption",
@@ -2948,6 +2970,15 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.trust-statement-signing"][
             "requiredForReleaseCandidate"
         ] is True
+        for evidence_id in (
+            "app-review.governance",
+            "app-review.reviewer-key-lifecycle",
+            "app-review.transparency-log",
+            "app-review.review-history-api",
+            "app-review.first-party-review-chain",
+        ):
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id
@@ -3640,7 +3671,58 @@ def run_self_test(repo_root: Path) -> None:
             "trusted-review-fail-cert", app_platform_summary=trusted_review_fail_path
         )
         assert trusted_review_fail_exit_code == 1, trusted_review_fail_summary
-        assert gate_by_id(trusted_review_fail_summary, "ecosystem.app-review-trust")["status"] == "fail"
+        assert (
+            gate_by_id(trusted_review_fail_summary, "ecosystem.app-review-trust")["status"]
+            == "fail"
+        )
+
+        missing_review_governance_ids = {
+            "app-review.governance",
+            "app-review.reviewer-key-lifecycle",
+            "app-review.transparency-log",
+            "app-review.review-history-api",
+            "app-review.first-party-review-chain",
+        }
+        missing_review_governance_path = write_app_summary_variant(
+            "missing-review-governance",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        item
+                        for item in value["evidence"]
+                        if item.get("id") not in missing_review_governance_ids
+                    ]
+                }
+            ),
+        )
+        missing_review_governance_items = app_platform_evidence(
+            missing_review_governance_path, workspace, out_dir, "release-candidate"
+        )
+        missing_review_governance_by_id = {
+            item.id: item for item in missing_review_governance_items
+        }
+        for evidence_id in missing_review_governance_ids:
+            assert (
+                missing_review_governance_by_id[evidence_id].status == "missing"
+            ), missing_review_governance_by_id
+        (
+            missing_review_governance_summary,
+            missing_review_governance_exit_code,
+        ) = run_with_previous(
+            "missing-review-governance-cert",
+            app_platform_summary=missing_review_governance_path,
+        )
+        assert missing_review_governance_exit_code == 1, missing_review_governance_summary
+        missing_review_governance_gate = gate_by_id(
+            missing_review_governance_summary, "ecosystem.app-review-trust"
+        )
+        assert (
+            missing_review_governance_gate["status"] == "fail"
+        ), missing_review_governance_gate
+        for evidence_id in missing_review_governance_ids:
+            assert (
+                evidence_id in missing_review_governance_gate["details"]["failureEvidenceIds"]
+            ), missing_review_governance_gate
 
         rollback_fail_path = write_app_summary_variant(
             "rollback-fail",

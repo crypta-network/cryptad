@@ -162,6 +162,40 @@ final class PlatformApiAppRoutes {
     };
   }
 
+  /**
+   * Routes requests beneath the {@code /app-review} endpoint family.
+   *
+   * @param segments decoded path segments relative to the Platform API mount point
+   * @param request full request metadata
+   * @return JSON response for review governance endpoints
+   */
+  PlatformApiResponse routeAppReviewRequest(List<String> segments, PlatformApiRequest request) {
+    if (appCatalogsApiHandler == null) {
+      throw notFound();
+    }
+    if (!METHOD_GET.equals(request.method())) {
+      return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+    }
+    if (segments.size() == 2 && "governance".equals(segments.get(1))) {
+      return PlatformApiResponse.ok(envelope("governance", appCatalogsApiHandler.governance()));
+    }
+    if (segments.size() == 2 && "reviewer-keys".equals(segments.get(1))) {
+      return PlatformApiResponse.ok(envelope("reviewerKeys", appCatalogsApiHandler.reviewerKeys()));
+    }
+    if (segments.size() == 2 && "transparency-log".equals(segments.get(1))) {
+      return PlatformApiResponse.ok(
+          envelope(
+              "transparencyLog", appCatalogsApiHandler.transparencyLog(request.queryParameters())));
+    }
+    if (segments.size() == 3
+        && "transparency-log".equals(segments.get(1))
+        && "verify".equals(segments.get(2))) {
+      return PlatformApiResponse.ok(
+          envelope("verification", appCatalogsApiHandler.verifyTransparencyLog()));
+    }
+    throw notFound();
+  }
+
   private PlatformApiResponse routeAppsCollection(PlatformApiRequest request) {
     if (!METHOD_GET.equals(request.method())) {
       return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
@@ -448,6 +482,13 @@ final class PlatformApiAppRoutes {
       PlatformApiRequest request) {
     if (!"apps".equals(appsSegment)) {
       throw notFound();
+    }
+    if ("review-history".equals(action)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          envelope("reviewHistory", appCatalogsApiHandler.reviewHistory(catalogId, appId)));
     }
     if (!METHOD_POST.equals(request.method())) {
       return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);

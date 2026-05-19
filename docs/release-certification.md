@@ -103,6 +103,11 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
+| `app-review.governance` | App-platform smoke summary. | Reviewer-key lifecycle statuses, policy-version constraints, governance API routes, and Web Shell governance rendering are present and redacted. |
+| `app-review.reviewer-key-lifecycle` | App-platform smoke summary. | Trusted reviewer registry v2 parsing, active/retired/revoked semantics, duplicate-id fail-closed behavior, strict instants, and lifecycle verifier tests are present. |
+| `app-review.transparency-log` | App-platform smoke summary. | A local hash-chained review transparency log exists, can be verified, deduplicates receipt observation, and has tamper/redaction tests. |
+| `app-review.review-history-api` | App-platform smoke summary. | Review governance, reviewer-key, transparency-log, verification, and catalog-app review-history Platform API routes are present and Web Shell consumes review-history data. |
+| `app-review.first-party-review-chain` | App-platform smoke summary. | First-party review receipt evidence, review-history/governance readiness, and transparency-log evidence are tied together for release promotion. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
 | `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
 | `app-platform.identity-profile-publish` | App-platform smoke summary. | The profile-document signing route `POST /api/v1/app-vault/identities/{identityId}/profile-document` is present, documented, capability-gated by `vault.identities.read` plus `vault.identities.use`, and covered by redaction evidence. |
@@ -190,6 +195,17 @@ coverage categories: trusted positive, missing, expired, mismatched, unknown rev
 rejected. Reports may include reviewer key ids, reviewer display names, policy ids, and key
 fingerprints; they must not include private reviewer keys, raw public key bytes, local evidence
 paths, app/session/process tokens, or local staging paths.
+
+Review governance evidence extends that receipt check with reviewer-key lifecycle readiness and the
+local transparency log. Registry v1 remains valid, but release candidates should prefer v2
+registries with explicit `active`, `retired`, or `revoked` status, optional validity windows, and
+policy-version constraints. The transparency log is local and tamper-evident, not a public global
+log. In release-candidate mode, missing governance, reviewer-key lifecycle, transparency-log,
+review-history API, or first-party review-chain evidence is blocking unless a waiver is recorded in
+the release summary. Reports may include lifecycle counts, status names, policy ids/versions,
+record counts, and latest hashes; they must not include raw public key bytes, private keys, raw
+receipt signatures, local transparency-log paths, local evidence paths, browser sessions, AppHost
+process tokens, form passwords, request bodies, or catalog scratch paths.
 
 App UI design evidence is offline. Release-candidate mode treats first-party strict UI lint errors
 as blocking evidence because first-party apps ship with the node. Advisory

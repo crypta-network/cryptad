@@ -94,6 +94,20 @@ public final class AppCatalogSourceStore {
   }
 
   /**
+   * Returns the host-owned review transparency log file below the catalog store root.
+   *
+   * <p>The returned path is operational state and must not be exposed through API, Web Shell, CLI
+   * summaries, logs, or certification reports.
+   *
+   * @return local transparency log file path
+   */
+  public Path reviewTransparencyLogFile() {
+    return rootDirectory
+        .resolve(".review-transparency-log")
+        .resolve(FileAppReviewTransparencyStore.LOG_FILE_NAME);
+  }
+
+  /**
    * Returns whether a catalog id is already stored.
    *
    * <p>The check looks for the source metadata sidecar rather than only the directory. This avoids
@@ -213,23 +227,18 @@ public final class AppCatalogSourceStore {
   }
 
   void recordRefreshFailure(
-      String catalogId,
-      StoredCatalogSource stored,
-      Instant attemptedAt,
-      AppCatalogException exception)
+      StoredCatalogSource stored, Instant attemptedAt, AppCatalogException exception)
       throws IOException {
-    recordRefreshFailure(
-        catalogId, stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
+    recordRefreshFailure(stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
   }
 
   void recordRefreshFailure(
-      String catalogId,
       StoredCatalogSource stored,
       Instant attemptedAt,
       AppCatalogException exception,
       String resolvedUri)
       throws IOException {
-    String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+    String normalizedCatalogId = AppCatalog.normalizeCatalogId(stored.catalogId());
     AppCatalogSourceRefreshMetadata metadata =
         stored.refreshMetadata().failedAttempt(attemptedAt, exception, resolvedUri);
     Path directory = catalogDirectory(normalizedCatalogId);
@@ -284,7 +293,7 @@ public final class AppCatalogSourceStore {
           "unsupported catalog source property: " + properties.keySet().iterator().next());
     }
     return new StoredCatalogSource(
-        source, addedAt, refreshedAt, refreshMetadata, readFetchedCatalog(directory));
+        catalogId, source, addedAt, refreshedAt, refreshMetadata, readFetchedCatalog(directory));
   }
 
   private static AppCatalogSourceRefreshMetadata parseRefreshMetadata(

@@ -1845,6 +1845,282 @@ def collect_app_review_policy_evidence(settings: Settings) -> EvidenceItem:
     return EvidenceItem("app-review.policy", "pass", True, "App-review policy gates passed deterministic evidence checks.", source, details)
 
 
+def collect_app_review_governance_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    api_routes = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    api_handler = workspace / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    status_text = read_source(appcatalog_dir / "TrustedReviewerKeyStatus.java")
+    lifecycle_text = read_source(appcatalog_dir / "TrustedReviewerKeyLifecycle.java")
+    verifier_text = read_source(appcatalog_dir / "AppReviewReceiptVerifier.java")
+    routes_text = read_source(api_routes)
+    handler_text = read_source(api_handler)
+    shell_text = read_source(shell)
+    checks = {
+        "reviewerLifecycleStatuses": all(value in status_text for value in ("ACTIVE", "RETIRED", "REVOKED")),
+        "policyVersionConstraint": "TrustedReviewerPolicyConstraint" in read_source(appcatalog_dir / "TrustedReviewerPolicyConstraint.java"),
+        "lifecycleTrustStatuses": all(
+            value in verifier_text
+            for value in (
+                "REVOKED_REVIEWER",
+                "RETIRED_REVIEWER",
+                "REVIEWER_NOT_YET_VALID",
+                "REVIEWER_EXPIRED",
+                "REVIEW_POLICY_MISMATCH",
+            )
+        ),
+        "governanceRoutes": (
+            "routeAppReviewRequest" in routes_text
+            and "app-review" in routes_text
+            and "reviewer-keys" in routes_text
+            and "transparency-log" in routes_text
+        ),
+        "redactedReviewerSummaries": (
+            "TrustedReviewerKeySummary" in handler_text
+            and "publicKey" not in read_source(appcatalog_dir / "TrustedReviewerKeySummary.java")
+        ),
+        "webShellGovernance": (
+            "Review governance" in shell_text
+            and "reviewerKeyStatus" in shell_text
+            and "policyVersionStatus" in shell_text
+        ),
+        "lifecycleValidation": (
+            "revocation metadata requires status=revoked" in lifecycle_text
+            and "reviewer valid.until must be after valid.from" in lifecycle_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "sources": {
+            "status": display_path(appcatalog_dir / "TrustedReviewerKeyStatus.java", workspace),
+            "lifecycle": display_path(appcatalog_dir / "TrustedReviewerKeyLifecycle.java", workspace),
+            "verifier": display_path(appcatalog_dir / "AppReviewReceiptVerifier.java", workspace),
+            "apiRoutes": display_path(api_routes, workspace),
+            "apiHandler": display_path(api_handler, workspace),
+            "webShell": display_path(shell, workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-review.governance",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "App-review governance evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.governance",
+        "pass",
+        True,
+        "App-review governance evidence passed deterministic source checks.",
+        source,
+        details,
+    )
+
+
+def collect_app_review_reviewer_key_lifecycle_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/AppReviewReceiptTest.java"
+    keys_text = read_source(appcatalog_dir / "TrustedReviewerKeys.java")
+    tests_text = read_source(tests)
+    checks = {
+        "v2Parser": (
+            "trusted.reviewers.version" in keys_text
+            and "policy.version" in keys_text
+            and "valid.from" in keys_text
+            and "revoked.at" in keys_text
+        ),
+        "duplicateIdsFailClosed": "duplicate trusted reviewer key id" in keys_text,
+        "strictInstants": "Instant.parse(value)" in keys_text,
+        "revokedReviewerTest": "evaluate_whenReviewerKeyIsRevoked_expectRevokedReviewer" in tests_text,
+        "retiredReviewerTest": "evaluate_whenRetiredReviewerCoversReviewedAt_expectTrustedHistoricalReview" in tests_text,
+        "retiredReviewerRequiresWindowTest": "evaluate_whenRetiredReviewerHasNoValidityEnd_expectRetiredReviewer" in tests_text,
+        "policyMismatchTest": "evaluate_whenPolicyVersionDoesNotMatchReviewerConstraint_expectPolicyMismatch" in tests_text,
+        "policyVersionRequiresPolicyIdTest": "trustedReviewerKeysLoad_whenPolicyVersionOmitsPolicyId_expectInvalidCatalogEntry" in tests_text,
+        "redactedSummaryTest": "publicKey" in tests_text and "containsKey" in tests_text,
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "sources": {
+            "trustedReviewerKeys": display_path(appcatalog_dir / "TrustedReviewerKeys.java", workspace),
+            "tests": display_path(tests, workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-review.reviewer-key-lifecycle",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Reviewer-key lifecycle evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.reviewer-key-lifecycle",
+        "pass",
+        True,
+        "Reviewer-key lifecycle parser and verifier evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_app_review_transparency_log_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    record_text = read_source(appcatalog_dir / "AppReviewTransparencyRecord.java")
+    store_text = read_source(appcatalog_dir / "FileAppReviewTransparencyStore.java")
+    log_text = read_source(appcatalog_dir / "AppReviewTransparencyLog.java")
+    manager_text = read_source(appcatalog_dir / "AppCatalogManager.java")
+    tests_text = read_source(workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/AppReviewReceiptTest.java")
+    checks = {
+        "hashChain": (
+            "previousRecordHash" in record_text
+            and "recordHash" in record_text
+            and "computeRecordHash" in record_text
+            and "verifyRecords" in store_text
+        ),
+        "redactedFields": (
+            "privateKey" not in record_text
+            and "processToken" not in record_text
+            and "browserSession" not in record_text
+            and "signature.value" not in record_text
+        ),
+        "receiptObservationDedup": "REVIEW_RECEIPT_OBSERVED" in log_text and "receiptFingerprint" in log_text,
+        "receiptObservationPayloadBindingTest": "transparencyLog_whenMismatchedReceiptObserved_expectReceiptPayloadBinding" in tests_text,
+        "gateReceiptStatusTest": "transparencyRecordFromCatalogDecision_whenReceiptAndPublisherStatusesDiffer_expectReceiptStatus" in tests_text,
+        "publisherOnlyNoReceiptStatusTest": "transparencyRecordFromCatalogDecision_whenOnlyPublisherReviewExists_expectNoReceiptStatus" in tests_text,
+        "managerOwnedStore": "reviewTransparencyLog" in manager_text,
+        "rejectUnknownFields": "rejectUnknownJsonFields" in record_text,
+        "rejectTrailingData": "expectEnd()" in record_text,
+        "tamperTest": "transparencyStoreVerify_whenRecordIsTampered_expectVerificationFailure" in tests_text,
+        "unknownFieldTest": "transparencyStoreVerify_whenRecordHasUnknownField_expectVerificationFailure" in tests_text,
+        "trailingDataTest": "transparencyStoreVerify_whenRecordHasTrailingData_expectVerificationFailure" in tests_text,
+        "warningListTamperTest": "transparencyStoreVerify_whenWarningListShapeIsTampered_expectVerificationFailure" in tests_text,
+        "booleanTypeTamperTest": "transparencyStoreVerify_whenBooleanFieldHasStringValue_expectVerificationFailure" in tests_text,
+        "schemaVersionRangeTest": "transparencyStoreVerify_whenSchemaVersionIsOutOfRange_expectVerificationFailure" in tests_text,
+        "bestEffortMalformedLogTest": "transparencyLogRecordCatalogDecision_whenExistingLogIsMalformed_expectBestEffort" in tests_text,
+        "bestEffortNullRecordIdTest": "transparencyLogRecordCatalogDecision_whenExistingReceiptRecordHasNullId_expectBestEffort" in tests_text,
+        "dedupTest": "transparencyLog_whenReceiptObservedTwice_expectReceiptObservationDeduplicated" in tests_text,
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "sources": {
+            "record": display_path(appcatalog_dir / "AppReviewTransparencyRecord.java", workspace),
+            "store": display_path(appcatalog_dir / "FileAppReviewTransparencyStore.java", workspace),
+            "log": display_path(appcatalog_dir / "AppReviewTransparencyLog.java", workspace),
+            "manager": display_path(appcatalog_dir / "AppCatalogManager.java", workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-review.transparency-log",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Review transparency-log evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.transparency-log",
+        "pass",
+        True,
+        "Review transparency-log hash-chain and redaction evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_app_review_history_api_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    routes = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    handler = workspace / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    routes_text = read_source(routes)
+    handler_text = read_source(handler)
+    shell_text = read_source(shell)
+    checks = {
+        "reviewHistoryRoute": "review-history" in routes_text and "reviewHistory(" in handler_text,
+        "governanceEndpoint": "governance()" in handler_text,
+        "reviewerKeysEndpoint": "reviewerKeys()" in handler_text,
+        "transparencyEndpoint": "transparencyLog(" in handler_text and "verifyTransparencyLog" in handler_text,
+        "shellHistoryFetch": "loadCatalogAppReviewHistory" in shell_text,
+        "shellTrustDelta": "trustDelta" in handler_text and "Installed version" in shell_text,
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "sources": {
+            "routes": display_path(routes, workspace),
+            "handler": display_path(handler, workspace),
+            "webShell": display_path(shell, workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-review.review-history-api",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Review-history API evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.review-history-api",
+        "pass",
+        True,
+        "Review-history and governance API evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_app_review_first_party_chain_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    smoke_text = read_source(workspace / "tools/release-certification/app_platform_smoke.py")
+    docs_text = read_source(workspace / "docs/app-review-governance.md")
+    checks = {
+        "firstPartyCatalogEvidence": "collect_app_review_first_party_catalog_evidence" in smoke_text,
+        "reviewReceiptVerify": "review_verify_args" in smoke_text and "trustedPositiveReceipts" in smoke_text,
+        "governanceEvidenceRequired": "app-review.governance" in smoke_text,
+        "transparencyEvidenceRequired": "app-review.transparency-log" in smoke_text,
+        "docsExplainLocalLog": (
+            "tamper-evident" in docs_text.lower()
+            and "not a global public" in docs_text.lower()
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {"checks": checks}
+    if errors:
+        return EvidenceItem(
+            "app-review.first-party-review-chain",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "First-party app-review chain evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-review.first-party-review-chain",
+        "pass",
+        True,
+        "First-party app-review chain evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
 def write_first_party_review_descriptor(
     descriptor: Path,
     spec: dict[str, Any],
@@ -4545,6 +4821,8 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem]) -> dict[str,
             "appProcessTokensRedacted": True,
             "browserSessionTokensRedacted": True,
             "signatureValuesRedacted": True,
+            "reviewerKeyMaterialRedacted": True,
+            "reviewTransparencyPathsExcluded": True,
             "rawUpdateRollbackOutputsExcluded": True,
             "absolutePathsSanitized": True,
         },
@@ -4573,7 +4851,12 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_first_party_beta_catalog_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
+        collect_app_review_governance_evidence(settings),
+        collect_app_review_reviewer_key_lifecycle_evidence(settings),
+        collect_app_review_transparency_log_evidence(settings),
+        collect_app_review_history_api_evidence(settings),
         collect_app_review_first_party_catalog_evidence(settings, sample_paths),
+        collect_app_review_first_party_chain_evidence(settings),
         collect_app_ui_design_system_evidence(settings),
         collect_app_ui_lint_evidence(settings, cli if isinstance(cli, Path) else None),
         collect_app_ui_first_party_adoption_evidence(settings),

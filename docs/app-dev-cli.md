@@ -460,12 +460,55 @@ reviewer.1.display.name=Crypta First-Party Review
 reviewer.1.policy.id=crypta-app-review-v1
 ```
 
+Registry version 1 remains supported and treats keys as active with no explicit validity window.
+For governed review workflows, prefer registry version 2 so the local trust root records
+policy-version constraints and reviewer key lifecycle state:
+
+```properties
+trusted.reviewers.version=2
+reviewer.1.id=crypta-first-party-review-2026q2
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review Q2 2026
+reviewer.1.policy.id=crypta-app-review
+reviewer.1.policy.version=1
+reviewer.1.status=active
+reviewer.1.valid.from=2026-04-01T00:00:00Z
+reviewer.1.valid.until=2026-07-01T00:00:00Z
+```
+
+Inspect, migrate, and validate reviewer registries with:
+
+```bash
+crypta-app review keys inspect \
+  --trusted-reviewer-keys-file trusted-reviewers.properties
+
+crypta-app review keys migrate \
+  --trusted-reviewer-keys-file trusted-reviewers-v1.properties \
+  --output trusted-reviewers-v2.properties
+
+crypta-app review keys verify-lifecycle \
+  --trusted-reviewer-keys-file trusted-reviewers.properties
+```
+
+Verify a local review transparency log with:
+
+```bash
+crypta-app review transparency verify \
+  --log-file review-transparency-log.jsonl
+```
+
+These commands print redacted summaries. They do not print reviewer private keys, raw public key
+bytes, raw receipt signatures, local evidence contents, app browser sessions, AppHost process
+tokens, or local transparency-store paths.
+
 `review sign` accepts `--reviewer-private-key-base64`, `--reviewer-private-key-file`, or
 `--reviewer-private-key-env`. `--evidence-file` records the file's SHA-256 in the receipt; use
 `--evidence-sha256` when the evidence digest was computed elsewhere. Verification fails closed for
-app id/version mismatches, artifact digest or size mismatches, unknown reviewer keys, expired
-receipts, invalid signatures, malformed fields, and unsupported algorithms. A verified `rejected`
-receipt is trusted evidence but is not a positive review.
+app id/version mismatches, artifact digest or size mismatches, unknown reviewer keys,
+retired/revoked/out-of-window reviewer keys, policy id/version mismatches, expired receipts,
+invalid signatures, malformed fields, and unsupported algorithms. A verified `rejected` receipt is
+trusted evidence but is not a positive review.
 
 Create the catalog properties file after the receipt exists:
 

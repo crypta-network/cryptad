@@ -30,6 +30,7 @@ public final class AppCatalogManager {
   private final AppCatalogFetcher fetcher;
   private final AppCatalogArtifactDownloader artifactDownloader;
   private final AppCatalogBundleExtractor bundleExtractor;
+  private final AppReviewTransparencyLog reviewTransparencyLog;
 
   /**
    * Creates a manager with default JDK fetch and download helpers.
@@ -48,7 +49,8 @@ public final class AppCatalogManager {
         trustedKeyProvider,
         new AppCatalogFetcher(),
         new AppCatalogArtifactDownloader(),
-        new AppCatalogBundleExtractor());
+        new AppCatalogBundleExtractor(),
+        defaultReviewTransparencyLog(sourceStore));
   }
 
   /**
@@ -70,7 +72,8 @@ public final class AppCatalogManager {
         trustedKeyProvider,
         new AppCatalogFetcher(contentFetchPort),
         new AppCatalogArtifactDownloader(contentFetchPort),
-        new AppCatalogBundleExtractor());
+        new AppCatalogBundleExtractor(),
+        defaultReviewTransparencyLog(sourceStore));
   }
 
   /**
@@ -92,11 +95,54 @@ public final class AppCatalogManager {
       AppCatalogFetcher fetcher,
       AppCatalogArtifactDownloader artifactDownloader,
       AppCatalogBundleExtractor bundleExtractor) {
+    this(
+        sourceStore,
+        trustedKeyProvider,
+        fetcher,
+        artifactDownloader,
+        bundleExtractor,
+        defaultReviewTransparencyLog(sourceStore));
+  }
+
+  /**
+   * Creates a manager with explicit collaborators and transparency log.
+   *
+   * @param sourceStore file-backed catalog source store
+   * @param trustedKeyProvider provider for the current trusted app/catalog keys
+   * @param fetcher catalog source fetcher
+   * @param artifactDownloader artifact downloader and digest checker
+   * @param bundleExtractor ZIP extractor and signed-bundle verifier
+   * @param reviewTransparencyLog local review transparency log
+   */
+  public AppCatalogManager(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedKeyProvider,
+      AppCatalogFetcher fetcher,
+      AppCatalogArtifactDownloader artifactDownloader,
+      AppCatalogBundleExtractor bundleExtractor,
+      AppReviewTransparencyLog reviewTransparencyLog) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
     this.trustedKeyProvider = Objects.requireNonNull(trustedKeyProvider, "trustedKeyProvider");
     this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
     this.artifactDownloader = Objects.requireNonNull(artifactDownloader, "artifactDownloader");
     this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
+    this.reviewTransparencyLog =
+        Objects.requireNonNull(reviewTransparencyLog, "reviewTransparencyLog");
+  }
+
+  /**
+   * Returns the local review transparency log used by API gates.
+   *
+   * @return redacted review transparency log facade
+   */
+  public AppReviewTransparencyLog reviewTransparencyLog() {
+    return reviewTransparencyLog;
+  }
+
+  private static AppReviewTransparencyLog defaultReviewTransparencyLog(
+      AppCatalogSourceStore sourceStore) {
+    return AppReviewTransparencyLog.fileBacked(
+        Objects.requireNonNull(sourceStore, "sourceStore").reviewTransparencyLogFile());
   }
 
   /**
@@ -222,7 +268,7 @@ public final class AppCatalogManager {
     try {
       return fetcher.fetch(stored.source());
     } catch (AppCatalogException exception) {
-      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, exception);
+      recordRefreshFailure(stored, attemptedAt, exception);
       throw exception;
     } catch (IOException exception) {
       AppCatalogException catalogException =
@@ -230,7 +276,7 @@ public final class AppCatalogManager {
               AppCatalogSidecars.CATALOG_FETCH_FAILED,
               "failed to refresh catalog source: " + normalizedCatalogId,
               exception);
-      recordRefreshFailure(normalizedCatalogId, stored, attemptedAt, catalogException);
+      recordRefreshFailure(stored, attemptedAt, catalogException);
       throw catalogException;
     }
   }
@@ -252,11 +298,7 @@ public final class AppCatalogManager {
       return catalog;
     } catch (AppCatalogException exception) {
       recordRefreshFailure(
-          normalizedCatalogId,
-          stored,
-          attemptedAt,
-          exception,
-          resolvedCatalogUri(fetched, stored.source()));
+          stored, attemptedAt, exception, resolvedCatalogUri(fetched, stored.source()));
       throw exception;
     }
   }
@@ -361,27 +403,17 @@ public final class AppCatalogManager {
   }
 
   private void recordRefreshFailure(
-      String normalizedCatalogId,
-      StoredCatalogSource stored,
-      Instant attemptedAt,
-      AppCatalogException exception) {
-    recordRefreshFailure(
-        normalizedCatalogId,
-        stored,
-        attemptedAt,
-        exception,
-        stored.source().resolvedCatalogFetchUri());
+      StoredCatalogSource stored, Instant attemptedAt, AppCatalogException exception) {
+    recordRefreshFailure(stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
   }
 
   private void recordRefreshFailure(
-      String normalizedCatalogId,
       StoredCatalogSource stored,
       Instant attemptedAt,
       AppCatalogException exception,
       String resolvedUri) {
     try {
-      sourceStore.recordRefreshFailure(
-          normalizedCatalogId, stored, attemptedAt, exception, resolvedUri);
+      sourceStore.recordRefreshFailure(stored, attemptedAt, exception, resolvedUri);
     } catch (IOException metadataException) {
       exception.addSuppressed(metadataException);
     }

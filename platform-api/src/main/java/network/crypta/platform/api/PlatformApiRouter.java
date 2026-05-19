@@ -452,50 +452,24 @@ public final class PlatformApiRouter {
     }
 
     String firstSegment = segments.getFirst();
-    if ("platform".equals(firstSegment)) {
-      return routePlatformRequest(segments, request);
-    }
-    if ("app-catalogs".equals(firstSegment)) {
-      return appRoutes.routeAppCatalogsRequest(segments, request);
-    }
-    if ("apps".equals(firstSegment)) {
-      return appRoutes.routeAppsRequest(segments, request);
-    }
-    if ("app-vault".equals(firstSegment)) {
-      return appRoutes.routeAppVaultRequest(segments, request);
-    }
-    if ("identity-vault".equals(firstSegment)) {
-      return appRoutes.routeIdentityVaultRequest(segments, request);
-    }
-    if ("queue".equals(firstSegment)) {
-      return routeQueueRequest(segments, request);
-    }
-    if ("content".equals(firstSegment)) {
-      return routeContentRequest(segments, request);
-    }
-    if ("trust-graph".equals(firstSegment)) {
-      return routeTrustGraphRequest(segments, request);
-    }
-    if ("peers".equals(firstSegment)) {
-      return routePeersRequest(segments, request);
-    }
-    if ("config".equals(firstSegment)) {
-      return routeConfigRequest(segments, request);
-    }
-    if ("security-levels".equals(firstSegment)) {
-      return routeSecurityLevelsRequest(segments, request);
-    }
-    if (UPDATES_ROUTE_SEGMENT.equals(firstSegment)) {
-      return routeUpdatesRequest(segments, request);
-    }
-    if ("wizard".equals(firstSegment)) {
-      return routeWizardRequest(segments, request);
-    }
-    if ("alerts".equals(firstSegment)) {
-      return routeAlertsRequest(segments, request);
-    }
-
-    return routeGetOnlyRequest(segments, request, firstSegment);
+    return switch (firstSegment) {
+      case "platform" -> routePlatformRequest(segments, request);
+      case "app-catalogs" -> appRoutes.routeAppCatalogsRequest(segments, request);
+      case "app-review" -> appRoutes.routeAppReviewRequest(segments, request);
+      case "apps" -> appRoutes.routeAppsRequest(segments, request);
+      case "app-vault" -> appRoutes.routeAppVaultRequest(segments, request);
+      case "identity-vault" -> appRoutes.routeIdentityVaultRequest(segments, request);
+      case "queue" -> routeQueueRequest(segments, request);
+      case "content" -> routeContentRequest(segments, request);
+      case "trust-graph" -> routeTrustGraphRequest(segments, request);
+      case "peers" -> routePeersRequest(segments, request);
+      case "config" -> routeConfigRequest(segments, request);
+      case "security-levels" -> routeSecurityLevelsRequest(segments, request);
+      case UPDATES_ROUTE_SEGMENT -> routeUpdatesRequest(segments, request);
+      case "wizard" -> routeWizardRequest(segments, request);
+      case "alerts" -> routeAlertsRequest(segments, request);
+      default -> routeGetOnlyRequest(segments, request, firstSegment);
+    };
   }
 
   private PlatformApiResponse routePlatformRequest(

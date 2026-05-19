@@ -319,6 +319,30 @@ reviewer.1.display.name=Crypta First-Party Review
 reviewer.1.policy.id=crypta-app-review-v1
 ```
 
+Version 2 reviewer registries are preferred for governed catalogs. They remain node-local trust
+roots and add policy-version constraints plus lifecycle metadata:
+
+```properties
+trusted.reviewers.version=2
+reviewer.1.id=crypta-first-party-review-2026q2
+reviewer.1.algorithm=Ed25519
+reviewer.1.public.key.base64=<X.509 Ed25519 public key bytes>
+reviewer.1.display.name=Crypta First-Party Review Q2 2026
+reviewer.1.policy.id=crypta-app-review
+reviewer.1.policy.version=1
+reviewer.1.status=active
+reviewer.1.valid.from=2026-04-01T00:00:00Z
+reviewer.1.valid.until=2026-07-01T00:00:00Z
+reviewer.1.rotates.from=crypta-first-party-review-2026q1
+reviewer.1.rotates.to=crypta-first-party-review-2026q3
+```
+
+Reviewer key status is local governance state. `active` keys can trust receipts inside their
+validity window. `retired` keys can trust only historical receipts inside their window and render as
+historical trust. `revoked` keys fail closed for all receipts and are reported as revoked reviewer
+evidence rather than being hidden as unknown reviewers. A configured `policy.version` must match
+the receipt policy version; mismatches are reported as `review_policy_mismatch`.
+
 Unknown algorithms, duplicate key ids, malformed public keys, and incomplete entries fail closed.
 Platform API and Web Shell responses expose reviewer key ids, display names, policy ids, timestamps,
 evidence metadata, and warnings; they do not expose reviewer public key bytes, private key material,
@@ -335,8 +359,16 @@ Review policy is local operator policy, not catalog metadata. Configure it with
 | `require_trusted_review_for_apply_when_stopped` | Require a trusted positive receipt for policy-driven apply-when-stopped updates; manual install/update can still proceed after acknowledgement. |
 
 Stable review-trust statuses include `trusted_reviewed`, `trusted_caution`, `trusted_rejected`,
-`missing_receipt`, `unknown_reviewer`, `invalid_signature`, `artifact_mismatch`, `app_mismatch`,
-`expired`, `publisher_claim_only`, and `not_configured`.
+`missing_receipt`, `unknown_reviewer`, `retired_reviewer`, `revoked_reviewer`,
+`reviewer_not_yet_valid`, `reviewer_expired`, `review_policy_mismatch`, `invalid_signature`,
+`artifact_mismatch`, `app_mismatch`, `expired`, `publisher_claim_only`, and `not_configured`.
+
+Cryptad also keeps a local review transparency log for review governance events. The log is
+host-owned and tamper-evident through a local hash chain. It is not a global public transparency
+log and does not make catalogs or apps trusted by itself. Web Shell review status is a local trust
+decision and can change when reviewer keys, lifecycle metadata, policy constraints, or policy mode
+change. See [app-review-governance.md](app-review-governance.md) for the lifecycle model,
+transparency-log fields, Platform API routes, and CLI inspection commands.
 
 ## Developer CLI catalog flow
 

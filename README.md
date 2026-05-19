@@ -270,7 +270,8 @@ Cryptad now uses a partial multi-project Gradle build.
   verify staged AppHost bundles, including optional manifest API compatibility metadata.
 - `:platform-appcatalog` owns signed app catalog parsing, catalog writing, signature verification,
   remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
-  ZIP extraction, and verified staging for AppHost install/update flows.
+  ZIP extraction, reviewer-key lifecycle governance, local review transparency logging, and
+  verified staging for AppHost install/update flows.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
   UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
   compatibility verification for standalone staged bundles.
@@ -375,10 +376,14 @@ Signed app catalogs add a verified source layer above signed bundles. See
 [`docs/app-catalogs.md`](docs/app-catalogs.md) for the `cryptad-app-catalog.properties` format,
 catalog signatures, trusted-key configuration, optional app-store/API compatibility metadata,
 independent app review receipts, reviewer-key configuration, review policy modes, and
-`/api/v1/app-catalogs` install/update flow. Catalog signatures authenticate catalog bytes and
-publisher metadata, artifact digests bind entries to ZIP bytes, bundle signatures authenticate app
-bundles, and review receipt signatures independently authenticate reviewer evidence. Legacy
-catalog `review.status` and `review.note` metadata remains publisher-advisory only.
+`/api/v1/app-catalogs` install/update flow. See
+[`docs/app-review-governance.md`](docs/app-review-governance.md) for reviewer-key v2 lifecycle
+metadata, policy-version constraints, the local tamper-evident review transparency log, governance
+API routes, Web Shell review-history surfaces, and `crypta-app review` inspection commands. Catalog
+signatures authenticate catalog bytes and publisher metadata, artifact digests bind entries to ZIP
+bytes, bundle signatures authenticate app bundles, and review receipt signatures independently
+authenticate reviewer evidence. Legacy catalog `review.status` and `review.note` metadata remains
+publisher-advisory only.
 
 Installed apps can also declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.
 Static UI bundles prefer isolated loopback origins per app; `/apps/{appId}/` remains a
