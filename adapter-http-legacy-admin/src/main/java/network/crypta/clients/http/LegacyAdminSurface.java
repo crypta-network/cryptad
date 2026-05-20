@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -33,6 +34,13 @@ import java.util.Objects;
  * @param removalWave first removal wave number, or {@code 0} when not removed by default
  * @param removedByDefaultSince stable release/phase marker for removal-by-default, or {@code null}
  * @param fallbackPolicy path-free description of temporary fallback behavior
+ * @param removalScope request-path matching scope for removal responses
+ * @param scopeExpandedInWave removal wave that expanded matching beyond canonical aliases, or
+ *     {@code 0} when the scope has not been expanded by a later wave
+ * @param explicitRemovalChildPaths same-origin child paths eligible for replacement responses when
+ *     {@code removalScope} is {@link LegacyAdminRemovalScope#EXPLICIT_CHILDREN}
+ * @param blockMutatingRequests whether non-read requests should be blocked when this surface's
+ *     replacement is available; partial replacements leave mutations as legacy fallback
  * @param includeInUsageDiagnostics whether process-local usage diagnostics should include this
  *     surface
  * @param includeInWebShellFallbackLinks whether the Web Shell should show this as a fallback link
@@ -49,6 +57,10 @@ public record LegacyAdminSurface(
     int removalWave,
     String removedByDefaultSince,
     String fallbackPolicy,
+    LegacyAdminRemovalScope removalScope,
+    int scopeExpandedInWave,
+    List<String> explicitRemovalChildPaths,
+    boolean blockMutatingRequests,
     boolean includeInUsageDiagnostics,
     boolean includeInWebShellFallbackLinks) {
   /**
@@ -82,6 +94,19 @@ public record LegacyAdminSurface(
       requireText(removedByDefaultSince, "removedByDefaultSince");
     }
     requireText(fallbackPolicy, "fallbackPolicy");
+    Objects.requireNonNull(removalScope, "removalScope");
+    if (scopeExpandedInWave < 0) {
+      throw new IllegalArgumentException("scopeExpandedInWave must not be negative");
+    }
+    explicitRemovalChildPaths = List.copyOf(explicitRemovalChildPaths);
+    for (String childPath : explicitRemovalChildPaths) {
+      requirePath(childPath, "explicitRemovalChildPaths");
+    }
+    if (removalScope != LegacyAdminRemovalScope.EXPLICIT_CHILDREN
+        && !explicitRemovalChildPaths.isEmpty()) {
+      throw new IllegalArgumentException(
+          "explicitRemovalChildPaths require EXPLICIT_CHILDREN removal scope");
+    }
   }
 
   /**

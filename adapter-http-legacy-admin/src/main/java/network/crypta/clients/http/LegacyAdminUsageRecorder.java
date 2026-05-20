@@ -147,6 +147,8 @@ public final class LegacyAdminUsageRecorder implements LegacyAdminUsagePort {
         surface.removalWave(),
         surface.removedByDefaultSince(),
         surface.fallbackPolicy(),
+        surface.removalScope().name(),
+        surface.scopeExpandedInWave(),
         counter == null ? 0L : counter.count(),
         counter == null ? 0L : counter.replacementResponseCount(),
         counter == null ? 0L : counter.blockedMutatingRequestCount(),

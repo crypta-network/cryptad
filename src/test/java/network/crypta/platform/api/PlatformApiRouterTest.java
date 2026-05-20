@@ -378,6 +378,8 @@ class PlatformApiRouterTest {
                             1,
                             "phase-6-pr-8",
                             "none",
+                            "CANONICAL_AND_SLASHLESS_ALIAS",
+                            0,
                             3L,
                             2L,
                             1L,
@@ -396,6 +398,7 @@ class PlatformApiRouterTest {
             + "\"state\":\"PRIMARY_REPLACED\",\"replacementUrl\":\"/apps/queue-manager/\","
             + "\"removalMode\":\"REDIRECT_TO_REPLACEMENT\",\"removalWave\":1,"
             + "\"removedByDefaultSince\":\"phase-6-pr-8\",\"fallbackPolicy\":\"none\","
+            + "\"removalScope\":\"CANONICAL_AND_SLASHLESS_ALIAS\",\"scopeExpandedInWave\":0,"
             + "\"count\":3,\"replacementResponseCount\":2,"
             + "\"blockedMutatingRequestCount\":1,\"fallbackRenderCount\":0,"
             + "\"retainedOrPendingRenderCount\":0,\"lastSeenEpochMillis\":1770000000000}]}}",

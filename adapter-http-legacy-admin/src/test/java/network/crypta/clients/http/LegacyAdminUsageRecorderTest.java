@@ -33,6 +33,26 @@ class LegacyAdminUsageRecorderTest {
     assertEquals(1, usage.removalWave());
     assertEquals("phase-6-pr-8", usage.removedByDefaultSince());
     assertEquals("none", usage.fallbackPolicy());
+    assertEquals(LegacyAdminRemovalScope.EXPLICIT_CHILDREN.name(), usage.removalScope());
+    assertEquals(2, usage.scopeExpandedInWave());
+  }
+
+  @Test
+  void snapshot_whenWaveTwoSurfaceIncluded_expectWaveTwoMetadataAndScope() {
+    LegacyAdminUsageRecorder recorder =
+        new LegacyAdminUsageRecorder(
+            Clock.fixed(Instant.ofEpochMilli(1_770_000_000_000L), ZoneOffset.UTC));
+
+    recorder.recordPath(LegacyHttpPaths.CONFIG_PATH + "node");
+
+    LegacyAdminSurfaceUsage usage = usage(recorder.snapshot(), "config");
+    assertEquals(1L, usage.count());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT.name(), usage.removalMode());
+    assertEquals(2, usage.removalWave());
+    assertEquals("phase-7-pr-230", usage.removedByDefaultSince());
+    assertEquals("none", usage.fallbackPolicy());
+    assertEquals(LegacyAdminRemovalScope.PREFIX_FAMILY.name(), usage.removalScope());
+    assertEquals(2, usage.scopeExpandedInWave());
   }
 
   @Test

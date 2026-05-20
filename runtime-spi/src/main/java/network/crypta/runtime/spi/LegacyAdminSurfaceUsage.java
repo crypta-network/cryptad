@@ -32,6 +32,9 @@ import java.util.Objects;
  * @param removedByDefaultSince stable release/phase marker, or {@code null} when not removed by
  *     default
  * @param fallbackPolicy path-free description of temporary fallback behavior
+ * @param removalScope bounded route-scope enum name used by the removal gate
+ * @param scopeExpandedInWave removal wave that expanded matching beyond canonical aliases, or
+ *     {@code 0} when no later wave expanded the scope
  * @param count number of observed visits since process start
  * @param replacementResponseCount number of redirect or gone-with-replacement responses since
  *     process start
@@ -53,6 +56,8 @@ public record LegacyAdminSurfaceUsage(
     int removalWave,
     String removedByDefaultSince,
     String fallbackPolicy,
+    String removalScope,
+    int scopeExpandedInWave,
     long count,
     long replacementResponseCount,
     long blockedMutatingRequestCount,
@@ -77,6 +82,7 @@ public record LegacyAdminSurfaceUsage(
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(removalMode, "removalMode");
     Objects.requireNonNull(fallbackPolicy, "fallbackPolicy");
+    Objects.requireNonNull(removalScope, "removalScope");
     if (removedByDefaultSince != null && removedByDefaultSince.isBlank()) {
       throw new IllegalArgumentException("removedByDefaultSince must not be blank");
     }
@@ -85,6 +91,12 @@ public record LegacyAdminSurfaceUsage(
     }
     if (removalWave < 0) {
       throw new IllegalArgumentException("removalWave must not be negative");
+    }
+    if (removalScope.isBlank()) {
+      throw new IllegalArgumentException("removalScope must not be blank");
+    }
+    if (scopeExpandedInWave < 0) {
+      throw new IllegalArgumentException("scopeExpandedInWave must not be negative");
     }
     if (count < 0) {
       throw new IllegalArgumentException("count must not be negative");

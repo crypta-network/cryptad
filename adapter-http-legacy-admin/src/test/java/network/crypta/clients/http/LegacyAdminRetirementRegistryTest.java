@@ -22,6 +22,13 @@ class LegacyAdminRetirementRegistryTest {
     assertEquals(1, surface.removalWave());
     assertEquals("phase-6-pr-8", surface.removedByDefaultSince());
     assertEquals("none", surface.fallbackPolicy());
+    assertEquals(LegacyAdminRemovalScope.EXPLICIT_CHILDREN, surface.removalScope());
+    assertEquals(2, surface.scopeExpandedInWave());
+    assertEquals(
+        List.of(
+            QueueToadlet.PATH_DOWNLOADS + "countRequests.html",
+            QueueToadlet.PATH_DOWNLOADS + "listKeys.txt"),
+        surface.explicitRemovalChildPaths());
     assertTrue(surface.includeInUsageDiagnostics());
     assertFalse(surface.includeInWebShellFallbackLinks());
   }
@@ -52,6 +59,30 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
+  void removalWaveSurfaces_whenWaveTwoRequested_expectSecondRemovalSetOnly() {
+    List<String> waveTwoIds =
+        LegacyAdminRetirementRegistry.removalWaveSurfaces(2).stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(List.of("alerts", "config", "core-update", "statistics"), waveTwoIds);
+    assertFalse(waveTwoIds.contains("queue-downloads"));
+    assertFalse(waveTwoIds.contains("queue-uploads"));
+    assertFalse(waveTwoIds.contains("security-levels"));
+    assertFalse(waveTwoIds.contains("diagnostic"));
+  }
+
+  @Test
+  void scopeExpandedInWaveSurfaces_whenWaveTwoRequested_expectExpandedScopeSurfaces() {
+    List<String> expandedIds =
+        LegacyAdminRetirementRegistry.scopeExpandedInWaveSurfaces(2).stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(List.of("queue-downloads", "queue-uploads", "config", "statistics"), expandedIds);
+  }
+
+  @Test
   void findByLegacyPath_whenConfigSubpageRequested_expectConfigSurface() {
     LegacyAdminSurface surface =
         LegacyAdminRetirementRegistry.findByLegacyPath(LegacyHttpPaths.CONFIG_PATH + "node")
@@ -59,9 +90,21 @@ class LegacyAdminRetirementRegistryTest {
 
     assertEquals("config", surface.id());
     assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT, surface.removalMode());
+    assertEquals(2, surface.removalWave());
+    assertEquals("phase-7-pr-230", surface.removedByDefaultSince());
+    assertEquals(LegacyAdminRemovalScope.PREFIX_FAMILY, surface.removalScope());
+    assertEquals(WebShellPaths.SHELL_ROOT + "#config", surface.replacementUrl());
+  }
+
+  @Test
+  void require_whenDiagnosticRequested_expectPlainTextExportRetainedAsLegacyFallback() {
+    LegacyAdminSurface surface = LegacyAdminRetirementRegistry.require("diagnostic");
+
+    assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
     assertEquals(LegacyAdminRemovalMode.RENDER_LEGACY, surface.removalMode());
     assertEquals(0, surface.removalWave());
-    assertEquals(WebShellPaths.SHELL_ROOT + "#config", surface.replacementUrl());
+    assertEquals(WebShellPaths.SHELL_ROOT + "#diagnostics", surface.replacementUrl());
   }
 
   @Test

@@ -56,6 +56,18 @@ LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "strangers",
     "connectivity",
 )
+LEGACY_REMOVAL_WAVE_TWO_IDS = (
+    "alerts",
+    "config",
+    "core-update",
+    "statistics",
+)
+LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS = (
+    "queue-downloads",
+    "queue-uploads",
+    "config",
+    "statistics",
+)
 APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
 APP_VAULT_DOC = Path("docs/app-secret-and-identity-vault.md")
 DEVELOPER_BETA_TOOLKIT_DOC = Path("docs/developer-beta-toolkit.md")
@@ -3863,7 +3875,7 @@ def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
     end = text.index("private static final Map", start)
     block = text[start:end]
     return {
-        "PRIMARY_REPLACED": len(re.findall(r"\n\s+(?:replaced|wave1Redirect)\(", block)),
+        "PRIMARY_REPLACED": len(re.findall(r"\n\s+(?:replaced|wave\d+Redirect)\(", block)),
         "PENDING": len(re.findall(r"\n\s+pendingWizard\(", block)) + len(re.findall(r"\n\s+pending\(", block)),
         "RETAINED": len(re.findall(r"\n\s+retained\(", block)),
         "INFRASTRUCTURE": len(re.findall(r"\n\s+infrastructure\(", block)),
@@ -3968,6 +3980,25 @@ def legacy_removal_wave_one_ids(registry_text: str) -> list[str]:
     return re.findall(r"\n\s+wave1Redirect\(\s*\"([^\"]+)\"", registry_text)
 
 
+def legacy_removal_wave_two_ids(registry_text: str) -> list[str]:
+    return re.findall(r"\n\s+wave2Redirect\(\s*\"([^\"]+)\"", registry_text)
+
+
+def legacy_scope_expansion_wave_two_ids(registry_text: str) -> list[str]:
+    try:
+        start = registry_text.index("List.of(")
+        end = registry_text.index("private static final Map", start)
+    except ValueError:
+        return []
+    block = registry_text[start:end]
+    matches = re.findall(
+        r"\n\s+(?:wave1Redirect|wave2Redirect)\(\s*\"([^\"]+)\"(?:(?!\n\s+(?:wave1Redirect|wave2Redirect|replaced|pending|retained|infrastructure)\().)*?REMOVAL_WAVE_2",
+        block,
+        re.DOTALL,
+    )
+    return matches
+
+
 def collect_legacy_removal_wave_one_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     root = settings.workspace_root
@@ -4056,6 +4087,130 @@ def collect_legacy_removal_wave_one_evidence(settings: Settings) -> EvidenceItem
         "pass",
         True,
         "Legacy-admin removal wave 1 replacement behavior is documented and observable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_removal_wave_two_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "response": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminReplacementResponse.java",
+        "recorder": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminUsageRecorder.java",
+        "usageDto": root / "runtime-spi/src/main/java/network/crypta/runtime/spi/LegacyAdminSurfaceUsage.java",
+        "diagnostics": root / "platform-api/src/main/java/network/crypta/platform/api/diagnostics/DiagnosticsApiHandler.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    wave_ids = legacy_removal_wave_two_ids(text["registry"])
+    scope_expansion_ids = legacy_scope_expansion_wave_two_ids(text["registry"])
+    checks = {
+        "waveTwoIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_TWO_IDS),
+        "waveOneIdsStable": legacy_removal_wave_one_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "scopeExpansionIdsMatch": scope_expansion_ids == list(LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS),
+        "redirectModeDeclared": "LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT" in text["registry"],
+        "routeScopeDeclared": "LegacyAdminRemovalScope" in text["registry"] and "matchesRemovalScope" in text["policy"],
+        "explicitChildrenDeclared": "EXPLICIT_CHILDREN" in text["registry"] and "explicitRemovalChildPaths" in text["policy"],
+        "prefixFamilyDeclared": "PREFIX_FAMILY" in text["registry"],
+        "safeReadReplacementResponses": "GET" in text["policy"]
+        and "HEAD" in text["policy"]
+        and ("redirect(" in text["policy"] or "gone(" in text["policy"]),
+        "partialMutationFallbackDocumented": "blockMutatingRequests" in text["policy"]
+        and "mutating legacy alert" in text["docs"].lower()
+        and "installer and package-store" in text["docs"].lower(),
+        "mutatingRequestsBlockedWhereCovered": "BLOCKED_MUTATING_REQUEST" in text["policy"]
+        or "blockedMutation" in text["policy"],
+        "replacementAvailabilityGate": "replacementAvailable" in text["policy"]
+        and "isStaticAppUiAvailable" in text["policy"]
+        and "primaryUiRoot" in text["policy"],
+        "diagnosticsCarriesReplacementCounter": "replacementResponseCount" in text["diagnostics"] and "replacementResponseCount" in text["usageDto"],
+        "diagnosticsCarriesBlockedCounter": "blockedMutatingRequestCount" in text["diagnostics"] and "blockedMutatingRequestCount" in text["usageDto"],
+        "diagnosticsCarriesFallbackCounter": "fallbackRenderCount" in text["diagnostics"] and "fallbackRenderCount" in text["usageDto"],
+        "diagnosticsCarriesScopeMetadata": "removalScope" in text["diagnostics"]
+        and "scopeExpandedInWave" in text["diagnostics"]
+        and "removalScope" in text["usageDto"]
+        and "scopeExpandedInWave" in text["usageDto"],
+        "docsDescribeWave": "legacy-admin.removal-wave-2" in text["docs"],
+        "docsDescribeAvailabilityFallback": "replacement is reachable" in text["docs"]
+        or "replacement is unavailable" in text["docs"],
+        "docsRetainBrowse": "FProxy browse remains retained" in text["docs"],
+        "docsRetainDiagnosticExport": "raw diagnostic export remains retained" in text["docs"],
+        "liveNodeNotRequired": True,
+    }
+    retained_browse_safety = {
+        "fproxyBrowseRootOutOfScope": "/" not in wave_ids,
+        "contentFilterOutOfScope": "content-filter" not in wave_ids,
+        "wizardOutOfScope": "first-time-wizard" not in wave_ids,
+        "nodeToNodeMessageOutOfScope": "node-to-node-message" not in wave_ids,
+        "diagnosticPlainTextRetained": "diagnostic" not in wave_ids,
+    }
+    redaction = {
+        "queryStringsExcluded": True,
+        "requestBodiesExcluded": True,
+        "formPasswordsExcluded": True,
+        "remoteAddressesExcluded": True,
+        "tokensExcluded": True,
+        "privateUrisExcluded": True,
+        "localPathsExcluded": True,
+    }
+    details = {
+        "removedByDefaultRouteIds": wave_ids,
+        "expectedRouteIds": list(LEGACY_REMOVAL_WAVE_TWO_IDS),
+        "scopeExpandedRouteIds": scope_expansion_ids,
+        "expectedScopeExpandedRouteIds": list(LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS),
+        "replacementUrls": {
+            "alerts": "/app/node/#alerts",
+            "config": "/app/node/#config",
+            "core-update": "/app/node/#updates",
+            "statistics": "/app/node/#diagnostics",
+            "queue-downloads": "/apps/queue-manager/",
+            "queue-uploads": "/apps/queue-manager/",
+        },
+        "statusBehavior": {
+            "safeRead": "303 See Other when replacement is available; legacy fallback when unavailable",
+            "mutating": "410 Gone only for covered mutations when replacement is available; partial legacy actions remain fallback",
+        },
+        "actionCoverage": {
+            "alerts": "safe reads redirect; legacy POST fallback remains for bulk dismiss and node-message deletion",
+            "config": "safe reads and config POST mutations are removed by default when Web Shell config is available",
+            "core-update": "safe reads redirect; legacy POST fallback remains for installer and package-store actions",
+            "statistics": "safe reads redirect for overview and requesters HTML; raw diagnostic export is retained",
+            "queue": "canonical routes plus reviewed count and key-list helpers redirect when Queue Manager is available",
+        },
+        "retainedBrowseSafety": retained_browse_safety,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"retainedBrowseSafety.{name}" for name, passed in retained_browse_safety.items() if not passed)
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.removal-wave-2",
+            "fail",
+            True,
+            "Legacy-admin removal wave 2 evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.removal-wave-2",
+        "pass",
+        True,
+        "Legacy-admin removal wave 2 replacement behavior is documented and observable.",
         source,
         details,
     )
@@ -4867,6 +5022,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_trust_graph_reference_app_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
+        collect_legacy_removal_wave_two_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
@@ -4947,7 +5103,7 @@ def run_self_test(repo_root: Path) -> None:
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
-        "PRIMARY_REPLACED": 9,
+        "PRIMARY_REPLACED": 12,
         "PENDING": 2,
         "RETAINED": 1,
         "INFRASTRUCTURE": 1,
@@ -4958,6 +5114,8 @@ def run_self_test(repo_root: Path) -> None:
     unsafe_registry_text = registry_text.replace("true,\n        false);", "true,\n        true);", 1)
     unsafe_fallback_checks = legacy_fallback_link_checks(unsafe_registry_text)
     assert unsafe_fallback_checks["primaryReplacedExcludedFromFallbackLinks"] is False, unsafe_fallback_checks
+    assert legacy_scope_expansion_wave_two_ids("") == []
+    assert legacy_scope_expansion_wave_two_ids("final class LegacyAdminRetirementRegistry {}") == []
     parser_options = {
         option
         for action in build_parser()._actions
@@ -5359,6 +5517,8 @@ def run_self_test(repo_root: Path) -> None:
         assert toolkit_item["details"]["checks"]["templates"]["queue-dashboard"] is True, toolkit_item
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass"
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-2"]["requiredForReleaseCandidate"] is True
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
         vault_item = evidence_by_id["app-vault.capabilities"]
@@ -6201,13 +6361,19 @@ def make_self_test_workspace(workspace: Path) -> None:
     legacy_docs.write_text(
         "legacy-admin.removal-wave-1 documents that removed routes return replacement responses "
         "when the replacement is reachable and render legacy fallback when the replacement is unavailable. "
+        "legacy-admin.removal-wave-2 documents that safe reads redirect when the replacement is reachable, "
+        "mutating legacy alert bulk actions and core-update installer and package-store actions remain fallback, "
+        "and raw diagnostic export remains retained. "
         "FProxy browse remains retained, and retained and pending legacy routes remain reachable.\n",
         encoding="utf-8",
     )
     legacy_admin_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
     (legacy_admin_dir / "LegacyAdminRemovalPolicy.java").write_text(
         'class LegacyAdminRemovalPolicy { boolean matchesCanonicalPageOrSlashlessAlias; '
-        'boolean replacementAvailable; boolean isStaticAppUiAvailable; boolean primaryUiRoot; '
+        'boolean matchesRemovalScope; boolean explicitRemovalChildPaths; '
+        'boolean blockMutatingRequests; boolean replacementAvailable; '
+        'boolean isStaticAppUiAvailable; boolean primaryUiRoot; '
+        'String s = "LegacyAdminRemovalScope EXPLICIT_CHILDREN PREFIX_FAMILY"; '
         'String m = "GET HEAD"; Object d = LegacyAdminRemovalDecision.redirect(null); '
         'Object b = LegacyAdminRemovalDecision.blockedMutation(null); }\n',
         encoding="utf-8",
@@ -6225,14 +6391,15 @@ def make_self_test_workspace(workspace: Path) -> None:
     usage_dto.write_text(
         "record LegacyAdminSurfaceUsage(long replacementResponseCount, "
         "long blockedMutatingRequestCount, long fallbackRenderCount, "
-        "long retainedOrPendingRenderCount) {}\n",
+        "long retainedOrPendingRenderCount, String removalScope, int scopeExpandedInWave) {}\n",
         encoding="utf-8",
     )
     diagnostics_handler = workspace / "platform-api/src/main/java/network/crypta/platform/api/diagnostics/DiagnosticsApiHandler.java"
     diagnostics_handler.parent.mkdir(parents=True, exist_ok=True)
     diagnostics_handler.write_text(
         "class DiagnosticsApiHandler { String a = \"replacementResponseCount "
-        "blockedMutatingRequestCount fallbackRenderCount retainedOrPendingRenderCount\"; }\n",
+        "blockedMutatingRequestCount fallbackRenderCount retainedOrPendingRenderCount "
+        "removalScope scopeExpandedInWave\"; }\n",
         encoding="utf-8",
     )
     app_vault_doc = workspace / APP_VAULT_DOC

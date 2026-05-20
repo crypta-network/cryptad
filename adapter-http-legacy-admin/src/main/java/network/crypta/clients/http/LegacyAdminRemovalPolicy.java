@@ -7,9 +7,10 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
 /**
  * Central removal policy for legacy admin routes.
  *
- * <p>The policy is intentionally narrower than the retirement registry. It only handles canonical
- * page paths, plus their slashless aliases, whose registry metadata marks them removed by default.
- * Prefix subpaths continue to dispatch normally unless a later removal wave explicitly adds them.
+ * <p>The policy is intentionally narrower than the retirement registry. It only handles paths whose
+ * registry metadata marks them removed by default and whose explicit removal scope matches the
+ * current request. Prefix or child-route matching is opt-in per surface; the registry's broad
+ * diagnostics prefix attribution is never reused for removal decisions.
  *
  * <p>The dispatcher calls this class after the toadlet container has had a chance to apply
  * higher-priority routing decisions such as first-run wizard redirects. A non-empty result means
@@ -73,11 +74,14 @@ final class LegacyAdminRemovalPolicy {
     if (!replacementAvailable(legacyAdminSurface, ctx)) {
       return Optional.empty();
     }
+    if (isMutatingRequestMethod(method) && !legacyAdminSurface.blockMutatingRequests()) {
+      return Optional.empty();
+    }
     return Optional.of(decisionFor(method, legacyAdminSurface));
   }
 
   /**
-   * Returns whether a URI targets a removed canonical page or its slashless alias.
+   * Returns whether a URI targets any removed path in its declared removal scope.
    *
    * <p>This helper is used by restricted-method routing before a concrete {@link ToadletContext}
    * exists. It intentionally answers only the static route-map question. Callers that need to know
@@ -85,10 +89,26 @@ final class LegacyAdminRemovalPolicy {
    * URI, ToadletContext)} so replacement availability is honored.
    *
    * @param uri request URI whose path should be checked against the current removal wave
-   * @return {@code true} when the path is a removed canonical page or slashless alias
+   * @return {@code true} when the path is currently removed by default
    */
   static boolean isRemovedCanonicalPath(URI uri) {
     return removedSurfaceForRequest(uri).isPresent();
+  }
+
+  /**
+   * Returns whether a URI targets a removed path whose mutating requests are blocked.
+   *
+   * <p>Restricted-method routing uses this before a {@link ToadletContext} exists. Surfaces with
+   * partial replacement coverage can still redirect safe reads while leaving legacy mutations as
+   * fallback, so those routes must not make otherwise-restricted HTTP verbs pass this early gate.
+   *
+   * @param uri request URI whose path should be checked against the current removal wave
+   * @return {@code true} when the path is removed by default and its mutating requests are blocked
+   */
+  static boolean isRemovedMutatingPath(URI uri) {
+    return removedSurfaceForRequest(uri)
+        .filter(LegacyAdminSurface::blockMutatingRequests)
+        .isPresent();
   }
 
   /**
@@ -99,7 +119,7 @@ final class LegacyAdminRemovalPolicy {
    * @return redirect, gone, or blocked-mutation decision for the matched request
    */
   private static LegacyAdminRemovalDecision decisionFor(String method, LegacyAdminSurface surface) {
-    if (!isSafeRead(method)) {
+    if (isMutatingRequestMethod(method)) {
       return LegacyAdminRemovalDecision.blockedMutation(surface);
     }
     if (surface.removalMode() == LegacyAdminRemovalMode.GONE_WITH_REPLACEMENT) {
@@ -109,13 +129,13 @@ final class LegacyAdminRemovalPolicy {
   }
 
   /**
-   * Classifies the method subset that can receive replacement read responses.
+   * Classifies the method subset that must not execute removed legacy actions.
    *
    * @param method uppercase HTTP method from the request line
-   * @return {@code true} for {@code GET} and {@code HEAD}; {@code false} for mutating methods
+   * @return {@code true} for every method except {@code GET} and {@code HEAD}
    */
-  private static boolean isSafeRead(String method) {
-    return "GET".equals(method) || "HEAD".equals(method);
+  private static boolean isMutatingRequestMethod(String method) {
+    return !"GET".equals(method) && !"HEAD".equals(method);
   }
 
   /**
@@ -138,7 +158,14 @@ final class LegacyAdminRemovalPolicy {
           staticAppReplacementAvailable(ctx, QUEUE_MANAGER_APP_ID);
       case "file-insert", "local-file-insert" ->
           staticAppReplacementAvailable(ctx, PUBLISHER_APP_ID);
-      case "friends", "add-friend", "strangers", "connectivity" ->
+      case "friends",
+          "add-friend",
+          "strangers",
+          "connectivity",
+          "alerts",
+          "config",
+          "core-update",
+          "statistics" ->
           webShellReplacementAvailable(ctx);
       default -> true;
     };
@@ -175,9 +202,9 @@ final class LegacyAdminRemovalPolicy {
   /**
    * Resolves a URI path to a removed-by-default surface in the current wave.
    *
-   * <p>The method ignores query strings and fragments and matches only exact canonical paths or the
-   * slashless alias that the toadlet container would otherwise canonicalize. Queue helper paths,
-   * local directory helpers, and other subresources intentionally fall through to normal dispatch.
+   * <p>The method ignores query strings and fragments and matches only the route scope declared on
+   * the removed surface. Canonical aliases remain the default; prefix and explicit-child scopes
+   * must be opted into by the registry entry being matched.
    *
    * @param uri request URI supplied by the dispatch loop or restricted-method gate
    * @return matching removed surface, or empty when normal legacy routing should continue
@@ -189,7 +216,7 @@ final class LegacyAdminRemovalPolicy {
     String requestPath = uri.getPath();
     return LegacyAdminRetirementRegistry.surfaces().stream()
         .filter(LegacyAdminRemovalPolicy::isRemovedByDefault)
-        .filter(surface -> matchesCanonicalPageOrSlashlessAlias(surface, requestPath))
+        .filter(surface -> matchesRemovalScope(surface, requestPath))
         .findFirst();
   }
 
@@ -205,12 +232,23 @@ final class LegacyAdminRemovalPolicy {
   }
 
   /**
-   * Matches the canonical legacy page path and its slashless alias only.
+   * Matches the declared removal scope for one removed-by-default surface.
    *
    * @param surface registry surface carrying the canonical legacy path
    * @param requestPath request path without query string or fragment data
-   * @return {@code true} when the request targets the page itself, not a helper subpath
+   * @return {@code true} when the request targets a path inside the removal scope
    */
+  private static boolean matchesRemovalScope(LegacyAdminSurface surface, String requestPath) {
+    if (matchesCanonicalPageOrSlashlessAlias(surface, requestPath)) {
+      return true;
+    }
+    return switch (surface.removalScope()) {
+      case CANONICAL_AND_SLASHLESS_ALIAS -> false;
+      case PREFIX_FAMILY -> requestPath.startsWith(surface.legacyPath());
+      case EXPLICIT_CHILDREN -> surface.explicitRemovalChildPaths().contains(requestPath);
+    };
+  }
+
   private static boolean matchesCanonicalPageOrSlashlessAlias(
       LegacyAdminSurface surface, String requestPath) {
     String legacyPath = surface.legacyPath();

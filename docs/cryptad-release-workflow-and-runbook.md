@@ -120,7 +120,9 @@ Treat these as release blockers, in order:
    and diagnostics shape before any release promotion. The certification report must include
    primary-replaced, retained, and pending surface counts, confirm primary-replaced surfaces are
    absent from Web Shell fallback navigation, prove `legacy-admin.removal-wave-1` replacement and
-   blocked-mutation behavior, and confirm retained/pending legacy routes remain documented.
+   blocked-mutation behavior, prove `legacy-admin.removal-wave-2` safe-read replacement behavior,
+   route-scope expansion metadata, partial mutation fallbacks, and retained raw diagnostic export
+   status, and confirm retained/pending legacy routes remain documented.
    Optional live evidence may read `GET /api/v1/diagnostics`; those counters are process-local and
    are not durable audit logs. The retirement source of truth is
    [legacy-retirement-plan.md](legacy-retirement-plan.md).

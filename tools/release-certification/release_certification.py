@@ -885,6 +885,7 @@ def app_platform_evidence(
         "reference-app.trust-graph",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
+        "legacy-admin.removal-wave-2",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -2173,7 +2174,11 @@ def evaluate_legacy_retirement_gate(
     failures: list[str] = []
     warnings: list[str] = []
     details: dict[str, Any] = {}
-    for evidence_id in ("legacy.retirement", "legacy-admin.removal-wave-1"):
+    for evidence_id in (
+        "legacy.retirement",
+        "legacy-admin.removal-wave-1",
+        "legacy-admin.removal-wave-2",
+    ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
         details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
@@ -2186,22 +2191,26 @@ def evaluate_legacy_retirement_gate(
         if previous_status == "pass" and status in {"fail", "missing", "skip"}:
             failures.append(f"{evidence_id} regressed from pass to {status}")
             add_evidence_issue(details, "failureEvidenceIds", evidence_id)
-    current_wave = evidence_details(current.get("legacy-admin.removal-wave-1"))
-    previous_wave = evidence_details(previous.get("legacy-admin.removal-wave-1"))
-    current_routes = set(sorted_strings(current_wave.get("removedByDefaultRouteIds")))
-    previous_routes = set(sorted_strings(previous_wave.get("removedByDefaultRouteIds")))
-    details["removedByDefaultRouteCounts"] = {"current": len(current_routes), "previous": len(previous_routes)}
-    if previous_routes and current_routes != previous_routes:
-        if current_wave.get("docsDescribeWave") or current_wave.get("updateNote"):
-            warnings.append("Removed-by-default route set changed with documentation evidence")
-            add_evidence_issue(details, "warningEvidenceIds", "legacy-admin.removal-wave-1")
-        else:
-            warnings.append("Removed-by-default route set changed without doc/update note metadata")
-            add_evidence_issue(details, "warningEvidenceIds", "legacy-admin.removal-wave-1")
-    safety = current_wave.get("retainedBrowseSafety")
-    if isinstance(safety, dict) and any(value is False for value in safety.values()):
-        failures.append("Retained browse safety evidence failed")
-        add_evidence_issue(details, "failureEvidenceIds", "legacy-admin.removal-wave-1")
+    for evidence_id in ("legacy-admin.removal-wave-1", "legacy-admin.removal-wave-2"):
+        current_wave = evidence_details(current.get(evidence_id))
+        previous_wave = evidence_details(previous.get(evidence_id))
+        current_routes = set(sorted_strings(current_wave.get("removedByDefaultRouteIds")))
+        previous_routes = set(sorted_strings(previous_wave.get("removedByDefaultRouteIds")))
+        details[f"{evidence_id}.removedByDefaultRouteCounts"] = {
+            "current": len(current_routes),
+            "previous": len(previous_routes),
+        }
+        if previous_routes and current_routes != previous_routes:
+            if current_wave.get("docsDescribeWave") or current_wave.get("updateNote"):
+                warnings.append(f"{evidence_id} route set changed with documentation evidence")
+                add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+            else:
+                warnings.append(f"{evidence_id} route set changed without doc/update note metadata")
+                add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        safety = current_wave.get("retainedBrowseSafety")
+        if isinstance(safety, dict) and any(value is False for value in safety.values()):
+            failures.append(f"{evidence_id} retained browse safety evidence failed")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
     return gate_from_issues(
         "ecosystem.legacy-retirement",
         "Legacy retirement and removal-wave evidence passed.",
@@ -2510,6 +2519,7 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(["", "## Legacy Admin Retirement", ""])
     append_detail(lines, summary, "legacy.retirement")
     append_detail(lines, summary, "legacy-admin.removal-wave-1")
+    append_detail(lines, summary, "legacy-admin.removal-wave-2")
     lines.extend(
         [
             "",
@@ -2985,6 +2995,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.trust-graph"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["legacy-admin.removal-wave-2"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [
@@ -3837,6 +3849,27 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert legacy_removed_exit_code == 1, legacy_removed_summary
         assert gate_by_id(legacy_removed_summary, "ecosystem.legacy-retirement")["status"] == "fail"
+
+        legacy_wave_two_removed_path = write_app_summary_variant(
+            "legacy-wave-two-removed",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        entry
+                        for entry in value["evidence"]
+                        if entry.get("id") != "legacy-admin.removal-wave-2"
+                    ]
+                }
+            ),
+        )
+        legacy_wave_two_removed_summary, legacy_wave_two_removed_exit_code = run_with_previous(
+            "legacy-wave-two-removed-cert", app_platform_summary=legacy_wave_two_removed_path
+        )
+        assert legacy_wave_two_removed_exit_code == 1, legacy_wave_two_removed_summary
+        assert (
+            gate_by_id(legacy_wave_two_removed_summary, "ecosystem.legacy-retirement")["status"]
+            == "fail"
+        )
 
         waiver_file_path = workspace / "docs/release-waivers/self-test.json"
         write_json(
