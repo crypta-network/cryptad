@@ -11,14 +11,16 @@ build/release-certification/release-certification-summary.json
 build/release-certification/release-certification-report.md
 build/release-certification/history-comparison.json
 build/release-certification/history-comparison.md
+build/release-certification/ecosystem-certification-matrix.json
+build/release-certification/ecosystem-certification-matrix.md
 build/release-certification/artifacts/
 build/release-certification/app-platform-smoke/summary.json
 build/release-certification/app-platform-smoke/app-platform-smoke-report.md
 build/release-certification/app-platform-smoke/artifacts/
 ```
 
-The Markdown report is intended for human release review.  The JSON summary is the stable
-machine-readable companion for later automation and report comparison.
+The Markdown report and ecosystem matrix are intended for human release review. The JSON summary
+is the stable machine-readable companion for later automation and report comparison.
 
 ## Modes
 
@@ -252,6 +254,7 @@ historyComparison.previous.releaseVersion
 historyComparison.current.generatedAt
 historyComparison.evidenceDiffs[]
 historyComparison.ecosystemGates[]
+ecosystemMatrix
 ```
 
 Each evidence diff records the evidence id, previous status, current status, classification
@@ -299,6 +302,54 @@ ecosystem.sandbox-provider
 ecosystem.reference-content-apps
 ecosystem.legacy-retirement
 ```
+
+## Ecosystem certification matrix
+
+The aggregator writes `ecosystem-certification-matrix.json` and
+`ecosystem-certification-matrix.md` beside the summary and report. The matrix is the primary
+release-candidate checklist for the networked app layer. It does not replace the detailed evidence
+or ecosystem gates; it summarizes them into deterministic rows that answer:
+
+| Field | Meaning |
+| --- | --- |
+| `category` and `title` | The ecosystem area being certified, such as app updates, review governance, Platform API compatibility, first-party apps, reference apps, or legacy retirement. |
+| `requiredEvidenceIds` and `optionalEvidenceIds` | The evidence ids that prove the row. Missing, skipped, or failing required evidence is a release-candidate blocker. Optional evidence that is missing, skipped, failing, or warning is visible as a row warning. |
+| `gateIds` and `gateStatus` | The ecosystem gates that cover the row. A release-blocking referenced gate makes the row a blocker unless an active release-candidate waiver applies. |
+| `status` | Row result: `pass`, `warn`, `fail`, `missing`, or `skip`. |
+| `previousStatus` and `regressionStatus` | Previous row status when the previous summary contains matrix metadata, plus `unchanged`, `improved`, `regressed-warning`, `regressed-blocker`, `new-row`, `previous-missing`, or `not-comparable`. |
+| `releaseBlocker` | Whether this row blocks release-candidate promotion. Waived blockers become `warn` and keep the waiver id visible. |
+| `waiverIds` | Active waiver ids that match the row id, a referenced evidence id, a referenced gate id, or a row issue id. |
+| `docs` | Existing release-manager documentation that explains the row's domain. |
+| `recommendation` | The next stable release-manager action. |
+
+The matrix validates its own coverage on every run. `requiredEvidenceCovered` requires every
+current `requiredForReleaseCandidate` evidence id to appear in at least one row. `ecosystemGatesCovered`
+requires every emitted `ecosystem.*` gate to appear in at least one row, including
+`ecosystem.waivers` when waiver-file validation emits it. `firstPartyAppsCovered` requires visible
+coverage for `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`,
+and `trust-graph`. `docsCovered` requires every non-synthetic row to name at least one existing
+docs path. `redactionPassed` requires the matrix to stay within the same sanitized, path-free
+release evidence contract as the summary and report.
+
+The first-party app coverage is intentionally split. `queue-manager`, `publisher`, and the shared
+bundle set are grouped under the first-party app bundle row. `site-publisher` is covered by the
+reference content row. `profile-publisher`, `feed-reader`, and `trust-graph` each have their own
+rows because they validate distinct identity publishing, content fetch, and trust graph preview
+behavior.
+
+In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
+or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps warn unless
+redaction fails. The summary embeds only compact matrix metadata under `ecosystemMatrix`, plus
+`ecosystemMatrixStatus`, `ecosystemMatrixPath`, and `ecosystemMatrixReportPath`; the full row list
+belongs in `ecosystem-certification-matrix.json`.
+
+Previous summaries produced before PR-231 do not contain matrix metadata. When such a summary is
+used as `--previous-summary`, `previousMatrixPresent=false` and row regressions are marked
+`previous-missing`. That warning does not fail the first PR-231 release candidate by itself; record
+the baseline transition in the release log. Once a previous summary contains `ecosystemMatrix`,
+row-level regressions are compared directly.
+
+## Ecosystem gate behavior
 
 The gates are intentionally conservative. Platform API compatibility blocks on contract status
 failure, contract version rollback, or available stable endpoint/capability removals. First-party
@@ -387,7 +438,7 @@ tokens.
 
 ## Redaction
 
-The report and copied artifacts must not contain:
+The report, matrix, and copied artifacts must not contain:
 
 - private signing keys;
 - private reviewer keys;

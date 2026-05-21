@@ -165,6 +165,8 @@ jobs:
             build/release-certification/release-certification-report.md
             build/release-certification/history-comparison.json
             build/release-certification/history-comparison.md
+            build/release-certification/ecosystem-certification-matrix.json
+            build/release-certification/ecosystem-certification-matrix.md
             build/release-certification/artifacts/
             build/release-certification/app-platform-smoke/summary.json
             build/release-certification/app-platform-smoke/app-platform-smoke-report.md

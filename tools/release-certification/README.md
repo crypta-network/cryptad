@@ -48,6 +48,8 @@ build/release-certification/
   release-certification-report.md
   history-comparison.json
   history-comparison.md
+  ecosystem-certification-matrix.json
+  ecosystem-certification-matrix.md
   artifacts/
   app-platform-smoke/
     summary.json
@@ -87,6 +89,8 @@ app-vault.capabilities
 app-platform.identity-profile-publish
 app-platform.generated-document-insert
 app-platform.content-fetch
+app-platform.trust-graph-preview
+app-platform.trust-statement-signing
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
@@ -94,6 +98,7 @@ app-ui.smoke
 reference-apps.content
 reference-app.profile-publisher
 reference-app.feed-reader
+reference-app.trust-graph
 legacy.retirement
 legacy-admin.removal-wave-1
 legacy-admin.removal-wave-2
@@ -103,24 +108,23 @@ app-update.scheduler
 app-update.rollback
 app-review.trusted-receipts
 app-review.policy
+app-review.governance
+app-review.reviewer-key-lifecycle
+app-review.transparency-log
+app-review.review-history-api
 app-review.first-party-catalog
+app-review.first-party-review-chain
+release-certification.ecosystem-matrix
 ```
 
-`platform-api.contract`, `app-vault.capabilities`, `app-platform.identity-profile-publish`,
-`app-platform.generated-document-insert`, `app-platform.content-fetch`,
-`app-platform.developer-beta-toolkit`,
-`app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`,
-`reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`, `apphost.sandbox-provider`, `app-update.lifecycle`,
-`app-update.scheduler`, `app-update.rollback`, `app-catalog.first-party-beta`,
-`app-review.trusted-receipts`, and
-`app-review.policy` use deterministic source checks, fixtures, and fake/offline tests; they do not
-require a live node or host-installed bubblewrap in normal CI. `app-catalog.first-party-beta`
-reports source/key configuration readiness but does not fetch the public Crypta catalog.
-`app-review.first-party-catalog`
+The app-platform, app-review, reference-app, legacy-retirement, and matrix evidence ids above use
+deterministic source checks, fixtures, and fake/offline tests; they do not require a live node or
+host-installed bubblewrap in normal CI. `app-catalog.first-party-beta` reports source/key
+configuration readiness but does not fetch the public Crypta catalog. `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review
-receipt for each catalog entry. `interop.extended` and `apphost.live`
-are recorded as optional stronger evidence. Extended interop is still required by the release runbook when
+receipt for each catalog entry. `interop.extended` and `apphost.live` are recorded as optional
+stronger evidence. Extended interop is still required by the release runbook when
 compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
 normal PR CI must not require a running node or operator credentials.
 
@@ -147,11 +151,12 @@ tools/release-certification/run-release-certification.sh \
   --out-dir build/release-certification
 ```
 
-The comparison writes `history-comparison.json` and `history-comparison.md`, and embeds
-`historyComparison` plus `ecosystemGates` in `release-certification-summary.json`. If no previous
-summary is provided, `pr` mode records skipped history, while `nightly` and `release-candidate`
-mode record a visible warning. Add `--require-history` when a release-candidate must fail without
-a valid previous certified baseline.
+The comparison writes `history-comparison.json` and `history-comparison.md`, emits the standalone
+ecosystem certification matrix, and embeds `historyComparison`, `ecosystemGates`, and compact
+`ecosystemMatrix` metadata in `release-certification-summary.json`. If no previous summary is
+provided, `pr` mode records skipped history, while `nightly` and `release-candidate` mode record a
+visible warning. Add `--require-history` when a release-candidate must fail without a valid
+previous certified baseline.
 
 The ecosystem gates summarize release-relevant regressions across the app-platform evidence:
 
@@ -167,6 +172,36 @@ ecosystem.sandbox-provider
 ecosystem.reference-content-apps
 ecosystem.legacy-retirement
 ```
+
+The aggregator also writes `ecosystem-certification-matrix.json` and
+`ecosystem-certification-matrix.md` beside the summary and report. The matrix is the
+release-manager-facing checklist for ecosystem promotion. Each deterministic row names the area
+being certified, required and optional evidence ids, ecosystem gate ids, docs, waiver ids, current
+status, previous row status when available, regression status, release-blocker flag, and the next
+release-manager action.
+
+Matrix coverage is self-checked on every run:
+
+| Coverage check | Meaning |
+| --- | --- |
+| Required evidence covered | Every current `requiredForReleaseCandidate` evidence id appears in at least one matrix row. |
+| Ecosystem gates covered | Every emitted `ecosystem.*` gate appears in at least one matrix row, including `ecosystem.waivers` when waiver-file validation emits it. |
+| First-party apps covered | The rows visibly cover `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and `trust-graph`. |
+| Docs covered | Every non-synthetic row references at least one existing docs path. |
+| Redaction | Matrix JSON and Markdown are built from sanitized, path-free summary fields only. |
+
+`queue-manager`, `publisher`, and the shared staged-bundle set are grouped under the first-party
+app bundle row. `site-publisher` is covered by the reference content row, while
+`profile-publisher`, `feed-reader`, and `trust-graph` have app-specific rows for their distinct
+networked app-layer behavior.
+
+In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
+or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps are warnings
+unless redaction fails. A previous summary that predates PR-231 and has no `ecosystemMatrix`
+metadata does not fail by itself; `nightly` and `release-candidate` runs record a visible
+`previous-missing` matrix warning so the release log can explain the first baseline transition.
+Active waivers are projected onto matching row ids, evidence ids, gate ids, or issue ids. A waived
+blocker row becomes `warn`, never a silent `pass`.
 
 Required evidence that regresses from `pass` to `fail`, `missing`, or `skip` blocks
 release-candidate promotion unless a visible waiver applies. `pass` to `warn` is a warning.
