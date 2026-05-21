@@ -31,6 +31,9 @@ SUMMARY_FILE_NAME = "release-certification-summary.json"
 REPORT_FILE_NAME = "release-certification-report.md"
 HISTORY_COMPARISON_FILE_NAME = "history-comparison.json"
 HISTORY_COMPARISON_REPORT_FILE_NAME = "history-comparison.md"
+ECOSYSTEM_MATRIX_FILE_NAME = "ecosystem-certification-matrix.json"
+ECOSYSTEM_MATRIX_REPORT_FILE_NAME = "ecosystem-certification-matrix.md"
+ECOSYSTEM_MATRIX_SCHEMA_VERSION = 1
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
@@ -198,6 +201,31 @@ class GateResult:
             "summary": self.summary,
             "details": self.details,
         }
+
+
+@dataclasses.dataclass(frozen=True)
+class MatrixRowSpec:
+    """Stable release-manager-facing ecosystem certification row."""
+
+    id: str
+    category: str
+    title: str
+    required_evidence_ids: tuple[str, ...] = ()
+    optional_evidence_ids: tuple[str, ...] = ()
+    gate_ids: tuple[str, ...] = ()
+    optional_gate_ids: tuple[str, ...] = ()
+    docs: tuple[str, ...] = ()
+    owner: str = "release"
+    phase: str = "phase-7"
+    required_for_release_candidate: bool = True
+    first_party_apps: tuple[str, ...] = ()
+    synthetic: str = ""
+
+    def evidence_ids(self) -> tuple[str, ...]:
+        return self.required_evidence_ids + self.optional_evidence_ids
+
+    def all_gate_ids(self) -> tuple[str, ...]:
+        return self.gate_ids + self.optional_gate_ids
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1255,6 +1283,1021 @@ def stable_named_set_reported(details: dict[str, Any], list_key: str, fallback_k
         if isinstance(value, (dict, list)):
             return True
     return False
+
+
+MATRIX_CATEGORY_TITLES = {
+    "release-operations": "Release operations",
+    "network-compatibility": "Network compatibility",
+    "performance": "Performance",
+    "app-platform": "App platform",
+    "app-distribution": "App distribution",
+    "review-governance": "Review governance",
+    "first-party-apps": "First-party apps",
+    "reference-apps": "Reference apps",
+    "legacy-retirement": "Legacy retirement",
+    "security-redaction": "Security and redaction",
+}
+
+
+def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
+    """Return the deterministic ecosystem certification row registry."""
+
+    return [
+        MatrixRowSpec(
+            id="release-history-and-waivers",
+            category="release-operations",
+            title="Release history comparison and waiver visibility",
+            gate_ids=("ecosystem.required-evidence-regressions",),
+            optional_gate_ids=("ecosystem.waivers",),
+            docs=(
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+                "docs/cryptad-release-workflow-and-runbook.md",
+            ),
+            synthetic="history",
+        ),
+        MatrixRowSpec(
+            id="ecosystem-certification-matrix",
+            category="release-operations",
+            title="Ecosystem certification matrix completeness",
+            required_evidence_ids=("release-certification.ecosystem-matrix",),
+            docs=(
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+                "docs/cryptad-release-workflow-and-runbook.md",
+            ),
+        ),
+        MatrixRowSpec(
+            id="interop-smoke",
+            category="network-compatibility",
+            title="Hyphanet interop smoke certification",
+            required_evidence_ids=("interop.smoke",),
+            optional_evidence_ids=("interop.extended",),
+            docs=("docs/release-certification.md", "tools/interop/README.md"),
+        ),
+        MatrixRowSpec(
+            id="performance-smoke",
+            category="performance",
+            title="Performance regression smoke certification",
+            required_evidence_ids=("performance.smoke",),
+            docs=("docs/release-certification.md", "tools/perf/README.md"),
+        ),
+        MatrixRowSpec(
+            id="platform-api-contract",
+            category="app-platform",
+            title="Platform API contract compatibility",
+            required_evidence_ids=("platform-api.contract",),
+            gate_ids=("ecosystem.platform-api-compatibility",),
+            docs=("docs/platform-api-contract.md", "docs/platform-api-surface.md"),
+        ),
+        MatrixRowSpec(
+            id="developer-beta-toolkit",
+            category="app-platform",
+            title="Developer beta toolkit and CLI readiness",
+            required_evidence_ids=(
+                "app-platform.devtools-cli",
+                "app-platform.developer-beta-toolkit",
+            ),
+            docs=("docs/app-dev-cli.md", "docs/developer-beta-toolkit.md"),
+        ),
+        MatrixRowSpec(
+            id="app-vault-and-generated-documents",
+            category="app-platform",
+            title="App vault, identity profile publishing, and generated documents",
+            required_evidence_ids=(
+                "app-vault.capabilities",
+                "app-platform.identity-profile-publish",
+                "app-platform.generated-document-insert",
+            ),
+            gate_ids=("ecosystem.app-vault",),
+            docs=(
+                "docs/app-secret-and-identity-vault.md",
+                "docs/platform-api-contract.md",
+                "docs/release-certification.md",
+            ),
+        ),
+        MatrixRowSpec(
+            id="content-fetch-and-networked-content",
+            category="app-platform",
+            title="Content fetch and networked content surfaces",
+            required_evidence_ids=("app-platform.content-fetch",),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/platform-api-contract.md", "docs/feed-reader-reference-app.md"),
+        ),
+        MatrixRowSpec(
+            id="trust-graph-preview-platform",
+            category="app-platform",
+            title="Trust graph preview platform routes and signing",
+            required_evidence_ids=(
+                "app-platform.trust-graph-preview",
+                "app-platform.trust-statement-signing",
+            ),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/trust-graph-preview.md", "docs/platform-api-contract.md"),
+        ),
+        MatrixRowSpec(
+            id="apphost-sandbox-provider",
+            category="app-platform",
+            title="AppHost sandbox-provider enforcement",
+            required_evidence_ids=("apphost.sandbox-provider",),
+            optional_evidence_ids=("apphost.live",),
+            gate_ids=("ecosystem.sandbox-provider",),
+            docs=("docs/apphost-runtime-hardening.md", "docs/release-certification.md"),
+        ),
+        MatrixRowSpec(
+            id="app-update",
+            category="app-platform",
+            title="App update lifecycle, scheduler, and rollback",
+            required_evidence_ids=(
+                "app-update.lifecycle",
+                "app-update.scheduler",
+                "app-update.rollback",
+            ),
+            gate_ids=("ecosystem.app-update-rollback",),
+            docs=("docs/app-update-lifecycle.md", "docs/release-certification.md"),
+        ),
+        MatrixRowSpec(
+            id="first-party-beta-catalog",
+            category="app-distribution",
+            title="First-party beta catalog and signed bundles",
+            required_evidence_ids=(
+                "catalog.smoke",
+                "app-catalog.first-party-beta",
+                "app-platform.signed-bundles",
+            ),
+            docs=("docs/first-party-beta-catalog.md", "docs/app-catalogs.md"),
+        ),
+        MatrixRowSpec(
+            id="review-trusted-receipts",
+            category="review-governance",
+            title="Trusted app-review receipts and policy",
+            required_evidence_ids=(
+                "app-review.trusted-receipts",
+                "app-review.policy",
+                "app-review.first-party-catalog",
+            ),
+            gate_ids=("ecosystem.app-review-trust",),
+            docs=("docs/app-review-governance.md", "docs/app-catalogs.md"),
+        ),
+        MatrixRowSpec(
+            id="review-governance-transparency",
+            category="review-governance",
+            title="Review governance, transparency log, and review history",
+            required_evidence_ids=(
+                "app-review.governance",
+                "app-review.reviewer-key-lifecycle",
+                "app-review.transparency-log",
+                "app-review.review-history-api",
+                "app-review.first-party-review-chain",
+            ),
+            gate_ids=("ecosystem.app-review-trust",),
+            docs=("docs/app-review-governance.md",),
+        ),
+        MatrixRowSpec(
+            id="ui-design-system",
+            category="first-party-apps",
+            title="App UI design-system adoption and lint",
+            required_evidence_ids=(
+                "app-ui.design-system",
+                "app-ui.lint",
+                "app-ui.first-party-adoption",
+                "app-ui.smoke",
+            ),
+            gate_ids=("ecosystem.app-ui-quality",),
+            docs=("docs/app-ui-design-system.md", "docs/app-owned-ui.md"),
+        ),
+        MatrixRowSpec(
+            id="first-party-app-bundles",
+            category="first-party-apps",
+            title="First-party app bundle set",
+            required_evidence_ids=("app-platform.first-party",),
+            gate_ids=("ecosystem.first-party-apps",),
+            docs=("docs/first-party-beta-catalog.md", "docs/app-distribution.md"),
+            first_party_apps=EXPECTED_FIRST_PARTY_APPS,
+        ),
+        MatrixRowSpec(
+            id="reference-content-apps",
+            category="reference-apps",
+            title="Site Publisher reference content app",
+            required_evidence_ids=("reference-apps.content",),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/first-party-beta-catalog.md", "docs/app-distribution.md"),
+            first_party_apps=("site-publisher",),
+        ),
+        MatrixRowSpec(
+            id="profile-publisher",
+            category="reference-apps",
+            title="Profile Publisher reference app",
+            required_evidence_ids=("reference-app.profile-publisher",),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/first-party-beta-catalog.md",),
+            first_party_apps=("profile-publisher",),
+        ),
+        MatrixRowSpec(
+            id="feed-reader",
+            category="reference-apps",
+            title="Feed Reader reference app",
+            required_evidence_ids=("reference-app.feed-reader",),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/feed-reader-reference-app.md",),
+            first_party_apps=("feed-reader",),
+        ),
+        MatrixRowSpec(
+            id="trust-graph-app",
+            category="reference-apps",
+            title="Trust Graph Preview reference app",
+            required_evidence_ids=("reference-app.trust-graph",),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=("docs/trust-graph-preview.md",),
+            first_party_apps=("trust-graph",),
+        ),
+        MatrixRowSpec(
+            id="legacy-retirement",
+            category="legacy-retirement",
+            title="Legacy admin retirement and removal waves",
+            required_evidence_ids=(
+                "legacy.retirement",
+                "legacy-admin.removal-wave-1",
+                "legacy-admin.removal-wave-2",
+            ),
+            gate_ids=("ecosystem.legacy-retirement",),
+            docs=("docs/legacy-retirement-plan.md", "docs/release-certification.md"),
+        ),
+        MatrixRowSpec(
+            id="redaction-and-private-artifacts",
+            category="security-redaction",
+            title="Redaction and private artifact exclusions",
+            docs=(
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+                "docs/cryptad-release-workflow-and-runbook.md",
+            ),
+            synthetic="redaction",
+        ),
+    ]
+
+
+def matrix_status_from_counts(mode: str, counts: dict[str, int], coverage: dict[str, Any]) -> str:
+    release_blockers = counts.get("releaseBlockers", 0)
+    warnish_rows = sum(counts.get(status, 0) for status in ("warn", "missing", "skip"))
+    redaction_failed = coverage.get("redactionPassed") is False
+    unwaived_coverage_issue_ids = [
+        str(issue_id) for issue_id in coverage.get("unwaivedIssueIds", coverage.get("issueIds", [])) if issue_id
+    ]
+    coverage_warn = bool(coverage.get("issueIds")) or not all(
+        bool(coverage.get(key))
+        for key in ("requiredEvidenceCovered", "ecosystemGatesCovered", "firstPartyAppsCovered", "docsCovered")
+    )
+    if mode == "pr":
+        if redaction_failed:
+            return "fail"
+        return "warn" if release_blockers or warnish_rows or coverage_warn else "pass"
+    if mode == "release-candidate" and (release_blockers or redaction_failed or unwaived_coverage_issue_ids):
+        return "fail"
+    if redaction_failed:
+        return "fail"
+    if release_blockers or warnish_rows or coverage_warn:
+        return "warn"
+    return "pass"
+
+
+def previous_matrix_row_statuses(previous_summary: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(previous_summary, dict):
+        return {}
+    compact = previous_summary.get("ecosystemMatrix")
+    if not isinstance(compact, dict):
+        return {}
+    statuses = compact.get("rowStatuses")
+    if isinstance(statuses, dict):
+        return {
+            str(row_id): normalize_evidence_status(str(status))
+            for row_id, status in statuses.items()
+        }
+    rows = compact.get("rows")
+    if isinstance(rows, list):
+        return {
+            str(row.get("id")): normalize_evidence_status(str(row.get("status", "missing")))
+            for row in rows
+            if isinstance(row, dict) and row.get("id")
+        }
+    return {}
+
+
+def regression_status_for_row(
+    spec: MatrixRowSpec,
+    status: str,
+    release_blocker: bool,
+    previous_summary_present: bool,
+    previous_matrix_present: bool,
+    previous_row_statuses: dict[str, str],
+) -> tuple[str, str]:
+    if not previous_summary_present:
+        return "missing", "not-comparable"
+    if not previous_matrix_present:
+        return "missing", "previous-missing"
+    previous_status = previous_row_statuses.get(spec.id)
+    if previous_status is None:
+        return "missing", "new-row"
+    previous_severity = status_severity(previous_status)
+    current_severity = status_severity(status)
+    if current_severity > previous_severity:
+        return previous_status, "regressed-blocker" if release_blocker or status == "fail" else "regressed-warning"
+    if current_severity < previous_severity:
+        return previous_status, "improved"
+    return previous_status, "unchanged"
+
+
+def gate_status(entry: dict[str, Any] | None) -> str:
+    if not isinstance(entry, dict):
+        return "missing"
+    return normalize_evidence_status(str(entry.get("status", "missing")))
+
+
+def aggregate_status_values(values: list[str], *, missing_if_empty: bool = False) -> str:
+    normalized = [normalize_evidence_status(value) for value in values]
+    if not normalized:
+        return "missing" if missing_if_empty else "pass"
+    if any(value == "fail" for value in normalized):
+        return "fail"
+    if any(value == "warn" for value in normalized):
+        return "warn"
+    if any(value == "missing" for value in normalized):
+        return "missing"
+    if any(value == "skip" for value in normalized):
+        return "skip"
+    return "pass"
+
+
+def row_waivers(
+    spec: MatrixRowSpec,
+    evidence_entries: dict[str, dict[str, Any]],
+    gate_entries: dict[str, dict[str, Any]],
+    context: WaiverContext,
+    mode: str,
+    issue_ids: list[str],
+) -> tuple[list[WaiverRecord], list[str]]:
+    records: dict[str, WaiverRecord] = {}
+    targets = [spec.id, *spec.evidence_ids(), *spec.all_gate_ids()]
+    for target_id in targets:
+        waiver = active_waiver_for(context, target_id, issue_ids, mode)
+        if waiver is not None:
+            records[waiver.id] = waiver
+    for evidence_id in spec.evidence_ids():
+        waiver_id = evidence_details(evidence_entries.get(evidence_id)).get("waiverId")
+        if waiver_id:
+            waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
+            if waiver is not None:
+                records[waiver.id] = waiver
+    for gate_id in spec.all_gate_ids():
+        gate = gate_entries.get(gate_id)
+        details = gate.get("details", {}) if isinstance(gate, dict) else {}
+        if isinstance(details, dict):
+            waiver_id = details.get("waiverId")
+            if waiver_id:
+                waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
+                if waiver is not None:
+                    records[waiver.id] = waiver
+    waiver_ids = sorted(records)
+    return [records[waiver_id] for waiver_id in waiver_ids], waiver_ids
+
+
+def row_release_blocker_waiver(
+    spec: MatrixRowSpec,
+    context: WaiverContext,
+    mode: str,
+    issue_ids: list[str],
+    blocker_targets: list[str],
+) -> WaiverRecord | None:
+    return active_waiver_for(
+        context,
+        spec.id,
+        sorted(dict.fromkeys(issue_ids + blocker_targets)),
+        mode,
+    )
+
+
+def row_recommendation(
+    status: str,
+    release_blocker: bool,
+    waiver_ids: list[str],
+    missing_required: list[str],
+    gate_blockers: list[str],
+    previous_matrix_missing_warning: bool,
+) -> str:
+    if status == "pass":
+        return "No release action required."
+    if previous_matrix_missing_warning:
+        return "Record the previous-summary matrix gap in the release log."
+    if waiver_ids:
+        return "Review waived evidence before release-candidate promotion."
+    if release_blocker and missing_required:
+        return "Restore missing required evidence before release-candidate promotion."
+    if release_blocker and gate_blockers:
+        return "Resolve release-blocking ecosystem gate or record an approved waiver."
+    if release_blocker:
+        return "Review failing evidence and rerun release certification."
+    if status == "missing":
+        return "Restore missing required evidence before release-candidate promotion."
+    if status == "skip":
+        return "Review skipped evidence before release-candidate promotion."
+    return "Review warning evidence or record an approved waiver."
+
+
+def safe_waiver_summaries(records: list[WaiverRecord]) -> dict[str, str]:
+    return {record.id: record.reason for record in records}
+
+
+def evaluate_matrix_row(
+    spec: MatrixRowSpec,
+    settings: Settings,
+    evidence_entries: dict[str, dict[str, Any]],
+    previous_evidence_entries: dict[str, dict[str, Any]],
+    gate_entries: dict[str, dict[str, Any]],
+    history_comparison: dict[str, Any],
+    previous_summary_present: bool,
+    previous_matrix_present: bool,
+    previous_row_statuses: dict[str, str],
+    waiver_context: WaiverContext,
+    redaction: dict[str, bool],
+) -> dict[str, Any]:
+    required_statuses = {
+        evidence_id: evidence_status(evidence_entries.get(evidence_id))
+        for evidence_id in spec.required_evidence_ids
+    }
+    optional_statuses = {
+        evidence_id: evidence_status(evidence_entries.get(evidence_id))
+        for evidence_id in spec.optional_evidence_ids
+    }
+    previous_statuses = {
+        evidence_id: evidence_status(previous_evidence_entries.get(evidence_id))
+        for evidence_id in spec.evidence_ids()
+    }
+    gate_statuses = {
+        gate_id: gate_status(gate_entries.get(gate_id))
+        for gate_id in spec.gate_ids
+    }
+    optional_gate_statuses = {
+        gate_id: gate_status(gate_entries.get(gate_id))
+        for gate_id in spec.optional_gate_ids
+        if gate_id in gate_entries
+    }
+    issue_ids: list[str] = []
+    gate_blockers: list[str] = []
+    gate_warnings: list[str] = []
+    for gate_id in spec.all_gate_ids():
+        gate = gate_entries.get(gate_id)
+        if not isinstance(gate, dict):
+            if gate_id in spec.gate_ids:
+                issue_ids.append(f"matrix.gate-missing.{gate_id}")
+            continue
+        details = gate.get("details", {})
+        if isinstance(details, dict):
+            issue_ids.extend(str(value) for value in details.get("issueIds", []) if value)
+        status = gate_status(gate)
+        if status == "fail" and gate.get("releaseBlocker"):
+            gate_blockers.append(gate_id)
+        elif status in {"warn", "fail", "missing"}:
+            gate_warnings.append(gate_id)
+
+    missing_required = [
+        evidence_id for evidence_id, status in required_statuses.items() if status == "missing"
+    ]
+    skipped_required = [
+        evidence_id for evidence_id, status in required_statuses.items() if status == "skip"
+    ]
+    skipped_required_non_rc = skipped_required if settings.mode != "release-candidate" else []
+    required_skip_only = (
+        bool(spec.required_evidence_ids)
+        and settings.mode != "release-candidate"
+        and all(status == "skip" for status in required_statuses.values())
+    )
+    required_bad = [
+        evidence_id
+        for evidence_id, status in required_statuses.items()
+        if status in {"fail", "missing"} or (status == "skip" and settings.mode == "release-candidate")
+    ]
+    required_warn = [
+        evidence_id for evidence_id, status in required_statuses.items() if status == "warn"
+    ]
+    optional_warn = [
+        evidence_id
+        for evidence_id, status in optional_statuses.items()
+        if status in {"fail", "warn", "missing", "skip"}
+    ]
+    if required_bad:
+        issue_ids.extend(f"evidence.{evidence_id}" for evidence_id in required_bad)
+    if required_warn:
+        issue_ids.extend(f"evidence.{evidence_id}" for evidence_id in required_warn)
+    if skipped_required_non_rc:
+        issue_ids.extend(f"evidence.{evidence_id}" for evidence_id in skipped_required_non_rc)
+    if optional_warn:
+        issue_ids.extend(f"evidence.{evidence_id}" for evidence_id in optional_warn)
+    blocker_targets = sorted(dict.fromkeys(required_bad + gate_blockers))
+
+    previous_matrix_missing_warning = (
+        spec.synthetic == "history"
+        and previous_summary_present
+        and not previous_matrix_present
+        and settings.mode in {"nightly", "release-candidate"}
+    )
+    history_status = normalize_evidence_status(str(history_comparison.get("status", "missing")))
+    if spec.synthetic == "history":
+        if history_status == "fail" or gate_blockers:
+            status = "fail"
+            release_blocker = True
+        elif history_status in {"warn", "missing"} or gate_warnings or previous_matrix_missing_warning:
+            status = "warn"
+            release_blocker = False
+        else:
+            status = "pass"
+            release_blocker = False
+        if waiver_context.records:
+            status = "warn" if status == "pass" else status
+        if waiver_context.errors and settings.mode == "release-candidate":
+            status = "fail"
+            release_blocker = True
+        summary = "History comparison and waiver validation are visible in the release record."
+    elif spec.synthetic == "redaction":
+        release_blocker = not all(redaction.values())
+        status = "fail" if release_blocker else "pass"
+        summary = "Certification summaries and copied artifacts exclude private material."
+        if release_blocker:
+            issue_ids.append("matrix.redaction.failed")
+    elif not spec.evidence_ids() and not spec.all_gate_ids():
+        status = "missing"
+        release_blocker = False
+        summary = "Matrix row has no evidence or gate inputs."
+        issue_ids.append("matrix.row-inputs-missing")
+    elif required_bad or gate_blockers:
+        status = "fail"
+        release_blocker = True
+        summary = "Required evidence or an ecosystem gate is release-blocking."
+    elif (
+        required_skip_only
+        and not required_warn
+        and not optional_warn
+        and not gate_warnings
+    ):
+        status = "skip"
+        release_blocker = False
+        summary = "Required evidence was intentionally skipped outside release-candidate mode."
+    elif (
+        required_warn
+        or skipped_required_non_rc
+        or optional_warn
+        or gate_warnings
+        or any(
+            previous_statuses.get(evidence_id) == "pass" and status_value == "warn"
+            for evidence_id, status_value in required_statuses.items()
+        )
+    ):
+        status = "warn"
+        release_blocker = False
+        summary = "Required or optional evidence needs release-manager review."
+    else:
+        status = "pass"
+        release_blocker = False
+        summary = "Required evidence and referenced ecosystem gates passed."
+
+    waiver_for_blocker = row_release_blocker_waiver(
+        spec, waiver_context, settings.mode, issue_ids, blocker_targets
+    )
+    if release_blocker and waiver_for_blocker is not None:
+        status = "warn"
+        release_blocker = False
+        summary = f"{summary} Waiver recorded: {waiver_for_blocker.reason}"
+    waiver_records, waiver_ids = row_waivers(
+        spec, evidence_entries, gate_entries, waiver_context, settings.mode, issue_ids
+    )
+    if waiver_for_blocker is not None and waiver_for_blocker.id not in waiver_ids:
+        waiver_records = sorted([*waiver_records, waiver_for_blocker], key=lambda record: record.id)
+        waiver_ids = sorted([*waiver_ids, waiver_for_blocker.id])
+    if waiver_ids and status == "pass":
+        status = "warn"
+        summary = "Active waiver is recorded for this row."
+
+    previous_status, regression_status = regression_status_for_row(
+        spec,
+        status,
+        release_blocker,
+        previous_summary_present,
+        previous_matrix_present,
+        previous_row_statuses,
+    )
+    if regression_status in {"regressed-warning", "regressed-blocker"} and status == "pass":
+        status = "warn"
+    gate_status_value = aggregate_status_values(
+        list(gate_statuses.values()) + list(optional_gate_statuses.values()),
+        missing_if_empty=bool(spec.gate_ids),
+    )
+    details: dict[str, Any] = {
+        "currentEvidenceStatuses": required_statuses | optional_statuses,
+        "previousEvidenceStatuses": previous_statuses,
+        "gateStatuses": gate_statuses | optional_gate_statuses,
+    }
+    if spec.first_party_apps:
+        details["firstPartyApps"] = list(spec.first_party_apps)
+    if waiver_records:
+        details["waiverReasons"] = safe_waiver_summaries(waiver_records)
+    if spec.synthetic == "history":
+        details["historyStatus"] = history_status
+        details["previousMatrixPresent"] = previous_matrix_present
+    if spec.synthetic == "redaction":
+        details["redaction"] = redaction
+
+    return {
+        "id": spec.id,
+        "category": spec.category,
+        "title": spec.title,
+        "requiredForReleaseCandidate": spec.required_for_release_candidate,
+        "status": status,
+        "previousStatus": previous_status,
+        "regressionStatus": regression_status,
+        "releaseBlocker": release_blocker,
+        "summary": summary,
+        "evidenceIds": list(spec.evidence_ids()),
+        "requiredEvidenceIds": list(spec.required_evidence_ids),
+        "optionalEvidenceIds": list(spec.optional_evidence_ids),
+        "gateIds": list(spec.all_gate_ids()),
+        "gateStatus": gate_status_value,
+        "waiverIds": waiver_ids,
+        "issueIds": sorted(dict.fromkeys(issue_ids)),
+        "docs": list(spec.docs),
+        "owner": spec.owner,
+        "phase": spec.phase,
+        "recommendation": row_recommendation(
+            status,
+            release_blocker,
+            waiver_ids,
+            missing_required,
+            gate_blockers,
+            previous_matrix_missing_warning,
+        ),
+        "details": details,
+    }
+
+
+def validate_matrix_coverage(
+    settings: Settings,
+    specs: list[MatrixRowSpec],
+    evidence_entries: dict[str, dict[str, Any]],
+    gate_entries: dict[str, dict[str, Any]],
+    redaction: dict[str, bool],
+) -> dict[str, Any]:
+    mapped_required_evidence = {
+        evidence_id for spec in specs for evidence_id in spec.required_evidence_ids
+    }
+    mapped_evidence = {evidence_id for spec in specs for evidence_id in spec.evidence_ids()}
+    required_evidence = {
+        evidence_id
+        for evidence_id, entry in evidence_entries.items()
+        if evidence_required(entry)
+    }
+    mapped_gates = {gate_id for spec in specs for gate_id in spec.all_gate_ids()}
+    gate_ids = set(gate_entries)
+    non_synthetic_specs = [spec for spec in specs if not spec.synthetic]
+    rows_without_docs = [spec.id for spec in non_synthetic_specs if not spec.docs]
+    rows_without_owners = [spec.id for spec in specs if not spec.owner]
+    missing_doc_paths = sorted(
+        {
+            doc_path
+            for spec in non_synthetic_specs
+            for doc_path in spec.docs
+            if not (settings.workspace_root / doc_path).is_file()
+        }
+    )
+    first_party_apps = sorted(
+        {
+            app_id
+            for spec in specs
+            for app_id in spec.first_party_apps
+        }
+    )
+    missing_first_party_apps = sorted(set(EXPECTED_FIRST_PARTY_APPS) - set(first_party_apps))
+    missing_required_evidence_ids = sorted(mapped_required_evidence - set(evidence_entries))
+    unmapped_required_evidence_ids = sorted(required_evidence - mapped_evidence)
+    unmapped_gate_ids = sorted(gate_ids - mapped_gates)
+    coverage_issue_ids: list[str] = []
+    if missing_required_evidence_ids:
+        coverage_issue_ids.append("matrix.required-evidence-missing")
+    if unmapped_required_evidence_ids:
+        coverage_issue_ids.append("matrix.required-evidence-unmapped")
+    if unmapped_gate_ids:
+        coverage_issue_ids.append("matrix.ecosystem-gates-unmapped")
+    if missing_first_party_apps:
+        coverage_issue_ids.append("matrix.first-party-apps-uncovered")
+    if rows_without_docs or missing_doc_paths:
+        coverage_issue_ids.append("matrix.docs-uncovered")
+    if not all(redaction.values()):
+        coverage_issue_ids.append("matrix.redaction-failed")
+    return {
+        "requiredEvidenceCovered": not missing_required_evidence_ids and not unmapped_required_evidence_ids,
+        "ecosystemGatesCovered": not unmapped_gate_ids,
+        "firstPartyAppsCovered": not missing_first_party_apps,
+        "docsCovered": not rows_without_docs and not missing_doc_paths,
+        "redactionPassed": all(redaction.values()),
+        "missingRequiredEvidenceIds": missing_required_evidence_ids,
+        "unmappedRequiredEvidenceIds": unmapped_required_evidence_ids,
+        "unmappedGateIds": unmapped_gate_ids,
+        "rowsWithoutDocs": rows_without_docs,
+        "rowsWithoutOwners": rows_without_owners,
+        "missingDocPaths": missing_doc_paths,
+        "coveredFirstPartyApps": first_party_apps,
+        "missingFirstPartyApps": missing_first_party_apps,
+        "issueIds": coverage_issue_ids,
+    }
+
+
+def matrix_coverage_waiver_state(
+    coverage: dict[str, Any], context: WaiverContext, mode: str
+) -> tuple[list[WaiverRecord], list[str], list[str]]:
+    issue_ids = [str(issue_id) for issue_id in coverage.get("issueIds", []) if issue_id]
+    waivable_issue_ids = [issue_id for issue_id in issue_ids if issue_id != "matrix.redaction-failed"]
+    records_by_id: dict[str, WaiverRecord] = {}
+    waived_issue_ids: list[str] = []
+    row_waiver = active_waiver_for(
+        context,
+        "ecosystem-certification-matrix",
+        ["release-certification.ecosystem-matrix"],
+        mode,
+    )
+    for issue_id in waivable_issue_ids:
+        waiver = row_waiver or active_waiver_for(
+            context, "ecosystem-certification-matrix", [issue_id], mode
+        )
+        if waiver is None:
+            waiver = active_waiver_for(context, issue_id, None, mode)
+        if waiver is None:
+            continue
+        records_by_id[waiver.id] = waiver
+        waived_issue_ids.append(issue_id)
+    waived_issue_ids = sorted(dict.fromkeys(waived_issue_ids))
+    unwaived_issue_ids = sorted(issue_id for issue_id in issue_ids if issue_id not in waived_issue_ids)
+    return [records_by_id[waiver_id] for waiver_id in sorted(records_by_id)], waived_issue_ids, unwaived_issue_ids
+
+
+def matrix_redaction_summary(summary_redaction: dict[str, Any] | None = None) -> dict[str, bool]:
+    source = summary_redaction if isinstance(summary_redaction, dict) else {}
+    return {
+        "secretMaterialRedacted": bool(source.get("secretMaterialRedacted", True)),
+        "formPasswordsRedacted": bool(source.get("formPasswordsRedacted", True)),
+        "appProcessTokensRedacted": bool(source.get("appProcessTokensRedacted", True)),
+        "browserSessionTokensRedacted": bool(source.get("browserSessionTokensRedacted", True)),
+        "rawRequestBodiesExcluded": bool(source.get("rawRequestBodiesExcluded", True)),
+        "rawFeedBodiesExcluded": bool(source.get("rawFeedBodiesExcluded", True)),
+        "privateInsertUrisExcluded": bool(source.get("privateInsertUrisExcluded", True)),
+        "signatureValuesRedacted": bool(source.get("signatureValuesRedacted", True)),
+        "absolutePathsSanitized": bool(source.get("absolutePathsSanitized", True)),
+    }
+
+
+def matrix_categories(specs: list[MatrixRowSpec], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    row_counts = {category: 0 for category in MATRIX_CATEGORY_TITLES}
+    for row in rows:
+        category = str(row.get("category", ""))
+        row_counts[category] = row_counts.get(category, 0) + 1
+    categories: list[dict[str, Any]] = []
+    for spec in specs:
+        if any(category.get("id") == spec.category for category in categories):
+            continue
+        categories.append(
+            {
+                "id": spec.category,
+                "title": MATRIX_CATEGORY_TITLES.get(spec.category, spec.category),
+                "rowCount": row_counts.get(spec.category, 0),
+            }
+        )
+    return categories
+
+
+def build_ecosystem_matrix(
+    settings: Settings,
+    evidence: list[EvidenceItem],
+    previous_summary: dict[str, Any] | None,
+    history_comparison: dict[str, Any],
+    ecosystem_gates: list[GateResult],
+    waiver_context: WaiverContext,
+    generated_at: str,
+    summary_redaction: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    specs = ecosystem_matrix_row_specs()
+    evidence_entries = evidence_map_from_items(evidence)
+    previous_evidence_entries = evidence_map_from_summary(previous_summary)
+    gate_entries = {gate.id: gate.to_json() for gate in ecosystem_gates}
+    previous_summary_present = previous_summary is not None
+    previous_matrix_present = bool(
+        isinstance(previous_summary, dict) and isinstance(previous_summary.get("ecosystemMatrix"), dict)
+    )
+    previous_row_statuses = previous_matrix_row_statuses(previous_summary)
+    redaction = matrix_redaction_summary(summary_redaction)
+    rows = [
+        evaluate_matrix_row(
+            spec,
+            settings,
+            evidence_entries,
+            previous_evidence_entries,
+            gate_entries,
+            history_comparison,
+            previous_summary_present,
+            previous_matrix_present,
+            previous_row_statuses,
+            waiver_context,
+            redaction,
+        )
+        for spec in specs
+        ]
+    coverage = validate_matrix_coverage(settings, specs, evidence_entries, gate_entries, redaction)
+    coverage_waiver_records, waived_coverage_issue_ids, unwaived_coverage_issue_ids = matrix_coverage_waiver_state(
+        coverage, waiver_context, settings.mode
+    )
+    coverage["waivedIssueIds"] = waived_coverage_issue_ids
+    coverage["unwaivedIssueIds"] = unwaived_coverage_issue_ids
+    coverage["coverageWaiverIds"] = [record.id for record in coverage_waiver_records]
+    if coverage_waiver_records:
+        coverage["waiverReasons"] = safe_waiver_summaries(coverage_waiver_records)
+    for row in rows:
+        if row["id"] == "ecosystem-certification-matrix" and coverage.get("issueIds"):
+            row["issueIds"] = sorted(dict.fromkeys(row["issueIds"] + coverage["issueIds"]))
+            row["details"]["coverageIssueIds"] = coverage["issueIds"]
+            if waived_coverage_issue_ids:
+                row["details"]["waivedCoverageIssueIds"] = waived_coverage_issue_ids
+                row["details"]["waiverReasons"] = {
+                    **(
+                        row["details"].get("waiverReasons", {})
+                        if isinstance(row["details"].get("waiverReasons"), dict)
+                        else {}
+                    ),
+                    **safe_waiver_summaries(coverage_waiver_records),
+                }
+                row["waiverIds"] = sorted(
+                    dict.fromkeys([*row.get("waiverIds", []), *coverage["coverageWaiverIds"]])
+                )
+            if unwaived_coverage_issue_ids and (
+                settings.mode == "release-candidate" or coverage.get("redactionPassed") is False
+            ):
+                row["status"] = "fail"
+                row["releaseBlocker"] = True
+                row["summary"] = "Matrix coverage or redaction validation failed."
+                row["recommendation"] = "Review failing evidence and rerun release certification."
+            elif waived_coverage_issue_ids:
+                row["status"] = "warn"
+                row["releaseBlocker"] = False
+                row["summary"] = "Matrix coverage validation produced waived warnings."
+                row["recommendation"] = "Review waived evidence before release-candidate promotion."
+            elif row["status"] == "pass":
+                row["status"] = "warn"
+                row["summary"] = "Matrix coverage validation produced warnings."
+                row["recommendation"] = "Review warning evidence or record an approved waiver."
+    counts = {status: 0 for status in CERT_STATUSES}
+    release_blockers = 0
+    waived_rows = 0
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        if row.get("releaseBlocker"):
+            release_blockers += 1
+        if row.get("waiverIds"):
+            waived_rows += 1
+    counts["rows"] = len(rows)
+    counts["releaseBlockers"] = release_blockers
+    counts["waivedRows"] = waived_rows
+    status = matrix_status_from_counts(settings.mode, counts, coverage)
+    release_candidate_passed = status != "fail" and release_blockers == 0
+    matrix_diffs = [
+        {
+            "rowId": row["id"],
+            "previousStatus": row["previousStatus"],
+            "currentStatus": row["status"],
+            "regressionStatus": row["regressionStatus"],
+        }
+        for row in rows
+        if row["regressionStatus"] in {"regressed-warning", "regressed-blocker", "new-row", "previous-missing"}
+    ]
+    matrix = {
+        "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+        "tool": TOOL_NAME,
+        "kind": "ecosystem-certification-matrix",
+        "mode": settings.mode,
+        "status": status,
+        "generatedAt": generated_at,
+        "promotionDecision": (
+            "block"
+            if not release_candidate_passed
+            else ("promote-with-warnings" if status == "warn" else "promote")
+        ),
+        "releaseCandidatePassed": release_candidate_passed,
+        "workspaceRoot": "<repo>",
+        "summaryPath": display_path(settings.out_dir / SUMMARY_FILE_NAME, settings.workspace_root, settings.out_dir),
+        "reportPath": display_path(settings.out_dir / REPORT_FILE_NAME, settings.workspace_root, settings.out_dir),
+        "matrixPath": display_path(
+            settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME,
+            settings.workspace_root,
+            settings.out_dir,
+        ),
+        "matrixReportPath": display_path(
+            settings.out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME,
+            settings.workspace_root,
+            settings.out_dir,
+        ),
+        "historyComparisonPath": display_path(
+            settings.out_dir / HISTORY_COMPARISON_FILE_NAME,
+            settings.workspace_root,
+            settings.out_dir,
+        ),
+        "previousSummaryPresent": previous_summary_present,
+        "previousMatrixPresent": previous_matrix_present,
+        "counts": counts,
+        "coverage": coverage,
+        "categories": matrix_categories(specs, rows),
+        "rows": rows,
+        "matrixDiffs": matrix_diffs,
+        "redaction": redaction,
+    }
+    return dict(sanitize_value(matrix, settings.workspace_root, settings.out_dir))
+
+
+def matrix_compact_summary(matrix: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(matrix, dict):
+        return {
+            "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+            "status": "missing",
+            "rowCount": 0,
+            "releaseBlockerCount": 0,
+            "coverage": {},
+            "rowStatuses": {},
+            "matrixDiffs": [],
+        }
+    rows = matrix.get("rows", [])
+    row_statuses = {
+        str(row.get("id")): str(row.get("status", "missing"))
+        for row in rows
+        if isinstance(row, dict) and row.get("id")
+    } if isinstance(rows, list) else {}
+    counts = matrix.get("counts", {}) if isinstance(matrix.get("counts"), dict) else {}
+    return {
+        "schemaVersion": matrix.get("schemaVersion", ECOSYSTEM_MATRIX_SCHEMA_VERSION),
+        "status": matrix.get("status", "missing"),
+        "rowCount": counts.get("rows", len(row_statuses)),
+        "releaseBlockerCount": counts.get("releaseBlockers", 0),
+        "coverage": matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {},
+        "rowStatuses": row_statuses,
+        "matrixDiffs": matrix.get("matrixDiffs", []) if isinstance(matrix.get("matrixDiffs"), list) else [],
+    }
+
+
+def ecosystem_matrix_evidence(
+    matrix: dict[str, Any],
+    workspace_root: Path,
+    out_dir: Path,
+) -> EvidenceItem:
+    status = normalize_evidence_status(str(matrix.get("status", "missing")))
+    counts = matrix.get("counts", {}) if isinstance(matrix.get("counts"), dict) else {}
+    coverage = matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {}
+    return sanitize_evidence_item(
+        EvidenceItem(
+            "release-certification.ecosystem-matrix",
+            status,
+            True,
+            f"Ecosystem certification matrix status is {status}.",
+            display_path(out_dir / ECOSYSTEM_MATRIX_FILE_NAME, workspace_root, out_dir),
+            {
+                "matrixPath": display_path(out_dir / ECOSYSTEM_MATRIX_FILE_NAME, workspace_root, out_dir),
+                "matrixReportPath": display_path(
+                    out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME,
+                    workspace_root,
+                    out_dir,
+                ),
+                "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+                "rowCount": counts.get("rows", 0),
+                "coverage": coverage,
+                "redactionPassed": bool(coverage.get("redactionPassed", False)),
+            },
+        ),
+        workspace_root,
+        out_dir,
+    )
+
+
+def placeholder_ecosystem_matrix_evidence(workspace_root: Path, out_dir: Path) -> EvidenceItem:
+    return sanitize_evidence_item(
+        EvidenceItem(
+            "release-certification.ecosystem-matrix",
+            "pass",
+            True,
+            "Ecosystem certification matrix generation is pending.",
+            display_path(out_dir / ECOSYSTEM_MATRIX_FILE_NAME, workspace_root, out_dir),
+            {
+                "matrixPath": display_path(out_dir / ECOSYSTEM_MATRIX_FILE_NAME, workspace_root, out_dir),
+                "matrixReportPath": display_path(
+                    out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME,
+                    workspace_root,
+                    out_dir,
+                ),
+                "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+            },
+        ),
+        workspace_root,
+        out_dir,
+    )
 
 
 def release_metadata_note_present(metadata: dict[str, Any], *keys: str) -> bool:
@@ -2384,12 +3427,14 @@ def build_summary(
     history_comparison: dict[str, Any],
     ecosystem_gates: list[GateResult],
     waiver_context: WaiverContext,
+    ecosystem_matrix: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status, release_candidate_passed = determine_certification_status(
         settings.mode, evidence, history_comparison, ecosystem_gates
     )
     ecosystem_status = aggregate_gate_status(ecosystem_gates)
     cli_waivers = sanitized_cli_waivers(settings)
+    compact_matrix = matrix_compact_summary(ecosystem_matrix)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
@@ -2401,6 +3446,13 @@ def build_summary(
         "workspaceRoot": "<repo>",
         "summaryPath": display_path(settings.out_dir / SUMMARY_FILE_NAME, settings.workspace_root, settings.out_dir),
         "reportPath": display_path(settings.out_dir / REPORT_FILE_NAME, settings.workspace_root, settings.out_dir),
+        "ecosystemMatrixStatus": compact_matrix.get("status", "missing"),
+        "ecosystemMatrixPath": display_path(
+            settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME, settings.workspace_root, settings.out_dir
+        ),
+        "ecosystemMatrixReportPath": display_path(
+            settings.out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME, settings.workspace_root, settings.out_dir
+        ),
         "historyComparisonPath": display_path(
             settings.out_dir / HISTORY_COMPARISON_FILE_NAME, settings.workspace_root, settings.out_dir
         ),
@@ -2417,6 +3469,7 @@ def build_summary(
         "historyComparison": history_comparison,
         "ecosystemGateStatus": ecosystem_status,
         "ecosystemGates": [gate.to_json() for gate in ecosystem_gates],
+        "ecosystemMatrix": compact_matrix,
         "copiedArtifacts": copied_artifacts,
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
@@ -2459,6 +3512,7 @@ def render_report(summary: dict[str, Any]) -> str:
     ]
     append_history_comparison(lines, summary)
     append_ecosystem_gates(lines, summary)
+    append_ecosystem_matrix_summary(lines, summary)
     append_waivers(lines, summary)
     append_regressions(lines, summary)
     lines.extend(["## Evidence Summary", "", "| Evidence | Status | Required for RC | Source | Summary |", "| --- | --- | --- | --- | --- |"])
@@ -2533,6 +3587,147 @@ def render_report(summary: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def markdown_cell(value: Any) -> str:
+    text = str(value)
+    return text.replace("\n", " ").replace("|", "\\|")
+
+
+def markdown_code_list(values: Any) -> str:
+    if not isinstance(values, list) or not values:
+        return "none"
+    return ", ".join(f"`{markdown_cell(value)}`" for value in values)
+
+
+def coverage_result(value: Any) -> str:
+    return "pass" if value is True else "fail"
+
+
+def coverage_notes(values: Any) -> str:
+    if not isinstance(values, list) or not values:
+        return "No gaps."
+    return markdown_code_list(values)
+
+
+def render_ecosystem_matrix_report(matrix: dict[str, Any]) -> str:
+    counts = matrix.get("counts", {}) if isinstance(matrix.get("counts"), dict) else {}
+    coverage = matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {}
+    rows = matrix.get("rows", []) if isinstance(matrix.get("rows"), list) else []
+    lines = [
+        "# Ecosystem Certification Matrix",
+        "",
+        f"- Promotion decision: `{matrix.get('promotionDecision', 'block')}`",
+        f"- Matrix status: `{matrix.get('status', 'missing')}`",
+        f"- Mode: `{matrix.get('mode', 'missing')}`",
+        f"- Generated: `{matrix.get('generatedAt', '')}`",
+        f"- Previous summary: `{'present' if matrix.get('previousSummaryPresent') else 'missing'}`",
+        f"- Previous matrix: `{'present' if matrix.get('previousMatrixPresent') else 'missing'}`",
+        f"- Release blockers: `{counts.get('releaseBlockers', 0)}`",
+        "",
+        "## Coverage",
+        "",
+        "| Check | Result | Notes |",
+        "| --- | --- | --- |",
+        "| Required evidence covered | `{}` | {} |".format(
+            coverage_result(coverage.get("requiredEvidenceCovered")),
+            coverage_notes(
+                (coverage.get("missingRequiredEvidenceIds") or [])
+                + (coverage.get("unmappedRequiredEvidenceIds") or [])
+            ),
+        ),
+        "| Ecosystem gates covered | `{}` | {} |".format(
+            coverage_result(coverage.get("ecosystemGatesCovered")),
+            coverage_notes(coverage.get("unmappedGateIds")),
+        ),
+        "| First-party apps covered | `{}` | {} |".format(
+            coverage_result(coverage.get("firstPartyAppsCovered")),
+            coverage_notes(coverage.get("missingFirstPartyApps")),
+        ),
+        "| Docs covered | `{}` | {} |".format(
+            coverage_result(coverage.get("docsCovered")),
+            coverage_notes((coverage.get("rowsWithoutDocs") or []) + (coverage.get("missingDocPaths") or [])),
+        ),
+        "| Redaction | `{}` | {} |".format(
+            coverage_result(coverage.get("redactionPassed")),
+            "Private material excluded." if coverage.get("redactionPassed") else "Review matrix redaction flags.",
+        ),
+        "",
+        "## Matrix",
+        "",
+        "| Category | Row | Status | Previous | Regression | Blocker | Evidence | Gates | Waivers | Recommendation |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "| {category} | {row_title} | `{status}` | `{previous}` | `{regression}` | {blocker} | {evidence} | {gates} | {waivers} | {recommendation} |".format(
+                category=markdown_cell(row.get("category", "")),
+                row_title=markdown_cell(row.get("title", row.get("id", ""))),
+                status=markdown_cell(row.get("status", "missing")),
+                previous=markdown_cell(row.get("previousStatus", "missing")),
+                regression=markdown_cell(row.get("regressionStatus", "not-comparable")),
+                blocker="yes" if row.get("releaseBlocker") else "no",
+                evidence=markdown_code_list(row.get("evidenceIds")),
+                gates=markdown_code_list(row.get("gateIds")),
+                waivers=markdown_code_list(row.get("waiverIds")),
+                recommendation=markdown_cell(row.get("recommendation", "")),
+            )
+        )
+    non_passing = [
+        row for row in rows if isinstance(row, dict) and row.get("status") != "pass"
+    ]
+    if non_passing:
+        lines.extend(["", "## Non-Passing Rows", ""])
+        for row in non_passing:
+            issue_ids = row.get("issueIds", [])
+            details = row.get("details", {}) if isinstance(row.get("details"), dict) else {}
+            waiver_reasons = details.get("waiverReasons", {}) if isinstance(details.get("waiverReasons"), dict) else {}
+            lines.extend(
+                [
+                    f"### `{row.get('id', '')}`",
+                    "",
+                    f"- Status: `{row.get('status', 'missing')}`",
+                    f"- Release blocker: `{'yes' if row.get('releaseBlocker') else 'no'}`",
+                    f"- Regression: `{row.get('regressionStatus', 'not-comparable')}`",
+                    f"- Issues: {markdown_code_list(issue_ids)}",
+                    f"- Waivers: {markdown_code_list(row.get('waiverIds'))}",
+                ]
+            )
+            if waiver_reasons:
+                for waiver_id in sorted(waiver_reasons):
+                    lines.append(f"- Waiver `{markdown_cell(waiver_id)}`: {markdown_cell(waiver_reasons[waiver_id])}")
+            lines.extend([f"- Recommendation: {markdown_cell(row.get('recommendation', ''))}", ""])
+    lines.extend(
+        [
+            "## Redaction",
+            "",
+            "The matrix is derived from sanitized summary fields. It does not include raw request bodies, raw feed bodies, raw trust documents, raw signatures, tokens, private insert URIs, or absolute local filesystem paths.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def append_ecosystem_matrix_summary(lines: list[str], summary: dict[str, Any]) -> None:
+    matrix = summary.get("ecosystemMatrix", {})
+    if not isinstance(matrix, dict):
+        return
+    coverage = matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {}
+    lines.extend(
+        [
+            "## Ecosystem Certification Matrix",
+            "",
+            f"- Matrix status: `{summary.get('ecosystemMatrixStatus', 'missing')}`",
+            f"- Matrix report: `{summary.get('ecosystemMatrixReportPath', '')}`",
+            f"- Rows: `{matrix.get('rowCount', 0)}`",
+            f"- Release blockers: `{matrix.get('releaseBlockerCount', 0)}`",
+            f"- Required evidence covered: `{'yes' if coverage.get('requiredEvidenceCovered') else 'no'}`",
+            f"- Ecosystem gates covered: `{'yes' if coverage.get('ecosystemGatesCovered') else 'no'}`",
+            "",
+        ]
+    )
 
 
 def append_history_comparison(lines: list[str], summary: dict[str, Any]) -> None:
@@ -2791,36 +3986,72 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
     waiver_context = load_waiver_context(settings, dt.datetime.now(dt.timezone.utc))
     previous_summary, previous_source, previous_error = load_previous_summary(settings)
     copied = collect_source_artifacts(settings, settings.out_dir)
-    evidence = gather_evidence(settings, waiver_context)
+    base_evidence = gather_evidence(settings, waiver_context)
     metadata = collect_metadata(settings)
-    history_comparison = compare_history(
-        settings,
-        previous_summary,
-        previous_source,
-        previous_error,
-        evidence,
-        generated_at,
-        metadata,
-        waiver_context,
-    )
-    ecosystem_gates = evaluate_ecosystem_gates(
-        settings, evidence, previous_summary, history_comparison, metadata, waiver_context
-    )
-    history_comparison["ecosystemGates"] = [gate.to_json() for gate in ecosystem_gates]
-    history_comparison = dict(
-        sanitize_value(history_comparison, settings.workspace_root, settings.out_dir)
-    )
-    ecosystem_gates = [
-        GateResult(
-            id=str(gate["id"]),
-            status=normalize_evidence_status(str(gate["status"])),
-            release_blocker=bool(gate.get("releaseBlocker")),
-            summary=str(gate.get("summary", "")),
-            details=gate.get("details", {}) if isinstance(gate.get("details"), dict) else {},
+
+    def evaluate_history_and_gates(current_evidence: list[EvidenceItem]) -> tuple[dict[str, Any], list[GateResult]]:
+        comparison = compare_history(
+            settings,
+            previous_summary,
+            previous_source,
+            previous_error,
+            current_evidence,
+            generated_at,
+            metadata,
+            waiver_context,
         )
-        for gate in history_comparison.get("ecosystemGates", [])
-        if isinstance(gate, dict)
-    ]
+        gates = evaluate_ecosystem_gates(
+            settings, current_evidence, previous_summary, comparison, metadata, waiver_context
+        )
+        comparison["ecosystemGates"] = [gate.to_json() for gate in gates]
+        comparison = dict(sanitize_value(comparison, settings.workspace_root, settings.out_dir))
+        sanitized_gates = [
+            GateResult(
+                id=str(gate["id"]),
+                status=normalize_evidence_status(str(gate["status"])),
+                release_blocker=bool(gate.get("releaseBlocker")),
+                summary=str(gate.get("summary", "")),
+                details=gate.get("details", {}) if isinstance(gate.get("details"), dict) else {},
+            )
+            for gate in comparison.get("ecosystemGates", [])
+            if isinstance(gate, dict)
+        ]
+        return comparison, sanitized_gates
+
+    matrix_evidence = placeholder_ecosystem_matrix_evidence(settings.workspace_root, settings.out_dir)
+    evidence = [*base_evidence, matrix_evidence]
+    history_comparison: dict[str, Any] = {}
+    ecosystem_gates: list[GateResult] = []
+    ecosystem_matrix: dict[str, Any] = {}
+    for _ in range(5):
+        history_comparison, ecosystem_gates = evaluate_history_and_gates(evidence)
+        ecosystem_matrix = build_ecosystem_matrix(
+            settings,
+            evidence,
+            previous_summary,
+            history_comparison,
+            ecosystem_gates,
+            waiver_context,
+            generated_at,
+        )
+        next_matrix_evidence = ecosystem_matrix_evidence(
+            ecosystem_matrix, settings.workspace_root, settings.out_dir
+        )
+        if next_matrix_evidence == matrix_evidence:
+            break
+        matrix_evidence = next_matrix_evidence
+        evidence = [*base_evidence, matrix_evidence]
+    else:
+        history_comparison, ecosystem_gates = evaluate_history_and_gates(evidence)
+        ecosystem_matrix = build_ecosystem_matrix(
+            settings,
+            evidence,
+            previous_summary,
+            history_comparison,
+            ecosystem_gates,
+            waiver_context,
+            generated_at,
+        )
     summary = build_summary(
         settings,
         evidence,
@@ -2830,10 +4061,16 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         history_comparison,
         ecosystem_gates,
         waiver_context,
+        ecosystem_matrix,
     )
     write_json(settings.out_dir / SUMMARY_FILE_NAME, summary)
     write_json(settings.out_dir / HISTORY_COMPARISON_FILE_NAME, history_comparison)
     write_text(settings.out_dir / HISTORY_COMPARISON_REPORT_FILE_NAME, render_history_comparison(history_comparison))
+    write_json(settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME, ecosystem_matrix)
+    write_text(
+        settings.out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME,
+        render_ecosystem_matrix_report(ecosystem_matrix),
+    )
     report = render_report(summary)
     write_text(settings.out_dir / REPORT_FILE_NAME, report)
     write_history_artifacts(settings, summary)
@@ -2921,6 +4158,13 @@ def run_self_test(repo_root: Path) -> None:
         (workspace / "build/interop-extended").mkdir(parents=True)
         (workspace / "build/perf-smoke").mkdir(parents=True)
         (out_dir / "app-platform-smoke").mkdir(parents=True)
+        for spec in ecosystem_matrix_row_specs():
+            for doc_path in spec.docs:
+                source_doc = repo_root / doc_path
+                target_doc = workspace / doc_path
+                target_doc.parent.mkdir(parents=True, exist_ok=True)
+                assert source_doc.is_file(), f"matrix doc path missing: {doc_path}"
+                shutil.copy2(source_doc, target_doc)
         shutil.copy2(fixture_dir / "self-test-interop-smoke.json", workspace / "build/interop-smoke/summary.json")
         shutil.copy2(
             fixture_dir / "self-test-interop-extended.json",
@@ -2954,7 +4198,68 @@ def run_self_test(repo_root: Path) -> None:
         assert summary["historyComparison"]["status"] == "warn", summary
         assert (out_dir / HISTORY_COMPARISON_FILE_NAME).is_file(), summary
         assert (out_dir / HISTORY_COMPARISON_REPORT_FILE_NAME).is_file(), summary
+        assert (out_dir / ECOSYSTEM_MATRIX_FILE_NAME).is_file(), summary
+        assert (out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME).is_file(), summary
+        matrix = read_json(out_dir / ECOSYSTEM_MATRIX_FILE_NAME)
+        assert matrix is not None, summary
+        assert matrix["schemaVersion"] == ECOSYSTEM_MATRIX_SCHEMA_VERSION, matrix
+        assert matrix["kind"] == "ecosystem-certification-matrix", matrix
+        assert matrix["coverage"]["requiredEvidenceCovered"] is True, matrix
+        assert matrix["coverage"]["ecosystemGatesCovered"] is True, matrix
+        assert matrix["coverage"]["firstPartyAppsCovered"] is True, matrix
+        assert matrix["coverage"]["docsCovered"] is True, matrix
+        assert matrix["coverage"]["redactionPassed"] is True, matrix
+        assert set(matrix["coverage"]["coveredFirstPartyApps"]) == set(EXPECTED_FIRST_PARTY_APPS), matrix
+        matrix_rows_by_id = {row["id"]: row for row in matrix["rows"]}
+        for row_id in (
+            "app-update",
+            "first-party-beta-catalog",
+            "developer-beta-toolkit",
+            "review-governance-transparency",
+            "app-vault-and-generated-documents",
+            "content-fetch-and-networked-content",
+            "trust-graph-preview-platform",
+            "apphost-sandbox-provider",
+            "platform-api-contract",
+            "interop-smoke",
+            "performance-smoke",
+            "legacy-retirement",
+            "ecosystem-certification-matrix",
+        ):
+            assert row_id in matrix_rows_by_id, row_id
+        covered_evidence_ids = {
+            evidence_id
+            for row in matrix["rows"]
+            for evidence_id in row.get("evidenceIds", [])
+        }
+        for evidence_id, item in {
+            item["id"]: item for item in summary["evidence"]
+        }.items():
+            if item["requiredForReleaseCandidate"]:
+                assert evidence_id in covered_evidence_ids, evidence_id
+        for evidence_id in (
+            "app-platform.trust-graph-preview",
+            "app-platform.trust-statement-signing",
+            "app-review.governance",
+            "app-review.reviewer-key-lifecycle",
+            "app-review.transparency-log",
+            "app-review.review-history-api",
+            "app-review.first-party-review-chain",
+            "reference-app.trust-graph",
+            "legacy-admin.removal-wave-2",
+        ):
+            assert evidence_id in covered_evidence_ids, evidence_id
+        gate_ids = {gate["id"] for gate in summary["ecosystemGates"]}
+        covered_gate_ids = {gate_id for row in matrix["rows"] for gate_id in row.get("gateIds", [])}
+        assert gate_ids <= covered_gate_ids, (gate_ids, covered_gate_ids)
+        assert summary["ecosystemMatrixPath"].endswith(ECOSYSTEM_MATRIX_FILE_NAME), summary
+        assert summary["ecosystemMatrixReportPath"].endswith(ECOSYSTEM_MATRIX_REPORT_FILE_NAME), summary
+        assert summary["ecosystemMatrix"]["schemaVersion"] == ECOSYSTEM_MATRIX_SCHEMA_VERSION, summary
+        assert summary["ecosystemMatrix"]["rowCount"] == len(matrix["rows"]), summary
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
+        assert evidence_by_id["release-certification.ecosystem-matrix"][
+            "requiredForReleaseCandidate"
+        ] is True
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.scheduler"]["status"] == "pass", evidence_by_id
@@ -3007,11 +4312,16 @@ def run_self_test(repo_root: Path) -> None:
         assert optional_skip_status == "pass", optional_skip_status
         assert optional_skip_release_passed is True, optional_skip_release_passed
         report = (out_dir / REPORT_FILE_NAME).read_text(encoding="utf-8")
+        matrix_report = (out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME).read_text(encoding="utf-8")
         assert "Release Certification Report" in report
         assert "Historical Comparison" in report
         assert "Ecosystem Gates" in report
+        assert "Ecosystem Certification Matrix" in report
+        assert ECOSYSTEM_MATRIX_REPORT_FILE_NAME in report
+        assert "Ecosystem Certification Matrix" in matrix_report
+        assert "Required evidence covered" in matrix_report
         assert "Waivers" in report
-        encoded = json.dumps(summary, sort_keys=True)
+        encoded = json.dumps(summary, sort_keys=True) + json.dumps(matrix, sort_keys=True) + matrix_report
         for forbidden in ("CRYPTAD_APP_TOKEN", "USK@private", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
         feed_body_metadata = sanitize_value(
@@ -3054,6 +4364,26 @@ def run_self_test(repo_root: Path) -> None:
             "evidence": summary["evidence"],
         }
         write_json(previous_good_path, previous_good)
+        previous_matrix_good_path = workspace / "build/previous-matrix-good/release-certification-summary.json"
+        previous_matrix_good = dict(previous_good)
+        previous_matrix_good["evidence"] = [
+            (
+                item
+                if item.get("id") != "release-certification.ecosystem-matrix"
+                else (item | {"status": "pass", "summary": "Ecosystem certification matrix status is pass."})
+            )
+            for item in summary["evidence"]
+        ]
+        previous_matrix_good["ecosystemMatrix"] = {
+            "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+            "status": "pass",
+            "rowCount": len(matrix["rows"]),
+            "releaseBlockerCount": 0,
+            "coverage": matrix["coverage"],
+            "rowStatuses": {row["id"]: "pass" for row in matrix["rows"]},
+            "matrixDiffs": [],
+        }
+        write_json(previous_matrix_good_path, previous_matrix_good)
         with_previous_settings = dataclasses.replace(
             settings,
             out_dir=(workspace / "build/with-previous-cert").resolve(),
@@ -3061,9 +4391,15 @@ def run_self_test(repo_root: Path) -> None:
         )
         with_previous_summary, with_previous_exit_code = run(with_previous_settings)
         assert with_previous_exit_code == 0, with_previous_summary
-        assert with_previous_summary["status"] == "pass", with_previous_summary
+        assert with_previous_summary["status"] == "warn", with_previous_summary
         assert with_previous_summary["historyComparison"]["status"] == "pass", with_previous_summary
         assert with_previous_summary["ecosystemGateStatus"] == "pass", with_previous_summary
+        assert with_previous_summary["ecosystemMatrix"]["coverage"]["requiredEvidenceCovered"] is True
+        assert with_previous_summary["ecosystemMatrix"]["coverage"]["ecosystemGatesCovered"] is True
+        with_previous_matrix = read_json(with_previous_settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME)
+        assert with_previous_matrix is not None, with_previous_summary
+        assert with_previous_matrix["previousSummaryPresent"] is True, with_previous_matrix
+        assert with_previous_matrix["previousMatrixPresent"] is False, with_previous_matrix
 
         history_store = workspace / "build/release-certification-history"
         write_history_settings = dataclasses.replace(
@@ -3104,10 +4440,11 @@ def run_self_test(repo_root: Path) -> None:
             raise AssertionError(f"missing evidence {evidence_id}")
 
         def run_with_previous(name: str, **overrides: Any) -> tuple[dict[str, Any], int]:
+            previous_summary_override = overrides.pop("previous_summary", previous_good_path)
             variant_settings = dataclasses.replace(
                 settings,
                 out_dir=(workspace / f"build/{name}").resolve(),
-                previous_summary=previous_good_path,
+                previous_summary=previous_summary_override,
                 **overrides,
             )
             return run(variant_settings)
@@ -3117,6 +4454,124 @@ def run_self_test(repo_root: Path) -> None:
                 if isinstance(gate, dict) and gate.get("id") == gate_id:
                     return gate
             raise AssertionError(f"missing gate {gate_id}")
+
+        def matrix_row_by_id(out_path: Path, row_id: str) -> dict[str, Any]:
+            matrix_value = read_json(out_path / ECOSYSTEM_MATRIX_FILE_NAME)
+            assert matrix_value is not None
+            for row in matrix_value.get("rows", []):
+                if isinstance(row, dict) and row.get("id") == row_id:
+                    return row
+            raise AssertionError(f"missing matrix row {row_id}")
+
+        unmapped_required_path = write_app_summary_variant(
+            "unmapped-required-evidence",
+            lambda value: value.setdefault("evidence", []).append(
+                {
+                    "id": "self-test.required-unmapped",
+                    "status": "pass",
+                    "requiredForReleaseCandidate": True,
+                    "summary": "Self-test required evidence without a matrix row.",
+                    "source": "self-test",
+                    "details": {},
+                }
+            ),
+        )
+        unmapped_required_summary, unmapped_required_exit_code = run_with_previous(
+            "unmapped-required-cert",
+            app_platform_summary=unmapped_required_path,
+        )
+        assert unmapped_required_exit_code == 1, unmapped_required_summary
+        unmapped_required_matrix = read_json(workspace / "build/unmapped-required-cert" / ECOSYSTEM_MATRIX_FILE_NAME)
+        assert unmapped_required_matrix is not None, unmapped_required_summary
+        assert unmapped_required_matrix["coverage"]["requiredEvidenceCovered"] is False, (
+            unmapped_required_matrix
+        )
+        assert unmapped_required_matrix["coverage"]["unmappedRequiredEvidenceIds"] == [
+            "self-test.required-unmapped"
+        ], unmapped_required_matrix
+        assert unmapped_required_matrix["coverage"]["unwaivedIssueIds"] == [
+            "matrix.required-evidence-unmapped"
+        ], unmapped_required_matrix
+        unmapped_required_row = matrix_row_by_id(
+            workspace / "build/unmapped-required-cert",
+            "ecosystem-certification-matrix",
+        )
+        assert unmapped_required_row["status"] == "fail", unmapped_required_row
+        assert unmapped_required_row["releaseBlocker"] is True, unmapped_required_row
+
+        waived_unmapped_summary, waived_unmapped_exit_code = run_with_previous(
+            "waived-unmapped-required-cert",
+            app_platform_summary=unmapped_required_path,
+            waivers={
+                "matrix.required-evidence-unmapped": (
+                    "Release manager accepted the temporary matrix row coverage gap."
+                )
+            },
+        )
+        assert waived_unmapped_exit_code == 0, waived_unmapped_summary
+        assert waived_unmapped_summary["status"] == "warn", waived_unmapped_summary
+        assert waived_unmapped_summary["releaseCandidatePassed"] is True, waived_unmapped_summary
+        waived_unmapped_matrix = read_json(
+            workspace / "build/waived-unmapped-required-cert" / ECOSYSTEM_MATRIX_FILE_NAME
+        )
+        assert waived_unmapped_matrix is not None, waived_unmapped_summary
+        assert waived_unmapped_matrix["status"] == "warn", waived_unmapped_matrix
+        assert waived_unmapped_matrix["releaseCandidatePassed"] is True, waived_unmapped_matrix
+        assert waived_unmapped_matrix["coverage"]["requiredEvidenceCovered"] is False, (
+            waived_unmapped_matrix
+        )
+        assert waived_unmapped_matrix["coverage"]["waivedIssueIds"] == [
+            "matrix.required-evidence-unmapped"
+        ], waived_unmapped_matrix
+        assert waived_unmapped_matrix["coverage"]["unwaivedIssueIds"] == [], waived_unmapped_matrix
+        waived_unmapped_row = matrix_row_by_id(
+            workspace / "build/waived-unmapped-required-cert",
+            "ecosystem-certification-matrix",
+        )
+        assert waived_unmapped_row["status"] == "warn", waived_unmapped_row
+        assert waived_unmapped_row["releaseBlocker"] is False, waived_unmapped_row
+        assert "matrix.required-evidence-unmapped" in waived_unmapped_row["waiverIds"], (
+            waived_unmapped_row
+        )
+
+        signed_bundles_skip_path = write_app_summary_variant(
+            "signed-bundles-skip",
+            lambda value: (
+                value.update({"mode": "pr"}),
+                update_evidence(
+                    value,
+                    "app-platform.signed-bundles",
+                    lambda entry: entry.update(
+                        {
+                            "status": "skip",
+                            "summary": "Signing keys were not available in PR mode.",
+                        }
+                    ),
+                ),
+            ),
+        )
+        signed_bundles_skip_summary, _signed_bundles_skip_exit_code = run_with_previous(
+            "signed-bundles-skip-pr-cert",
+            mode="pr",
+            previous_summary=None,
+            app_platform_summary=signed_bundles_skip_path,
+        )
+        assert signed_bundles_skip_summary["status"] == "warn", signed_bundles_skip_summary
+        assert signed_bundles_skip_summary["ecosystemMatrix"]["status"] == "warn", (
+            signed_bundles_skip_summary
+        )
+        assert signed_bundles_skip_summary["ecosystemMatrix"]["releaseBlockerCount"] == 0, (
+            signed_bundles_skip_summary
+        )
+        signed_bundles_skip_row = matrix_row_by_id(
+            workspace / "build/signed-bundles-skip-pr-cert",
+            "first-party-beta-catalog",
+        )
+        assert signed_bundles_skip_row["status"] == "warn", signed_bundles_skip_row
+        assert signed_bundles_skip_row["releaseBlocker"] is False, signed_bundles_skip_row
+        assert "evidence.app-platform.signed-bundles" in signed_bundles_skip_row["issueIds"], (
+            signed_bundles_skip_row
+        )
 
         failing_history_path = write_app_summary_variant(
             "write-history-failing-app",
@@ -3212,6 +4667,26 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert platform_diff["classification"] == "regression", platform_diff
         assert platform_diff["releaseBlocker"] is True, platform_diff
+        platform_matrix_row = matrix_row_by_id(
+            workspace / "build/platform-contract-fail-cert",
+            "platform-api-contract",
+        )
+        assert platform_matrix_row["status"] == "fail", platform_matrix_row
+        assert platform_matrix_row["releaseBlocker"] is True, platform_matrix_row
+        platform_fail_with_matrix_summary, platform_fail_with_matrix_exit_code = run_with_previous(
+            "platform-contract-fail-with-matrix-cert",
+            app_platform_summary=platform_fail_path,
+            previous_summary=previous_matrix_good_path,
+        )
+        assert platform_fail_with_matrix_exit_code == 1, platform_fail_with_matrix_summary
+        platform_matrix_regression_row = matrix_row_by_id(
+            workspace / "build/platform-contract-fail-with-matrix-cert",
+            "platform-api-contract",
+        )
+        assert platform_matrix_regression_row["previousStatus"] == "pass", platform_matrix_regression_row
+        assert platform_matrix_regression_row["regressionStatus"] == "regressed-blocker", (
+            platform_matrix_regression_row
+        )
 
         ui_warn_path = write_app_summary_variant(
             "ui-lint-warn",
@@ -3788,6 +5263,13 @@ def run_self_test(repo_root: Path) -> None:
         assert waived_vault_gate["releaseBlocker"] is False, waived_vault_gate
         assert waived_vault_gate["details"]["waived"] is True, waived_vault_gate
         assert waived_vault_gate["details"]["waivedEvidenceIds"] == ["app-vault.capabilities"], waived_vault_gate
+        waived_vault_row = matrix_row_by_id(
+            workspace / "build/waived-vault-evidence-cert",
+            "app-vault-and-generated-documents",
+        )
+        assert waived_vault_row["status"] == "warn", waived_vault_row
+        assert waived_vault_row["releaseBlocker"] is False, waived_vault_row
+        assert "app-vault.capabilities" in waived_vault_row["waiverIds"], waived_vault_row
 
         vault_missing_redaction_path = write_app_summary_variant(
             "vault-missing-redaction",
@@ -4100,6 +5582,9 @@ def run_self_test(repo_root: Path) -> None:
         assert missing_update_exit_code == 1, missing_update_cert_summary
         assert missing_update_cert_summary["status"] == "fail", missing_update_cert_summary
         assert missing_update_cert_summary["releaseCandidatePassed"] is False, missing_update_cert_summary
+        missing_update_row = matrix_row_by_id(workspace / "build/missing-update-cert", "app-update")
+        assert missing_update_row["status"] == "fail", missing_update_row
+        assert missing_update_row["releaseBlocker"] is True, missing_update_row
 
         stale_artifact = out_dir / "artifacts/stale-from-previous-run.txt"
         stale_artifact.write_text("old evidence\n", encoding="utf-8")
@@ -4268,7 +5753,9 @@ def run_self_test(repo_root: Path) -> None:
         assert external_exit_code == 0, external_summary
         assert external_summary["summaryPath"].startswith("<workdir>/"), external_summary
         assert external_summary["reportPath"].startswith("<workdir>/"), external_summary
+        assert external_summary["ecosystemMatrixPath"].startswith("<workdir>/"), external_summary
         assert (external_out_dir / SUMMARY_FILE_NAME).is_file(), external_summary
+        assert (external_out_dir / ECOSYSTEM_MATRIX_FILE_NAME).is_file(), external_summary
         assert str(external_out_dir) not in json.dumps(external_summary, sort_keys=True), external_summary
 
         missing_settings = dataclasses.replace(
@@ -4364,7 +5851,16 @@ def run_self_test(repo_root: Path) -> None:
         sensitive_report = (
             sensitive_waived_settings.out_dir / REPORT_FILE_NAME
         ).read_text(encoding="utf-8")
-        sensitive_encoded = json.dumps(sensitive_waived_summary, sort_keys=True) + sensitive_report
+        sensitive_matrix_report = (
+            sensitive_waived_settings.out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME
+        ).read_text(encoding="utf-8")
+        sensitive_matrix = read_json(sensitive_waived_settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME)
+        sensitive_encoded = (
+            json.dumps(sensitive_waived_summary, sort_keys=True)
+            + json.dumps(sensitive_matrix, sort_keys=True)
+            + sensitive_report
+            + sensitive_matrix_report
+        )
         for forbidden in ("hunter2", "USK@private", "/mnt/secrets/signing/key.pem", str(workspace)):
             assert forbidden not in sensitive_encoded, f"waiver reason leaked {forbidden}"
 
