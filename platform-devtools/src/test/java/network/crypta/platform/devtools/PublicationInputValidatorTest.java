@@ -1,5 +1,6 @@
 package network.crypta.platform.devtools;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @SuppressWarnings("java:S100")
 class PublicationInputValidatorTest {
@@ -96,6 +98,57 @@ class PublicationInputValidatorTest {
     assertEquals("catalog signature file must be a regular file", exception.getMessage());
   }
 
+  @Test
+  void validate_whenOutputIsCatalogFile_expectFailureWithoutChangingCatalog() throws Exception {
+    Path catalogFile = writeCatalog(AppCatalogSignature.CATALOG_FILE_NAME);
+    Path signatureFile = writeSignature();
+    String catalogBefore = Files.readString(catalogFile, StandardCharsets.UTF_8);
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                PublicationInputValidator.validate(
+                    catalogFile, signatureFile, PUBLIC_SOURCE, catalogFile));
+
+    assertOutputAliasFailure(exception);
+    assertEquals(catalogBefore, Files.readString(catalogFile, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void validate_whenOutputIsSignatureSidecar_expectFailureWithoutChangingSignature()
+      throws Exception {
+    Path catalogFile = writeCatalog(AppCatalogSignature.CATALOG_FILE_NAME);
+    Path signatureFile = writeSignature();
+    String signatureBefore = Files.readString(signatureFile, StandardCharsets.UTF_8);
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                PublicationInputValidator.validate(
+                    catalogFile, signatureFile, PUBLIC_SOURCE, signatureFile));
+
+    assertOutputAliasFailure(exception);
+    assertEquals(signatureBefore, Files.readString(signatureFile, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void validate_whenOutputHardLinksCatalogFile_expectFailure() throws Exception {
+    Path catalogFile = writeCatalog(AppCatalogSignature.CATALOG_FILE_NAME);
+    Path signatureFile = writeSignature();
+    Path outputAlias = createHardLinkOrSkip(catalogFile);
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                PublicationInputValidator.validate(
+                    catalogFile, signatureFile, PUBLIC_SOURCE, outputAlias));
+
+    assertOutputAliasFailure(exception);
+  }
+
   private Path writeCatalog(String fileName) throws Exception {
     Path catalogFile = tempDir.resolve(fileName);
     Files.writeString(
@@ -134,6 +187,22 @@ class PublicationInputValidatorTest {
         """,
         StandardCharsets.UTF_8);
     return signatureFile;
+  }
+
+  private Path createHardLinkOrSkip(Path target) throws Exception {
+    Path alias = tempDir.resolve("catalog-plan.json");
+    try {
+      Files.createLink(alias, target);
+    } catch (UnsupportedOperationException | IOException | SecurityException _) {
+      assumeTrue(false, "hard links are not supported by this filesystem");
+    }
+    return alias;
+  }
+
+  private static void assertOutputAliasFailure(AppDistributionException exception) {
+    assertEquals(
+        "publication output must be separate from catalog file and signature sidecar",
+        exception.getMessage());
   }
 
   private static void assertRetainsValidatedBytes(

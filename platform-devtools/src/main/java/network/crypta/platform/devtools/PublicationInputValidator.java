@@ -54,6 +54,8 @@ final class PublicationInputValidator {
         normalizedSignatureFile,
         AppCatalogSignature.SIGNATURE_FILE_NAME,
         "catalog signature sidecar");
+    requireOutputDoesNotAliasSidecar(
+        normalizedOutput, normalizedCatalogFile, normalizedSignatureFile);
     byte[] catalogBytes = Files.readAllBytes(normalizedCatalogFile);
     byte[] signatureBytes = Files.readAllBytes(normalizedSignatureFile);
     AppCatalog catalog = AppCatalogParser.parse(catalogBytes);
@@ -101,6 +103,43 @@ final class PublicationInputValidator {
       throws AppDistributionException {
     if (!expected.equals(file.getFileName().toString())) {
       throw new AppDistributionException(label + " must be " + expected);
+    }
+  }
+
+  /**
+   * Rejects publication reports that would overwrite signed catalog sidecars.
+   *
+   * <p>Dry-run plans and live summaries are written after validation with truncate semantics. The
+   * output path therefore must not be the catalog properties file, the detached signature sidecar,
+   * or an existing filesystem alias such as a hard link or symlink to either sidecar. The error
+   * message deliberately omits local paths because publication failures may be copied into release
+   * evidence or operator logs.
+   *
+   * @param output normalized report output path
+   * @param catalogFile normalized signed catalog path
+   * @param signatureFile normalized detached signature sidecar path
+   * @throws AppDistributionException if output aliases either signed sidecar
+   */
+  private static void requireOutputDoesNotAliasSidecar(
+      Path output, Path catalogFile, Path signatureFile) throws AppDistributionException {
+    if (aliasesSidecar(output, catalogFile) || aliasesSidecar(output, signatureFile)) {
+      throw new AppDistributionException(
+          "publication output must be separate from catalog file and signature sidecar");
+    }
+  }
+
+  private static boolean aliasesSidecar(Path output, Path sidecar) throws AppDistributionException {
+    if (output.equals(sidecar)) {
+      return true;
+    }
+    if (!Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
+      return false;
+    }
+    try {
+      return Files.isSameFile(output, sidecar);
+    } catch (IOException _) {
+      throw new AppDistributionException(
+          "publication output could not be checked for sidecar aliasing");
     }
   }
 
