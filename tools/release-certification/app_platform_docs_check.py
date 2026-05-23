@@ -97,7 +97,7 @@ REQUIRED_CONCEPTS = (
 REDACTION_ALLOWLIST_PATH_PREFIXES = (
     "/abs/path/",
     "/api/",
-    "/app/",
+    "/app/node/",
     "/apps/",
     "/downloads/",
     "/uploads/",
@@ -133,6 +133,7 @@ REDACTION_ALLOWLIST_EXACT_PATHS = (
     "/usr/share/wayland-sessions",
     "/usr/share/xsessions",
     "/var/lib/cryptad",
+    "/app/node",
 )
 
 PRIVATE_KEY_BLOCK_RE = re.compile(
@@ -839,6 +840,16 @@ def run_self_test(repo_root: Path) -> None:
     assert "local-absolute-path" in redaction_findings_for_text(
         "file:///tmp/crypta-app-catalog/staged-bundle.zip"
     )
+    assert "local-absolute-path" in redaction_findings_for_text(
+        "/app/secrets/private.pem"
+    )
+    assert "local-absolute-path" in redaction_findings_for_text(
+        "file:///app/secrets/private.pem"
+    )
+    assert "local-absolute-path" not in redaction_findings_for_text("/app/node")
+    assert "local-absolute-path" not in redaction_findings_for_text("/app/node/")
+    assert "local-absolute-path" not in redaction_findings_for_text("file:///app/node")
+    assert "local-absolute-path" not in redaction_findings_for_text("file:///app/node/")
     assert "local-absolute-path" not in redaction_findings_for_text(
         "/abs/path/outside/repo/dev-private.der"
     )
