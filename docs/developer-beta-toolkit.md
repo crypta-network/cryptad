@@ -1,14 +1,13 @@
 # Developer beta toolkit
 
-This guide describes the PR-225 developer beta toolkit workflow for building, testing, signing,
+This guide describes the developer beta toolkit workflow for building, testing, signing,
 cataloging, and dry-run publishing a standalone Crypta app bundle.
 
 ## Scope
 
-Use this page with a `crypta-app` launcher built from a PR-225-compatible `:platform-devtools`
-tree. Older launchers may expose only the base commands documented in
-[app-dev-cli.md](app-dev-cli.md). Run `crypta-app --help` and the subcommand help before relying on
-beta flags in automation.
+Use this page with a current `crypta-app` launcher built from `:platform-devtools`. Older launchers
+may expose only the base commands documented in [app-dev-cli.md](app-dev-cli.md). Run
+`crypta-app --help` and the subcommand help before relying on beta flags in automation.
 
 The beta toolkit is for developer-owned app bundles outside the first-party `apps/*` Gradle
 projects. It can scaffold a queue dashboard template, run a mock development server, execute
@@ -422,11 +421,21 @@ become failures with `--strict`.
 
 ## Related docs
 
+- [app-platform-developer-portal.md](app-platform-developer-portal.md) is the app ecosystem beta
+  entry point.
+- [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) gives copyable offline beta
+  tutorials.
+- [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md) records beta
+  limits and safety boundaries.
+- [app-platform-beta-program.md](app-platform-beta-program.md) covers app submission, feedback, and
+  release closeout.
 - [app-dev-cli.md](app-dev-cli.md) documents the base standalone CLI workflow.
 - [app-distribution.md](app-distribution.md) documents signed bundle sidecars and runtime trusted
   key inputs.
 - [app-catalogs.md](app-catalogs.md) documents catalog format, source transport, artifact
   verification, and review trust.
+- [first-party-beta-catalog.md](first-party-beta-catalog.md) covers first-party catalog
+  publication and Web Shell onboarding.
 - [app-ui-design-system.md](app-ui-design-system.md) documents static UI assets and offline lint.
 - [platform-sdk-js.md](platform-sdk-js.md) documents the browser SDK and browser session handling.
 - [app-permissions-and-audit.md](app-permissions-and-audit.md) documents process principals,

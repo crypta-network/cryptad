@@ -102,6 +102,10 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, docs, and self-test evidence is present. |
+| `app-platform.docs-portal` | App-platform docs check. | The developer portal, required docs, known limitations page, portal links, and README portal link are present. |
+| `app-platform.beta-program` | App-platform docs check. | The beta program doc and app platform beta feedback/submission issue templates are present. |
+| `app-platform.beta-tutorials` | App-platform docs check. | Offline beta tutorials cover the required `crypta-app` commands, first-party app map, Platform API capabilities, review governance, update/rollback, and retained FProxy browse concepts. |
+| `app-platform.docs-redaction` | App-platform docs check. | Local Markdown links resolve without network access, and docs/templates pass obvious secret, token, private key, cookie, form-password, and local-path redaction checks. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
@@ -167,6 +171,14 @@ require a live local node or operator form password.
 catalog key hints are configured in the certification environment, but it does not fetch a public
 Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic
 `platform-appcatalog` tests for `crypta:CHK@` artifact support.
+
+`app-platform.docs-portal`, `app-platform.beta-program`,
+`app-platform.beta-tutorials`, and `app-platform.docs-redaction` are deterministic local docs
+evidence. They check that the app platform developer portal, beta tutorials, known limitations,
+beta program, required source docs, issue templates, README link, critical concept coverage,
+relative Markdown links, and obvious secret/redaction rules are present without fetching external
+URLs. Missing docs or redaction failures block release-candidate mode unless a release manager
+records an explicit waiver for a docs-only gap; redaction failures should not be waived.
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. In
 release-candidate mode, snapshot generation failure, contract parse failure, missing contract
@@ -335,7 +347,8 @@ The first-party app coverage is intentionally split. `queue-manager`, `publisher
 bundle set are grouped under the first-party app bundle row. `site-publisher` is covered by the
 reference content row. `profile-publisher`, `feed-reader`, and `trust-graph` each have their own
 rows because they validate distinct identity publishing, content fetch, and trust graph preview
-behavior.
+behavior. The `app-platform-beta-docs-and-program` row records Phase 7 docs portal, tutorials,
+beta program, issue-template, link, and redaction readiness.
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps warn unless

@@ -22,6 +22,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+# Local release-certification helpers must not create __pycache__ before git metadata is collected.
+sys.dont_write_bytecode = True
+import app_platform_docs_check
+
 
 TOOL_NAME = "release-certification"
 SCHEMA_VERSION = 1
@@ -37,6 +41,7 @@ ECOSYSTEM_MATRIX_SCHEMA_VERSION = 1
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
+REDACTION_FINDING_EVIDENCE_IDS = frozenset({"app-platform.docs-redaction"})
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
     r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
@@ -634,6 +639,25 @@ def unique_non_empty_strings(values: Any) -> list[str]:
     return result
 
 
+def has_unwaivable_redaction_findings(evidence_id: str, details: dict[str, Any]) -> bool:
+    redaction_findings = details.get("redactionFindings")
+    return (
+        evidence_id in REDACTION_FINDING_EVIDENCE_IDS
+        and isinstance(redaction_findings, list)
+        and bool(redaction_findings)
+    )
+
+
+def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
+    return has_unwaivable_redaction_findings(item.id, item.details)
+
+
+def evidence_entry_has_unwaivable_redaction_findings(entry: dict[str, Any] | None) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    return has_unwaivable_redaction_findings(str(entry.get("id", "")), evidence_details(entry))
+
+
 def active_waivers_for_all(
     context: WaiverContext, target_ids: list[str], mode: str
 ) -> list[WaiverRecord]:
@@ -664,15 +688,34 @@ def with_waiver_record(item: EvidenceItem, waiver: WaiverRecord | None) -> Evide
     )
 
 
+def active_waiver_for_evidence_item(
+    context: WaiverContext, item: EvidenceItem, mode: str
+) -> WaiverRecord | None:
+    if evidence_item_has_unwaivable_redaction_findings(item):
+        return None
+    return active_waiver_for(context, item.id, [f"evidence.{item.id}"], mode)
+
+
 def apply_waiver_to_gate(gate: GateResult, context: WaiverContext, mode: str) -> GateResult:
     if gate.id == "ecosystem.waivers":
         return gate
     issue_ids = [str(value) for value in gate.details.get("issueIds", []) if value]
-    waiver = active_waiver_for(context, gate.id, issue_ids, mode)
+    unwaivable_failure_evidence_ids = set(
+        unique_non_empty_strings(gate.details.get("unwaivableFailureEvidenceIds", []))
+    )
+    waiver = (
+        None
+        if unwaivable_failure_evidence_ids
+        else active_waiver_for(context, gate.id, issue_ids, mode)
+    )
     waived_evidence_ids: list[str] = []
     if waiver is None and gate.status == "fail":
         failure_evidence_ids = unique_non_empty_strings(gate.details.get("failureEvidenceIds", []))
-        evidence_waivers = active_waivers_for_all(context, failure_evidence_ids, mode)
+        evidence_waivers = (
+            []
+            if unwaivable_failure_evidence_ids.intersection(failure_evidence_ids)
+            else active_waivers_for_all(context, failure_evidence_ids, mode)
+        )
         if evidence_waivers:
             waiver = evidence_waivers[-1]
             waived_evidence_ids = failure_evidence_ids
@@ -994,6 +1037,77 @@ def app_platform_evidence(
                     "missing" if evidence_id != "apphost.live" else "skip",
                     evidence_id != "apphost.live",
                     f"{evidence_id} was not reported by app-platform smoke",
+                    source,
+                    {},
+                )
+            )
+    return items
+
+
+def app_platform_docs_evidence(workspace_root: Path, out_dir: Path) -> list[EvidenceItem]:
+    source = display_path(
+        workspace_root / "tools/release-certification/app_platform_docs_check.py",
+        workspace_root,
+        out_dir,
+    )
+    try:
+        summary = app_platform_docs_check.run_check(workspace_root)
+    except Exception as exception:  # noqa: BLE001 - release evidence must degrade to redacted failure.
+        return [
+            EvidenceItem(
+                evidence_id,
+                "fail",
+                True,
+                "App-platform docs check failed to run",
+                source,
+                {"error": scrub_text(str(exception), workspace_root, out_dir)},
+            )
+            for evidence_id in app_platform_docs_check.EVIDENCE_IDS
+        ]
+    evidence = summary.get("evidence", [])
+    if not isinstance(evidence, list):
+        return [
+            EvidenceItem(
+                evidence_id,
+                "fail",
+                True,
+                "App-platform docs check produced no evidence list",
+                source,
+                {"summaryStatus": sanitize_value(summary.get("status"), workspace_root, out_dir)},
+            )
+            for evidence_id in app_platform_docs_check.EVIDENCE_IDS
+        ]
+    items: list[EvidenceItem] = []
+    seen: set[str] = set()
+    for value in evidence:
+        if not isinstance(value, dict):
+            continue
+        evidence_id = str(value.get("id", "app-platform.docs-unknown"))
+        seen.add(evidence_id)
+        items.append(
+            EvidenceItem(
+                id=evidence_id,
+                status=normalize_evidence_status(str(value.get("status", "missing"))),
+                required_for_release_candidate=bool(value.get("requiredForReleaseCandidate", True)),
+                summary=str(
+                    sanitize_value(value.get("summary", "No summary provided"), workspace_root, out_dir)
+                ),
+                source=str(sanitize_value(value.get("source", source), workspace_root, out_dir)),
+                details=dict(
+                    sanitize_value(value.get("details", {}), workspace_root, out_dir)
+                    if isinstance(value.get("details", {}), dict)
+                    else {}
+                ),
+            )
+        )
+    for evidence_id in app_platform_docs_check.EVIDENCE_IDS:
+        if evidence_id not in seen:
+            items.append(
+                EvidenceItem(
+                    evidence_id,
+                    "missing",
+                    True,
+                    f"{evidence_id} was not reported by app-platform docs check",
                     source,
                     {},
                 )
@@ -1361,6 +1475,24 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             docs=("docs/app-dev-cli.md", "docs/developer-beta-toolkit.md"),
         ),
         MatrixRowSpec(
+            id="app-platform-beta-docs-and-program",
+            category="app-platform",
+            title="App platform beta docs and program readiness",
+            required_evidence_ids=(
+                "app-platform.docs-portal",
+                "app-platform.beta-program",
+                "app-platform.beta-tutorials",
+                "app-platform.docs-redaction",
+            ),
+            docs=(
+                "docs/app-platform-developer-portal.md",
+                "docs/app-platform-beta-tutorials.md",
+                "docs/app-platform-beta-known-limitations.md",
+                "docs/app-platform-beta-program.md",
+                "docs/release-certification.md",
+            ),
+        ),
+        MatrixRowSpec(
             id="app-vault-and-generated-documents",
             category="app-platform",
             title="App vault, identity profile publishing, and generated documents",
@@ -1635,14 +1767,23 @@ def row_waivers(
     context: WaiverContext,
     mode: str,
     issue_ids: list[str],
+    unwaivable_evidence_ids: set[str],
 ) -> tuple[list[WaiverRecord], list[str]]:
     records: dict[str, WaiverRecord] = {}
     targets = [spec.id, *spec.evidence_ids(), *spec.all_gate_ids()]
+    if unwaivable_evidence_ids:
+        targets = [
+            target_id
+            for target_id in targets
+            if target_id != spec.id and target_id not in unwaivable_evidence_ids
+        ]
     for target_id in targets:
         waiver = active_waiver_for(context, target_id, issue_ids, mode)
         if waiver is not None:
             records[waiver.id] = waiver
     for evidence_id in spec.evidence_ids():
+        if evidence_id in unwaivable_evidence_ids:
+            continue
         waiver_id = evidence_details(evidence_entries.get(evidence_id)).get("waiverId")
         if waiver_id:
             waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
@@ -1654,6 +1795,8 @@ def row_waivers(
         if isinstance(details, dict):
             waiver_id = details.get("waiverId")
             if waiver_id:
+                if str(waiver_id) in unwaivable_evidence_ids:
+                    continue
                 waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
                 if waiver is not None:
                     records[waiver.id] = waiver
@@ -1667,7 +1810,10 @@ def row_release_blocker_waiver(
     mode: str,
     issue_ids: list[str],
     blocker_targets: list[str],
+    unwaivable_evidence_ids: set[str],
 ) -> WaiverRecord | None:
+    if unwaivable_evidence_ids.intersection(blocker_targets):
+        return None
     return active_waiver_for(
         context,
         spec.id,
@@ -1727,6 +1873,11 @@ def evaluate_matrix_row(
     optional_statuses = {
         evidence_id: evidence_status(evidence_entries.get(evidence_id))
         for evidence_id in spec.optional_evidence_ids
+    }
+    unwaivable_redaction_evidence_ids = {
+        evidence_id
+        for evidence_id in spec.evidence_ids()
+        if evidence_entry_has_unwaivable_redaction_findings(evidence_entries.get(evidence_id))
     }
     previous_statuses = {
         evidence_id: evidence_status(previous_evidence_entries.get(evidence_id))
@@ -1860,14 +2011,25 @@ def evaluate_matrix_row(
         summary = "Required evidence and referenced ecosystem gates passed."
 
     waiver_for_blocker = row_release_blocker_waiver(
-        spec, waiver_context, settings.mode, issue_ids, blocker_targets
+        spec,
+        waiver_context,
+        settings.mode,
+        issue_ids,
+        blocker_targets,
+        unwaivable_redaction_evidence_ids,
     )
     if release_blocker and waiver_for_blocker is not None:
         status = "warn"
         release_blocker = False
         summary = f"{summary} Waiver recorded: {waiver_for_blocker.reason}"
     waiver_records, waiver_ids = row_waivers(
-        spec, evidence_entries, gate_entries, waiver_context, settings.mode, issue_ids
+        spec,
+        evidence_entries,
+        gate_entries,
+        waiver_context,
+        settings.mode,
+        issue_ids,
+        unwaivable_redaction_evidence_ids,
     )
     if waiver_for_blocker is not None and waiver_for_blocker.id not in waiver_ids:
         waiver_records = sorted([*waiver_records, waiver_for_blocker], key=lambda record: record.id)
@@ -1904,6 +2066,8 @@ def evaluate_matrix_row(
         details["previousMatrixPresent"] = previous_matrix_present
     if spec.synthetic == "redaction":
         details["redaction"] = redaction
+    if unwaivable_redaction_evidence_ids:
+        details["unwaivableRedactionEvidenceIds"] = sorted(unwaivable_redaction_evidence_ids)
 
     return {
         "id": spec.id,
@@ -3537,6 +3701,10 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.first-party",
         "app-platform.devtools-cli",
         "app-platform.developer-beta-toolkit",
+        "app-platform.docs-portal",
+        "app-platform.beta-program",
+        "app-platform.beta-tutorials",
+        "app-platform.docs-redaction",
         "platform-api.contract",
         "app-vault.capabilities",
         "app-platform.identity-profile-publish",
@@ -3881,11 +4049,12 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             settings.mode,
         )
     )
+    evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
             with_waiver_record(
                 item,
-                active_waiver_for(waiver_context, item.id, [f"evidence.{item.id}"], settings.mode),
+                active_waiver_for_evidence_item(waiver_context, item, settings.mode),
             ),
             settings.workspace_root,
             settings.out_dir,
@@ -4165,6 +4334,22 @@ def run_self_test(repo_root: Path) -> None:
                 target_doc.parent.mkdir(parents=True, exist_ok=True)
                 assert source_doc.is_file(), f"matrix doc path missing: {doc_path}"
                 shutil.copy2(source_doc, target_doc)
+        docs_check_paths = {
+            *app_platform_docs_check.REQUIRED_DOCS,
+            *app_platform_docs_check.REQUIRED_PORTAL_LINKS,
+            *app_platform_docs_check.ISSUE_TEMPLATES,
+            "README.md",
+        }
+        for source_doc in repo_root.glob("docs/**/*.md"):
+            target_doc = workspace / source_doc.relative_to(repo_root)
+            target_doc.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_doc, target_doc)
+        for doc_path in sorted(docs_check_paths):
+            source_doc = repo_root / doc_path
+            target_doc = workspace / doc_path
+            target_doc.parent.mkdir(parents=True, exist_ok=True)
+            assert source_doc.is_file(), f"docs-check path missing: {doc_path}"
+            shutil.copy2(source_doc, target_doc)
         shutil.copy2(fixture_dir / "self-test-interop-smoke.json", workspace / "build/interop-smoke/summary.json")
         shutil.copy2(
             fixture_dir / "self-test-interop-extended.json",
@@ -4215,6 +4400,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-update",
             "first-party-beta-catalog",
             "developer-beta-toolkit",
+            "app-platform-beta-docs-and-program",
             "review-governance-transparency",
             "app-vault-and-generated-documents",
             "content-fetch-and-networked-content",
@@ -4247,6 +4433,10 @@ def run_self_test(repo_root: Path) -> None:
             "app-review.first-party-review-chain",
             "reference-app.trust-graph",
             "legacy-admin.removal-wave-2",
+            "app-platform.docs-portal",
+            "app-platform.beta-program",
+            "app-platform.beta-tutorials",
+            "app-platform.docs-redaction",
         ):
             assert evidence_id in covered_evidence_ids, evidence_id
         gate_ids = {gate["id"] for gate in summary["ecosystemGates"]}
@@ -4266,6 +4456,23 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.scheduler"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
+        for evidence_id in (
+            "app-platform.docs-portal",
+            "app-platform.beta-program",
+            "app-platform.beta-tutorials",
+            "app-platform.docs-redaction",
+        ):
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
+        report_text = (out_dir / REPORT_FILE_NAME).read_text(encoding="utf-8")
+        for evidence_id in (
+            "app-platform.docs-portal",
+            "app-platform.beta-program",
+            "app-platform.beta-tutorials",
+            "app-platform.docs-redaction",
+        ):
+            assert f"### `{evidence_id}`" in report_text, evidence_id
+        assert "redactionFindings" in report_text, report_text
         assert evidence_by_id["app-vault.capabilities"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-vault.capabilities"]["requiredForReleaseCandidate"] is True
         assert (
@@ -4462,6 +4669,88 @@ def run_self_test(repo_root: Path) -> None:
                 if isinstance(row, dict) and row.get("id") == row_id:
                     return row
             raise AssertionError(f"missing matrix row {row_id}")
+
+        portal_linked_doc = workspace / "docs/app-owned-ui.md"
+        original_portal_linked_doc = portal_linked_doc.read_text(encoding="utf-8")
+        try:
+            portal_linked_doc.write_text(
+                original_portal_linked_doc
+                + "\n[Broken docs-only link](missing-docs-only-link.md)\n",
+                encoding="utf-8",
+            )
+            waived_docs_link_summary, waived_docs_link_exit_code = run_with_previous(
+                "waived-docs-link-cert",
+                waivers={
+                    "app-platform.docs-redaction": (
+                        "Release manager accepted a temporary docs-only link gap."
+                    )
+                },
+            )
+            assert waived_docs_link_exit_code == 0, waived_docs_link_summary
+            assert waived_docs_link_summary["releaseCandidatePassed"] is True, waived_docs_link_summary
+            waived_docs_link_evidence = {
+                item["id"]: item for item in waived_docs_link_summary["evidence"]
+            }
+            docs_link_evidence = waived_docs_link_evidence["app-platform.docs-redaction"]
+            assert docs_link_evidence["status"] == "warn", docs_link_evidence
+            assert docs_link_evidence["details"]["waived"] is True, docs_link_evidence
+            assert docs_link_evidence["details"]["redactionFindings"] == [], docs_link_evidence
+            assert {
+                "source": "docs/app-owned-ui.md",
+                "target": "missing-docs-only-link.md",
+                "reason": "missing",
+            } in docs_link_evidence["details"]["brokenLinks"], docs_link_evidence
+
+            portal_linked_doc.write_text(
+                original_portal_linked_doc
+                + "\nAuthorization: Bearer concrete-token-value\n",
+                encoding="utf-8",
+            )
+            waived_docs_redaction_summary, waived_docs_redaction_exit_code = run_with_previous(
+                "waived-docs-redaction-cert",
+                waivers={
+                    "app-platform.docs-redaction": (
+                        "Release manager attempted to waive a docs redaction finding."
+                    )
+                },
+            )
+            assert waived_docs_redaction_exit_code == 1, waived_docs_redaction_summary
+            assert (
+                waived_docs_redaction_summary["releaseCandidatePassed"] is False
+            ), waived_docs_redaction_summary
+            waived_docs_redaction_evidence = {
+                item["id"]: item for item in waived_docs_redaction_summary["evidence"]
+            }
+            docs_redaction_evidence = waived_docs_redaction_evidence[
+                "app-platform.docs-redaction"
+            ]
+            assert docs_redaction_evidence["status"] == "fail", docs_redaction_evidence
+            assert "waived" not in docs_redaction_evidence["details"], docs_redaction_evidence
+            assert {
+                "path": "docs/app-owned-ui.md",
+                "issue": "authorization-header",
+            } in docs_redaction_evidence["details"]["redactionFindings"], docs_redaction_evidence
+            docs_redaction_row = matrix_row_by_id(
+                workspace / "build/waived-docs-redaction-cert",
+                "app-platform-beta-docs-and-program",
+            )
+            assert docs_redaction_row["status"] == "fail", docs_redaction_row
+            assert docs_redaction_row["releaseBlocker"] is True, docs_redaction_row
+            assert "app-platform.docs-redaction" not in docs_redaction_row.get(
+                "waiverIds", []
+            ), docs_redaction_row
+            assert "Waiver recorded" not in docs_redaction_row["summary"], docs_redaction_row
+            assert docs_redaction_row["details"]["unwaivableRedactionEvidenceIds"] == [
+                "app-platform.docs-redaction"
+            ], docs_redaction_row
+            failed_report = (
+                workspace / "build/waived-docs-redaction-cert" / REPORT_FILE_NAME
+            ).read_text(encoding="utf-8")
+            assert "### `app-platform.docs-redaction`" in failed_report, failed_report
+            assert "redactionFindings" in failed_report, failed_report
+            assert "docs/app-owned-ui.md" in failed_report, failed_report
+        finally:
+            portal_linked_doc.write_text(original_portal_linked_doc, encoding="utf-8")
 
         unmapped_required_path = write_app_summary_variant(
             "unmapped-required-evidence",

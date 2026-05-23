@@ -71,13 +71,15 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, and Feed Reader
-bundles use `app.ui.mode=static` and `app.ui.entry=static/index.html`, so installed copies open
-through isolated app origins when available. Queue Manager and legacy Publisher remain
-compatibility fallbacks for the current retirement map. Site Publisher is the content reference app
-for local publishing workflows, Profile Publisher is the identity-profile reference app for
-vault-backed profile-document publishing, and Feed Reader is the bounded content-fetch reference
-app for feed reading and generated feed publication.
+The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, Feed Reader, and
+Trust Graph Preview bundles use `app.ui.mode=static` and `app.ui.entry=static/index.html`, so
+installed copies open through isolated app origins when available. Queue Manager and legacy
+Publisher remain compatibility fallbacks for the current retirement map. Site Publisher is the
+content reference app for local publishing workflows, Profile Publisher is the identity-profile
+reference app for vault-backed profile-document publishing, Feed Reader is the bounded
+content-fetch reference app for feed reading and generated feed publication, and Trust Graph
+Preview is the local trust-service reference app for trust statements, anchors, and preview
+scoring.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
@@ -241,6 +243,9 @@ Per app:
 - `:apps:feed-reader:stageApp`
 - `:apps:feed-reader:signApp`
 - `:apps:feed-reader:verifyApp`
+- `:apps:trust-graph:stageApp`
+- `:apps:trust-graph:signApp`
+- `:apps:trust-graph:verifyApp`
 
 Root convenience tasks:
 
@@ -315,6 +320,12 @@ Stage the Feed Reader reference app:
 ./gradlew :apps:feed-reader:stageApp
 ```
 
+Stage the Trust Graph Preview reference app:
+
+```bash
+./gradlew :apps:trust-graph:stageApp
+```
+
 Sign it with a local development key pair:
 
 ```bash
@@ -347,6 +358,14 @@ Sign Feed Reader with the same local development key pair:
   -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
 ```
 
+Sign Trust Graph Preview with the same local development key pair:
+
+```bash
+./gradlew :apps:trust-graph:signApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+```
+
 Verify it with the matching public key:
 
 ```bash
@@ -375,6 +394,14 @@ Verify Feed Reader with the matching public key:
 
 ```bash
 ./gradlew :apps:feed-reader:verifyApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+```
+
+Verify Trust Graph Preview with the matching public key:
+
+```bash
+./gradlew :apps:trust-graph:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
   -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
 ```

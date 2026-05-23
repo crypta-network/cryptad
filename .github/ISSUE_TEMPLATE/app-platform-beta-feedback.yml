@@ -1,0 +1,82 @@
+name: App platform beta feedback
+description: Report beta feedback for Crypta app platform docs, devtools, catalogs, apps, updates, or review flows.
+title: "[app-platform-beta] "
+labels:
+  - app-platform
+  - beta-feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw feed bodies, raw trust documents, raw receipt signatures, or local absolute paths.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Install/catalog issue
+        - Update/rollback issue
+        - Platform API compatibility issue
+        - AppVault/identity issue
+        - Content fetch/insert issue
+        - Trust Graph Preview issue
+        - UI/design-system issue
+        - Legacy replacement issue
+        - Documentation issue
+    validations:
+      required: true
+  - type: input
+    id: cryptad-version
+    attributes:
+      label: Cryptad version/build
+      placeholder: "Example: 1481 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: platform-api-contract
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 7"
+    validations:
+      required: true
+  - type: input
+    id: app-id-version
+    attributes:
+      label: App id/version
+      placeholder: "Example: feed-reader 1.0.0"
+  - type: input
+    id: catalog-source
+    attributes:
+      label: Catalog id/source class, redacted
+      placeholder: "Example: crypta-first-party-beta, crypta:USK@<catalog-key>/cryptad-app-catalog.properties"
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use offline or loopback-only steps where possible. Redact local paths and private values.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Paste redacted release-certification evidence, `crypta-app test` JSON summaries, or short sanitized excerpts only.
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this report does not include secrets, private URIs, tokens, request bodies, raw user documents, raw signatures, or unredacted local absolute paths.
+          required: true

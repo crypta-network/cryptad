@@ -58,6 +58,7 @@ data, and serves applications.
 - [Quick Start](#quick-start)
 - [Building](#building)
 - [Signed App Bundles](#signed-app-bundles)
+- [App Platform Beta](#app-platform-beta)
 - [Developer App CLI](#developer-app-cli)
 - [Platform Closeout & API Surface](#platform-closeout--api-surface)
 - [Trust Graph Preview](#trust-graph-preview)
@@ -433,6 +434,18 @@ process/browser, lifecycle, audit, and redaction rules. Profile publishing uses
 See [docs/app-distribution.md](docs/app-distribution.md) for the full workflow and exact signing
 inputs.
 
+## App Platform Beta
+
+The app ecosystem beta is documented through
+[docs/app-platform-developer-portal.md](docs/app-platform-developer-portal.md). Start there for
+the current Platform API contract version, first-party app map, offline beta tutorials, known
+limitations, beta feedback and app submission workflow, and release-manager closeout path.
+
+The beta is offline-first for developer tests and dry-run publication planning. It does not create
+a public production app store, does not auto-install recommended catalog apps, does not require
+public Crypta network access for tests, and does not change FNP, FCP, Hyphanet/Freenet
+compatibility behavior, or retained FProxy browse behavior.
+
 ## Developer App CLI
 
 Standalone app authors can use `crypta-app` for staged bundle scaffolding, validation, signing,
@@ -495,11 +508,13 @@ into the generated catalog entry so Platform API responses can expose `reviewTru
 legacy advisory `review` object.
 
 First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`,
-`:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader` `stageApp`, `signApp`, and `verifyApp`
-tasks. See
-[docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow and
-[docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification. The
-PR-225 beta toolkit sidecar walkthrough is in
+`:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
+`:apps:trust-graph` `stageApp`, `signApp`, and `verifyApp` tasks. See
+[docs/app-platform-developer-portal.md](docs/app-platform-developer-portal.md) for the beta
+developer portal, [docs/app-platform-beta-tutorials.md](docs/app-platform-beta-tutorials.md) for
+copyable offline flows, [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow,
+and [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
+The developer beta toolkit walkthrough is in
 [docs/developer-beta-toolkit.md](docs/developer-beta-toolkit.md).
 
 ## Platform Closeout & API Surface
@@ -555,9 +570,14 @@ Key docs:
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
 - [Platform API and Web Shell surface](docs/platform-api-surface.md)
 - [Platform API compatibility contract](docs/platform-api-contract.md)
+- [App platform developer portal](docs/app-platform-developer-portal.md)
+- [App platform beta tutorials](docs/app-platform-beta-tutorials.md)
+- [App platform beta program](docs/app-platform-beta-program.md)
 - [Developer app CLI](docs/app-dev-cli.md)
+- [Developer beta toolkit](docs/developer-beta-toolkit.md)
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
+- [First-party beta app catalog](docs/first-party-beta-catalog.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
@@ -920,7 +940,7 @@ xattr -dr com.apple.quarantine "build/jpackage/Crypta.app"
 - See launcher logs by running the Mach‑O launcher in Terminal:
 
 ```bash
-build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
+build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee build/crypta-run.log
 ```
 
 - Run the embedded JRE directly to isolate classpath issues:

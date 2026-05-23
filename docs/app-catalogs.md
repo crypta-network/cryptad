@@ -557,7 +557,8 @@ signed-bundle verification, so those files are not installed as app payload.
 Cryptad exposes a recommended first-party beta catalog descriptor for the Web Shell and Platform
 API. The descriptor is an onboarding hint, not an app store ranking system and not a trust bypass.
 It is visible even when packaging has not configured a source, so operators can see why the catalog
-is unavailable.
+is unavailable. See [first-party-beta-catalog.md](first-party-beta-catalog.md) for the full
+maintainer publication flow and operator onboarding guidance.
 
 Recommended catalog configuration:
 

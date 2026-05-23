@@ -81,6 +81,10 @@ performance.smoke
 app-platform.first-party
 app-platform.devtools-cli
 app-platform.developer-beta-toolkit
+app-platform.docs-portal
+app-platform.beta-program
+app-platform.beta-tutorials
+app-platform.docs-redaction
 app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
@@ -119,8 +123,12 @@ release-certification.ecosystem-matrix
 
 The app-platform, app-review, reference-app, legacy-retirement, and matrix evidence ids above use
 deterministic source checks, fixtures, and fake/offline tests; they do not require a live node or
-host-installed bubblewrap in normal CI. `app-catalog.first-party-beta` reports source/key
-configuration readiness but does not fetch the public Crypta catalog. `app-review.first-party-catalog`
+host-installed bubblewrap in normal CI. `app-platform.docs-portal`,
+`app-platform.beta-program`, `app-platform.beta-tutorials`, and
+`app-platform.docs-redaction` run a deterministic local docs check for required docs, concept
+coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.
+`app-catalog.first-party-beta` reports source/key configuration readiness but does not fetch the
+public Crypta catalog. `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review
 receipt for each catalog entry. `interop.extended` and `apphost.live` are recorded as optional
@@ -193,7 +201,8 @@ Matrix coverage is self-checked on every run:
 `queue-manager`, `publisher`, and the shared staged-bundle set are grouped under the first-party
 app bundle row. `site-publisher` is covered by the reference content row, while
 `profile-publisher`, `feed-reader`, and `trust-graph` have app-specific rows for their distinct
-networked app-layer behavior.
+networked app-layer behavior. The `app-platform-beta-docs-and-program` row records Phase 7 docs
+portal, tutorials, beta program, issue-template, link, and redaction readiness.
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps are warnings
