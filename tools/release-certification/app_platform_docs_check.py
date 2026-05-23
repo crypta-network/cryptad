@@ -971,9 +971,8 @@ def main() -> int:
     if args.output:
         write_json(args.output, output_summary)
     else:
-        # The summary is recursively redacted before stdout emission.
-        # codeql[py/clear-text-logging-sensitive-data]
-        print(json.dumps(output_summary, indent=2, sort_keys=True))
+        status_text = "passed" if summary["status"] == "pass" else "failed"
+        print(f"app-platform docs check {status_text}; use --output for redacted JSON details")
     return 0 if summary["status"] == "pass" else 1
 
 
