@@ -9,6 +9,7 @@ version = rootProject.version
 val mainSourceSet = sourceSets.named("main")
 
 dependencies {
+  implementation(project(":foundation-crypto-keys"))
   implementation(project(":platform-design-system"))
   implementation(project(":platform-api")) { isTransitive = false }
   implementation(project(":platform-app-ui")) { isTransitive = false }

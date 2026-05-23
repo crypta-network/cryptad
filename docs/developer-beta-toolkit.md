@@ -329,11 +329,36 @@ as a plan and validation step: it should confirm which files would be published,
 would be used, which public source URI operators would add, and whether the catalog and signature
 sidecar files are present and parse.
 
-Live insertion is different. A live publish uses an insert-capable key, contacts a real daemon or
-publishing transport, consumes network resources, and may make the catalog source discoverable to
-anyone who knows the corresponding public URI. Do not run live insertion with private insert URIs
-or production keys in logs, shell history, CI summaries, review evidence, or release-certification
-artifacts.
+Live insertion is different. A live publish uses an insert-capable key, contacts a real localhost
+daemon, consumes network resources, and may make the catalog source discoverable to anyone who
+knows the corresponding public URI. The release/operator form is explicit:
+
+```bash
+crypta-app publish-usk --live \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
+  --catalog-source "crypta:USK@.../apps/dev-queue-dashboard/cryptad-app-catalog.properties" \
+  --private-insert-uri-env CRYPTAD_FIRST_PARTY_CATALOG_INSERT_URI \
+  --node-base-url http://127.0.0.1:8888/api/v1 \
+  --form-password-env CRYPTAD_CERT_FORM_PASSWORD \
+  --trusted-keys-file "$HOME/.crypta-dev/keys/trusted-app-keys.properties" \
+  --output dist/catalog/live-publication-summary.json
+```
+
+The private insert URI and form password must come from an environment variable or protected file,
+not from a positional argument. Live mode publishes `cryptad-app-catalog.properties` and the
+`cryptad-app-catalog.signature` sibling at the same USK path and edition, then writes a sanitized
+summary. The summary may include the public `crypta:USK@.../cryptad-app-catalog.properties`
+source, digest values, catalog id, signing key id, and queue status, but it must not include private
+insert URIs, private keys, form passwords, tokens, raw request bodies, or absolute staging paths.
+The private insert URI must be the matching private USK directory insert URI for the configured
+public source parent. For example,
+`crypta:USK@PUBLIC.../catalog/42/cryptad-app-catalog.properties` is inserted from the secure
+private USK root for the same `catalog/42` parent path, supplied only through the env/file option.
+Because the queue insert path reads staged disk files after the request is queued, the CLI retains
+the two public sidecar files until the live insert has finished consuming them. `--verify-live-fetch`
+proves the currently fetched public catalog and signature match the local signed files, but it is not
+treated as proof that the queued insert has consumed the staged directory.
 
 ## Runtime trust model
 

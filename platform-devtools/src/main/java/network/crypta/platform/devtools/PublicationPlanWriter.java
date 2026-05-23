@@ -9,10 +9,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
-import network.crypta.platform.appcatalog.AppCatalogParser;
 import network.crypta.platform.appcatalog.AppCatalogSignature;
-import network.crypta.platform.appcatalog.AppCatalogVerifier;
-import network.crypta.platform.appdist.AppDistributionException;
 
 /**
  * Writes offline Crypta USK publication plans for signed app catalogs.
@@ -40,23 +37,14 @@ final class PublicationPlanWriter {
    * @throws IOException if catalog artifacts cannot be read or the plan cannot be written
    */
   static Result write(Request request) throws IOException {
-    Request checked = request.normalize();
-    requireUskSource(checked.catalogSource());
-    requireReadable(checked.catalogFile(), "catalog file");
-    requireReadable(checked.catalogSignatureFile(), "catalog signature file");
-    byte[] catalogBytes = Files.readAllBytes(checked.catalogFile());
-    byte[] signatureBytes = Files.readAllBytes(checked.catalogSignatureFile());
-    AppCatalog catalog = AppCatalogParser.parse(catalogBytes);
-    AppCatalogVerifier.readSignature(signatureBytes);
-    if (!AppCatalogSignature.SIGNATURE_FILE_NAME.equals(
-        checked.catalogSignatureFile().getFileName().toString())) {
-      throw new AppDistributionException(
-          "catalog signature sidecar must be cryptad-app-catalog.signature");
-    }
+    ValidatedPublicationInputs checked =
+        PublicationInputValidator.validate(
+            request.catalogFile(),
+            request.catalogSignatureFile(),
+            request.catalogSource(),
+            request.output());
     String content =
-        checked.output().toString().endsWith(".json")
-            ? json(checked, catalog)
-            : markdown(checked, catalog);
+        checked.output().toString().endsWith(".json") ? json(checked) : markdown(checked);
     Path parent = checked.output().getParent();
     if (parent != null) {
       Files.createDirectories(parent);
@@ -69,48 +57,18 @@ final class PublicationPlanWriter {
         StandardOpenOption.TRUNCATE_EXISTING,
         StandardOpenOption.WRITE,
         LinkOption.NOFOLLOW_LINKS);
-    return new Result(catalog.catalogId(), catalog.entries().size(), checked.output());
-  }
-
-  /**
-   * Ensures a plan input is a real local file and not a symlink.
-   *
-   * @param file normalized input path to check
-   * @param label human-readable label used in CLI diagnostics
-   * @throws AppDistributionException if the input is missing, a symlink, or not a regular file
-   */
-  private static void requireReadable(Path file, String label) throws AppDistributionException {
-    if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-      throw new AppDistributionException(label + " must be a regular file");
-    }
-  }
-
-  /**
-   * Validates the public catalog source URI required by {@code publish-usk}.
-   *
-   * @param source catalog source URI supplied by the developer
-   * @throws AppDistributionException if the source is not the expected Crypta USK catalog path
-   */
-  private static void requireUskSource(String source) throws AppDistributionException {
-    String value = source == null ? "" : source.trim();
-    if (!value.startsWith("crypta:USK@")
-        || value.contains("?")
-        || value.contains("#")
-        || !value.endsWith("/" + AppCatalogSignature.CATALOG_FILE_NAME)) {
-      throw new AppDistributionException(
-          "publish-usk requires --catalog-source crypta:USK@.../"
-              + AppCatalogSignature.CATALOG_FILE_NAME);
-    }
+    return new Result(
+        checked.catalog().catalogId(), checked.catalog().entries().size(), checked.output());
   }
 
   /**
    * Renders the human-readable publication checklist.
    *
    * @param request normalized plan request with local file names and catalog source
-   * @param catalog parsed signed catalog metadata
    * @return Markdown plan text with redacted Crypta URI material
    */
-  private static String markdown(Request request, AppCatalog catalog) {
+  private static String markdown(ValidatedPublicationInputs request) {
+    AppCatalog catalog = request.catalog();
     StringBuilder builder = new StringBuilder();
     builder
         .append("# Crypta Catalog USK Publication Plan\n\n")
@@ -164,10 +122,10 @@ final class PublicationPlanWriter {
    * Renders the machine-readable publication checklist.
    *
    * @param request normalized plan request with local file names and catalog source
-   * @param catalog parsed signed catalog metadata
    * @return deterministic JSON plan text with redacted Crypta URI material
    */
-  private static String json(Request request, AppCatalog catalog) {
+  private static String json(ValidatedPublicationInputs request) {
+    AppCatalog catalog = request.catalog();
     StringBuilder builder = new StringBuilder();
     builder.append("{\n");
     field(builder, "schemaVersion", "1", false);
@@ -260,6 +218,7 @@ final class PublicationPlanWriter {
      *
      * @return equivalent request with absolute normalized paths
      */
+    @SuppressWarnings("unused")
     Request normalize() {
       return new Request(
           catalogFile.toAbsolutePath().normalize(),

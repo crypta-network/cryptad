@@ -19,11 +19,16 @@ The v1 policy is:
 | Roll back | A successful update records the previous installed bundle as the durable rollback target. If replacement cannot complete, AppHost restores the previous bundle from a managed backup. | `app-update.rollback` |
 
 Silent automatic update is not the default. The background scheduler can refresh configured signed
-catalogs and discover candidates, and catalog refresh preserves the last verified catalog when a
-later refresh fails. Scheduler-triggered app checks delegate to `AppUpdateService.check(...)`.
-Applying an update still requires an operator or explicit API caller unless the operator selected a
-policy mode that allows automatic staging or apply. Manual remains the default policy for every
-app.
+catalogs, including a live USK catalog source such as
+`crypta:USK@.../cryptad-app-catalog.properties`, and discover candidates. Catalog refresh
+preserves the last verified catalog when a later refresh fails. Scheduler-triggered app checks
+delegate to `AppUpdateService.check(...)`. Applying an update requires an operator or explicit API
+caller unless the operator selected a policy mode that allows automatic staging or apply. Manual
+remains the default policy for every app.
+
+For release evidence, manual remains the default.
+Applying an update requires an operator or explicit API caller.
+This remains true when the scheduler refreshes a live USK catalog before candidate discovery.
 
 The update summary exposes scheduler state for clients. Scheduler summaries include enabled,
 status, last check, next check, last result, last failure, failure count, and sanitized error code

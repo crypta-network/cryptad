@@ -11,6 +11,7 @@ reproducible app flow:
 ```text
 scaffold app -> run mock dev server -> run offline tests -> sign bundle -> pack artifact
 -> create catalog entry -> create/sign/verify catalog -> produce dry-run USK publication plan
+-> optionally run explicit live USK publication from the release/operator environment
 -> review submission -> certify release readiness
 ```
 

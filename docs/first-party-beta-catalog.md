@@ -13,8 +13,9 @@ SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permi
 separate layers.
 
 The third-party developer beta toolkit extends the standalone CLI with scaffold templates, a mock
-dev server, offline app tests, catalog entry generation, and a dry-run USK publication checklist.
-It does not replace this first-party beta catalog flow or its release gates. See
+dev server, offline app tests, catalog entry generation, a dry-run USK publication checklist, and
+an explicit live USK publication command for release operators. It does not replace this
+first-party beta catalog flow or its release gates. See
 [developer-beta-toolkit.md](developer-beta-toolkit.md) for the app-author workflow.
 
 `crypta:` transport is not a trust boundary. Crypta-hosted catalog and bundle artifacts still must
@@ -35,7 +36,8 @@ Set the recommended catalog source and trusted key hint in runtime or packaging 
 | `cryptad.firstPartyCatalog.enabled` | `CRYPTAD_FIRST_PARTY_CATALOG_ENABLED` | `true` |
 | `cryptad.firstPartyCatalog.id` | `CRYPTAD_FIRST_PARTY_CATALOG_ID` | `crypta-first-party-beta` |
 | `cryptad.firstPartyCatalog.source` | `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` | `crypta:USK@.../cryptad-app-catalog.properties` |
-| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | `crypta-first-party-beta` |
+| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID` | `crypta-first-party-beta` |
+| `cryptad.firstPartyCatalog.trustedKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | Legacy trusted-key id alias, retained for older packaging. |
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | `crypta-app-review-v1` |
 
 The trusted key id hint must correspond to a public catalog/app signing key configured through the
@@ -182,27 +184,73 @@ platform-devtools/build/install/crypta-app/bin/crypta-app catalog verify \
   --trusted-public-key-file /abs/path/outside/repo/catalog-signing-public.pem
 ```
 
-Publish `cryptad-app-catalog.properties` and `cryptad-app-catalog.signature` to the public Crypta
-catalog location, usually a USK whose latest edition keeps the same sibling sidecar names. The
+Validate the release publication plan first:
+
+```bash
+platform-devtools/build/install/crypta-app/bin/crypta-app publish-usk --dry-run \
+  --catalog-file build/first-party-beta-catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file build/first-party-beta-catalog/cryptad-app-catalog.signature \
+  --catalog-source "crypta:USK@.../cryptad-app-catalog.properties" \
+  --output build/first-party-beta-catalog/publication-plan.md
+```
+
+Publish `cryptad-app-catalog.properties` and `cryptad-app-catalog.signature` to the public live USK
+catalog location with explicit live mode:
+
+```bash
+platform-devtools/build/install/crypta-app/bin/crypta-app publish-usk --live \
+  --catalog-file build/first-party-beta-catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file build/first-party-beta-catalog/cryptad-app-catalog.signature \
+  --catalog-source "crypta:USK@.../cryptad-app-catalog.properties" \
+  --private-insert-uri-env CRYPTAD_FIRST_PARTY_CATALOG_INSERT_URI \
+  --node-base-url http://127.0.0.1:8888/api/v1 \
+  --form-password-env CRYPTAD_CERT_FORM_PASSWORD \
+  --trusted-key-id crypta-first-party-beta \
+  --trusted-public-key-file "$CRYPTAD_CATALOG_SIGNING_PUBLIC_KEY_FILE" \
+  --output build/first-party-beta-catalog/live-publication-summary.json
+```
+
+The public catalog source is a USK whose latest edition keeps the same sibling sidecar names. The
 operator-facing source becomes:
 
 ```text
 crypta:USK@.../cryptad-app-catalog.properties
 ```
 
+The signature sidecar is `cryptad-app-catalog.signature` at the same USK path and edition. Signed
+catalog verification remains mandatory; live publication only changes the transport location for
+the signed sidecars. Bundle artifacts in catalog entries should remain immutable
+`crypta:CHK@...` ZIP URIs with declared size and SHA-256 values.
+
+The live queue endpoint registers a disk-backed directory insert. The private insert URI must be the
+matching private USK directory insert URI for the configured public source parent. For example,
+`crypta:USK@PUBLIC.../catalog/42/cryptad-app-catalog.properties` is inserted from the secure
+private USK root for the same `catalog/42` parent path, supplied only through the env/file option.
+`crypta-app publish-usk --live` leaves the staged public catalog and signature sidecars in place
+until the queued insert has finished consuming them; the sanitized summary records only a path-free
+retention warning. With `--verify-live-fetch`, the CLI fetches both sidecars from the public source
+and verifies that the currently fetched bytes match the signed local files, but it still retains the
+staged directory because an identical pre-existing public edition does not prove that the new queued
+insert has consumed its source files.
+
 Generated ZIPs, descriptors, signed catalog files, and release working files belong under `build/`
-or `dist/`. Do not check generated signed production catalogs or private keys into the repository.
+or `dist/`. Do not check generated signed production catalogs, private signing keys, reviewer
+private keys, private insert URIs, form passwords, tokens, raw request bodies, or raw catalog
+private insertion material into the repository or uploaded release artifacts.
 
 ## Certification evidence
 
-Release certification records `app-catalog.first-party-beta` plus app-review governance evidence
-such as `app-review.governance`, `app-review.reviewer-key-lifecycle`,
+Release certification records `catalog.live-usk-publication`,
+`catalog.live-usk-source-verification`, `app-update.live-catalog-refresh`,
+`app-catalog.first-party-beta`, plus app-review governance evidence such as
+`app-review.governance`, `app-review.reviewer-key-lifecycle`,
 `app-review.transparency-log`, `app-review.review-history-api`, and
 `app-review.first-party-review-chain`. The evidence is deterministic and offline: it checks for the
-recommended descriptor, API/Web Shell onboarding, Crypta CHK artifact transport tests,
-first-party metadata documentation, governed reviewer-key parsing, transparency-log verification,
-review-history routing, and whether the certification environment has source and key hints
-configured. Profile Publisher is also covered by
+recommended descriptor, live USK publication code path, sibling signature verification for resolved
+USK editions, scheduler catalog refresh before candidate discovery, API/Web Shell onboarding,
+Crypta CHK artifact transport tests, first-party metadata documentation, governed reviewer-key
+parsing, transparency-log verification, review-history routing, and whether the certification
+environment has source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
 `app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`
 and `app-platform.content-fetch`. Trust Graph Preview is covered by

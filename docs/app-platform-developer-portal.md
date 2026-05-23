@@ -103,6 +103,7 @@ Then follow this path:
 | Create a catalog entry descriptor | `crypta-app catalog entry` |
 | Create, sign, and verify a catalog | `crypta-app catalog create`, `crypta-app catalog sign`, `crypta-app catalog verify` |
 | Produce an offline USK publication plan | `crypta-app publish-usk --dry-run` |
+| Publish a signed catalog to a live USK | `crypta-app publish-usk --live` from the release/operator environment |
 | Submit app proposal or beta feedback | [app-platform-beta-program.md](app-platform-beta-program.md) |
 
 `crypta-app dev` is loopback-only by default and serves a mock Platform API. It does not install

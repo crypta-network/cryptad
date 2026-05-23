@@ -79,7 +79,11 @@ Treat these as release blockers, in order:
 4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
 5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
    validates artifact size/SHA-256, extracts safely, and can install or update through
-   `/api/v1/app-catalogs`. The catalog contract is documented in
+   `/api/v1/app-catalogs`. For first-party live USK catalog publication, verify the report includes
+   `catalog.live-usk-publication` and `catalog.live-usk-source-verification`; the public source is
+   `crypta:USK@.../cryptad-app-catalog.properties`, and
+   `cryptad-app-catalog.signature` is the sibling at the same USK edition. The catalog contract is
+   documented in
    [app-catalogs.md](app-catalogs.md).
 6. **Developer app CLI smoke, when `:platform-devtools` changes** - run
    `./gradlew :platform-devtools:test` and `./gradlew :platform-devtools:installDist`, then verify
@@ -131,9 +135,10 @@ Treat these as release blockers, in order:
    and token/path-free public status. Manual Linux smoke with host-installed `bwrap` is useful
    release-manager evidence when sandbox behavior changed.
 11. **App update lifecycle evidence** - verify the release certification report includes
-   `app-update.lifecycle`, `app-update.scheduler`, and `app-update.rollback`. The required offline
-   evidence must cover manual/stage/apply-when-stopped policy behavior, background catalog refresh
-   and app checks through the shared update service, path-free staged and scheduler summaries,
+   `app-update.lifecycle`, `app-update.scheduler`, `app-update.live-catalog-refresh`, and
+   `app-update.rollback`. The required offline evidence must cover manual/stage/apply-when-stopped
+   policy behavior, background catalog refresh and app checks through the shared update service,
+   live USK catalog refresh before candidate discovery, path-free staged and scheduler summaries,
    process health-gated apply, durable previous-bundle rollback, and the rule that rollback does
    not restore app data or cache. Optional live smoke may exercise install/update/rollback through
    localhost routes, but normal release-candidate evidence must not require a live node.

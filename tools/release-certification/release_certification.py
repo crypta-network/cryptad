@@ -937,6 +937,8 @@ def app_platform_evidence(
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
+        "catalog.live-usk-publication",
+        "catalog.live-usk-source-verification",
         "app-catalog.first-party-beta",
         "app-review.trusted-receipts",
         "app-review.policy",
@@ -960,6 +962,7 @@ def app_platform_evidence(
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
+        "app-update.live-catalog-refresh",
         "app-update.rollback",
         "apphost.live",
     ]
@@ -1543,6 +1546,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             required_evidence_ids=(
                 "app-update.lifecycle",
                 "app-update.scheduler",
+                "app-update.live-catalog-refresh",
                 "app-update.rollback",
             ),
             gate_ids=("ecosystem.app-update-rollback",),
@@ -1554,6 +1558,8 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             title="First-party beta catalog and signed bundles",
             required_evidence_ids=(
                 "catalog.smoke",
+                "catalog.live-usk-publication",
+                "catalog.live-usk-source-verification",
                 "app-catalog.first-party-beta",
                 "app-platform.signed-bundles",
             ),
@@ -3036,7 +3042,12 @@ def evaluate_app_update_rollback_gate(
     failures: list[str] = []
     warnings: list[str] = []
     details: dict[str, Any] = {}
-    for evidence_id in ("app-update.lifecycle", "app-update.scheduler", "app-update.rollback"):
+    for evidence_id in (
+        "app-update.lifecycle",
+        "app-update.scheduler",
+        "app-update.live-catalog-refresh",
+        "app-update.rollback",
+    ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
         details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
@@ -3732,6 +3743,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
+        "catalog.live-usk-publication",
+        "catalog.live-usk-source-verification",
         "app-catalog.first-party-beta",
         "app-review.trusted-receipts",
         "app-review.policy",
@@ -3752,6 +3765,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
+        "app-update.live-catalog-refresh",
         "app-update.rollback",
         "apphost.live",
     ):

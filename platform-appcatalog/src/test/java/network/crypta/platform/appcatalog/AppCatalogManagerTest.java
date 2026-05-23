@@ -475,6 +475,76 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void fetch_whenCryptaResolvedCatalogHasSchemePrefix_expectSignatureFetchedFromResolvedEdition()
+      throws Exception {
+    byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
+    byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
+    String requestedCatalogKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
+    String resolvedCatalogKey = "crypta:USK@example/catalog/42/cryptad-app-catalog.properties";
+    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(requestedCatalogKey, catalogBytes, resolvedSignatureKey, signatureBytes),
+            Map.of(requestedCatalogKey, resolvedCatalogKey));
+    AppCatalogFetcher fetcher =
+        new AppCatalogFetcher(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+
+    FetchedCatalog fetched = fetcher.fetch(source);
+
+    assertEquals(
+        List.of(requestedCatalogKey, resolvedSignatureKey), contentFetchPort.requestedKeys());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(catalogBytes, fetched.catalogBytes());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(signatureBytes, fetched.signatureBytes());
+    assertEquals(Optional.of(resolvedCatalogKey), fetched.resolvedCatalogUri());
+  }
+
+  @Test
+  void fetch_whenCryptaResolvedCatalogChangesKeyKind_expectInvalidCatalogSource() {
+    byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
+    String requestedCatalogKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(requestedCatalogKey, catalogBytes),
+            Map.of(requestedCatalogKey, "SSK@example/catalog/42/cryptad-app-catalog.properties"));
+    AppCatalogFetcher fetcher =
+        new AppCatalogFetcher(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+    assertEquals(List.of(requestedCatalogKey), contentFetchPort.requestedKeys());
+  }
+
+  @Test
+  void fetch_whenCryptaSourceUsesContentFetchPort_expectBoundedRequests() throws Exception {
+    byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
+    byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes));
+    AppCatalogFetcher fetcher =
+        new AppCatalogFetcher(
+            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_CATALOG_SOURCE);
+
+    fetcher.fetch(source);
+
+    List<BoundedContentFetchRequest> requests = contentFetchPort.requests();
+    assertEquals(2, requests.size());
+    assertEquals("catalog properties", requests.getFirst().purpose());
+    assertEquals(AppCatalogSidecars.MAX_CATALOG_BYTES, requests.get(0).maxBytes());
+    assertTrue(requests.get(0).timeout().compareTo(Duration.ZERO) > 0);
+    assertEquals("catalog signature", requests.get(1).purpose());
+    assertEquals(AppCatalogSidecars.MAX_SIGNATURE_BYTES, requests.get(1).maxBytes());
+    assertTrue(requests.get(1).timeout().compareTo(Duration.ZERO) > 0);
+  }
+
+  @Test
   void fetch_whenCryptaRuntimeIsUnavailable_expectCatalogFetchUnavailable() {
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
@@ -1424,6 +1494,8 @@ class AppCatalogManagerTest {
     private final Map<String, byte[]> content = new java.util.LinkedHashMap<>();
     private final Map<String, String> resolvedUris = new java.util.LinkedHashMap<>();
     private final java.util.ArrayList<String> requestedKeys = new java.util.ArrayList<>();
+    private final java.util.ArrayList<BoundedContentFetchRequest> requests =
+        new java.util.ArrayList<>();
     private ContentFetchException failure;
 
     private FakeContentFetchPort(Map<String, byte[]> content) {
@@ -1437,6 +1509,7 @@ class AppCatalogManagerTest {
     @Override
     public BoundedContentFetchResult fetchContent(BoundedContentFetchRequest request)
         throws ContentFetchException {
+      requests.add(request);
       requestedKeys.add(request.uri());
       if (failure != null) {
         throw failure;
@@ -1470,10 +1543,15 @@ class AppCatalogManagerTest {
       this.resolvedUris.putAll(resolvedUris);
       failure = null;
       requestedKeys.clear();
+      requests.clear();
     }
 
     private List<String> requestedKeys() {
       return List.copyOf(requestedKeys);
+    }
+
+    private List<BoundedContentFetchRequest> requests() {
+      return List.copyOf(requests);
     }
   }
 

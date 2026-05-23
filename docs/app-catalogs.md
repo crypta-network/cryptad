@@ -27,9 +27,10 @@ review evidence from a reviewer key that the local node trusts for app review. L
 `review.status` and `review.note` catalog metadata remains publisher-advisory only.
 
 For third-party app authors, `crypta-app catalog entry` can generate the descriptor input for
-`catalog create`, and `crypta-app publish-usk --dry-run` can produce an offline publication
-checklist for a signed catalog. Those helpers do not change the runtime trust layers described
-here; they only reduce hand-authored descriptor and publication-plan mistakes. See
+`catalog create`, `crypta-app publish-usk --dry-run` can produce an offline publication checklist,
+and `crypta-app publish-usk --live` can publish a verified signed catalog through a configured
+localhost node. Those helpers do not change the runtime trust layers described here; they only
+reduce hand-authored descriptor, publication-plan, and live-publication mistakes. See
 [developer-beta-toolkit.md](developer-beta-toolkit.md).
 
 ## Catalog files
@@ -522,9 +523,10 @@ Supported catalog sources:
   `cryptad-app-catalog.properties` bytes, and the `signature` companion CHK contains the matching
   `cryptad-app-catalog.signature` bytes.
 
-`crypta:` is a catalog transport, not a trust boundary. The catalog signature must still verify
-against a configured trusted catalog key. Install and update flows still verify the catalog entry's
-artifact size and SHA-256, then verify the extracted signed bundle before AppHost receives it.
+`crypta:` is a catalog transport, not a trust boundary. Signed catalog verification must still
+verify the catalog signature against a configured trusted catalog key. Install and update flows
+still verify the catalog entry's artifact size and SHA-256, then verify the extracted signed
+bundle before AppHost receives it.
 
 Catalog artifact URIs support:
 
@@ -537,6 +539,12 @@ Crypta app ZIP artifacts must use bare CHK keys. `crypta:USK@...`, `crypta:SSK@.
 and `?signature=...` companion queries are rejected for catalog entry artifacts. Mutable USK/SSK
 keys remain supported for catalog sidecars, where they point to signed catalog bytes and sibling
 signature sidecars.
+
+For live USK catalog publication, publish `cryptad-app-catalog.properties` as the public
+`crypta:USK@.../cryptad-app-catalog.properties` source and publish
+`cryptad-app-catalog.signature` as the sibling at the same USK path and edition. When refresh
+resolves a newer USK edition, Cryptad fetches the matching sibling signature sidecar from that
+resolved edition and stores the replacement only after signed catalog verification succeeds.
 
 `crypta:CHK@...` is a transport location, not a trust boundary. The runtime fetches those bytes
 through `ContentFetchPort`, enforces the declared `bundle.size.bytes` and catalog artifact cap, and
@@ -567,7 +575,8 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.enabled` | `CRYPTAD_FIRST_PARTY_CATALOG_ENABLED` | Set to `false` to hide the recommendation. |
 | `cryptad.firstPartyCatalog.id` | `CRYPTAD_FIRST_PARTY_CATALOG_ID` | Expected signed catalog id. Defaults to `crypta-first-party-beta`. |
 | `cryptad.firstPartyCatalog.source` | `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` | Source URI for `cryptad-app-catalog.properties`, usually `crypta:USK@.../cryptad-app-catalog.properties`. |
-| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | Trusted catalog signing key id that must be present in the normal AppHost trusted-key registry. |
+| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID` | Trusted catalog signing key id that must be present in the normal AppHost trusted-key registry. |
+| `cryptad.firstPartyCatalog.trustedKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | Legacy trusted-key id alias, retained for older packaging. |
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
 The first-party beta catalog is expected to contain the current first-party apps:

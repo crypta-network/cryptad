@@ -19,9 +19,10 @@ First-party repo apps can keep using their existing Gradle tasks. See
 [First-party Gradle workflow](#first-party-gradle-workflow).
 
 For the beta sidecar workflow, including `init --template queue-dashboard`, the mock development
-server, strict beta test wrapper, local key generation, and `publish-usk --dry-run`, see
-[developer-beta-toolkit.md](developer-beta-toolkit.md). For the full beta portal and submission
-path, see [app-platform-developer-portal.md](app-platform-developer-portal.md).
+server, strict beta test wrapper, local key generation, `publish-usk --dry-run`, and the explicit
+`publish-usk --live` release/operator path, see [developer-beta-toolkit.md](developer-beta-toolkit.md).
+For the full beta portal and submission path, see
+[app-platform-developer-portal.md](app-platform-developer-portal.md).
 
 ## Build and run the command
 
@@ -610,7 +611,7 @@ review keys outside the repository.
 3. Write catalog descriptors whose public artifact location is the returned CHK:
 
    ```properties
-   artifact.path=/abs/path/to/queue-manager.zip
+   artifact.path=<path-to-queue-manager.zip>
    bundle.uri=crypta:CHK@...
    summary=Manage local Crypta transfer queues.
    name=Queue Manager
@@ -623,12 +624,19 @@ review keys outside the repository.
    ```
 
 4. Create, sign, and verify the catalog with `crypta-app catalog create`, `crypta-app catalog
-   sign`, and `crypta-app catalog verify`. Publish both `cryptad-app-catalog.properties` and
-   `cryptad-app-catalog.signature` to the configured catalog USK.
+   sign`, and `crypta-app catalog verify`. Run `crypta-app publish-usk --dry-run` for the
+   deterministic plan, then use `crypta-app publish-usk --live` from the release/operator
+   environment to publish `cryptad-app-catalog.properties` and the sibling
+   `cryptad-app-catalog.signature` at the same USK edition. The private insert URI must be the
+   matching private USK directory insert URI for the configured public source parent. The CLI
+   retains the staged public sidecars until the live queue has consumed them and records only a
+   path-free warning in the summary; `--verify-live-fetch` verifies the currently fetchable public
+   bytes, but it does not authorize deleting disk-backed staging.
 
 5. Configure runtime onboarding with `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and
-   `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID`, plus the normal `CRYPTAD_APPHOST_*` trusted public
-   key settings. Operators add the catalog through Web Shell or
+   `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID`, plus the normal `CRYPTAD_APPHOST_*`
+   trusted public key settings. The legacy `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` alias is
+   still accepted for older packaging. Operators add the catalog through Web Shell or
    `POST /api/v1/app-catalogs/recommended/crypta-first-party-beta/add`; apps are not installed
    until the operator confirms an install/update for each entry.
 

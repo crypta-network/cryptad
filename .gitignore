@@ -31,6 +31,8 @@ debhelper-build-stamp
 *.log
 *.log.gz
 /logs/
+__pycache__/
+*.py[cod]
 *.substvars
 /debian/freenet/*
 .gradle
