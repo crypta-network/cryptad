@@ -18,9 +18,10 @@ API or signed catalog source handling described in [app-catalogs.md](app-catalog
 First-party repo apps can keep using their existing Gradle tasks. See
 [First-party Gradle workflow](#first-party-gradle-workflow).
 
-For the PR-225 beta sidecar workflow, including `init --template queue-dashboard`, the mock
-development server, strict beta test wrapper, local key generation, and `publish-usk --dry-run`,
-see [developer-beta-toolkit.md](developer-beta-toolkit.md).
+For the beta sidecar workflow, including `init --template queue-dashboard`, the mock development
+server, strict beta test wrapper, local key generation, and `publish-usk --dry-run`, see
+[developer-beta-toolkit.md](developer-beta-toolkit.md). For the full beta portal and submission
+path, see [app-platform-developer-portal.md](app-platform-developer-portal.md).
 
 ## Build and run the command
 
@@ -610,7 +611,7 @@ review keys outside the repository.
 
    ```properties
    artifact.path=/abs/path/to/queue-manager.zip
-   bundle.uri=crypta:CHK@<artifact-key>
+   bundle.uri=crypta:CHK@...
    summary=Manage local Crypta transfer queues.
    name=Queue Manager
    permissions=queue.read,queue.write
@@ -636,9 +637,15 @@ operator flow.
 
 ## Related docs
 
-- [developer-beta-toolkit.md](developer-beta-toolkit.md) gives the PR-225 beta toolkit walkthrough
-  for queue-dashboard scaffolding, mock dev runs, strict tests, key generation, signing, cataloging,
+- [app-platform-developer-portal.md](app-platform-developer-portal.md) is the app ecosystem beta
+  entry point.
+- [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) gives copyable offline beta
+  tutorials.
+- [developer-beta-toolkit.md](developer-beta-toolkit.md) gives the beta toolkit walkthrough for
+  queue-dashboard scaffolding, mock dev runs, strict tests, key generation, signing, cataloging,
   and dry-run USK publication.
+- [first-party-beta-catalog.md](first-party-beta-catalog.md) covers first-party catalog publication
+  and Web Shell onboarding.
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
 - [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and

@@ -276,8 +276,9 @@ Queue Manager and legacy Publisher are also the primary replacements for the leg
 insert admin pages in the current retirement map. Site Publisher is the content reference app for
 new app-platform publishing flows. Profile Publisher is the identity-profile reference app for
 vault-backed profile-document publishing. Feed Reader is the bounded content-fetch reference app
-for reading feed snapshots and publishing generated feed documents. The full legacy map is
-maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
+for reading feed snapshots and publishing generated feed documents. Trust Graph Preview is the
+local trust-service reference app for local trust statements, anchors, and preview scoring. The
+full legacy map is maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
 ## Platform API summary fields
 
@@ -430,6 +431,27 @@ feed snapshots without local source-path authority, and `queue.read` to show upl
 keeps source lists and fetched content in memory by default and must not persist raw feed bodies,
 raw request bodies, private insert URIs, app process tokens, browser-session tokens, form
 passwords, or local paths.
+
+Trust Graph Preview reference app bundle:
+
+```properties
+manifest.version=1
+app.id=trust-graph
+app.name=Trust Graph Preview
+app.version=1.0.0
+app.exec=bin/trust-graph.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use
+quota.data.bytes=1048576
+quota.cache.bytes=2097152
+```
+
+Trust Graph Preview needs `trust.read` and `trust.write` for local preview state, `content.fetch`
+for bounded Crypta trust documents selected by the user, `content.insert.app-document` plus queue
+capabilities for generated statement publication, and `vault.identities.*` for app-owned trust
+identity creation and bounded trust-statement signing. It is not full Web of Trust, a moderation
+system, a background crawler, or old plugin compatibility.
 
 Transitional shell-panel bundle:
 

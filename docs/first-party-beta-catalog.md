@@ -212,3 +212,23 @@ passwords, private insert URIs, raw request bodies, raw feed bodies, raw trust s
 from real users, private keys, raw public key bytes, raw receipt signatures, transparency-log
 paths, or absolute staging paths. It does not fetch a public Crypta network catalog during normal
 unit tests.
+
+## Related docs
+
+- [app-platform-developer-portal.md](app-platform-developer-portal.md) is the app ecosystem beta
+  entry point.
+- [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) gives offline developer flows
+  for template, signing, catalog, and dry-run publication work.
+- [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md) records beta
+  safety boundaries.
+- [app-platform-beta-program.md](app-platform-beta-program.md) covers app submission, feedback, and
+  release closeout.
+- [app-catalogs.md](app-catalogs.md) documents signed catalog formats and runtime install/update.
+- [app-dev-cli.md](app-dev-cli.md) documents the standalone `crypta-app` CLI.
+- [app-review-governance.md](app-review-governance.md) documents review receipts, reviewer keys,
+  and the local transparency log.
+- [app-update-lifecycle.md](app-update-lifecycle.md) documents candidate detection, scheduler
+  policy, manual apply, and rollback scope.
+- [release-certification.md](release-certification.md) documents release-candidate evidence and
+  the ecosystem certification matrix.
+- [SECURITY.md](SECURITY.md) documents security reporting and sensitive data handling.

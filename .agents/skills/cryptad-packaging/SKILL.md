@@ -25,8 +25,9 @@ Use this skill when working on:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`, `:platform-appdist`,
-  `:platform-appcatalog`, `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`,
-  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-appcatalog`, `:platform-trustgraph`, `:platform-design-system`,
+  `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`,
+  `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`, `:adapter-http-legacy-admin`,
   `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
@@ -58,6 +59,9 @@ Use this skill when working on:
   verification, Crypta catalog source fetching, app-store/API compatibility metadata parsing,
   independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
   verified staging support.
+- The `:platform-trustgraph` JAR contributes local Trust Graph Preview statement parsing,
+  canonicalization, verification, process-local store/anchor behavior, and deterministic scoring
+  used by Platform API trust routes.
 - The `:platform-design-system` JAR contributes canonical local static app UI assets and helper
   APIs used by first-party app staging and the standalone developer CLI. It is packaged as a normal
   leaf artifact but the CSS/JS bytes are copied into app bundles, not loaded from a daemon-hosted
@@ -92,9 +96,10 @@ Use this skill when working on:
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
 - First-party app projects such as `:apps:queue-manager`, `:apps:publisher`,
-  `:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader` provide staged app
-  bundles through their `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release
-  artifacts and AppHost install inputs; they are not daemon entrypoints inside `build/cryptad-dist`.
+  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
+  `:apps:trust-graph` provide staged app bundles through their `stageApp`, `signApp`, and
+  `verifyApp` tasks. Those bundles are release artifacts and AppHost install inputs; they are not
+  daemon entrypoints inside `build/cryptad-dist`.
   Their static UI staging copies the current `:platform-sdk-js` browser resource and canonical
   `:platform-design-system` assets into each bundle's `static/` assets.
 

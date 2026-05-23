@@ -1,0 +1,110 @@
+name: App submission beta
+description: Propose a Crypta app for beta review.
+title: "[app-submission-beta] "
+labels:
+  - app-platform
+  - app-submission
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw feed bodies, raw trust documents, raw receipt signatures, or local absolute paths.
+  - type: input
+    id: app-id-name-version
+    attributes:
+      label: App id/name/version
+      placeholder: "Example: hello-crypta / Hello Crypta / 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: lineage
+    attributes:
+      label: Template or reference app lineage
+      placeholder: "Example: static-basic, queue-dashboard, publisher, vault-profile, or custom"
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Requested capabilities
+      description: List capability names from the manifest.
+      placeholder: "queue.read, queue.write"
+    validations:
+      required: true
+  - type: textarea
+    id: rationales
+    attributes:
+      label: Permission rationales
+      description: Explain why each requested capability is needed.
+    validations:
+      required: true
+  - type: input
+    id: api-range
+    attributes:
+      label: API min/max tested version
+      placeholder: "Example: minimum 1, maximum tested 7"
+    validations:
+      required: true
+  - type: input
+    id: bundle-digest
+    attributes:
+      label: Signed bundle digest
+      placeholder: "Lowercase SHA-256 digest, no private material"
+    validations:
+      required: true
+  - type: textarea
+    id: catalog-entry
+    attributes:
+      label: Catalog entry digest or descriptor excerpt
+      description: Include only safe descriptor fields such as app id, version, digest, size, capability names, and redacted URIs.
+    validations:
+      required: true
+  - type: dropdown
+    id: review-receipt
+    attributes:
+      label: Review receipt status
+      options:
+        - Not included
+        - Included and pending reviewer trust configuration
+        - Included and verified by local trusted reviewer key
+        - Rejected or requires changes
+    validations:
+      required: true
+  - type: input
+    id: ui-lint
+    attributes:
+      label: UI lint status
+      placeholder: "Example: crypta-app ui lint --strict passed"
+    validations:
+      required: true
+  - type: input
+    id: compatibility
+    attributes:
+      label: Compatibility status
+      placeholder: "Example: crypta-app compat verify --strict passed against contract v7"
+    validations:
+      required: true
+  - type: textarea
+    id: update-policy
+    attributes:
+      label: Update policy expectations
+      description: Describe permission deltas, review requirements, and whether manual review is expected.
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Known limitations
+      description: Be explicit about beta limits and unsupported behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: security-notes
+    attributes:
+      label: Security notes
+      description: Describe data handling, capability boundaries, and redaction-sensitive areas.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this submission does not include private keys, tokens, private URIs, request bodies, raw user documents, raw signatures, or unredacted local absolute paths.
+          required: true

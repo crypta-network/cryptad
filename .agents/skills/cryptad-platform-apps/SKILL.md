@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, app-update lifecycle, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, beta docs evidence, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -11,6 +11,10 @@ Use this skill before touching app-platform code, docs, or tests.
 
 Load only the docs needed for the change:
 
+- App ecosystem beta entry point: `docs/app-platform-developer-portal.md`
+- Offline beta tutorials: `docs/app-platform-beta-tutorials.md`
+- Beta limitations and safety boundaries: `docs/app-platform-beta-known-limitations.md`
+- Beta program, submission, feedback, and closeout runbook: `docs/app-platform-beta-program.md`
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
@@ -21,6 +25,7 @@ Load only the docs needed for the change:
 - App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
 - Feed Reader and content-fetch reference app: `docs/feed-reader-reference-app.md`
+- Trust Graph Preview reference app and local trust-service API: `docs/trust-graph-preview.md`
 - App secret and identity vault: `docs/app-secret-and-identity-vault.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
@@ -32,8 +37,9 @@ Load only the docs needed for the change:
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
-  staging, bounded content fetch routing, bounded app audit log, and the local app-update lifecycle
-  service plus scheduler above AppHost/catalog/vault/runtime primitives.
+  staging, bounded content fetch routing, local Trust Graph Preview route handlers, bounded app
+  audit log, and the local app-update lifecycle service plus scheduler above
+  AppHost/catalog/vault/trust/runtime primitives.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -46,7 +52,8 @@ Load only the docs needed for the change:
 - `:platform-design-system` owns canonical local app UI CSS/JS assets and safe asset metadata/copy
   helpers used by scaffolds, first-party staging, UI lint, and release evidence.
 - `:platform-appvault` owns app secret and identity vault storage records, metadata/grant value
-  types, local wrapping-key provider, audit/redaction helpers, and deterministic vault tests.
+  types, local wrapping-key provider, bounded profile/trust statement signing helpers,
+  audit/redaction helpers, and deterministic vault tests.
 - `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
   deterministic bundle packaging, manifest sandbox/quota fields, and first-party
   signing/verification tooling.
@@ -54,7 +61,12 @@ Load only the docs needed for the change:
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
   into AppHost install/update flows, plus optional review/API compatibility metadata, independent
   app-review receipts, trusted reviewer-key loading, review policy modes, and review trust
-  decisions used by app update review.
+  decisions used by app update review, reviewer-key lifecycle parsing, local review transparency
+  logging, governance snapshots, and review-history API support.
+- `:platform-trustgraph` owns the Trust Graph Preview statement model, strict JSON parser,
+  canonical payload and signature helpers, process-local anchor/store abstractions, and
+  deterministic direct-anchor scoring. It is a local preview library, not a peer protocol or full
+  Web of Trust implementation.
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
   packaging, verifying, catalog-authoring, API contract snapshotting, compatibility verification,
   mock dev serving, offline app tests, developer key generation, and dry-run publication planning
@@ -69,6 +81,7 @@ Load only the docs needed for the change:
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
 - `:apps:profile-publisher` stages the first-party identity-profile reference static UI bundle.
 - `:apps:feed-reader` stages the first-party feed reader and publisher reference static UI bundle.
+- `:apps:trust-graph` stages the first-party Trust Graph Preview reference static UI bundle.
 
 ## Guardrails
 
@@ -87,8 +100,12 @@ Load only the docs needed for the change:
   reject `file:`, arbitrary HTTP(S), loopback/LAN URLs, and absolute local paths before calling the
   runtime fetch port.
 - App-generated document insert routes accept generated document bytes, not local source paths.
-  Keep raw generated documents, raw feed/profile bodies, private insert URIs, raw signatures, and
-  request bodies out of audit entries, logs, and release evidence.
+  Keep raw generated documents, raw feed/profile/trust bodies, private insert URIs, raw
+  signatures, and request bodies out of audit entries, logs, and release evidence.
+- Trust Graph Preview is local preview scoring and bounded statement import/sign/publish support.
+  Do not claim full Web of Trust compatibility, old plugin compatibility, global moderation,
+  background crawling, daemon-core identity sharing, or protocol/network behavior changes. Trust
+  evidence must stay bounded and redacted; do not record raw trust documents from real users.
 - Audit entries are bounded and process-local. Do not add query strings, request bodies, form
   passwords, tokens, absolute filesystem paths, or large payloads.
 - Static UI routes must serve only immutable installed-bundle files. Reject traversal, encoded path
@@ -100,6 +117,9 @@ Load only the docs needed for the change:
   the explicit development-only escape hatch.
 - Trusted app-review receipts are independent reviewer evidence. Do not treat publisher advisory
   `review.status`, app signing keys, or catalog signing keys as reviewer trust.
+- Reviewer governance is local trusted-key configuration plus a local tamper-evident transparency
+  log. Do not present catalog-listed reviewer keys as automatically trusted, and do not describe
+  the local transparency log as a global public log.
 - `crypta:` catalog sources still require signed catalog verification. They do not make catalog
   artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
   `docs/app-catalogs.md`.
@@ -125,9 +145,10 @@ Load only the docs needed for the change:
 - Legacy admin retirement changes must update both the code map
   (`LegacyAdminRetirementRegistry`) and `docs/legacy-retirement-plan.md`.
 - Release-certification evidence must not expose private signing keys, app process tokens,
-  browser-session tokens, form passwords, raw request bodies, raw feed bodies, private insert URIs,
-  non-localhost endpoint metadata, or unsanitized local paths. Optional live AppHost smoke reads the
-  form password from `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a command-line argument.
+  browser-session tokens, form passwords, raw request bodies, raw feed bodies, raw trust documents,
+  private insert URIs, non-localhost endpoint metadata, or unsanitized local paths. Optional live
+  AppHost smoke reads the form password from `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a
+  command-line argument.
 
 ## Release certification smoke
 
@@ -138,8 +159,12 @@ Load only the docs needed for the change:
   evidence, bounded content-fetch evidence, signed bundle evidence, signed catalog evidence,
   first-party beta catalog metadata, trusted app-review receipt evidence, sandbox-provider
   evidence, app-update lifecycle/scheduler/rollback evidence, Site Publisher/Profile
-  Publisher/Feed Reader reference-app evidence, legacy-admin retirement state, and optional
-  localhost-only live AppHost lifecycle evidence.
+  Publisher/Feed Reader/Trust Graph Preview reference-app evidence, app-review governance and
+  local transparency-log evidence, legacy-admin retirement state, and optional localhost-only live
+  AppHost lifecycle evidence.
+- `tools/release-certification/app_platform_docs_check.py` is the deterministic docs evidence
+  collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
+  Markdown links, and docs redaction checks.
 - `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
   downloads, or production credentials.
 - `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
@@ -157,6 +182,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :platform-app-ui:test
 ./gradlew :platform-appdist:test
 ./gradlew :platform-appcatalog:test
+./gradlew :platform-trustgraph:test
 ./gradlew :platform-design-system:test
 ./gradlew :platform-appvault:test
 ./gradlew :platform-devtools:test
@@ -168,7 +194,9 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:site-publisher:test
 ./gradlew :apps:profile-publisher:test
 ./gradlew :apps:feed-reader:test
+./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
 
@@ -181,10 +209,12 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 
 When changing signed bundle/catalog, app-review receipts, static UI, design-system assets, UI lint,
 SDK, Platform API contract, AppHost lifecycle, app-vault capabilities, generated document inserts,
-content fetch, app-update lifecycle/scheduler/rollback, sandbox-provider evidence, reference
-content/profile/feed apps, or legacy-admin retirement evidence behavior, also run:
+content fetch, Trust Graph Preview, app-update lifecycle/scheduler/rollback, sandbox-provider
+evidence, reference content/profile/feed/trust apps, app platform beta docs evidence, or
+legacy-admin retirement evidence behavior, also run:
 
 ```bash
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
 ```
