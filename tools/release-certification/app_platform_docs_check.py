@@ -139,6 +139,20 @@ REDACTION_ALLOWLIST_EXACT_PATHS = (
 PRIVATE_KEY_BLOCK_RE = re.compile(
     r"-----BEGIN [A-Z0-9 -]*PRIVATE KEY(?: BLOCK)?-----", re.IGNORECASE
 )
+PRIVATE_KEY_ASSIGNMENT_NAME_RE = (
+    r"(?:"
+    r"(?:[A-Z0-9]+_)*PRIVATE_KEY(?:_BASE64)?"
+    r"|[A-Za-z0-9]*PrivateKey(?:Base64)?"
+    r")"
+)
+PRIVATE_KEY_ASSIGNMENT_RE = re.compile(
+    r"(?<![\w-])(?:-P)?[\"']?"
+    + PRIVATE_KEY_ASSIGNMENT_NAME_RE
+    + r"[\"']?\s*[:=]\s*"
+    r"(?![\"']?(?:<[^>]+>|redacted|\.\.\.)[\"']?(?:$|[\s,}\]`\\]))"
+    r"(?:[\"'][^\"'<>\r\n]{16,}[\"']|[A-Za-z0-9._~+/=-]{16,})",
+    re.IGNORECASE,
+)
 SEED_PHRASE_RE = re.compile(
     r"\bseed phrase\s*[:=]\s*(?!<redacted>)(?:[a-z]{3,}\s+){3,}[a-z]{3,}\b",
     re.IGNORECASE,
@@ -166,7 +180,12 @@ PARTIAL_REDACTION_RE = re.compile(
     r"(?<![\w-])(?:[\"']?Authorization[\"']?\s*:\s*[\"']?(?:[A-Za-z][A-Za-z0-9._~-]*\s+)?|"
     r"(?:Cookie|Set-Cookie|X-Crypta-App-Session)\s*:|"
     r"[\"']?(?:CRYPTAD_APP_TOKEN|browserSessionToken|appProcessToken|"
-    r"formPassword|CRYPTAD_CERT_FORM_PASSWORD)[\"']?\s*[:=]|"
+    r"formPassword|CRYPTAD_CERT_FORM_PASSWORD|"
+    + PRIVATE_KEY_ASSIGNMENT_NAME_RE
+    + r")[\"']?\s*[:=]|"
+    r"(?:-P)[\"']?"
+    + PRIVATE_KEY_ASSIGNMENT_NAME_RE
+    + r"[\"']?\s*[:=]|"
     r"--form-password(?:=|\s+))"
     r"\s*[\"']?(?:<[^>\r\n]+>|redacted|\.\.\.)[\"']?"
     r"(?!\s*(?:$|[\r\n,}\]`\\]))(?=[^\r\n]*[A-Za-z0-9])",
@@ -217,6 +236,7 @@ CRYPTA_APP_ALIAS_RE = re.compile(
 )
 REDACTION_CHECKS = (
     ("private-key-block", PRIVATE_KEY_BLOCK_RE),
+    ("private-key-assignment", PRIVATE_KEY_ASSIGNMENT_RE),
     ("seed-phrase", SEED_PHRASE_RE),
     ("authorization-header", AUTHORIZATION_HEADER_RE),
     ("cookie", COOKIE_RE),
@@ -354,9 +374,18 @@ def redaction_files_to_check(workspace_root: Path) -> list[Path]:
 def allowed_absolute_path(value: str) -> bool:
     normalized = unquote(value).replace("\\", "/")
     normalized_without_trailing_slash = normalized.rstrip("/")
-    return normalized.startswith(REDACTION_ALLOWLIST_PATH_PREFIXES) or (
+    return any(
+        allowed_path_prefix_match(normalized, prefix)
+        for prefix in REDACTION_ALLOWLIST_PATH_PREFIXES
+    ) or (
         normalized_without_trailing_slash in REDACTION_ALLOWLIST_EXACT_PATHS
     )
+
+
+def allowed_path_prefix_match(value: str, prefix: str) -> bool:
+    if prefix.endswith("/"):
+        return value.startswith(prefix)
+    return value == prefix or value.startswith(f"{prefix}/")
 
 
 def file_uri_path_value(raw_path: str) -> str:
@@ -755,6 +784,33 @@ def run_self_test(repo_root: Path) -> None:
     assert "private-key-block" in redaction_findings_for_text(
         "-----BEGIN ENCRYPTED PRIVATE KEY-----"
     )
+    assert "private-key-assignment" in redaction_findings_for_text(
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64=MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop"
+    )
+    assert "private-key-assignment" in redaction_findings_for_text(
+        '"reviewerPrivateKey": "MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop"'
+    )
+    assert "private-key-assignment" in redaction_findings_for_text(
+        "-PcryptadAppSigningPrivateKeyBase64=MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop"
+    )
+    assert "private-key-assignment" not in redaction_findings_for_text(
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64=..."
+    )
+    assert "private-key-assignment" not in redaction_findings_for_text(
+        '"reviewerPrivateKey": "<redacted>"'
+    )
+    assert "private-key-assignment" not in redaction_findings_for_text(
+        "-PcryptadAppSigningPrivateKeyBase64=..."
+    )
+    assert "private-key-assignment" not in redaction_findings_for_text(
+        "-PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem"
+    )
+    assert "partial-redaction" in redaction_findings_for_text(
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64=<redacted> MC4CAQAwBQYDK2Vw"
+    )
+    assert "partial-redaction" in redaction_findings_for_text(
+        "-PcryptadAppSigningPrivateKeyBase64=<redacted> MC4CAQAwBQYDK2Vw"
+    )
     assert "form-password" in redaction_findings_for_text("formPassword=hunter2")
     assert "form-password" in redaction_findings_for_text("formPassword: hunter2")
     assert "form-password" in redaction_findings_for_text('"formPassword": "hunter2"')
@@ -848,10 +904,22 @@ def run_self_test(repo_root: Path) -> None:
     assert "local-absolute-path" in redaction_findings_for_text(
         "file:///app/secrets/private.pem"
     )
+    assert "local-absolute-path" in redaction_findings_for_text(
+        "/content-secret/dev-private.pem"
+    )
+    assert "local-absolute-path" in redaction_findings_for_text(
+        "file:///content-secret/dev-private.pem"
+    )
+    assert "local-absolute-path" in redaction_findings_for_text("/welcome-back/key.pem")
     assert "local-absolute-path" not in redaction_findings_for_text("/app/node")
     assert "local-absolute-path" not in redaction_findings_for_text("/app/node/")
     assert "local-absolute-path" not in redaction_findings_for_text("file:///app/node")
     assert "local-absolute-path" not in redaction_findings_for_text("file:///app/node/")
+    assert "local-absolute-path" not in redaction_findings_for_text("/content")
+    assert "local-absolute-path" not in redaction_findings_for_text("/content/")
+    assert "local-absolute-path" not in redaction_findings_for_text("/content/fetch")
+    assert "local-absolute-path" not in redaction_findings_for_text("/welcome")
+    assert "local-absolute-path" not in redaction_findings_for_text("/welcome/")
     assert "local-absolute-path" not in redaction_findings_for_text(
         "/abs/path/outside/repo/dev-private.der"
     )

@@ -15,9 +15,9 @@ export CRYPTA_APP="$PWD/platform-devtools/build/install/crypta-app/bin/crypta-ap
 ```
 
 Keep local development keys outside the repository. The examples below use `$HOME/.crypta-dev/keys`
-and placeholder Crypta URIs such as `crypta:CHK@<artifact-key>` and
-`crypta:USK@<catalog-key>/cryptad-app-catalog.properties`. They are placeholders, not usable
-public network keys.
+and URI-safe placeholder Crypta URIs such as `crypta:CHK@...` and
+`crypta:USK@.../cryptad-app-catalog.properties`. They are placeholders, not usable public network
+keys.
 
 ## Tutorial 1: static app from template
 
@@ -144,14 +144,14 @@ mkdir -p dist/apps dist/catalog
   --overwrite
 ```
 
-Create a catalog entry descriptor. The `crypta:CHK@<artifact-key>` value is a placeholder for the
-public immutable artifact URI returned by a reviewed insertion workflow:
+Create a catalog entry descriptor. The `crypta:CHK@...` value is a placeholder for the public
+immutable artifact URI returned by a reviewed insertion workflow:
 
 ```bash
 "$CRYPTA_APP" catalog entry \
   --bundle-dir build/dev-apps/queue-dashboard \
   --artifact dist/apps/queue-dashboard-0.1.0.zip \
-  --bundle-uri "crypta:CHK@<artifact-key>" \
+  --bundle-uri "crypta:CHK@..." \
   --output dist/catalog/queue-dashboard-entry.properties \
   --summary "Inspect and manage local transfer queue state." \
   --homepage "https://example.invalid/apps/queue-dashboard" \
@@ -192,7 +192,7 @@ Write an offline Crypta USK publication plan:
 "$CRYPTA_APP" publish-usk \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
   --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
-  --catalog-source "crypta:USK@<catalog-key>/cryptad-app-catalog.properties" \
+  --catalog-source "crypta:USK@.../cryptad-app-catalog.properties" \
   --output dist/catalog/publish-plan.md \
   --dry-run
 ```

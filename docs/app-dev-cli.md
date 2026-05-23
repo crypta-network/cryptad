@@ -611,7 +611,7 @@ review keys outside the repository.
 
    ```properties
    artifact.path=/abs/path/to/queue-manager.zip
-   bundle.uri=crypta:CHK@<artifact-key>
+   bundle.uri=crypta:CHK@...
    summary=Manage local Crypta transfer queues.
    name=Queue Manager
    permissions=queue.read,queue.write

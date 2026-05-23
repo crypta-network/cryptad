@@ -191,7 +191,7 @@ crypta-app catalog entry \
   --bundle-dir build/dev-apps/queue-dashboard \
   --output dist/catalog/queue-dashboard-entry.properties \
   --artifact dist/apps/queue-dashboard-0.1.0.zip \
-  --bundle-uri "crypta:CHK@<artifact-key>" \
+  --bundle-uri "crypta:CHK@..." \
   --summary "Inspect and manage local transfer queue state." \
   --homepage "https://example.invalid/apps/queue-dashboard" \
   --source "https://example.invalid/src/queue-dashboard" \
@@ -212,7 +212,7 @@ using the shape in [app-dev-cli.md](app-dev-cli.md#catalog-descriptor-and-flow):
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/queue-dashboard-0.1.0.zip
-bundle.uri=crypta:CHK@<artifact-key>
+bundle.uri=crypta:CHK@...
 summary=Inspect and manage local transfer queue state.
 name=Queue Dashboard
 version=0.1.0
@@ -319,7 +319,7 @@ Prepare a dry-run catalog publication plan:
 crypta-app publish-usk \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
   --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
-  --catalog-source "crypta:USK@<public-key>/apps/dev-queue-dashboard/cryptad-app-catalog.properties" \
+  --catalog-source "crypta:USK@.../apps/dev-queue-dashboard/cryptad-app-catalog.properties" \
   --output dist/catalog/publish-plan.md \
   --dry-run
 ```
