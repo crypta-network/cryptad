@@ -282,9 +282,11 @@ def normalize_doc_link_target(raw_target: str) -> str:
 
 
 def resolve_doc_link_target(workspace_root: Path, markdown_file: Path, target: str) -> Path:
+    if target.startswith("/"):
+        return (workspace_root / target.lstrip("/")).resolve()
     target_path = Path(target)
     if target_path.is_absolute():
-        return (workspace_root / target_path.relative_to("/")).resolve()
+        return target_path.resolve()
     return (markdown_file.parent / target_path).resolve()
 
 

@@ -1760,6 +1760,21 @@ def aggregate_status_values(values: list[str], *, missing_if_empty: bool = False
     return "pass"
 
 
+def unwaivable_matrix_issue_ids(unwaivable_evidence_ids: set[str]) -> set[str]:
+    unwaivable_issue_ids = set(unwaivable_evidence_ids)
+    unwaivable_issue_ids.update(
+        f"evidence.{evidence_id}" for evidence_id in unwaivable_evidence_ids
+    )
+    return unwaivable_issue_ids
+
+
+def waivable_matrix_issue_ids(
+    issue_ids: list[str], unwaivable_evidence_ids: set[str]
+) -> list[str]:
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
+    return [issue_id for issue_id in issue_ids if issue_id not in unwaivable_issue_ids]
+
+
 def row_waivers(
     spec: MatrixRowSpec,
     evidence_entries: dict[str, dict[str, Any]],
@@ -1770,6 +1785,8 @@ def row_waivers(
     unwaivable_evidence_ids: set[str],
 ) -> tuple[list[WaiverRecord], list[str]]:
     records: dict[str, WaiverRecord] = {}
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
+    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
     targets = [spec.id, *spec.evidence_ids(), *spec.all_gate_ids()]
     if unwaivable_evidence_ids:
         targets = [
@@ -1778,7 +1795,7 @@ def row_waivers(
             if target_id != spec.id and target_id not in unwaivable_evidence_ids
         ]
     for target_id in targets:
-        waiver = active_waiver_for(context, target_id, issue_ids, mode)
+        waiver = active_waiver_for(context, target_id, waivable_issue_ids, mode)
         if waiver is not None:
             records[waiver.id] = waiver
     for evidence_id in spec.evidence_ids():
@@ -1786,7 +1803,7 @@ def row_waivers(
             continue
         waiver_id = evidence_details(evidence_entries.get(evidence_id)).get("waiverId")
         if waiver_id:
-            waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
+            waiver = active_waiver_for(context, str(waiver_id), waivable_issue_ids, mode)
             if waiver is not None:
                 records[waiver.id] = waiver
     for gate_id in spec.all_gate_ids():
@@ -1795,9 +1812,9 @@ def row_waivers(
         if isinstance(details, dict):
             waiver_id = details.get("waiverId")
             if waiver_id:
-                if str(waiver_id) in unwaivable_evidence_ids:
+                if str(waiver_id) in unwaivable_issue_ids:
                     continue
-                waiver = active_waiver_for(context, str(waiver_id), issue_ids, mode)
+                waiver = active_waiver_for(context, str(waiver_id), waivable_issue_ids, mode)
                 if waiver is not None:
                     records[waiver.id] = waiver
     waiver_ids = sorted(records)
@@ -1814,10 +1831,11 @@ def row_release_blocker_waiver(
 ) -> WaiverRecord | None:
     if unwaivable_evidence_ids.intersection(blocker_targets):
         return None
+    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
     return active_waiver_for(
         context,
         spec.id,
-        sorted(dict.fromkeys(issue_ids + blocker_targets)),
+        sorted(dict.fromkeys(waivable_issue_ids + blocker_targets)),
         mode,
     )
 
@@ -4711,7 +4729,10 @@ def run_self_test(repo_root: Path) -> None:
                 waivers={
                     "app-platform.docs-redaction": (
                         "Release manager attempted to waive a docs redaction finding."
-                    )
+                    ),
+                    "evidence.app-platform.docs-redaction": (
+                        "Release manager attempted to waive a docs redaction issue id."
+                    ),
                 },
             )
             assert waived_docs_redaction_exit_code == 1, waived_docs_redaction_summary
@@ -4739,7 +4760,13 @@ def run_self_test(repo_root: Path) -> None:
             assert "app-platform.docs-redaction" not in docs_redaction_row.get(
                 "waiverIds", []
             ), docs_redaction_row
+            assert "evidence.app-platform.docs-redaction" not in docs_redaction_row.get(
+                "waiverIds", []
+            ), docs_redaction_row
             assert "Waiver recorded" not in docs_redaction_row["summary"], docs_redaction_row
+            assert "waived" not in docs_redaction_row["recommendation"].lower(), (
+                docs_redaction_row
+            )
             assert docs_redaction_row["details"]["unwaivableRedactionEvidenceIds"] == [
                 "app-platform.docs-redaction"
             ], docs_redaction_row
