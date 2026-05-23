@@ -23,13 +23,15 @@ Use this skill when you need to:
   `:foundation-config`, `:foundation-fs`, `:foundation-compat`, `:kernel-content`,
   `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:platform-api`,
   `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`, `:platform-appdist`,
-  `:platform-appcatalog`, `:platform-design-system`, `:platform-devtools`, `:platform-sdk-js`,
-  `:platform-web-shell`, `:runtime-alerts`, `:runtime-node`, `:adapter-fcp`,
+  `:platform-appcatalog`, `:platform-trustgraph`, `:platform-design-system`,
+  `:platform-devtools`, `:platform-sdk-js`, `:platform-web-shell`, `:runtime-alerts`,
+  `:runtime-node`, `:adapter-fcp`,
   `:bridge-fcp-runtime`, `:bridge-http-runtime`,
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - First-party app bundle projects live under `:apps:queue-manager`, `:apps:publisher`,
-  `:apps:site-publisher`, `:apps:profile-publisher`, and `:apps:feed-reader`.
+  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
+  `:apps:trust-graph`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -109,6 +111,9 @@ Use this skill when you need to:
   verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
   independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
   verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
+- `:platform-trustgraph` owns Trust Graph Preview statement parsing, canonicalization,
+  verification, process-local store/anchor behavior, and deterministic scoring plus focused tests
+  under `platform-trustgraph/src/test/java`.
 - `:platform-design-system` owns the canonical local app UI CSS/JS resources plus safe
   asset-listing, hashing, and bundle-copy helpers. Its focused tests live under
   `platform-design-system/src/test/java`.
@@ -178,6 +183,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-appvault:test`
   - `./gradlew :platform-appdist:test`
   - `./gradlew :platform-appcatalog:test`
+  - `./gradlew :platform-trustgraph:test`
   - `./gradlew :platform-design-system:test`
   - `./gradlew :platform-devtools:test`
   - `./gradlew :platform-sdk-js:test`
@@ -248,6 +254,8 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-appdist:compileJava`
 - Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
   - `./gradlew :platform-appcatalog:compileJava`
+- Compile the Trust Graph Preview leaf when you touched `network.crypta.platform.trustgraph`:
+  - `./gradlew :platform-trustgraph:compileJava`
 - Compile the developer app CLI leaf when you touched `network.crypta.platform.devtools`:
   - `./gradlew :platform-devtools:compileJava`
 - Process and test the Platform SDK resource leaf when you touched
@@ -278,7 +286,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## First-party app bundle checks
 - Stage first-party app bundles, especially after changing `:platform-sdk-js` or
   `:platform-design-system` because Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  and Feed Reader copy those assets into staged static UI bundles:
+  Feed Reader, and Trust Graph Preview copy those assets into staged static UI bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:
   - `./gradlew :apps:queue-manager:test`
@@ -286,6 +294,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :apps:site-publisher:test`
   - `./gradlew :apps:profile-publisher:test`
   - `./gradlew :apps:feed-reader:test`
+  - `./gradlew :apps:trust-graph:test`
 - Sign and verify staged bundles only when signing/trusted-key inputs are available:
   - `./gradlew signFirstPartyApps`
   - `./gradlew verifyFirstPartyApps`

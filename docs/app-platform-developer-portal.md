@@ -126,6 +126,7 @@ Phase 7 closeout treats these workstreams as one ecosystem beta readiness story:
 Release candidates should run the normal build/test gates plus release certification:
 
 ```bash
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification

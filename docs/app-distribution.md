@@ -408,7 +408,8 @@ Verify Trust Graph Preview with the matching public key:
 
 Stage, sign, and verify all first-party apps:
 
-The root first-party tasks include Site Publisher, Profile Publisher, and Feed Reader.
+The root first-party tasks include Site Publisher, Profile Publisher, Feed Reader, and Trust Graph
+Preview.
 
 ```bash
 ./gradlew \

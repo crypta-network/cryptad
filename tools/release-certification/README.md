@@ -11,6 +11,7 @@ network.
 Run the Python-only self-tests:
 
 ```bash
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
@@ -293,7 +294,7 @@ inputs are present, signed catalog authoring/verification, AppHost
 sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, independent
 app-review receipt evidence, Profile Publisher identity-profile publishing evidence,
 app-generated document insert evidence, content-fetch evidence, Feed Reader reference-app evidence,
-and the legacy-admin retirement map.
+Trust Graph Preview evidence, app-review governance evidence, and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -351,6 +352,7 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - the host/operator form password;
 - raw request bodies;
 - raw feed bodies;
+- raw trust statement documents or trust-document bodies from real users;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw profile-document signatures or signed profile-document payloads;
 - raw update or rollback command output;

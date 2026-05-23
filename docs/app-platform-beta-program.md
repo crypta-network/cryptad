@@ -122,6 +122,7 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 
    ```bash
    ./gradlew :platform-devtools:installDist
+   python3 tools/release-certification/app_platform_docs_check.py --self-test
    python3 tools/release-certification/app_platform_smoke.py --self-test
    ```
 

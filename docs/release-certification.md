@@ -38,6 +38,7 @@ library.
 Run self-tests first:
 
 ```bash
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
@@ -377,8 +378,9 @@ evidence or missing profile-document route evidence.
 Sandbox gates warn when enforced evidence regresses to best-effort, and block in
 `release-candidate` mode when enforced evidence is required but absent. Reference-content gates
 block if Site Publisher evidence disappears, Profile Publisher evidence disappears, Feed Reader
-evidence disappears, generated document insert evidence disappears, content-fetch evidence
-disappears, or a reference app no longer proves its required helper usage. Legacy
+evidence disappears, Trust Graph Preview evidence disappears, generated document insert evidence
+disappears, content-fetch evidence disappears, trust-statement signing evidence disappears, or a
+reference app no longer proves its required helper usage. Legacy
 retirement gates block missing removal-wave evidence, including
 `legacy-admin.removal-wave-2`, or failed retained browse safety evidence and warn on removed-route
 count changes without update-note metadata.
@@ -461,6 +463,7 @@ The report, matrix, and copied artifacts must not contain:
 - the host/operator form password;
 - raw request bodies;
 - raw feed bodies;
+- raw trust statement documents or trust-document bodies from real users;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw profile-document signatures or signed profile-document payloads;
 - raw update or rollback command output;

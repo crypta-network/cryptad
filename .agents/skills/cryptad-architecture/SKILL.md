@@ -84,6 +84,9 @@ Use this skill when you need to:
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
     metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
     verified staging)
+  - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Preview statement
+    parsing, canonicalization, verification, process-local store/anchor behavior, and deterministic
+    direct-anchor scoring)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
     CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, developer
     keys, publication plans, API snapshot, and compatibility verification workflows)
@@ -123,6 +126,10 @@ Use this skill when you need to:
   - `:apps:feed-reader` → staged Feed Reader content-fetch reference AppHost bundle with a static
     UI under an isolated app origin when available, using bounded Crypta content fetch and
     app-generated feed document insertion
+  - `:apps:trust-graph` → staged Trust Graph Preview local trust-service reference AppHost bundle
+    with a static UI under an isolated app origin when available, using `trust.read`,
+    `trust.write`, bounded content fetch, AppVault trust-statement signing, and app-generated trust
+    statement insertion
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -157,7 +164,8 @@ Use this skill when you need to:
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
   browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
   `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
-  staging, `:platform-devtools` owns the standalone app developer CLI and offline UI linter,
+  staging, `:platform-trustgraph` owns local trust statement parsing and deterministic preview
+  scoring, `:platform-devtools` owns the standalone app developer CLI and offline UI linter,
   `:platform-web-shell` owns the browser-facing
   node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
@@ -387,6 +395,10 @@ Use this skill when you need to:
   compatibility metadata, verifies independent app-review receipts against trusted reviewer keys
   and local review policy, validates artifact size and SHA-256, safely extracts ZIP bundles, and
   delegates verified staged bundles to AppHost install/update flows.
+- `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Preview
+  model and scoring layer. It parses bounded trust statement documents, canonicalizes and verifies
+  statement payloads, stores process-local anchors/statements, and computes deterministic direct
+  trust scores without changing peer protocols or claiming full Web of Trust behavior.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
   linting, offline UI linting, mock dev serving, offline app tests, developer key generation,
@@ -520,6 +532,7 @@ Use this skill when you need to:
 - `:platform-sdk-js`: browser SDK resource under `network/crypta/platform/sdk/js`
 - `:platform-appdist`: `network.crypta.platform.appdist`
 - `:platform-appcatalog`: `network.crypta.platform.appcatalog`
+- `:platform-trustgraph`: `network.crypta.platform.trustgraph`
 - `:platform-devtools`: `network.crypta.platform.devtools`
 - `:platform-web-shell`: `network.crypta.platform.webshell`
 - `:runtime-alerts`: `network.crypta.runtime.alerts`, including the detached

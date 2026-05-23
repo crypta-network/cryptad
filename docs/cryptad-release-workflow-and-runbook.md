@@ -1,8 +1,8 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated May 1, 2026, to cover the release certification report that aggregates interop,
-> performance, app-platform, catalog, app-owned UI, legacy-admin retirement, and CI evidence for a
-> release candidate.
+> Updated May 23, 2026, to cover the release certification report that aggregates interop,
+> performance, app-platform, beta documentation, app-review governance, catalog, app-owned UI,
+> legacy-admin retirement, and CI evidence for a release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -71,6 +71,10 @@ Treat these as release blockers, in order:
    evidence coverage, ecosystem gate coverage, first-party app coverage, docs coverage, waivers,
    and row-level regressions. The workflow is documented in
    [release-certification.md](release-certification.md).
+   Confirm `app-platform.docs-portal`, `app-platform.beta-program`,
+   `app-platform.beta-tutorials`, `app-platform.docs-redaction`, and the
+   `app-platform-beta-docs-and-program` matrix row are present. Docs-only gaps require an explicit
+   release-manager waiver; redaction findings must remain blockers.
 3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
 5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
@@ -89,11 +93,14 @@ Treat these as release blockers, in order:
    design-system assets, strict UI lint summaries, and visible permission disclosure. The route
    contract is documented in [app-owned-ui.md](app-owned-ui.md); the design-system/lint contract is
    documented in [app-ui-design-system.md](app-ui-design-system.md).
-8. **App-vault and reference-app evidence** - verify the release certification report includes
+8. **App-vault, trust graph, and reference-app evidence** - verify the release certification report
+   includes
    `app-vault.capabilities`, `app-platform.identity-profile-publish`,
    `app-platform.generated-document-insert`, `app-platform.content-fetch`,
-   `reference-apps.content`, `reference-app.profile-publisher`, and
-   `reference-app.feed-reader`. Site Publisher is the content-oriented reference app;
+   `app-platform.trust-graph-preview`, `app-platform.trust-statement-signing`,
+   `reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`, and
+   `reference-app.trust-graph`. Site Publisher is the
+   content-oriented reference app;
    release evidence must prove its staged bundle, SDK usage, design-system adoption, permission
    disclosure, content/queue helper usage, and absence of vault/identity permissions. Profile
    Publisher is the identity-profile reference app; evidence must prove browser-safe app-owned
@@ -104,11 +111,20 @@ Treat these as release blockers, in order:
    `POST /api/v1/content/fetch`, SDK feed-helper usage, generated-feed publication permissions,
    and redaction of raw feed bodies, raw request bodies, tokens, form passwords, private insert
    URIs, and local paths.
+   Trust Graph Preview is the local trust-service reference app; evidence must prove Platform API
+   v7 trust routes, `trust.read`, `trust.write`, bounded AppVault trust-statement signing, SDK
+   trust-helper usage, generated trust-statement publication permissions, and redaction of raw
+   trust documents, raw request bodies, tokens, form passwords, private insert URIs, and local
+   paths.
 9. **Trusted app-review receipt evidence** - verify the release certification report includes
-   `app-review.trusted-receipts`, `app-review.policy`, and `app-review.first-party-catalog` when
-   first-party catalog evidence is part of the candidate. Review receipt evidence is independent of
-   app and catalog signing keys. Keep reviewer private keys outside the checkout and out of release
-   artifacts. The catalog/review contract is documented in [app-catalogs.md](app-catalogs.md).
+   `app-review.trusted-receipts`, `app-review.policy`, `app-review.governance`,
+   `app-review.reviewer-key-lifecycle`, `app-review.transparency-log`,
+   `app-review.review-history-api`, `app-review.first-party-catalog`, and
+   `app-review.first-party-review-chain` when first-party catalog evidence is part of the
+   candidate. Review receipt evidence is independent of app and catalog signing keys. Keep
+   reviewer private keys outside the checkout and out of release artifacts. The catalog/review
+   contract is documented in [app-catalogs.md](app-catalogs.md) and
+   [app-review-governance.md](app-review-governance.md).
 10. **AppHost sandbox-provider evidence** - verify the release certification report includes
    `apphost.sandbox-provider`. The evidence is deterministic and does not require live bubblewrap in
    normal CI; it must prove the bubblewrap provider contract, required-sandbox fail-closed behavior,
@@ -263,8 +279,8 @@ Treat these as release blockers, in order:
   maintainer-reviewed baseline update. Environment-sensitive startup, FCP, and Platform API timing
   regressions should be investigated on comparable hardware before promotion. CI uploads
   `summary.json` and `artifacts/` from the scheduled/manual `performance-smoke` job.
-- Generate the release certification report after the interop, performance, and app-platform
-  evidence exists:
+- Generate the release certification report after the interop, performance, app-platform,
+  app-review, and beta documentation evidence exists:
   ```bash
   tools/release-certification/run-release-certification.sh \
     --mode release-candidate \
@@ -278,17 +294,20 @@ Treat these as release blockers, in order:
   `build/release-certification/history-comparison.json`. Then inspect
   `build/release-certification/ecosystem-certification-matrix.md` for row status, previous
   status, regression status, release blockers, waiver ids, coverage checks, and recommendations.
-  Missing required evidence, failed required evidence, missing signed bundle/catalog/review evidence, missing app UI
-  design-system/lint evidence, missing `apphost.sandbox-provider` evidence, required evidence
+  Missing required evidence, failed required evidence, missing signed bundle/catalog/review
+  evidence, missing app UI design-system/lint evidence, missing beta documentation evidence,
+  failing docs redaction, missing `apphost.sandbox-provider` evidence, required evidence
   regressions, or failing ecosystem gates block release-candidate promotion unless a release
-  manager records an explicit waiver. If the previous summary predates PR-231 and the matrix
+  manager records an explicit waiver for a waivable gap. If the previous summary predates PR-231
+  and the matrix
   reports `previousMatrixPresent=false`, record that baseline transition in the release log and
   continue only after the row-level evidence and gate coverage checks pass or have explicit
-  waivers. Do not attach `artifacts/private-insert-uris.json`, private
-  signing keys, private reviewer keys, form passwords, app tokens, browser session tokens, raw
-  request bodies, raw trusted reviewer public key bytes, or unsanitized local paths to the release
-  record. CI uploads contain sanitized certification artifacts only; preserve raw local or CI gate
-  failure directories separately when deeper diagnostics are needed.
+  waivers. Do not attach `artifacts/private-insert-uris.json`, private signing keys, private
+  reviewer keys, form passwords, app tokens, browser session tokens, raw request bodies, raw feed
+  bodies, raw trust documents, private insert URIs, raw trusted reviewer public key bytes, or
+  unsanitized local paths to the release record. CI uploads contain sanitized certification
+  artifacts only; preserve raw local or CI gate failure directories separately when deeper
+  diagnostics are needed.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.

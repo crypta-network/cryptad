@@ -273,6 +273,10 @@ Cryptad now uses a partial multi-project Gradle build.
   remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
   ZIP extraction, reviewer-key lifecycle governance, local review transparency logging, and
   verified staging for AppHost install/update flows.
+- `:platform-trustgraph` owns the local Trust Graph Preview statement model, strict JSON parsing,
+  canonicalization, verification, process-local anchor/store behavior, and deterministic direct
+  scoring. It is a local preview service, not the old Web of Trust plugin or a network protocol
+  change.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
   UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
   compatibility verification for standalone staged bundles.
@@ -581,9 +585,14 @@ Key docs:
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
+- [Feed Reader reference app](docs/feed-reader-reference-app.md)
+- [Trust Graph Preview](docs/trust-graph-preview.md)
 - [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
 - [App permissions and audit](docs/app-permissions-and-audit.md)
 - [App secret and identity vault](docs/app-secret-and-identity-vault.md)
+- [App review governance](docs/app-review-governance.md)
+- [App update lifecycle](docs/app-update-lifecycle.md)
+- [App platform beta known limitations](docs/app-platform-beta-known-limitations.md)
 - [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
 - [Release certification](docs/release-certification.md)
 
@@ -637,6 +646,7 @@ require a live node.
 Fast self-tests:
 
 ```bash
+python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
@@ -715,6 +725,7 @@ leaf ownership and import rules:
 ./gradlew :platform-appcatalog:test
 ./gradlew :platform-devtools:test
 ./gradlew :platform-sdk-js:test
+./gradlew :platform-trustgraph:test
 ./gradlew :platform-web-shell:test
 ./gradlew :kernel-content:test
 ./gradlew :kernel-transport:test
@@ -745,7 +756,7 @@ Additional root and mixed verification slices remain available:
 
 Platform checks now live in `:platform-api`, `:platform-apphost`, `:platform-app-ui`,
 `:platform-appvault`, `:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`,
-`:platform-devtools`, `:platform-sdk-js`, and `:platform-web-shell`.
+`:platform-devtools`, `:platform-sdk-js`, `:platform-trustgraph`, and `:platform-web-shell`.
 
 ## Code Quality
 
@@ -1034,8 +1045,8 @@ Root build also includes:
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
   Its current family-level surface covers node, connectivity, queue, peers, config, security
-  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, and
-  the platform compatibility contract.
+  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, local
+  Trust Graph Preview routes, and the platform compatibility contract.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged and verified catalog app updates now flow through this core. It also reports sandbox
   provider status, selects the Linux bubblewrap provider for enforced restricted-process launches
@@ -1057,6 +1068,8 @@ Root build also includes:
 - `:platform-appcatalog`: signed catalog source parsing, catalog writing, signature verification,
   app-store metadata parsing, Crypta catalog source fetching, artifact digest checks, safe ZIP
   extraction, and verified staging for AppHost install/update flows.
+- `:platform-trustgraph`: local Trust Graph Preview statement parsing, canonicalization,
+  verification, process-local store/anchor behavior, and deterministic direct-anchor scoring.
 - `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating,
   UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
   compatibility verification for standalone staged bundles.
@@ -1161,7 +1174,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
     `:kernel-transport`, `:kernel-routing`, `:runtime-spi`, `:runtime-alerts`,
     `:platform-api`, `:platform-apphost`, `:platform-app-ui`, `:platform-appvault`,
     `:platform-design-system`, `:platform-appdist`, `:platform-appcatalog`,
-    `:platform-devtools`, `:platform-sdk-js`,
+    `:platform-trustgraph`, `:platform-devtools`, `:platform-sdk-js`,
     `:platform-web-shell`,
     `:runtime-node`,
     `:adapter-fcp`, `:bridge-fcp-runtime`, `:bridge-http-runtime`,
@@ -1316,7 +1329,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   browser SDK resource for app-owned static UI; `:platform-appdist` provides the local app bundle
   digest, signing, packaging, and verification tooling; `:platform-appcatalog` provides signed
   catalog source, app-store metadata, Crypta catalog fetching, artifact verification, and safe ZIP
-  staging support; `:platform-devtools` provides the standalone `crypta-app` developer CLI,
+  staging support; `:platform-trustgraph` provides local trust statement parsing and deterministic
+  preview scoring; `:platform-devtools` provides the standalone `crypta-app` developer CLI,
   including offline UI linting, API contract, and compatibility checks;
   `:platform-web-shell` provides the browser-facing Web Shell v1 node-management assets and
   bootstrap contract; `:runtime-node`
