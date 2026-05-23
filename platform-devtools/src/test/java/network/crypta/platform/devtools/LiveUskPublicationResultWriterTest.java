@@ -55,6 +55,36 @@ class LiveUskPublicationResultWriterTest {
     assertFalse(markdown.contains(tempDir.toString()));
   }
 
+  @Test
+  void preflightWritableOutput_whenJsonOutputExists_expectIncompleteMarker() throws Exception {
+    Path output = tempDir.resolve("live-summary.json");
+    Files.writeString(
+        output, "{\"publicationStatus\":\"complete\",\"catalogInsertStatus\":\"queued\"}");
+
+    LiveUskPublicationResultWriter.preflightWritableOutput(output);
+
+    String json = Files.readString(output, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"publicationStatus\": \"incomplete\""));
+    assertTrue(json.contains("ignore previous summaries"));
+    assertFalse(json.contains("\"catalogInsertStatus\":\"queued\""));
+    assertFalse(json.contains("\"publicationStatus\":\"complete\""));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void preflightWritableOutput_whenMarkdownOutputExists_expectIncompleteMarker() throws Exception {
+    Path output = tempDir.resolve("live-summary.md");
+    Files.writeString(output, "- Catalog insert status: `queued`\n");
+
+    LiveUskPublicationResultWriter.preflightWritableOutput(output);
+
+    String markdown = Files.readString(output, StandardCharsets.UTF_8);
+    assertTrue(markdown.contains("- Publication status: `incomplete`"));
+    assertTrue(markdown.contains("ignore previous summaries"));
+    assertFalse(markdown.contains("Catalog insert status"));
+    assertFalse(markdown.contains(tempDir.toString()));
+  }
+
   private static LiveUskPublicationResult resultWithoutResolvedMetadata(
       Path output, List<String> warnings) {
     return result(output, false, "", "", warnings);

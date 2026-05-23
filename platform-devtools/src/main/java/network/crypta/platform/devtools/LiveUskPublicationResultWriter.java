@@ -1,7 +1,6 @@
 package network.crypta.platform.devtools;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -25,6 +24,10 @@ import network.crypta.platform.appdist.AppDistributionException;
  * when needed and overwrites the target file without following the target as a symlink.
  */
 final class LiveUskPublicationResultWriter {
+  private static final String INCOMPLETE_PUBLICATION_STATUS = "incomplete";
+  private static final String INCOMPLETE_PUBLICATION_MESSAGE =
+      "live publication did not complete; ignore previous summaries for this output";
+
   /** Utility class; all rendering operations are static. */
   private LiveUskPublicationResultWriter() {}
 
@@ -54,11 +57,10 @@ final class LiveUskPublicationResultWriter {
    * Reserves the summary output path before a live publication side effect is attempted.
    *
    * <p>Live USK publication queues a durable insert before the final report is rendered. This
-   * preflight creates the parent directory and opens the summary target without following a symlink
-   * or truncating existing content, proving that the required evidence file is a regular writable
-   * path before the queue receives any secret-bearing insert request. The method intentionally
-   * emits sanitized errors only; callers should not report absolute output paths in failure
-   * messages.
+   * preflight creates the parent directory, rejects unsafe target shapes, and writes a small
+   * sanitized incomplete marker without following a symlink. Replacing any previous summary before
+   * the queue receives a secret-bearing insert request prevents release automation from reading
+   * stale success evidence if the current live attempt later fails.
    *
    * @param output normalized summary output path
    * @throws IOException if the output path cannot be reserved safely
@@ -73,19 +75,51 @@ final class LiveUskPublicationResultWriter {
         throw new AppDistributionException(
             "live publication output must be a regular writable file");
       }
-      try (OutputStream ignored =
-          Files.newOutputStream(
-              output,
-              StandardOpenOption.CREATE,
-              StandardOpenOption.WRITE,
-              LinkOption.NOFOLLOW_LINKS)) {
-        // Opening the stream is the reservation; no content is written before publication.
-      }
+      Files.writeString(
+          output,
+          incompleteMarker(output),
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING,
+          StandardOpenOption.WRITE,
+          LinkOption.NOFOLLOW_LINKS);
     } catch (AppDistributionException exception) {
       throw exception;
     } catch (IOException exception) {
       throw new AppDistributionException("live publication output must be writable");
     }
+  }
+
+  /**
+   * Renders the report placeholder written before the live queue receives an insert request.
+   *
+   * <p>The marker is intentionally small and secret-free. It is valid JSON for JSON destinations
+   * and readable Markdown for operator summaries, but it cannot be mistaken for a successful live
+   * publication result because it records {@code publicationStatus=incomplete} and omits insert
+   * success fields.
+   *
+   * @param output normalized output path whose suffix selects the marker format
+   * @return sanitized incomplete summary marker
+   */
+  private static String incompleteMarker(Path output) {
+    if (output.toString().endsWith(".json")) {
+      return """
+      {
+        "schemaVersion": 1,
+        "mode": "live",
+        "publicationStatus": "%s",
+        "message": "%s"
+      }
+      """
+          .formatted(INCOMPLETE_PUBLICATION_STATUS, INCOMPLETE_PUBLICATION_MESSAGE);
+    }
+    return """
+    # Crypta Catalog Live USK Publication Summary
+
+    - Publication status: `%s`
+    - Message: `%s`
+    """
+        .formatted(INCOMPLETE_PUBLICATION_STATUS, INCOMPLETE_PUBLICATION_MESSAGE);
   }
 
   /**

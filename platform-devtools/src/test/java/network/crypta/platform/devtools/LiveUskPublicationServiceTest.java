@@ -257,11 +257,15 @@ class LiveUskPublicationServiceTest {
   }
 
   @Test
-  void publish_whenPublisherFailsBeforeQueueAccepted_expectStagingCleanedWithoutSummary()
+  void publish_whenPublisherFailsBeforeQueueAccepted_expectStagingCleanedAndSummaryInvalidated()
       throws Exception {
     KeyPair keyPair = keyPair();
     Path catalogFile = writeSignedCatalog(keyPair);
     Path output = tempDir.resolve("live-summary.json");
+    Files.writeString(
+        output,
+        "{\"publicationStatus\":\"complete\",\"catalogInsertStatus\":\"queued\"}",
+        StandardCharsets.UTF_8);
     FailingPublisher publisher =
         new FailingPublisher(new AppDistributionException("live_publish_failed: node unreachable"));
 
@@ -276,7 +280,7 @@ class LiveUskPublicationServiceTest {
     assertTrue(publisher.invoked);
     assertFalse(Files.exists(publisher.stagingDirectory));
     assertFalse(hasLiveStagingDirectory(tempDir));
-    assertEquals(0L, Files.size(output));
+    assertIncompleteSummaryMarker(output);
   }
 
   @Test
@@ -303,7 +307,7 @@ class LiveUskPublicationServiceTest {
       assertTrue(
           Files.isRegularFile(
               publisher.stagingDirectory.resolve(AppCatalogSignature.CATALOG_FILE_NAME)));
-      assertEquals(0L, Files.size(output));
+      assertIncompleteSummaryMarker(output);
     } finally {
       if (publisher.stagingDirectory != null) {
         deleteRecursively(publisher.stagingDirectory);
@@ -346,6 +350,14 @@ class LiveUskPublicationServiceTest {
 
   private static String publicSignatureSource() {
     return "crypta:" + PUBLIC_USK_PREFIX + "/catalog/42/" + AppCatalogSignature.SIGNATURE_FILE_NAME;
+  }
+
+  private static void assertIncompleteSummaryMarker(Path output) throws Exception {
+    String summary = Files.readString(output, StandardCharsets.UTF_8);
+    assertTrue(summary.contains("\"publicationStatus\": \"incomplete\""));
+    assertTrue(summary.contains("ignore previous summaries"));
+    assertFalse(summary.contains("\"catalogInsertStatus\":\"queued\""));
+    assertFalse(summary.contains("\"publicationStatus\":\"complete\""));
   }
 
   private Path writeSignedCatalog(KeyPair keyPair) throws Exception {
