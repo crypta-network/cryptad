@@ -10,6 +10,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -100,7 +101,13 @@ final class LiveUskPublicationService {
             .signatureBytes(inputs.signatureBytes())
             .verifyLiveFetch(request.verifyLiveFetch())
             .build();
-    LiveUskPublishResponse response = publisher.publish(publishRequest);
+    LiveUskPublishResponse response;
+    try {
+      response = publisher.publish(publishRequest);
+    } catch (IOException exception) {
+      cleanupStagingAfterFailedPublish(stagingDirectory, exception);
+      throw exception;
+    }
     cleanupWarnings.add(STAGING_RETAINED_WARNING);
     List<String> warnings = new ArrayList<>(response.warnings());
     warnings.addAll(cleanupWarnings);
@@ -447,6 +454,42 @@ final class LiveUskPublicationService {
         StandardOpenOption.CREATE_NEW,
         StandardOpenOption.WRITE);
     return stagingDirectory;
+  }
+
+  /**
+   * Removes staged sidecars when publication fails before the queue accepts them.
+   *
+   * <p>Failures after queue acceptance keep staging in place because the daemon may still consume
+   * the disk-backed directory. Cleanup errors are reported with sanitized text and without exposing
+   * local staging paths.
+   *
+   * @param stagingDirectory staged directory created for the live insert
+   * @param failure sanitized publication failure raised by the live publisher
+   * @throws IOException if cleanup itself cannot complete
+   */
+  private static void cleanupStagingAfterFailedPublish(Path stagingDirectory, IOException failure)
+      throws IOException {
+    if (failure instanceof LiveUskPublishException) {
+      return;
+    }
+    try {
+      deleteRecursively(stagingDirectory);
+    } catch (IOException _) {
+      throw new AppDistributionException(
+          "live_publish_failed: could not clean staged sidecars after publication failure",
+          failure);
+    }
+  }
+
+  private static void deleteRecursively(Path root) throws IOException {
+    if (!Files.exists(root)) {
+      return;
+    }
+    try (var stream = Files.walk(root)) {
+      for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    }
   }
 
   /**

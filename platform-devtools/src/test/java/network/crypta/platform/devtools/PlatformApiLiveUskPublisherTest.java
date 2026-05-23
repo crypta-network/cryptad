@@ -27,6 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class PlatformApiLiveUskPublisherTest {
@@ -154,6 +155,33 @@ class PlatformApiLiveUskPublisherTest {
   }
 
   @Test
+  void publish_whenLiveFetchVerificationFailsAfterQueueStart_expectStagingRetentionException()
+      throws Exception {
+    AtomicInteger fetchCount = new AtomicInteger();
+    HttpServer server =
+        HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    server.createContext(
+        "/api/v1/queue/inserts/directory",
+        exchange -> sendJson(exchange, 201, "{\"outcome\":\"STARTED\"}"));
+    server.createContext(
+        "/api/v1/content/fetch", exchange -> handleMismatchedCatalogFetch(exchange, fetchCount));
+    server.start();
+    try {
+      PlatformApiLiveUskPublisher publisher = new PlatformApiLiveUskPublisher();
+      URI nodeBaseUrl = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/api/v1");
+
+      LiveUskPublishException exception =
+          assertThrows(
+              LiveUskPublishException.class,
+              () -> publisher.publish(requestWithLiveFetchVerification(nodeBaseUrl)));
+
+      assertTrue(exception.getMessage().contains("fetched catalog bytes do not match"));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
   void publish_whenQueueOutcomeIsNotStarted_expectSanitizedFailure() throws Exception {
     LinkedHashMap<String, String> queueForm = new LinkedHashMap<>();
     HttpServer server =
@@ -209,6 +237,25 @@ class PlatformApiLiveUskPublisherTest {
           200,
           "{\"contentBase64\":\"%s\",\"resolvedUri\":\"%s\"}"
               .formatted(Base64.getEncoder().encodeToString(CATALOG_BYTES), resolvedUri));
+      return;
+    }
+    sendJson(
+        exchange,
+        200,
+        "{\"contentBase64\":\"%s\"}"
+            .formatted(Base64.getEncoder().encodeToString(SIGNATURE_BYTES)));
+  }
+
+  private static void handleMismatchedCatalogFetch(HttpExchange exchange, AtomicInteger fetchCount)
+      throws IOException {
+    if (fetchCount.getAndIncrement() == 0) {
+      sendJson(
+          exchange,
+          200,
+          "{\"contentBase64\":\"%s\"}"
+              .formatted(
+                  Base64.getEncoder()
+                      .encodeToString("wrong catalog".getBytes(StandardCharsets.UTF_8))));
       return;
     }
     sendJson(

@@ -95,20 +95,29 @@ final class PlatformApiLiveUskPublisher implements LiveUskPublisher {
 
   @Override
   public LiveUskPublishResponse publish(LiveUskPublishRequest request) throws IOException {
-    enqueueDirectoryInsert(request);
-    Optional<String> resolvedCatalogSource = Optional.empty();
-    String postPublishStatus = POST_PUBLISH_NOT_REQUESTED;
-    if (request.verifyLiveFetch()) {
-      resolvedCatalogSource = verifyFetchedSidecars(request);
-      postPublishStatus = POST_PUBLISH_VERIFIED;
+    boolean queueAccepted = false;
+    try {
+      enqueueDirectoryInsert(request);
+      queueAccepted = true;
+      Optional<String> resolvedCatalogSource = Optional.empty();
+      String postPublishStatus = POST_PUBLISH_NOT_REQUESTED;
+      if (request.verifyLiveFetch()) {
+        resolvedCatalogSource = verifyFetchedSidecars(request);
+        postPublishStatus = POST_PUBLISH_VERIFIED;
+      }
+      return new LiveUskPublishResponse(
+          STATUS_QUEUED,
+          STATUS_QUEUED,
+          resolvedCatalogSource,
+          postPublishStatus,
+          SCHEDULER_REFRESH_NOT_RUN,
+          List.of());
+    } catch (IOException exception) {
+      if (queueAccepted) {
+        throw LiveUskPublishException.afterQueueAccepted(exception);
+      }
+      throw exception;
     }
-    return new LiveUskPublishResponse(
-        STATUS_QUEUED,
-        STATUS_QUEUED,
-        resolvedCatalogSource,
-        postPublishStatus,
-        SCHEDULER_REFRESH_NOT_RUN,
-        List.of());
   }
 
   /**

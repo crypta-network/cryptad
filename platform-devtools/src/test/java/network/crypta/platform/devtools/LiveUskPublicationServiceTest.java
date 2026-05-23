@@ -1,5 +1,6 @@
 package network.crypta.platform.devtools;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -256,6 +257,61 @@ class LiveUskPublicationServiceTest {
   }
 
   @Test
+  void publish_whenPublisherFailsBeforeQueueAccepted_expectStagingCleanedWithoutSummary()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path catalogFile = writeSignedCatalog(keyPair);
+    Path output = tempDir.resolve("live-summary.json");
+    FailingPublisher publisher =
+        new FailingPublisher(new AppDistributionException("live_publish_failed: node unreachable"));
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                LiveUskPublicationService.publish(
+                    request(catalogFile, output, false), trustedKeys(keyPair), publisher));
+
+    assertTrue(exception.getMessage().contains("node unreachable"));
+    assertTrue(publisher.invoked);
+    assertFalse(Files.exists(publisher.stagingDirectory));
+    assertFalse(hasLiveStagingDirectory(tempDir));
+    assertEquals(0L, Files.size(output));
+  }
+
+  @Test
+  void publish_whenPublisherFailsAfterQueueAccepted_expectStagingRetained() throws Exception {
+    KeyPair keyPair = keyPair();
+    Path catalogFile = writeSignedCatalog(keyPair);
+    Path output = tempDir.resolve("live-summary.json");
+    FailingPublisher publisher =
+        new FailingPublisher(
+            LiveUskPublishException.afterQueueAccepted(
+                new AppDistributionException(
+                    "live_publish_verification_failed: fetched catalog bytes do not match local"
+                        + " catalog")));
+
+    try {
+      assertThrows(
+          LiveUskPublishException.class,
+          () ->
+              LiveUskPublicationService.publish(
+                  request(catalogFile, output, true), trustedKeys(keyPair), publisher));
+
+      assertTrue(publisher.invoked);
+      assertTrue(Files.exists(publisher.stagingDirectory));
+      assertTrue(
+          Files.isRegularFile(
+              publisher.stagingDirectory.resolve(AppCatalogSignature.CATALOG_FILE_NAME)));
+      assertEquals(0L, Files.size(output));
+    } finally {
+      if (publisher.stagingDirectory != null) {
+        deleteRecursively(publisher.stagingDirectory);
+      }
+    }
+  }
+
+  @Test
   void publish_whenTrustedKeyIsMissing_expectFailureBeforeLiveInsert() throws Exception {
     KeyPair keyPair = keyPair();
     Path catalogFile = writeSignedCatalog(keyPair);
@@ -380,6 +436,27 @@ class LiveUskPublicationServiceTest {
       assertTrue(
           Files.isRegularFile(stagingDirectory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME)));
       return response;
+    }
+  }
+
+  private static final class FailingPublisher implements LiveUskPublisher {
+    private final IOException failure;
+    private boolean invoked;
+    private Path stagingDirectory;
+
+    private FailingPublisher(IOException failure) {
+      this.failure = failure;
+    }
+
+    @Override
+    public LiveUskPublishResponse publish(LiveUskPublishRequest request) throws IOException {
+      invoked = true;
+      stagingDirectory = request.stagingDirectory();
+      assertTrue(
+          Files.isRegularFile(stagingDirectory.resolve(AppCatalogSignature.CATALOG_FILE_NAME)));
+      assertTrue(
+          Files.isRegularFile(stagingDirectory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME)));
+      throw failure;
     }
   }
 }
