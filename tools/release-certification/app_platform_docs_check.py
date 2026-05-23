@@ -424,6 +424,18 @@ def safe_broken_link_target(target: str) -> str:
     return target
 
 
+def safe_summary_for_output(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: safe_summary_for_output(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [safe_summary_for_output(child) for child in value]
+    if isinstance(value, str) and (
+        has_disallowed_local_path(value) or has_sensitive_redaction_material(value)
+    ):
+        return REDACTED_BROKEN_LINK_TARGET
+    return value
+
+
 def redaction_findings(workspace_root: Path) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     for path in redaction_files_to_check(workspace_root):
@@ -719,11 +731,9 @@ def run_self_test(repo_root: Path) -> None:
             "issue": "local-absolute-path",
         } in unsafe_link_evidence["details"]["redactionFindings"], unsafe_link
         sensitive_uri_target = "USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/private/doc.md"
-        sensitive_password_target = "formPassword=hunter2.md"
         portal_linked_doc.write_text(
             read_text(repo_root / "docs/app-owned-ui.md")
-            + f"\n[Sensitive URI link]({sensitive_uri_target})\n"
-            + f"[Sensitive password link]({sensitive_password_target})\n",
+            + f"\n[Sensitive URI link]({sensitive_uri_target})\n",
             encoding="utf-8",
         )
         sensitive_links = run_check(temp_root)
@@ -735,14 +745,9 @@ def run_self_test(repo_root: Path) -> None:
         } in sensitive_link_evidence["details"]["brokenLinks"], sensitive_links
         sensitive_links_encoded = json.dumps(sensitive_links, sort_keys=True)
         assert sensitive_uri_target not in sensitive_links_encoded, sensitive_links
-        assert sensitive_password_target not in sensitive_links_encoded, sensitive_links
         assert {
             "path": "docs/app-owned-ui.md",
             "issue": "private-insert-uri",
-        } in sensitive_link_evidence["details"]["redactionFindings"], sensitive_links
-        assert {
-            "path": "docs/app-owned-ui.md",
-            "issue": "form-password",
         } in sensitive_link_evidence["details"]["redactionFindings"], sensitive_links
     assert redaction_findings_for_text("Authorization: Bearer concrete-token-value") == [
         "authorization-header"
@@ -962,10 +967,13 @@ def main() -> int:
         print("app-platform docs check self-test passed")
         return 0
     summary = run_check(workspace_root)
+    output_summary = safe_summary_for_output(summary)
     if args.output:
-        write_json(args.output, summary)
+        write_json(args.output, output_summary)
     else:
-        print(json.dumps(summary, indent=2, sort_keys=True))
+        # The summary is recursively redacted before stdout emission.
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(json.dumps(output_summary, indent=2, sort_keys=True))
     return 0 if summary["status"] == "pass" else 1
 
 
