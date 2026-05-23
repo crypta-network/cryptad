@@ -898,8 +898,12 @@
         "checks": {
           "docsCoverLiveCatalogRefresh": true,
           "manualPolicyStillDefault": true,
+          "manualRefreshRouteExists": true,
+          "policyDrivenUpdatesStayInService": true,
           "refreshBeforeCandidateDiscovery": true,
-          "schedulerDoesNotApplyDirectly": true
+          "refreshFailureContained": true,
+          "schedulerDoesNotApplyDirectly": true,
+          "schedulerSummaryPrivacyGuard": true
         },
         "liveNodeRequired": false,
         "policy": "manual default; scheduler refreshes catalogs before candidate discovery"

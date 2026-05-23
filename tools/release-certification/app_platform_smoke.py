@@ -4980,7 +4980,7 @@ def collect_app_update_live_catalog_refresh_evidence(settings: Settings) -> Evid
             )
             and "refresh(catalogId)" in catalog_handler_text
         ),
-        "pathAndSecretFreeSchedulerEvidence": (
+        "schedulerSummaryPrivacyGuard": (
             "summary_whenSchedulerStatePresent_expectPathFreeSchedulerSummary"
             in scheduler_test_text
             and "secret-token" in scheduler_test_text
@@ -6082,6 +6082,15 @@ def run_self_test(repo_root: Path) -> None:
         assert scheduler_checks["schedulerPathAndPrivateDataFree"] is True, scheduler_checks
         assert scheduler_checks["schedulerLifecycleDocumented"] is True, scheduler_checks
         assert evidence_by_id["app-update.live-catalog-refresh"]["status"] == "pass"
+        live_catalog_refresh_checks = evidence_by_id["app-update.live-catalog-refresh"]["details"][
+            "checks"
+        ]
+        assert (
+            live_catalog_refresh_checks["schedulerSummaryPrivacyGuard"] is True
+        ), live_catalog_refresh_checks
+        assert all(
+            isinstance(value, bool) for value in live_catalog_refresh_checks.values()
+        ), live_catalog_refresh_checks
         assert evidence_by_id["app-update.rollback"]["status"] == "pass"
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         rollback_checks = evidence_by_id["app-update.rollback"]["details"]["checks"]
