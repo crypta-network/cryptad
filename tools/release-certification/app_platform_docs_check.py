@@ -226,7 +226,11 @@ FILE_URI_RE = re.compile(
     r"(?P<path>/[^\s`'\"<>)]*|[A-Za-z]:[\\/][^\s`'\"<>)]*)",
     re.IGNORECASE,
 )
-MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]\r\n]+\]\(([^)]+)\)")
+MARKDOWN_REFERENCE_LINK_RE = re.compile(r"(?<!!)\[([^\]\r\n]+)\]\[([^\]\r\n]*)\]")
+MARKDOWN_REFERENCE_DEFINITION_RE = re.compile(
+    r"(?m)^[ \t]{0,3}\[([^\]\r\n]+)\]:[ \t]*(.+?)\s*$"
+)
 MARKDOWN_LINK_DESTINATION_RE = re.compile(
     r"^(?:<(?P<angle>[^<>\r\n]*)>|(?P<bare>\S+))"
     r"(?:\s+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)\r\n]*\)))?\s*$"
@@ -301,6 +305,37 @@ def normalize_doc_link_target(raw_target: str) -> str:
     return path
 
 
+def normalize_reference_label(label: str) -> str:
+    return " ".join(label.strip().casefold().split())
+
+
+def markdown_reference_definitions(text: str) -> dict[str, str]:
+    definitions: dict[str, str] = {}
+    for match in MARKDOWN_REFERENCE_DEFINITION_RE.finditer(text):
+        label = normalize_reference_label(match.group(1))
+        if not label or label in definitions:
+            continue
+        target = normalize_doc_link_target(match.group(2))
+        if target:
+            definitions[label] = target
+    return definitions
+
+
+def markdown_doc_link_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for match in MARKDOWN_LINK_RE.finditer(text):
+        target = normalize_doc_link_target(match.group(1))
+        if target:
+            targets.append(target)
+    reference_definitions = markdown_reference_definitions(text)
+    for match in MARKDOWN_REFERENCE_LINK_RE.finditer(text):
+        label = match.group(2) or match.group(1)
+        target = reference_definitions.get(normalize_reference_label(label))
+        if target:
+            targets.append(target)
+    return targets
+
+
 def resolve_doc_link_target(workspace_root: Path, markdown_file: Path, target: str) -> Path:
     if target.startswith("/"):
         return (workspace_root / target.lstrip("/")).resolve()
@@ -313,10 +348,7 @@ def resolve_doc_link_target(workspace_root: Path, markdown_file: Path, target: s
 def markdown_link_targets(workspace_root: Path, markdown_file: Path) -> set[str]:
     targets: set[str] = set()
     text = read_text(markdown_file)
-    for match in MARKDOWN_LINK_RE.finditer(text):
-        target = normalize_doc_link_target(match.group(1))
-        if not target:
-            continue
+    for target in markdown_doc_link_targets(text):
         resolved = resolve_doc_link_target(workspace_root, markdown_file, target)
         try:
             relative = resolved.relative_to(workspace_root.resolve())
@@ -337,10 +369,7 @@ def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
     broken: list[dict[str, str]] = []
     for markdown_file in markdown_files_to_check(workspace_root):
         text = read_text(markdown_file)
-        for match in MARKDOWN_LINK_RE.finditer(text):
-            target = normalize_doc_link_target(match.group(1))
-            if not target:
-                continue
+        for target in markdown_doc_link_targets(text):
             resolved = resolve_doc_link_target(workspace_root, markdown_file, target)
             try:
                 resolved.relative_to(workspace_root.resolve())
@@ -638,6 +667,21 @@ def run_self_test(repo_root: Path) -> None:
         ], titled_portal
         portal_doc.write_text(
             read_text(repo_root / "docs/app-platform-developer-portal.md").replace(
+                "[app-catalogs.md](app-catalogs.md)",
+                "[app-catalogs.md][catalog-docs]",
+            )
+            + '\n[catalog-docs]: app-catalogs.md "catalog docs"\n',
+            encoding="utf-8",
+        )
+        reference_portal = run_check(temp_root)
+        reference_portal_evidence = evidence_by_id(reference_portal)[
+            "app-platform.docs-portal"
+        ]
+        assert "docs/app-catalogs.md" not in reference_portal_evidence["details"][
+            "missingPortalLinks"
+        ], reference_portal
+        portal_doc.write_text(
+            read_text(repo_root / "docs/app-platform-developer-portal.md").replace(
                 "(app-catalogs.md)", "(app-catalogs.md.bak)"
             ),
             encoding="utf-8",
@@ -676,6 +720,23 @@ def run_self_test(repo_root: Path) -> None:
                 "brokenLinks"
             ]
         ), root_relative_readme
+        readme.write_text(
+            '[App Platform Beta][portal-doc]\n\n'
+            '[portal-doc]: /docs/app-platform-developer-portal.md "portal docs"\n',
+            encoding="utf-8",
+        )
+        reference_readme = run_check(temp_root)
+        reference_readme_evidence = evidence_by_id(reference_readme)
+        assert reference_readme_evidence["app-platform.docs-portal"]["details"][
+            "readmeLinksPortal"
+        ] is True, reference_readme
+        assert not any(
+            broken["source"] == "README.md"
+            and broken["target"] == "/docs/app-platform-developer-portal.md"
+            for broken in reference_readme_evidence["app-platform.docs-redaction"]["details"][
+                "brokenLinks"
+            ]
+        ), reference_readme
         readme.write_text(read_text(repo_root / "README.md"), encoding="utf-8")
         portal_linked_doc = temp_root / "docs/app-owned-ui.md"
         portal_linked_doc.write_text(
@@ -713,6 +774,22 @@ def run_self_test(repo_root: Path) -> None:
             "target": "missing-beta-link.md",
             "reason": "missing",
         } in broken_link_evidence["details"]["brokenLinks"], broken_portal_link
+        portal_linked_doc.write_text(
+            read_text(repo_root / "docs/app-owned-ui.md")
+            + '\n[Broken portal-linked doc link][missing-beta]\n'
+            + '\n[missing-beta]: missing-beta-link.md "missing beta link"\n',
+            encoding="utf-8",
+        )
+        broken_reference_link = run_check(temp_root)
+        broken_reference_evidence = evidence_by_id(broken_reference_link)[
+            "app-platform.docs-redaction"
+        ]
+        assert broken_reference_evidence["status"] == "fail", broken_reference_link
+        assert {
+            "source": "docs/app-owned-ui.md",
+            "target": "missing-beta-link.md",
+            "reason": "missing",
+        } in broken_reference_evidence["details"]["brokenLinks"], broken_reference_link
         portal_linked_doc.write_text(
             read_text(repo_root / "docs/app-owned-ui.md")
             + "\n[Unsafe local link](/home/alice/private.md)\n",
