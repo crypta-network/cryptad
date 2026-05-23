@@ -1,12 +1,14 @@
 package network.crypta.platform.devtools;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import network.crypta.platform.appdist.AppDistributionException;
 
 /**
  * Writes sanitized live USK publication summaries.
@@ -46,6 +48,44 @@ final class LiveUskPublicationResultWriter {
         StandardOpenOption.TRUNCATE_EXISTING,
         StandardOpenOption.WRITE,
         LinkOption.NOFOLLOW_LINKS);
+  }
+
+  /**
+   * Reserves the summary output path before a live publication side effect is attempted.
+   *
+   * <p>Live USK publication queues a durable insert before the final report is rendered. This
+   * preflight creates the parent directory and opens the summary target without following a symlink
+   * or truncating existing content, proving that the required evidence file is a regular writable
+   * path before the queue receives any secret-bearing insert request. The method intentionally
+   * emits sanitized errors only; callers should not report absolute output paths in failure
+   * messages.
+   *
+   * @param output normalized summary output path
+   * @throws IOException if the output path cannot be reserved safely
+   */
+  static void preflightWritableOutput(Path output) throws IOException {
+    try {
+      Path parent = output.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      if (Files.isSymbolicLink(output) || Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppDistributionException(
+            "live publication output must be a regular writable file");
+      }
+      try (OutputStream ignored =
+          Files.newOutputStream(
+              output,
+              StandardOpenOption.CREATE,
+              StandardOpenOption.WRITE,
+              LinkOption.NOFOLLOW_LINKS)) {
+        // Opening the stream is the reservation; no content is written before publication.
+      }
+    } catch (AppDistributionException exception) {
+      throw exception;
+    } catch (IOException exception) {
+      throw new AppDistributionException("live publication output must be writable");
+    }
   }
 
   /**

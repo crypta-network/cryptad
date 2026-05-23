@@ -1,6 +1,7 @@
 package network.crypta.platform.devtools;
 
 import java.io.IOException;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -68,16 +69,17 @@ final class PlatformApiLiveUskPublisher implements LiveUskPublisher {
   private final HttpClient httpClient;
 
   /**
-   * Creates a publisher with a bounded no-redirect HTTP client.
+   * Creates a publisher with a bounded no-proxy, no-redirect HTTP client.
    *
    * <p>The CLI has already validated that the base URL points at localhost. The client still avoids
-   * redirects so a misconfigured node endpoint cannot silently forward private insert material or a
-   * form password to another URL.
+   * inherited JVM proxy selectors and redirects so a misconfigured runtime cannot silently forward
+   * private insert material or a form password outside the validated loopback endpoint.
    */
   PlatformApiLiveUskPublisher() {
     this(
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
+            .proxy(ProxySelector.of(null))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build());
   }

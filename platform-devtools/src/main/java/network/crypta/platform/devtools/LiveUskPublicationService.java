@@ -84,6 +84,7 @@ final class LiveUskPublicationService {
     requireInsertUriMatchesPublicSource(privateInsertUri, inputs.catalogSource());
     String formPassword = requireFormPassword(request.formPassword());
     String publicSignatureSource = publicSignatureSource(inputs.catalogSource());
+    LiveUskPublicationResultWriter.preflightWritableOutput(inputs.output());
     List<String> cleanupWarnings = new ArrayList<>();
     Path stagingDirectory = stageSidecars(inputs);
     LiveUskPublishRequest publishRequest =

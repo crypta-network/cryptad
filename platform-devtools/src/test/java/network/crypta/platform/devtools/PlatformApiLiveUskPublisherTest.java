@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.SocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +34,45 @@ class PlatformApiLiveUskPublisherTest {
   private static final byte[] SIGNATURE_BYTES = "signature bytes".getBytes(StandardCharsets.UTF_8);
 
   @TempDir private Path tempDir;
+
+  @Test
+  void publish_whenDefaultProxySelectorConfigured_expectLoopbackRequestBypassesProxy()
+      throws Exception {
+    AtomicInteger proxySelections = new AtomicInteger();
+    ProxySelector previousProxySelector = ProxySelector.getDefault();
+    HttpServer server =
+        HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    server.createContext(
+        "/api/v1/queue/inserts/directory",
+        exchange -> sendJson(exchange, 201, "{\"outcome\":\"STARTED\"}"));
+    server.start();
+    ProxySelector.setDefault(
+        new ProxySelector() {
+          @Override
+          public List<Proxy> select(URI uri) {
+            proxySelections.incrementAndGet();
+            return List.of(Proxy.NO_PROXY);
+          }
+
+          @Override
+          public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {}
+        });
+    try {
+      PlatformApiLiveUskPublisher publisher = new PlatformApiLiveUskPublisher();
+      URI nodeBaseUrl = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/api/v1");
+
+      LiveUskPublishResponse response =
+          publisher.publish(requestWithoutLiveFetchVerification(nodeBaseUrl));
+
+      assertEquals("queued", response.catalogInsertStatus());
+      assertEquals("queued", response.signatureInsertStatus());
+      assertEquals("not_requested", response.postPublishVerificationStatus());
+      assertEquals(0, proxySelections.get());
+    } finally {
+      ProxySelector.setDefault(previousProxySelector);
+      server.stop(0);
+    }
+  }
 
   @Test
   void publish_whenCatalogFetchResolvesEdition_expectSignatureFetchedFromResolvedSibling()
@@ -177,6 +219,14 @@ class PlatformApiLiveUskPublisherTest {
   }
 
   private static LiveUskPublishRequest requestWithLiveFetchVerification(URI nodeBaseUrl) {
+    return baseRequest(nodeBaseUrl).verifyLiveFetch(true).build();
+  }
+
+  private static LiveUskPublishRequest requestWithoutLiveFetchVerification(URI nodeBaseUrl) {
+    return baseRequest(nodeBaseUrl).verifyLiveFetch(false).build();
+  }
+
+  private static LiveUskPublishRequest.Builder baseRequest(URI nodeBaseUrl) {
     return LiveUskPublishRequest.builder()
         .nodeBaseUrl(nodeBaseUrl)
         .formPassword("form-password")
@@ -186,9 +236,7 @@ class PlatformApiLiveUskPublisherTest {
         .publicCatalogSource("crypta:USK@PUBLIC/catalog/-1/cryptad-app-catalog.properties")
         .publicSignatureSource("crypta:USK@PUBLIC/catalog/-1/cryptad-app-catalog.signature")
         .catalogBytes(CATALOG_BYTES)
-        .signatureBytes(SIGNATURE_BYTES)
-        .verifyLiveFetch(true)
-        .build();
+        .signatureBytes(SIGNATURE_BYTES);
   }
 
   private static Map<String, String> readForm(HttpExchange exchange) throws IOException {

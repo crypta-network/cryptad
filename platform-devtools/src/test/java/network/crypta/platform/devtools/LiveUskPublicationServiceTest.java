@@ -230,6 +230,32 @@ class LiveUskPublicationServiceTest {
   }
 
   @Test
+  void publish_whenSummaryOutputIsDirectory_expectFailureBeforeLiveInsertOrStaging()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path catalogFile = writeSignedCatalog(keyPair);
+    Path output = tempDir.resolve("live-summary.json");
+    Files.createDirectory(output);
+    RecordingPublisher publisher =
+        new RecordingPublisher(
+            new LiveUskPublishResponse(
+                "queued", "queued", Optional.empty(), "not_requested", "not_run", List.of()));
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                LiveUskPublicationService.publish(
+                    request(catalogFile, output, false), trustedKeys(keyPair), publisher));
+
+    assertTrue(exception.getMessage().contains("regular writable file"));
+    assertFalse(exception.getMessage().contains(PRIVATE_INSERT_URI));
+    assertFalse(exception.getMessage().contains(FORM_PASSWORD));
+    assertFalse(publisher.invoked);
+    assertFalse(hasLiveStagingDirectory(tempDir));
+  }
+
+  @Test
   void publish_whenTrustedKeyIsMissing_expectFailureBeforeLiveInsert() throws Exception {
     KeyPair keyPair = keyPair();
     Path catalogFile = writeSignedCatalog(keyPair);
@@ -308,6 +334,13 @@ class LiveUskPublicationServiceTest {
       for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
         Files.deleteIfExists(path);
       }
+    }
+  }
+
+  private static boolean hasLiveStagingDirectory(Path parent) throws Exception {
+    try (var stream = Files.list(parent)) {
+      return stream.anyMatch(
+          path -> path.getFileName().toString().startsWith("cryptad-live-usk-catalog-"));
     }
   }
 
