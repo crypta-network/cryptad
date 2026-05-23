@@ -58,17 +58,18 @@ final class PublicationInputValidator {
     byte[] signatureBytes = Files.readAllBytes(normalizedSignatureFile);
     AppCatalog catalog = AppCatalogParser.parse(catalogBytes);
     AppCatalogSignature signature = AppCatalogVerifier.readSignature(signatureBytes);
-    return new ValidatedPublicationInputs(
-        normalizedCatalogFile,
-        normalizedSignatureFile,
-        catalogSource.trim(),
-        normalizedOutput,
-        catalogBytes,
-        signatureBytes,
-        catalog,
-        signature,
-        sha256Hex(catalogBytes),
-        sha256Hex(signatureBytes));
+    return ValidatedPublicationInputs.builder()
+        .catalogFile(normalizedCatalogFile)
+        .catalogSignatureFile(normalizedSignatureFile)
+        .catalogSource(catalogSource.trim())
+        .output(normalizedOutput)
+        .catalogBytes(catalogBytes)
+        .signatureBytes(signatureBytes)
+        .catalog(catalog)
+        .signature(signature)
+        .catalogSha256(sha256Hex(catalogBytes))
+        .signatureSha256(sha256Hex(signatureBytes))
+        .build();
   }
 
   /**

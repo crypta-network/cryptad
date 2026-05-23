@@ -10,6 +10,7 @@ import network.crypta.platform.appdist.AppDistributionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -39,6 +40,7 @@ class PublicationInputValidatorTest {
     assertEquals(output.toAbsolutePath().normalize(), inputs.output());
     assertEquals(sha256(Files.readAllBytes(catalogFile)), inputs.catalogSha256());
     assertEquals(sha256(Files.readAllBytes(signatureFile)), inputs.signatureSha256());
+    assertRetainsValidatedBytes(inputs, catalogFile, signatureFile);
   }
 
   @Test
@@ -132,6 +134,18 @@ class PublicationInputValidatorTest {
         """,
         StandardCharsets.UTF_8);
     return signatureFile;
+  }
+
+  private static void assertRetainsValidatedBytes(
+      ValidatedPublicationInputs inputs, Path catalogFile, Path signatureFile) throws Exception {
+    byte[] catalogBytes = inputs.catalogBytes();
+    byte[] signatureBytes = inputs.signatureBytes();
+
+    catalogBytes[0] = (byte) (catalogBytes[0] + 1);
+    signatureBytes[0] = (byte) (signatureBytes[0] + 1);
+
+    assertArrayEquals(Files.readAllBytes(catalogFile), inputs.catalogBytes());
+    assertArrayEquals(Files.readAllBytes(signatureFile), inputs.signatureBytes());
   }
 
   private static String sha256(byte[] bytes) throws Exception {
