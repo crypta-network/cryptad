@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.util.Objects;
 import network.crypta.config.Config;
 import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appvault.AppVaultService;
@@ -27,6 +28,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  * @param appHost shared AppHost bridge that exposes the current Platform API runtime surface
  * @param appCatalogManager optional signed app-catalog manager for catalog Platform API routes
  * @param appUpdateService optional app-update service shared with background scheduling
+ * @param contentSubscriptionService optional content subscription service shared with background
+ *     scheduling
  * @param appVaultService optional app-vault service for vault Platform API routes
  * @param config node configuration view used when listing or filtering sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet that anchors the registration pass at the legacy
@@ -41,6 +44,7 @@ public record LegacyHttpRouteRegistrarContext(
     AppHost appHost,
     AppCatalogManager appCatalogManager,
     AppUpdateService appUpdateService,
+    ContentSubscriptionService contentSubscriptionService,
     AppVaultService appVaultService,
     Config config,
     Toadlet browseRoot,
@@ -72,6 +76,7 @@ public record LegacyHttpRouteRegistrarContext(
         null,
         null,
         null,
+        null,
         config,
         browseRoot,
         browseRouteRegistrar,
@@ -90,6 +95,8 @@ public record LegacyHttpRouteRegistrarContext(
    * @param appHost shared AppHost bridge made visible through HTTP-owned routes
    * @param appCatalogManager optional signed app-catalog manager for catalog Platform API routes
    * @param appUpdateService optional app-update service shared with background scheduling
+   * @param contentSubscriptionService optional content subscription service shared with background
+   *     scheduling
    * @param appVaultService optional app-vault service for vault Platform API routes
    * @param config node configuration view that registration may inspect for sub-config pages
    * @param browseRoot prebuilt root browse toadlet registered at the browsing root

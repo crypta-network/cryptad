@@ -153,7 +153,8 @@ await CryptaPlatform.content.insertAppDocument({
 });
 ```
 
-Feed Reader uses the v6 feed helpers instead of constructing fetch forms by hand:
+Feed Reader uses the v8 feed and content subscription helpers instead of constructing fetch forms
+by hand:
 
 ```js
 const text = await CryptaPlatform.content.fetchText({
@@ -181,6 +182,21 @@ await CryptaPlatform.feed.publishSnapshot({
   identifier,
   snapshot: feedDocument,
 });
+
+const { subscription } = await CryptaPlatform.content.subscriptions.create({
+  uri: "USK@example/feed/0/feed.json",
+  label: "Example feed",
+  pollIntervalSeconds: 1800,
+  maxBytes: 262144,
+  timeoutMillis: 30000,
+});
+
+const subscriptionId = subscription.subscriptionId;
+const subscriptions = await CryptaPlatform.content.subscriptions.list();
+const refreshed = await CryptaPlatform.content.subscriptions.refresh(subscriptionId);
+await CryptaPlatform.content.subscriptions.pause(subscriptionId);
+await CryptaPlatform.content.subscriptions.resume(subscriptionId);
+await CryptaPlatform.content.subscriptions.remove(subscriptionId);
 ```
 
 `CryptaPlatform.feed.fetchSnapshot` wraps `POST /api/v1/content/fetch`, requires
@@ -190,11 +206,18 @@ with the app browser session header and return the JSON fetch response. Feed app
 Crypta content keys only, including `CHK@`, `SSK@`, `USK@`, `KSK@`, and matching `crypta:` forms;
 the key-type prefix is accepted case-insensitively, and the daemon rejects local files, arbitrary
 HTTP(S) URLs, loopback/LAN URLs, and absolute local paths for app principals.
+`CryptaPlatform.content.subscriptions.*` wraps `/api/v1/content/subscriptions`, requires
+`content.subscribe`, and preserves SDK request options such as `signal`, `headers`, `bootstrap`,
+`force`, and `refreshBootstrap`. Creating or refreshing a subscription also requires
+`content.fetch`. The helper validates `subscriptionId` path segments, builds form parameters with
+`URLSearchParams`, and returns only the API's safe subscription metadata. Subscription sources are
+USK-only (`USK@...` or `crypta:USK@...`); this helper is not arbitrary HTTP/HTTPS fetch support
+and is not a generic crawler.
 `CryptaPlatform.feed.publishSnapshot` wraps the generated-document insert path and requires
 `content.insert.app-document` plus `queue.write`. Feed apps should render summaries, item counts,
 timestamps, and sanitized errors, but they must not persist raw feed bodies, raw request bodies,
-private insert URIs, app process tokens, browser-session tokens, form passwords, or local paths in
-browser storage or release evidence.
+private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, raw
+fetched content, or local paths in browser storage or release evidence.
 
 Trust Graph Preview uses the v7 trust helpers:
 

@@ -2319,8 +2319,7 @@ class PlatformApiRouterTest {
             catalogManager,
             null,
             AppUiOriginRegistry.sameOriginOnly(),
-            null,
-            sharedService);
+            PlatformApiSharedAppServices.of(null, sharedService, null));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.rollbackStatus(APP_ID)).thenReturn(Optional.empty());

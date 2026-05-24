@@ -933,6 +933,8 @@ def app_platform_evidence(
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
         "app-platform.content-fetch",
+        "app-platform.content-subscriptions",
+        "network-content.subscription-scheduler",
         "app-platform.trust-graph-preview",
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
@@ -955,6 +957,7 @@ def app_platform_evidence(
         "reference-apps.content",
         "reference-app.profile-publisher",
         "reference-app.feed-reader",
+        "reference-app.feed-reader-subscriptions",
         "reference-app.trust-graph",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
@@ -1514,8 +1517,12 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="content-fetch-and-networked-content",
             category="app-platform",
-            title="Content fetch and networked content surfaces",
-            required_evidence_ids=("app-platform.content-fetch",),
+            title="Content fetch, subscriptions, and networked content surfaces",
+            required_evidence_ids=(
+                "app-platform.content-fetch",
+                "app-platform.content-subscriptions",
+                "network-content.subscription-scheduler",
+            ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/platform-api-contract.md", "docs/feed-reader-reference-app.md"),
         ),
@@ -1635,7 +1642,10 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="feed-reader",
             category="reference-apps",
             title="Feed Reader reference app",
-            required_evidence_ids=("reference-app.feed-reader",),
+            required_evidence_ids=(
+                "reference-app.feed-reader",
+                "reference-app.feed-reader-subscriptions",
+            ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/feed-reader-reference-app.md",),
             first_party_apps=("feed-reader",),
@@ -3204,12 +3214,20 @@ def evaluate_reference_content_gate(
     previous_profile_item = previous.get("reference-app.profile-publisher")
     feed_reader_item = current.get("reference-app.feed-reader")
     previous_feed_reader_item = previous.get("reference-app.feed-reader")
+    feed_reader_subscription_item = current.get("reference-app.feed-reader-subscriptions")
+    previous_feed_reader_subscription_item = previous.get("reference-app.feed-reader-subscriptions")
     trust_graph_item = current.get("reference-app.trust-graph")
     previous_trust_graph_item = previous.get("reference-app.trust-graph")
     generated_document_item = current.get("app-platform.generated-document-insert")
     previous_generated_document_item = previous.get("app-platform.generated-document-insert")
     content_fetch_item = current.get("app-platform.content-fetch")
     previous_content_fetch_item = previous.get("app-platform.content-fetch")
+    content_subscription_item = current.get("app-platform.content-subscriptions")
+    previous_content_subscription_item = previous.get("app-platform.content-subscriptions")
+    content_subscription_scheduler_item = current.get("network-content.subscription-scheduler")
+    previous_content_subscription_scheduler_item = previous.get(
+        "network-content.subscription-scheduler"
+    )
     trust_graph_preview_item = current.get("app-platform.trust-graph-preview")
     previous_trust_graph_preview_item = previous.get("app-platform.trust-graph-preview")
     trust_statement_signing_item = current.get("app-platform.trust-statement-signing")
@@ -3217,9 +3235,14 @@ def evaluate_reference_content_gate(
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
     feed_reader_details = evidence_details(feed_reader_item)
+    feed_reader_subscription_details = evidence_details(feed_reader_subscription_item)
     trust_graph_details = evidence_details(trust_graph_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
+    content_subscription_details = evidence_details(content_subscription_item)
+    content_subscription_scheduler_details = evidence_details(
+        content_subscription_scheduler_item
+    )
     trust_graph_preview_details = evidence_details(trust_graph_preview_item)
     trust_statement_signing_details = evidence_details(trust_statement_signing_item)
     checks = nested_dict(details, "checks")
@@ -3232,12 +3255,22 @@ def evaluate_reference_content_gate(
     previous_profile_status = evidence_status(previous_profile_item)
     feed_reader_status = evidence_status(feed_reader_item)
     previous_feed_reader_status = evidence_status(previous_feed_reader_item)
+    feed_reader_subscription_status = evidence_status(feed_reader_subscription_item)
+    previous_feed_reader_subscription_status = evidence_status(
+        previous_feed_reader_subscription_item
+    )
     trust_graph_status = evidence_status(trust_graph_item)
     previous_trust_graph_status = evidence_status(previous_trust_graph_item)
     generated_document_status = evidence_status(generated_document_item)
     previous_generated_document_status = evidence_status(previous_generated_document_item)
     content_fetch_status = evidence_status(content_fetch_item)
     previous_content_fetch_status = evidence_status(previous_content_fetch_item)
+    content_subscription_status = evidence_status(content_subscription_item)
+    previous_content_subscription_status = evidence_status(previous_content_subscription_item)
+    content_subscription_scheduler_status = evidence_status(content_subscription_scheduler_item)
+    previous_content_subscription_scheduler_status = evidence_status(
+        previous_content_subscription_scheduler_item
+    )
     trust_graph_preview_status = evidence_status(trust_graph_preview_item)
     previous_trust_graph_preview_status = evidence_status(previous_trust_graph_preview_item)
     trust_statement_signing_status = evidence_status(trust_statement_signing_item)
@@ -3270,6 +3303,11 @@ def evaluate_reference_content_gate(
     for evidence_id, current_status, previous_status_value in (
         ("reference-app.profile-publisher", profile_status, previous_profile_status),
         ("reference-app.feed-reader", feed_reader_status, previous_feed_reader_status),
+        (
+            "reference-app.feed-reader-subscriptions",
+            feed_reader_subscription_status,
+            previous_feed_reader_subscription_status,
+        ),
         ("reference-app.trust-graph", trust_graph_status, previous_trust_graph_status),
         (
             "app-platform.generated-document-insert",
@@ -3277,6 +3315,16 @@ def evaluate_reference_content_gate(
             previous_generated_document_status,
         ),
         ("app-platform.content-fetch", content_fetch_status, previous_content_fetch_status),
+        (
+            "app-platform.content-subscriptions",
+            content_subscription_status,
+            previous_content_subscription_status,
+        ),
+        (
+            "network-content.subscription-scheduler",
+            content_subscription_scheduler_status,
+            previous_content_subscription_scheduler_status,
+        ),
         (
             "app-platform.trust-graph-preview",
             trust_graph_preview_status,
@@ -3319,6 +3367,7 @@ def evaluate_reference_content_gate(
     if feed_reader_checks:
         for key in (
             "usesContentFetchRouteOrHelper",
+            "usesContentSubscriptionHelpers",
             "usesGeneratedDocumentInsertRoute",
             "usesSdkBootstrap",
         ):
@@ -3328,6 +3377,27 @@ def evaluate_reference_content_gate(
     elif feed_reader_status == "pass":
         warnings.append("Feed Reader coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.feed-reader")
+    feed_reader_subscription_checks = nested_dict(feed_reader_subscription_details, "checks")
+    if feed_reader_subscription_checks:
+        for key in (
+            "manifestDeclaresSubscribeAndV8",
+            "appUsesPlatformSubscriptionWorkflow",
+            "noTabLocalFollowLoop",
+            "sdkHelpersAvailable",
+            "docsDescribeSubscriptionFlow",
+        ):
+            if feed_reader_subscription_checks.get(key) is not True:
+                failures.append(f"Feed Reader subscription check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.feed-reader-subscriptions",
+                )
+    elif feed_reader_subscription_status == "pass":
+        warnings.append("Feed Reader subscription coverage lacks detailed staged app checks")
+        add_evidence_issue(
+            gate_details, "warningEvidenceIds", "reference-app.feed-reader-subscriptions"
+        )
     if trust_graph_details.get("appId") not in {"trust-graph", None}:
         failures.append("Trust Graph Preview evidence is not for trust-graph")
         add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
@@ -3355,6 +3425,32 @@ def evaluate_reference_content_gate(
     if content_fetch_checks and content_fetch_checks.get("routeDocumented") is not True:
         failures.append("Content fetch route documentation check failed")
         add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.content-fetch")
+    content_subscription_checks = nested_dict(content_subscription_details, "checks")
+    if content_subscription_checks:
+        for key in ("contractVersionV8", "routesPresent", "capabilityGatesPresent"):
+            if content_subscription_checks.get(key) is not True:
+                failures.append(f"Content subscription API check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.content-subscriptions"
+                )
+    content_subscription_scheduler_checks = nested_dict(
+        content_subscription_scheduler_details, "checks"
+    )
+    if content_subscription_scheduler_checks:
+        for key in (
+            "deterministicTickAndNoOverlap",
+            "conservativeLimits",
+            "dedupeAndMetadataOnly",
+            "pressureGateStableSignals",
+            "durablePathFreeStore",
+        ):
+            if content_subscription_scheduler_checks.get(key) is not True:
+                failures.append(f"Content subscription scheduler check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "network-content.subscription-scheduler",
+                )
     trust_preview_checks = nested_dict(trust_graph_preview_details, "checks")
     if trust_preview_checks:
         for key in ("contractVersionV7", "routesPresent", "capabilityGatesPresent"):
@@ -3739,6 +3835,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
         "app-platform.content-fetch",
+        "app-platform.content-subscriptions",
+        "network-content.subscription-scheduler",
         "app-platform.trust-graph-preview",
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
@@ -3761,6 +3859,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-apps.content",
         "reference-app.profile-publisher",
         "reference-app.feed-reader",
+        "reference-app.feed-reader-subscriptions",
         "reference-app.trust-graph",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
@@ -4514,6 +4613,12 @@ def run_self_test(repo_root: Path) -> None:
             evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
         ), evidence_by_id
         assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass", evidence_by_id
+        assert (
+            evidence_by_id["app-platform.content-subscriptions"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
+            evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
+        ), evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"][
             "requiredForReleaseCandidate"
@@ -4535,6 +4640,9 @@ def run_self_test(repo_root: Path) -> None:
             assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass", evidence_by_id
+        assert (
+            evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
+        ), evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
@@ -5400,6 +5508,30 @@ def run_self_test(repo_root: Path) -> None:
             == "fail"
         )
 
+        feed_reader_subscription_missing_path = write_app_summary_variant(
+            "feed-reader-subscriptions-missing",
+            lambda value: update_evidence(
+                value,
+                "reference-app.feed-reader-subscriptions",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        feed_reader_subscription_missing_summary, feed_reader_subscription_missing_exit_code = (
+            run_with_previous(
+                "feed-reader-subscriptions-missing-cert",
+                app_platform_summary=feed_reader_subscription_missing_path,
+            )
+        )
+        assert (
+            feed_reader_subscription_missing_exit_code == 1
+        ), feed_reader_subscription_missing_summary
+        assert (
+            gate_by_id(
+                feed_reader_subscription_missing_summary, "ecosystem.reference-content-apps"
+            )["status"]
+            == "fail"
+        )
+
         trust_graph_missing_path = write_app_summary_variant(
             "trust-graph-missing",
             lambda value: update_evidence(
@@ -5435,6 +5567,52 @@ def run_self_test(repo_root: Path) -> None:
             gate_by_id(content_fetch_missing_summary, "ecosystem.reference-content-apps")[
                 "status"
             ]
+            == "fail"
+        )
+
+        content_subscription_missing_path = write_app_summary_variant(
+            "content-subscriptions-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.content-subscriptions",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        content_subscription_missing_summary, content_subscription_missing_exit_code = (
+            run_with_previous(
+                "content-subscriptions-missing-cert",
+                app_platform_summary=content_subscription_missing_path,
+            )
+        )
+        assert content_subscription_missing_exit_code == 1, content_subscription_missing_summary
+        assert (
+            gate_by_id(
+                content_subscription_missing_summary, "ecosystem.reference-content-apps"
+            )["status"]
+            == "fail"
+        )
+
+        subscription_scheduler_missing_path = write_app_summary_variant(
+            "subscription-scheduler-missing",
+            lambda value: update_evidence(
+                value,
+                "network-content.subscription-scheduler",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        subscription_scheduler_missing_summary, subscription_scheduler_missing_exit_code = (
+            run_with_previous(
+                "subscription-scheduler-missing-cert",
+                app_platform_summary=subscription_scheduler_missing_path,
+            )
+        )
+        assert (
+            subscription_scheduler_missing_exit_code == 1
+        ), subscription_scheduler_missing_summary
+        assert (
+            gate_by_id(
+                subscription_scheduler_missing_summary, "ecosystem.reference-content-apps"
+            )["status"]
             == "fail"
         )
 

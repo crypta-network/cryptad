@@ -5,6 +5,7 @@ import java.util.Arrays;
 import network.crypta.clients.http.updater.CoreActionToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.platform.api.PlatformApiSharedAppServices;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
@@ -344,10 +345,12 @@ final class FProxyRegistrar {
             runtimePorts,
             dependencies.appHost(),
             dependencies.appCatalogManager(),
-            dependencies.appUpdateService(),
+            PlatformApiSharedAppServices.of(
+                dependencies.appVaultService(),
+                dependencies.appUpdateService(),
+                dependencies.contentSubscriptionService()),
             appBrowserSessionStore,
-            appUiOriginServer,
-            dependencies.appVaultService());
+            appUiOriginServer);
     server.register(
         platformApiToadlet,
         ToadletRegistration.basic(null, PlatformApiToadlet.MOUNT_PATH, true, true));

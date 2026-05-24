@@ -4,8 +4,8 @@
 The smoke runner keeps its self-test Python-only and offline.  Normal runs can
 optionally invoke Gradle and the installed ``crypta-app`` launcher to validate
 first-party staged apps, sample app packaging, signed bundles, signed catalogs,
-app-owned static UI, content fetch and feed-reader routes, profile publishing routes,
-generated document inserts, and legacy-admin retirement state.
+app-owned static UI, content fetch, content subscriptions and feed-reader routes,
+profile publishing routes, generated document inserts, and legacy-admin retirement state.
 """
 
 from __future__ import annotations
@@ -89,6 +89,7 @@ PROFILE_PUBLISHER_PERMISSIONS = {
 }
 FEED_READER_PERMISSIONS = {
     "content.fetch",
+    "content.subscribe",
     "content.insert.app-document",
     "queue.read",
     "queue.write",
@@ -627,8 +628,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/feed-reader/src/staged",
             "launcher": "bin/feed-reader.sh",
             "permissions": FEED_READER_PERMISSIONS,
-            "apiMinimumVersion": 6,
-            "apiMaximumTestedVersion": 7,
+            "apiMinimumVersion": 8,
+            "apiMaximumTestedVersion": 8,
         },
         {
             "appId": "trust-graph",
@@ -3303,6 +3304,387 @@ def collect_content_fetch_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/platform-api-contract.md",
+            "docs/platform-api-surface.md",
+            "docs/platform-sdk-js.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/release-certification.md",
+            "docs/app-platform-beta-known-limitations.md",
+        )
+    )
+    contract_source = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    capabilities_source = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiCapabilities.java"
+    )
+    router_source = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    content_routes_source = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContentRoutes.java"
+    )
+    service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
+    )
+    subscription_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscription.java"
+    )
+    handler_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionsApiHandler.java"
+    )
+    source_validator_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionSource.java"
+    )
+    sdk_source = (
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    router_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiContentSubscriptionsRouterTest.java"
+    )
+    service_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionServiceTest.java"
+    )
+    contract_text = read_source(contract_source)
+    capabilities_text = read_source(capabilities_source)
+    router_text = read_source(router_source)
+    content_routes_text = router_text + "\n" + read_source(content_routes_source)
+    service_text = read_source(service_source)
+    subscription_text = read_source(subscription_source)
+    handler_text = read_source(handler_source)
+    source_validator_text = read_source(source_validator_source)
+    sdk_text = read_source(sdk_source)
+    tests_text = read_source(router_test_source) + "\n" + read_source(service_test_source)
+    lower_docs = docs_text.lower()
+    routes = (
+        "/content/subscriptions",
+        "/content/subscriptions/{subscriptionId}",
+        "/content/subscriptions/{subscriptionId}/refresh",
+        "/content/subscriptions/{subscriptionId}/pause",
+        "/content/subscriptions/{subscriptionId}/resume",
+    )
+    checks = {
+        "contractVersionV8": "CURRENT_CONTRACT_VERSION = 8" in contract_text,
+        "capabilityDescriptorPresent": (
+            "CONTENT_SUBSCRIBE" in contract_text
+            and "CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8" in contract_text
+            and "CONTENT_SUBSCRIBE" in capabilities_text
+            and "content.subscribe" in capabilities_text
+        ),
+        "routesPresent": (
+            all(route in contract_text for route in routes)
+            and "content.subscriptions.create" in contract_text
+            and "content.subscriptions.refresh" in contract_text
+            and "content.subscriptions.delete" in contract_text
+            and "routeContentSubscriptionsRequest" in content_routes_text
+        ),
+        "capabilityGatesPresent": (
+            "CONTENT_SUBSCRIBE" in contract_text
+            and "CONTENT_FETCH" in contract_text
+            and "ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE" in tests_text
+            and "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH" in tests_text
+            and "route_whenAppLacksContentSubscribe_expectForbidden" in tests_text
+            and "route_whenAppLacksContentFetchForCreate_expectForbidden" in tests_text
+        ),
+        "appPrincipalScoped": (
+            "requireAppPrincipalId(request)" in content_routes_text
+            and "PlatformApiPrincipal.hostOperator()" in tests_text
+            and "route_whenAppReadsAnotherAppsSubscription_expectNotFound" in tests_text
+        ),
+        "serviceUnavailableStable": (
+            "content_subscription_service_unavailable" in content_routes_text
+            and "503" in content_routes_text
+        ),
+        "sourceValidationUskOnly": (
+            "USK@" in source_validator_text
+            and "crypta:" in source_validator_text
+            and "hasDisallowedScheme" in source_validator_text
+            and "containsWhitespace" in source_validator_text
+            and "unsupported_content_subscription_source" in source_validator_text
+            and ("unsupported" in tests_text or "Unsupported" in tests_text)
+        ),
+        "limitsAndMetadataOnly": (
+            "perAppSubscriptionLimit" in service_text
+            and "globalSubscriptionLimit" in service_text
+            and "maxBytes" in service_text
+            and "timeoutMillis" in service_text
+            and "contentSha256" in service_text
+            and "bytes.length" in service_text
+            and "raw fetched content is digested and then discarded" in service_text
+        ),
+        "sdkHelpersPresent": (
+            "CryptaPlatform.content.subscriptions" in docs_text
+            and "content/subscriptions" in sdk_text
+            and "contentSubscriptionPathSegment" in sdk_text
+            and "apiDeleteForm" in sdk_text
+        ),
+        "docsDescribeRedactionAndNonGoals": all(
+            phrase in lower_docs
+            for phrase in (
+                "raw fetched content",
+                "raw request bodies",
+                "browser-session tokens",
+                "private insert uris",
+                "queue html",
+                "arbitrary http/https",
+                "generic crawler",
+            )
+        ),
+    }
+    details = {
+        "routes": [
+            "GET /api/v1/content/subscriptions",
+            "POST /api/v1/content/subscriptions",
+            "GET /api/v1/content/subscriptions/{subscriptionId}",
+            "POST /api/v1/content/subscriptions/{subscriptionId}/refresh",
+            "POST /api/v1/content/subscriptions/{subscriptionId}/pause",
+            "POST /api/v1/content/subscriptions/{subscriptionId}/resume",
+            "DELETE /api/v1/content/subscriptions/{subscriptionId}",
+        ],
+        "requiredCapabilities": ["content.subscribe", "content.fetch for create/refresh"],
+        "sourceScope": "USK@ and crypta:USK@ only",
+        "checks": checks,
+        "redaction": {
+            "rawFetchedContentExcluded": True,
+            "rawRequestBodiesExcluded": True,
+            "browserSessionTokensRedacted": True,
+            "appProcessTokensRedacted": True,
+            "formPasswordsRedacted": True,
+            "privateInsertUrisExcluded": True,
+            "privateKeysExcluded": True,
+            "absolutePathsExcluded": True,
+            "queueHtmlExcluded": True,
+        },
+        "sources": {
+            "contract": display_path(contract_source, workspace),
+            "router": display_path(router_source, workspace),
+            "contentRoutes": display_path(content_routes_source, workspace),
+            "service": display_path(service_source, workspace),
+            "handler": display_path(handler_source, workspace),
+            "sourceValidator": display_path(source_validator_source, workspace),
+            "sdk": display_path(sdk_source, workspace),
+            "tests": [
+                display_path(router_test_source, workspace),
+                display_path(service_test_source, workspace),
+            ],
+        },
+    }
+    errors = [key for key, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "app-platform.content-subscriptions",
+            root_consequence(settings, "fail"),
+            True,
+            "Content subscription API evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.content-subscriptions",
+        "pass",
+        True,
+        "Content subscription API evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_content_subscription_scheduler_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    scheduler_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionScheduler.java"
+    )
+    scheduler_config_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionSchedulerConfig.java"
+    )
+    service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
+    )
+    subscription_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscription.java"
+    )
+    store_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/FileContentSubscriptionStore.java"
+    )
+    pressure_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionPressureGate.java"
+    )
+    runtime_source = (
+        workspace
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    scheduler_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionSchedulerTest.java"
+    )
+    service_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionServiceTest.java"
+    )
+    store_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/FileContentSubscriptionStoreTest.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/platform-api-contract.md",
+            "docs/platform-api-surface.md",
+            "docs/release-certification.md",
+            "docs/app-platform-beta-known-limitations.md",
+        )
+    )
+    scheduler_text = read_source(scheduler_source)
+    scheduler_config_text = read_source(scheduler_config_source)
+    service_text = read_source(service_source)
+    subscription_text = read_source(subscription_source)
+    store_text = read_source(store_source)
+    pressure_text = read_source(pressure_source)
+    runtime_text = read_source(runtime_source)
+    tests_text = "\n".join(
+        read_source(path)
+        for path in (scheduler_test_source, service_test_source, store_test_source)
+    )
+    lower_docs = docs_text.lower()
+    checks = {
+        "schedulerSourcePresent": (
+            "public final class ContentSubscriptionScheduler" in scheduler_text
+            and "ContentSubscriptionSchedulerConfig" in scheduler_text
+            and "ContentSubscriptionPressureGate" in scheduler_text
+        ),
+        "deterministicTickAndNoOverlap": (
+            "tick(Instant now)" in scheduler_text
+            and "AtomicBoolean running" in scheduler_text
+            and "compareAndSet(false, true)" in scheduler_text
+            and "alreadyRunning" in scheduler_text
+            and "overlapping" in tests_text
+        ),
+        "backgroundLifecycle": (
+            "scheduleWithFixedDelay" in scheduler_text
+            and "config.initialDelay().plus(jitter())" in scheduler_text
+            and "shutdownNow()" in scheduler_text
+            and "contentSubscriptionScheduler::close" in runtime_text
+        ),
+        "conservativeLimits": (
+            "perTickFetchLimit" in scheduler_text
+            and "perAppSubscriptionLimit" in scheduler_config_text
+            and "globalSubscriptionLimit" in scheduler_config_text
+            and "minimumPollInterval" in scheduler_config_text
+            and "maximumFailureBackoff" in scheduler_config_text
+            and "CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_PER_TICK_FETCH_LIMIT"
+            in scheduler_config_text
+        ),
+        "dedupeAndMetadataOnly": (
+            "contentChanged(" in service_text
+            and "contentSha256" in subscription_text
+            and "lastSeenEdition" in subscription_text
+            and "lastSeenResolvedUri" in subscription_text
+            and "updateCount" in subscription_text
+            and "raw fetched content is digested and then discarded" in service_text
+        ),
+        "failureBackoff": (
+            "failureBackoff(" in service_text
+            and "withFailure" in service_text
+            and "lastErrorCode" in store_text
+            and "content_fetch_failed" in service_text
+        ),
+        "pressureGateStableSignals": (
+            "QueueSupportPort" in pressure_text
+            and "RequestQueuePort" in pressure_text
+            and "isQueueBackendEnabled()" in pressure_text
+            and "isPersistenceDatabaseKilled()" in pressure_text
+            and "stopping()" in pressure_text
+            and "awaitingPassword()" in pressure_text
+            and "queueHtml" not in pressure_text
+        ),
+        "durablePathFreeStore": (
+            "public final class FileContentSubscriptionStore" in store_text
+            and "ATOMIC_MOVE" in store_text
+            and "source URIs are never used as file names" in store_text
+            and "content-subscriptions" in runtime_text
+            and "layout.dataDir().resolve(\"apps\").resolve(\"content-subscriptions\")"
+            in runtime_text
+        ),
+        "runtimeWiring": (
+            "createContentSubscriptionService(" in runtime_text
+            and "createContentSubscriptionScheduler(" in runtime_text
+            and "contentSubscriptionScheduler.start()" in runtime_text
+            and "contentSubscriptionService()" in runtime_text
+        ),
+        "focusedTestsPresent": (
+            "tick_whenSubscriptionIsDue_expectOneBoundedFetchAndUpdatedMetadata" in tests_text
+            and "tick_whenQueueBackendUnavailable_expectSafePressureSkip" in tests_text
+            and "refresh_whenContentMetadataChanges_expectDigestEditionAndDedupe" in tests_text
+            and "writeAndRead_whenSubscriptionContainsSourceUri_expectPathUsesAppAndSubscriptionIdsOnly"
+            in tests_text
+        ),
+        "docsDescribeSchedulerRedaction": all(
+            phrase in lower_docs
+            for phrase in (
+                "network-content.subscription-scheduler",
+                "queue pressure",
+                "no queue html",
+                "raw fetched content",
+                "path-free",
+            )
+        ),
+    }
+    details = {
+        "policy": "bounded USK-only background polling with durable metadata, per-app/global/per-tick limits, and explicit pressure skips",
+        "liveNodeRequired": False,
+        "checks": checks,
+        "sources": {
+            "scheduler": display_path(scheduler_source, workspace),
+            "schedulerConfig": display_path(scheduler_config_source, workspace),
+            "service": display_path(service_source, workspace),
+            "subscription": display_path(subscription_source, workspace),
+            "store": display_path(store_source, workspace),
+            "pressureGate": display_path(pressure_source, workspace),
+            "runtime": display_path(runtime_source, workspace),
+            "tests": [
+                display_path(scheduler_test_source, workspace),
+                display_path(service_test_source, workspace),
+                display_path(store_test_source, workspace),
+            ],
+        },
+    }
+    errors = [key for key, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "network-content.subscription-scheduler",
+            root_consequence(settings, "fail"),
+            True,
+            "Content subscription scheduler evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "network-content.subscription-scheduler",
+        "pass",
+        True,
+        "Content subscription scheduler passed deterministic offline evidence checks.",
+        source,
+        details,
+    )
+
+
 def read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -3706,6 +4088,11 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         or "CryptaPlatform.feed.fetchSnapshot" in source_app_js
         or "content/fetch" in source_app_js
     )
+    checks["usesContentSubscriptionHelpers"] = (
+        "CryptaPlatform.content.subscriptions" in source_app_js
+        and "content.subscriptions.list" in source_app_js
+        and "content.subscriptions.refresh" in source_app_js
+    )
     checks["usesGeneratedDocumentInsertRoute"] = (
         "queue/inserts/app-document" in source_app_js
         or "insertAppDocument" in source_app_js
@@ -3717,9 +4104,11 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         forbidden not in source_app_js
         for forbidden in ("localStorage.setItem", "sessionStorage.setItem")
     )
+    checks["noTabOnlyFollowTimer"] = "setInterval" not in source_app_js
     checks["docsDescribeFeedReaderFlow"] = (
         "Feed Reader" in reference_doc
         and "POST /api/v1/content/fetch" in reference_doc
+        and "content.subscribe" in reference_doc
         and "content.fetch" in reference_doc
         and "raw feed bodies" in reference_doc
     )
@@ -3750,8 +4139,8 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
             manifest_permissions
         )
         checks["manifestUsesCertifiedApiRange"] = (
-            manifest.get("api.minimumVersion") == "6"
-            and manifest.get("api.maximumTestedVersion") == "7"
+            manifest.get("api.minimumVersion") == "8"
+            and manifest.get("api.maximumTestedVersion") == "8"
         )
     else:
         checks["manifestDeclaresFeedReader"] = False
@@ -3775,6 +4164,138 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         "pass",
         True,
         "Feed Reader reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_feed_reader_subscription_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "feed-reader"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {
+        "appId": "feed-reader",
+        "checks": {},
+        "expectedPermissions": sorted(FEED_READER_PERMISSIONS),
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.feed-reader-subscriptions",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader subscription evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+
+    workspace = settings.workspace_root
+    source_static_dir = spec["sourceDir"] / "static"
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_index = read_source(source_static_dir / "index.html")
+    source_app_js = read_source(source_static_dir / "app.js")
+    reference_doc = read_source(workspace / "docs/feed-reader-reference-app.md")
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    catalog_docs = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-catalogs.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/release-certification.md",
+        )
+    )
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    checks = details["checks"]
+    checks["manifestDeclaresSubscribeAndV8"] = (
+        manifest.get("app.id") == "feed-reader"
+        and FEED_READER_PERMISSIONS.issubset(manifest_permissions)
+        and manifest.get("api.minimumVersion") == "8"
+        and manifest.get("api.maximumTestedVersion") == "8"
+    )
+    checks["uiDisclosesSubscribePermission"] = (
+        "content.subscribe" in permission_disclosure_block(source_index)
+        and (
+            "Create platform USK subscription" in source_index
+            or "content.subscriptions.create" in source_app_js
+        )
+    )
+    checks["appUsesPlatformSubscriptionWorkflow"] = (
+        "CryptaPlatform.content.subscriptions.create" in source_app_js
+        and "CryptaPlatform.content.subscriptions.list" in source_app_js
+        and "CryptaPlatform.content.subscriptions.refresh" in source_app_js
+        and (
+            "CryptaPlatform.content.subscriptions.pause" in source_app_js
+            or 'mutateSubscription(subscriptionId, "pause"' in source_app_js
+        )
+        and (
+            "CryptaPlatform.content.subscriptions.resume" in source_app_js
+            or 'mutateSubscription(subscriptionId, "resume"' in source_app_js
+        )
+        and "CryptaPlatform.content.subscriptions.remove" in source_app_js
+        and "lastSeenResolvedUri" in source_app_js
+    )
+    checks["noTabLocalFollowLoop"] = "setInterval" not in source_app_js
+    checks["onDemandRenderStillUsesContentFetch"] = (
+        "CryptaPlatform.content.fetchText" in source_app_js
+        and "CryptaPlatform.feed.fetchSnapshot" in source_app_js
+    )
+    checks["sdkHelpersAvailable"] = (
+        "subscriptions: Object.freeze" in sdk_text
+        and "createContentSubscription" in sdk_text
+        and "removeContentSubscription" in sdk_text
+    )
+    checks["docsDescribeSubscriptionFlow"] = (
+        "content.subscribe" in reference_doc
+        and "durable" in reference_doc.lower()
+        and "metadata" in reference_doc.lower()
+        and "raw feed bodies" in reference_doc
+        and "reference-app.feed-reader-subscriptions" in catalog_docs
+    )
+    details["manifest"] = {
+        "permissions": sorted(manifest_permissions),
+        "apiMinimumVersion": manifest.get("api.minimumVersion"),
+        "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+    }
+    details["redaction"] = {
+        "rawFeedBodiesExcluded": True,
+        "rawRequestBodiesExcluded": True,
+        "tokensExcluded": True,
+        "absolutePathsExcluded": True,
+        "subscriptionMetadataOnly": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"feed reader subscription check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.feed-reader-subscriptions",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader subscription workflow evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.feed-reader-subscriptions",
+        "pass",
+        True,
+        "Feed Reader subscription workflow evidence passed.",
         source,
         details,
     )
@@ -3970,7 +4491,7 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         )
     )
     checks = {
-        "contractVersionV7": "CURRENT_CONTRACT_VERSION = 7" in contract_text,
+        "contractVersionV7": "TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7" in contract_text,
         "capabilitiesPresent": "trust.read" in capabilities_text and "trust.write" in capabilities_text,
         "routesPresent": all(
             route in contract_text
@@ -5363,6 +5884,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_identity_profile_publish_evidence(settings),
         collect_generated_document_insert_evidence(settings),
         collect_content_fetch_evidence(settings),
+        collect_content_subscription_evidence(settings),
+        collect_content_subscription_scheduler_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
         collect_trust_statement_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
@@ -5385,6 +5908,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_reference_content_app_evidence(settings),
         collect_profile_publisher_reference_app_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
+        collect_feed_reader_subscription_evidence(settings),
         collect_trust_graph_reference_app_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
@@ -5459,9 +5983,10 @@ def run_self_test(repo_root: Path) -> None:
     assert "trust-graph" in parse_permission_set(catalog["catalog.entries"])
     assert catalog["app.cert-smoke.bundle.sha256"] == "0" * 64
     assert catalog["app.feed-reader.permissions"] == (
-        "content.fetch,content.insert.app-document,queue.read,queue.write"
+        "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write"
     )
-    assert catalog["app.feed-reader.api.minimumVersion"] == "6"
+    assert catalog["app.feed-reader.api.minimumVersion"] == "8"
+    assert catalog["app.feed-reader.api.maximumTestedVersion"] == "8"
     assert catalog["app.trust-graph.permissions"] == (
         "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
         "vault.identities.read,vault.identities.create,vault.identities.use"
@@ -5895,6 +6420,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.identity-profile-publish"]["status"] == "pass"
         assert evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
         assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass"
+        assert evidence_by_id["app-platform.content-subscriptions"]["status"] == "pass"
+        assert evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
         contract_details = contract_item["details"]
         assert contract_details["contractVersion"] == 2, contract_item
         assert contract_details["capabilityCount"] == 2, contract_item
@@ -5919,6 +6446,7 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
+        assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
@@ -5941,6 +6469,27 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             missing_fetch_item.details["checks"]["usesContentFetchRouteOrHelper"] is False
         ), missing_fetch_item
+        try:
+            feed_reader_app_js.write_text(
+                "const appId = 'feed-reader';\n"
+                "CryptaPlatform.bootstrap.load({ appId });\n"
+                "CryptaPlatform.content.fetchText({ uri: 'USK@redacted/feed/0/feed.json' });\n"
+                "CryptaPlatform.feed.fetchSnapshot({ uri: 'USK@redacted/feed/0/feed.json' });\n"
+                "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
+                "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
+                encoding="utf-8",
+            )
+            missing_subscription_settings = dataclasses.replace(settings, mode="release-candidate")
+            missing_subscription_item = collect_feed_reader_subscription_evidence(
+                missing_subscription_settings
+            )
+        finally:
+            feed_reader_app_js.write_text(original_feed_reader_js, encoding="utf-8")
+        assert missing_subscription_item.status == "fail", missing_subscription_item
+        assert (
+            missing_subscription_item.details["checks"]["appUsesPlatformSubscriptionWorkflow"]
+            is False
+        ), missing_subscription_item
         review_env_names = (
             "CRYPTAD_APP_REVIEWER_KEY_ID",
             "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
@@ -6369,9 +6918,13 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk = workspace / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
     sdk.parent.mkdir(parents=True, exist_ok=True)
     sdk.write_text(
-        "window.CryptaPlatform = { trust: {}, vault: { identities: { createTrustStatement(){} } } }; "
+        "window.CryptaPlatform = { trust: {}, vault: { identities: { createTrustStatement(){} } }, "
+        "content: { subscriptions: Object.freeze({ list(){}, create(){}, get(){}, refresh(){}, pause(){}, resume(){}, remove(){} }) } }; "
         "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
         "function trustScore(){} function publishTrustStatement(){} "
+        "function createContentSubscription(){} function removeContentSubscription(){} "
+        "function contentSubscriptionPathSegment(){} const path = 'content/subscriptions'; "
+        "function apiDeleteForm(){} "
         "const h = 'X-Crypta-App-Session';\n",
         encoding="utf-8",
     )
@@ -6429,10 +6982,18 @@ def make_self_test_workspace(workspace: Path) -> None:
             "feed-reader",
             "Feed Reader & Publisher",
             "feed-reader.sh",
-            "content.fetch,content.insert.app-document,queue.read,queue.write",
+            "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write",
             "const appId = 'feed-reader';\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.content.subscriptions.list();\n"
+            "CryptaPlatform.content.subscriptions.create({ uri: 'USK@redacted/feed/0/feed.json', label: 'Feed' });\n"
+            "CryptaPlatform.content.subscriptions.refresh('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.pause('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.resume('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.remove('sub-redacted');\n"
+            "const lastSeenResolvedUri = 'USK@redacted/feed/0/feed.json';\n"
             "CryptaPlatform.feed.fetchSnapshot({ uri: 'CHK@redacted' });\n"
+            "CryptaPlatform.content.fetchText({ uri: lastSeenResolvedUri });\n"
             "CryptaPlatform.feed.publishSnapshot({ snapshot: { type: 'crypta.feed.snapshot.v1', items: [] } });\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
         ),
@@ -6486,8 +7047,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
         is_trust_graph = app_id == "trust-graph"
-        api_minimum = "7" if is_trust_graph else "6" if is_feed_reader else "5" if is_profile_publisher else "3"
-        api_maximum = "7" if app_id in {"feed-reader", "site-publisher", "profile-publisher", "trust-graph"} else "4"
+        api_minimum = "8" if is_feed_reader else "7" if is_trust_graph else "5" if is_profile_publisher else "3"
+        api_maximum = "8" if is_feed_reader else "7" if app_id in {"site-publisher", "profile-publisher", "trust-graph"} else "4"
         experimental_accepted = "true" if is_profile_publisher or is_trust_graph else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
@@ -6526,6 +7087,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         if app_id == "feed-reader":
             (workspace / "apps/feed-reader/README.md").write_text(
                 "Feed Reader uses POST /api/v1/content/fetch through SDK feed helpers, "
+                "uses durable content.subscribe metadata for USK subscriptions, "
                 "then publishes generated feed summaries without storing raw feed bodies.\n",
                 encoding="utf-8",
             )
@@ -6605,7 +7167,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 7; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 8; "
+        "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
+        "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
@@ -6623,6 +7187,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String queueCapability = \"QUEUE_WRITE\"; "
         "String contentFetch = \"/content/fetch\"; "
         "String contentFetchCapability = \"CONTENT_FETCH\"; "
+        "String CONTENT_FETCH = \"CONTENT_FETCH\"; "
+        "String CONTENT_SUBSCRIBE = \"CONTENT_SUBSCRIBE\"; "
+        "String contentSubscribe = \"content.subscribe\"; "
+        "String contentSubscriptionSince = \"sinceContractVersion = 8\"; "
+        "String subscriptionList = \"/content/subscriptions\"; "
+        "String subscriptionRead = \"/content/subscriptions/{subscriptionId}\"; "
+        "String subscriptionRefresh = \"/content/subscriptions/{subscriptionId}/refresh\"; "
+        "String subscriptionPause = \"/content/subscriptions/{subscriptionId}/pause\"; "
+        "String subscriptionResume = \"/content/subscriptions/{subscriptionId}/resume\"; "
+        "String subscriptionCreateAction = \"content.subscriptions.create\"; "
+        "String subscriptionRefreshAction = \"content.subscriptions.refresh\"; "
+        "String subscriptionDeleteAction = \"content.subscriptions.delete\"; "
         "String trustStatus = \"/trust-graph/status\"; "
         "String trustAnchors = \"/trust-graph/anchors\"; "
         "String trustImport = \"/trust-graph/import\"; "
@@ -6639,14 +7215,20 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_dir / "PlatformApiCapabilities.java").write_text(
         "final class PlatformApiCapabilities { static final String TRUST_READ = \"trust.read\"; "
-        "static final String TRUST_WRITE = \"trust.write\"; }\n",
+        "static final String TRUST_WRITE = \"trust.write\"; "
+        "static final String CONTENT_SUBSCRIBE = \"content.subscribe\"; }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiRouter.java").write_text(
         "final class PlatformApiRouter { String a = \"/trust-graph/status\"; "
         "String b = \"/trust-graph/anchors\"; String c = \"/trust-graph/import\"; "
         "String d = \"/trust-graph/subjects\"; String e = \"/trust-graph/statements\"; "
-        "String f = \"/trust-graph/score\"; }\n",
+        "String f = \"/trust-graph/score\"; "
+        "void routeContentSubscriptionsRequest() { requireAppPrincipalId(request); "
+        "requireAllCapabilities(ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE, "
+        "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH); "
+        "Object h = new ContentSubscriptionsApiHandler(); "
+        "String unavailable = \"content_subscription_service_unavailable 503\"; } }\n",
         encoding="utf-8",
     )
     app_vault_api_dir = api_dir / "appvault"
@@ -6689,6 +7271,61 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class ContentApiHandler { void contentFetch() { String route = \"content/fetch\"; } }\n",
         encoding="utf-8",
     )
+    content_subscriptions_dir = content_api_dir / "subscriptions"
+    content_subscriptions_dir.mkdir(parents=True, exist_ok=True)
+    (content_subscriptions_dir / "ContentSubscriptionService.java").write_text(
+        "final class ContentSubscriptionService { "
+        "static final String CAPABILITY_CONTENT_SUBSCRIBE = \"content.subscribe\"; "
+        "static final String CAPABILITY_CONTENT_FETCH = \"content.fetch\"; "
+        "int perAppSubscriptionLimit; int globalSubscriptionLimit; int maxBytes; int timeoutMillis; "
+        "String contentSha256; int bytes.length; String lastSeenEdition; "
+        "String lastSeenResolvedUri; int updateCount; "
+        "// raw fetched content is digested and then discarded. "
+        "void contentChanged(){} void failureBackoff(){} void withFailure(){} "
+        "String error = \"content_fetch_failed\"; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscription.java").write_text(
+        "final class ContentSubscription { String contentSha256; String lastSeenEdition; "
+        "String lastSeenResolvedUri; int updateCount; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionsApiHandler.java").write_text(
+        "final class ContentSubscriptionsApiHandler {}\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionSource.java").write_text(
+        "final class ContentSubscriptionSource { String usk = \"USK@\"; String crypta = \"crypta:\"; "
+        "void hasDisallowedScheme(){} void containsWhitespace(){} "
+        "String error = \"unsupported_content_subscription_source\"; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionScheduler.java").write_text(
+        "public final class ContentSubscriptionScheduler { ContentSubscriptionSchedulerConfig c; "
+        "ContentSubscriptionPressureGate p; AtomicBoolean running; "
+        "void tick(Instant now) { running.compareAndSet(false, true); String alreadyRunning = \"alreadyRunning\"; } "
+        "void start(){ scheduleWithFixedDelay(); config.initialDelay().plus(jitter()); } "
+        "void close(){ shutdownNow(); } int perTickFetchLimit; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionSchedulerConfig.java").write_text(
+        "record ContentSubscriptionSchedulerConfig(int perAppSubscriptionLimit, "
+        "int globalSubscriptionLimit, int perTickFetchLimit, Object minimumPollInterval, "
+        "Object maximumFailureBackoff) { String env = "
+        "\"CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_PER_TICK_FETCH_LIMIT\"; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "FileContentSubscriptionStore.java").write_text(
+        "public final class FileContentSubscriptionStore { String move = \"ATOMIC_MOVE\"; "
+        "// source URIs are never used as file names. String lastErrorCode; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionPressureGate.java").write_text(
+        "public final class ContentSubscriptionPressureGate { QueueSupportPort q; RequestQueuePort r; "
+        "void assess(){ q.isQueueBackendEnabled(); r.isPersistenceDatabaseKilled(); "
+        "status.stopping(); status.awaitingPassword(); } }\n",
+        encoding="utf-8",
+    )
     platform_api_tests = workspace / "platform-api/src/test/java/network/crypta/platform/api"
     platform_api_tests.mkdir(parents=True, exist_ok=True)
     (platform_api_tests / "AppVaultProfileDocumentApiTest.java").write_text(
@@ -6704,6 +7341,33 @@ def make_self_test_workspace(workspace: Path) -> None:
     (platform_api_tests / "ContentFetchApiTest.java").write_text(
         "void contentFetch_whenFeedFetched_expectNoRawFeedBodyOrRequestBodyEvidence() { "
         "String route = \"content/fetch\"; String capability = \"content.fetch\"; }\n",
+        encoding="utf-8",
+    )
+    (platform_api_tests / "PlatformApiContentSubscriptionsRouterTest.java").write_text(
+        "void route_whenAppLacksContentSubscribe_expectForbidden() { "
+        "String c = \"ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE\"; }\n"
+        "void route_whenAppLacksContentFetchForCreate_expectForbidden() { "
+        "String c = \"ContentSubscriptionService.CAPABILITY_CONTENT_FETCH\"; }\n"
+        "void route_whenHostOperatorUsesSubscriptionRoute_expectForbiddenByAppScope() { "
+        "PlatformApiPrincipal.hostOperator(); }\n"
+        "void route_whenAppReadsAnotherAppsSubscription_expectNotFound() {}\n",
+        encoding="utf-8",
+    )
+    content_subscription_tests = platform_api_tests / "content/subscriptions"
+    content_subscription_tests.mkdir(parents=True, exist_ok=True)
+    (content_subscription_tests / "ContentSubscriptionServiceTest.java").write_text(
+        "void create_whenSourceIsUnsupported_expectBadRequest() {}\n"
+        "void refresh_whenContentMetadataChanges_expectDigestEditionAndDedupe() {}\n",
+        encoding="utf-8",
+    )
+    (content_subscription_tests / "ContentSubscriptionSchedulerTest.java").write_text(
+        "void tick_whenSubscriptionIsDue_expectOneBoundedFetchAndUpdatedMetadata() {}\n"
+        "void tick_whenQueueBackendUnavailable_expectSafePressureSkip() {}\n"
+        "void tick_whenAlreadyRunning_expectNoOverlappingFetch() { String overlapping = \"overlapping\"; }\n",
+        encoding="utf-8",
+    )
+    (content_subscription_tests / "FileContentSubscriptionStoreTest.java").write_text(
+        "void writeAndRead_whenSubscriptionContainsSourceUri_expectPathUsesAppAndSubscriptionIdsOnly() {}\n",
         encoding="utf-8",
     )
     (platform_api_tests / "TrustGraphApiTest.java").write_text(
@@ -6734,7 +7398,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "No private keys are shipped. "
         "queue-manager publisher site-publisher profile-publisher feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
-        "Feed Reader & Publisher is the content fetch reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot. "
+        "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
         "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, and bounded trust-statement signing. "
         "Trust anchors are local. "
         "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
@@ -6753,14 +7417,19 @@ def make_self_test_workspace(workspace: Path) -> None:
         "POST /api/v1/queue/inserts/app-document accepts app-generated document content without a "
         "local file path and requires content.insert.app-document plus queue.write. "
         "POST /api/v1/content/fetch fetches feed content and requires content.fetch. "
+        "GET and POST /api/v1/content/subscriptions manage durable USK metadata and require content.subscribe; create and refresh also require content.fetch. "
+        "The network-content.subscription-scheduler records path-free metadata, queue pressure, no queue HTML, and no raw fetched content. "
+        "It is not a generic crawler and does not support arbitrary HTTP/HTTPS fetches. "
         "POST /api/v1/app-vault/identities/{identityId}/trust-statement signs bounded trust statements. "
         "GET /api/v1/trust-graph/status and GET /api/v1/trust-graph/score read local trust preview data. "
         "Release evidence covers reference-app.profile-publisher, "
-        "reference-app.feed-reader, app-platform.content-fetch, "
+        "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
+        "app-platform.content-fetch, app-platform.content-subscriptions, "
+        "network-content.subscription-scheduler, "
         "reference-app.trust-graph, app-platform.trust-graph-preview, "
         "app-platform.trust-statement-signing, app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "It excludes raw request bodies, private keys, raw signatures, private insert URIs, and "
-        "absolute staging paths. It also excludes raw feed bodies, raw trust statement bodies, browser-session tokens, "
+        "absolute staging paths. It also excludes raw feed bodies, raw fetched content, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
     )
     for doc_name in (
@@ -7314,11 +7983,23 @@ class CoreHttpShellRuntimeSupport {
   AppUpdateScheduler createAppUpdateScheduler() {
     return new AppUpdateScheduler(layout.dataDir().resolve("apps").resolve("update-scheduler"));
   }
+  ContentSubscriptionService contentSubscriptionService() { return contentSubscriptionService; }
+  ContentSubscriptionService createContentSubscriptionService() {
+    return new ContentSubscriptionService(
+      new FileContentSubscriptionStore(layout.dataDir().resolve("apps").resolve("content-subscriptions")));
+  }
+  ContentSubscriptionScheduler createContentSubscriptionScheduler() {
+    return new ContentSubscriptionScheduler(contentSubscriptionService);
+  }
   void wire() {
     appUpdateService.setSchedulerSummaryProvider(appUpdateScheduler::summary);
     appUpdateScheduler.start();
+    contentSubscriptionScheduler.start();
   }
   Thread createAppUpdateSchedulerShutdownJob() { return new Thread(appUpdateScheduler::close); }
+  Thread createContentSubscriptionSchedulerShutdownJob() {
+    return new Thread(contentSubscriptionScheduler::close);
+  }
 }
 """,
         encoding="utf-8",

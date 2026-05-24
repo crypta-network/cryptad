@@ -101,8 +101,10 @@ Treat these as release blockers, in order:
    includes
    `app-vault.capabilities`, `app-platform.identity-profile-publish`,
    `app-platform.generated-document-insert`, `app-platform.content-fetch`,
+   `app-platform.content-subscriptions`, `network-content.subscription-scheduler`,
    `app-platform.trust-graph-preview`, `app-platform.trust-statement-signing`,
-   `reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`, and
+   `reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`,
+   `reference-app.feed-reader-subscriptions`, and
    `reference-app.trust-graph`. Site Publisher is the
    content-oriented reference app;
    release evidence must prove its staged bundle, SDK usage, design-system adoption, permission
@@ -111,10 +113,11 @@ Treat these as release blockers, in order:
    identity creation, profile-document publishing, app-generated document insertion, declared
    vault/content/queue permissions, and redaction of tokens, form passwords, private insert URIs,
    raw request bodies, private keys, signatures, and absolute staging paths.
-   Feed Reader is the content-fetch reference app; evidence must prove `content.fetch`,
-   `POST /api/v1/content/fetch`, SDK feed-helper usage, generated-feed publication permissions,
-   and redaction of raw feed bodies, raw request bodies, tokens, form passwords, private insert
-   URIs, and local paths.
+   Feed Reader is the content-subscription reference app; evidence must prove `content.fetch`,
+   `content.subscribe`, `POST /api/v1/content/fetch`, `/api/v1/content/subscriptions`, SDK
+   feed/subscription-helper usage, generated-feed publication permissions, scheduler backoff and
+   dedupe metadata, and redaction of raw feed bodies, raw fetched content, raw request bodies,
+   tokens, form passwords, private insert URIs, queue HTML, and local paths.
    Trust Graph Preview is the local trust-service reference app; evidence must prove Platform API
    v7 trust routes, `trust.read`, `trust.write`, bounded AppVault trust-statement signing, SDK
    trust-helper usage, generated trust-statement publication permissions, and redaction of raw

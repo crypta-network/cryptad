@@ -34,6 +34,11 @@ This page records conservative limits and safety boundaries for the Crypta app e
   private material.
 - `content.fetch` is bounded Crypta-content fetch. It is not arbitrary HTTP, LAN, local file, or
   loopback fetch.
+- `content.subscribe` is bounded durable USK subscription metadata for app-owned feeds. It is not
+  a generic crawler, not arbitrary HTTP/HTTPS fetch support, and not a durable app data store.
+  Subscription evidence and summaries must not include raw fetched content, queue HTML, private
+  keys, browser-session tokens, app process tokens, form passwords, private insert URIs, or
+  absolute paths.
 - App-generated document insert stages bytes under Cryptad control. It must not expose absolute
   staging paths, local source paths, raw request bodies, raw profile/feed/trust documents, or
   private insert URIs.
@@ -107,5 +112,6 @@ app ids, capability names, evidence ids, and redacted summaries instead of raw p
 ## Non-goals
 
 The beta does not introduce a live public app store, live public-network test dependency, global
-transparency log, full Web of Trust, durable feed subscription daemon, new sandbox provider, new
-update scheduler policy, legacy route removal wave 3, or any FNP/FCP/wire protocol change.
+transparency log, full Web of Trust, generic crawling, arbitrary HTTP/HTTPS fetching, durable
+general-purpose app storage, new sandbox provider, new update scheduler policy, legacy route
+removal wave 3, or any FNP/FCP/wire protocol change.

@@ -31,6 +31,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("api:"));
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
+    assertTrue(script.contains("subscriptions: Object.freeze({"));
     assertTrue(script.contains("feed:"));
     assertTrue(script.contains("trust:"));
     assertTrue(script.contains("vault:"));
@@ -178,6 +179,94 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(params.get("maxBytes"), "4096");
         assert.equal(params.get("format"), "text");
         assert.equal(calls[1].credentials, "omit");
+        """);
+  }
+
+  @Test
+  void classpathResource_whenContentSubscriptionRequested_expectRoutesAndFormFields()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions"
+              && options.method === "POST";
+          },
+          { subscription: { subscriptionId: "sub-alpha" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions"
+              && options.method === "GET";
+          },
+          { subscriptions: [] });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions/sub-alpha"
+              && options.method === "GET";
+          },
+          { subscription: { subscriptionId: "sub-alpha" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions/sub-alpha/refresh"
+              && options.method === "POST";
+          },
+          { subscription: { status: "success" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions/sub-alpha/pause"
+              && options.method === "POST";
+          },
+          { subscription: { status: "paused" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions/sub-alpha/resume"
+              && options.method === "POST";
+          },
+          { subscription: { status: "scheduled" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/content/subscriptions/sub-alpha"
+              && options.method === "DELETE";
+          },
+          { subscription: { status: "deleted" } });
+
+        const created = await CryptaPlatform.content.subscriptions.create({
+          uri: "crypta:USK@example/feed/7/feed.json",
+          label: "Daily feed",
+          pollIntervalSeconds: 300,
+          maxBytes: 262144,
+          timeoutMillis: 30000,
+          headers: { "X-Custom": "value" }
+        });
+        const createParams = decodeFormBody(calls[1]);
+        assert.equal(created.subscription.subscriptionId, "sub-alpha");
+        assert.equal(createParams.get("uri"), "crypta:USK@example/feed/7/feed.json");
+        assert.equal(createParams.get("label"), "Daily feed");
+        assert.equal(createParams.get("pollIntervalSeconds"), "300");
+        assert.equal(createParams.get("maxBytes"), "262144");
+        assert.equal(createParams.get("timeoutMillis"), "30000");
+        assert.equal(headerValue(calls[1].headers, "X-Custom"), "value");
+        assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
+
+        await CryptaPlatform.content.subscriptions.list();
+        await CryptaPlatform.content.subscriptions.get("sub-alpha");
+        await CryptaPlatform.content.subscriptions.refresh("sub-alpha");
+        await CryptaPlatform.content.subscriptions.pause({ subscriptionId: "sub-alpha" });
+        await CryptaPlatform.content.subscriptions.resume("sub-alpha");
+        await CryptaPlatform.content.subscriptions.remove("sub-alpha");
+
+        assert.equal(calls.length, 8);
+        assert.throws(
+          () => CryptaPlatform.content.subscriptions.get("../secret"),
+          /normalized local path segment/);
         """);
   }
 
@@ -516,8 +605,12 @@ class CryptaPlatformSdkResourceTest {
       "function insertAppDocument(options)",
       "function fetchText(uriOrOptions, options)",
       "function fetchBase64(uriOrOptions, options)",
+      "function createContentSubscription(options)",
+      "function contentSubscriptionPathSegment(value, description)",
       "\"content/fetch\"",
+      "\"content/subscriptions\"",
       "normalizeContentFetchParams(source, format)",
+      "normalizeContentSubscriptionCreate(source)",
       "\"queue/inserts/app-document\"",
       "function normalizeAppDocumentInsert(options)",
       "params.set(\"documentBase64\"",

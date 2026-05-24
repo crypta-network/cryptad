@@ -344,8 +344,8 @@ Do not include tokens, form passwords, private insert URIs, raw request bodies, 
 signatures, or absolute staging paths in descriptor notes, generated catalog metadata, or release
 evidence.
 
-A Feed Reader catalog descriptor should include the content-fetch permission, generated-document
-publication permissions, and v7 maximum-tested API compatibility metadata:
+A Feed Reader catalog descriptor should include the content-subscription and content-fetch
+permissions, generated-document publication permissions, and v8 API compatibility metadata:
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/feed-reader-1.0.0.zip
@@ -353,7 +353,7 @@ bundle.uri=file:/abs/path/to/dist/apps/feed-reader-1.0.0.zip
 summary=Reference app for reading and publishing feed documents through Crypta.
 name=Feed Reader & Publisher
 version=1.0.0
-permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
 app.id=feed-reader
 homepage=https://example.invalid/apps/feed-reader
 source=https://example.invalid/src/feed-reader
@@ -362,17 +362,19 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 permissions.rationale.content.fetch=Fetches subscribed feed documents through POST /api/v1/content/fetch without local source-path authority.
+permissions.rationale.content.subscribe=Registers bounded USK subscriptions with the platform scheduler and stores metadata only.
 permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 changelog.summary=Adds the first feed reader and publisher reference app.
-api.minimumVersion=6
-api.maximumTestedVersion=7
+api.minimumVersion=8
+api.maximumTestedVersion=8
 api.experimentalCapabilitiesAccepted=false
 ```
 
-Feed Reader evidence must not include raw feed bodies, raw request bodies, private insert URIs, app
-process tokens, browser-session tokens, form passwords, or local paths.
+Feed Reader evidence must not include raw feed bodies, raw fetched content, raw request bodies,
+private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, or
+local paths.
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and

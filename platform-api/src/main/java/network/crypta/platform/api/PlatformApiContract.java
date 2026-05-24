@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 7;
+  public static final int CURRENT_CONTRACT_VERSION = 8;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -66,6 +66,7 @@ public record PlatformApiContract(
   private static final int PROFILE_PUBLISHING_CONTRACT_VERSION = 5;
   private static final int CONTENT_FETCH_CONTRACT_VERSION = 6;
   private static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7;
+  private static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -262,6 +263,12 @@ public record PlatformApiContract(
             CONTENT_FETCH_CONTRACT_VERSION,
             null,
             "Fetch bounded Crypta content documents through app-facing network reads."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.CONTENT_SUBSCRIBE,
+            PlatformApiStabilityLevel.STABLE,
+            CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION,
+            null,
+            "Create and manage app-owned bounded USK content subscriptions."),
         capability(
             PlatformApiCapabilities.CONTENT_INSERT,
             "Create local file or directory insert requests."),
@@ -464,6 +471,7 @@ public record PlatformApiContract(
         "Create a local directory insert request.");
     builder.queueAppDocumentPost();
     builder.contentFetchPost();
+    builder.contentSubscriptionEndpoints();
     builder.trustGraphPreviewEndpoints();
     builder.post(
         ROUTE_FAMILY_QUEUE,
@@ -1009,6 +1017,72 @@ public record PlatformApiContract(
               true,
               true,
               "Fetch one bounded Crypta content document."));
+    }
+
+    private void contentSubscriptionEndpoints() {
+      contentSubscriptionEndpoint(
+          METHOD_GET,
+          "/content/subscriptions",
+          "content.subscriptions.list",
+          List.of(PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "List app-owned USK content subscriptions.");
+      contentSubscriptionEndpoint(
+          METHOD_POST,
+          "/content/subscriptions",
+          "content.subscriptions.create",
+          List.of(PlatformApiCapabilities.CONTENT_FETCH, PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Create one app-owned bounded USK content subscription.");
+      contentSubscriptionEndpoint(
+          METHOD_GET,
+          "/content/subscriptions/{subscriptionId}",
+          "content.subscriptions.read",
+          List.of(PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Read one app-owned USK content subscription.");
+      contentSubscriptionEndpoint(
+          METHOD_POST,
+          "/content/subscriptions/{subscriptionId}/refresh",
+          "content.subscriptions.refresh",
+          List.of(PlatformApiCapabilities.CONTENT_FETCH, PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Refresh one app-owned USK content subscription.");
+      contentSubscriptionEndpoint(
+          METHOD_POST,
+          "/content/subscriptions/{subscriptionId}/pause",
+          "content.subscriptions.pause",
+          List.of(PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Pause one app-owned USK content subscription.");
+      contentSubscriptionEndpoint(
+          METHOD_POST,
+          "/content/subscriptions/{subscriptionId}/resume",
+          "content.subscriptions.resume",
+          List.of(PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Resume one app-owned USK content subscription.");
+      contentSubscriptionEndpoint(
+          METHOD_DELETE,
+          "/content/subscriptions/{subscriptionId}",
+          "content.subscriptions.delete",
+          List.of(PlatformApiCapabilities.CONTENT_SUBSCRIBE),
+          "Delete one app-owned USK content subscription.");
+    }
+
+    private void contentSubscriptionEndpoint(
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_CONTENT,
+              method,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.STABLE,
+              description));
     }
 
     private void trustGraphPreviewEndpoints() {

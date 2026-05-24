@@ -15,6 +15,7 @@ import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.api.PlatformApiRequest;
 import network.crypta.platform.api.PlatformApiResponse;
 import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.platform.api.PlatformApiSharedAppServices;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
@@ -197,10 +198,9 @@ public final class PlatformApiToadlet extends Toadlet {
         runtimePorts,
         appHost,
         appCatalogManager,
-        null,
+        PlatformApiSharedAppServices.none(),
         appBrowserSessionVerifier,
-        appUiOriginRegistry,
-        null);
+        appUiOriginRegistry);
   }
 
   /**
@@ -223,14 +223,44 @@ public final class PlatformApiToadlet extends Toadlet {
       AppUiOriginRegistry appUiOriginRegistry,
       AppVaultService appVaultService) {
     this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        PlatformApiSharedAppServices.of(appVaultService, appUpdateService, null),
+        appBrowserSessionVerifier,
+        appUiOriginRegistry);
+  }
+
+  /**
+   * Creates a platform API toadlet backed by shared app-platform services, browser sessions, and
+   * origins.
+   *
+   * <p>The shared service group keeps router composition aligned with runtime-owned schedulers
+   * without growing this bridge constructor every time a new app-platform service is added. Reduced
+   * embeddings may pass {@link PlatformApiSharedAppServices#none()}.
+   *
+   * @param runtimePorts detached runtime ports exposed to the platform API leaf
+   * @param appHost detached AppHost exposed through app lifecycle and catalog install routes
+   * @param appCatalogManager signed app-catalog manager exposed through catalog routes
+   * @param sharedAppServices optional app-platform services shared with runtime schedulers
+   * @param appBrowserSessionVerifier verifier shared with the app-owned UI bootstrap route
+   * @param appUiOriginRegistry registry of active isolated app UI origins
+   */
+  public PlatformApiToadlet(
+      RuntimePorts runtimePorts,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      PlatformApiSharedAppServices sharedAppServices,
+      AppBrowserSessionVerifier appBrowserSessionVerifier,
+      AppUiOriginRegistry appUiOriginRegistry) {
+    this(
         new PlatformApiRouter(
             runtimePorts,
             appHost,
             appCatalogManager,
             LegacyAdminUsageRecorder.defaultRecorder(),
             appUiOriginRegistry,
-            appVaultService,
-            appUpdateService),
+            sharedAppServices),
         appHost,
         appBrowserSessionVerifier,
         appUiOriginRegistry);
