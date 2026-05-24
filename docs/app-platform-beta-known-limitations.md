@@ -7,8 +7,9 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - This is an app ecosystem beta, not a public production app store.
 - First-party beta catalog support does not imply automatic app installation.
 - Recommended catalog metadata is an onboarding hint, not ranking, endorsement, or trust by itself.
-- Developer tooling supports offline and dry-run publication planning. Live insertion depends on
-  existing content and queue mechanisms plus the operator's deployment configuration.
+- Developer tooling supports offline and dry-run publication planning. Explicit live USK
+  publication depends on existing content and queue mechanisms plus the operator's localhost node
+  and secure private insert URI configuration.
 - `crypta-app dev`, `crypta-app test`, release self-tests, and docs certification do not depend on
   the public Crypta network.
 - The beta does not require Docker, Node.js, npm, external network access, signing secrets, or

@@ -12,6 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +32,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DeveloperBetaToolkitCliTest {
   private static final Pattern BOOTSTRAP_SESSION_PATTERN =
       Pattern.compile("\"browserSessionToken\"\\s*:\\s*\"([^\"]+)\"");
+  private static final String LIVE_PUBLIC_USK_PREFIX =
+      "USK@sdFxM0Z4zx4-gXhGwzXAVYvOUi6NRfdGbyJa797bNAg,"
+          + "ZP4aASnyZax8nYOvCOlUebegsmbGQIXfVzw7iyOsXEc,AQACAAE";
+  private static final String LIVE_PRIVATE_INSERT_URI =
+      "USK@ZTeIa1g4T3OYCdUFfHrFSlRnt5coeFFDCIZxWSb7abs,"
+          + "ZP4aASnyZax8nYOvCOlUebegsmbGQIXfVzw7iyOsXEc,AQECAAE/catalog/42";
+  private static final String LIVE_PUBLIC_CATALOG_SOURCE =
+      "crypta:" + LIVE_PUBLIC_USK_PREFIX + "/catalog/42/cryptad-app-catalog.properties";
+  private static final String LIVE_PUBLIC_SIGNATURE_SOURCE =
+      "crypta:" + LIVE_PUBLIC_USK_PREFIX + "/catalog/42/cryptad-app-catalog.signature";
 
   @TempDir private Path tempDir;
 
@@ -403,6 +416,9 @@ class DeveloperBetaToolkitCliTest {
     Path entry = tempDir.resolve("catalog-entry.properties");
     Path catalog = tempDir.resolve("cryptad-app-catalog.properties");
     Path plan = tempDir.resolve("publish-plan.md");
+    Path liveSummary = tempDir.resolve("live-summary.json");
+    Path privateInsertUriFile = keysDir.resolve("catalog-insert-uri.txt");
+    Path formPasswordFile = keysDir.resolve("form-password.txt");
 
     runCli(
         "keys",
@@ -497,7 +513,7 @@ class DeveloperBetaToolkitCliTest {
             "--output",
             plan.toString(),
             "--dry-run");
-    CliResult livePublish =
+    CliResult missingModePublish =
         runCli(
             "publish-usk",
             "--catalog-file",
@@ -508,16 +524,99 @@ class DeveloperBetaToolkitCliTest {
             "crypta:USK@private-insert-material/cryptad-app-catalog.properties",
             "--output",
             tempDir.resolve("live-plan.md").toString());
+    CliResult missingLiveConfig =
+        runCli(
+            "publish-usk",
+            "--catalog-file",
+            catalog.toString(),
+            "--catalog-signature-file",
+            signature.toString(),
+            "--catalog-source",
+            LIVE_PUBLIC_CATALOG_SOURCE,
+            "--output",
+            tempDir.resolve("missing-live-summary.json").toString(),
+            "--trusted-keys-file",
+            trustedKeys.toString(),
+            "--node-base-url",
+            "http://127.0.0.1:8888/api/v1",
+            "--live");
+    Files.writeString(privateInsertUriFile, LIVE_PRIVATE_INSERT_URI + "\n", StandardCharsets.UTF_8);
+    Files.writeString(formPasswordFile, "form-secret\n", StandardCharsets.UTF_8);
+    LiveUskPublishRequest[] liveRequest = new LiveUskPublishRequest[1];
+    CliResult livePublish;
+    try (var _ =
+        CryptaAppCli.useLiveUskPublisherForTesting(
+            request -> {
+              liveRequest[0] = request;
+              assertLivePublisherReceivedExpectedRequest(request);
+              return new LiveUskPublishResponse(
+                  "queued",
+                  "queued",
+                  Optional.of(LIVE_PUBLIC_CATALOG_SOURCE),
+                  "not_requested",
+                  "not_run",
+                  List.of());
+            })) {
+      livePublish =
+          runCli(
+              "publish-usk",
+              "--catalog-file",
+              catalog.toString(),
+              "--catalog-signature-file",
+              signature.toString(),
+              "--catalog-source",
+              LIVE_PUBLIC_CATALOG_SOURCE,
+              "--output",
+              liveSummary.toString(),
+              "--trusted-keys-file",
+              trustedKeys.toString(),
+              "--private-insert-uri-file",
+              privateInsertUriFile.toString(),
+              "--form-password-file",
+              formPasswordFile.toString(),
+              "--node-base-url",
+              "http://127.0.0.1:8888/api/v1",
+              "--live");
+    }
 
     String descriptor = Files.readString(entry, StandardCharsets.UTF_8);
     String planText = Files.readString(plan, StandardCharsets.UTF_8);
+    String liveSummaryText = Files.readString(liveSummary, StandardCharsets.UTF_8);
+    assertCatalogEntryDescriptor(entryResult, descriptor);
+    assertCatalogCommandsSucceeded(create, sign, verify);
+    assertDryRunPublication(publish, planText);
+    assertPublishModeValidationFailures(missingModePublish, missingLiveConfig);
+    assertLivePublicationSummary(
+        livePublish, liveSummaryText, privateInsertUriFile, formPasswordFile);
+    assertTrue(Files.exists(liveRequest[0].stagingDirectory()));
+    deleteRecursively(liveRequest[0].stagingDirectory());
+  }
+
+  private static void assertLivePublisherReceivedExpectedRequest(LiveUskPublishRequest request) {
+    assertEquals(LIVE_PRIVATE_INSERT_URI, request.privateInsertUri());
+    assertEquals("form-secret", request.formPassword());
+    assertFalse(request.verifyLiveFetch());
+    assertTrue(
+        Files.isRegularFile(request.stagingDirectory().resolve("cryptad-app-catalog.properties")));
+    assertTrue(
+        Files.isRegularFile(request.stagingDirectory().resolve("cryptad-app-catalog.signature")));
+  }
+
+  private static void assertCatalogEntryDescriptor(CliResult entryResult, String descriptor) {
     assertEquals(CommandLine.ExitCode.OK, entryResult.exitCode());
     assertTrue(descriptor.contains("bundle.uri=crypta:CHK@catalog-app-bundle\n"));
     assertTrue(
         descriptor.contains("permissions.rationale.queue.read=Reads mock transfer queue state.\n"));
+  }
+
+  private static void assertCatalogCommandsSucceeded(
+      CliResult create, CliResult sign, CliResult verify) {
     assertEquals(CommandLine.ExitCode.OK, create.exitCode());
     assertEquals(CommandLine.ExitCode.OK, sign.exitCode());
     assertEquals(CommandLine.ExitCode.OK, verify.exitCode());
+  }
+
+  private void assertDryRunPublication(CliResult publish, String planText) {
     assertEquals(CommandLine.ExitCode.OK, publish.exitCode());
     assertTrue(publish.out().contains("Wrote Crypta USK publication plan: dev entries=1"));
     assertTrue(planText.contains("Crypta Catalog USK Publication Plan"));
@@ -525,8 +624,37 @@ class DeveloperBetaToolkitCliTest {
     assertTrue(planText.contains("crypta:CHK@[REDACTED]"));
     assertFalse(planText.contains("private-insert-material"));
     assertFalse(planText.contains(tempDir.toString()));
-    assertEquals(CommandLine.ExitCode.SOFTWARE, livePublish.exitCode());
-    assertTrue(livePublish.err().contains("live_publish_not_supported"));
+  }
+
+  private static void assertPublishModeValidationFailures(
+      CliResult missingModePublish, CliResult missingLiveConfig) {
+    assertEquals(CommandLine.ExitCode.SOFTWARE, missingModePublish.exitCode());
+    assertTrue(missingModePublish.err().contains("requires exactly one of --dry-run or --live"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, missingLiveConfig.exitCode());
+    assertTrue(
+        missingLiveConfig
+            .err()
+            .contains("private insert URI must be configured by exactly one env or file source"));
+  }
+
+  private void assertLivePublicationSummary(
+      CliResult livePublish,
+      String liveSummaryText,
+      Path privateInsertUriFile,
+      Path formPasswordFile) {
+    assertEquals(CommandLine.ExitCode.OK, livePublish.exitCode(), livePublish.err());
+    assertTrue(livePublish.out().contains("Published Crypta USK catalog: dev entries=1"));
+    assertTrue(liveSummaryText.contains("\"mode\": \"live\""));
+    assertTrue(liveSummaryText.contains("\"catalogInsertStatus\": \"queued\""));
+    assertTrue(liveSummaryText.contains("\"catalogSigningKeyId\": \"dev-local\""));
+    assertTrue(liveSummaryText.contains("staging_sidecars_retained_until_live_insert_completion"));
+    assertTrue(liveSummaryText.contains(LIVE_PUBLIC_SIGNATURE_SOURCE));
+    assertFalse(liveSummaryText.contains(LIVE_PRIVATE_INSERT_URI));
+    assertFalse(liveSummaryText.contains("ZTeIa1g4T3OYCdUFfHrFSlRnt5coeFFDCIZxWSb7abs"));
+    assertFalse(liveSummaryText.contains("form-secret"));
+    assertFalse(liveSummaryText.contains(privateInsertUriFile.toString()));
+    assertFalse(liveSummaryText.contains(formPasswordFile.toString()));
+    assertFalse(liveSummaryText.contains(tempDir.toString()));
   }
 
   @Test
@@ -929,6 +1057,17 @@ class DeveloperBetaToolkitCliTest {
     int exitCode =
         CryptaAppCli.execute(new PrintWriter(out, true), new PrintWriter(err, true), arguments);
     return new CliResult(exitCode, out.toString(), err.toString());
+  }
+
+  private static void deleteRecursively(Path root) throws IOException {
+    if (!Files.exists(root)) {
+      return;
+    }
+    try (var stream = Files.walk(root)) {
+      for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    }
   }
 
   private record CliResult(int exitCode, String out, String err) {}

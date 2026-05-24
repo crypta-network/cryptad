@@ -52,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -124,6 +125,10 @@ class AppUpdateSchedulerTest {
     assertEquals(1, result.catalogsAttempted());
     assertEquals(1, result.appsChecked());
     verify(catalogManager).refresh(CATALOG_ID);
+    var inOrder = inOrder(catalogManager, updateService);
+    inOrder.verify(catalogManager).listCatalogs();
+    inOrder.verify(catalogManager).refresh(CATALOG_ID);
+    inOrder.verify(updateService).check(APP_ID, false);
     verify(updateService).check(APP_ID, false);
     Map<String, Object> summary = scheduler.summary(APP_ID);
     assertEquals(true, summary.get("enabled"));

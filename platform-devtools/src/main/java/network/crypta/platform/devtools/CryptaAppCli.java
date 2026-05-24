@@ -2,11 +2,13 @@ package network.crypta.platform.devtools;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFinding;
@@ -96,6 +99,9 @@ import picocli.CommandLine;
 public final class CryptaAppCli implements Runnable {
   private static final String WARNING_PREFIX = "Warning: ";
 
+  private static final AtomicReference<LiveUskPublisher> LIVE_USK_PUBLISHER_OVERRIDE =
+      new AtomicReference<>();
+
   private CommandSpec spec;
 
   /**
@@ -161,6 +167,11 @@ public final class CryptaAppCli implements Runnable {
           return CommandLine.ExitCode.SOFTWARE;
         });
     return commandLine.execute(arguments);
+  }
+
+  static AutoCloseable useLiveUskPublisherForTesting(LiveUskPublisher publisher) {
+    LiveUskPublisher previous = LIVE_USK_PUBLISHER_OVERRIDE.getAndSet(publisher);
+    return () -> LIVE_USK_PUBLISHER_OVERRIDE.set(previous);
   }
 
   /** Prints root command usage when no subcommand is selected. */
@@ -1491,7 +1502,7 @@ public final class CryptaAppCli implements Runnable {
   }
 
   /** Implements {@code crypta-app publish-usk}. */
-  @Command(name = "publish-usk", description = "Write an offline Crypta USK publication plan.")
+  @Command(name = "publish-usk", description = "Plan or publish a signed catalog to a Crypta USK.")
   static final class PublishUskCommand extends SpecAwareCommand implements Callable<Integer> {
     @Option(names = "--catalog-file", required = true, description = "Catalog properties file.")
     private Path catalogFile;
@@ -1508,24 +1519,76 @@ public final class CryptaAppCli implements Runnable {
         description = "Public crypta:USK catalog source URI.")
     private String catalogSource;
 
-    @Option(names = "--output", required = true, description = "Publication plan output.")
+    @Option(
+        names = "--output",
+        required = true,
+        description = "Publication plan or summary output.")
     private Path output;
 
     @Option(names = "--dry-run", description = "Generate a plan without live insertion.")
     private boolean dryRun;
 
+    @Option(names = "--live", description = "Publish through the configured localhost node.")
+    private boolean live;
+
+    @Option(
+        names = "--private-insert-uri-env",
+        description =
+            "Environment variable containing the matching private USK directory insert URI.")
+    private String privateInsertUriEnv;
+
+    @Option(
+        names = "--private-insert-uri-file",
+        description = "Protected file containing the matching private USK directory insert URI.")
+    private Path privateInsertUriFile;
+
+    @Option(names = "--node-base-url", description = "Local node URL, with or without /api/v1.")
+    private String nodeBaseUrl;
+
+    @Option(
+        names = "--form-password-env",
+        description = "Environment variable containing the form password.")
+    private String formPasswordEnv;
+
+    @Option(
+        names = "--form-password-file",
+        description = "Protected file containing the form password.")
+    private Path formPasswordFile;
+
+    @Option(names = "--trusted-keys-file", description = "Trusted keys properties file.")
+    private Path trustedKeysFile;
+
+    @Option(names = "--trusted-key-id", description = "Trusted key id for direct public key input.")
+    private String trustedKeyId;
+
+    @Option(names = "--trusted-public-key-base64", description = "Base64 or PEM public key.")
+    private String trustedPublicKeyBase64;
+
+    @Option(names = "--trusted-public-key-file", description = "Public key file.")
+    private Path trustedPublicKeyFile;
+
+    @Option(
+        names = "--verify-live-fetch",
+        description = "Require immediate live fetch verification.")
+    private boolean verifyLiveFetch;
+
     @Override
     public Integer call() throws Exception {
+      if (dryRun == live) {
+        throw new AppDistributionException(
+            "publish-usk requires exactly one of --dry-run or --live");
+      }
+      if (dryRun) {
+        return writeDryRunPlan();
+      }
+      return publishLive();
+    }
+
+    private Integer writeDryRunPlan() throws IOException {
       PublicationPlanWriter.Result result =
           PublicationPlanWriter.write(
               new PublicationPlanWriter.Request(
                   catalogFile, catalogSignatureFile, catalogSource, output));
-      if (!dryRun) {
-        throw new AppDistributionException(
-            "live_publish_not_supported: wrote offline plan "
-                + result.output().getFileName()
-                + "; perform Crypta inserts with a reviewed insertion workflow");
-      }
       super.commandLine()
           .getOut()
           .println(
@@ -1536,6 +1599,72 @@ public final class CryptaAppCli implements Runnable {
                   + " output="
                   + result.output().getFileName());
       return CommandLine.ExitCode.OK;
+    }
+
+    private Integer publishLive() throws IOException {
+      TrustedAppKeys trustedKeys =
+          KeyMaterialLoader.loadTrustedKeys(
+              trustedKeysFile, trustedKeyId, trustedPublicKeyBase64, trustedPublicKeyFile);
+      LiveUskPublicationResult result =
+          LiveUskPublicationService.publish(
+              new LiveUskPublicationService.Request(
+                  catalogFile,
+                  catalogSignatureFile,
+                  catalogSource,
+                  output,
+                  loadSecureText(privateInsertUriEnv, privateInsertUriFile, "private insert URI"),
+                  nodeBaseUrl,
+                  loadSecureText(formPasswordEnv, formPasswordFile, "form password"),
+                  verifyLiveFetch),
+              trustedKeys,
+              liveUskPublisher());
+      super.commandLine()
+          .getOut()
+          .println(
+              "Published Crypta USK catalog: "
+                  + result.catalogId()
+                  + " entries="
+                  + result.entryCount()
+                  + " output="
+                  + result.output().getFileName()
+                  + " catalogStatus="
+                  + result.catalogInsertStatus()
+                  + " signatureStatus="
+                  + result.signatureInsertStatus());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private static String loadSecureText(String environmentName, Path file, String label)
+        throws IOException {
+      int sourceCount = (environmentName == null ? 0 : 1) + (file == null ? 0 : 1);
+      if (sourceCount != 1) {
+        throw new AppDistributionException(
+            label + " must be configured by exactly one env or file source");
+      }
+      String value;
+      if (environmentName != null) {
+        value = System.getenv(environmentName);
+        if (value == null || value.isBlank()) {
+          throw new AppDistributionException("missing required environment variable for " + label);
+        }
+      } else {
+        Path normalized = file.toAbsolutePath().normalize();
+        if (Files.isSymbolicLink(normalized)
+            || !Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS)) {
+          throw new AppDistributionException(label + " file must be a regular file");
+        }
+        value = Files.readString(normalized, StandardCharsets.UTF_8);
+      }
+      String trimmed = value.trim();
+      if (trimmed.isEmpty()) {
+        throw new AppDistributionException(label + " must not be blank");
+      }
+      return trimmed;
+    }
+
+    private static LiveUskPublisher liveUskPublisher() {
+      LiveUskPublisher publisher = LIVE_USK_PUBLISHER_OVERRIDE.get();
+      return publisher == null ? new PlatformApiLiveUskPublisher() : publisher;
     }
   }
 

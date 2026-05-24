@@ -102,13 +102,15 @@ Release-candidate mode requires these evidence ids:
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
 | `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
-| `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, docs, and self-test evidence is present. |
+| `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, live publication CLI wiring, docs, and self-test evidence is present. |
 | `app-platform.docs-portal` | App-platform docs check. | The developer portal, required docs, known limitations page, portal links, and README portal link are present. |
 | `app-platform.beta-program` | App-platform docs check. | The beta program doc and app platform beta feedback/submission issue templates are present. |
 | `app-platform.beta-tutorials` | App-platform docs check. | Offline beta tutorials cover the required `crypta-app` commands, first-party app map, Platform API capabilities, review governance, update/rollback, and retained FProxy browse concepts. |
 | `app-platform.docs-redaction` | App-platform docs check. | Local Markdown links resolve without network access, and docs/templates pass obvious secret, token, private key, cookie, form-password, and local-path redaction checks. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
+| `catalog.live-usk-publication` | App-platform smoke summary. | `crypta-app publish-usk --live` validates and verifies signed catalog sidecars, reads the private insert URI and form password only from secure sources, enqueues real localhost live insertion, and writes sanitized evidence. |
+| `catalog.live-usk-source-verification` | App-platform smoke summary. | `crypta:USK@.../cryptad-app-catalog.properties` refresh resolves matching editions, fetches `cryptad-app-catalog.signature` from the same USK edition, and stores replacements only after signed catalog verification. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
 | `app-review.governance` | App-platform smoke summary. | Reviewer-key lifecycle statuses, policy-version constraints, governance API routes, and Web Shell governance rendering are present and redacted. |
 | `app-review.reviewer-key-lifecycle` | App-platform smoke summary. | Trusted reviewer registry v2 parsing, active/retired/revoked semantics, duplicate-id fail-closed behavior, strict instants, and lifecycle verifier tests are present. |
@@ -123,6 +125,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.trust-graph-preview` | App-platform smoke summary. | The v7 trust graph routes are present, documented, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
 | `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
+| `app-update.live-catalog-refresh` | App-platform smoke summary. | App-update scheduler evidence shows configured signed catalog refresh, including live USK catalog refresh, before candidate discovery while keeping manual update policy as the default. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | First-party source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions across the repo-owned static apps. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
@@ -163,15 +166,23 @@ diagnostics scope metadata stays bounded and redacted.
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
 host-installed bubblewrap in normal CI; it uses source checks and fake/offline provider tests.
-`app-update.lifecycle`, `app-update.scheduler`, and `app-update.rollback` do not require a live
-node; missing update evidence blocks release-candidate mode unless a release-manager waiver is
-recorded. `apphost.live` is optional stronger evidence because normal PR and scheduled CI must not
-require a live local node or operator form password.
+`app-update.lifecycle`, `app-update.scheduler`, `app-update.live-catalog-refresh`, and
+`app-update.rollback` do not require a live node; missing update evidence blocks
+release-candidate mode unless a release-manager waiver is recorded. `apphost.live` is optional
+stronger evidence because normal PR and scheduled CI must not require a live local node or operator
+form password.
 
 `app-catalog.first-party-beta` reports whether `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and the trusted
 catalog key hints are configured in the certification environment, but it does not fetch a public
 Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic
 `platform-appcatalog` tests for `crypta:CHK@` artifact support.
+
+`catalog.live-usk-publication` and `catalog.live-usk-source-verification` are offline source
+evidence by default. They prove live publication support, redaction behavior, same USK sibling
+signature handling, and signed catalog verification for resolved USK editions. Optional live
+publication smoke may be run only against a localhost node with secrets supplied through environment
+variables or protected files; certification output must not include private insert URIs, form
+passwords, tokens, raw request bodies, private keys, or absolute staging paths.
 
 `app-platform.docs-portal`, `app-platform.beta-program`,
 `app-platform.beta-tutorials`, and `app-platform.docs-redaction` are deterministic local docs

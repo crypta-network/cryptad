@@ -1188,7 +1188,13 @@ def collect_developer_beta_toolkit_evidence(settings: Settings) -> EvidenceItem:
         "mockSessionRequired": "invalid_app_browser_session" in text["mockApi"] and "X-Crypta-App-Session" in text["mockApi"],
         "offlineTestSmoke": "dev.bootstrap-smoke" in text["testSuite"] and "AppTestReport" in text["testSuite"],
         "catalogDescriptorGenerator": "artifact.path" in text["catalogEntry"] and "permissions.rationale." in text["catalogEntry"],
-        "publishPlanDryRunOnly": "live_publish_not_supported" in text["cli"] and "Crypta Catalog USK Publication Plan" in text["publishPlan"],
+        "publishUskDryRunAndLive": (
+            "--dry-run" in text["cli"]
+            and "--live" in text["cli"]
+            and "PublicationPlanWriter" in text["cli"]
+            and "LiveUskPublicationService" in text["cli"]
+            and "Crypta Catalog USK Publication Plan" in text["publishPlan"]
+        ),
         "keyGeneration": "Ed25519" in text["keyGenerator"] and "trusted.keys.version=1" in text["keyGenerator"],
         "selfTestsCoverFlow": (
             "test_whenFreshStaticTemplateCheckedStrict_expectPassingHumanAndJsonReport" in text["toolkitTests"]
@@ -1569,6 +1575,253 @@ def collect_catalog_evidence(settings: Settings, sample_paths: dict[str, Path]) 
     if sign_result.exit_code != 0 or verify_result.exit_code != 0:
         return EvidenceItem("catalog.smoke", "fail", True, "Signed catalog smoke failed.", source, details)
     return EvidenceItem("catalog.smoke", "pass", True, "Catalog create, sign, and verify smoke passed.", source, details)
+
+
+def collect_live_usk_catalog_publication_evidence(
+    settings: Settings, sample_paths: dict[str, Path]
+) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    devtools_dir = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    test_dir = workspace / "platform-devtools/src/test/java/network/crypta/platform/devtools"
+    cli_text = read_source(devtools_dir / "CryptaAppCli.java")
+    service_text = read_source(devtools_dir / "LiveUskPublicationService.java")
+    publisher_text = read_source(devtools_dir / "PlatformApiLiveUskPublisher.java")
+    result_text = read_source(devtools_dir / "LiveUskPublicationResult.java")
+    writer_text = read_source(devtools_dir / "LiveUskPublicationResultWriter.java")
+    validator_text = read_source(devtools_dir / "PublicationInputValidator.java")
+    tests_text = "\n".join(
+        read_source(path)
+        for path in (
+            test_dir / "DeveloperBetaToolkitCliTest.java",
+            test_dir / "LiveUskPublicationServiceTest.java",
+            test_dir / "PublicationPlanWriterTest.java",
+        )
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/developer-beta-toolkit.md",
+            "docs/app-platform-beta-tutorials.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/app-catalogs.md",
+            "docs/release-certification.md",
+            "docs/cryptad-release-workflow-and-runbook.md",
+        )
+    )
+    checks = {
+        "explicitLiveMode": (
+            '"--live"' in cli_text
+            and '"--dry-run"' in cli_text
+            and "requires exactly one of --dry-run or --live" in cli_text
+        ),
+        "secureLiveInputs": (
+            "--private-insert-uri-env" in cli_text
+            and "--private-insert-uri-file" in cli_text
+            and "--form-password-env" in cli_text
+            and "--form-password-file" in cli_text
+            and "loadSecureText" in cli_text
+        ),
+        "localVerificationBeforeInsert": (
+            "PublicationInputValidator.validate" in service_text
+            and "AppCatalogVerifier.verify" in service_text
+            and "requirePrivateInsertUri" in service_text
+        ),
+        "realQueueInsertionPath": (
+            "queue/inserts/directory" in publisher_text
+            and "sourcePath" in publisher_text
+            and "insertUri" in publisher_text
+            and "COMPAT_CURRENT" in publisher_text
+            and "followRedirects(HttpClient.Redirect.NEVER)" in publisher_text
+        ),
+        "optionalLiveFetchVerification": (
+            "content/fetch" in publisher_text
+            and "contentBase64" in publisher_text
+            and "live_publish_verification_failed" in publisher_text
+        ),
+        "sanitizedResultModel": (
+            "catalogSha256" in result_text
+            and "signatureSha256" in result_text
+            and "catalogSigningKeyId" in result_text
+            and "catalogInsertStatus" in result_text
+            and "schedulerRefreshVerificationStatus" in result_text
+            and "privateInsertUri" not in writer_text
+            and "formPassword" not in writer_text
+            and "stagingDirectory" not in writer_text
+        ),
+        "sharedInputValidation": (
+            "crypta:USK@.../" in validator_text
+            and "cryptad-app-catalog.properties" in validator_text
+            and "cryptad-app-catalog.signature" in validator_text
+        ),
+        "testsCoverLiveAndRedaction": (
+            "publish_whenFakePublisherSucceeds_expectSanitizedSummaryAndRetainedStaging"
+            in tests_text
+            and "publish_whenInsertIsOnlyQueued_expectStagingRetainedWithoutPathInSummary"
+            in tests_text
+            and "publish_whenPrivateInsertUriDoesNotMatchPublicSource_expectFailureWithoutPublisherOrSummary"
+            in tests_text
+            and "private insert URI must be configured by exactly one env or file source"
+            in tests_text
+            and "staging_sidecars_retained_until_live_insert_completion" in tests_text
+            and "assertFalse(liveSummaryText.contains(LIVE_PRIVATE_INSERT_URI))" in tests_text
+        ),
+        "docsCoverLivePublication": (
+            "crypta-app publish-usk --live" in docs_text
+            and "private insert URI" in docs_text
+            and "cryptad-app-catalog.signature" in docs_text
+            and "same USK" in docs_text
+            and "dry-run" in docs_text.lower()
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "liveNodeRequired": False,
+        "actualLiveInsertionOptional": True,
+        "publicSourceShape": "crypta:USK@.../cryptad-app-catalog.properties",
+        "signatureSidecar": "cryptad-app-catalog.signature",
+        "checks": checks,
+        "sources": {
+            "cli": display_path(devtools_dir / "CryptaAppCli.java", workspace),
+            "service": display_path(devtools_dir / "LiveUskPublicationService.java", workspace),
+            "publisher": display_path(devtools_dir / "PlatformApiLiveUskPublisher.java", workspace),
+            "result": display_path(devtools_dir / "LiveUskPublicationResult.java", workspace),
+            "writer": display_path(devtools_dir / "LiveUskPublicationResultWriter.java", workspace),
+            "validator": display_path(devtools_dir / "PublicationInputValidator.java", workspace),
+            "tests": display_path(test_dir / "LiveUskPublicationServiceTest.java", workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "catalog.live-usk-publication",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Live USK catalog publication evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "catalog.live-usk-publication",
+        "pass",
+        True,
+        "Live USK catalog publication source and redaction evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_live_usk_source_verification_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    api_tests = workspace / "platform-api/src/test/java/network/crypta/platform/api/appcatalogs"
+    source_text = read_source(appcatalog_dir / "AppCatalogSource.java")
+    uri_text = read_source(appcatalog_dir / "CryptaCatalogUri.java")
+    fetcher_text = read_source(appcatalog_dir / "AppCatalogFetcher.java")
+    manager_text = read_source(appcatalog_dir / "AppCatalogManager.java")
+    recommended_text = read_source(appcatalog_dir / "RecommendedAppCatalogs.java")
+    appcatalog_test_text = read_source(appcatalog_tests / "AppCatalogManagerTest.java")
+    api_test_text = read_source(api_tests / "AppCatalogsApiHandlerTest.java")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-catalogs.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/app-update-lifecycle.md",
+        )
+    )
+    checks = {
+        "cryptaUskSourceAccepted": (
+            "CryptaCatalogUri.parse" in source_text
+            and "crypta:USK@" in uri_text
+            and "SIGNATURE_QUERY_PREFIX" in uri_text
+        ),
+        "resolvedEditionSignatureSidecar": (
+            "signatureFetchKeyForResolvedCatalog" in uri_text
+            and "normalizeResolvedCatalogFetchKey" in uri_text
+            and "requireCompatibleResolvedKeyKind" in uri_text
+            and "siblingSignatureKey(resolvedKey)" in uri_text
+        ),
+        "boundedContentFetch": (
+            "ContentFetchPort" in fetcher_text
+            and "signatureFetchKeyForResolvedCatalog(catalogBytes.resolvedUri())" in fetcher_text
+            and "MAX_CATALOG_BYTES" in fetcher_text
+            and "MAX_SIGNATURE_BYTES" in fetcher_text
+        ),
+        "verifyBeforeStorage": (
+            "AppCatalogVerifier.verify" in manager_text
+            and "sourceStore.write(catalog, source, fetched" in manager_text
+            and "CATALOG_ID_MISMATCH" in manager_text
+        ),
+        "refreshPreservesPreviousOnFailure": (
+            "recordRefreshFailure" in manager_text
+            and "previous stored sidecars remain in place" in manager_text
+        ),
+        "firstPartySourceConfigDriven": (
+            "CRYPTAD_FIRST_PARTY_CATALOG_SOURCE" in recommended_text
+            and "CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID" in recommended_text
+        ),
+        "testsCoverResolvedEdition": (
+            "fetch_whenCryptaCatalogResolvesToUskEdition_expectSignatureFetchedFromResolvedEdition"
+            in appcatalog_test_text
+            and "fetch_whenCryptaResolvedCatalogHasSchemePrefix_expectSignatureFetchedFromResolvedEdition"
+            in appcatalog_test_text
+            and "fetch_whenCryptaResolvedCatalogChangesKeyKind_expectInvalidCatalogSource"
+            in appcatalog_test_text
+            and "fetch_whenCryptaSourceUsesContentFetchPort_expectBoundedRequests"
+            in appcatalog_test_text
+        ),
+        "testsCoverRefreshPreservation": (
+            "refresh_whenCryptaFetchFails_expectPreviousVerifiedCatalogPreservedAndMetadataUpdated"
+            in appcatalog_test_text
+            and "refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri"
+            in appcatalog_test_text
+        ),
+        "recommendedSummariesRedactSources": (
+            "listRecommendedCatalogs_whenConfiguredAndTrusted_expectCanAddAndRedactedSource"
+            in api_test_text
+            and "listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted"
+            in api_test_text
+            and "listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted"
+            in api_test_text
+        ),
+        "docsCoverUskVerification": (
+            "crypta:USK@" in docs_text
+            and "same USK" in docs_text
+            and "signed catalog verification" in docs_text.lower()
+            and "cryptad-app-catalog.signature" in docs_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "liveNodeRequired": False,
+        "checks": checks,
+        "sources": {
+            "sourceModel": display_path(appcatalog_dir / "AppCatalogSource.java", workspace),
+            "cryptaUri": display_path(appcatalog_dir / "CryptaCatalogUri.java", workspace),
+            "fetcher": display_path(appcatalog_dir / "AppCatalogFetcher.java", workspace),
+            "manager": display_path(appcatalog_dir / "AppCatalogManager.java", workspace),
+            "tests": display_path(appcatalog_tests / "AppCatalogManagerTest.java", workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "catalog.live-usk-source-verification",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Live USK source verification evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "catalog.live-usk-source-verification",
+        "pass",
+        True,
+        "Live USK source verification evidence passed deterministic checks.",
+        source,
+        details,
+    )
 
 
 def collect_first_party_beta_catalog_evidence(settings: Settings) -> EvidenceItem:
@@ -4664,6 +4917,117 @@ def collect_app_update_scheduler_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+def collect_app_update_live_catalog_refresh_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    scheduler_source = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateScheduler.java"
+    )
+    update_service_source = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    scheduler_test_source = (
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateSchedulerTest.java"
+    )
+    catalog_routes_source = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    )
+    catalog_handler_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    lifecycle_doc = workspace / "docs/app-update-lifecycle.md"
+    catalog_doc = workspace / "docs/app-catalogs.md"
+    scheduler_text = read_source(scheduler_source)
+    update_service_text = read_source(update_service_source)
+    scheduler_test_text = read_source(scheduler_test_source)
+    catalog_routes_text = read_source(catalog_routes_source)
+    catalog_handler_text = read_source(catalog_handler_source)
+    docs_text = read_source(lifecycle_doc) + "\n" + read_source(catalog_doc)
+    checks = {
+        "refreshBeforeCandidateDiscovery": (
+            "catalogManager.listCatalogs()" in scheduler_text
+            and "catalogManager.refresh(catalog.catalogId())" in scheduler_text
+            and "updateService.check(state.appId(), false)" in scheduler_text
+            and "inOrder(catalogManager, updateService)" in scheduler_test_text
+        ),
+        "refreshFailureContained": (
+            "MESSAGE_CATALOG_REFRESH_FAILED" in scheduler_text
+            and "tick_whenCatalogRefreshFails_expectFailureContainedAndAppsStillChecked"
+            in scheduler_test_text
+        ),
+        "schedulerDoesNotApplyDirectly": (
+            "updateService.stage(" not in scheduler_text
+            and "updateService.apply(" not in scheduler_text
+            and "appHost.updateFromDirectory(" not in scheduler_text
+            and "catalogManager.prepareInstallPlan(" not in scheduler_text
+        ),
+        "manualPolicyStillDefault": (
+            "manual remains the default" in scheduler_text.lower()
+            and "tick_whenManualPolicy_expectCheckOnlyAndNoStageOrApply" in scheduler_test_text
+            and "verify(catalogManager, never()).prepareInstallPlan" in scheduler_test_text
+        ),
+        "policyDrivenUpdatesStayInService": (
+            "check(state.appId(), false)" in scheduler_text
+            and "check(" in update_service_text
+            and "stage(" in update_service_text
+            and "apply(" in update_service_text
+        ),
+        "manualRefreshRouteExists": (
+            '"refresh".equals(action)' in catalog_routes_text
+            and '"/app-catalogs/{catalogId}/refresh"' in read_source(
+                workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+            )
+            and "refresh(catalogId)" in catalog_handler_text
+        ),
+        "schedulerSummaryPrivacyGuard": (
+            "summary_whenSchedulerStatePresent_expectPathFreeSchedulerSummary"
+            in scheduler_test_text
+            and "secret-token" in scheduler_test_text
+            and "contains(tempDir.toString())" in scheduler_test_text
+        ),
+        "docsCoverLiveCatalogRefresh": (
+            "live USK catalog" in docs_text
+            and "catalog refresh" in docs_text.lower()
+            and "last verified" in docs_text.lower()
+            and "manual remains the default" in docs_text.lower()
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "liveNodeRequired": False,
+        "policy": "manual default; scheduler refreshes catalogs before candidate discovery",
+        "silentAutoUpdateDefault": False,
+        "checks": checks,
+        "sources": {
+            "scheduler": display_path(scheduler_source, workspace),
+            "updateService": display_path(update_service_source, workspace),
+            "schedulerTest": display_path(scheduler_test_source, workspace),
+            "catalogRoutes": display_path(catalog_routes_source, workspace),
+            "catalogHandler": display_path(catalog_handler_source, workspace),
+            "lifecycleDoc": display_path(lifecycle_doc, workspace),
+            "catalogDoc": display_path(catalog_doc, workspace),
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-update.live-catalog-refresh",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Live catalog refresh scheduler evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-update.live-catalog-refresh",
+        "pass",
+        True,
+        "Live catalog refresh scheduler evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
 def collect_app_update_rollback_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     apphost_source = (
@@ -5003,7 +5367,9 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_trust_statement_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
+        collect_live_usk_catalog_publication_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
+        collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_governance_evidence(settings),
@@ -5026,6 +5392,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_sandbox_provider_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
+        collect_app_update_live_catalog_refresh_evidence(settings),
         collect_app_update_rollback_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
@@ -5540,10 +5907,12 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
+        assert evidence_by_id["catalog.live-usk-publication"]["status"] == "pass"
         first_party_beta_item = evidence_by_id["app-catalog.first-party-beta"]
         assert first_party_beta_item["status"] == "pass", first_party_beta_item
         assert first_party_beta_item["details"]["catalogId"] == "crypta-first-party-beta"
         assert first_party_beta_item["details"]["requiredFirstPartyApps"] == list(APP_IDS)
+        assert evidence_by_id["catalog.live-usk-source-verification"]["status"] == "pass"
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
@@ -5712,6 +6081,16 @@ def run_self_test(repo_root: Path) -> None:
         assert scheduler_checks["schedulerPerAppSerialized"] is True, scheduler_checks
         assert scheduler_checks["schedulerPathAndPrivateDataFree"] is True, scheduler_checks
         assert scheduler_checks["schedulerLifecycleDocumented"] is True, scheduler_checks
+        assert evidence_by_id["app-update.live-catalog-refresh"]["status"] == "pass"
+        live_catalog_refresh_checks = evidence_by_id["app-update.live-catalog-refresh"]["details"][
+            "checks"
+        ]
+        assert (
+            live_catalog_refresh_checks["schedulerSummaryPrivacyGuard"] is True
+        ), live_catalog_refresh_checks
+        assert all(
+            isinstance(value, bool) for value in live_catalog_refresh_checks.values()
+        ), live_catalog_refresh_checks
         assert evidence_by_id["app-update.rollback"]["status"] == "pass"
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         rollback_checks = evidence_by_id["app-update.rollback"]["details"]["checks"]
@@ -6165,7 +6544,24 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_dir / "RecommendedAppCatalogs.java").write_text(
         "final class RecommendedAppCatalogs { static final String FIRST_PARTY_BETA_CATALOG_ID = "
-        "\"crypta-first-party-beta\"; String env = \"CRYPTAD_FIRST_PARTY_CATALOG_SOURCE\"; }\n",
+        "\"crypta-first-party-beta\"; String env = \"CRYPTAD_FIRST_PARTY_CATALOG_SOURCE "
+        "CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSource.java").write_text(
+        "final class AppCatalogSource { Object source = CryptaCatalogUri.parse(\"crypta:USK@example/cryptad-app-catalog.properties\"); }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "CryptaCatalogUri.java").write_text(
+        "final class CryptaCatalogUri { String s = \"crypta:USK@ SIGNATURE_QUERY_PREFIX "
+        "signatureFetchKeyForResolvedCatalog normalizeResolvedCatalogFetchKey "
+        "requireCompatibleResolvedKeyKind siblingSignatureKey(resolvedKey)\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogFetcher.java").write_text(
+        "final class AppCatalogFetcher { String s = \"ContentFetchPort "
+        "signatureFetchKeyForResolvedCatalog(catalogBytes.resolvedUri()) MAX_CATALOG_BYTES "
+        "MAX_SIGNATURE_BYTES\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogArtifactDownloader.java").write_text(
@@ -6174,7 +6570,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogManager.java").write_text(
-        "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); }\n",
+        "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); "
+        "String s = \"AppCatalogVerifier.verify sourceStore.write(catalog, source, fetched "
+        "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place\"; }\n",
         encoding="utf-8",
     )
     appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
@@ -6182,7 +6580,13 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_tests / "AppCatalogManagerTest.java").write_text(
         "void entry_whenArtifactUriIsCryptaChk_expectAccepted() {}\n"
         "void prepareInstallPlan_whenCryptaArtifactUsesContentFetchPort_expectVerifiedPlan() {}\n"
-        "void download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable() {}\n",
+        "void download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable() {}\n"
+        "void fetch_whenCryptaCatalogResolvesToUskEdition_expectSignatureFetchedFromResolvedEdition() {}\n"
+        "void fetch_whenCryptaResolvedCatalogHasSchemePrefix_expectSignatureFetchedFromResolvedEdition() {}\n"
+        "void fetch_whenCryptaResolvedCatalogChangesKeyKind_expectInvalidCatalogSource() {}\n"
+        "void fetch_whenCryptaSourceUsesContentFetchPort_expectBoundedRequests() {}\n"
+        "void refresh_whenCryptaFetchFails_expectPreviousVerifiedCatalogPreservedAndMetadataUpdated() {}\n"
+        "void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri() {}\n",
         encoding="utf-8",
     )
     for test_name in ("AppCatalogParserTest.java", "AppCatalogEntryDescriptorTest.java", "RecommendedAppCatalogsTest.java"):
@@ -6197,13 +6601,14 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_dir / "PlatformApiAppRoutes.java").write_text(
         "final class PlatformApiAppRoutes { void routeRecommendedAppCatalogs() {} "
-        "void routeRecommendedAppCatalogAddOrApp() {} }\n",
+        "void routeRecommendedAppCatalogAddOrApp() {} boolean refresh = \"refresh\".equals(action); }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
         "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 7; "
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
+        "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
         "String listAction = \"catalogs.recommended.list\"; "
         "String addAction = \"catalogs.recommended.add\"; "
         "String profileDocument = \"/app-vault/identities/{identityId}/profile-document\"; "
@@ -6306,6 +6711,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String route = \"trust-graph/score\"; String capability = \"trust.read\"; }\n",
         encoding="utf-8",
     )
+    appcatalog_api_tests = workspace / "platform-api/src/test/java/network/crypta/platform/api/appcatalogs"
+    appcatalog_api_tests.mkdir(parents=True, exist_ok=True)
+    (appcatalog_api_tests / "AppCatalogsApiHandlerTest.java").write_text(
+        "void listRecommendedCatalogs_whenConfiguredAndTrusted_expectCanAddAndRedactedSource() {}\n"
+        "void listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted() {}\n"
+        "void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() {}\n",
+        encoding="utf-8",
+    )
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
     shell.parent.mkdir(parents=True, exist_ok=True)
     shell.write_text(
@@ -6327,7 +6740,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
         "api.minimumVersion, changelog.summary, and review receipts. "
         "Maintain artifacts as crypta:CHK@artifact and set CRYPTAD_FIRST_PARTY_CATALOG_SOURCE "
-        "with CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID. "
+        "with CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID and "
+        "CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID. "
+        "Run crypta-app publish-usk --dry-run for the offline plan, then crypta-app publish-usk --live "
+        "with a private insert URI loaded from env or protected file. The live USK catalog source is "
+        "crypta:USK@.../cryptad-app-catalog.properties and cryptad-app-catalog.signature is the "
+        "sibling sidecar at the same USK edition. Signed catalog verification remains mandatory. "
+        "Catalog refresh records last verified state, and manual remains the default update policy. "
         "POST /api/v1/app-vault/identities creates browser-safe app-owned identities with "
         "vault.identities.create. POST /api/v1/app-vault/identities/{identityId}/profile-document "
         "uses vault.identities.read and vault.identities.use for profile document signing. "
@@ -6429,7 +6848,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         '@Command(name = "test") class AppTestCommand {}\n'
         '@Command(name = "generate") class KeysGenerateCommand {}\n'
         '@Command(name = "entry") class CatalogEntryCommand {}\n'
-        '@Command(name = "publish-usk") class PublishUskCommand { String e = "live_publish_not_supported"; }\n',
+        '@Command(name = "publish-usk") class PublishUskCommand { String dry = "--dry-run"; '
+        'String live = "--live"; String insertEnv = "--private-insert-uri-env"; '
+        'String insertFile = "--private-insert-uri-file"; String passwordEnv = "--form-password-env"; '
+        'String passwordFile = "--form-password-file"; String s = "PublicationPlanWriter '
+        'LiveUskPublicationService loadSecureText requires exactly one of --dry-run or --live"; }\n',
         encoding="utf-8",
     )
     (devtools_dir / "AppTemplateKind.java").write_text(
@@ -6456,6 +6879,33 @@ def make_self_test_workspace(workspace: Path) -> None:
         "class PublicationPlanWriter { String s = \"Crypta Catalog USK Publication Plan\"; }\n",
         encoding="utf-8",
     )
+    (devtools_dir / "PublicationInputValidator.java").write_text(
+        "class PublicationInputValidator { String s = \"crypta:USK@.../ "
+        "cryptad-app-catalog.properties cryptad-app-catalog.signature\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "LiveUskPublicationService.java").write_text(
+        "class LiveUskPublicationService { Object v = PublicationInputValidator.validate(); "
+        "String s = \"AppCatalogVerifier.verify requirePrivateInsertUri\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "PlatformApiLiveUskPublisher.java").write_text(
+        "class PlatformApiLiveUskPublisher { String s = \"queue/inserts/directory sourcePath "
+        "insertUri COMPAT_CURRENT content/fetch contentBase64 live_publish_verification_failed "
+        "followRedirects(HttpClient.Redirect.NEVER)\"; }\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "LiveUskPublicationResult.java").write_text(
+        "record LiveUskPublicationResult(String catalogSha256, String signatureSha256, "
+        "String catalogSigningKeyId, String catalogInsertStatus, "
+        "String schedulerRefreshVerificationStatus) {}\n",
+        encoding="utf-8",
+    )
+    (devtools_dir / "LiveUskPublicationResultWriter.java").write_text(
+        "class LiveUskPublicationResultWriter { String s = \"catalogSha256 signatureSha256 "
+        "catalogSigningKeyId catalogInsertStatus schedulerRefreshVerificationStatus\"; }\n",
+        encoding="utf-8",
+    )
     devserver_dir = devtools_dir / "devserver"
     devserver_dir.mkdir(parents=True, exist_ok=True)
     (devserver_dir / "CryptaAppDevServer.java").write_text(
@@ -6476,7 +6926,21 @@ def make_self_test_workspace(workspace: Path) -> None:
     (toolkit_test_dir / "DeveloperBetaToolkitCliTest.java").write_text(
         "void test_whenFreshStaticTemplateCheckedStrict_expectPassingHumanAndJsonReport() {}\n"
         "void catalogEntryAndPublishUsk_whenSignedArtifactsPrepared_expectOfflinePlan() {}\n"
-        "void devServer_whenStaticAppServed_expectBootstrapStaticAndSessionProtectedApi() {}\n",
+        "void devServer_whenStaticAppServed_expectBootstrapStaticAndSessionProtectedApi() {}\n"
+        "void publish_whenFakePublisherSucceeds_expectSanitizedSummaryAndRetainedStaging() {}\n"
+        "void publish_whenInsertIsOnlyQueued_expectStagingRetainedWithoutPathInSummary() {}\n"
+        "void publish_whenPrivateInsertUriDoesNotMatchPublicSource_expectFailureWithoutPublisherOrSummary() {}\n"
+        "String e = \"private insert URI must be configured by exactly one env or file source\";\n"
+        "String w = \"staging_sidecars_retained_until_live_insert_completion\";\n"
+        "void redaction() { assertFalse(liveSummaryText.contains(LIVE_PRIVATE_INSERT_URI)); }\n",
+        encoding="utf-8",
+    )
+    (toolkit_test_dir / "LiveUskPublicationServiceTest.java").write_text(
+        "void publish_whenFakePublisherSucceeds_expectSanitizedSummaryAndRetainedStaging() {}\n",
+        encoding="utf-8",
+    )
+    (toolkit_test_dir / "PublicationPlanWriterTest.java").write_text(
+        "void write_whenDryRun_expectPlan() {}\n",
         encoding="utf-8",
     )
     (docs / DEVELOPER_BETA_TOOLKIT_DOC.name).write_text(
@@ -6485,7 +6949,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "crypta-app test --bundle-dir . --strict\n"
         "crypta-app keys generate\n"
         "crypta-app catalog entry\n"
-        "crypta-app publish-usk --dry-run\n",
+        "crypta-app publish-usk --dry-run\n"
+        "crypta-app publish-usk --live --private-insert-uri-env CRYPTAD_FIRST_PARTY_CATALOG_INSERT_URI "
+        "--form-password-env CRYPTAD_CERT_FORM_PASSWORD\n"
+        "The private insert URI is secret, cryptad-app-catalog.signature is published at the same USK, "
+        "and dry-run remains available.\n",
         encoding="utf-8",
     )
     (workspace / APP_UI_DESIGN_SYSTEM_DOC).write_text(
@@ -6672,6 +7140,10 @@ record AppUpdateCandidate() {
 class AppUpdateService {
   AppUpdateService.SchedulerSummaryProvider schedulerSummaryProvider;
 
+  public synchronized Map<String, Object> check(String appId, boolean includeStaged) {
+    return summary(appId, installed);
+  }
+
   public synchronized Map<String, Object> stage(String appId) {
     AppUpdateCandidate candidate = candidateOrDetect(appId, installed);
     AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
@@ -6755,6 +7227,7 @@ public final class AppUpdateScheduler {
   private static final String MESSAGE_CATALOG_REFRESH_FAILED =
       "Scheduler catalog refresh failed; cached verified catalogs remain in use.";
   private static final String MESSAGE_APP_CHECK_FAILED = "Scheduler update check failed.";
+  // Manual remains the default; the scheduler discovers candidates and refreshes live USK catalog sources.
   AppUpdateSchedulerTickResult tick(Instant now) {
     if (!running.compareAndSet(false, true)) {
       return AppUpdateSchedulerTickResult.alreadyRunning(now);
@@ -6808,6 +7281,9 @@ class AppUpdateSchedulerConfigTest {
     (appupdates_test_dir / "AppUpdateSchedulerTest.java").write_text(
         """
 class AppUpdateSchedulerTest {
+  void tick_whenCatalogAndAppAreDue_expectRefreshOnceThenDelegatesCheck() {
+    Object order = inOrder(catalogManager, updateService);
+  }
   void tick_whenManualPolicy_expectCheckOnlyAndNoStageOrApply() {
     verify(catalogManager, never()).prepareInstallPlan(eq(CATALOG_ID), eq(APP_ID));
     verify(appHost, never()).updateFromDirectory(eq(APP_ID), eq(tempDir));
@@ -6893,6 +7369,7 @@ class AppCatalogsApiHandler {
   String recommendedCatalogError = "recommended_catalog_trusted_key_missing";
   void listRecommendedCatalogs() {}
   void addRecommended() {}
+  void refresh(String catalogId) { refresh(catalogId); }
   void summarize() {
     json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put("updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
@@ -6916,7 +7393,8 @@ AppHost v1 uses an `apply_when_stopped` policy.
 Silent automatic update is not the default.
 Applying an update requires an operator or explicit API caller.
 The policy modes are manual, stage, and apply_when_stopped.
-The background scheduler uses AppUpdateService.check and manual remains the default.
+The background scheduler uses AppUpdateService.check after live USK catalog refresh and manual remains the default.
+Catalog refresh records the last verified signed catalog state before candidate discovery.
 Release evidence is app-update.scheduler.
 Rollback covers only the immutable installed bundle.
 Rollback does not roll back app data directories or app cache directories.

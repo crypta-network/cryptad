@@ -445,9 +445,13 @@ The app ecosystem beta is documented through
 the current Platform API contract version, first-party app map, offline beta tutorials, known
 limitations, beta feedback and app submission workflow, and release-manager closeout path.
 
-The beta is offline-first for developer tests and dry-run publication planning. It does not create
-a public production app store, does not auto-install recommended catalog apps, does not require
-public Crypta network access for tests, and does not change FNP, FCP, Hyphanet/Freenet
+The beta is offline-first for developer tests and dry-run publication planning. Release operators
+can publish a signed first-party catalog with `crypta-app publish-usk --live` when a localhost node,
+form password, trusted public catalog key, and private insert URI are supplied through secure
+configuration. That live workflow publishes `cryptad-app-catalog.properties` and the sibling
+`cryptad-app-catalog.signature` at the same USK edition and writes sanitized evidence. It does not
+create a public production app store, does not auto-install recommended catalog apps, does not
+require public Crypta network access for tests, and does not change FNP, FCP, Hyphanet/Freenet
 compatibility behavior, or retained FProxy browse behavior.
 
 ## Developer App CLI

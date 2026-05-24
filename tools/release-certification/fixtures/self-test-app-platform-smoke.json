@@ -261,6 +261,38 @@
     },
     {
       "details": {
+        "checks": {
+          "explicitLiveMode": true,
+          "localVerificationBeforeInsert": true,
+          "realQueueInsertionPath": true,
+          "sanitizedResultModel": true,
+          "secureLiveInputs": true
+        },
+        "publicSourceShape": "crypta:USK@.../cryptad-app-catalog.properties",
+        "signatureSidecar": "cryptad-app-catalog.signature"
+      },
+      "id": "catalog.live-usk-publication",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Live USK catalog publication source and redaction evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "resolvedEditionSignatureSidecar": true,
+          "verifyBeforeStorage": true
+        },
+        "liveNodeRequired": false
+      },
+      "id": "catalog.live-usk-source-verification",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Live USK source verification evidence passed deterministic checks."
+    },
+    {
+      "details": {
         "catalogId": "crypta-first-party-beta",
         "configuration": {
           "sourceConfigured": false,
@@ -860,6 +892,27 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "App-update background scheduler passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "docsCoverLiveCatalogRefresh": true,
+          "manualPolicyStillDefault": true,
+          "manualRefreshRouteExists": true,
+          "policyDrivenUpdatesStayInService": true,
+          "refreshBeforeCandidateDiscovery": true,
+          "refreshFailureContained": true,
+          "schedulerDoesNotApplyDirectly": true,
+          "schedulerSummaryPrivacyGuard": true
+        },
+        "liveNodeRequired": false,
+        "policy": "manual default; scheduler refreshes catalogs before candidate discovery"
+      },
+      "id": "app-update.live-catalog-refresh",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Live catalog refresh scheduler evidence passed deterministic checks."
     },
     {
       "details": {

@@ -199,7 +199,26 @@ Write an offline Crypta USK publication plan:
 
 `crypta-app publish-usk --dry-run` writes a plan. It does not insert catalog bytes, signature
 bytes, or app ZIP artifacts into the public Crypta network. Live insertion remains a separate
-reviewed publishing workflow that uses the existing content and queue mechanisms.
+reviewed release/operator workflow that uses the existing content and queue mechanisms:
+
+```bash
+"$CRYPTA_APP" publish-usk --live \
+  --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
+  --catalog-source "crypta:USK@.../cryptad-app-catalog.properties" \
+  --private-insert-uri-env CRYPTAD_FIRST_PARTY_CATALOG_INSERT_URI \
+  --node-base-url http://127.0.0.1:8888/api/v1 \
+  --form-password-env CRYPTAD_CERT_FORM_PASSWORD \
+  --trusted-key-id dev-local-catalog \
+  --trusted-public-key-file "$HOME/.crypta-dev/keys/dev-local-catalog-public.der" \
+  --output dist/catalog/live-publication-summary.json
+```
+
+The live command verifies the signed catalog locally before insertion. It publishes
+`cryptad-app-catalog.signature` as the sibling sidecar at the same USK edition as
+`cryptad-app-catalog.properties`, and its output is sanitized for release evidence. Keep the
+private insert URI, form password, and private signing keys out of shell history, logs, and
+uploaded artifacts.
 
 ## Tutorial 4: reference app map
 
