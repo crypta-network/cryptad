@@ -129,7 +129,7 @@ app.feed-reader.bundle.uri=https://example.invalid/apps/feed-reader-1.0.0.zip
 app.feed-reader.bundle.sha256=<lowercase-hex-sha256-of-zip>
 app.feed-reader.bundle.size.bytes=12345
 app.feed-reader.bundle.type=zip
-app.feed-reader.permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+app.feed-reader.permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
 app.feed-reader.homepage=https://example.invalid/apps/feed-reader
 app.feed-reader.source=https://example.invalid/src/feed-reader
 app.feed-reader.license=GPL-3.0-only
@@ -137,12 +137,13 @@ app.feed-reader.categories=reader,publishing,content
 app.feed-reader.review.status=reviewed
 app.feed-reader.review.note=First-party feed reference app.
 app.feed-reader.permissions.rationale.content.fetch=Fetches subscribed feed documents through the bounded content fetch route.
+app.feed-reader.permissions.rationale.content.subscribe=Registers bounded USK feed subscriptions with the platform scheduler and stores metadata only.
 app.feed-reader.permissions.rationale.content.insert.app-document=Submits generated feed documents to the insert pipeline without local source-path authority.
 app.feed-reader.permissions.rationale.queue.write=Creates generated feed publication inserts.
 app.feed-reader.permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
-app.feed-reader.api.minimumVersion=6
-app.feed-reader.api.maximumTestedVersion=7
+app.feed-reader.api.minimumVersion=8
+app.feed-reader.api.maximumTestedVersion=8
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
 app.trust-graph.id=trust-graph
@@ -256,11 +257,13 @@ source-path authority. Catalog metadata and release evidence must not include ra
 private keys, raw signatures, private insert URIs, tokens, form passwords, or absolute staging
 paths.
 
-Feed Reader is the content-fetch reference app. Its catalog entry may declare `content.fetch` for
-`POST /api/v1/content/fetch` and can combine `content.insert.app-document`, `queue.write`, and
-`queue.read` for generated feed publication. Catalog metadata and release evidence must not include
-raw feed bodies, raw request bodies, private insert URIs, tokens, form passwords, browser-session
-tokens, or local paths.
+Feed Reader is the content-subscription reference app. Its catalog entry declares `content.fetch`
+for `POST /api/v1/content/fetch` and `content.subscribe` for app-owned USK subscription metadata
+under `/api/v1/content/subscriptions`; create and refresh require both capabilities. It can combine
+`content.insert.app-document`, `queue.write`, and `queue.read` for generated feed publication.
+Catalog metadata and release evidence must not include raw feed bodies, raw fetched content, raw
+request bodies, private insert URIs, tokens, form passwords, browser-session tokens, private keys,
+queue HTML, or local paths.
 
 ## Trusted review receipts
 

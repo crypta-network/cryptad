@@ -275,8 +275,9 @@ host/operator Web Shell authentication. Requests with a mismatched origin fail w
 Queue Manager and legacy Publisher are also the primary replacements for the legacy queue and
 insert admin pages in the current retirement map. Site Publisher is the content reference app for
 new app-platform publishing flows. Profile Publisher is the identity-profile reference app for
-vault-backed profile-document publishing. Feed Reader is the bounded content-fetch reference app
-for reading feed snapshots and publishing generated feed documents. Trust Graph Preview is the
+vault-backed profile-document publishing. Feed Reader is the bounded content-subscription
+reference app for durable USK feed follow behavior, on-demand feed rendering, and generated feed
+publication. Trust Graph Preview is the
 local trust-service reference app for local trust statements, anchors, and preview scoring. The
 full legacy map is maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
@@ -420,17 +421,19 @@ app.version=1.0.0
 app.exec=bin/feed-reader.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
-app.permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+app.permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
 quota.data.bytes=1048576
 quota.cache.bytes=2097152
 ```
 
 Feed Reader needs `content.fetch` to read bounded Crypta feed documents through
-`POST /api/v1/content/fetch`, `content.insert.app-document` and `queue.write` to publish generated
-feed snapshots without local source-path authority, and `queue.read` to show upload progress. It
-keeps source lists and fetched content in memory by default and must not persist raw feed bodies,
-raw request bodies, private insert URIs, app process tokens, browser-session tokens, form
-passwords, or local paths.
+`POST /api/v1/content/fetch`, `content.subscribe` to manage app-owned USK subscription metadata
+through `/api/v1/content/subscriptions`, `content.insert.app-document` and `queue.write` to publish
+generated feed snapshots without local source-path authority, and `queue.read` to show upload
+progress. Subscription state is metadata only and must not persist raw fetched content. It keeps
+source lists and fetched content in memory by default and must not persist raw feed bodies, raw
+request bodies, private insert URIs, app process tokens, browser-session tokens, form passwords,
+queue HTML, or local paths.
 
 Trust Graph Preview reference app bundle:
 

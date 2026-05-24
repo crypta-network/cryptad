@@ -200,6 +200,67 @@
     {
       "details": {
         "checks": {
+          "appPrincipalScoped": true,
+          "capabilityDescriptorPresent": true,
+          "capabilityGatesPresent": true,
+          "contractVersionV8": true,
+          "docsDescribeRedactionAndNonGoals": true,
+          "limitsAndMetadataOnly": true,
+          "routesPresent": true,
+          "sdkHelpersPresent": true,
+          "serviceUnavailableStable": true,
+          "sourceValidationUskOnly": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "appProcessTokensRedacted": true,
+          "browserSessionTokensRedacted": true,
+          "formPasswordsRedacted": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawRequestBodiesExcluded": true
+        },
+        "requiredCapabilities": [
+          "content.subscribe",
+          "content.fetch for create/refresh"
+        ],
+        "sourceScope": "USK@ and crypta:USK@ only"
+      },
+      "id": "app-platform.content-subscriptions",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Content subscription API evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "backgroundLifecycle": true,
+          "conservativeLimits": true,
+          "dedupeAndMetadataOnly": true,
+          "deterministicTickAndNoOverlap": true,
+          "docsDescribeSchedulerRedaction": true,
+          "durablePathFreeStore": true,
+          "failureBackoff": true,
+          "focusedTestsPresent": true,
+          "pressureGateStableSignals": true,
+          "runtimeWiring": true,
+          "schedulerSourcePresent": true
+        },
+        "liveNodeRequired": false,
+        "policy": "bounded USK-only background polling with durable metadata, per-app/global/per-tick limits, and explicit pressure skips"
+      },
+      "id": "network-content.subscription-scheduler",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Content subscription scheduler passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
           "capabilitiesPresent": true,
           "capabilityGatesPresent": true,
           "contractVersionV7": true,
@@ -695,18 +756,21 @@
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
+          "noTabOnlyFollowTimer": true,
           "permissionDisclosureMentionsDeclaredPermissions": true,
           "sourceStaticUiPresent": true,
           "stagedDesignSystemPresent": true,
           "stagedManifestPresent": true,
           "stagedSdkPresent": true,
           "usesContentFetchRouteOrHelper": true,
+          "usesContentSubscriptionHelpers": true,
           "usesGeneratedDocumentInsertRoute": true,
           "usesSdkBootstrap": true,
           "usesUploadQueueSnapshot": true
         },
         "expectedPermissions": [
           "content.fetch",
+          "content.subscribe",
           "content.insert.app-document",
           "queue.read",
           "queue.write"
@@ -717,6 +781,39 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Feed Reader reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "feed-reader",
+        "checks": {
+          "appUsesPlatformSubscriptionWorkflow": true,
+          "docsDescribeSubscriptionFlow": true,
+          "manifestDeclaresSubscribeAndV8": true,
+          "noTabLocalFollowLoop": true,
+          "onDemandRenderStillUsesContentFetch": true,
+          "sdkHelpersAvailable": true,
+          "uiDisclosesSubscribePermission": true
+        },
+        "expectedPermissions": [
+          "content.fetch",
+          "content.subscribe",
+          "content.insert.app-document",
+          "queue.read",
+          "queue.write"
+        ],
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "rawFeedBodiesExcluded": true,
+          "rawRequestBodiesExcluded": true,
+          "subscriptionMetadataOnly": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "reference-app.feed-reader-subscriptions",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Feed Reader subscription workflow evidence passed."
     },
     {
       "details": {

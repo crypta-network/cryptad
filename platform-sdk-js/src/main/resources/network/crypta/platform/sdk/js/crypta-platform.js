@@ -270,6 +270,80 @@
     return fetchContent("base64", uriOrOptions, options);
   }
 
+  function listContentSubscriptions(options) {
+    return apiGet("content/subscriptions", options);
+  }
+
+  function createContentSubscription(options) {
+    const source = requireOptionsObject(options, "Content subscription options");
+    return apiPostForm(
+      "content/subscriptions",
+      normalizeContentSubscriptionCreate(source),
+      requestOptionsFrom(source)
+    );
+  }
+
+  function getContentSubscription(subscriptionIdOrOptions, options) {
+    const request = contentSubscriptionRequest(
+      subscriptionIdOrOptions,
+      options,
+      "Content subscription id"
+    );
+    return apiGet(`content/subscriptions/${encodeURIComponent(request.subscriptionId)}`, request.options);
+  }
+
+  function refreshContentSubscription(subscriptionIdOrOptions, options) {
+    const request = contentSubscriptionRequest(
+      subscriptionIdOrOptions,
+      options,
+      "Content subscription id"
+    );
+    return apiPostForm(
+      `content/subscriptions/${encodeURIComponent(request.subscriptionId)}/refresh`,
+      {},
+      request.options
+    );
+  }
+
+  function pauseContentSubscription(subscriptionIdOrOptions, options) {
+    const request = contentSubscriptionRequest(
+      subscriptionIdOrOptions,
+      options,
+      "Content subscription id"
+    );
+    return apiPostForm(
+      `content/subscriptions/${encodeURIComponent(request.subscriptionId)}/pause`,
+      {},
+      request.options
+    );
+  }
+
+  function resumeContentSubscription(subscriptionIdOrOptions, options) {
+    const request = contentSubscriptionRequest(
+      subscriptionIdOrOptions,
+      options,
+      "Content subscription id"
+    );
+    return apiPostForm(
+      `content/subscriptions/${encodeURIComponent(request.subscriptionId)}/resume`,
+      {},
+      request.options
+    );
+  }
+
+  function removeContentSubscription(subscriptionIdOrOptions, options) {
+    const request = contentSubscriptionRequest(
+      subscriptionIdOrOptions,
+      options,
+      "Content subscription id"
+    );
+    return apiDeleteForm(
+      `content/subscriptions/${encodeURIComponent(request.subscriptionId)}`,
+      {},
+      request.options
+    );
+  }
+
   function insertAppDocument(options) {
     const source = requireOptionsObject(options, "App document insert options");
     return apiPostForm(
@@ -676,6 +750,45 @@
     }
     params.set("format", format);
     return params;
+  }
+
+  function normalizeContentSubscriptionCreate(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "uri");
+    copyStringParamAs(source, params, "sourceUri", "uri");
+    copyStringParam(source, params, "label");
+    copyPositiveIntegerParam(source, params, "pollIntervalSeconds");
+    copyPositiveIntegerParam(source, params, "maxBytes");
+    copyPositiveIntegerParam(source, params, "timeoutMillis");
+    if (!params.has("uri")) {
+      throw new Error("Content subscription uri is required.");
+    }
+    if (!params.has("label")) {
+      throw new Error("Content subscription label is required.");
+    }
+    return params;
+  }
+
+  function contentSubscriptionRequest(subscriptionIdOrOptions, options, description) {
+    if (
+      subscriptionIdOrOptions &&
+      typeof subscriptionIdOrOptions === "object" &&
+      !Array.isArray(subscriptionIdOrOptions) &&
+      typeof subscriptionIdOrOptions.entries !== "function"
+    ) {
+      const source = subscriptionIdOrOptions;
+      return {
+        subscriptionId: contentSubscriptionPathSegment(
+          source.subscriptionId || source.id,
+          description
+        ),
+        options: requestOptionsFrom(source),
+      };
+    }
+    return {
+      subscriptionId: contentSubscriptionPathSegment(subscriptionIdOrOptions, description),
+      options: options || {},
+    };
   }
 
   function copyRequestOption(source, target, name) {
@@ -1330,6 +1443,17 @@
     return normalized;
   }
 
+  function contentSubscriptionPathSegment(value, description) {
+    if (typeof value !== "string") {
+      throw new Error(`${description} must be a string.`);
+    }
+    const normalized = value.trim().toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9._-]{0,190}[a-z0-9])?$/.test(normalized)) {
+      throw new Error(`${description} must be one normalized local path segment.`);
+    }
+    return normalized;
+  }
+
   function normalizeVaultGrantRequest(request) {
     const source = request && typeof request === "object" ? request : {};
     const params = {
@@ -1431,6 +1555,15 @@
       insertFile,
       insertDirectory,
       insertAppDocument,
+      subscriptions: Object.freeze({
+        list: listContentSubscriptions,
+        create: createContentSubscription,
+        get: getContentSubscription,
+        refresh: refreshContentSubscription,
+        pause: pauseContentSubscription,
+        resume: resumeContentSubscription,
+        remove: removeContentSubscription,
+      }),
     }),
     vault: Object.freeze({
       identities: Object.freeze({

@@ -125,9 +125,10 @@ App-originated Platform API calls authenticate with the launch token in `X-Crypt
 Bearer credentials continue through the host/operator path so reverse proxies and shared clients do
 not accidentally convert local management requests into failed app-token attempts. Valid app
 principals are denied by default unless the route is covered by manifest-declared capabilities such
-as `queue.read`, `queue.write`, `content.fetch`, `content.insert`, or
-`content.insert.app-document`. App-facing content fetch is bounded and Crypta-content-only; it must
-not become local file access, arbitrary HTTP(S) fetch, or LAN probing. Invalid or stale
+as `queue.read`, `queue.write`, `content.fetch`, `content.subscribe`, `content.insert`, or
+`content.insert.app-document`. App-facing content fetch is bounded and Crypta-content-only;
+content subscriptions are bounded USK metadata only. Neither surface may become local file access,
+arbitrary HTTP(S) fetch, generic crawling, or LAN probing. Invalid or stale
 `X-Crypta-App-Token` values fail authentication, and missing capabilities fail authorization
 without echoing the token.
 

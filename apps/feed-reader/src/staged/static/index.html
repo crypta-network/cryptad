@@ -29,6 +29,7 @@
       <p><strong>Declared permissions</strong></p>
       <ul>
         <li><code>content.fetch</code> fetches configured feed sources through SDK helpers.</li>
+        <li><code>content.subscribe</code> manages app-scoped USK subscription metadata.</li>
         <li><code>content.insert.app-document</code> publishes generated feed snapshots.</li>
         <li><code>queue.read</code> reads upload queue previews for published snapshots.</li>
         <li><code>queue.write</code> creates queue entries for published feed snapshots.</li>
@@ -39,8 +40,9 @@
       <h2 id="safe-use-title">Safe-use notes</h2>
       <ul>
         <li>Feed sources, fetched content, drafts, and publish results are kept only in memory.</li>
+        <li>Platform subscriptions store bounded metadata only; fetched feed bodies are not persisted.</li>
         <li>Fetched content is rendered as text and no untrusted HTML is inserted into the page.</li>
-        <li>USK follow refresh runs only while this tab is open and stops after a bounded count.</li>
+        <li>USK follow uses the platform scheduler instead of a browser-tab timer.</li>
       </ul>
     </section>
 
@@ -51,8 +53,8 @@
             <p class="cr-label">In-memory list</p>
             <h2 id="sources-title">Feed sources</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="follow-toggle-button" type="button">
-            Start USK follow
+          <button class="cr-button cr-button--secondary" id="refresh-subscriptions-button" type="button">
+            Refresh subscriptions
           </button>
         </div>
         <form class="source-form" id="source-form">
@@ -79,7 +81,7 @@
           </label>
           <label class="cr-checkbox">
             <input name="followUsk" type="checkbox">
-            <span>Follow USK while tab is open</span>
+            <span>Create platform USK subscription</span>
           </label>
           <button class="cr-button cr-button--primary" type="submit">
             Add source
@@ -87,6 +89,9 @@
         </form>
         <div class="source-list" id="source-list">
           <p class="cr-empty">Add a feed source to fetch entries.</p>
+        </div>
+        <div class="subscription-list" id="subscription-list">
+          <p class="cr-empty">Platform subscription metadata loads after the app opens.</p>
         </div>
       </section>
 

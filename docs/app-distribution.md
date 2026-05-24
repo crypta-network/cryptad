@@ -77,7 +77,8 @@ installed copies open through isolated app origins when available. Queue Manager
 Publisher remain compatibility fallbacks for the current retirement map. Site Publisher is the
 content reference app for local publishing workflows, Profile Publisher is the identity-profile
 reference app for vault-backed profile-document publishing, Feed Reader is the bounded
-content-fetch reference app for feed reading and generated feed publication, and Trust Graph
+content-subscription reference app for durable USK feed follow behavior, feed reading, and
+generated feed publication, and Trust Graph
 Preview is the local trust-service reference app for trust statements, anchors, and preview
 scoring.
 

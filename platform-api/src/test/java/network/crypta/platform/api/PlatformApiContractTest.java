@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":7"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":8"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(7, version.contractVersion());
+    assertEquals(8, version.contractVersion());
   }
 
   @Test
@@ -62,6 +62,12 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
     assertEquals(6, contentFetchCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor contentSubscribeCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("content.subscribe"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(8, contentSubscribeCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor trustReadCapability =
         PlatformApiContract.current().capabilities().stream()
             .filter(capability -> capability.name().equals("trust.read"))
@@ -150,6 +156,42 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingContentSubscriptionEndpoints_expectContractV8AppScopedCapabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.of(
+            "GET /content/subscriptions",
+            List.of("content.subscribe"),
+            "POST /content/subscriptions",
+            List.of("content.fetch", "content.subscribe"),
+            "GET /content/subscriptions/{subscriptionId}",
+            List.of("content.subscribe"),
+            "POST /content/subscriptions/{subscriptionId}/refresh",
+            List.of("content.fetch", "content.subscribe"),
+            "POST /content/subscriptions/{subscriptionId}/pause",
+            List.of("content.subscribe"),
+            "POST /content/subscriptions/{subscriptionId}/resume",
+            List.of("content.subscribe"),
+            "DELETE /content/subscriptions/{subscriptionId}",
+            List.of("content.subscribe"));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(8, endpoint.sinceContractVersion(), key);
+      assertEquals("content", endpoint.routeFamily(), key);
+      assertFalse(endpoint.hostOperatorBypassAllowed(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void current_whenInspectingTrustGraphEndpoints_expectContractV7Capabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
@@ -227,6 +269,9 @@ class PlatformApiContractTest {
     if (endpoint.routeTemplate().startsWith("/trust-graph")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {
       return 7;
+    }
+    if (endpoint.routeTemplate().startsWith("/content/subscriptions")) {
+      return 8;
     }
     if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {

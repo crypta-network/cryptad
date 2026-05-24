@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=7
+contractVersion=8
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 7,
+    "contractVersion": 8,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -155,6 +155,41 @@ non-contributing until anchored, and the scorer uses direct local anchors with a
 confidence-weighted average. No FNP/FCP/wire protocol, routing, datastore, peer-management, or
 FProxy browse behavior changes are part of contract v7. See
 [trust-graph-preview.md](trust-graph-preview.md).
+
+Contract version 8 adds app-owned, durable, bounded USK content subscriptions under
+`/api/v1/content/subscriptions`:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/content/subscriptions` | `content.subscribe` | List the caller app's safe subscription metadata. |
+| `POST /api/v1/content/subscriptions` | `content.subscribe`, `content.fetch` | Create one bounded USK subscription for the caller app. |
+| `GET /api/v1/content/subscriptions/{subscriptionId}` | `content.subscribe` | Read one subscription owned by the caller app. |
+| `POST /api/v1/content/subscriptions/{subscriptionId}/refresh` | `content.subscribe`, `content.fetch` | Trigger one bounded foreground refresh of the caller app's subscription. |
+| `POST /api/v1/content/subscriptions/{subscriptionId}/pause` | `content.subscribe` | Pause background polling for one caller-owned subscription. |
+| `POST /api/v1/content/subscriptions/{subscriptionId}/resume` | `content.subscribe` | Resume background polling and make the subscription due. |
+| `DELETE /api/v1/content/subscriptions/{subscriptionId}` | `content.subscribe` | Delete one caller-owned subscription. |
+
+All subscription routes require an app process or app browser principal. Host/operator principals
+do not implicitly bypass app scoping for these routes. If an operator-facing subscription console
+is needed later, it must be a separate API that names the target app explicitly.
+
+Background subscriptions are intentionally narrower than foreground content fetches. They accept
+only `USK@...` and `crypta:USK@...` source URIs, reject local paths, relative paths, query strings,
+fragments, whitespace, multiline text, `file:`, `http:`, `https:`, `CHK@`, `SSK@`, and `KSK@`,
+and normalize only the safe runtime fetch URI for the bounded `ContentFetchPort`. Creation and
+manual refresh require both `content.subscribe` and `content.fetch` because each subscription is a
+durable background fetch grant. The background scheduler must also skip apps that are no longer
+installed or no longer declare both capabilities.
+
+Subscription summaries are metadata only. They may include the app-owned `sourceUri`, sanitized
+`lastSeenResolvedUri`, `lastSeenEdition`, `contentSha256`, byte length, timestamps, status,
+failure count, stable error code, update count, and short message. They must not include raw
+fetched content, raw request bodies, browser-session tokens, app process tokens, form passwords,
+private insert URIs, private keys, absolute staging paths, store root paths, queue HTML, or raw
+daemon exception messages. The scheduler records queue pressure with stable runtime signals, not
+by parsing legacy queue HTML; when pressure is clear, it records safe statuses such as
+`queue_pressure` or `runtime_unavailable`. This is not a generic crawler and does not add
+arbitrary HTTP/HTTPS fetch support.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -281,9 +316,12 @@ records descriptor counts and non-stable entries, and runs offline `crypta-app c
 checks for first-party staged apps and the generated sample app. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,
 `app-platform.generated-document-insert` for the app-generated document insert route, and
-`reference-app.profile-publisher` for the first-party Profile Publisher bundle. Content fetch has
-separate release evidence: `app-platform.content-fetch` for `POST /api/v1/content/fetch` and
-`reference-app.feed-reader` for the first-party Feed Reader bundle. Trust Graph Preview has
+`reference-app.profile-publisher` for the first-party Profile Publisher bundle. Networked content
+has separate release evidence: `app-platform.content-fetch` for `POST /api/v1/content/fetch`,
+`app-platform.content-subscriptions` for the v8 subscription routes,
+`network-content.subscription-scheduler` for deterministic bounded scheduler behavior, and
+`reference-app.feed-reader` plus `reference-app.feed-reader-subscriptions` for the first-party
+Feed Reader bundle. Trust Graph Preview has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the v7 trust routes and SDK helpers, and
 `app-platform.trust-statement-signing` for the bounded AppVault signing route and redaction checks.

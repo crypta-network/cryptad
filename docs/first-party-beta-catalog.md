@@ -118,20 +118,21 @@ api.maximumTestedVersion=7
 api.experimentalCapabilitiesAccepted=true
 ```
 
-Feed Reader descriptors should include the content-fetch and generated-feed publication
-rationales:
+Feed Reader descriptors should include the content-subscription, content-fetch, and generated-feed
+publication rationales:
 
 ```properties
-permissions=content.fetch,content.insert.app-document,queue.read,queue.write
+permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
 permissions.rationale.content.fetch=Fetches subscribed feed documents through POST /api/v1/content/fetch without local source-path authority.
+permissions.rationale.content.subscribe=Registers bounded USK subscriptions with the platform scheduler and stores metadata only.
 permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
-api.minimumVersion=6
-api.maximumTestedVersion=7
+api.minimumVersion=8
+api.maximumTestedVersion=8
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -252,8 +253,9 @@ Crypta CHK artifact transport tests, first-party metadata documentation, governe
 parsing, transparency-log verification, review-history routing, and whether the certification
 environment has source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
-`app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`
-and `app-platform.content-fetch`. Trust Graph Preview is covered by
+`app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`,
+`reference-app.feed-reader-subscriptions`, `app-platform.content-fetch`,
+`app-platform.content-subscriptions`, and `network-content.subscription-scheduler`. Trust Graph Preview is covered by
 `reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
 `app-platform.trust-statement-signing`. Normal certification must not record tokens, form
 passwords, private insert URIs, raw request bodies, raw feed bodies, raw trust statement bodies

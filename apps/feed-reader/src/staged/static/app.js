@@ -6,43 +6,41 @@
   const maxEntriesPerSnapshot = 20;
   const maxRememberedSnapshots = 12;
   const maxPublishResults = 5;
-  const maxFollowRefreshesPerOpen = 24;
-  const followRefreshMillis = 5 * 60 * 1000;
+  const subscriptionPollIntervalSeconds = 5 * 60;
 
   const state = {
     sources: [],
+    subscriptions: [],
     selectedSourceId: "",
     fetchedSnapshots: [],
     publishResults: [],
-    followTimerId: 0,
-    followRefreshCount: 0,
     uploadQueueSortBy: null,
     uploadQueueReversed: false,
   };
 
   const elements = {
     followStatus: document.getElementById("follow-status"),
-    followToggleButton: document.getElementById("follow-toggle-button"),
     publisherForm: document.getElementById("publisher-form"),
     publishResult: document.getElementById("publish-result"),
     queuePreview: document.getElementById("queue-preview"),
     readerContent: document.getElementById("reader-content"),
     refreshQueueButton: document.getElementById("refresh-queue-button"),
     refreshSelectedButton: document.getElementById("refresh-selected-button"),
+    refreshSubscriptionsButton: document.getElementById("refresh-subscriptions-button"),
     secondaryRefreshQueueButton: document.getElementById("secondary-refresh-queue-button"),
     sourceForm: document.getElementById("source-form"),
     sourceList: document.getElementById("source-list"),
     status: document.getElementById("status"),
+    subscriptionList: document.getElementById("subscription-list"),
   };
 
   document.addEventListener("DOMContentLoaded", start);
-  window.addEventListener("pagehide", stopFollowTimer);
-  document.addEventListener("visibilitychange", stopFollowTimerWhenHidden);
 
   async function start() {
     bindControls();
     try {
       await CryptaPlatform.bootstrap.load({ appId });
+      await loadSubscriptions({ silent: true });
       renderSources();
       renderReader();
       await refreshUploadQueue({ silent: true });
@@ -54,13 +52,13 @@
   function bindControls() {
     elements.sourceForm.addEventListener("submit", addSource);
     elements.publisherForm.addEventListener("submit", publishSnapshot);
-    elements.followToggleButton.addEventListener("click", toggleFollowTimer);
     elements.refreshSelectedButton.addEventListener("click", refreshSelectedSource);
+    elements.refreshSubscriptionsButton.addEventListener("click", loadSubscriptions);
     elements.refreshQueueButton.addEventListener("click", refreshUploadQueue);
     elements.secondaryRefreshQueueButton.addEventListener("click", refreshUploadQueue);
   }
 
-  function addSource(event) {
+  async function addSource(event) {
     event.preventDefault();
     if (state.sources.length >= maxSources) {
       setStatus("Source limit reached for this page.", "error");
@@ -71,23 +69,30 @@
       uri: fieldValue(elements.sourceForm, "uri"),
       followUsk: checkboxValue(elements.sourceForm, "followUsk"),
     };
-    addSourceToState(source);
+    const added = addSourceToState(source);
     elements.sourceForm.reset();
+    if (added.followUsk) {
+      await createSubscriptionForSource(added);
+    }
     renderSources();
-    setStatus("Feed source added.");
+    renderSubscriptions();
+    setStatus(added.subscriptionId ? "Feed source subscribed." : "Feed source added.");
   }
 
   function addSourceToState(source) {
     const id = generatedId("source");
-    state.sources.unshift({
+    const added = {
       id,
       label: stringValue(source.label) || "Untitled feed",
       uri: stringValue(source.uri),
       followUsk: !!source.followUsk,
+      subscriptionId: "",
       lastFetchedAt: "",
       lastStatus: "Not fetched",
-    });
+    };
+    state.sources.unshift(added);
     state.selectedSourceId = id;
+    return added;
   }
 
   async function refreshSelectedSource() {
@@ -117,11 +122,12 @@
   }
 
   async function fetchSourceSnapshot(source, options) {
+    const subscriptionSummary = options.subscriptionSummary || subscriptionForSource(source);
     const request = {
-      uri: source.uri,
+      uri: stringValue(subscriptionSummary && subscriptionSummary.lastSeenResolvedUri) || source.uri,
       maxBytes: 262144,
       timeoutMillis: 30000,
-      purpose: options.follow && isUskUri(source.uri) ? "feed-source" : "feed-preview",
+      purpose: options.follow && isUskUri(source.uri) ? "feed-subscription" : "feed-preview",
     };
     if (
       CryptaPlatform.content &&
@@ -137,6 +143,162 @@
       return CryptaPlatform.feed.fetchSnapshot(request);
     }
     throw new Error("Feed fetch helper is unavailable.");
+  }
+
+  async function loadSubscriptions(options) {
+    const loadOptions = options || {};
+    if (!subscriptionHelpersAvailable()) {
+      state.subscriptions = [];
+      renderSubscriptions();
+      setFollowStatus("Platform subscriptions are unavailable; fetch sources manually.");
+      return;
+    }
+    try {
+      if (!loadOptions.silent) {
+        setStatus("Loading subscriptions...");
+      }
+      const response = await CryptaPlatform.content.subscriptions.list(requestOptionsFrom(loadOptions));
+      state.subscriptions = normalizeSubscriptionList(response);
+      syncSourceSubscriptionMetadata();
+      renderSources();
+      renderSubscriptions();
+      if (!loadOptions.silent) {
+        setStatus("Subscriptions refreshed.");
+      }
+      setFollowStatus("Platform subscription metadata loaded.");
+    } catch (error) {
+      if (!loadOptions.silent) {
+        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      }
+      renderSubscriptions();
+      setFollowStatus("Subscription metadata could not be loaded.");
+    }
+  }
+
+  async function createSubscriptionForSource(source) {
+    if (!subscriptionHelpersAvailable()) {
+      source.lastStatus = "Subscription helper unavailable";
+      setFollowStatus("Platform subscriptions are unavailable; source remains manual.");
+      return;
+    }
+    if (!isUskUri(source.uri)) {
+      source.lastStatus = "Subscriptions require a USK URI";
+      setFollowStatus("Only USK feed sources can be subscribed.");
+      return;
+    }
+    try {
+      const response = await CryptaPlatform.content.subscriptions.create({
+        uri: source.uri,
+        label: source.label,
+        pollIntervalSeconds: subscriptionPollIntervalSeconds,
+        maxBytes: 262144,
+        timeoutMillis: 30000,
+      });
+      const subscription = subscriptionFromResponse(response);
+      updateSubscriptionState(subscription);
+      source.subscriptionId = subscription.subscriptionId || "";
+      source.lastStatus = "Subscribed";
+      setFollowStatus("Platform subscription created.");
+    } catch (error) {
+      source.lastStatus = CryptaPlatform.api.errorMessage(error);
+      setFollowStatus(source.lastStatus);
+    }
+  }
+
+  async function refreshSubscription(subscriptionId) {
+    if (!subscriptionHelpersAvailable()) {
+      setFollowStatus("Platform subscriptions are unavailable.");
+      return;
+    }
+    try {
+      setStatus("Refreshing subscription...");
+      const response = await CryptaPlatform.content.subscriptions.refresh(subscriptionId);
+      const subscription = subscriptionFromResponse(response);
+      updateSubscriptionState(subscription);
+      const source = sourceForSubscription(subscription.subscriptionId);
+      if (source) {
+        await refreshSource(source, { follow: true, subscriptionSummary: subscription });
+      }
+      renderSources();
+      renderSubscriptions();
+      setStatus("Subscription refresh requested.", "success");
+    } catch (error) {
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+    }
+  }
+
+  async function pauseSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, "pause", "Subscription paused.");
+  }
+
+  async function resumeSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, "resume", "Subscription resumed.");
+  }
+
+  async function removeSubscription(subscriptionId) {
+    if (!subscriptionHelpersAvailable()) {
+      setFollowStatus("Platform subscriptions are unavailable.");
+      return;
+    }
+    try {
+      const response = await CryptaPlatform.content.subscriptions.remove(subscriptionId);
+      const subscription = subscriptionFromResponse(response);
+      state.subscriptions = state.subscriptions.filter(
+        (item) => item.subscriptionId !== subscriptionId,
+      );
+      state.sources
+        .filter((source) => source.subscriptionId === subscriptionId)
+        .forEach((source) => {
+          source.subscriptionId = "";
+          source.followUsk = false;
+          source.lastStatus = "Subscription removed";
+        });
+      renderSources();
+      renderSubscriptions();
+      setStatus(
+        subscription && subscription.status === "deleted"
+          ? "Subscription deleted."
+          : "Subscription removed.",
+        "success",
+      );
+    } catch (error) {
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+    }
+  }
+
+  async function mutateSubscription(subscriptionId, action, message) {
+    if (!subscriptionHelpersAvailable()) {
+      setFollowStatus("Platform subscriptions are unavailable.");
+      return;
+    }
+    try {
+      const response = await CryptaPlatform.content.subscriptions[action](subscriptionId);
+      updateSubscriptionState(subscriptionFromResponse(response));
+      renderSources();
+      renderSubscriptions();
+      setStatus(message, "success");
+    } catch (error) {
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+    }
+  }
+
+  function subscriptionHelpersAvailable() {
+    return (
+      CryptaPlatform.content &&
+      CryptaPlatform.content.subscriptions &&
+      typeof CryptaPlatform.content.subscriptions.list === "function" &&
+      typeof CryptaPlatform.content.subscriptions.create === "function"
+    );
+  }
+
+  function requestOptionsFrom(source) {
+    const options = {};
+    ["signal", "headers", "bootstrap", "force", "refreshBootstrap"].forEach((name) => {
+      if (source && Object.prototype.hasOwnProperty.call(source, name)) {
+        options[name] = source[name];
+      }
+    });
+    return options;
   }
 
   async function publishSnapshot(event) {
@@ -159,52 +321,6 @@
     } catch (error) {
       setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
-  }
-
-  function toggleFollowTimer() {
-    if (state.followTimerId) {
-      stopFollowTimer();
-      return;
-    }
-    state.followRefreshCount = 0;
-    state.followTimerId = window.setInterval(refreshFollowedUskSources, followRefreshMillis);
-    elements.followToggleButton.textContent = "Stop USK follow";
-    setFollowStatus("USK follow refresh is active for this tab.");
-    refreshFollowedUskSources();
-  }
-
-  async function refreshFollowedUskSources() {
-    if (state.followRefreshCount >= maxFollowRefreshesPerOpen) {
-      stopFollowTimer();
-      setFollowStatus("USK follow refresh stopped after the bounded refresh count.");
-      return;
-    }
-    const sources = state.sources.filter((source) => source.followUsk && isUskUri(source.uri));
-    if (sources.length === 0) {
-      setFollowStatus("No USK sources are marked for follow refresh.");
-      return;
-    }
-    state.followRefreshCount += 1;
-    for (const source of sources) {
-      await refreshSource(source, { follow: true });
-    }
-    setFollowStatus(`USK follow refresh ${state.followRefreshCount} completed.`);
-  }
-
-  function stopFollowTimerWhenHidden() {
-    if (document.visibilityState === "hidden") {
-      stopFollowTimer();
-    }
-  }
-
-  function stopFollowTimer() {
-    if (!state.followTimerId) {
-      return;
-    }
-    window.clearInterval(state.followTimerId);
-    state.followTimerId = 0;
-    elements.followToggleButton.textContent = "Start USK follow";
-    setFollowStatus("USK follow refresh is stopped.");
   }
 
   async function refreshUploadQueue(options) {
@@ -245,18 +361,98 @@
       const status = text(
         "p",
         "entry-meta",
-        source.lastFetchedAt ? `${source.lastStatus} at ${source.lastFetchedAt}` : source.lastStatus,
+        source.lastFetchedAt
+          ? `${source.lastStatus} at ${source.lastFetchedAt}`
+          : source.lastStatus,
       );
+      const subscriptionStatus = subscriptionForSource(source);
       const actions = document.createElement("div");
       actions.className = "source-item__actions";
       actions.append(
         button("Select", "cr-button cr-button--secondary", () => selectSource(source.id)),
         button("Fetch", "cr-button cr-button--primary", () => refreshSource(source, { follow: false })),
       );
-      item.append(title, uri, status, actions);
+      if (!source.subscriptionId && source.followUsk && subscriptionHelpersAvailable() && isUskUri(source.uri)) {
+        actions.append(
+          button("Subscribe", "cr-button cr-button--secondary", () =>
+            createSubscriptionForSource(source).then(() => {
+              renderSources();
+              renderSubscriptions();
+            }),
+          ),
+        );
+      }
+      item.append(
+        title,
+        uri,
+        status,
+        text("p", "entry-meta", subscriptionStatusText(subscriptionStatus)),
+        actions,
+      );
       list.append(item);
     });
     elements.sourceList.replaceChildren(list);
+  }
+
+  function renderSubscriptions() {
+    if (!elements.subscriptionList) {
+      return;
+    }
+    if (!subscriptionHelpersAvailable()) {
+      elements.subscriptionList.replaceChildren(
+        text("p", "cr-empty", "Platform subscription helpers are unavailable."),
+      );
+      return;
+    }
+    if (state.subscriptions.length === 0) {
+      elements.subscriptionList.replaceChildren(
+        text("p", "cr-empty", "No platform subscriptions are registered."),
+      );
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "source-list";
+    state.subscriptions.forEach((subscription) => {
+      const item = document.createElement("div");
+      item.className = "source-item";
+      const actions = document.createElement("div");
+      actions.className = "source-item__actions";
+      actions.append(
+        button("Refresh", "cr-button cr-button--secondary", () =>
+          refreshSubscription(subscription.subscriptionId),
+        ),
+      );
+      if (subscription.paused || subscription.enabled === false || subscription.status === "paused") {
+        actions.append(
+          button("Resume", "cr-button cr-button--secondary", () =>
+            resumeSubscription(subscription.subscriptionId),
+          ),
+        );
+      } else {
+        actions.append(
+          button("Pause", "cr-button cr-button--secondary", () =>
+            pauseSubscription(subscription.subscriptionId),
+          ),
+        );
+      }
+      actions.append(
+        button("Delete", "cr-button cr-button--secondary", () =>
+          removeSubscription(subscription.subscriptionId),
+        ),
+      );
+      item.append(
+        text("p", "entry-title", subscription.label || subscription.subscriptionId),
+        text("p", "source-uri", subscription.sourceUri),
+        summaryRow("Status", subscription.status),
+        summaryRow("Last check", subscription.lastCheckAt),
+        summaryRow("Last edition", subscription.lastSeenEdition),
+        summaryRow("Updates", subscription.updateCount),
+        summaryRow("Error", subscription.lastErrorCode || subscription.message),
+        actions,
+      );
+      list.append(item);
+    });
+    elements.subscriptionList.replaceChildren(list);
   }
 
   function renderReader() {
@@ -393,6 +589,124 @@
     }
     const bodyText = compactQueueText(documentValue.body && documentValue.body.textContent);
     return bodyText ? [{ label: "Queue snapshot", detail: bodyText }] : [];
+  }
+
+  function normalizeSubscriptionList(response) {
+    const subscriptions = response && response.subscriptions;
+    return Array.isArray(subscriptions) ? subscriptions.map(normalizeSubscription).filter(Boolean) : [];
+  }
+
+  function subscriptionFromResponse(response) {
+    return normalizeSubscription(response && response.subscription ? response.subscription : response);
+  }
+
+  function normalizeSubscription(subscription) {
+    if (!subscription || typeof subscription !== "object") {
+      return null;
+    }
+    const subscriptionId = stringValue(subscription.subscriptionId);
+    if (!subscriptionId) {
+      return null;
+    }
+    return {
+      subscriptionId,
+      appId: stringValue(subscription.appId),
+      label: stringValue(subscription.label),
+      sourceUri: stringValue(subscription.sourceUri),
+      enabled: subscription.enabled !== false,
+      paused: !!subscription.paused,
+      status: stringValue(subscription.status) || "scheduled",
+      lastCheckAt: stringValue(subscription.lastCheckAt),
+      nextCheckAt: stringValue(subscription.nextCheckAt),
+      lastSuccessAt: stringValue(subscription.lastSuccessAt),
+      lastFailureAt: stringValue(subscription.lastFailureAt),
+      failureCount: numberValue(subscription.failureCount),
+      lastErrorCode: stringValue(subscription.lastErrorCode),
+      lastSeenResolvedUri: stringValue(subscription.lastSeenResolvedUri),
+      lastSeenEdition: stringValue(subscription.lastSeenEdition),
+      contentSha256: stringValue(subscription.contentSha256),
+      bytesLength: stringValue(subscription.bytesLength),
+      updateCount: numberValue(subscription.updateCount),
+      message: stringValue(subscription.message),
+    };
+  }
+
+  function updateSubscriptionState(subscription) {
+    if (!subscription) {
+      return;
+    }
+    const index = state.subscriptions.findIndex(
+      (item) => item.subscriptionId === subscription.subscriptionId,
+    );
+    if (index >= 0) {
+      state.subscriptions.splice(index, 1, subscription);
+    } else {
+      state.subscriptions.unshift(subscription);
+    }
+    syncSourceSubscriptionMetadata();
+  }
+
+  function syncSourceSubscriptionMetadata() {
+    const subscriptionsById = new Map();
+    const subscriptionsBySourceUri = new Map();
+    state.subscriptions.forEach((subscription) => {
+      subscriptionsById.set(subscription.subscriptionId, subscription);
+      if (subscription.sourceUri && !subscriptionsBySourceUri.has(subscription.sourceUri)) {
+        subscriptionsBySourceUri.set(subscription.sourceUri, subscription);
+      }
+    });
+    state.sources.forEach((source) => {
+      const subscription =
+        subscriptionsById.get(source.subscriptionId) || subscriptionsBySourceUri.get(source.uri);
+      if (!subscription) {
+        if (source.subscriptionId) {
+          source.subscriptionId = "";
+          source.lastStatus = "Subscription not found";
+        }
+        return;
+      }
+      source.subscriptionId = subscription.subscriptionId;
+      source.followUsk = true;
+      source.lastStatus = subscription.status || source.lastStatus;
+    });
+  }
+
+  function subscriptionForSource(source) {
+    if (!source) {
+      return null;
+    }
+    return (
+      state.subscriptions.find((subscription) => subscription.subscriptionId === source.subscriptionId) ||
+      state.subscriptions.find((subscription) => subscription.sourceUri === source.uri) ||
+      null
+    );
+  }
+
+  function sourceForSubscription(subscriptionId) {
+    return (
+      state.sources.find((source) => source.subscriptionId === subscriptionId) ||
+      state.sources.find((source) => {
+        const subscription = state.subscriptions.find(
+          (item) => item.subscriptionId === subscriptionId,
+        );
+        return subscription && source.uri === subscription.sourceUri;
+      }) ||
+      null
+    );
+  }
+
+  function subscriptionStatusText(subscription) {
+    if (!subscription) {
+      return "No platform subscription";
+    }
+    const parts = [`Subscription ${subscription.status}`];
+    if (subscription.lastSeenEdition) {
+      parts.push(`edition ${subscription.lastSeenEdition}`);
+    }
+    if (subscription.updateCount) {
+      parts.push(`${subscription.updateCount} update(s)`);
+    }
+    return parts.join(" | ");
   }
 
   function queueRowFromTableRow(row) {
@@ -657,6 +971,10 @@
 
   function stringValue(value) {
     return typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+  }
+
+  function numberValue(value) {
+    return Number.isFinite(value) ? value : 0;
   }
 
   function compactQueueText(value) {

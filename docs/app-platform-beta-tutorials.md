@@ -231,8 +231,12 @@ capabilities:
 | Publisher | Content insert workflow. | `content.insert`, `queue.read`, `queue.write` |
 | Site Publisher | Static site publishing pattern. | `content.insert`, `queue.read`, `queue.write` |
 | Profile Publisher | AppVault identity, bounded profile document signing, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `queue.read`, `queue.write` |
-| Feed Reader & Publisher | Bounded content fetch plus feed snapshot publish. | `content.fetch`, `content.insert.app-document`, `queue.read`, `queue.write` |
+| Feed Reader & Publisher | Durable USK subscription metadata, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `queue.read`, `queue.write` |
 | Trust Graph Preview | Local trust statement import, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `queue.read`, `queue.write` |
+
+Release evidence for the Feed Reader path includes `network-content.subscription-scheduler`,
+which proves deterministic scheduler ticks, conservative limits, dedupe, backoff, and redacted
+metadata.
 
 Use the detailed docs before copying a reference pattern:
 

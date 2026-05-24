@@ -94,6 +94,8 @@ app-vault.capabilities
 app-platform.identity-profile-publish
 app-platform.generated-document-insert
 app-platform.content-fetch
+app-platform.content-subscriptions
+network-content.subscription-scheduler
 app-platform.trust-graph-preview
 app-platform.trust-statement-signing
 app-ui.design-system
@@ -103,6 +105,7 @@ app-ui.smoke
 reference-apps.content
 reference-app.profile-publisher
 reference-app.feed-reader
+reference-app.feed-reader-subscriptions
 reference-app.trust-graph
 legacy.retirement
 legacy-admin.removal-wave-1
@@ -293,7 +296,8 @@ app-vault capability documentation and redaction evidence, signed bundle evidenc
 inputs are present, signed catalog authoring/verification, AppHost
 sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, independent
 app-review receipt evidence, Profile Publisher identity-profile publishing evidence,
-app-generated document insert evidence, content-fetch evidence, Feed Reader reference-app evidence,
+app-generated document insert evidence, content-fetch evidence, content-subscription scheduler
+evidence, Feed Reader reference-app and subscription evidence,
 Trust Graph Preview evidence, app-review governance evidence, and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:

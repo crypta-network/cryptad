@@ -233,9 +233,10 @@ Catalog entry metadata is for operator display, compatibility hints, and review 
 rationales do not grant capabilities. URI fields do not fetch automatically in the Web Shell unless
 the operator takes an explicit action.
 
-Feed-style apps that use Platform API v6 should declare `content.fetch` for
-`POST /api/v1/content/fetch` and use SDK feed helpers such as
-`CryptaPlatform.feed.fetchSnapshot` and `CryptaPlatform.feed.publishSnapshot`. If the app also
+Feed-style apps that use Platform API v8 subscriptions should declare `content.subscribe` for
+`/api/v1/content/subscriptions` and `content.fetch` for `POST /api/v1/content/fetch`. Use SDK feed
+and subscription helpers such as `CryptaPlatform.content.subscriptions.*`,
+`CryptaPlatform.feed.fetchSnapshot`, and `CryptaPlatform.feed.publishSnapshot`. If the app also
 publishes generated feed documents, add
 `content.insert.app-document`, `queue.write`, and `queue.read` with permission rationales. Do not
 write raw feed bodies, raw request bodies, private insert URIs, app/browser tokens, form passwords,

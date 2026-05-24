@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.io.File;
 import network.crypta.config.Config;
 import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appvault.AppVaultService;
@@ -88,6 +89,19 @@ public interface HttpShellRuntimeSupport {
    * @return shared app-update service, or {@code null} when unavailable
    */
   default AppUpdateService appUpdateService() {
+    return null;
+  }
+
+  /**
+   * Returns the shared content subscription service used by the scheduler and Platform API.
+   *
+   * <p>A {@code null} value means durable content subscription routes are unavailable in this
+   * embedding and should report a stable service-unavailable response rather than creating
+   * request-scoped metadata stores.
+   *
+   * @return shared content subscription service, or {@code null} when unavailable
+   */
+  default ContentSubscriptionService contentSubscriptionService() {
     return null;
   }
 

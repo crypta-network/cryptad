@@ -32,6 +32,12 @@ import network.crypta.platform.api.appupdates.AppUpdateSchedulerConfig;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerStore;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.appupdates.FileAppUpdateSchedulerStore;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionPressureGate;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionScheduler;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionStore;
+import network.crypta.platform.api.content.subscriptions.FileContentSubscriptionStore;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
@@ -67,6 +73,9 @@ import org.slf4j.LoggerFactory;
  * @param appCatalogManager shared signed app-catalog manager used by the platform control plane
  * @param appUpdateService shared app-update service used by update routes and scheduler
  * @param appUpdateScheduler optional background app-update scheduler
+ * @param contentSubscriptionService optional content subscription service used by subscription
+ *     routes and scheduler
+ * @param contentSubscriptionScheduler optional background content subscription scheduler
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
@@ -75,6 +84,8 @@ public record CoreHttpShellRuntimeSupport(
     AppCatalogManager appCatalogManager,
     AppUpdateService appUpdateService,
     AppUpdateScheduler appUpdateScheduler,
+    ContentSubscriptionService contentSubscriptionService,
+    ContentSubscriptionScheduler contentSubscriptionScheduler,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -115,6 +126,8 @@ public record CoreHttpShellRuntimeSupport(
         services.appCatalogManager(),
         services.appUpdateService(),
         services.appUpdateScheduler(),
+        services.contentSubscriptionService(),
+        services.contentSubscriptionScheduler(),
         services.appVaultService());
   }
 
@@ -165,6 +178,8 @@ public record CoreHttpShellRuntimeSupport(
             ? null
             : new AppUpdateService(appHost, appCatalogManager, appVaultService),
         null,
+        null,
+        null,
         appVaultService);
   }
 
@@ -179,6 +194,7 @@ public record CoreHttpShellRuntimeSupport(
    * @param appVaultService shared app-vault service, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
+  @SuppressWarnings("unused")
   public CoreHttpShellRuntimeSupport(
       NodeClientCore core,
       AppHost appHost,
@@ -186,11 +202,46 @@ public record CoreHttpShellRuntimeSupport(
       AppUpdateService appUpdateService,
       AppUpdateScheduler appUpdateScheduler,
       AppVaultService appVaultService) {
+    this(
+        core,
+        appHost,
+        appCatalogManager,
+        appUpdateService,
+        appUpdateScheduler,
+        null,
+        null,
+        appVaultService);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app-platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @param appUpdateService shared app-update lifecycle service, or {@code null} when unavailable
+   * @param appUpdateScheduler optional background app-update scheduler
+   * @param contentSubscriptionService optional content subscription service
+   * @param contentSubscriptionScheduler optional background content subscription scheduler
+   * @param appVaultService shared app-vault service, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateScheduler appUpdateScheduler,
+      ContentSubscriptionService contentSubscriptionService,
+      ContentSubscriptionScheduler contentSubscriptionScheduler,
+      AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.appCatalogManager = appCatalogManager;
     this.appUpdateService = appUpdateService;
     this.appUpdateScheduler = appUpdateScheduler;
+    this.contentSubscriptionService = contentSubscriptionService;
+    this.contentSubscriptionScheduler = contentSubscriptionScheduler;
     this.appVaultService = appVaultService;
   }
 
@@ -341,8 +392,17 @@ public record CoreHttpShellRuntimeSupport(
     AppPlatformServices services = createAppPlatformServices(core);
     SemiOrderedShutdownHook.get()
         .addEarlyJob(createAppUpdateSchedulerShutdownJob(services.appUpdateScheduler()));
+    registerContentSubscriptionSchedulerShutdownJob(services.contentSubscriptionScheduler());
     SemiOrderedShutdownHook.get().addEarlyJob(createAppHostShutdownJob(services.appHost()));
     return services;
+  }
+
+  private static void registerContentSubscriptionSchedulerShutdownJob(
+      ContentSubscriptionScheduler contentSubscriptionScheduler) {
+    if (contentSubscriptionScheduler != null) {
+      SemiOrderedShutdownHook.get()
+          .addEarlyJob(createContentSubscriptionSchedulerShutdownJob(contentSubscriptionScheduler));
+    }
   }
 
   /**
@@ -378,8 +438,24 @@ public record CoreHttpShellRuntimeSupport(
     if (schedulerConfig.enabled()) {
       appUpdateScheduler.start();
     }
+    ContentSubscriptionSchedulerConfig contentSchedulerConfig =
+        ContentSubscriptionSchedulerConfig.loadFromSystem();
+    ContentSubscriptionService contentSubscriptionService =
+        createContentSubscriptionService(layout, core.getRuntimePorts(), contentSchedulerConfig);
+    ContentSubscriptionScheduler contentSubscriptionScheduler =
+        createContentSubscriptionScheduler(
+            appHost, contentSubscriptionService, contentSchedulerConfig, core.getRuntimePorts());
+    if (contentSubscriptionScheduler != null && contentSchedulerConfig.enabled()) {
+      contentSubscriptionScheduler.start();
+    }
     return new AppPlatformServices(
-        appHost, appCatalogManager, appUpdateService, appUpdateScheduler, appVaultService);
+        appHost,
+        appCatalogManager,
+        appUpdateService,
+        appUpdateScheduler,
+        contentSubscriptionService,
+        contentSubscriptionScheduler,
+        appVaultService);
   }
 
   private static AppVaultService createAppVaultService(AppHostLayout layout) {
@@ -428,6 +504,39 @@ public record CoreHttpShellRuntimeSupport(
             layout.dataDir().resolve("apps").resolve("update-scheduler"));
     return new AppUpdateScheduler(
         appHost, appCatalogManager, appUpdateService, schedulerConfig, schedulerStore);
+  }
+
+  private static ContentSubscriptionService createContentSubscriptionService(
+      AppHostLayout layout,
+      RuntimePorts runtimePorts,
+      ContentSubscriptionSchedulerConfig schedulerConfig) {
+    if (runtimePorts == null || runtimePorts.contentFetch() == null) {
+      LOG.warn(
+          "Content fetch runtime port is unavailable; content subscription Platform API routes will"
+              + " be unavailable.");
+      return null;
+    }
+    ContentSubscriptionStore store =
+        new FileContentSubscriptionStore(
+            layout.dataDir().resolve("apps").resolve("content-subscriptions"));
+    return new ContentSubscriptionService(store, runtimePorts.contentFetch(), schedulerConfig);
+  }
+
+  private static ContentSubscriptionScheduler createContentSubscriptionScheduler(
+      AppHost appHost,
+      ContentSubscriptionService contentSubscriptionService,
+      ContentSubscriptionSchedulerConfig schedulerConfig,
+      RuntimePorts runtimePorts) {
+    if (contentSubscriptionService == null) {
+      return null;
+    }
+    ContentSubscriptionPressureGate pressureGate =
+        runtimePorts == null
+            ? new ContentSubscriptionPressureGate(null, null)
+            : new ContentSubscriptionPressureGate(
+                runtimePorts.queueSupport(), runtimePorts.requestQueue());
+    return new ContentSubscriptionScheduler(
+        appHost, contentSubscriptionService, schedulerConfig, pressureGate);
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
@@ -568,6 +677,8 @@ public record CoreHttpShellRuntimeSupport(
       AppCatalogManager appCatalogManager,
       AppUpdateService appUpdateService,
       AppUpdateScheduler appUpdateScheduler,
+      ContentSubscriptionService contentSubscriptionService,
+      ContentSubscriptionScheduler contentSubscriptionScheduler,
       AppVaultService appVaultService) {}
 
   /**
@@ -588,6 +699,12 @@ public record CoreHttpShellRuntimeSupport(
   static Thread createAppUpdateSchedulerShutdownJob(AppUpdateScheduler appUpdateScheduler) {
     Objects.requireNonNull(appUpdateScheduler, "appUpdateScheduler");
     return new Thread(appUpdateScheduler::close, "Shutdown AppUpdateScheduler");
+  }
+
+  static Thread createContentSubscriptionSchedulerShutdownJob(
+      ContentSubscriptionScheduler contentSubscriptionScheduler) {
+    Objects.requireNonNull(contentSubscriptionScheduler, "contentSubscriptionScheduler");
+    return new Thread(contentSubscriptionScheduler::close, "Shutdown ContentSubscriptionScheduler");
   }
 
   private static void stopRunningAppsOnShutdown(AppHost appHost) {

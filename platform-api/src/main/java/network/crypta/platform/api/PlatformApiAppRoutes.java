@@ -7,6 +7,7 @@ import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.appupdates.AppUpdatesApiHandler;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
@@ -28,6 +29,7 @@ import network.crypta.platform.appvault.AppVaultService;
  * the same {@code 404 not_found} route response that the router used before this extraction.
  */
 final class PlatformApiAppRoutes {
+  private static final System.Logger LOG = System.getLogger(PlatformApiAppRoutes.class.getName());
   private static final String CATALOG_ENVELOPE_KEY = "catalog";
   private static final String GET_ONLY_MESSAGE = "Platform API v1 supports GET requests only.";
   private static final String GET_POST_ONLY_MESSAGE =
@@ -43,8 +45,35 @@ final class PlatformApiAppRoutes {
   private final AppsApiHandler appsApiHandler;
   private final AppUpdatesApiHandler appUpdatesApiHandler;
   private final AppUpdateService appUpdateService;
+  private final ContentSubscriptionService contentSubscriptionService;
   private final AppCatalogsApiHandler appCatalogsApiHandler;
   private final PlatformApiVaultRouter vaultRouter;
+
+  /**
+   * Required route-composition inputs that are not scheduler-owned services.
+   *
+   * <p>The AppHost and catalog manager remain optional because some router test and embedded
+   * configurations expose only non-app Platform API families. The audit log, UI origin registry,
+   * and version supplier follow the same lifecycle as the top-level router.
+   */
+  record RouteDependencies(
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppAuditLog appAuditLog,
+      AppUiOriginRegistry appUiOriginRegistry,
+      Supplier<String> currentCryptaVersion) {}
+
+  /**
+   * Optional app-platform services shared with background schedulers.
+   *
+   * <p>When these services are present, request handlers and schedulers observe the same state.
+   * When they are absent, app routes either create their legacy request-scoped coordinator or
+   * report the same route-unavailable result as before.
+   */
+  record SharedServices(
+      AppVaultService appVaultService,
+      AppUpdateService appUpdateService,
+      ContentSubscriptionService contentSubscriptionService) {}
 
   /**
    * Creates app-platform routes from the optional app runtime services.
@@ -53,38 +82,34 @@ final class PlatformApiAppRoutes {
    * shared service is supplied, this constructor creates the default request-scoped app-update
    * coordinator only when both AppHost and app-catalog support are available.
    *
-   * @param appHost optional AppHost backing installed-app lifecycle routes
-   * @param appCatalogManager optional signed app-catalog manager
-   * @param appAuditLog bounded app audit log shared with the top-level router
-   * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
-   * @param appVaultService optional vault service for app and identity vault routes
-   * @param sharedAppUpdateService optional scheduler-shared app-update service
-   * @param currentCryptaVersion supplies the current daemon build for catalog compatibility checks
+   * @param dependencies route-composition inputs owned by the top-level router
+   * @param sharedServices optional services also used by background schedulers
    */
-  PlatformApiAppRoutes(
-      AppHost appHost,
-      AppCatalogManager appCatalogManager,
-      AppAuditLog appAuditLog,
-      AppUiOriginRegistry appUiOriginRegistry,
-      AppVaultService appVaultService,
-      AppUpdateService sharedAppUpdateService,
-      Supplier<String> currentCryptaVersion) {
+  PlatformApiAppRoutes(RouteDependencies dependencies, SharedServices sharedServices) {
+    AppHost appHost = dependencies.appHost();
+    AppCatalogManager appCatalogManager = dependencies.appCatalogManager();
+    AppVaultService appVaultService = sharedServices.appVaultService();
     appsApiHandler =
         appHost == null
             ? null
-            : new AppsApiHandler(appHost, appAuditLog, appUiOriginRegistry, appVaultService);
-    AppUpdateService resolvedUpdateService = sharedAppUpdateService;
+            : new AppsApiHandler(
+                appHost,
+                dependencies.appAuditLog(),
+                dependencies.appUiOriginRegistry(),
+                appVaultService);
+    AppUpdateService resolvedUpdateService = sharedServices.appUpdateService();
     if (resolvedUpdateService == null && appHost != null && appCatalogManager != null) {
       resolvedUpdateService = new AppUpdateService(appHost, appCatalogManager, appVaultService);
     }
     appUpdateService = resolvedUpdateService;
+    contentSubscriptionService = sharedServices.contentSubscriptionService();
     appUpdatesApiHandler =
         appUpdateService == null ? null : new AppUpdatesApiHandler(appUpdateService);
     appCatalogsApiHandler =
         appHost == null || appCatalogManager == null
             ? null
             : new AppCatalogsApiHandler(
-                appCatalogManager, appHost, currentCryptaVersion, appVaultService);
+                appCatalogManager, appHost, dependencies.currentCryptaVersion(), appVaultService);
     vaultRouter = appVaultService == null ? null : new PlatformApiVaultRouter(appVaultService);
   }
 
@@ -237,11 +262,11 @@ final class PlatformApiAppRoutes {
   private PlatformApiResponse uninstallInstalledApp(String appId, boolean includeVaultDetails) {
     try {
       Map<String, Object> app = appsApiHandler.uninstall(appId, includeVaultDetails);
-      clearAppUpdateState(appId);
+      clearAppState(appId);
       return PlatformApiResponse.ok(envelope("app", app));
     } catch (PlatformApiException exception) {
       if (exception.statusCode() == 404) {
-        clearAppUpdateState(appId);
+        clearAppState(appId);
       }
       throw exception;
     } catch (RuntimeException exception) {
@@ -249,16 +274,41 @@ final class PlatformApiAppRoutes {
         throw exception;
       }
       if (!appsApiHandler.stillInstalledBestEffort(appId)) {
-        clearAppUpdateState(appId);
+        clearAppState(appId);
       }
       throw exception;
     }
+  }
+
+  private void clearAppState(String appId) {
+    clearAppUpdateState(appId);
+    clearContentSubscriptionState(appId);
   }
 
   private void clearAppUpdateState(String appId) {
     if (appUpdateService != null) {
       appUpdateService.clearAppState(appId);
     }
+  }
+
+  private void clearContentSubscriptionState(String appId) {
+    if (contentSubscriptionService != null) {
+      try {
+        contentSubscriptionService.clearAppState(appId);
+      } catch (RuntimeException exception) {
+        LOG.log(
+            System.Logger.Level.WARNING,
+            "Failed to clear content subscription state for removed app: "
+                + cleanupFailureReason(exception));
+      }
+    }
+  }
+
+  private static String cleanupFailureReason(RuntimeException exception) {
+    if (exception instanceof PlatformApiException platformApiException) {
+      return platformApiException.errorCode();
+    }
+    return exception.getClass().getSimpleName();
   }
 
   private static boolean includeVaultDetails(PlatformApiRequest request) {

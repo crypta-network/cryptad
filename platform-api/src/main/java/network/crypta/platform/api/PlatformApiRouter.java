@@ -3,10 +3,8 @@ package network.crypta.platform.api;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.alerts.AlertsApiHandler;
-import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.config.ConfigApiHandler;
 import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
-import network.crypta.platform.api.content.ContentApiHandler;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
@@ -19,7 +17,6 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
-import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -40,6 +37,13 @@ public final class PlatformApiRouter {
 
   /** Shared 405 message for routes that only support POST. */
   private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
+
+  /** Shared method token for routes that remove local resources. */
+  private static final String METHOD_DELETE = "DELETE";
+
+  /** Shared 405 message for routes that only support DELETE. */
+  private static final String DELETE_ONLY_MESSAGE =
+      "Platform API v1 supports DELETE requests only.";
 
   /** Shared route segment and envelope key for app-update lifecycle responses. */
   private static final String UPDATES_ROUTE_SEGMENT = "updates";
@@ -83,33 +87,11 @@ public final class PlatformApiRouter {
   /** Routes app, app-catalog, app-update, and vault endpoint families. */
   private final PlatformApiAppRoutes appRoutes;
 
+  /** Routes foreground content fetch and durable content subscription endpoint families. */
+  private final PlatformApiContentRoutes contentRoutes;
+
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
-
-  /** Detached runtime-port aggregate used for lazily resolved optional endpoint families. */
-  private final RuntimePorts runtimePorts;
-
-  /**
-   * Optional app-platform services supplied by runtime composition.
-   *
-   * <p>Most router constructors let the router create its own update coordinator when AppHost and
-   * catalog support are present. The HTTP runtime uses this group to pass the shared update service
-   * that is also observed by the app-update scheduler, so manual requests and background checks see
-   * the same staged plans, policy state, and recent history.
-   */
-  private record AppServices(AppVaultService vaultService, AppUpdateService updateService) {
-    private static AppServices none() {
-      return new AppServices(null, null);
-    }
-
-    private static AppServices withVault(AppVaultService vaultService) {
-      return new AppServices(vaultService, null);
-    }
-
-    private static AppServices of(AppVaultService vaultService, AppUpdateService appUpdateService) {
-      return new AppServices(vaultService, appUpdateService);
-    }
-  }
 
   /**
    * Creates a router backed by the supplied runtime ports.
@@ -187,7 +169,13 @@ public final class PlatformApiRouter {
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage,
       AppUiOriginRegistry appUiOriginRegistry) {
-    this(runtimePorts, appHost, appCatalogManager, legacyAdminUsage, appUiOriginRegistry, null);
+    this(
+        runtimePorts,
+        appHost,
+        appCatalogManager,
+        legacyAdminUsage,
+        appUiOriginRegistry,
+        PlatformApiSharedAppServices.none());
   }
 
   /**
@@ -213,26 +201,24 @@ public final class PlatformApiRouter {
         appCatalogManager,
         legacyAdminUsage,
         appUiOriginRegistry,
-        appVaultService,
-        null);
+        PlatformApiSharedAppServices.withVault(appVaultService));
   }
 
   /**
    * Creates a router backed by runtime ports and shared app-platform services.
    *
-   * <p>This overload lets runtime composition pass the same {@link AppUpdateService} used by the
-   * background scheduler into the request router. That keeps manual requests, scheduler-triggered
-   * checks, staged plans, policy state, and recent update history attached to one service instance.
-   * Constructors used by unit tests and alternate embeddings continue to create no scheduler
-   * threads and may omit the service.
+   * <p>This overload lets runtime composition pass the same optional app-platform services used by
+   * background schedulers into the request router. That keeps manual requests, scheduler-triggered
+   * work, policy state, staged plans, and subscription metadata attached to shared service
+   * instances. Constructors used by unit tests and alternate embeddings continue to create no
+   * scheduler threads and may omit the service group.
    *
    * @param runtimePorts detached runtime-port aggregate used to resolve API requests
    * @param appHost detached AppHost used by app lifecycle and catalog install/update routes
    * @param appCatalogManager signed catalog manager used by the catalog endpoint family
    * @param legacyAdminUsage optional process-local legacy admin usage source
    * @param appUiOriginRegistry registry used to publish isolated app UI launch URLs
-   * @param appVaultService optional app-vault service used by vault endpoint families
-   * @param appUpdateService optional shared app-update lifecycle service
+   * @param sharedAppServices optional app-platform services also used by background schedulers
    */
   public PlatformApiRouter(
       RuntimePorts runtimePorts,
@@ -240,8 +226,7 @@ public final class PlatformApiRouter {
       AppCatalogManager appCatalogManager,
       LegacyAdminUsagePort legacyAdminUsage,
       AppUiOriginRegistry appUiOriginRegistry,
-      AppVaultService appVaultService,
-      AppUpdateService appUpdateService) {
+      PlatformApiSharedAppServices sharedAppServices) {
     this(
         runtimePorts,
         appHost,
@@ -249,7 +234,7 @@ public final class PlatformApiRouter {
         legacyAdminUsage,
         new AppAuditLog(),
         appUiOriginRegistry,
-        AppServices.of(appVaultService, appUpdateService));
+        sharedAppServices);
   }
 
   PlatformApiRouter(
@@ -265,7 +250,7 @@ public final class PlatformApiRouter {
         legacyAdminUsage,
         appAuditLog,
         AppUiOriginRegistry.sameOriginOnly(),
-        AppServices.none());
+        PlatformApiSharedAppServices.none());
   }
 
   PlatformApiRouter(
@@ -282,7 +267,7 @@ public final class PlatformApiRouter {
         legacyAdminUsage,
         appAuditLog,
         appUiOriginRegistry,
-        AppServices.none());
+        PlatformApiSharedAppServices.none());
   }
 
   @SuppressWarnings("unused")
@@ -301,7 +286,7 @@ public final class PlatformApiRouter {
         legacyAdminUsage,
         appAuditLog,
         appUiOriginRegistry,
-        AppServices.withVault(appVaultService));
+        PlatformApiSharedAppServices.withVault(appVaultService));
   }
 
   PlatformApiRouter(
@@ -311,42 +296,53 @@ public final class PlatformApiRouter {
       LegacyAdminUsagePort legacyAdminUsage,
       AppAuditLog appAuditLog,
       AppUiOriginRegistry appUiOriginRegistry,
-      AppServices appServices) {
-    this.runtimePorts = requireNonNull(runtimePorts, "runtimePorts");
+      PlatformApiSharedAppServices appServices) {
+    RuntimePorts checkedRuntimePorts = requireNonNull(runtimePorts, "runtimePorts");
     this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
     requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
-    AppServices checkedAppServices = requireNonNull(appServices, "appServices");
+    PlatformApiSharedAppServices checkedAppServices = requireNonNull(appServices, "appServices");
     AppVaultService appVaultService = checkedAppServices.vaultService();
-    AppUpdateService sharedAppUpdateService = checkedAppServices.updateService();
-    nodeApiHandler = new NodeApiHandler(runtimePorts.nodeInfo());
-    peersApiHandler = new PeersApiHandler(runtimePorts.peer(), runtimePorts.darknetConnections());
-    configApiHandler = new ConfigApiHandler(runtimePorts.config());
-    connectivityApiHandler = new ConnectivityApiHandler(runtimePorts.connectivity());
+    nodeApiHandler = new NodeApiHandler(checkedRuntimePorts.nodeInfo());
+    peersApiHandler =
+        new PeersApiHandler(checkedRuntimePorts.peer(), checkedRuntimePorts.darknetConnections());
+    configApiHandler = new ConfigApiHandler(checkedRuntimePorts.config());
+    connectivityApiHandler = new ConnectivityApiHandler(checkedRuntimePorts.connectivity());
     securityLevelsApiHandler =
         new SecurityLevelsApiHandler(
-            runtimePorts.securityLevels(), runtimePorts.config(), runtimePorts.firstTimeWizard());
-    updatesApiHandler = new UpdatesApiHandler(runtimePorts.coreUpdateAction());
-    firstTimeWizardApiHandler = new FirstTimeWizardApiHandler(runtimePorts.firstTimeWizard());
+            checkedRuntimePorts.securityLevels(),
+            checkedRuntimePorts.config(),
+            checkedRuntimePorts.firstTimeWizard());
+    updatesApiHandler = new UpdatesApiHandler(checkedRuntimePorts.coreUpdateAction());
+    firstTimeWizardApiHandler =
+        new FirstTimeWizardApiHandler(checkedRuntimePorts.firstTimeWizard());
     queueApiHandler =
         new QueueApiHandler(
-            runtimePorts.queuePage(),
-            runtimePorts.queueMutation(),
-            runtimePorts.queueDownload(),
-            runtimePorts.queueInsert(),
-            runtimePorts.queueSupport(),
-            runtimePorts.queueCompletion());
-    alertsApiHandler = new AlertsApiHandler(runtimePorts.alertFeed(), runtimePorts.alertMutation());
-    diagnosticsApiHandler = new DiagnosticsApiHandler(runtimePorts.diagnostic(), legacyAdminUsage);
+            checkedRuntimePorts.queuePage(),
+            checkedRuntimePorts.queueMutation(),
+            checkedRuntimePorts.queueDownload(),
+            checkedRuntimePorts.queueInsert(),
+            checkedRuntimePorts.queueSupport(),
+            checkedRuntimePorts.queueCompletion());
+    alertsApiHandler =
+        new AlertsApiHandler(checkedRuntimePorts.alertFeed(), checkedRuntimePorts.alertMutation());
+    diagnosticsApiHandler =
+        new DiagnosticsApiHandler(checkedRuntimePorts.diagnostic(), legacyAdminUsage);
     trustGraphApiHandler = new TrustGraphApiHandler();
     appRoutes =
         new PlatformApiAppRoutes(
-            appHost,
-            appCatalogManager,
-            this.appAuditLog,
-            appUiOriginRegistry,
-            appVaultService,
-            sharedAppUpdateService,
-            this::currentCryptaVersion);
+            new PlatformApiAppRoutes.RouteDependencies(
+                appHost,
+                appCatalogManager,
+                this.appAuditLog,
+                appUiOriginRegistry,
+                this::currentCryptaVersion),
+            new PlatformApiAppRoutes.SharedServices(
+                appVaultService,
+                checkedAppServices.updateService(),
+                checkedAppServices.contentSubscriptionService()));
+    contentRoutes =
+        new PlatformApiContentRoutes(
+            checkedRuntimePorts, checkedAppServices.contentSubscriptionService());
   }
 
   /**
@@ -460,7 +456,7 @@ public final class PlatformApiRouter {
       case "app-vault" -> appRoutes.routeAppVaultRequest(segments, request);
       case "identity-vault" -> appRoutes.routeIdentityVaultRequest(segments, request);
       case "queue" -> routeQueueRequest(segments, request);
-      case "content" -> routeContentRequest(segments, request);
+      case "content" -> contentRoutes.route(segments, request);
       case "trust-graph" -> routeTrustGraphRequest(segments, request);
       case "peers" -> routePeersRequest(segments, request);
       case "config" -> routeConfigRequest(segments, request);
@@ -654,33 +650,6 @@ public final class PlatformApiRouter {
   }
 
   /**
-   * Routes requests beneath the {@code /content} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected content endpoint
-   */
-  private PlatformApiResponse routeContentRequest(
-      List<String> segments, PlatformApiRequest request) {
-    if (segments.size() == 2 && "fetch".equals(segments.get(1))) {
-      if (!"POST".equals(request.method())) {
-        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(contentApiHandler().fetch(request.queryParameters()));
-    }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-  }
-
-  private ContentApiHandler contentApiHandler() {
-    ContentFetchPort contentFetchPort = runtimePorts.contentFetch();
-    if (contentFetchPort == null) {
-      throw new PlatformApiException(
-          503, "content_fetch_failed", "Content fetch service is unavailable.");
-    }
-    return new ContentApiHandler(contentFetchPort);
-  }
-
-  /**
    * Routes requests beneath the local {@code /trust-graph} endpoint family.
    *
    * @param segments decoded path segments relative to the Platform API mount point
@@ -755,8 +724,8 @@ public final class PlatformApiRouter {
     if (!TRUST_GRAPH_ANCHORS_SEGMENT.equals(resource)) {
       throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     }
-    if (!"DELETE".equals(request.method())) {
-      return methodNotAllowed("DELETE", "Platform API v1 supports DELETE requests only.");
+    if (!METHOD_DELETE.equals(request.method())) {
+      return methodNotAllowed(METHOD_DELETE, DELETE_ONLY_MESSAGE);
     }
     return PlatformApiResponse.ok(
         envelope("anchor", trustGraphApiHandler.removeAnchor(resourceId)));

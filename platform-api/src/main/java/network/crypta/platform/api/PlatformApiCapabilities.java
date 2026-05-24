@@ -34,6 +34,9 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to fetch bounded Crypta content documents. */
   static final String CONTENT_FETCH = "content.fetch";
 
+  /** Manifest permission that allows app principals to manage app-owned USK subscriptions. */
+  static final String CONTENT_SUBSCRIBE = "content.subscribe";
+
   /** Manifest permission that allows app principals to read local trust graph preview data. */
   static final String TRUST_READ = "trust.read";
 

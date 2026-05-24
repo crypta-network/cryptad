@@ -55,14 +55,15 @@ Feed Reader & Publisher declares:
 
 - `content.fetch` to fetch canonical feed snapshots, RSS/Atom text, or plain text previews for
   configured Crypta content-key sources.
+- `content.subscribe` to register bounded USK subscriptions with the platform scheduler and store
+  safe metadata only.
 - `content.insert.app-document` to publish generated feed snapshots without local source-path
   authority.
 - `queue.read` to show upload queue progress for published snapshots.
 - `queue.write` to create publish queue requests.
 
-The manifest targets Platform API contract v6 because the reference app depends on the feed
-snapshot helper surface introduced for feed reading and publishing workflows. Run focused
-validation with:
+The manifest targets Platform API contract v8 because the reference app depends on durable
+content subscription helpers for USK follow behavior. Run focused validation with:
 
 ```bash
 ./gradlew :apps:feed-reader:test

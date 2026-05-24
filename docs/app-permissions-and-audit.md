@@ -122,6 +122,7 @@ The current capabilities are intentionally conservative:
 | `queue.read` | `GET /api/v1/queue/**` |
 | `queue.write` | queue download creation, request mutation, cleanup |
 | `content.fetch` | `POST /api/v1/content/fetch` bounded app content fetches, without insert, queue mutation, or local path authority |
+| `content.subscribe` | `/api/v1/content/subscriptions` app-owned USK subscription metadata and controls; create/refresh also require `content.fetch` |
 | `content.insert` | local file/directory insert routes, together with `queue.write` |
 | `content.insert.app-document` | app-generated document inserts without local source-path authority, together with `queue.write` |
 | `peers.read` | `GET /api/v1/peers/**` |
@@ -173,12 +174,18 @@ profile-document route for identity-bound profile signing and
 source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
 `vault.secrets.*` unless a later feature needs those broader capabilities.
 
-Feed Reader is the first content-fetch reference app. Its read flow uses `content.fetch` for
-`POST /api/v1/content/fetch` and should not request `content.insert` or local source-path
+Feed Reader is the first content-subscription reference app. Its read flow uses `content.fetch`
+for on-demand `POST /api/v1/content/fetch` rendering and `content.subscribe` for durable USK
+subscription metadata under `/api/v1/content/subscriptions`. Create and refresh actions need both
+capabilities because a subscription is a durable background fetch grant. The scheduler stores only
+path-free metadata such as status, due times, sanitized resolved URI, last seen edition, digest,
+byte length, failures, and update count; it does not persist raw fetched content and does not
+parse or expose queue HTML. Feed Reader should not request `content.insert` or local source-path
 authority. Its publishing flow can combine `content.insert.app-document`, `queue.write`, and
 `queue.read` to publish generated feed documents and display queue progress. Audit and release
-evidence for this route must keep raw feed bodies, raw request bodies, private insert URIs, app
-process tokens, browser-session tokens, form passwords, and local paths out of persisted output.
+evidence for this route must keep raw feed bodies, raw fetched content, raw request bodies,
+private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, and
+local paths out of persisted output.
 
 Trust Graph Preview is the local trust-service reference app. Score/status reads require
 `trust.read`; imports and local anchor changes require `trust.write`; bounded trust-statement

@@ -26,11 +26,16 @@ class FeedReaderBundleStagingTest {
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/feed-reader.sh";
   private static final String EXPECTED_PERMISSIONS =
-      "content.fetch,content.insert.app-document,queue.read,queue.write";
+      "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write";
   private static final List<String> EXPECTED_PERMISSION_LIST =
-      List.of("content.fetch", "content.insert.app-document", "queue.read", "queue.write");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 6;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 7;
+      List.of(
+          "content.fetch",
+          "content.subscribe",
+          "content.insert.app-document",
+          "queue.read",
+          "queue.write");
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 8;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 8;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -187,6 +192,7 @@ class FeedReaderBundleStagingTest {
         indexHtml,
         "data-crypta-permission-summary",
         "<code>content.fetch</code>",
+        "<code>content.subscribe</code>",
         "<code>content.insert.app-document</code>",
         "<code>queue.read</code>",
         "<code>queue.write</code>",
@@ -195,10 +201,11 @@ class FeedReaderBundleStagingTest {
         "Reader",
         "Publisher",
         "Queue preview",
-        "Follow USK while tab is open",
+        "Create platform USK subscription",
         "kept only in memory",
+        "bounded metadata only",
         "Fetched content is rendered as text",
-        "stops after a bounded count");
+        "platform scheduler");
   }
 
   private static void verifyNoForbiddenTokensStorageOrExternalScripts(
@@ -252,6 +259,7 @@ class FeedReaderBundleStagingTest {
         "const appId = \"feed-reader\";",
         "CryptaPlatform.bootstrap.load({ appId })",
         "CryptaPlatform.content.fetchText",
+        "CryptaPlatform.content.subscriptions",
         "CryptaPlatform.feed.fetchSnapshot",
         "CryptaPlatform.feed.parseSnapshot",
         "CryptaPlatform.feed.publishSnapshot",
@@ -261,15 +269,19 @@ class FeedReaderBundleStagingTest {
         "queueRowsFromHtml",
         "compactQueueText",
         "sources: []",
+        "subscriptions: []",
         "fetchedSnapshots: []",
         "type: \"crypta.feed.snapshot.v1\"",
         "items:",
-        "maxFollowRefreshesPerOpen",
-        "5 * 60 * 1000",
-        "setInterval",
-        "clearInterval",
-        "pagehide",
-        "visibilitychange",
+        "subscriptionPollIntervalSeconds",
+        "loadSubscriptions",
+        "refreshSubscription",
+        "pauseSubscription",
+        "resumeSubscription",
+        "removeSubscription",
+        "subscriptionsById",
+        "subscriptionsBySourceUri",
+        "Subscription not found",
         "textContent",
         "uri: entryLink(item)",
         "getAttribute(\"href\")",
