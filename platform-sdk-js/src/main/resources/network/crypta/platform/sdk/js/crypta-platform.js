@@ -344,6 +344,111 @@
     );
   }
 
+  function appDataStatus(options) {
+    return apiGet("app-data/status", options).then((response) => unwrapField(response, "status"));
+  }
+
+  function listAppDataNamespaces(options) {
+    return apiGet("app-data/namespaces", options).then((response) =>
+      unwrapField(response, "namespaces")
+    );
+  }
+
+  function getAppDataNamespace(namespace, options) {
+    const path = `app-data/namespaces/${encodeURIComponent(appDataSegment(namespace, "namespace"))}`;
+    return apiGet(path, options).then((response) => unwrapField(response, "namespace"));
+  }
+
+  function migrateAppDataNamespace(namespace, options) {
+    const source = requireOptionsObject(options, "App-data schema migration options");
+    return apiPostForm(
+      `app-data/namespaces/${encodeURIComponent(appDataSegment(namespace, "namespace"))}/schema`,
+      normalizeAppDataMigration(source),
+      requestOptionsFrom(source)
+    ).then((response) => unwrapField(response, "namespace"));
+  }
+
+  function clearAppDataNamespace(namespace, options) {
+    return apiDeleteForm(
+      `app-data/namespaces/${encodeURIComponent(appDataSegment(namespace, "namespace"))}`,
+      {},
+      options
+    ).then((response) => unwrapField(response, "namespace"));
+  }
+
+  function listAppDataRecords(options) {
+    const source = options && typeof options === "object" ? options : {};
+    const requestOptions = requestOptionsFrom(source);
+    requestOptions.params = normalizeAppDataRecordListQuery(source);
+    return apiGet("app-data/records", requestOptions);
+  }
+
+  function getAppDataRecord(namespace, key, options) {
+    return apiGet(
+      `app-data/records/${encodeURIComponent(appDataSegment(namespace, "namespace"))}/${encodeURIComponent(
+        appDataSegment(key, "key")
+      )}`,
+      options
+    ).then((response) => unwrapField(response, "record"));
+  }
+
+  function putAppDataRecord(options) {
+    const source = requireOptionsObject(options, "App-data record options");
+    return apiPostForm(
+      "app-data/records",
+      normalizeAppDataRecordPut(source),
+      requestOptionsFrom(source)
+    ).then((response) => unwrapField(response, "record"));
+  }
+
+  function removeAppDataRecord(namespace, key, options) {
+    return apiDeleteForm(
+      `app-data/records/${encodeURIComponent(appDataSegment(namespace, "namespace"))}/${encodeURIComponent(
+        appDataSegment(key, "key")
+      )}`,
+      {},
+      options
+    ).then((response) => unwrapField(response, "record"));
+  }
+
+  function putAppDataJson(options) {
+    const source = requireOptionsObject(options, "App-data JSON record options");
+    const record = Object.assign({}, source, {
+      contentType: source.contentType || "application/json",
+      valueJson: appDataJsonString(source.value),
+    });
+    delete record.value;
+    return putAppDataRecord(record);
+  }
+
+  async function getAppDataJson(namespace, key, options) {
+    const record = await getAppDataRecord(namespace, key, options);
+    const json =
+      typeof record.valueText === "string"
+        ? record.valueText
+        : utf8FromBase64(record.valueBase64 || "");
+    return JSON.parse(json);
+  }
+
+  function exportAppData(options) {
+    const source = options && typeof options === "object" ? options : {};
+    const requestOptions = requestOptionsFrom(source);
+    requestOptions.params = normalizeAppDataExportQuery(source);
+    return apiGet("app-data/export", requestOptions).then((response) =>
+      unwrapField(response, "export")
+    );
+  }
+
+  function importAppData(payload, options) {
+    const source = options && typeof options === "object" ? options : {};
+    const params = new URLSearchParams();
+    params.set("payloadBase64", appDataImportPayloadBase64(payload));
+    copyStringParam(source, params, "mode");
+    return apiPostForm("app-data/import", params, requestOptionsFrom(source)).then((response) =>
+      unwrapField(response, "import")
+    );
+  }
+
   function insertAppDocument(options) {
     const source = requireOptionsObject(options, "App document insert options");
     return apiPostForm(
@@ -791,6 +896,102 @@
     };
   }
 
+  function normalizeAppDataMigration(source) {
+    const params = new URLSearchParams();
+    copyPositiveIntegerParam(source, params, "fromSchemaVersion");
+    copyPositiveIntegerParam(source, params, "toSchemaVersion");
+    copyStringParam(source, params, "summary");
+    if (!params.has("fromSchemaVersion") || !params.has("toSchemaVersion")) {
+      throw new Error("App-data schema migration requires fromSchemaVersion and toSchemaVersion.");
+    }
+    return params;
+  }
+
+  function normalizeAppDataRecordListQuery(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "namespace");
+    copyPositiveIntegerParam(source, params, "limit");
+    copyNonNegativeIntegerParam(source, params, "cursor");
+    return params;
+  }
+
+  function normalizeAppDataExportQuery(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "namespace");
+    if (source.format) {
+      params.set("format", String(source.format));
+    }
+    return params;
+  }
+
+  function normalizeAppDataRecordPut(source) {
+    const params = new URLSearchParams();
+    params.set("namespace", appDataSegment(source.namespace, "namespace"));
+    params.set("key", appDataSegment(source.key, "key"));
+    copyStringParam(source, params, "contentType");
+    copyStringParam(source, params, "ifMatchSha256");
+    copyPositiveIntegerParam(source, params, "schemaVersion");
+    if (!params.has("schemaVersion")) {
+      throw new Error("App-data record schemaVersion is required.");
+    }
+    appendAppDataValueParam(source, params);
+    return params;
+  }
+
+  function appendAppDataValueParam(source, params) {
+    const hasBase64 = typeof source.valueBase64 === "string" && source.valueBase64.trim();
+    const hasText = typeof source.valueText === "string";
+    const hasJson = Object.prototype.hasOwnProperty.call(source, "valueJson");
+    const hasValue = Object.prototype.hasOwnProperty.call(source, "value");
+    const supplied =
+      (hasBase64 ? 1 : 0) + (hasText ? 1 : 0) + (hasJson ? 1 : 0) + (hasValue ? 1 : 0);
+    if (supplied !== 1) {
+      throw new Error("App-data record requires exactly one value field.");
+    }
+    if (hasBase64) {
+      params.set("valueBase64", source.valueBase64.trim());
+      return;
+    }
+    if (hasText) {
+      params.set("valueText", source.valueText);
+      return;
+    }
+    if (hasJson) {
+      params.set(
+        "valueJson",
+        typeof source.valueJson === "string" ? source.valueJson : appDataJsonString(source.valueJson)
+      );
+      return;
+    }
+    if (typeof source.value === "string") {
+      params.set("valueText", source.value);
+      return;
+    }
+    params.set("valueJson", appDataJsonString(source.value));
+  }
+
+  function appDataImportPayloadBase64(payload) {
+    if (typeof payload === "string" && payload.trim()) {
+      return payload.trim();
+    }
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      const exportPayload =
+        payload.export && typeof payload.export === "object" ? payload.export : payload;
+      if (typeof exportPayload.payloadBase64 === "string" && exportPayload.payloadBase64.trim()) {
+        return exportPayload.payloadBase64.trim();
+      }
+    }
+    return utf8Base64(appDataJsonString(payload));
+  }
+
+  function appDataJsonString(value) {
+    const json = JSON.stringify(value);
+    if (typeof json !== "string") {
+      throw new Error("App-data JSON value must be JSON-serializable.");
+    }
+    return json;
+  }
+
   function copyRequestOption(source, target, name) {
     if (source && Object.prototype.hasOwnProperty.call(source, name)) {
       target[name] = source[name];
@@ -890,6 +1091,27 @@
     }
   }
 
+  function copyNonNegativeIntegerParam(source, params, name) {
+    if (!source || !Object.prototype.hasOwnProperty.call(source, name)) {
+      return;
+    }
+    const value = source[name];
+    if (typeof value === "number") {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`${name} must be a non-negative integer.`);
+      }
+      params.set(name, String(value));
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim();
+      if (!/^[0-9]+$/.test(normalized)) {
+        throw new Error(`${name} must be a non-negative integer.`);
+      }
+      params.set(name, normalized);
+    }
+  }
+
   function jsonDocumentBase64(value, description) {
     let json;
     try {
@@ -915,6 +1137,18 @@
       binary += String.fromCharCode.apply(null, chunk);
     }
     return btoa(binary);
+  }
+
+  function utf8FromBase64(value) {
+    if (typeof TextDecoder === "undefined" || typeof atob !== "function") {
+      throw new Error("JSON document decoding is unavailable in this browser.");
+    }
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new TextDecoder().decode(bytes);
   }
 
   function profileDocumentFromResponse(response) {
@@ -1454,6 +1688,17 @@
     return normalized;
   }
 
+  function appDataSegment(value, description) {
+    if (typeof value !== "string") {
+      throw new Error(`App-data ${description} must be a string.`);
+    }
+    const normalized = value.trim().toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(normalized)) {
+      throw new Error(`App-data ${description} must be one normalized local path segment.`);
+    }
+    return normalized;
+  }
+
   function normalizeVaultGrantRequest(request) {
     const source = request && typeof request === "object" ? request : {};
     const params = {
@@ -1563,6 +1808,25 @@
         pause: pauseContentSubscription,
         resume: resumeContentSubscription,
         remove: removeContentSubscription,
+      }),
+    }),
+    data: Object.freeze({
+      status: appDataStatus,
+      export: exportAppData,
+      import: importAppData,
+      namespaces: Object.freeze({
+        list: listAppDataNamespaces,
+        get: getAppDataNamespace,
+        migrate: migrateAppDataNamespace,
+        clear: clearAppDataNamespace,
+      }),
+      records: Object.freeze({
+        list: listAppDataRecords,
+        get: getAppDataRecord,
+        put: putAppDataRecord,
+        remove: removeAppDataRecord,
+        putJson: putAppDataJson,
+        getJson: getAppDataJson,
       }),
     }),
     vault: Object.freeze({

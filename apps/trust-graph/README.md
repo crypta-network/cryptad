@@ -71,15 +71,19 @@ loads only local design-system assets and the staged `crypta-platform.js` SDK.
 - `vault.identities.create` requests app-owned identities for trust statements.
 - `vault.identities.use` asks the vault to create trust statement payloads without exposing private
   signing secrets to the browser UI.
+- `app.data.read` restores UI-local drafts, selected filters, and redacted import summaries.
+- `app.data.write` saves bounded UI-local preview state without making the trust backend durable.
 
 The bounded AppVault route is `app-vault/identities/{identityId}/trust-statement`; it signs only
 the trust statement payload and does not export private key material.
 
 ## Browser Safety
 
-The UI keeps form values, fetched statement text, status results, and queue previews in memory only.
-It does not use persistent browser storage, direct Platform API URLs, external scripts, untrusted
-HTML insertion, app launch credentials, private signing secrets, or local file paths.
+The UI persists draft form values, selected filters, and redacted import summaries through
+app-data. Fetched statement text, raw trust documents, status results, and queue previews are not
+stored as durable backend trust state. The UI does not use persistent browser storage, direct
+Platform API URLs, external scripts, untrusted HTML insertion, app launch credentials, private
+signing secrets, or local file paths.
 
 Run the staged bundle test with:
 

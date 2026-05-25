@@ -128,6 +128,27 @@ public interface AppHost {
   void uninstall(String appId) throws IOException;
 
   /**
+   * Removes one installed app using explicit operator cleanup options.
+   *
+   * <p>The default implementation preserves existing {@link #uninstall(String)} behavior for
+   * implementations that have not added preserve-data support. Implementations that can keep
+   * persistent app data while removing the immutable bundle should override this method and honor
+   * {@link AppUninstallOptions#preserveData()}.
+   *
+   * @param appId stable application identifier
+   * @param options explicit uninstall cleanup options
+   * @throws IOException if the app is still running, is not installed, or owned files cannot be
+   *     removed cleanly
+   */
+  default void uninstall(String appId, AppUninstallOptions options) throws IOException {
+    Objects.requireNonNull(options, "options");
+    if (options.preserveData()) {
+      throw new AppHostException("preserve-data uninstall is not supported");
+    }
+    uninstall(appId);
+  }
+
+  /**
    * Lists all installed apps.
    *
    * <p>The returned list is a fresh filesystem-backed snapshot. Callers should not assume the list

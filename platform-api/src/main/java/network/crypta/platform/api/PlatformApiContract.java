@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 8;
+  public static final int CURRENT_CONTRACT_VERSION = 9;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -67,6 +67,7 @@ public record PlatformApiContract(
   private static final int CONTENT_FETCH_CONTRACT_VERSION = 6;
   private static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7;
   private static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8;
+  private static final int APP_DATA_STORE_CONTRACT_VERSION = 9;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -85,6 +86,7 @@ public record PlatformApiContract(
           + "developer tooling and release review before behavior changes.";
 
   private static final String ROUTE_FAMILY_APPS = "apps";
+  private static final String ROUTE_FAMILY_APP_DATA = "app-data";
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
   private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
   private static final String ROUTE_FAMILY_CONFIG = "config";
@@ -248,6 +250,19 @@ public record PlatformApiContract(
             PlatformApiCapabilities.APPS_MANAGE, "Install, update, start, stop, or remove apps."),
         capability(
             PlatformApiCapabilities.APPS_READ, "Read installed app summaries and diagnostics."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.APP_DATA_READ,
+            PlatformApiStabilityLevel.STABLE,
+            APP_DATA_STORE_CONTRACT_VERSION,
+            null,
+            "Read bounded app-owned durable data records, namespace metadata, status, and"
+                + " exports."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.APP_DATA_WRITE,
+            PlatformApiStabilityLevel.STABLE,
+            APP_DATA_STORE_CONTRACT_VERSION,
+            null,
+            "Create, replace, delete, import, and migrate bounded app-owned durable data."),
         capability(
             PlatformApiCapabilities.CATALOGS_MANAGE,
             "Add, refresh, remove, install from, or update from app catalogs."),
@@ -472,6 +487,7 @@ public record PlatformApiContract(
     builder.queueAppDocumentPost();
     builder.contentFetchPost();
     builder.contentSubscriptionEndpoints();
+    builder.appDataEndpoints();
     builder.trustGraphPreviewEndpoints();
     builder.post(
         ROUTE_FAMILY_QUEUE,
@@ -1078,6 +1094,96 @@ public record PlatformApiContract(
               actionLabel,
               capabilities,
               CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.STABLE,
+              description));
+    }
+
+    private void appDataEndpoints() {
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/status",
+          "app-data.status",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "Read durable app-data status, limits, and sanitized quota state.");
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/namespaces",
+          "app-data.namespaces.list",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "List durable app-data namespace metadata.");
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/namespaces/{namespace}",
+          "app-data.namespaces.read",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "Read one durable app-data namespace metadata record.");
+      appDataEndpoint(
+          METHOD_POST,
+          "/app-data/namespaces/{namespace}/schema",
+          "app-data.namespaces.schema",
+          List.of(PlatformApiCapabilities.APP_DATA_WRITE),
+          "Record one durable app-data schema migration metadata entry.");
+      appDataEndpoint(
+          METHOD_DELETE,
+          "/app-data/namespaces/{namespace}",
+          "app-data.namespaces.delete",
+          List.of(PlatformApiCapabilities.APP_DATA_WRITE),
+          "Delete one app-owned durable data namespace.");
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/records",
+          "app-data.records.list",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "List bounded durable app-data record summaries.");
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/records/{namespace}/{key}",
+          "app-data.records.read",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "Read one bounded durable app-data record.");
+      appDataEndpoint(
+          METHOD_POST,
+          "/app-data/records",
+          "app-data.records.write",
+          List.of(PlatformApiCapabilities.APP_DATA_WRITE),
+          "Create or replace one bounded durable app-data record.");
+      appDataEndpoint(
+          METHOD_DELETE,
+          "/app-data/records/{namespace}/{key}",
+          "app-data.records.delete",
+          List.of(PlatformApiCapabilities.APP_DATA_WRITE),
+          "Delete one bounded durable app-data record.");
+      appDataEndpoint(
+          METHOD_GET,
+          "/app-data/export",
+          "app-data.export",
+          List.of(PlatformApiCapabilities.APP_DATA_READ),
+          "Export bounded app-owned durable data for backup or migration.");
+      appDataEndpoint(
+          METHOD_POST,
+          "/app-data/import",
+          "app-data.import",
+          List.of(PlatformApiCapabilities.APP_DATA_WRITE),
+          "Import bounded app-owned durable data from a structured export payload.");
+    }
+
+    private void appDataEndpoint(
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_DATA,
+              method,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              APP_DATA_STORE_CONTRACT_VERSION,
               false,
               true,
               true,

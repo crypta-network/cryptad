@@ -3,8 +3,9 @@
 `apps/feed-reader` stages a first-party static AppHost bundle for reading and publishing feed
 snapshots through the Platform API browser SDK.
 
-The app keeps feed sources, fetched snapshots, draft entries, queue summaries, and recent publish
-results in memory for the open browser tab only. It does not use persistent browser storage,
+The app persists feed sources, selected subscription ids, read-state metadata, and safe publish
+draft fields through the durable app-data API. Fetched snapshots, queue summaries, and publication
+results stay bounded in the UI and are not written to browser storage. The app does not use
 external scripts, direct Platform API URLs, form-password credentials, or AppHost launch tokens.
 
 Build the staged bundle with:
@@ -61,9 +62,12 @@ Feed Reader & Publisher declares:
   authority.
 - `queue.read` to show upload queue progress for published snapshots.
 - `queue.write` to create publish queue requests.
+- `app.data.read` to restore the app-owned feed list and reader state.
+- `app.data.write` to save bounded feed, subscription, read-state, and draft metadata.
 
-The manifest targets Platform API contract v8 because the reference app depends on durable
-content subscription helpers for USK follow behavior. Run focused validation with:
+The manifest targets Platform API contract v9 because the reference app depends on durable
+content subscription helpers and durable app-data records for reader state. Run focused validation
+with:
 
 ```bash
 ./gradlew :apps:feed-reader:test

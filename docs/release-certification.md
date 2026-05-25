@@ -124,6 +124,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.content-fetch` | App-platform smoke summary. | The content fetch route `POST /api/v1/content/fetch` is present, documented, capability-gated by `content.fetch`, and covered by feed-body/request-body/token/path redaction evidence. |
 | `app-platform.content-subscriptions` | App-platform smoke summary. | The content subscription routes under `/api/v1/content/subscriptions` are present, documented, app-principal scoped, capability-gated by `content.subscribe` plus `content.fetch` for create/refresh, and covered by raw-content/token/path/queue HTML redaction evidence. |
 | `network-content.subscription-scheduler` | App-platform smoke summary. | Offline source and test evidence proves deterministic content-subscription `tick(Instant)`, no-overlap execution, per-app/global/per-tick limits, failure backoff, dedupe, queue pressure handling without parsing queue HTML, and path-free durable metadata. |
+| `app-platform.durable-app-data-store` | App-platform smoke summary. | The `/api/v1/app-data` route family, `app.data.read`, and `app.data.write` are present, contract v9 is exposed, file-backed records use path-safe atomic storage, quotas/import/export/schema metadata are bounded, and evidence excludes raw app values, request bodies, tokens, private insert URIs, and local paths. |
 | `app-platform.trust-graph-preview` | App-platform smoke summary. | The v7 trust graph routes are present, documented, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
 | `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
@@ -133,9 +134,12 @@ Release-candidate mode requires these evidence ids:
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
 | `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and avoids vault identity permissions. |
 | `reference-app.profile-publisher` | App-platform smoke summary. | Profile Publisher exists as the first identity-profile reference app, declares the expected vault/content/queue permissions, uses the profile-document and app-document insert routes, and keeps release evidence free of signatures and private material. |
+| `reference-app.profile-publisher-app-data` | App-platform smoke summary. | Profile Publisher declares contract v9 and `app.data.*`, uses SDK JSON record helpers for bounded profile draft, selected identity, last published URI, and recent publish summaries, and keeps identity private material in AppVault rather than app data. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
-| `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires API v8, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
-| `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Preview exists as the local trust-service reference app, declares API v7 trust/content/vault/queue permissions, uses SDK trust helpers and design-system assets, and keeps evidence free of raw trust documents and private material. |
+| `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires API v9, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
+| `reference-app.feed-reader-app-data` | App-platform smoke summary. | Feed Reader declares contract v9 and `app.data.*`, uses SDK JSON record helpers for bounded feed sources, selected source, read/render metadata, and safe publisher draft state, and keeps evidence free of raw feed bodies and app-data values. |
+| `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Preview exists as the local trust-service reference app, declares API v9 trust/content/vault/queue/app-data permissions, uses SDK trust helpers and design-system assets, and keeps evidence free of raw trust documents and private material. |
+| `reference-app.trust-graph-app-data-preview` | App-platform smoke summary. | Trust Graph Preview uses app data only for UI-local draft/filter/import-summary state, keeps the platform trustgraph backend out of scope for this phase, and redacts raw trust statements, private identity material, and local paths. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
@@ -254,19 +258,22 @@ relative bundle paths and finding ids are acceptable, while tokens, form passwor
 private file paths, and local file contents are not.
 
 Profile Publisher supplies the identity-profile publishing reference path. Release evidence must
-prove `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
-`app-platform.generated-document-insert` before a release claims identity-profile support. Site
+prove `reference-app.profile-publisher`, `reference-app.profile-publisher-app-data`,
+`app-platform.identity-profile-publish`, and `app-platform.generated-document-insert` before a
+release claims identity-profile support. Site
 Publisher remains the content-reference app and should not claim `vault.identities.*` coverage.
 Feed Reader supplies the content-subscription reference path. Release evidence must prove
 `reference-app.feed-reader`, `reference-app.feed-reader-subscriptions`,
-`app-platform.content-fetch`, `app-platform.content-subscriptions`, and
-`network-content.subscription-scheduler` before a release claims feed-reader subscription support.
+`reference-app.feed-reader-app-data`, `app-platform.content-fetch`,
+`app-platform.content-subscriptions`, `network-content.subscription-scheduler`, and
+`app-platform.durable-app-data-store` before a release claims feed-reader subscription support.
 Feed evidence must not include raw feed bodies, raw fetched content, raw request bodies, private
 insert URIs, app process tokens, browser-session tokens, form passwords, private keys, absolute
 staging paths, store root paths, queue HTML, or local paths.
 Trust Graph Preview supplies the local trust-service reference path. Release evidence must prove
-`reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
-`app-platform.trust-statement-signing` before a release claims trust graph preview support. Trust
+`reference-app.trust-graph`, `reference-app.trust-graph-app-data-preview`,
+`app-platform.trust-graph-preview`, and `app-platform.trust-statement-signing` before a release
+claims trust graph preview support. Trust
 evidence must not include raw trust statement bodies from real users, raw request bodies, raw
 signature values, private identity material, app process tokens, browser-session tokens, form
 passwords, or local paths.

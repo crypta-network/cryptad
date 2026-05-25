@@ -1,5 +1,6 @@
 package network.crypta.platform.api;
 
+import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appvault.AppVaultService;
@@ -17,11 +18,13 @@ import network.crypta.platform.appvault.AppVaultService;
  * @param vaultService optional app-vault service for app and identity vault routes
  * @param updateService optional shared app-update lifecycle service
  * @param contentSubscriptionService optional shared content-subscription service
+ * @param appDataService optional shared durable app-data service
  */
 public record PlatformApiSharedAppServices(
     AppVaultService vaultService,
     AppUpdateService updateService,
-    ContentSubscriptionService contentSubscriptionService) {
+    ContentSubscriptionService contentSubscriptionService,
+    AppDataService appDataService) {
 
   /**
    * Returns an empty shared-service group.
@@ -29,7 +32,7 @@ public record PlatformApiSharedAppServices(
    * @return service group with every optional app-platform service absent
    */
   public static PlatformApiSharedAppServices none() {
-    return new PlatformApiSharedAppServices(null, null, null);
+    return new PlatformApiSharedAppServices(null, null, null, null);
   }
 
   /**
@@ -39,7 +42,7 @@ public record PlatformApiSharedAppServices(
    * @return service group with vault routing enabled when {@code vaultService} is non-null
    */
   public static PlatformApiSharedAppServices withVault(AppVaultService vaultService) {
-    return new PlatformApiSharedAppServices(vaultService, null, null);
+    return new PlatformApiSharedAppServices(vaultService, null, null, null);
   }
 
   /**
@@ -54,7 +57,24 @@ public record PlatformApiSharedAppServices(
       AppVaultService vaultService,
       AppUpdateService appUpdateService,
       ContentSubscriptionService contentSubscriptionService) {
+    return of(vaultService, appUpdateService, contentSubscriptionService, null);
+  }
+
+  /**
+   * Returns a service group containing all currently shared app-platform service types.
+   *
+   * @param vaultService optional app-vault service
+   * @param appUpdateService optional shared app-update lifecycle service
+   * @param contentSubscriptionService optional shared content-subscription service
+   * @param appDataService optional durable app-data service
+   * @return service group for runtime-managed app-platform route families
+   */
+  public static PlatformApiSharedAppServices of(
+      AppVaultService vaultService,
+      AppUpdateService appUpdateService,
+      ContentSubscriptionService contentSubscriptionService,
+      AppDataService appDataService) {
     return new PlatformApiSharedAppServices(
-        vaultService, appUpdateService, contentSubscriptionService);
+        vaultService, appUpdateService, contentSubscriptionService, appDataService);
   }
 }

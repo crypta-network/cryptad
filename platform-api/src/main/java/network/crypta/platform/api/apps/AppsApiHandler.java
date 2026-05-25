@@ -26,6 +26,7 @@ import network.crypta.platform.apphost.AppProcessLogSnapshot;
 import network.crypta.platform.apphost.AppQuotaPolicy;
 import network.crypta.platform.apphost.AppQuotaStatus;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
@@ -523,7 +524,7 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary with {@code installed=false}
    */
   public Map<String, Object> uninstall(String appId) {
-    return uninstall(appId, true);
+    return uninstall(appId, true, false);
   }
 
   /**
@@ -534,6 +535,19 @@ public final class AppsApiHandler {
    * @return JSON-compatible app summary with {@code installed=false}
    */
   public Map<String, Object> uninstall(String appId, boolean includeVaultDetails) {
+    return uninstall(appId, includeVaultDetails, false);
+  }
+
+  /**
+   * Uninstalls one stopped app with explicit persistent-data cleanup behavior.
+   *
+   * @param appId stable application identifier extracted from the request path
+   * @param includeVaultDetails whether to include vault counts and recent vault audit summaries
+   * @param preserveData whether AppHost should retain persistent app data after bundle removal
+   * @return JSON-compatible app summary with {@code installed=false}
+   */
+  public Map<String, Object> uninstall(
+      String appId, boolean includeVaultDetails, boolean preserveData) {
     String normalizedAppId = normalizeAppId(appId);
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict("cannot uninstall a running app: " + normalizedAppId);
@@ -542,14 +556,19 @@ public final class AppsApiHandler {
 
     try {
       blockVaultForUninstallIfNeeded(normalizedAppId, installed);
-      appHost.uninstall(normalizedAppId);
+      appHost.uninstall(
+          normalizedAppId,
+          preserveData ? AppUninstallOptions.preservingData() : AppUninstallOptions.removeAll());
       cleanupVaultForUninstall(normalizedAppId);
-      return installed != null
-          ? summarize(installed.manifest(), false, null, null, includeVaultDetails)
-          : summarizeUnknown(normalizedAppId, false, includeVaultDetails);
+      return addDataPreserved(
+          installed != null
+              ? summarize(installed.manifest(), false, null, null, includeVaultDetails)
+              : summarizeUnknown(normalizedAppId, false, includeVaultDetails),
+          preserveData);
     } catch (AppHostException e) {
       if (isMissingAppFailure(e) && cleanupVaultForMissingApp(normalizedAppId)) {
-        return summarizeUnknown(normalizedAppId, false, includeVaultDetails);
+        return addDataPreserved(
+            summarizeUnknown(normalizedAppId, false, includeVaultDetails), preserveData);
       }
       clearVaultBlockForPreCommitUninstallFailure(normalizedAppId);
       throw uninstallFailure(normalizedAppId, e);
@@ -559,12 +578,19 @@ public final class AppsApiHandler {
     }
   }
 
+  private static Map<String, Object> addDataPreserved(
+      Map<String, Object> summary, boolean preserveData) {
+    LinkedHashMap<String, Object> json = new LinkedHashMap<>(summary);
+    json.put("dataPreserved", preserveData);
+    return json;
+  }
+
   /**
    * Returns whether AppHost can confirm that an app still appears installed.
    *
    * <p>This is intentionally conservative for cleanup callers that run after a secondary failure. A
    * successful missing-app read returns {@code false}; an I/O failure returns {@code true} so
-   * callers do not clear related state when the host cannot prove the uninstall committed.
+   * callers do not clear related state when the host cannot prove the uninstallation committed.
    *
    * @param appId stable application identifier
    * @return {@code false} only when AppHost confirms the app is absent

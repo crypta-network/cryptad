@@ -86,6 +86,8 @@ PROFILE_PUBLISHER_PERMISSIONS = {
     "vault.identities.read",
     "vault.identities.create",
     "vault.identities.use",
+    "app.data.read",
+    "app.data.write",
 }
 FEED_READER_PERMISSIONS = {
     "content.fetch",
@@ -93,6 +95,8 @@ FEED_READER_PERMISSIONS = {
     "content.insert.app-document",
     "queue.read",
     "queue.write",
+    "app.data.read",
+    "app.data.write",
 }
 TRUST_GRAPH_PERMISSIONS = {
     "trust.read",
@@ -104,6 +108,8 @@ TRUST_GRAPH_PERMISSIONS = {
     "vault.identities.read",
     "vault.identities.create",
     "vault.identities.use",
+    "app.data.read",
+    "app.data.write",
 }
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
@@ -616,8 +622,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/profile-publisher/src/staged",
             "launcher": "bin/profile-publisher.sh",
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
-            "apiMinimumVersion": 5,
-            "apiMaximumTestedVersion": 7,
+            "apiMinimumVersion": 9,
+            "apiMaximumTestedVersion": 9,
         },
         {
             "appId": "feed-reader",
@@ -628,8 +634,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/feed-reader/src/staged",
             "launcher": "bin/feed-reader.sh",
             "permissions": FEED_READER_PERMISSIONS,
-            "apiMinimumVersion": 8,
-            "apiMaximumTestedVersion": 8,
+            "apiMinimumVersion": 9,
+            "apiMaximumTestedVersion": 9,
         },
         {
             "appId": "trust-graph",
@@ -640,8 +646,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/trust-graph/src/staged",
             "launcher": "bin/trust-graph.sh",
             "permissions": TRUST_GRAPH_PERMISSIONS,
-            "apiMinimumVersion": 7,
-            "apiMaximumTestedVersion": 7,
+            "apiMinimumVersion": 9,
+            "apiMaximumTestedVersion": 9,
             "experimentalCapabilitiesAccepted": True,
         },
     ]
@@ -1342,15 +1348,45 @@ def collect_platform_api_contract_evidence(
     details["stableEndpoints"] = stable_endpoint_identities(endpoints)
     details["stabilityCounts"] = stability_counts
     details["flaggedStability"] = flagged
+    required_app_data_capabilities = {"app.data.read", "app.data.write"}
+    required_app_data_endpoints = {
+        "GET /app-data/status",
+        "GET /app-data/namespaces",
+        "GET /app-data/namespaces/{namespace}",
+        "POST /app-data/namespaces/{namespace}/schema",
+        "DELETE /app-data/namespaces/{namespace}",
+        "GET /app-data/records",
+        "GET /app-data/records/{namespace}/{key}",
+        "POST /app-data/records",
+        "DELETE /app-data/records/{namespace}/{key}",
+        "GET /app-data/export",
+        "POST /app-data/import",
+    }
+    stable_capabilities = set(details["stableCapabilities"])
+    stable_endpoints = set(details["stableEndpoints"])
+    missing_app_data_capabilities = sorted(required_app_data_capabilities - stable_capabilities)
+    missing_app_data_endpoints = sorted(required_app_data_endpoints - stable_endpoints)
+    details["appDataContract"] = {
+        "capabilities": sorted(required_app_data_capabilities),
+        "endpoints": sorted(required_app_data_endpoints),
+        "missingCapabilities": missing_app_data_capabilities,
+        "missingEndpoints": missing_app_data_endpoints,
+    }
     if contract:
         if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
             errors.append("contractVersion must be a positive integer")
         if not isinstance(api_version, str) or not api_version.strip():
             errors.append("apiVersion must be a non-empty string")
+        if contract_version != 9:
+            errors.append("contractVersion must be 9 for durable app-data support")
     if not capabilities:
         errors.append("contract has no capability descriptors")
     if not endpoints:
         errors.append("contract has no endpoint descriptors")
+    if missing_app_data_capabilities:
+        errors.append("contract is missing app-data capability descriptors")
+    if missing_app_data_endpoints:
+        errors.append("contract is missing app-data endpoint descriptors")
 
     verifier_args = ["compat", "verify"]
     if settings.mode == "release-candidate":
@@ -3374,7 +3410,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
         "/content/subscriptions/{subscriptionId}/resume",
     )
     checks = {
-        "contractVersionV8": "CURRENT_CONTRACT_VERSION = 8" in contract_text,
+        "currentContractVersionV9": "CURRENT_CONTRACT_VERSION = 9" in contract_text,
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
             and "CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8" in contract_text
@@ -3685,6 +3721,155 @@ def collect_content_subscription_scheduler_evidence(settings: Settings) -> Evide
     )
 
 
+def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    source_files = {
+        "contract": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java",
+        "capabilities": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiCapabilities.java",
+        "router": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java",
+        "routes": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppDataRoutes.java",
+        "service": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataService.java",
+        "fileStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/FileAppDataStore.java",
+        "config": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataStoreConfig.java",
+        "handler": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataApiHandler.java",
+        "runtime": workspace
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java",
+        "sdk": workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
+        "docs": workspace / "docs/app-data-store.md",
+        "contractDocs": workspace / "docs/platform-api-contract.md",
+        "apiDocs": workspace / "docs/platform-api-surface.md",
+        "routerTest": workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiAppDataRouterTest.java",
+        "serviceTest": workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appdata/AppDataServiceTest.java",
+        "fileStoreTest": workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appdata/FileAppDataStoreTest.java",
+        "uninstallOptions": workspace
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/AppUninstallOptions.java",
+        "localAppHost": workspace
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java",
+    }
+    text = {name: read_source(path) for name, path in source_files.items()}
+    required_routes = (
+        "/app-data/status",
+        "/app-data/namespaces",
+        "/app-data/namespaces/{namespace}",
+        "/app-data/namespaces/{namespace}/schema",
+        "/app-data/records",
+        "/app-data/records/{namespace}/{key}",
+        "/app-data/export",
+        "/app-data/import",
+    )
+    checks = {
+        "contractV9AndCapabilities": (
+            "CURRENT_CONTRACT_VERSION = 9" in text["contract"]
+            and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
+            and "app.data.read" in text["capabilities"]
+            and "app.data.write" in text["capabilities"]
+            and all(route in text["contract"] for route in required_routes)
+        ),
+        "routesRequireAppPrincipalAndCapabilities": (
+            "PlatformApiAppDataRoutes" in text["router"]
+            and "requireAppPrincipalId" in text["routes"]
+            and "app.data.read" in text["capabilities"]
+            and "app.data.write" in text["capabilities"]
+            and (
+                "PlatformApiCapabilities.APP_DATA_READ" in text["contract"]
+                or "app.data.read" in text["contract"]
+            )
+            and (
+                "PlatformApiCapabilities.APP_DATA_WRITE" in text["contract"]
+                or "app.data.write" in text["contract"]
+            )
+        ),
+        "fileBackedStoreIsPathSafeAndAtomic": (
+            "sha256" in text["fileStore"].lower()
+            and "ATOMIC_MOVE" in text["fileStore"]
+            and "current.properties" in text["fileStore"]
+            and ".cryptad-app-data" in text["fileStore"]
+            and "value.bin" in text["fileStore"]
+        ),
+        "serviceBoundsQuotaAndImportExport": (
+            "maxRecordBytes" in text["config"]
+            and "maxRecordsPerApp" in text["config"]
+            and "maxNamespacesPerApp" in text["config"]
+            and "maxExportBytes" in text["config"]
+            and "maxImportBytes" in text["config"]
+            and "quota.data.bytes" in text["config"]
+            and "app_data_import_app_mismatch" in text["service"]
+        ),
+        "schemaMigrationMetadata": (
+            "updateSchema" in text["service"]
+            and "fromSchemaVersion" in text["service"]
+            and "toSchemaVersion" in text["service"]
+            and "lastMigrationAt" in text["service"]
+        ),
+        "sdkHelpersExistAndAvoidBrowserStorage": (
+            "data: Object.freeze" in text["sdk"]
+            and "putAppDataJson" in text["sdk"]
+            and "getAppDataJson" in text["sdk"]
+            and "app-data/export" in text["sdk"]
+            and "app-data/import" in text["sdk"]
+            and "localStorage" not in text["sdk"]
+            and "sessionStorage" not in text["sdk"]
+        ),
+        "testsCoverCoreSecurityAndPersistence": (
+            "route_whenAppReadsAnotherAppsRecord_expectNotFound" in text["routerTest"]
+            and "route_whenCapabilityMissingOrServiceUnavailable_expectDeniedOr503" in text["routerTest"]
+            and "putRecord_whenIdentifierContainsTraversal_expectPathFreeValidationError" in text["serviceTest"]
+            and "exportImport_whenPayloadRoundTrips_expectValuesCopiedAndOtherAppRejected" in text["serviceTest"]
+            and "writeRecord_whenUnreferencedGenerationExists_expectCurrentRecordUnaffected" in text["fileStoreTest"]
+        ),
+        "runtimeAndUninstallWired": (
+            "createAppDataService" in text["runtime"]
+            and "durable-app-data" in text["runtime"]
+            and "storeUsageOutsideAppDataDir" in text["service"]
+            and "preserveData" in text["uninstallOptions"]
+            and "options.preserveData()" in text["localAppHost"]
+        ),
+        "docsCoverLimitsAndRedaction": (
+            "app.data.read" in text["docs"]
+            and "cryptad.appData.maxRecordBytes" in text["docs"]
+            and "Export and import" in text["docs"]
+            and "Redaction rules" in text["docs"]
+            and "not a filesystem API" in text["docs"]
+            and "app-data" in text["contractDocs"]
+            and "App data" in text["apiDocs"]
+        ),
+    }
+    details = {
+        "checks": checks,
+        "routes": list(required_routes),
+        "capabilities": ["app.data.read", "app.data.write"],
+        "redaction": {
+            "rawValuesExcludedFromEvidence": True,
+            "rawRequestBodiesExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    errors = [f"app data store check failed: {name}" for name, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "app-platform.durable-app-data-store",
+            root_consequence(settings, "fail"),
+            True,
+            "Durable app-data store evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.durable-app-data-store",
+        "pass",
+        True,
+        "Durable app-data store evidence passed.",
+        source,
+        details,
+    )
+
+
 def read_json_file(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -3952,6 +4137,11 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         or "publishSnapshot" in source_app_js
     )
     checks["usesUploadQueueSnapshot"] = "CryptaPlatform.queue.snapshot" in source_app_js
+    checks["usesAppDataHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in source_app_js
+        and "CryptaPlatform.data.records.putJson" in source_app_js
+        and "lastPublishedProfileUri" in source_app_js
+    )
     checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
     checks["noPersistentBrowserStorage"] = all(
         forbidden not in source_app_js
@@ -3968,6 +4158,7 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         "Profile Publisher" in app_readme
         and "profile-document" in app_readme
         and "app-document" in app_readme
+        and "app-data" in app_readme
     )
     if manifest:
         details["manifest"] = {
@@ -3988,6 +4179,10 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         checks["manifestDeclaresProfilePermissions"] = PROFILE_PUBLISHER_PERMISSIONS.issubset(
             manifest_permissions
         )
+        checks["manifestUsesAppDataContract"] = (
+            manifest.get("api.minimumVersion") == "9"
+            and manifest.get("api.maximumTestedVersion") == "9"
+        )
         checks["manifestAvoidsUnneededVaultManagement"] = not any(
             permission in manifest_permissions
             for permission in (
@@ -3999,6 +4194,7 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
     else:
         checks["manifestDeclaresProfilePublisher"] = False
         checks["manifestDeclaresProfilePermissions"] = False
+        checks["manifestUsesAppDataContract"] = False
         checks["manifestAvoidsUnneededVaultManagement"] = False
 
     for name, passed in checks.items():
@@ -4099,6 +4295,11 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         or "publishSnapshot" in source_app_js
     )
     checks["usesUploadQueueSnapshot"] = "CryptaPlatform.queue.snapshot" in source_app_js
+    checks["usesAppDataHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in source_app_js
+        and "CryptaPlatform.data.records.putJson" in source_app_js
+        and "lastPublisherDraft" in source_app_js
+    )
     checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
     checks["noPersistentBrowserStorage"] = all(
         forbidden not in source_app_js
@@ -4110,6 +4311,7 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         and "POST /api/v1/content/fetch" in reference_doc
         and "content.subscribe" in reference_doc
         and "content.fetch" in reference_doc
+        and "app.data.read" in reference_doc
         and "raw feed bodies" in reference_doc
     )
     disclosure = permission_disclosure_block(source_index)
@@ -4139,8 +4341,8 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
             manifest_permissions
         )
         checks["manifestUsesCertifiedApiRange"] = (
-            manifest.get("api.minimumVersion") == "8"
-            and manifest.get("api.maximumTestedVersion") == "8"
+            manifest.get("api.minimumVersion") == "9"
+            and manifest.get("api.maximumTestedVersion") == "9"
         )
     else:
         checks["manifestDeclaresFeedReader"] = False
@@ -4222,11 +4424,11 @@ def collect_feed_reader_subscription_evidence(settings: Settings) -> EvidenceIte
         except ValueError as exc:
             errors.append(str(exc))
     checks = details["checks"]
-    checks["manifestDeclaresSubscribeAndV8"] = (
+    checks["manifestDeclaresSubscribeAndV9"] = (
         manifest.get("app.id") == "feed-reader"
         and FEED_READER_PERMISSIONS.issubset(manifest_permissions)
-        and manifest.get("api.minimumVersion") == "8"
-        and manifest.get("api.maximumTestedVersion") == "8"
+        and manifest.get("api.minimumVersion") == "9"
+        and manifest.get("api.maximumTestedVersion") == "9"
     )
     checks["uiDisclosesSubscribePermission"] = (
         "content.subscribe" in permission_disclosure_block(source_index)
@@ -4296,6 +4498,208 @@ def collect_feed_reader_subscription_evidence(settings: Settings) -> EvidenceIte
         "pass",
         True,
         "Feed Reader subscription workflow evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_feed_reader_app_data_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "feed-reader"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {"appId": "feed-reader", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.feed-reader-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader app-data evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "apps/feed-reader/README.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/app-data-store.md",
+            "docs/release-certification.md",
+        )
+    )
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestUsesAppDataContract"] = (
+        manifest.get("api.minimumVersion") == "9"
+        and manifest.get("api.maximumTestedVersion") == "9"
+        and {"app.data.read", "app.data.write"}.issubset(permissions)
+    )
+    checks["usesSdkJsonRecordHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in app_js
+        and "CryptaPlatform.data.records.putJson" in app_js
+    )
+    checks["persistsBoundedReaderState"] = all(
+        fragment in app_js
+        for fragment in (
+            "const maxSources",
+            "maxRememberedSnapshots",
+            'const dataNamespace = "ui-state"',
+            'const dataStateKey = "reader-state"',
+            "lastPublisherDraft",
+            "selectedSourceId",
+            "fetchedSnapshots",
+        )
+    )
+    checks["permissionDisclosureMentionsAppData"] = (
+        "app.data.read" in permission_disclosure_block(index)
+        and "app.data.write" in permission_disclosure_block(index)
+    )
+    checks["docsAndEvidenceMentionDurableAppData"] = (
+        "reference-app.feed-reader-app-data" in docs_text
+        and "app-data" in docs_text
+        and "app.data.read" in docs_text
+        and "raw feed bodies" in docs_text
+    )
+    checks["noBrowserStorageOrRawAdminPath"] = (
+        "/api/v1/" not in app_js
+        and "localStorage.setItem" not in app_js
+        and "sessionStorage.setItem" not in app_js
+    )
+    details["redaction"] = {
+        "rawFeedBodiesExcluded": True,
+        "rawAppDataValuesExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "absolutePathsExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"feed reader app-data check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.feed-reader-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Feed Reader durable app-data evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.feed-reader-app-data",
+        "pass",
+        True,
+        "Feed Reader durable app-data evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_profile_publisher_app_data_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "profile-publisher"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {"appId": "profile-publisher", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.profile-publisher-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Profile Publisher app-data evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "apps/profile-publisher/README.md",
+            "docs/app-platform-developer-portal.md",
+            "docs/app-data-store.md",
+            "docs/release-certification.md",
+        )
+    )
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestUsesAppDataContract"] = (
+        manifest.get("api.minimumVersion") == "9"
+        and manifest.get("api.maximumTestedVersion") == "9"
+        and {"app.data.read", "app.data.write"}.issubset(permissions)
+    )
+    checks["usesSdkJsonRecordHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in app_js
+        and "CryptaPlatform.data.records.putJson" in app_js
+    )
+    checks["persistsBoundedDraftState"] = all(
+        fragment in app_js
+        for fragment in (
+            'const dataNamespace = "profile-draft"',
+            'const dataStateKey = "publisher-state"',
+            "maxRecentActions",
+            "lastPublishedProfileUri",
+            "recentActions",
+            "selectedIdentityId",
+        )
+    )
+    checks["permissionDisclosureMentionsAppData"] = (
+        "app.data.read" in permission_disclosure_block(index)
+        and "app.data.write" in permission_disclosure_block(index)
+    )
+    checks["docsAndEvidenceMentionDurableAppData"] = (
+        "reference-app.profile-publisher-app-data" in docs_text
+        and "app-data" in docs_text
+        and "AppVault" in docs_text
+        and "app.data.write" in docs_text
+    )
+    checks["noBrowserStorageOrSecretPersistence"] = (
+        "localStorage.setItem" not in app_js
+        and "sessionStorage.setItem" not in app_js
+        and "privateKey" not in app_js
+        and "seed" not in app_js
+    )
+    details["redaction"] = {
+        "rawProfileDraftExcluded": True,
+        "identityPrivateMaterialExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "absolutePathsExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"profile publisher app-data check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.profile-publisher-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Profile Publisher durable app-data evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.profile-publisher-app-data",
+        "pass",
+        True,
+        "Profile Publisher durable app-data evidence passed.",
         source,
         details,
     )
@@ -4378,6 +4782,11 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         "CryptaPlatform.content.fetchText" in source_app_js
         and "CryptaPlatform.queue.snapshot" in source_app_js
     )
+    checks["usesAppDataPreviewState"] = (
+        "CryptaPlatform.data.records.getJson" in source_app_js
+        and "CryptaPlatform.data.records.putJson" in source_app_js
+        and "recentImports" in source_app_js
+    )
     checks["noRawAdminApiReference"] = "/api/v1/" not in source_app_js
     checks["noPersistentBrowserStorage"] = all(
         forbidden not in source_app_js
@@ -4396,11 +4805,13 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         and "Trust anchors are local" in reference_doc
         and "trust.read" in reference_doc
         and "trust.write" in reference_doc
+        and "UI-local" in reference_doc
     )
     checks["readmeDocumentsTrustFlow"] = (
         "Trust Graph Preview" in app_readme
         and "trust-statement" in app_readme
         and "not full WoT" in app_readme
+        and "app-data" in app_readme
     )
     if manifest:
         details["manifest"] = {
@@ -4424,15 +4835,15 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         checks["manifestDeclaresTrustPermissions"] = TRUST_GRAPH_PERMISSIONS.issubset(
             manifest_permissions
         )
-        checks["manifestUsesContractV7"] = (
-            manifest.get("api.minimumVersion") == "7"
-            and manifest.get("api.maximumTestedVersion") == "7"
+        checks["manifestUsesContractV9"] = (
+            manifest.get("api.minimumVersion") == "9"
+            and manifest.get("api.maximumTestedVersion") == "9"
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
     else:
         checks["manifestDeclaresTrustGraph"] = False
         checks["manifestDeclaresTrustPermissions"] = False
-        checks["manifestUsesContractV7"] = False
+        checks["manifestUsesContractV9"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -4451,6 +4862,110 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         "pass",
         True,
         "Trust Graph Preview reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "trust-graph"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {"appId": "trust-graph", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.trust-graph-app-data-preview",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph app-data preview evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "apps/trust-graph/README.md",
+            "docs/trust-graph-preview.md",
+            "docs/app-data-store.md",
+            "docs/release-certification.md",
+        )
+    )
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestUsesAppDataContract"] = (
+        manifest.get("api.minimumVersion") == "9"
+        and manifest.get("api.maximumTestedVersion") == "9"
+        and {"app.data.read", "app.data.write"}.issubset(permissions)
+    )
+    checks["usesSdkJsonRecordHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in app_js
+        and "CryptaPlatform.data.records.putJson" in app_js
+    )
+    checks["persistsOnlyUiLocalPreviewState"] = all(
+        fragment in app_js
+        for fragment in (
+            'const dataNamespace = "ui-state"',
+            'const dataStateKey = "preview-state"',
+            "lastDraft",
+            "recentImports",
+            "normalizeImportSummary",
+        )
+    ) and "privateInsertUri" not in app_js
+    checks["permissionDisclosureMentionsAppData"] = (
+        "app.data.read" in permission_disclosure_block(index)
+        and "app.data.write" in permission_disclosure_block(index)
+    )
+    checks["docsKeepTrustBackendOutOfScope"] = (
+        "reference-app.trust-graph-app-data-preview" in docs_text
+        and "UI-local" in docs_text
+        and (
+            "not made durable" in docs_text
+            or "without making the trust backend durable" in docs_text
+            or "does not make\n"
+            "the `platform-trustgraph` store durable" in docs_text
+        )
+        and "not a full Web of Trust" in docs_text
+    )
+    checks["noBrowserStorageOrRawAdminPath"] = (
+        "/api/v1/" not in app_js
+        and "localStorage.setItem" not in app_js
+        and "sessionStorage.setItem" not in app_js
+    )
+    details["redaction"] = {
+        "rawTrustStatementsExcluded": True,
+        "uiLocalSummariesOnly": True,
+        "identityPrivateMaterialExcluded": True,
+        "absolutePathsExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"trust graph app-data preview check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.trust-graph-app-data-preview",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph app-data preview evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.trust-graph-app-data-preview",
+        "pass",
+        True,
+        "Trust Graph UI-local app-data preview evidence passed.",
         source,
         details,
     )
@@ -5886,6 +6401,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_content_fetch_evidence(settings),
         collect_content_subscription_evidence(settings),
         collect_content_subscription_scheduler_evidence(settings),
+        collect_app_data_store_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
         collect_trust_statement_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
@@ -5907,9 +6423,12 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_ui_evidence(settings),
         collect_reference_content_app_evidence(settings),
         collect_profile_publisher_reference_app_evidence(settings),
+        collect_profile_publisher_app_data_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
         collect_feed_reader_subscription_evidence(settings),
+        collect_feed_reader_app_data_evidence(settings),
         collect_trust_graph_reference_app_evidence(settings),
+        collect_trust_graph_app_data_preview_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
         collect_legacy_removal_wave_two_evidence(settings),
@@ -5983,15 +6502,18 @@ def run_self_test(repo_root: Path) -> None:
     assert "trust-graph" in parse_permission_set(catalog["catalog.entries"])
     assert catalog["app.cert-smoke.bundle.sha256"] == "0" * 64
     assert catalog["app.feed-reader.permissions"] == (
-        "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write"
+        "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,"
+        "app.data.read,app.data.write"
     )
-    assert catalog["app.feed-reader.api.minimumVersion"] == "8"
-    assert catalog["app.feed-reader.api.maximumTestedVersion"] == "8"
+    assert catalog["app.feed-reader.api.minimumVersion"] == "9"
+    assert catalog["app.feed-reader.api.maximumTestedVersion"] == "9"
     assert catalog["app.trust-graph.permissions"] == (
         "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
-        "vault.identities.read,vault.identities.create,vault.identities.use"
+        "vault.identities.read,vault.identities.create,vault.identities.use,"
+        "app.data.read,app.data.write"
     )
-    assert catalog["app.trust-graph.api.minimumVersion"] == "7"
+    assert catalog["app.trust-graph.api.minimumVersion"] == "9"
+    assert catalog["app.trust-graph.api.maximumTestedVersion"] == "9"
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -6384,7 +6906,7 @@ def run_self_test(repo_root: Path) -> None:
         assert python_fake_result.returncode == 0, python_fake_result.stderr
         assert json.loads(python_contract.read_text(encoding="utf-8"))["contract"][
             "contractVersion"
-        ] == 2
+        ] == 9
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -6422,15 +6944,31 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass"
         assert evidence_by_id["app-platform.content-subscriptions"]["status"] == "pass"
         assert evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
+        assert evidence_by_id["app-platform.durable-app-data-store"]["status"] == "pass"
         contract_details = contract_item["details"]
-        assert contract_details["contractVersion"] == 2, contract_item
-        assert contract_details["capabilityCount"] == 2, contract_item
-        assert contract_details["endpointCount"] == 1, contract_item
+        assert contract_details["contractVersion"] == 9, contract_item
+        assert contract_details["capabilityCount"] == 4, contract_item
+        assert contract_details["endpointCount"] == 12, contract_item
         assert contract_details["stableCapabilities"] == [
+            "app.data.read",
+            "app.data.write",
             "platform.contract.read",
             "queue.read",
         ], contract_item
-        assert contract_details["stableEndpoints"] == ["GET /queue"], contract_item
+        assert contract_details["stableEndpoints"] == [
+            "DELETE <path>/namespaces/{namespace}",
+            "DELETE <path>/records/{namespace}/{key}",
+            "GET <path>/export",
+            "GET <path>/namespaces",
+            "GET <path>/namespaces/{namespace}",
+            "GET <path>/records",
+            "GET <path>/records/{namespace}/{key}",
+            "GET <path>/status",
+            "GET /queue",
+            "POST <path>/import",
+            "POST <path>/namespaces/{namespace}/schema",
+            "POST <path>/records",
+        ], contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
@@ -6445,9 +6983,12 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-ui.first-party-adoption"]["status"] == "pass"
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
+        assert evidence_by_id["reference-app.profile-publisher-app-data"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
+        assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass"
+        assert evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
@@ -6918,8 +7459,11 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk = workspace / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
     sdk.parent.mkdir(parents=True, exist_ok=True)
     sdk.write_text(
-        "window.CryptaPlatform = { trust: {}, vault: { identities: { createTrustStatement(){} } }, "
+        "window.CryptaPlatform = { data: Object.freeze({ records: Object.freeze({ getJson(){}, putJson(){} }), "
+        "export(){}, import(){} }), trust: {}, vault: { identities: { createTrustStatement(){} } }, "
         "content: { subscriptions: Object.freeze({ list(){}, create(){}, get(){}, refresh(){}, pause(){}, resume(){}, remove(){} }) } }; "
+        "function putAppDataJson(){} function getAppDataJson(){} const appDataExportPath = 'app-data/export'; "
+        "const appDataImportPath = 'app-data/import'; "
         "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
         "function trustScore(){} function publishTrustStatement(){} "
         "function createContentSubscription(){} function removeContentSubscription(){} "
@@ -6968,10 +7512,16 @@ def make_self_test_workspace(workspace: Path) -> None:
             "Profile Publisher",
             "profile-publisher.sh",
             "queue.read,queue.write,content.insert.app-document,vault.identities.read,"
-            "vault.identities.create,vault.identities.use",
+            "vault.identities.create,vault.identities.use,app.data.read,app.data.write",
             "const appId = 'profile-publisher';\n"
             "const identityId = 'profile-self-test';\n"
+            "const maxRecentActions = 5;\n"
+            "const dataNamespace = \"profile-draft\";\n"
+            "const dataStateKey = \"publisher-state\";\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.data.records.getJson('profile-draft', 'publisher-state');\n"
+            "CryptaPlatform.data.records.putJson({ namespace: 'profile-draft', key: 'publisher-state', "
+            "schemaVersion: 1, value: { lastPublishedProfileUri: '', recentActions: [], selectedIdentityId: '' } });\n"
             "CryptaPlatform.api.postForm('app-vault/identities', { label: 'Profile' });\n"
             "CryptaPlatform.api.postForm(`app-vault/identities/${identityId}/profile-document`, { profile: 'redacted' });\n"
             "CryptaPlatform.api.postForm('queue/inserts/app-document', { document: 'redacted' });\n"
@@ -6982,9 +7532,17 @@ def make_self_test_workspace(workspace: Path) -> None:
             "feed-reader",
             "Feed Reader & Publisher",
             "feed-reader.sh",
-            "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write",
+            "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,"
+            "app.data.read,app.data.write",
             "const appId = 'feed-reader';\n"
+            "const maxSources = 12;\n"
+            "const maxRememberedSnapshots = 12;\n"
+            "const dataNamespace = \"ui-state\";\n"
+            "const dataStateKey = \"reader-state\";\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.data.records.getJson('ui-state', 'reader-state');\n"
+            "CryptaPlatform.data.records.putJson({ namespace: 'ui-state', key: 'reader-state', "
+            "schemaVersion: 1, value: { lastPublisherDraft: {}, selectedSourceId: '', fetchedSnapshots: [] } });\n"
             "CryptaPlatform.content.subscriptions.list();\n"
             "CryptaPlatform.content.subscriptions.create({ uri: 'USK@redacted/feed/0/feed.json', label: 'Feed' });\n"
             "CryptaPlatform.content.subscriptions.refresh('sub-redacted');\n"
@@ -7003,9 +7561,15 @@ def make_self_test_workspace(workspace: Path) -> None:
             "Trust Graph Preview",
             "trust-graph.sh",
             "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
-            "vault.identities.read,vault.identities.create,vault.identities.use",
+            "vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write",
             "const appId = 'trust-graph';\n"
+            "const dataNamespace = \"ui-state\";\n"
+            "const dataStateKey = \"preview-state\";\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
+            "function normalizeImportSummary(value) { return value; }\n"
+            "CryptaPlatform.data.records.getJson('ui-state', 'preview-state');\n"
+            "CryptaPlatform.data.records.putJson({ namespace: 'ui-state', key: 'preview-state', "
+            "schemaVersion: 1, value: { lastDraft: {}, recentImports: [] } });\n"
             "CryptaPlatform.trust.status();\n"
             "CryptaPlatform.trust.anchors.list();\n"
             "CryptaPlatform.trust.importStatement({ document: '{}' });\n"
@@ -7047,8 +7611,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
         is_trust_graph = app_id == "trust-graph"
-        api_minimum = "8" if is_feed_reader else "7" if is_trust_graph else "5" if is_profile_publisher else "3"
-        api_maximum = "8" if is_feed_reader else "7" if app_id in {"site-publisher", "profile-publisher", "trust-graph"} else "4"
+        api_minimum = (
+            "9" if is_feed_reader or is_trust_graph or is_profile_publisher else "3"
+        )
+        api_maximum = (
+            "9"
+            if is_feed_reader or is_trust_graph or is_profile_publisher
+            else "7" if app_id == "site-publisher" else "4"
+        )
         experimental_accepted = "true" if is_profile_publisher or is_trust_graph else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
@@ -7080,7 +7650,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         if app_id == "profile-publisher":
             (workspace / "apps/profile-publisher/README.md").write_text(
                 "Profile Publisher creates an app-owned identity, calls the "
-                "profile-document route, and inserts the signed app-document "
+                "profile-document route, persists bounded app-data draft state in AppVault-safe form, and inserts the signed app-document "
                 "without storing raw signatures in release evidence.\n",
                 encoding="utf-8",
             )
@@ -7088,13 +7658,14 @@ def make_self_test_workspace(workspace: Path) -> None:
             (workspace / "apps/feed-reader/README.md").write_text(
                 "Feed Reader uses POST /api/v1/content/fetch through SDK feed helpers, "
                 "uses durable content.subscribe metadata for USK subscriptions, "
+                "uses app-data for bounded local reader state, "
                 "then publishes generated feed summaries without storing raw feed bodies.\n",
                 encoding="utf-8",
             )
         if app_id == "trust-graph":
             (workspace / "apps/trust-graph/README.md").write_text(
                 "Trust Graph Preview creates an app-owned trust identity, signs a trust-statement "
-                "through AppVault, imports local anchors, and is not full WoT.\n",
+                "through AppVault, stores UI-local app-data draft summaries, imports local anchors, and is not full WoT.\n",
                 encoding="utf-8",
             )
     appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -7167,9 +7738,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 8; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 9; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
+        "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
@@ -7199,6 +7771,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String subscriptionCreateAction = \"content.subscriptions.create\"; "
         "String subscriptionRefreshAction = \"content.subscriptions.refresh\"; "
         "String subscriptionDeleteAction = \"content.subscriptions.delete\"; "
+        "String appDataRead = \"app.data.read\"; "
+        "String appDataWrite = \"app.data.write\"; "
+        "String appDataStatus = \"/app-data/status\"; "
+        "String appDataNamespaces = \"/app-data/namespaces\"; "
+        "String appDataNamespace = \"/app-data/namespaces/{namespace}\"; "
+        "String appDataSchema = \"/app-data/namespaces/{namespace}/schema\"; "
+        "String appDataRecords = \"/app-data/records\"; "
+        "String appDataRecord = \"/app-data/records/{namespace}/{key}\"; "
+        "String appDataExport = \"/app-data/export\"; "
+        "String appDataImport = \"/app-data/import\"; "
         "String trustStatus = \"/trust-graph/status\"; "
         "String trustAnchors = \"/trust-graph/anchors\"; "
         "String trustImport = \"/trust-graph/import\"; "
@@ -7216,7 +7798,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     (api_dir / "PlatformApiCapabilities.java").write_text(
         "final class PlatformApiCapabilities { static final String TRUST_READ = \"trust.read\"; "
         "static final String TRUST_WRITE = \"trust.write\"; "
-        "static final String CONTENT_SUBSCRIBE = \"content.subscribe\"; }\n",
+        "static final String CONTENT_SUBSCRIBE = \"content.subscribe\"; "
+        "static final String APP_DATA_READ = \"app.data.read\"; "
+        "static final String APP_DATA_WRITE = \"app.data.write\"; }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiRouter.java").write_text(
@@ -7228,7 +7812,40 @@ def make_self_test_workspace(workspace: Path) -> None:
         "requireAllCapabilities(ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE, "
         "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH); "
         "Object h = new ContentSubscriptionsApiHandler(); "
-        "String unavailable = \"content_subscription_service_unavailable 503\"; } }\n",
+        "String unavailable = \"content_subscription_service_unavailable 503\"; } "
+        "PlatformApiAppDataRoutes appDataRoutes; }\n",
+        encoding="utf-8",
+    )
+    appdata_api_dir = api_dir / "appdata"
+    appdata_api_dir.mkdir(parents=True, exist_ok=True)
+    (api_dir / "PlatformApiAppDataRoutes.java").write_text(
+        "final class PlatformApiAppDataRoutes { String appId = requireAppPrincipalId(request); "
+        "String route = \"app-data\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataService.java").write_text(
+        "final class AppDataService { static final String CAPABILITY_APP_DATA_READ = \"app.data.read\"; "
+        "static final String CAPABILITY_APP_DATA_WRITE = \"app.data.write\"; "
+        "String mismatch = \"app_data_import_app_mismatch\"; "
+        "boolean storeUsageOutsideAppDataDir; "
+        "void updateSchema(){ String fromSchemaVersion; String toSchemaVersion; } "
+        "String lastMigrationAt; String quota = \"quota.data.bytes\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "FileAppDataStore.java").write_text(
+        "final class FileAppDataStore { String hash = \"sha256\"; String move = \"ATOMIC_MOVE\"; "
+        "String current = \"current.properties\"; String root = \".cryptad-app-data\"; "
+        "String value = \"value.bin\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataStoreConfig.java").write_text(
+        "record AppDataStoreConfig(int maxRecordBytes, int maxRecordsPerApp, "
+        "int maxNamespacesPerApp, int maxExportBytes, int maxImportBytes) { "
+        "String quota = \"quota.data.bytes\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataApiHandler.java").write_text(
+        "final class AppDataApiHandler { String fromSchemaVersion; String toSchemaVersion; }\n",
         encoding="utf-8",
     )
     app_vault_api_dir = api_dir / "appvault"
@@ -7353,6 +7970,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void route_whenAppReadsAnotherAppsSubscription_expectNotFound() {}\n",
         encoding="utf-8",
     )
+    (platform_api_tests / "PlatformApiAppDataRouterTest.java").write_text(
+        "void route_whenAppReadsAnotherAppsRecord_expectNotFound() {}\n"
+        "void route_whenCapabilityMissingOrServiceUnavailable_expectDeniedOr503() {}\n",
+        encoding="utf-8",
+    )
     content_subscription_tests = platform_api_tests / "content/subscriptions"
     content_subscription_tests.mkdir(parents=True, exist_ok=True)
     (content_subscription_tests / "ContentSubscriptionServiceTest.java").write_text(
@@ -7368,6 +7990,17 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (content_subscription_tests / "FileContentSubscriptionStoreTest.java").write_text(
         "void writeAndRead_whenSubscriptionContainsSourceUri_expectPathUsesAppAndSubscriptionIdsOnly() {}\n",
+        encoding="utf-8",
+    )
+    appdata_tests = platform_api_tests / "appdata"
+    appdata_tests.mkdir(parents=True, exist_ok=True)
+    (appdata_tests / "AppDataServiceTest.java").write_text(
+        "void putRecord_whenIdentifierContainsTraversal_expectPathFreeValidationError() {}\n"
+        "void exportImport_whenPayloadRoundTrips_expectValuesCopiedAndOtherAppRejected() {}\n",
+        encoding="utf-8",
+    )
+    (appdata_tests / "FileAppDataStoreTest.java").write_text(
+        "void writeRecord_whenUnreferencedGenerationExists_expectCurrentRecordUnaffected() {}\n",
         encoding="utf-8",
     )
     (platform_api_tests / "TrustGraphApiTest.java").write_text(
@@ -7420,12 +8053,22 @@ def make_self_test_workspace(workspace: Path) -> None:
         "GET and POST /api/v1/content/subscriptions manage durable USK metadata and require content.subscribe; create and refresh also require content.fetch. "
         "The network-content.subscription-scheduler records path-free metadata, queue pressure, no queue HTML, and no raw fetched content. "
         "It is not a generic crawler and does not support arbitrary HTTP/HTTPS fetches. "
+        "The durable app-data store exposes GET /api/v1/app-data/status, GET /api/v1/app-data/namespaces, "
+        "GET and POST /api/v1/app-data/records, GET /api/v1/app-data/export, and POST /api/v1/app-data/import. "
+        "App data routes are app-scoped. "
+        "It requires app.data.read and app.data.write, enforces cryptad.appData.maxRecordBytes and quota bounds, "
+        "is not a filesystem API, is not a generic database, and is not a secret vault. "
+        "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app values. "
+        "Feed Reader and Profile Publisher use app-data for bounded local state. "
+        "Trust Graph Preview uses UI-local app-data state only; platform trustgraph is not made durable here and this is not a full Web of Trust. "
         "POST /api/v1/app-vault/identities/{identityId}/trust-statement signs bounded trust statements. "
         "GET /api/v1/trust-graph/status and GET /api/v1/trust-graph/score read local trust preview data. "
         "Release evidence covers reference-app.profile-publisher, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
         "network-content.subscription-scheduler, "
+        "app-platform.durable-app-data-store, reference-app.feed-reader-app-data, "
+        "reference-app.profile-publisher-app-data, reference-app.trust-graph-app-data-preview, "
         "reference-app.trust-graph, app-platform.trust-graph-preview, "
         "app-platform.trust-statement-signing, app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "It excludes raw request bodies, private keys, raw signatures, private insert URIs, and "
@@ -7434,8 +8077,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     for doc_name in (
         "app-catalogs.md",
+        "app-data-store.md",
         "app-dev-cli.md",
+        "app-platform-developer-portal.md",
         "feed-reader-reference-app.md",
+        "platform-api-contract.md",
+        "platform-api-surface.md",
         "trust-graph-preview.md",
         "first-party-beta-catalog.md",
         "release-certification.md",
@@ -7658,6 +8305,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     apphost = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
     apphost.parent.mkdir(parents=True, exist_ok=True)
+    uninstall_options = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/AppUninstallOptions.java"
+    uninstall_options.parent.mkdir(parents=True, exist_ok=True)
+    uninstall_options.write_text(
+        "record AppUninstallOptions(boolean preserveData) {}\n",
+        encoding="utf-8",
+    )
     apphost.write_text(
         """
 class LocalProcessAppHost {
@@ -7691,6 +8344,12 @@ class LocalProcessAppHost {
     swapInstalledBundleWithRollback(paths.installedRoot(), rollbackRoot, currentInstallBackupRoot);
     return new InstalledAppSnapshot(manifest, paths);
   }
+  void uninstall(String appId, AppUninstallOptions options) {
+    if (!options.preserveData()) {
+      deleteAppData(appId);
+    }
+  }
+  void deleteAppData(String appId) {}
   private Path rollbackRootFor(String appId) { return layout.rollbackAppsDir().resolve(appId); }
   private Path ensureRollbackAppsDirectory() { return layout.rollbackAppsDir(); }
   private void replaceInstalledBundle(Path installedRoot, Path replacementRoot, Path backupRoot, Path rollbackRoot, Path previousRollbackBackupRoot) throws IOException {
@@ -7988,6 +8647,11 @@ class CoreHttpShellRuntimeSupport {
     return new ContentSubscriptionService(
       new FileContentSubscriptionStore(layout.dataDir().resolve("apps").resolve("content-subscriptions")));
   }
+  AppDataService createAppDataService() {
+    return new AppDataService(
+      new FileAppDataStore(layout.dataDir().resolve("apps").resolve("durable-app-data")),
+      appHost, config, true);
+  }
   ContentSubscriptionScheduler createContentSubscriptionScheduler() {
     return new ContentSubscriptionScheduler(contentSubscriptionService);
   }
@@ -8281,7 +8945,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 2,
+                    "contractVersion": 9,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -8299,6 +8963,20 @@ def api_snapshot(args):
                             "deprecation": None,
                             "description": "Read contract snapshots.",
                         },
+                        {
+                            "name": "app.data.read",
+                            "stability": "stable",
+                            "sinceContractVersion": 9,
+                            "deprecation": None,
+                            "description": "Read app-owned durable state.",
+                        },
+                        {
+                            "name": "app.data.write",
+                            "stability": "stable",
+                            "sinceContractVersion": 9,
+                            "deprecation": None,
+                            "description": "Write app-owned durable state.",
+                        },
                     ],
                     "endpoints": [
                         {
@@ -8314,7 +8992,18 @@ def api_snapshot(args):
                             "sinceContractVersion": 1,
                             "deprecation": None,
                             "description": "Read queue state.",
-                        }
+                        },
+                        {"method": "GET", "routeTemplate": "/app-data/status", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/app-data/namespaces", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/app-data/namespaces/{namespace}", "stability": "stable"},
+                        {"method": "POST", "routeTemplate": "/app-data/namespaces/{namespace}/schema", "stability": "stable"},
+                        {"method": "DELETE", "routeTemplate": "/app-data/namespaces/{namespace}", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/app-data/records", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/app-data/records/{namespace}/{key}", "stability": "stable"},
+                        {"method": "POST", "routeTemplate": "/app-data/records", "stability": "stable"},
+                        {"method": "DELETE", "routeTemplate": "/app-data/records/{namespace}/{key}", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/app-data/export", "stability": "stable"},
+                        {"method": "POST", "routeTemplate": "/app-data/import", "stability": "stable"},
                     ],
                 }
             },
@@ -8569,7 +9258,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 2,
+    "contractVersion": 9,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
@@ -8586,6 +9275,20 @@ PY
         "sinceContractVersion": 1,
         "deprecation": null,
         "description": "Read contract snapshots."
+      },
+      {
+        "name": "app.data.read",
+        "stability": "stable",
+        "sinceContractVersion": 9,
+        "deprecation": null,
+        "description": "Read app-owned durable state."
+      },
+      {
+        "name": "app.data.write",
+        "stability": "stable",
+        "sinceContractVersion": 9,
+        "deprecation": null,
+        "description": "Write app-owned durable state."
       }
     ],
     "endpoints": [
@@ -8604,6 +9307,61 @@ PY
         "sinceContractVersion": 1,
         "deprecation": null,
         "description": "Read queue state."
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/status",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/namespaces",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/namespaces/{namespace}",
+        "stability": "stable"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-data/namespaces/{namespace}/schema",
+        "stability": "stable"
+      },
+      {
+        "method": "DELETE",
+        "routeTemplate": "/app-data/namespaces/{namespace}",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/records",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/records/{namespace}/{key}",
+        "stability": "stable"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-data/records",
+        "stability": "stable"
+      },
+      {
+        "method": "DELETE",
+        "routeTemplate": "/app-data/records/{namespace}/{key}",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-data/export",
+        "stability": "stable"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-data/import",
+        "stability": "stable"
       }
     ]
   }

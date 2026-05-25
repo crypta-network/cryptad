@@ -31,6 +31,7 @@ import network.crypta.platform.apphost.AppQuotaUsage;
 import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -2552,7 +2553,7 @@ class PlatformApiRouterTest {
       assertEquals(200, summaryResponse.statusCode());
       assertTrue(summaryResponse.body().contains("\"status\":\"staged\""));
       assertTrue(summaryResponse.body().contains("\"targetVersion\":\"9.9.9\""));
-      verify(appHost, never()).uninstall(APP_ID);
+      verify(appHost, never()).uninstall(eq(APP_ID), any(AppUninstallOptions.class));
     }
   }
 
@@ -3422,7 +3423,9 @@ class PlatformApiRouterTest {
     InstalledAppSnapshot installed = installedSnapshot();
     when(appHost.describe(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(installed, null));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
-    doThrow(new AppHostException("app is not installed: alpha")).when(appHost).uninstall(APP_ID);
+    doThrow(new AppHostException("app is not installed: alpha"))
+        .when(appHost)
+        .uninstall(APP_ID, AppUninstallOptions.removeAll());
 
     PlatformApiResponse response =
         routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));
@@ -3442,7 +3445,7 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenAnswer(new TwoStepOptionalAnswer<>(null, runningSnapshot()));
     doThrow(new AppHostException("cannot uninstall a running app: alpha"))
         .when(appHost)
-        .uninstall(APP_ID);
+        .uninstall(APP_ID, AppUninstallOptions.removeAll());
 
     PlatformApiResponse response =
         routerWithVault().route(request("DELETE", List.of("apps", APP_ID), Map.of()));

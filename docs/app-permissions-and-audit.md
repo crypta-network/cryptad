@@ -145,6 +145,8 @@ The current capabilities are intentionally conservative:
 | `catalogs.read` | catalog and catalog-app reads |
 | `catalogs.manage` | catalog add/remove/refresh, catalog app install/update, and catalog-backed app update check/stage/apply |
 | `platform.contract.read` | `GET /api/v1/platform/contract` contract snapshot reads |
+| `app.data.read` | read the caller app's durable app-data status, namespace metadata, records, and bounded exports |
+| `app.data.write` | create, replace, delete, import, clear, and record schema metadata for the caller app's durable app data |
 | `vault.secrets.read` | read app-granted vault secret metadata and values |
 | `vault.secrets.write` | create, update, rotate, or delete app-owned vault secrets |
 | `vault.identities.read` | read app-granted identity metadata and public identity material |
@@ -168,8 +170,9 @@ content, `queue.write` to create insert requests, and `queue.read` to display qu
 
 Profile Publisher is the first identity-profile reference app. Its implemented flow can request
 `vault.identities.read`, `vault.identities.create`, and `vault.identities.use` alongside
-`content.insert.app-document`, `queue.write`, and `queue.read`. It uses the app-vault
-profile-document route for identity-bound profile signing and
+`content.insert.app-document`, `queue.write`, `queue.read`, `app.data.read`, and
+`app.data.write`. It uses the app-vault profile-document route for identity-bound profile signing,
+the app-data API for bounded drafts and publish summaries, and
 `POST /api/v1/queue/inserts/app-document` for app-generated document insertion without local
 source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
 `vault.secrets.*` unless a later feature needs those broader capabilities.
@@ -182,7 +185,9 @@ path-free metadata such as status, due times, sanitized resolved URI, last seen 
 byte length, failures, and update count; it does not persist raw fetched content and does not
 parse or expose queue HTML. Feed Reader should not request `content.insert` or local source-path
 authority. Its publishing flow can combine `content.insert.app-document`, `queue.write`, and
-`queue.read` to publish generated feed documents and display queue progress. Audit and release
+`queue.read` to publish generated feed documents and display queue progress. It uses
+`app.data.read` and `app.data.write` for bounded app-owned source lists, selected subscription ids,
+read-state metadata, and safe draft fields. Audit and release
 evidence for this route must keep raw feed bodies, raw fetched content, raw request bodies,
 private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, and
 local paths out of persisted output.
@@ -196,6 +201,10 @@ for trust routes should include principal type, app id, trust-graph endpoint fam
 denied outcome, capability label, and bounded action label, but not raw trust documents, raw
 request bodies, signature values, private keys, app process tokens, browser-session tokens, form
 passwords, or absolute local paths.
+
+The Trust Graph Preview app also uses `app.data.read` and `app.data.write` for UI-local draft
+values, selected filters, and redacted import summaries. Those permissions do not make the
+`platform-trustgraph` backend durable and do not grant a trust-statement exchange protocol.
 
 ## Audit trail
 

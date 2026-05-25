@@ -25,6 +25,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
+| Durable app data | [app-data-store.md](app-data-store.md) |
 | App-owned UI and isolated origins | [app-owned-ui.md](app-owned-ui.md) |
 | App UI design system and lint | [app-ui-design-system.md](app-ui-design-system.md) |
 | Permissions and audit | [app-permissions-and-audit.md](app-permissions-and-audit.md) |
@@ -49,13 +50,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 8
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 9
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=8` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=9` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -71,9 +72,9 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Queue Manager | `queue-manager` | Queue read/write operator workflow. |
 | Publisher | `publisher` | Legacy publisher replacement for content insert workflows. |
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
-| Profile Publisher | `profile-publisher` | AppVault identity/profile signing plus generated app-document insert. |
-| Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, and generated feed snapshot publication. |
-| Trust Graph Preview | `trust-graph` | Local trust statement import, scoring, signing, and publication preview. |
+| Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
+| Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
+| Trust Graph Preview | `trust-graph` | Local trust statement import, scoring, signing, publication preview, and UI-local durable state. |
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
 [feed-reader-reference-app.md](feed-reader-reference-app.md), and
@@ -149,6 +150,8 @@ Start here:
   sessions and static UI origins.
 - [app-permissions-and-audit.md](app-permissions-and-audit.md) for capability checks and redacted
   audit behavior.
+- [app-data-store.md](app-data-store.md) for bounded app-owned durable state and export/import
+  rules.
 - [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) for AppVault routes and
   identity/private-material limits.
 - [app-catalogs.md](app-catalogs.md) and [app-review-governance.md](app-review-governance.md) for

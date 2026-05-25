@@ -90,6 +90,9 @@ public final class PlatformApiRouter {
   /** Routes foreground content fetch and durable content subscription endpoint families. */
   private final PlatformApiContentRoutes contentRoutes;
 
+  /** Routes durable app-owned data endpoint families. */
+  private final PlatformApiAppDataRoutes appDataRoutes;
+
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
 
@@ -339,10 +342,12 @@ public final class PlatformApiRouter {
             new PlatformApiAppRoutes.SharedServices(
                 appVaultService,
                 checkedAppServices.updateService(),
-                checkedAppServices.contentSubscriptionService()));
+                checkedAppServices.contentSubscriptionService(),
+                checkedAppServices.appDataService()));
     contentRoutes =
         new PlatformApiContentRoutes(
             checkedRuntimePorts, checkedAppServices.contentSubscriptionService());
+    appDataRoutes = new PlatformApiAppDataRoutes(checkedAppServices.appDataService());
   }
 
   /**
@@ -457,6 +462,7 @@ public final class PlatformApiRouter {
       case "identity-vault" -> appRoutes.routeIdentityVaultRequest(segments, request);
       case "queue" -> routeQueueRequest(segments, request);
       case "content" -> contentRoutes.route(segments, request);
+      case "app-data" -> appDataRoutes.route(segments, request);
       case "trust-graph" -> routeTrustGraphRequest(segments, request);
       case "peers" -> routePeersRequest(segments, request);
       case "config" -> routeConfigRequest(segments, request);

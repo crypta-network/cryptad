@@ -32,7 +32,8 @@ class ProfilePublisherBundleStagingTest {
   private static final String EXPECTED_LAUNCHER_PATH = "bin/profile-publisher.sh";
   private static final String EXPECTED_PERMISSIONS =
       "queue.read,queue.write,content.insert.app-document,"
-          + "vault.identities.read,vault.identities.create,vault.identities.use";
+          + "vault.identities.read,vault.identities.create,vault.identities.use,"
+          + "app.data.read,app.data.write";
   private static final List<String> EXPECTED_PERMISSION_LIST =
       List.of(
           "queue.read",
@@ -40,9 +41,11 @@ class ProfilePublisherBundleStagingTest {
           "content.insert.app-document",
           "vault.identities.read",
           "vault.identities.create",
-          "vault.identities.use");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 5;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 7;
+          "vault.identities.use",
+          "app.data.read",
+          "app.data.write");
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 9;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -261,6 +264,7 @@ class ProfilePublisherBundleStagingTest {
         "content:",
         "vault:",
         "profile:",
+        "data:",
         "dom:",
         "insertAppDocument",
         "createProfileDocument",
@@ -282,9 +286,18 @@ class ProfilePublisherBundleStagingTest {
         "CryptaPlatform.vault.grants.request",
         "CryptaPlatform.content.insertAppDocument",
         "CryptaPlatform.queue.snapshot",
+        "CryptaPlatform.data.records.getJson",
+        "CryptaPlatform.data.records.putJson",
         "CryptaPlatform.dom.sanitizeFragment",
         "CryptaPlatform.api.errorMessage",
         "state.draft",
+        "lastPublishedProfileUri",
+        "loadDurableState",
+        "persistDurableState",
+        "durableSaveInFlight",
+        "durableSaveQueued",
+        "flushDurableStateSaves",
+        "writeDurableStateSnapshot",
         "signedDocument",
         "sign.domain-separated",
         "buildProfilePayload",

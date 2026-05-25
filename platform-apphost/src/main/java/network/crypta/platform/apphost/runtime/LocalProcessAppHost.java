@@ -51,6 +51,7 @@ import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -572,6 +573,12 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized void uninstall(String appId) throws IOException {
+    uninstall(appId, AppUninstallOptions.removeAll());
+  }
+
+  @Override
+  public synchronized void uninstall(String appId, AppUninstallOptions options) throws IOException {
+    Objects.requireNonNull(options, "options");
     validateInstalledAppsDirectory();
     validateRollbackAppsDirectory();
     InstalledAppPaths paths = layout.pathsFor(appId);
@@ -583,7 +590,9 @@ public final class LocalProcessAppHost implements AppHost {
     }
 
     deleteRecursively(paths.installedRoot());
-    deleteRecursively(paths.dataDir());
+    if (!options.preserveData()) {
+      deleteRecursively(paths.dataDir());
+    }
     deleteRecursively(paths.cacheDir());
     deleteRecursively(paths.runDir());
     deleteRollbackRecordIfPresent(paths.appId());

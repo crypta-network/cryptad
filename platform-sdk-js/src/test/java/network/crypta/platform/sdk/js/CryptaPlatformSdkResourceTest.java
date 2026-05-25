@@ -32,6 +32,9 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
     assertTrue(script.contains("subscriptions: Object.freeze({"));
+    assertTrue(script.contains("data:"));
+    assertTrue(script.contains("records: Object.freeze({"));
+    assertTrue(script.contains("namespaces: Object.freeze({"));
     assertTrue(script.contains("feed:"));
     assertTrue(script.contains("trust:"));
     assertTrue(script.contains("vault:"));
@@ -107,7 +110,6 @@ class CryptaPlatformSdkResourceTest {
     assertFalse(script.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(script.contains("localStorage"));
     assertFalse(script.contains("sessionStorage"));
-    assertFalse(script.contains("valueBase64"));
     assertFalse(script.contains("signatureBase64"));
     assertFalse(script.contains("privateKey"));
   }
@@ -266,6 +268,107 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(calls.length, 8);
         assert.throws(
           () => CryptaPlatform.content.subscriptions.get("../secret"),
+          /normalized local path segment/);
+        """);
+  }
+
+  @Test
+  void classpathResource_whenAppDataHelpersRequested_expectRoutesAndFormFields() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/records"
+              && options.method === "POST";
+          },
+          { record: { namespace: "ui-state", key: "settings", valueText: "{\\"theme\\":\\"dark\\"}" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/records/ui-state/settings"
+              && options.method === "GET";
+          },
+          { record: { namespace: "ui-state", key: "settings", valueText: "{\\"theme\\":\\"dark\\"}" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/namespaces/ui-state/schema"
+              && options.method === "POST";
+          },
+          { namespace: { namespace: "ui-state", schemaVersion: 2 } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/export"
+              && parsed.searchParams.get("namespace") === "ui-state"
+              && options.method === "GET";
+          },
+          { export: { payloadBase64: "eyJleHBvcnRWZXJzaW9uIjoxfQ" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/import"
+              && options.method === "POST";
+          },
+          { import: { imported: true, recordCount: 1 } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-data/import"
+              && options.method === "POST";
+          },
+          { import: { imported: true, recordCount: 1 } });
+
+        const stored = await CryptaPlatform.data.records.putJson({
+          namespace: "ui-state",
+          key: "settings",
+          schemaVersion: 1,
+          value: { theme: "dark" },
+          headers: { "X-Custom": "value" }
+        });
+        assert.equal(stored.namespace, "ui-state");
+        const putParams = decodeFormBody(calls[1]);
+        assert.equal(putParams.get("namespace"), "ui-state");
+        assert.equal(putParams.get("key"), "settings");
+        assert.equal(putParams.get("schemaVersion"), "1");
+        assert.equal(putParams.get("contentType"), "application/json");
+        assert.deepStrictEqual(JSON.parse(putParams.get("valueJson")), { theme: "dark" });
+        assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
+        assert.equal(headerValue(calls[1].headers, "X-Custom"), "value");
+
+        const value = await CryptaPlatform.data.records.getJson("ui-state", "settings");
+        assert.equal(value.theme, "dark");
+
+        const namespace = await CryptaPlatform.data.namespaces.migrate("ui-state", {
+          fromSchemaVersion: 1,
+          toSchemaVersion: 2,
+          summary: "settings migration"
+        });
+        assert.equal(namespace.schemaVersion, 2);
+        const migrationParams = decodeFormBody(calls[3]);
+        assert.equal(migrationParams.get("fromSchemaVersion"), "1");
+        assert.equal(migrationParams.get("toSchemaVersion"), "2");
+        assert.equal(migrationParams.get("summary"), "settings migration");
+
+        const exported = await CryptaPlatform.data.export({ namespace: "ui-state" });
+        assert.equal(exported.payloadBase64, "eyJleHBvcnRWZXJzaW9uIjoxfQ");
+
+        const imported = await CryptaPlatform.data.import(exported, { mode: "merge" });
+        assert.equal(imported.imported, true);
+        const importParams = decodeFormBody(calls[5]);
+        assert.equal(importParams.get("mode"), "merge");
+        assert.equal(importParams.get("payloadBase64"), "eyJleHBvcnRWZXJzaW9uIjoxfQ");
+
+        await CryptaPlatform.data.import({ exportVersion: 1, records: [] }, { mode: "merge" });
+        const importJsonParams = decodeFormBody(calls[6]);
+        assert.deepStrictEqual(
+          JSON.parse(Buffer.from(importJsonParams.get("payloadBase64"), "base64").toString("utf8")),
+          { exportVersion: 1, records: [] });
+
+        assert.throws(
+          () => CryptaPlatform.data.records.get("ui-state", "../secret"),
           /normalized local path segment/);
         """);
   }
@@ -734,7 +837,7 @@ class CryptaPlatformSdkResourceTest {
     const fs = require("fs");
     const vm = require("vm");
     const assert = require("assert");
-    const { TextEncoder } = require("util");
+    const { TextDecoder, TextEncoder } = require("util");
 
     class SimpleHeaders {
       constructor(init = {}) {
@@ -816,8 +919,10 @@ class CryptaPlatformSdkResourceTest {
       URL,
       URLSearchParams,
       TextEncoder,
+      TextDecoder,
       Headers: HeadersImpl,
       btoa: (value) => Buffer.from(value, "binary").toString("base64"),
+      atob: (value) => Buffer.from(value, "base64").toString("binary"),
       DOMParser: class {
         constructor() {
           throw new Error("DOMParser must not be used by feed helpers.");

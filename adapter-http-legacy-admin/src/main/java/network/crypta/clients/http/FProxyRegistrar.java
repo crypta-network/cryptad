@@ -348,7 +348,8 @@ final class FProxyRegistrar {
             PlatformApiSharedAppServices.of(
                 dependencies.appVaultService(),
                 dependencies.appUpdateService(),
-                dependencies.contentSubscriptionService()),
+                dependencies.contentSubscriptionService(),
+                dependencies.appDataService()),
             appBrowserSessionStore,
             appUiOriginServer);
     server.register(

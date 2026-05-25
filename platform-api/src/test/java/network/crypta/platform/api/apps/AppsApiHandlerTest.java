@@ -22,6 +22,7 @@ import network.crypta.platform.apphost.AppQuotaUsage;
 import network.crypta.platform.apphost.AppQuotaWarning;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -595,7 +596,9 @@ class AppsApiHandlerTest {
 
     Map<String, Object> vault = (Map<String, Object>) app.get("vault");
     assertEquals(false, app.get("installed"));
+    assertEquals(false, app.get("dataPreserved"));
     assertEquals(1, appHost.uninstallCalls);
+    assertEquals(AppUninstallOptions.removeAll(), appHost.lastUninstallOptions);
     assertEquals(Map.of("available", true), vault);
     assertTrue(vaultService.listSecrets(APP_ID).isEmpty());
     assertEquals(
@@ -619,6 +622,20 @@ class AppsApiHandlerTest {
         assertThrows(AppVaultException.class, () -> vaultService.getIdentity(appOwnedIdentityId))
             .errorCode());
     assertFalse(vaultService.hasRetainedAppState(APP_ID));
+  }
+
+  @Test
+  void uninstall_whenPreserveDataRequested_expectAppHostReceivesPreserveOption() {
+    SingleAppHost appHost = new SingleAppHost(snapshot(AppUiMode.NONE, null));
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+
+    Map<String, Object> app = handler.uninstall(APP_ID, false, true);
+
+    assertEquals(false, app.get("installed"));
+    assertEquals(true, app.get("dataPreserved"));
+    assertEquals(1, appHost.uninstallCalls);
+    assertEquals(AppUninstallOptions.preservingData(), appHost.lastUninstallOptions);
+    assertFalse(appHost.installed);
   }
 
   @Test
@@ -676,6 +693,7 @@ class AppsApiHandlerTest {
 
     Map<String, Object> vault = (Map<String, Object>) app.get("vault");
     assertEquals(false, app.get("installed"));
+    assertEquals(false, app.get("dataPreserved"));
     assertEquals(Map.of("available", false), vault);
     assertEquals(1, appHost.uninstallCalls);
     assertFalse(appHost.installed);
@@ -701,6 +719,7 @@ class AppsApiHandlerTest {
 
     assertEquals("internal_error", exception.errorCode());
     assertEquals(1, appHost.uninstallCalls);
+    assertEquals(AppUninstallOptions.removeAll(), appHost.lastUninstallOptions);
     assertTrue(appHost.installed);
     assertFalse(vaultService.appAccessBlocked(APP_ID));
     assertEquals(
@@ -730,6 +749,7 @@ class AppsApiHandlerTest {
 
     Map<String, Object> vault = (Map<String, Object>) app.get("vault");
     assertEquals(false, app.get("installed"));
+    assertEquals(false, app.get("dataPreserved"));
     assertEquals(1, appHost.uninstallCalls);
     assertEquals(Map.of("available", true), vault);
     assertFalse(vaultService.appAccessBlocked(APP_ID));
@@ -1058,6 +1078,7 @@ class AppsApiHandlerTest {
     private AppHostException uninstallFailure;
     private int updateCalls;
     private int uninstallCalls;
+    private AppUninstallOptions lastUninstallOptions;
     private boolean stopResult;
     private int stopCalls;
 
@@ -1085,7 +1106,13 @@ class AppsApiHandlerTest {
 
     @Override
     public void uninstall(String appId) throws IOException {
+      uninstall(appId, AppUninstallOptions.removeAll());
+    }
+
+    @Override
+    public void uninstall(String appId, AppUninstallOptions options) throws IOException {
       uninstallCalls++;
+      lastUninstallOptions = options;
       if (uninstallFailure != null) {
         throw uninstallFailure;
       }

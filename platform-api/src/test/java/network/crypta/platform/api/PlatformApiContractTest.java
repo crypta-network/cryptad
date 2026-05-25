@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":8"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":9"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(8, version.contractVersion());
+    assertEquals(9, version.contractVersion());
   }
 
   @Test
@@ -68,6 +68,18 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
     assertEquals(8, contentSubscribeCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor appDataReadCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("app.data.read"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(9, appDataReadCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor appDataWriteCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("app.data.write"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(9, appDataWriteCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor trustReadCapability =
         PlatformApiContract.current().capabilities().stream()
             .filter(capability -> capability.name().equals("trust.read"))
@@ -192,6 +204,39 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingAppDataEndpoints_expectContractV9AppScopedCapabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.ofEntries(
+            Map.entry("GET /app-data/status", List.of("app.data.read")),
+            Map.entry("GET /app-data/namespaces", List.of("app.data.read")),
+            Map.entry("GET /app-data/namespaces/{namespace}", List.of("app.data.read")),
+            Map.entry("POST /app-data/namespaces/{namespace}/schema", List.of("app.data.write")),
+            Map.entry("DELETE /app-data/namespaces/{namespace}", List.of("app.data.write")),
+            Map.entry("GET /app-data/records", List.of("app.data.read")),
+            Map.entry("GET /app-data/records/{namespace}/{key}", List.of("app.data.read")),
+            Map.entry("POST /app-data/records", List.of("app.data.write")),
+            Map.entry("DELETE /app-data/records/{namespace}/{key}", List.of("app.data.write")),
+            Map.entry("GET /app-data/export", List.of("app.data.read")),
+            Map.entry("POST /app-data/import", List.of("app.data.write")));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(9, endpoint.sinceContractVersion(), key);
+      assertEquals("app-data", endpoint.routeFamily(), key);
+      assertFalse(endpoint.hostOperatorBypassAllowed(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void current_whenInspectingTrustGraphEndpoints_expectContractV7Capabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
@@ -272,6 +317,9 @@ class PlatformApiContractTest {
     }
     if (endpoint.routeTemplate().startsWith("/content/subscriptions")) {
       return 8;
+    }
+    if (endpoint.routeTemplate().startsWith("/app-data")) {
+      return 9;
     }
     if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {

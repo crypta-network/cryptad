@@ -321,7 +321,7 @@ bundle.uri=file:/abs/path/to/dist/apps/profile-publisher-1.0.0.zip
 summary=Reference app for publishing an identity-bound profile document.
 name=Profile Publisher
 version=1.0.0
-permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
 app.id=profile-publisher
 homepage=https://example.invalid/apps/profile-publisher
 source=https://example.invalid/src/profile-publisher
@@ -334,9 +334,11 @@ permissions.rationale.vault.identities.use=Uses the profile-document route for i
 permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
 permissions.rationale.queue.write=Creates the generated document insert request.
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
+permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
+permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
-api.minimumVersion=5
-api.maximumTestedVersion=7
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -344,8 +346,8 @@ Do not include tokens, form passwords, private insert URIs, raw request bodies, 
 signatures, or absolute staging paths in descriptor notes, generated catalog metadata, or release
 evidence.
 
-A Feed Reader catalog descriptor should include the content-subscription and content-fetch
-permissions, generated-document publication permissions, and v8 API compatibility metadata:
+A Feed Reader catalog descriptor should include the content-subscription, content-fetch, durable
+app-data, generated-document publication permissions, and v9 API compatibility metadata:
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/feed-reader-1.0.0.zip
@@ -353,7 +355,7 @@ bundle.uri=file:/abs/path/to/dist/apps/feed-reader-1.0.0.zip
 summary=Reference app for reading and publishing feed documents through Crypta.
 name=Feed Reader & Publisher
 version=1.0.0
-permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
+permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write
 app.id=feed-reader
 homepage=https://example.invalid/apps/feed-reader
 source=https://example.invalid/src/feed-reader
@@ -366,9 +368,11 @@ permissions.rationale.content.subscribe=Registers bounded USK subscriptions with
 permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
+permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
-api.minimumVersion=8
-api.maximumTestedVersion=8
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=false
 ```
 

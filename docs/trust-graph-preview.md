@@ -8,8 +8,9 @@ evidence.
 
 It is not a full Web of Trust implementation. It does not implement the old WebOfTrust plugin,
 `FCPPluginMessage`, PluginTalker compatibility, global moderation, automatic blocking, durable
-background crawling, daemon-core identity sharing, FNP/FCP/wire protocol changes, routing changes,
-datastore changes, peer-management changes, or FProxy browse removal.
+background crawling, daemon-core identity sharing, durable trust-graph backend storage,
+trust-statement exchange, FNP/FCP/wire protocol changes, routing changes, datastore changes,
+peer-management changes, or FProxy browse removal.
 
 ## Components
 
@@ -20,8 +21,8 @@ datastore changes, peer-management changes, or FProxy browse removal.
   `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
 - `:platform-sdk-js` exposes `CryptaPlatform.trust.*` helpers and
   `CryptaPlatform.vault.identities.createTrustStatement(...)`.
-- `apps:trust-graph` stages the static Trust Graph Preview reference app with SDK and design-system
-  assets.
+- `apps:trust-graph` stages the static Trust Graph Preview reference app with SDK, durable
+  UI-local app-data state, and design-system assets.
 
 ## Trust Statement Format
 
@@ -140,18 +141,23 @@ vault paths, raw process tokens, browser session tokens, form passwords, or gene
 
 ## Reference App
 
-`apps:trust-graph` declares API v7 and:
+`apps:trust-graph` declares API v9 and:
 
 ```text
 trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,
-vault.identities.read,vault.identities.create,vault.identities.use
+vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
 ```
 
 The static app can create or select an app-owned trust identity, create a bounded statement, sign it
 through AppVault, publish it as `application/vnd.crypta.trust+json` with target filename
 `trust.json`, fetch/import selected Crypta trust documents, manage local anchors, query scores, and
-show recent queue state. It renders imported and fetched fields as text, uses SDK helpers, uses the
-design-system assets, and does not store app tokens or browser-session tokens in browser storage.
+show recent queue state. It uses `CryptaPlatform.data.records.getJson` and `putJson` only for
+UI-local state: draft form values, selected filters, and redacted import summaries. It does not make
+the `platform-trustgraph` store durable and does not persist imported statements or anchors as a
+full scoring backend in this PR.
+
+The app renders imported and fetched fields as text, uses SDK helpers, uses the design-system
+assets, and does not store app tokens or browser-session tokens in browser storage.
 
 ## Redaction
 
@@ -159,4 +165,6 @@ Model `toString()` output, API errors, audit entries, diagnostics, UI errors, re
 developer-tooling reports must not include raw trust document bodies from real users, raw request
 bodies, private keys, seed material, app process tokens, browser-session tokens, form passwords,
 absolute local paths, or raw signatures. Release-certification evidence should use route names,
-capability labels, booleans, counts, fixture hashes, and redacted summaries.
+capability labels, booleans, counts, fixture hashes, and redacted summaries. Durable UI-local
+app-data evidence should similarly use counts and summary fields instead of raw trust statements,
+private insert URIs, or raw form bodies.
