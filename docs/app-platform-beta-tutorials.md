@@ -230,9 +230,9 @@ capabilities:
 | Queue Manager | Queue read/write and operator queue flow. | `queue.read`, `queue.write` |
 | Publisher | Content insert workflow. | `content.insert`, `queue.read`, `queue.write` |
 | Site Publisher | Static site publishing pattern. | `content.insert`, `queue.read`, `queue.write` |
-| Profile Publisher | AppVault identity, bounded profile document signing, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `queue.read`, `queue.write` |
-| Feed Reader & Publisher | Durable USK subscription metadata, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `queue.read`, `queue.write` |
-| Trust Graph Preview | Local trust statement import, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `queue.read`, `queue.write` |
+| Profile Publisher | AppVault identity, bounded profile document signing, durable draft state, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
+| Feed Reader & Publisher | Durable USK subscription metadata, durable reader state, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
+| Trust Graph Preview | Local trust statement import, UI-local durable state, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 
 Release evidence for the Feed Reader path includes `network-content.subscription-scheduler`,
 which proves deterministic scheduler ticks, conservative limits, dedupe, backoff, and redacted
@@ -242,6 +242,7 @@ Use the detailed docs before copying a reference pattern:
 
 - [feed-reader-reference-app.md](feed-reader-reference-app.md)
 - [trust-graph-preview.md](trust-graph-preview.md)
+- [app-data-store.md](app-data-store.md)
 - [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)
 - [platform-api-contract.md](platform-api-contract.md)
 

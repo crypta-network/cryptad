@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
+import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.appupdates.AppUpdatesApiHandler;
@@ -46,6 +47,7 @@ final class PlatformApiAppRoutes {
   private final AppUpdatesApiHandler appUpdatesApiHandler;
   private final AppUpdateService appUpdateService;
   private final ContentSubscriptionService contentSubscriptionService;
+  private final AppDataService appDataService;
   private final AppCatalogsApiHandler appCatalogsApiHandler;
   private final PlatformApiVaultRouter vaultRouter;
 
@@ -73,7 +75,8 @@ final class PlatformApiAppRoutes {
   record SharedServices(
       AppVaultService appVaultService,
       AppUpdateService appUpdateService,
-      ContentSubscriptionService contentSubscriptionService) {}
+      ContentSubscriptionService contentSubscriptionService,
+      AppDataService appDataService) {}
 
   /**
    * Creates app-platform routes from the optional app runtime services.
@@ -103,6 +106,7 @@ final class PlatformApiAppRoutes {
     }
     appUpdateService = resolvedUpdateService;
     contentSubscriptionService = sharedServices.contentSubscriptionService();
+    appDataService = sharedServices.appDataService();
     appUpdatesApiHandler =
         appUpdateService == null ? null : new AppUpdatesApiHandler(appUpdateService);
     appCatalogsApiHandler =
@@ -253,20 +257,21 @@ final class PlatformApiAppRoutes {
           envelope("app", appsApiHandler.get(appId, includeVaultDetails(request))));
     }
     if (METHOD_DELETE.equals(request.method())) {
-      return uninstallInstalledApp(appId, includeVaultDetails(request));
+      return uninstallInstalledApp(appId, includeVaultDetails(request), preserveData(request));
     }
     return methodNotAllowed(
         "GET, DELETE", "Platform API v1 supports GET and DELETE requests only.");
   }
 
-  private PlatformApiResponse uninstallInstalledApp(String appId, boolean includeVaultDetails) {
+  private PlatformApiResponse uninstallInstalledApp(
+      String appId, boolean includeVaultDetails, boolean preserveData) {
     try {
-      Map<String, Object> app = appsApiHandler.uninstall(appId, includeVaultDetails);
-      clearAppState(appId);
+      Map<String, Object> app = appsApiHandler.uninstall(appId, includeVaultDetails, preserveData);
+      clearAppState(appId, preserveData);
       return PlatformApiResponse.ok(envelope("app", app));
     } catch (PlatformApiException exception) {
       if (exception.statusCode() == 404) {
-        clearAppState(appId);
+        clearAppState(appId, preserveData);
       }
       throw exception;
     } catch (RuntimeException exception) {
@@ -274,15 +279,18 @@ final class PlatformApiAppRoutes {
         throw exception;
       }
       if (!appsApiHandler.stillInstalledBestEffort(appId)) {
-        clearAppState(appId);
+        clearAppState(appId, preserveData);
       }
       throw exception;
     }
   }
 
-  private void clearAppState(String appId) {
+  private void clearAppState(String appId, boolean preserveData) {
     clearAppUpdateState(appId);
     clearContentSubscriptionState(appId);
+    if (!preserveData) {
+      clearAppDataState(appId);
+    }
   }
 
   private void clearAppUpdateState(String appId) {
@@ -304,6 +312,12 @@ final class PlatformApiAppRoutes {
     }
   }
 
+  private void clearAppDataState(String appId) {
+    if (appDataService != null) {
+      appDataService.clearAppState(appId);
+    }
+  }
+
   private static String cleanupFailureReason(RuntimeException exception) {
     if (exception instanceof PlatformApiException platformApiException) {
       return platformApiException.errorCode();
@@ -313,6 +327,11 @@ final class PlatformApiAppRoutes {
 
   private static boolean includeVaultDetails(PlatformApiRequest request) {
     return !request.principal().isApp();
+  }
+
+  private static boolean preserveData(PlatformApiRequest request) {
+    return !request.principal().isApp()
+        && PlatformApiParameters.readBoolean(request.queryParameters(), "preserveData", false);
   }
 
   private static boolean targetsInstalledAppResource(String method) {

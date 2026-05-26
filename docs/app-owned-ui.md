@@ -421,7 +421,7 @@ app.version=1.0.0
 app.exec=bin/feed-reader.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
-app.permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
+app.permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write
 quota.data.bytes=1048576
 quota.cache.bytes=2097152
 ```
@@ -429,11 +429,12 @@ quota.cache.bytes=2097152
 Feed Reader needs `content.fetch` to read bounded Crypta feed documents through
 `POST /api/v1/content/fetch`, `content.subscribe` to manage app-owned USK subscription metadata
 through `/api/v1/content/subscriptions`, `content.insert.app-document` and `queue.write` to publish
-generated feed snapshots without local source-path authority, and `queue.read` to show upload
-progress. Subscription state is metadata only and must not persist raw fetched content. It keeps
-source lists and fetched content in memory by default and must not persist raw feed bodies, raw
-request bodies, private insert URIs, app process tokens, browser-session tokens, form passwords,
-queue HTML, or local paths.
+generated feed snapshots without local source-path authority, `queue.read` to show upload
+progress, and `app.data.read`/`app.data.write` to restore and save bounded reader state.
+Subscription state is metadata only and must not persist raw fetched content. App data may keep
+source lists, selected subscription ids, read-state metadata, and safe draft fields, but must not
+persist raw feed bodies, raw request bodies, private insert URIs, app process tokens,
+browser-session tokens, form passwords, queue HTML, or local paths.
 
 Trust Graph Preview reference app bundle:
 

@@ -58,6 +58,7 @@ import network.crypta.platform.apphost.AppRollbackRecord;
 import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -785,6 +786,34 @@ class LocalProcessAppHostTest {
     host.uninstall(SAMPLE_APP_ID);
 
     assertTrue(host.rollbackStatus(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void uninstall_whenPreserveDataRequested_expectDataDirectoryKeptOnly() throws IOException {
+    AppHost host = allowUnsignedHost();
+    InstalledAppSnapshot installation = host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Path dataSentinel =
+        Files.writeString(
+            installation.paths().dataDir().resolve("durable-state.txt"),
+            "keep-data",
+            StandardCharsets.UTF_8);
+    Files.writeString(
+        installation.paths().cacheDir().resolve("cache-state.txt"),
+        "remove-cache",
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        installation.paths().runDir().resolve("run-state.txt"),
+        "remove-run",
+        StandardCharsets.UTF_8);
+
+    host.uninstall(SAMPLE_APP_ID, AppUninstallOptions.preservingData());
+
+    assertFalse(Files.exists(installation.paths().installedRoot()));
+    assertTrue(Files.isDirectory(installation.paths().dataDir()));
+    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertFalse(Files.exists(installation.paths().cacheDir()));
+    assertFalse(Files.exists(installation.paths().runDir()));
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
   }
 
   @Test

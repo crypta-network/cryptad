@@ -935,6 +935,7 @@ def app_platform_evidence(
         "app-platform.content-fetch",
         "app-platform.content-subscriptions",
         "network-content.subscription-scheduler",
+        "app-platform.durable-app-data-store",
         "app-platform.trust-graph-preview",
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
@@ -956,9 +957,12 @@ def app_platform_evidence(
         "app-ui.smoke",
         "reference-apps.content",
         "reference-app.profile-publisher",
+        "reference-app.profile-publisher-app-data",
         "reference-app.feed-reader",
         "reference-app.feed-reader-subscriptions",
+        "reference-app.feed-reader-app-data",
         "reference-app.trust-graph",
+        "reference-app.trust-graph-app-data-preview",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "legacy-admin.removal-wave-2",
@@ -1522,9 +1526,14 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "app-platform.content-fetch",
                 "app-platform.content-subscriptions",
                 "network-content.subscription-scheduler",
+                "app-platform.durable-app-data-store",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
-            docs=("docs/platform-api-contract.md", "docs/feed-reader-reference-app.md"),
+            docs=(
+                "docs/platform-api-contract.md",
+                "docs/feed-reader-reference-app.md",
+                "docs/app-data-store.md",
+            ),
         ),
         MatrixRowSpec(
             id="trust-graph-preview-platform",
@@ -1633,7 +1642,10 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="profile-publisher",
             category="reference-apps",
             title="Profile Publisher reference app",
-            required_evidence_ids=("reference-app.profile-publisher",),
+            required_evidence_ids=(
+                "reference-app.profile-publisher",
+                "reference-app.profile-publisher-app-data",
+            ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/first-party-beta-catalog.md",),
             first_party_apps=("profile-publisher",),
@@ -1645,6 +1657,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             required_evidence_ids=(
                 "reference-app.feed-reader",
                 "reference-app.feed-reader-subscriptions",
+                "reference-app.feed-reader-app-data",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/feed-reader-reference-app.md",),
@@ -1654,7 +1667,10 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="trust-graph-app",
             category="reference-apps",
             title="Trust Graph Preview reference app",
-            required_evidence_ids=("reference-app.trust-graph",),
+            required_evidence_ids=(
+                "reference-app.trust-graph",
+                "reference-app.trust-graph-app-data-preview",
+            ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/trust-graph-preview.md",),
             first_party_apps=("trust-graph",),
@@ -3212,12 +3228,20 @@ def evaluate_reference_content_gate(
     previous_item = previous.get("reference-apps.content")
     profile_item = current.get("reference-app.profile-publisher")
     previous_profile_item = previous.get("reference-app.profile-publisher")
+    profile_app_data_item = current.get("reference-app.profile-publisher-app-data")
+    previous_profile_app_data_item = previous.get("reference-app.profile-publisher-app-data")
     feed_reader_item = current.get("reference-app.feed-reader")
     previous_feed_reader_item = previous.get("reference-app.feed-reader")
     feed_reader_subscription_item = current.get("reference-app.feed-reader-subscriptions")
     previous_feed_reader_subscription_item = previous.get("reference-app.feed-reader-subscriptions")
+    feed_reader_app_data_item = current.get("reference-app.feed-reader-app-data")
+    previous_feed_reader_app_data_item = previous.get("reference-app.feed-reader-app-data")
     trust_graph_item = current.get("reference-app.trust-graph")
     previous_trust_graph_item = previous.get("reference-app.trust-graph")
+    trust_graph_app_data_item = current.get("reference-app.trust-graph-app-data-preview")
+    previous_trust_graph_app_data_item = previous.get(
+        "reference-app.trust-graph-app-data-preview"
+    )
     generated_document_item = current.get("app-platform.generated-document-insert")
     previous_generated_document_item = previous.get("app-platform.generated-document-insert")
     content_fetch_item = current.get("app-platform.content-fetch")
@@ -3228,39 +3252,54 @@ def evaluate_reference_content_gate(
     previous_content_subscription_scheduler_item = previous.get(
         "network-content.subscription-scheduler"
     )
+    app_data_store_item = current.get("app-platform.durable-app-data-store")
+    previous_app_data_store_item = previous.get("app-platform.durable-app-data-store")
     trust_graph_preview_item = current.get("app-platform.trust-graph-preview")
     previous_trust_graph_preview_item = previous.get("app-platform.trust-graph-preview")
     trust_statement_signing_item = current.get("app-platform.trust-statement-signing")
     previous_trust_statement_signing_item = previous.get("app-platform.trust-statement-signing")
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
+    profile_app_data_details = evidence_details(profile_app_data_item)
     feed_reader_details = evidence_details(feed_reader_item)
     feed_reader_subscription_details = evidence_details(feed_reader_subscription_item)
+    feed_reader_app_data_details = evidence_details(feed_reader_app_data_item)
     trust_graph_details = evidence_details(trust_graph_item)
+    trust_graph_app_data_details = evidence_details(trust_graph_app_data_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
     content_subscription_details = evidence_details(content_subscription_item)
     content_subscription_scheduler_details = evidence_details(
         content_subscription_scheduler_item
     )
+    app_data_store_details = evidence_details(app_data_store_item)
     trust_graph_preview_details = evidence_details(trust_graph_preview_item)
     trust_statement_signing_details = evidence_details(trust_statement_signing_item)
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
+    profile_app_data_checks = nested_dict(profile_app_data_details, "checks")
     feed_reader_checks = nested_dict(feed_reader_details, "checks")
+    feed_reader_app_data_checks = nested_dict(feed_reader_app_data_details, "checks")
     trust_graph_checks = nested_dict(trust_graph_details, "checks")
+    trust_graph_app_data_checks = nested_dict(trust_graph_app_data_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
     previous_profile_status = evidence_status(previous_profile_item)
+    profile_app_data_status = evidence_status(profile_app_data_item)
+    previous_profile_app_data_status = evidence_status(previous_profile_app_data_item)
     feed_reader_status = evidence_status(feed_reader_item)
     previous_feed_reader_status = evidence_status(previous_feed_reader_item)
     feed_reader_subscription_status = evidence_status(feed_reader_subscription_item)
     previous_feed_reader_subscription_status = evidence_status(
         previous_feed_reader_subscription_item
     )
+    feed_reader_app_data_status = evidence_status(feed_reader_app_data_item)
+    previous_feed_reader_app_data_status = evidence_status(previous_feed_reader_app_data_item)
     trust_graph_status = evidence_status(trust_graph_item)
     previous_trust_graph_status = evidence_status(previous_trust_graph_item)
+    trust_graph_app_data_status = evidence_status(trust_graph_app_data_item)
+    previous_trust_graph_app_data_status = evidence_status(previous_trust_graph_app_data_item)
     generated_document_status = evidence_status(generated_document_item)
     previous_generated_document_status = evidence_status(previous_generated_document_item)
     content_fetch_status = evidence_status(content_fetch_item)
@@ -3271,6 +3310,8 @@ def evaluate_reference_content_gate(
     previous_content_subscription_scheduler_status = evidence_status(
         previous_content_subscription_scheduler_item
     )
+    app_data_store_status = evidence_status(app_data_store_item)
+    previous_app_data_store_status = evidence_status(previous_app_data_store_item)
     trust_graph_preview_status = evidence_status(trust_graph_preview_item)
     previous_trust_graph_preview_status = evidence_status(previous_trust_graph_preview_item)
     trust_statement_signing_status = evidence_status(trust_statement_signing_item)
@@ -3302,13 +3343,28 @@ def evaluate_reference_content_gate(
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-apps.content")
     for evidence_id, current_status, previous_status_value in (
         ("reference-app.profile-publisher", profile_status, previous_profile_status),
+        (
+            "reference-app.profile-publisher-app-data",
+            profile_app_data_status,
+            previous_profile_app_data_status,
+        ),
         ("reference-app.feed-reader", feed_reader_status, previous_feed_reader_status),
         (
             "reference-app.feed-reader-subscriptions",
             feed_reader_subscription_status,
             previous_feed_reader_subscription_status,
         ),
+        (
+            "reference-app.feed-reader-app-data",
+            feed_reader_app_data_status,
+            previous_feed_reader_app_data_status,
+        ),
         ("reference-app.trust-graph", trust_graph_status, previous_trust_graph_status),
+        (
+            "reference-app.trust-graph-app-data-preview",
+            trust_graph_app_data_status,
+            previous_trust_graph_app_data_status,
+        ),
         (
             "app-platform.generated-document-insert",
             generated_document_status,
@@ -3324,6 +3380,11 @@ def evaluate_reference_content_gate(
             "network-content.subscription-scheduler",
             content_subscription_scheduler_status,
             previous_content_subscription_scheduler_status,
+        ),
+        (
+            "app-platform.durable-app-data-store",
+            app_data_store_status,
+            previous_app_data_store_status,
         ),
         (
             "app-platform.trust-graph-preview",
@@ -3361,6 +3422,25 @@ def evaluate_reference_content_gate(
     elif profile_status == "pass":
         warnings.append("Profile Publisher coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.profile-publisher")
+    if profile_app_data_checks:
+        for key in (
+            "manifestUsesAppDataContract",
+            "usesSdkJsonRecordHelpers",
+            "persistsBoundedDraftState",
+            "docsAndEvidenceMentionDurableAppData",
+        ):
+            if profile_app_data_checks.get(key) is not True:
+                failures.append(f"Profile Publisher app-data check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.profile-publisher-app-data",
+                )
+    elif profile_app_data_status == "pass":
+        warnings.append("Profile Publisher app-data coverage lacks detailed checks")
+        add_evidence_issue(
+            gate_details, "warningEvidenceIds", "reference-app.profile-publisher-app-data"
+        )
     if feed_reader_details.get("appId") not in {"feed-reader", None}:
         failures.append("Feed Reader evidence is not for feed-reader")
         add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.feed-reader")
@@ -3380,7 +3460,7 @@ def evaluate_reference_content_gate(
     feed_reader_subscription_checks = nested_dict(feed_reader_subscription_details, "checks")
     if feed_reader_subscription_checks:
         for key in (
-            "manifestDeclaresSubscribeAndV8",
+            "manifestDeclaresSubscribeAndV9",
             "appUsesPlatformSubscriptionWorkflow",
             "noTabLocalFollowLoop",
             "sdkHelpersAvailable",
@@ -3398,6 +3478,25 @@ def evaluate_reference_content_gate(
         add_evidence_issue(
             gate_details, "warningEvidenceIds", "reference-app.feed-reader-subscriptions"
         )
+    if feed_reader_app_data_checks:
+        for key in (
+            "manifestUsesAppDataContract",
+            "usesSdkJsonRecordHelpers",
+            "persistsBoundedReaderState",
+            "docsAndEvidenceMentionDurableAppData",
+        ):
+            if feed_reader_app_data_checks.get(key) is not True:
+                failures.append(f"Feed Reader app-data check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.feed-reader-app-data",
+                )
+    elif feed_reader_app_data_status == "pass":
+        warnings.append("Feed Reader app-data coverage lacks detailed checks")
+        add_evidence_issue(
+            gate_details, "warningEvidenceIds", "reference-app.feed-reader-app-data"
+        )
     if trust_graph_details.get("appId") not in {"trust-graph", None}:
         failures.append("Trust Graph Preview evidence is not for trust-graph")
         add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
@@ -3405,7 +3504,7 @@ def evaluate_reference_content_gate(
         for key in (
             "manifestDeclaresTrustGraph",
             "manifestDeclaresTrustPermissions",
-            "manifestUsesContractV7",
+            "manifestUsesContractV9",
             "usesTrustHelpers",
             "usesBoundedTrustSigningHelper",
             "usesContentFetchAndQueuePreview",
@@ -3417,6 +3516,25 @@ def evaluate_reference_content_gate(
     elif trust_graph_status == "pass":
         warnings.append("Trust Graph Preview coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.trust-graph")
+    if trust_graph_app_data_checks:
+        for key in (
+            "manifestUsesAppDataContract",
+            "usesSdkJsonRecordHelpers",
+            "persistsOnlyUiLocalPreviewState",
+            "docsKeepTrustBackendOutOfScope",
+        ):
+            if trust_graph_app_data_checks.get(key) is not True:
+                failures.append(f"Trust Graph app-data preview check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.trust-graph-app-data-preview",
+                )
+    elif trust_graph_app_data_status == "pass":
+        warnings.append("Trust Graph app-data preview coverage lacks detailed checks")
+        add_evidence_issue(
+            gate_details, "warningEvidenceIds", "reference-app.trust-graph-app-data-preview"
+        )
     generated_checks = nested_dict(generated_document_details, "checks")
     if generated_checks and generated_checks.get("routeDocumented") is not True:
         failures.append("Generated document insert route documentation check failed")
@@ -3427,11 +3545,25 @@ def evaluate_reference_content_gate(
         add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.content-fetch")
     content_subscription_checks = nested_dict(content_subscription_details, "checks")
     if content_subscription_checks:
-        for key in ("contractVersionV8", "routesPresent", "capabilityGatesPresent"):
+        for key in ("currentContractVersionV9", "routesPresent", "capabilityGatesPresent"):
             if content_subscription_checks.get(key) is not True:
                 failures.append(f"Content subscription API check {key} failed")
                 add_evidence_issue(
                     gate_details, "failureEvidenceIds", "app-platform.content-subscriptions"
+                )
+    app_data_store_checks = nested_dict(app_data_store_details, "checks")
+    if app_data_store_checks:
+        for key in (
+            "contractV9AndCapabilities",
+            "routesRequireAppPrincipalAndCapabilities",
+            "fileBackedStoreIsPathSafeAndAtomic",
+            "serviceBoundsQuotaAndImportExport",
+            "docsCoverLimitsAndRedaction",
+        ):
+            if app_data_store_checks.get(key) is not True:
+                failures.append(f"Durable app-data store check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.durable-app-data-store"
                 )
     content_subscription_scheduler_checks = nested_dict(
         content_subscription_scheduler_details, "checks"
@@ -3474,14 +3606,22 @@ def evaluate_reference_content_gate(
             "appId": details.get("appId"),
             "profilePublisherStatus": profile_status,
             "previousProfilePublisherStatus": previous_profile_status,
+            "profilePublisherAppDataStatus": profile_app_data_status,
+            "previousProfilePublisherAppDataStatus": previous_profile_app_data_status,
             "feedReaderStatus": feed_reader_status,
             "previousFeedReaderStatus": previous_feed_reader_status,
+            "feedReaderAppDataStatus": feed_reader_app_data_status,
+            "previousFeedReaderAppDataStatus": previous_feed_reader_app_data_status,
             "trustGraphStatus": trust_graph_status,
             "previousTrustGraphStatus": previous_trust_graph_status,
+            "trustGraphAppDataPreviewStatus": trust_graph_app_data_status,
+            "previousTrustGraphAppDataPreviewStatus": previous_trust_graph_app_data_status,
             "generatedDocumentInsertStatus": generated_document_status,
             "previousGeneratedDocumentInsertStatus": previous_generated_document_status,
             "contentFetchStatus": content_fetch_status,
             "previousContentFetchStatus": previous_content_fetch_status,
+            "appDataStoreStatus": app_data_store_status,
+            "previousAppDataStoreStatus": previous_app_data_store_status,
             "trustGraphPreviewStatus": trust_graph_preview_status,
             "previousTrustGraphPreviewStatus": previous_trust_graph_preview_status,
             "trustStatementSigningStatus": trust_statement_signing_status,
@@ -3837,6 +3977,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.content-fetch",
         "app-platform.content-subscriptions",
         "network-content.subscription-scheduler",
+        "app-platform.durable-app-data-store",
         "app-platform.trust-graph-preview",
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
@@ -3858,9 +3999,12 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-ui.smoke",
         "reference-apps.content",
         "reference-app.profile-publisher",
+        "reference-app.profile-publisher-app-data",
         "reference-app.feed-reader",
         "reference-app.feed-reader-subscriptions",
+        "reference-app.feed-reader-app-data",
         "reference-app.trust-graph",
+        "reference-app.trust-graph-app-data-preview",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -4619,6 +4763,9 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
         ), evidence_by_id
+        assert (
+            evidence_by_id["app-platform.durable-app-data-store"]["status"] == "pass"
+        ), evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"][
             "requiredForReleaseCandidate"
@@ -4639,12 +4786,19 @@ def run_self_test(repo_root: Path) -> None:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
             assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass", evidence_by_id
+        assert (
+            evidence_by_id["reference-app.profile-publisher-app-data"]["status"] == "pass"
+        ), evidence_by_id
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass", evidence_by_id
         assert (
             evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         ), evidence_by_id
+        assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["requiredForReleaseCandidate"] is True
+        assert (
+            evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
+        ), evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass", evidence_by_id

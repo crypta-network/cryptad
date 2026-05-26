@@ -17,6 +17,7 @@ import network.crypta.platform.api.content.subscriptions.ContentSubscriptionStor
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppUninstallOptions;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
@@ -224,7 +225,7 @@ class PlatformApiContentSubscriptionsRouterTest {
 
     assertEquals(200, response.statusCode());
     assertTrue(service.list(APP_ID).isEmpty());
-    verify(appHost).uninstall(APP_ID);
+    verify(appHost).uninstall(APP_ID, AppUninstallOptions.removeAll());
   }
 
   @Test
@@ -249,7 +250,7 @@ class PlatformApiContentSubscriptionsRouterTest {
     assertEquals(200, response.statusCode());
     assertFalse(response.body().contains("content_subscription_store_failed"));
     assertFalse(response.body().contains("private-subscriptions"));
-    verify(appHost).uninstall(APP_ID);
+    verify(appHost).uninstall(APP_ID, AppUninstallOptions.removeAll());
     verify(store).deleteAllForApp(APP_ID);
   }
 

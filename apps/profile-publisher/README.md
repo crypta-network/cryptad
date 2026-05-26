@@ -3,9 +3,10 @@
 `apps/profile-publisher` stages a first-party profile-publishing AppHost bundle.
 
 Profile Publisher is a static app-owned browser UI that uses the browser SDK, the local Crypta UI
-design-system assets, and the app-vault identity permission vocabulary. Draft profile data, selected
-identity metadata, signed preview state, and recent publish results stay in memory for the open page
-only.
+design-system assets, the app-vault identity permission vocabulary, and the durable app-data API.
+Draft profile data, the selected identity id, the last published profile URI, and bounded publish
+history summaries persist in app-owned records. Signed preview state and private identity material
+do not leave AppVault.
 
 Build the staged bundle with:
 
@@ -60,17 +61,20 @@ Profile Publisher declares:
   authority.
 - `queue.write` to create the insert request.
 - `queue.read` to show upload queue progress.
+- `app.data.read` to restore the app-owned profile draft and publish summaries.
+- `app.data.write` to save bounded draft and publish-history state.
 
-The manifest targets Platform API contract v5 because Profile Publisher depends on the
-profile-document and app-document insert routes added for this workflow. It also sets
+The manifest targets Platform API contract v9 because Profile Publisher now combines the
+profile-document and app-document insert routes with durable app-data records. It also sets
 `api.experimentalCapabilitiesAccepted=true`; the current app-vault identity capabilities remain
 experimental even though the app keeps the operation narrow and first-party reviewed.
 
 The browser UI does not use persistent browser storage, cookies, external resources, browser file
-inputs, or direct local file reads. Profile documents are built from in-memory form state, signed
-through the browser-safe profile-document vault route, and submitted to the app-generated document
-insert route without exposing launch tokens, browser-session tokens, private identity material, or
-server-side staging paths.
+inputs, or direct local file reads. Profile documents are built from bounded app-owned form state,
+signed through the browser-safe profile-document vault route, and submitted to the app-generated
+document insert route without exposing launch tokens, browser-session tokens, private identity
+material, or server-side staging paths. The app-data record stores drafts and publish summaries
+only; secrets, seeds, private keys, and identity material remain in AppVault.
 
 Run focused validation with:
 

@@ -27,6 +27,9 @@ import network.crypta.node.RequestPriorityClasses;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SemiOrderedShutdownHook;
+import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataStoreConfig;
+import network.crypta.platform.api.appdata.FileAppDataStore;
 import network.crypta.platform.api.appupdates.AppUpdateScheduler;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerConfig;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerStore;
@@ -76,6 +79,7 @@ import org.slf4j.LoggerFactory;
  * @param contentSubscriptionService optional content subscription service used by subscription
  *     routes and scheduler
  * @param contentSubscriptionScheduler optional background content subscription scheduler
+ * @param appDataService shared durable app-data service used by Platform API app-data routes
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
@@ -86,6 +90,7 @@ public record CoreHttpShellRuntimeSupport(
     AppUpdateScheduler appUpdateScheduler,
     ContentSubscriptionService contentSubscriptionService,
     ContentSubscriptionScheduler contentSubscriptionScheduler,
+    AppDataService appDataService,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -128,6 +133,7 @@ public record CoreHttpShellRuntimeSupport(
         services.appUpdateScheduler(),
         services.contentSubscriptionService(),
         services.contentSubscriptionScheduler(),
+        services.appDataService(),
         services.appVaultService());
   }
 
@@ -180,6 +186,7 @@ public record CoreHttpShellRuntimeSupport(
         null,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -210,6 +217,7 @@ public record CoreHttpShellRuntimeSupport(
         appUpdateScheduler,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -226,6 +234,7 @@ public record CoreHttpShellRuntimeSupport(
    * @param appVaultService shared app-vault service, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
+  @SuppressWarnings("unused")
   public CoreHttpShellRuntimeSupport(
       NodeClientCore core,
       AppHost appHost,
@@ -235,6 +244,42 @@ public record CoreHttpShellRuntimeSupport(
       ContentSubscriptionService contentSubscriptionService,
       ContentSubscriptionScheduler contentSubscriptionScheduler,
       AppVaultService appVaultService) {
+    this(
+        core,
+        appHost,
+        appCatalogManager,
+        appUpdateService,
+        appUpdateScheduler,
+        contentSubscriptionService,
+        contentSubscriptionScheduler,
+        null,
+        appVaultService);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app-platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @param appUpdateService shared app-update lifecycle service, or {@code null} when unavailable
+   * @param appUpdateScheduler optional background app-update scheduler
+   * @param contentSubscriptionService optional content subscription service
+   * @param contentSubscriptionScheduler optional background content subscription scheduler
+   * @param appDataService shared durable app-data service, or {@code null} when unavailable
+   * @param appVaultService shared app-vault service, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateScheduler appUpdateScheduler,
+      ContentSubscriptionService contentSubscriptionService,
+      ContentSubscriptionScheduler contentSubscriptionScheduler,
+      AppDataService appDataService,
+      AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.appCatalogManager = appCatalogManager;
@@ -242,6 +287,7 @@ public record CoreHttpShellRuntimeSupport(
     this.appUpdateScheduler = appUpdateScheduler;
     this.contentSubscriptionService = contentSubscriptionService;
     this.contentSubscriptionScheduler = contentSubscriptionScheduler;
+    this.appDataService = appDataService;
     this.appVaultService = appVaultService;
   }
 
@@ -448,6 +494,7 @@ public record CoreHttpShellRuntimeSupport(
     if (contentSubscriptionScheduler != null && contentSchedulerConfig.enabled()) {
       contentSubscriptionScheduler.start();
     }
+    AppDataService appDataService = createAppDataService(layout, appHost);
     return new AppPlatformServices(
         appHost,
         appCatalogManager,
@@ -455,6 +502,7 @@ public record CoreHttpShellRuntimeSupport(
         appUpdateScheduler,
         contentSubscriptionService,
         contentSubscriptionScheduler,
+        appDataService,
         appVaultService);
   }
 
@@ -537,6 +585,12 @@ public record CoreHttpShellRuntimeSupport(
                 runtimePorts.queueSupport(), runtimePorts.requestQueue());
     return new ContentSubscriptionScheduler(
         appHost, contentSubscriptionService, schedulerConfig, pressureGate);
+  }
+
+  private static AppDataService createAppDataService(AppHostLayout layout, AppHost appHost) {
+    AppDataStoreConfig config = AppDataStoreConfig.loadFromSystem();
+    Path storeRoot = layout.dataDir().resolve("apps").resolve("durable-app-data");
+    return new AppDataService(new FileAppDataStore(storeRoot, config), appHost, config, true);
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
@@ -679,6 +733,7 @@ public record CoreHttpShellRuntimeSupport(
       AppUpdateScheduler appUpdateScheduler,
       ContentSubscriptionService contentSubscriptionService,
       ContentSubscriptionScheduler contentSubscriptionScheduler,
+      AppDataService appDataService,
       AppVaultService appVaultService) {}
 
   /**

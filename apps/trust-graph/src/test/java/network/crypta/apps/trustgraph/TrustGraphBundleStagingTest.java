@@ -27,7 +27,8 @@ class TrustGraphBundleStagingTest {
   private static final String EXPECTED_LAUNCHER_PATH = "bin/trust-graph.sh";
   private static final String EXPECTED_PERMISSIONS =
       "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
-          + "vault.identities.read,vault.identities.create,vault.identities.use";
+          + "vault.identities.read,vault.identities.create,vault.identities.use,"
+          + "app.data.read,app.data.write";
   private static final List<String> EXPECTED_PERMISSION_LIST =
       List.of(
           "trust.read",
@@ -38,9 +39,11 @@ class TrustGraphBundleStagingTest {
           "queue.write",
           "vault.identities.read",
           "vault.identities.create",
-          "vault.identities.use");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 7;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 7;
+          "vault.identities.use",
+          "app.data.read",
+          "app.data.write");
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 9;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -216,7 +219,8 @@ class TrustGraphBundleStagingTest {
         "Subject URI or identity",
         "Publish statement",
         "Queue preview",
-        "stay in memory",
+        "persist through app data",
+        "not made durable by this app state",
         "rendered only as text",
         "without exposing private signing secrets");
   }
@@ -260,6 +264,7 @@ class TrustGraphBundleStagingTest {
         "api:",
         "queue:",
         "content:",
+        "data:",
         "dom:",
         "browserSessionToken",
         "X-Crypta-App-Session");
@@ -284,12 +289,20 @@ class TrustGraphBundleStagingTest {
         "CryptaPlatform.vault.identities.create",
         "CryptaPlatform.vault.identities.createTrustStatement",
         "CryptaPlatform.queue.snapshot",
+        "CryptaPlatform.data.records.getJson",
+        "CryptaPlatform.data.records.putJson",
         "textContent",
         "replaceChildren",
         "FormData",
         "textValue(formData, \"subjectKind\") || \"profile\"",
+        "field instanceof HTMLSelectElement",
         "state = {",
         "lastStatementText",
+        "recentImports",
+        "sourceKind",
+        "importSummaryLabel",
+        "loadDurableState",
+        "persistDurableState",
         "maxStatementBytes",
         "isCryptaContentUri",
         "uri.startsWith(\"KSK@\")",

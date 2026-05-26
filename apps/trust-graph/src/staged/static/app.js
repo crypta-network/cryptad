@@ -3,11 +3,16 @@
 
   const appId = "trust-graph";
   const maxStatementBytes = 65536;
+  const dataNamespace = "ui-state";
+  const dataStateKey = "preview-state";
+  const dataSchemaVersion = 1;
   const state = {
     anchors: [],
     identities: [],
     lastStatementText: "",
+    lastDraft: {},
     queueItems: [],
+    recentImports: [],
     status: null,
   };
 
@@ -60,6 +65,8 @@
       if (CryptaPlatform.bootstrap && typeof CryptaPlatform.bootstrap.load === "function") {
         await CryptaPlatform.bootstrap.load({ appId });
       }
+      await loadDurableState();
+      restoreDraftForms();
       await Promise.all([refreshStatus(), refreshAnchors(), refreshIdentities(), refreshQueue()]);
       setStatus("Trust Graph Preview is ready.");
     } catch (error) {
@@ -202,6 +209,7 @@
       }
       const imported = await CryptaPlatform.trust.importStatement(request);
       state.lastStatementText = text;
+      rememberImportSummary(label, sourceUri, text, imported);
       renderStatement(label, text, imported);
       setStatus("Statement imported.");
     } catch (error) {
@@ -228,6 +236,8 @@
         includeEvidence: true,
       });
       replaceChildren(elements.scoreResult, summaryNodes(score, "Trust score"));
+      state.lastDraft.score = { subjectKind, subject, context };
+      persistDurableState();
       setStatus("Trust score calculated.");
     } catch (error) {
       renderError(elements.scoreResult, error);
@@ -266,6 +276,8 @@
         statement,
       });
       await refreshQueue();
+      state.lastDraft.publish = { authorIdentity, subjectKind, subjectIdentity, value, context, reason };
+      persistDurableState();
       replaceChildren(elements.publishResult, summaryNodes(published, "Published statement"));
       setStatus("Trust statement publication requested.");
     } catch (error) {
@@ -281,6 +293,148 @@
       setStatus("Queue preview refreshed.");
     } catch (error) {
       renderError(elements.queuePreview, error);
+    }
+  }
+
+  async function loadDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    try {
+      const stored = await CryptaPlatform.data.records.getJson(dataNamespace, dataStateKey);
+      if (!stored || stored.schemaVersion !== dataSchemaVersion) {
+        return;
+      }
+      state.lastDraft = normalizeLastDraft(stored.lastDraft);
+      if (Array.isArray(stored.recentImports)) {
+        state.recentImports = stored.recentImports.slice(0, 8).map(normalizeImportSummary);
+      }
+    } catch (error) {
+      // First launch or older nodes may not have a saved preview record yet.
+    }
+  }
+
+  async function persistDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    try {
+      await CryptaPlatform.data.records.putJson({
+        namespace: dataNamespace,
+        key: dataStateKey,
+        schemaVersion: dataSchemaVersion,
+        value: {
+          schemaVersion: dataSchemaVersion,
+          lastDraft: normalizeLastDraft(state.lastDraft),
+          recentImports: state.recentImports.slice(0, 8),
+        },
+      });
+    } catch (error) {
+      setStatus("Trust Graph Preview UI state could not be saved.");
+    }
+  }
+
+  function dataHelpersAvailable() {
+    return (
+      CryptaPlatform.data &&
+      CryptaPlatform.data.records &&
+      typeof CryptaPlatform.data.records.getJson === "function" &&
+      typeof CryptaPlatform.data.records.putJson === "function"
+    );
+  }
+
+  function rememberImportSummary(label, sourceUri, text, imported) {
+    const sourceKind = importSourceKind(sourceUri);
+    state.recentImports.unshift({
+      at: new Date().toISOString(),
+      label: importSummaryLabel(label, sourceUri),
+      sourceKind,
+      bytes: byteLength(text || ""),
+      result: stringField(imported, "status", "outcome") || "imported",
+    });
+    state.recentImports = state.recentImports.slice(0, 8);
+    state.lastDraft.import = { sourceKind };
+    persistDurableState();
+  }
+
+  function normalizeImportSummary(summary) {
+    if (!summary || typeof summary !== "object") {
+      return {};
+    }
+    const sourceUri = String(summary.sourceUri || "");
+    const label = String(summary.label || "");
+    const sourceKind = sourceUri || isCryptaContentUri(label) ? "content-uri" : "pasted";
+    return {
+      at: String(summary.at || ""),
+      label: importSummaryLabel(label, sourceUri),
+      sourceKind: normalizeSourceKind(summary.sourceKind, sourceKind),
+      bytes: Number(summary.bytes) || 0,
+      result: String(summary.result || ""),
+    };
+  }
+
+  function normalizeLastDraft(draft) {
+    if (!draft || typeof draft !== "object") {
+      return {};
+    }
+    const normalized = {};
+    if (draft.score && typeof draft.score === "object") {
+      normalized.score = draft.score;
+    }
+    if (draft.publish && typeof draft.publish === "object") {
+      normalized.publish = draft.publish;
+    }
+    if (draft.import && typeof draft.import === "object") {
+      const sourceKind = normalizeSourceKind(
+        draft.import.sourceKind,
+        draft.import.sourceUri ? "content-uri" : "",
+      );
+      if (sourceKind) {
+        normalized.import = { sourceKind };
+      }
+    }
+    return normalized;
+  }
+
+  function importSourceKind(sourceUri) {
+    return sourceUri ? "content-uri" : "pasted";
+  }
+
+  function normalizeSourceKind(value, fallback) {
+    const text = String(value || "");
+    if (text === "content-uri" || text === "pasted") {
+      return text;
+    }
+    return fallback || "";
+  }
+
+  function importSummaryLabel(label, sourceUri) {
+    const text = String(label || "").trim();
+    return sourceUri || isCryptaContentUri(text) ? "Fetched statement" : text || "Pasted statement";
+  }
+
+  function restoreDraftForms() {
+    const score = state.lastDraft.score || {};
+    setFormValue(elements.scoreForm, "subjectKind", score.subjectKind);
+    setFormValue(elements.scoreForm, "subject", score.subject);
+    setFormValue(elements.scoreForm, "context", score.context);
+    const publish = state.lastDraft.publish || {};
+    setFormValue(elements.publishForm, "authorIdentity", publish.authorIdentity);
+    setFormValue(elements.publishForm, "subjectKind", publish.subjectKind);
+    setFormValue(elements.publishForm, "subjectIdentity", publish.subjectIdentity);
+    setFormValue(elements.publishForm, "value", publish.value);
+    setFormValue(elements.publishForm, "context", publish.context);
+    setFormValue(elements.publishForm, "reason", publish.reason);
+  }
+
+  function setFormValue(form, name, value) {
+    const field = form.querySelector(`[name="${name}"]`);
+    if (
+      field instanceof HTMLInputElement ||
+      field instanceof HTMLTextAreaElement ||
+      field instanceof HTMLSelectElement
+    ) {
+      field.value = value == null ? "" : String(value);
     }
   }
 

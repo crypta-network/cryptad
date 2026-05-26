@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import network.crypta.client.FetchContext;
@@ -70,6 +71,7 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -265,6 +267,57 @@ class CoreHttpShellRuntimeSupportTest {
     assertEquals(expectedRunDir.toAbsolutePath(), layout.runDir());
     assertNotNull(runtimeSupport.appUpdateScheduler());
     assertNotNull(runtimeSupport.appUpdateService());
+    verify(shutdownHook, times(2)).addEarlyJob(any(Thread.class));
+  }
+
+  @Test
+  void appDataService_whenConstructedFromCore_usesHostManagedStoreRoot(@TempDir Path tempDir) {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    Path nodeDataDir = tempDir.resolve("node");
+    Path cacheDir = tempDir.resolve("persistent-temp");
+    Path runDataDir = tempDir.resolve("run");
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(nodeDataDir.toFile());
+    when(runDir.dir()).thenReturn(runDataDir.toFile());
+    when(core.getPersistentTempDir()).thenReturn(cacheDir.toFile());
+
+    CoreHttpShellRuntimeSupport runtimeSupport;
+    try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+        mockStatic(SemiOrderedShutdownHook.class)) {
+      stubShutdownHookLookup(shutdownHooks, shutdownHook);
+      runtimeSupport = new CoreHttpShellRuntimeSupport(core);
+    }
+
+    runtimeSupport
+        .appDataService()
+        .putRecord(
+            "feed-reader",
+            Map.of(
+                "namespace",
+                List.of("ui-state"),
+                "key",
+                List.of("startup"),
+                "schemaVersion",
+                List.of("1"),
+                "contentType",
+                List.of("application/json"),
+                "valueJson",
+                List.of("{}")));
+
+    assertTrue(Files.exists(nodeDataDir.resolve("apps").resolve("durable-app-data")));
+    assertFalse(
+        Files.exists(
+            nodeDataDir
+                .resolve("apps")
+                .resolve("data")
+                .resolve("feed-reader")
+                .resolve(".cryptad-app-data")));
     verify(shutdownHook, times(2)).addEarlyJob(any(Thread.class));
   }
 

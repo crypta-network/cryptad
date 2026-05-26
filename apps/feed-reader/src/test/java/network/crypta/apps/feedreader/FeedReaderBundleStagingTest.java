@@ -26,16 +26,19 @@ class FeedReaderBundleStagingTest {
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/feed-reader.sh";
   private static final String EXPECTED_PERMISSIONS =
-      "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write";
+      "content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,"
+          + "app.data.read,app.data.write";
   private static final List<String> EXPECTED_PERMISSION_LIST =
       List.of(
           "content.fetch",
           "content.subscribe",
           "content.insert.app-document",
           "queue.read",
-          "queue.write");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 8;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 8;
+          "queue.write",
+          "app.data.read",
+          "app.data.write");
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 9;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -196,13 +199,15 @@ class FeedReaderBundleStagingTest {
         "<code>content.insert.app-document</code>",
         "<code>queue.read</code>",
         "<code>queue.write</code>",
+        "<code>app.data.read</code>",
+        "<code>app.data.write</code>",
         "Safe-use notes",
         "Feed sources",
         "Reader",
         "Publisher",
         "Queue preview",
         "Create platform USK subscription",
-        "kept only in memory",
+        "persist through app-data records",
         "bounded metadata only",
         "Fetched content is rendered as text",
         "platform scheduler");
@@ -246,6 +251,7 @@ class FeedReaderBundleStagingTest {
         "api:",
         "queue:",
         "content:",
+        "data:",
         "dom:",
         "browserSessionToken",
         "X-Crypta-App-Session");
@@ -260,6 +266,8 @@ class FeedReaderBundleStagingTest {
         "CryptaPlatform.bootstrap.load({ appId })",
         "CryptaPlatform.content.fetchText",
         "CryptaPlatform.content.subscriptions",
+        "CryptaPlatform.data.records.getJson",
+        "CryptaPlatform.data.records.putJson",
         "CryptaPlatform.feed.fetchSnapshot",
         "CryptaPlatform.feed.parseSnapshot",
         "CryptaPlatform.feed.publishSnapshot",
@@ -271,6 +279,11 @@ class FeedReaderBundleStagingTest {
         "sources: []",
         "subscriptions: []",
         "fetchedSnapshots: []",
+        "lastPublisherDraft",
+        "loadDurableState",
+        "persistDurableState",
+        "map(durableSnapshot)",
+        "itemCount: snapshotItemCount(snapshot)",
         "type: \"crypta.feed.snapshot.v1\"",
         "items:",
         "subscriptionPollIntervalSeconds",
@@ -293,6 +306,15 @@ class FeedReaderBundleStagingTest {
         appScript.indexOf("CryptaPlatform.content.fetchText")
             < appScript.indexOf("CryptaPlatform.feed.fetchSnapshot"),
         "Feed Reader must try text fetch before the SDK snapshot-only helper.");
+    int loadDurableStateIndex = appScript.indexOf("await loadDurableState();");
+    int restorePublisherDraftIndex = appScript.indexOf("restorePublisherDraft();");
+    int loadSubscriptionsIndex = appScript.indexOf("await loadSubscriptions({ silent: true });");
+    assertTrue(loadDurableStateIndex >= 0, "Feed Reader must load durable state on startup.");
+    assertTrue(loadSubscriptionsIndex >= 0, "Feed Reader must load subscriptions on startup.");
+    assertTrue(
+        restorePublisherDraftIndex > loadDurableStateIndex
+            && restorePublisherDraftIndex < loadSubscriptionsIndex,
+        "Feed Reader must restore the publisher draft before subscription loading can persist.");
     assertFalse(
         appScript.contains("No queue items returned."),
         "Feed Reader must render the Queue API contentHtml payload.");

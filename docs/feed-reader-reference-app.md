@@ -1,14 +1,14 @@
 # Feed Reader reference app
 
-This page describes the first-party Feed Reader reference app and the Platform API v8
-content-subscription surface it exercises.
+This page describes the first-party Feed Reader reference app and the Platform API v9
+content-subscription and durable app-data surfaces it exercises.
 
 ## Scope
 
 Feed Reader is a first-party static AppHost bundle under `apps/feed-reader`. It demonstrates a
 feed-reading and feed-publishing workflow on top of the browser SDK, app-owned UI bootstrap,
-durable USK subscription metadata, bounded content fetches, generated-document inserts, signed
-first-party catalog metadata, and release-certification evidence.
+durable USK subscription metadata, bounded content fetches, durable reader state, generated-document
+inserts, signed first-party catalog metadata, and release-certification evidence.
 
 The app is not a generic crawler, an arbitrary HTTP/HTTPS fetcher, a catalog fetcher, or a
 vault/identity app. It should not request local source-path authority, app-vault permissions,
@@ -25,6 +25,8 @@ Feed Reader declares these app permissions:
 | `content.insert.app-document` | Publish generated feed documents without local source-path authority. |
 | `queue.write` | Create the generated-document insert request for publishing. |
 | `queue.read` | Display upload queue progress after publication. |
+| `app.data.read` | Restore the app-owned feed list, selected subscription ids, read-state metadata, and safe draft fields. |
+| `app.data.write` | Save bounded reader state and safe publishing form metadata through `/api/v1/app-data`. |
 
 `content.fetch` is fetch-only. `content.subscribe` grants subscription metadata and controls, not
 raw fetched content storage. Creating or refreshing a subscription requires both capabilities
@@ -73,13 +75,19 @@ sources are limited to `USK@...` and `crypta:USK@...`. The app displays schedule
 check, last seen edition, update count, and stable errors from subscription metadata. When
 `lastSeenResolvedUri` changes, the app may fetch and render that current document on demand with
 the existing content/fetch or feed helpers.
+`CryptaPlatform.data.records.getJson` and `CryptaPlatform.data.records.putJson` store the
+reference app's `ui-state/reader-state` record. That record contains app-owned feed source
+metadata, selected subscription ids, read-state or last-opened feed metadata, and safe publication
+form fields. It does not store browser-session tokens, app process tokens, private insert URIs,
+queue HTML, local paths, or AppVault material.
 `CryptaPlatform.feed.publishSnapshot` wraps the app-generated document insert route. The app can use
 `CryptaPlatform.queue.snapshot({ page: "uploads" })` after publication to render local queue
 progress.
 
-The previous browser-tab-only follow timer is not the durable path. The reference app uses the
-platform scheduler when `CryptaPlatform.content.subscriptions` is available; any manual fetch path
-is only a local fallback for environments without the v8 helper.
+The previous browser-tab-only follow timer and page-memory source list are not the durable path.
+The reference app uses the platform scheduler when `CryptaPlatform.content.subscriptions` is
+available and app-data helpers when `CryptaPlatform.data` is available; any manual fetch path is
+only a local fallback for environments without the v9 helpers.
 
 ## Catalog metadata
 
@@ -89,7 +97,7 @@ metadata, API compatibility metadata, and permission rationales:
 ```properties
 app.id=feed-reader
 name=Feed Reader & Publisher
-permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
+permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write
 categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
@@ -98,8 +106,10 @@ permissions.rationale.content.subscribe=Registers bounded USK feed subscriptions
 permissions.rationale.content.insert.app-document=Queues generated feed documents without local source-path authority.
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
-api.minimumVersion=8
-api.maximumTestedVersion=8
+permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
+permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -116,9 +126,11 @@ Release certification records these required evidence ids for this workflow:
 | `app-platform.content-subscriptions` | `/api/v1/content/subscriptions` is documented, capability-gated by `content.subscribe` plus `content.fetch` for create/refresh, app-principal scoped, represented in contract v8, and covered by redaction evidence. |
 | `network-content.subscription-scheduler` | The background scheduler has deterministic offline evidence for bounded due checks, per-app/global/per-tick limits, backoff, dedupe, queue pressure handling with no queue HTML parsing, and path-free durable metadata. |
 | `reference-app.feed-reader` | Feed Reader exists as a first-party static app, declares the expected permissions, uses SDK feed helpers, and publishes generated feed documents without local source-path authority. |
-| `reference-app.feed-reader-subscriptions` | Feed Reader declares `content.subscribe`, requires API v8, uses platform subscription helpers, and no longer relies on a tab-local follow loop as the durable follow path. |
+| `reference-app.feed-reader-subscriptions` | Feed Reader declares `content.subscribe`, uses the contract v8 platform subscription helpers, and no longer relies on a tab-local follow loop as the durable follow path. |
+| `reference-app.feed-reader-app-data` | Feed Reader declares `app.data.read` and `app.data.write`, requires API v9, uses SDK app-data helpers, and keeps durable app-data evidence redacted. |
 
 Evidence and reports must not include raw feed bodies, raw fetched content, raw request bodies,
 private insert URIs, app process tokens, browser-session tokens, form passwords, private keys,
 absolute staging paths, store root paths, queue HTML, or local paths. Subscription state is
-metadata only and is not a generic app data store.
+metadata only, and app-data state is bounded app-owned state rather than a generic filesystem,
+database, or secret vault.

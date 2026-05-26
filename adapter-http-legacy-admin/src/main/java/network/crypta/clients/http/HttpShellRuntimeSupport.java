@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import network.crypta.config.Config;
+import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
@@ -102,6 +103,18 @@ public interface HttpShellRuntimeSupport {
    * @return shared content subscription service, or {@code null} when unavailable
    */
   default ContentSubscriptionService contentSubscriptionService() {
+    return null;
+  }
+
+  /**
+   * Returns the shared durable app-data service used by Platform API app-data routes.
+   *
+   * <p>A {@code null} value means durable app-data routes are unavailable in this embedding and
+   * should report a stable service-unavailable response rather than creating request-scoped stores.
+   *
+   * @return shared durable app-data service, or {@code null} when unavailable
+   */
+  default AppDataService appDataService() {
     return null;
   }
 

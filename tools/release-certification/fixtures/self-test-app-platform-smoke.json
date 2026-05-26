@@ -203,7 +203,7 @@
           "appPrincipalScoped": true,
           "capabilityDescriptorPresent": true,
           "capabilityGatesPresent": true,
-          "contractVersionV8": true,
+          "currentContractVersionV9": true,
           "docsDescribeRedactionAndNonGoals": true,
           "limitsAndMetadataOnly": true,
           "routesPresent": true,
@@ -257,6 +257,37 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Content subscription scheduler passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "capabilities": [
+          "app.data.read",
+          "app.data.write"
+        ],
+        "checks": {
+          "contractV9AndCapabilities": true,
+          "docsCoverLimitsAndRedaction": true,
+          "fileBackedStoreIsPathSafeAndAtomic": true,
+          "routesRequireAppPrincipalAndCapabilities": true,
+          "runtimeAndUninstallWired": true,
+          "schemaMigrationMetadata": true,
+          "sdkHelpersExistAndAvoidBrowserStorage": true,
+          "serviceBoundsQuotaAndImportExport": true,
+          "testsCoverCoreSecurityAndPersistence": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawRequestBodiesExcluded": true,
+          "rawValuesExcludedFromEvidence": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-platform.durable-app-data-store",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Durable app-data store evidence passed."
     },
     {
       "details": {
@@ -713,6 +744,7 @@
         "appId": "profile-publisher",
         "checks": {
           "manifestAvoidsUnneededVaultManagement": true,
+          "manifestUsesAppDataContract": true,
           "manifestDeclaresProfilePermissions": true,
           "manifestDeclaresProfilePublisher": true,
           "moduleExists": true,
@@ -726,11 +758,14 @@
           "stagedSdkPresent": true,
           "usesBrowserSafeIdentityCreation": true,
           "usesGeneratedDocumentInsertRoute": true,
+          "usesAppDataHelpers": true,
           "usesProfileDocumentRoute": true,
           "usesSdkBootstrap": true,
           "usesUploadQueueSnapshot": true
         },
         "expectedPermissions": [
+          "app.data.read",
+          "app.data.write",
           "content.insert.app-document",
           "queue.read",
           "queue.write",
@@ -744,6 +779,30 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Profile Publisher reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "profile-publisher",
+        "checks": {
+          "docsAndEvidenceMentionDurableAppData": true,
+          "manifestUsesAppDataContract": true,
+          "noBrowserStorageOrSecretPersistence": true,
+          "permissionDisclosureMentionsAppData": true,
+          "persistsBoundedDraftState": true,
+          "usesSdkJsonRecordHelpers": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "identityPrivateMaterialExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawProfileDraftExcluded": true
+        }
+      },
+      "id": "reference-app.profile-publisher-app-data",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Profile Publisher durable app-data evidence passed."
     },
     {
       "details": {
@@ -762,6 +821,7 @@
           "stagedDesignSystemPresent": true,
           "stagedManifestPresent": true,
           "stagedSdkPresent": true,
+          "usesAppDataHelpers": true,
           "usesContentFetchRouteOrHelper": true,
           "usesContentSubscriptionHelpers": true,
           "usesGeneratedDocumentInsertRoute": true,
@@ -769,6 +829,8 @@
           "usesUploadQueueSnapshot": true
         },
         "expectedPermissions": [
+          "app.data.read",
+          "app.data.write",
           "content.fetch",
           "content.subscribe",
           "content.insert.app-document",
@@ -788,13 +850,15 @@
         "checks": {
           "appUsesPlatformSubscriptionWorkflow": true,
           "docsDescribeSubscriptionFlow": true,
-          "manifestDeclaresSubscribeAndV8": true,
+          "manifestDeclaresSubscribeAndV9": true,
           "noTabLocalFollowLoop": true,
           "onDemandRenderStillUsesContentFetch": true,
           "sdkHelpersAvailable": true,
           "uiDisclosesSubscribePermission": true
         },
         "expectedPermissions": [
+          "app.data.read",
+          "app.data.write",
           "content.fetch",
           "content.subscribe",
           "content.insert.app-document",
@@ -817,12 +881,36 @@
     },
     {
       "details": {
+        "appId": "feed-reader",
+        "checks": {
+          "docsAndEvidenceMentionDurableAppData": true,
+          "manifestUsesAppDataContract": true,
+          "noBrowserStorageOrRawAdminPath": true,
+          "permissionDisclosureMentionsAppData": true,
+          "persistsBoundedReaderState": true,
+          "usesSdkJsonRecordHelpers": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawAppDataValuesExcluded": true,
+          "rawFeedBodiesExcluded": true
+        }
+      },
+      "id": "reference-app.feed-reader-app-data",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Feed Reader durable app-data evidence passed."
+    },
+    {
+      "details": {
         "appId": "trust-graph",
         "checks": {
           "docsDescribePreviewLimits": true,
           "manifestDeclaresTrustGraph": true,
           "manifestDeclaresTrustPermissions": true,
-          "manifestUsesContractV7": true,
+          "manifestUsesContractV9": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -832,12 +920,15 @@
           "stagedDesignSystemPresent": true,
           "stagedManifestPresent": true,
           "stagedSdkPresent": true,
+          "usesAppDataPreviewState": true,
           "usesBoundedTrustSigningHelper": true,
           "usesContentFetchAndQueuePreview": true,
           "usesSdkBootstrap": true,
           "usesTrustHelpers": true
         },
         "expectedPermissions": [
+          "app.data.read",
+          "app.data.write",
           "content.fetch",
           "content.insert.app-document",
           "queue.read",
@@ -854,6 +945,30 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Trust Graph Preview reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "trust-graph",
+        "checks": {
+          "docsKeepTrustBackendOutOfScope": true,
+          "manifestUsesAppDataContract": true,
+          "noBrowserStorageOrRawAdminPath": true,
+          "permissionDisclosureMentionsAppData": true,
+          "persistsOnlyUiLocalPreviewState": true,
+          "usesSdkJsonRecordHelpers": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "identityPrivateMaterialExcluded": true,
+          "rawTrustStatementsExcluded": true,
+          "uiLocalSummariesOnly": true
+        }
+      },
+      "id": "reference-app.trust-graph-app-data-preview",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph UI-local app-data preview evidence passed."
     },
     {
       "details": {

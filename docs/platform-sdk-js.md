@@ -219,6 +219,37 @@ timestamps, and sanitized errors, but they must not persist raw feed bodies, raw
 private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, raw
 fetched content, or local paths in browser storage or release evidence.
 
+Durable app-owned state should use the v9 app-data helpers:
+
+```js
+await CryptaPlatform.data.records.putJson({
+  namespace: "ui-state",
+  key: "reader-state",
+  schemaVersion: 1,
+  value: {
+    selectedSubscriptionId,
+    sourceCount,
+  },
+});
+
+const state = await CryptaPlatform.data.records.getJson("ui-state", "reader-state");
+const records = await CryptaPlatform.data.records.list({ namespace: "ui-state", limit: 25 });
+const namespaces = await CryptaPlatform.data.namespaces.list();
+const status = await CryptaPlatform.data.status();
+```
+
+`CryptaPlatform.data.status()`, `CryptaPlatform.data.namespaces.*`,
+`CryptaPlatform.data.records.*`, `CryptaPlatform.data.export()`, and
+`CryptaPlatform.data.import()` wrap `/api/v1/app-data`. Reads require `app.data.read`; mutations,
+schema migration metadata, namespace clears, and imports require `app.data.write`. The helpers
+validate namespace and key path segments, use `URLSearchParams` for form bodies, bound obvious
+integer fields, and preserve standard SDK request options such as `signal`, `headers`,
+`bootstrap`, `force`, and `refreshBootstrap`.
+
+The SDK never writes durable app state to `localStorage` or `sessionStorage`. App data is for
+bounded app-owned user state, not secrets or identity material. Use AppVault for private material
+and keep raw app-data values out of release evidence.
+
 Trust Graph Preview uses the v7 trust helpers:
 
 ```js

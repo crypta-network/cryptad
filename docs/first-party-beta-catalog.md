@@ -109,12 +109,14 @@ changelog.summary=First public beta catalog entry.
 Profile Publisher descriptors should include the profile permissions and route-specific rationale:
 
 ```properties
-permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use
+permissions=queue.read,queue.write,content.insert.app-document,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
 permissions.rationale.vault.identities.create=Creates an app-owned profile identity without exporting private material.
 permissions.rationale.vault.identities.use=Uses the profile-document route for identity-bound profile publishing.
 permissions.rationale.content.insert.app-document=Queues the generated profile document through app-document insert without local source-path authority.
-api.minimumVersion=5
-api.maximumTestedVersion=7
+permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
+permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -122,17 +124,19 @@ Feed Reader descriptors should include the content-subscription, content-fetch, 
 publication rationales:
 
 ```properties
-permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write
+permissions=content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write
 permissions.rationale.content.fetch=Fetches subscribed feed documents through POST /api/v1/content/fetch without local source-path authority.
 permissions.rationale.content.subscribe=Registers bounded USK subscriptions with the platform scheduler and stores metadata only.
 permissions.rationale.content.insert.app-document=Queues generated feed documents through app-document insert.
 permissions.rationale.queue.write=Creates generated feed publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
+permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
-api.minimumVersion=8
-api.maximumTestedVersion=8
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -141,7 +145,7 @@ publication rationales, while making clear that the app is a local preview and n
 moderation system:
 
 ```properties
-permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use
+permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
 permissions.rationale.trust.read=Reads local trust graph scores and evidence for preview queries.
 permissions.rationale.trust.write=Imports local trust statements and manages local trust anchors.
 permissions.rationale.vault.identities.create=Creates an app-owned trust identity without exporting private material.
@@ -150,11 +154,13 @@ permissions.rationale.content.fetch=Fetches bounded Crypta trust documents selec
 permissions.rationale.content.insert.app-document=Publishes generated trust statements as Crypta content.
 permissions.rationale.queue.write=Creates generated trust statement publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
+permissions.rationale.app.data.read=Restores UI-local drafts, selected filters, and redacted import summaries.
+permissions.rationale.app.data.write=Saves bounded UI-local preview state without making the trust backend durable.
 categories=identity,trust,preview
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
-api.minimumVersion=7
-api.maximumTestedVersion=7
+api.minimumVersion=9
+api.maximumTestedVersion=9
 api.experimentalCapabilitiesAccepted=true
 ```
 

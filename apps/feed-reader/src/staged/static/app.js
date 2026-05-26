@@ -7,6 +7,9 @@
   const maxRememberedSnapshots = 12;
   const maxPublishResults = 5;
   const subscriptionPollIntervalSeconds = 5 * 60;
+  const dataNamespace = "ui-state";
+  const dataStateKey = "reader-state";
+  const dataSchemaVersion = 1;
 
   const state = {
     sources: [],
@@ -16,6 +19,7 @@
     publishResults: [],
     uploadQueueSortBy: null,
     uploadQueueReversed: false,
+    lastPublisherDraft: {},
   };
 
   const elements = {
@@ -40,6 +44,8 @@
     bindControls();
     try {
       await CryptaPlatform.bootstrap.load({ appId });
+      await loadDurableState();
+      restorePublisherDraft();
       await loadSubscriptions({ silent: true });
       renderSources();
       renderReader();
@@ -74,6 +80,7 @@
     if (added.followUsk) {
       await createSubscriptionForSource(added);
     }
+    await persistDurableState();
     renderSources();
     renderSubscriptions();
     setStatus(added.subscriptionId ? "Feed source subscribed." : "Feed source added.");
@@ -111,6 +118,7 @@
       source.lastFetchedAt = new Date().toLocaleTimeString();
       source.lastStatus = "Fetched";
       rememberSnapshot(normalizeSnapshot(source, snapshot));
+      await persistDurableState();
       renderSources();
       renderReader();
       setStatus("Feed snapshot fetched.", "success");
@@ -166,6 +174,7 @@
         setStatus("Subscriptions refreshed.");
       }
       setFollowStatus("Platform subscription metadata loaded.");
+      await persistDurableState();
     } catch (error) {
       if (!loadOptions.silent) {
         setStatus(CryptaPlatform.api.errorMessage(error), "error");
@@ -199,6 +208,7 @@
       source.subscriptionId = subscription.subscriptionId || "";
       source.lastStatus = "Subscribed";
       setFollowStatus("Platform subscription created.");
+      await persistDurableState();
     } catch (error) {
       source.lastStatus = CryptaPlatform.api.errorMessage(error);
       setFollowStatus(source.lastStatus);
@@ -219,6 +229,7 @@
       if (source) {
         await refreshSource(source, { follow: true, subscriptionSummary: subscription });
       }
+      await persistDurableState();
       renderSources();
       renderSubscriptions();
       setStatus("Subscription refresh requested.", "success");
@@ -261,6 +272,7 @@
           : "Subscription removed.",
         "success",
       );
+      await persistDurableState();
     } catch (error) {
       setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
@@ -274,6 +286,7 @@
     try {
       const response = await CryptaPlatform.content.subscriptions[action](subscriptionId);
       updateSubscriptionState(subscriptionFromResponse(response));
+      await persistDurableState();
       renderSources();
       renderSubscriptions();
       setStatus(message, "success");
@@ -301,11 +314,77 @@
     return options;
   }
 
+  async function loadDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    try {
+      const stored = await CryptaPlatform.data.records.getJson(dataNamespace, dataStateKey);
+      if (!stored || stored.schemaVersion !== dataSchemaVersion) {
+        return;
+      }
+      if (Array.isArray(stored.sources)) {
+        state.sources = stored.sources.slice(0, maxSources).map(normalizeStoredSource).filter(Boolean);
+      }
+      state.selectedSourceId = stringValue(stored.selectedSourceId);
+      if (Array.isArray(stored.fetchedSnapshots)) {
+        state.fetchedSnapshots = stored.fetchedSnapshots
+          .slice(0, maxRememberedSnapshots)
+          .map(normalizeStoredSnapshot)
+          .filter(Boolean);
+      }
+      if (stored.lastPublisherDraft && typeof stored.lastPublisherDraft === "object") {
+        state.lastPublisherDraft = stored.lastPublisherDraft;
+      }
+    } catch (error) {
+      // First launch or older nodes may not have a saved state record yet.
+    }
+  }
+
+  async function persistDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    try {
+      await CryptaPlatform.data.records.putJson({
+        namespace: dataNamespace,
+        key: dataStateKey,
+        schemaVersion: dataSchemaVersion,
+        value: durableStateValue(),
+      });
+    } catch (error) {
+      setFollowStatus("Durable feed state could not be saved.");
+    }
+  }
+
+  function durableStateValue() {
+    return {
+      schemaVersion: dataSchemaVersion,
+      sources: state.sources.slice(0, maxSources).map(durableSource),
+      selectedSourceId: state.selectedSourceId,
+      fetchedSnapshots: state.fetchedSnapshots
+        .slice(0, maxRememberedSnapshots)
+        .map(durableSnapshot),
+      lastPublisherDraft: publisherDraft(elements.publisherForm),
+    };
+  }
+
+  function dataHelpersAvailable() {
+    return (
+      CryptaPlatform.data &&
+      CryptaPlatform.data.records &&
+      typeof CryptaPlatform.data.records.getJson === "function" &&
+      typeof CryptaPlatform.data.records.putJson === "function"
+    );
+  }
+
   async function publishSnapshot(event) {
     event.preventDefault();
     try {
       const entry = buildDraftEntry(elements.publisherForm);
       const snapshot = buildPublishedSnapshot(elements.publisherForm, entry);
+      state.lastPublisherDraft = publisherDraft(elements.publisherForm);
+      await persistDurableState();
       const result = await CryptaPlatform.feed.publishSnapshot({
         insertUri: fieldValue(elements.publisherForm, "insertUri"),
         identifier: fieldValue(elements.publisherForm, "identifier") || generatedId("feed-publish"),
@@ -475,7 +554,16 @@
       summaryRow("Bytes", snapshot.bytesLength),
     );
     if (snapshot.items.length === 0) {
-      panel.append(text("p", "cr-empty", "No entries were returned for this snapshot."));
+      const entryCount = Number(snapshot.itemCount) || 0;
+      panel.append(
+        text(
+          "p",
+          "cr-empty",
+          entryCount > 0
+            ? `${entryCount} entries were seen in the last fetch. Fetch this source again to view entries.`
+            : "No entries were returned for this snapshot.",
+        ),
+      );
     }
     snapshot.items.forEach((entry) => {
       const item = document.createElement("article");
@@ -745,6 +833,7 @@
       title: stringValue(feedSnapshot && feedSnapshot.title) || source.label,
       updatedAt: stringValue(feedSnapshot && feedSnapshot.updatedAt),
       fetchedAt: new Date().toLocaleTimeString(),
+      itemCount: items.length,
       items,
     };
   }
@@ -851,6 +940,114 @@
     }
   }
 
+  function durableSource(source) {
+    return {
+      id: stringValue(source.id),
+      label: stringValue(source.label),
+      uri: stringValue(source.uri),
+      followUsk: !!source.followUsk,
+      subscriptionId: stringValue(source.subscriptionId),
+      lastFetchedAt: stringValue(source.lastFetchedAt),
+      lastStatus: stringValue(source.lastStatus),
+    };
+  }
+
+  function durableSnapshot(snapshot) {
+    return {
+      sourceId: stringValue(snapshot.sourceId),
+      sourceLabel: stringValue(snapshot.sourceLabel),
+      sourceUri: stringValue(snapshot.sourceUri),
+      resolvedUri: stringValue(snapshot.resolvedUri),
+      bytesLength: stringValue(snapshot.bytesLength),
+      title: stringValue(snapshot.title),
+      updatedAt: stringValue(snapshot.updatedAt),
+      fetchedAt: stringValue(snapshot.fetchedAt),
+      itemCount: snapshotItemCount(snapshot),
+    };
+  }
+
+  function normalizeStoredSource(source) {
+    if (!source || typeof source !== "object") {
+      return null;
+    }
+    const id = stringValue(source.id);
+    const uri = stringValue(source.uri);
+    if (!id || !uri) {
+      return null;
+    }
+    return {
+      id,
+      label: stringValue(source.label) || "Untitled feed",
+      uri,
+      followUsk: !!source.followUsk,
+      subscriptionId: stringValue(source.subscriptionId),
+      lastFetchedAt: stringValue(source.lastFetchedAt),
+      lastStatus: stringValue(source.lastStatus) || "Not fetched",
+    };
+  }
+
+  function normalizeStoredSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") {
+      return null;
+    }
+    const sourceId = stringValue(snapshot.sourceId);
+    if (!sourceId) {
+      return null;
+    }
+    return {
+      sourceId,
+      sourceLabel: stringValue(snapshot.sourceLabel),
+      sourceUri: stringValue(snapshot.sourceUri),
+      resolvedUri: stringValue(snapshot.resolvedUri),
+      bytesLength: stringValue(snapshot.bytesLength),
+      title: stringValue(snapshot.title),
+      updatedAt: stringValue(snapshot.updatedAt),
+      fetchedAt: stringValue(snapshot.fetchedAt),
+      itemCount: snapshotItemCount(snapshot),
+      items: [],
+    };
+  }
+
+  function snapshotItemCount(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") {
+      return 0;
+    }
+    const explicitCount = Number(snapshot.itemCount);
+    if (Number.isFinite(explicitCount) && explicitCount > 0) {
+      return Math.min(Math.floor(explicitCount), maxEntriesPerSnapshot);
+    }
+    return Array.isArray(snapshot.items)
+      ? Math.min(snapshot.items.length, maxEntriesPerSnapshot)
+      : 0;
+  }
+
+  function publisherDraft(form) {
+    return {
+      authorName: fieldValue(form, "authorName"),
+      authorProfileUri: fieldValue(form, "authorProfileUri"),
+      entryBody: fieldValue(form, "entryBody"),
+      entryTags: fieldValue(form, "entryTags"),
+      entryTitle: fieldValue(form, "entryTitle"),
+      entryUri: fieldValue(form, "entryUri"),
+      feedTitle: fieldValue(form, "feedTitle"),
+      identifier: fieldValue(form, "identifier"),
+    };
+  }
+
+  function restorePublisherDraft() {
+    const draft = state.lastPublisherDraft || {};
+    Object.keys(draft)
+      .filter((name) => name !== "insertUri")
+      .forEach((name) => setFieldValue(elements.publisherForm, name, draft[name]));
+  }
+
+  function setFieldValue(form, name, value) {
+    const field = form.elements.namedItem(name);
+    if (field && "value" in field) {
+      field.value = stringValue(value);
+    }
+  }
+
   function buildDraftEntry(form) {
     return {
       id: generatedId("entry"),
@@ -898,6 +1095,7 @@
 
   function selectSource(sourceId) {
     state.selectedSourceId = sourceId;
+    persistDurableState();
     renderSources();
     renderReader();
   }

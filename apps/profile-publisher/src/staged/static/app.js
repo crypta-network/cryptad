@@ -4,10 +4,18 @@
   const appId = "profile-publisher";
   const defaultProfileContentType = "application/vnd.crypta.profile+json";
   const maxRecentActions = 5;
+  const dataNamespace = "profile-draft";
+  const dataStateKey = "publisher-state";
+  const dataSchemaVersion = 1;
+  const durableSaveDelayMs = 150;
+  let durableSaveInFlight = false;
+  let durableSaveQueued = false;
+  let durableSaveTimer = 0;
   const state = {
     draft: {},
     grants: [],
     identities: [],
+    lastPublishedProfileUri: "",
     recentActions: [],
     selectedIdentityId: "",
     signedDocument: null,
@@ -42,6 +50,8 @@
     syncDraftFromForm();
     try {
       await CryptaPlatform.bootstrap.load({ appId });
+      await loadDurableState();
+      restoreDraftToForm();
       await Promise.all([refreshIdentities({ silent: true }), refreshUploadQueue({ silent: true })]);
       renderDocumentPreview(buildUnsignedProfilePreview());
       setStatus("Profile Publisher is ready.");
@@ -136,12 +146,14 @@
     setSelectedIdentityId(elements.identitySelect.value);
     renderSelectedIdentity();
     renderDocumentPreview(buildUnsignedProfilePreview());
+    persistDurableState();
   }
 
   function updateDraft() {
     syncDraftFromForm();
     state.signedDocument = null;
     renderDocumentPreview(buildUnsignedProfilePreview());
+    persistDurableState();
   }
 
   function previewDocument() {
@@ -298,6 +310,142 @@
     }
   }
 
+  async function loadDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    try {
+      const stored = await CryptaPlatform.data.records.getJson(dataNamespace, dataStateKey);
+      if (!stored || stored.schemaVersion !== dataSchemaVersion) {
+        return;
+      }
+      if (stored.draft && typeof stored.draft === "object") {
+        state.draft = normalizeStoredDraft(stored.draft);
+      }
+      state.selectedIdentityId = stringValue(stored.selectedIdentityId);
+      state.lastPublishedProfileUri = stringValue(stored.lastPublishedProfileUri);
+      if (Array.isArray(stored.recentActions)) {
+        state.recentActions = stored.recentActions
+          .slice(0, maxRecentActions)
+          .map(normalizeRecentAction)
+          .filter(Boolean);
+        renderRecentActions();
+      }
+    } catch (error) {
+      // First launch or older nodes may not have a saved draft record yet.
+    }
+  }
+
+  function persistDurableState() {
+    if (!dataHelpersAvailable()) {
+      return;
+    }
+    durableSaveQueued = true;
+    scheduleDurableStateSave();
+  }
+
+  function scheduleDurableStateSave() {
+    if (durableSaveInFlight) {
+      return;
+    }
+    if (durableSaveTimer) {
+      window.clearTimeout(durableSaveTimer);
+    }
+    durableSaveTimer = window.setTimeout(() => {
+      durableSaveTimer = 0;
+      flushDurableStateSaves();
+    }, durableSaveDelayMs);
+  }
+
+  async function flushDurableStateSaves() {
+    if (durableSaveInFlight || !dataHelpersAvailable()) {
+      return;
+    }
+    durableSaveInFlight = true;
+    try {
+      while (durableSaveQueued) {
+        durableSaveQueued = false;
+        await writeDurableStateSnapshot();
+      }
+    } finally {
+      durableSaveInFlight = false;
+      if (durableSaveQueued) {
+        scheduleDurableStateSave();
+      }
+    }
+  }
+
+  async function writeDurableStateSnapshot() {
+    try {
+      await CryptaPlatform.data.records.putJson({
+        namespace: dataNamespace,
+        key: dataStateKey,
+        schemaVersion: dataSchemaVersion,
+        value: durableStateValue(),
+      });
+    } catch (error) {
+      setStatus("Profile draft could not be saved.", "error");
+    }
+  }
+
+  function durableStateValue() {
+    return {
+      schemaVersion: dataSchemaVersion,
+      draft: state.draft,
+      selectedIdentityId: state.selectedIdentityId,
+      lastPublishedProfileUri: state.lastPublishedProfileUri,
+      recentActions: state.recentActions.slice(0, maxRecentActions),
+    };
+  }
+
+  function dataHelpersAvailable() {
+    return (
+      CryptaPlatform.data &&
+      CryptaPlatform.data.records &&
+      typeof CryptaPlatform.data.records.getJson === "function" &&
+      typeof CryptaPlatform.data.records.putJson === "function"
+    );
+  }
+
+  function normalizeStoredDraft(draft) {
+    return {
+      avatarUri: stringValue(draft.avatarUri),
+      bio: stringValue(draft.bio),
+      contactUri: stringValue(draft.contactUri),
+      displayName: stringValue(draft.displayName),
+      tags: Array.isArray(draft.tags) ? draft.tags.map(stringValue).filter(Boolean) : [],
+      website: stringValue(draft.website),
+    };
+  }
+
+  function normalizeRecentAction(action) {
+    if (!action || typeof action !== "object") {
+      return null;
+    }
+    return {
+      at: stringValue(action.at),
+      kind: stringValue(action.kind),
+      outcome: stringValue(action.outcome),
+      subject: stringValue(action.subject),
+    };
+  }
+
+  function restoreDraftToForm() {
+    setFieldValue(elements.profileForm, "avatarUri", state.draft.avatarUri);
+    setFieldValue(elements.profileForm, "bio", state.draft.bio);
+    setFieldValue(elements.profileForm, "contactUri", state.draft.contactUri);
+    setFieldValue(elements.profileForm, "displayName", state.draft.displayName);
+    setFieldValue(elements.profileForm, "tags", state.draft.tags.join(", "));
+    setFieldValue(elements.profileForm, "website", state.draft.website);
+  }
+
+  function setFieldValue(form, name, value) {
+    const field = form.querySelector(`[name="${name}"]`);
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      field.value = stringValue(value);
+    }
+  }
+
   function renderIdentities() {
     elements.identitySelect.replaceChildren();
     if (state.identities.length === 0) {
@@ -387,6 +535,9 @@
   }
 
   function renderPublishResult(data) {
+    state.lastPublishedProfileUri = stringValue(
+      data && (data.profileUri || data.finalUri || data.uri || data.targetUri || data.requestUri),
+    );
     recordRecentAction("Publish", data.identifier, data.outcome || data.status || "queued");
   }
 
@@ -399,12 +550,13 @@
     });
     state.recentActions = state.recentActions.slice(0, maxRecentActions);
     renderRecentActions();
+    persistDurableState();
   }
 
   function renderRecentActions() {
     if (state.recentActions.length === 0) {
       elements.recentActions.replaceChildren(
-        text("p", "cr-empty", "Recent publish actions stay only in this page's memory."),
+        text("p", "cr-empty", "Recent publish actions appear after preview or publish work."),
       );
       return;
     }

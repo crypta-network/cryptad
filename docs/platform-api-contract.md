@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=8
+contractVersion=9
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 8,
+    "contractVersion": 9,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -190,6 +190,40 @@ daemon exception messages. The scheduler records queue pressure with stable runt
 by parsing legacy queue HTML; when pressure is clear, it records safe statuses such as
 `queue_pressure` or `runtime_unavailable`. This is not a generic crawler and does not add
 arbitrary HTTP/HTTPS fetch support.
+
+Contract version 9 adds bounded durable app-owned data under `/api/v1/app-data`:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/app-data/status` | `app.data.read` | Read the caller app's record count, namespace count, stored bytes, effective caps, quota status, and sanitized warnings. |
+| `GET /api/v1/app-data/namespaces` | `app.data.read` | List namespace metadata for the caller app. |
+| `GET /api/v1/app-data/namespaces/{namespace}` | `app.data.read` | Read one namespace and its bounded schema migration history. |
+| `POST /api/v1/app-data/namespaces/{namespace}/schema` | `app.data.write` | Record a schema-version update or migration summary without executing app-provided code. |
+| `DELETE /api/v1/app-data/namespaces/{namespace}` | `app.data.write` | Clear one caller-owned namespace. |
+| `GET /api/v1/app-data/records` | `app.data.read` | List bounded record summaries with optional namespace, limit, and cursor filters. |
+| `GET /api/v1/app-data/records/{namespace}/{key}` | `app.data.read` | Read one caller-owned record with metadata and bounded value output. |
+| `POST /api/v1/app-data/records` | `app.data.write` | Create or replace one bounded caller-owned record. |
+| `DELETE /api/v1/app-data/records/{namespace}/{key}` | `app.data.write` | Delete one caller-owned record. |
+| `GET /api/v1/app-data/export` | `app.data.read` | Export bounded caller-owned data as a structured JSON payload with base64 values. |
+| `POST /api/v1/app-data/import` | `app.data.write` | Import a bounded app-data export in merge or replace-namespace mode. |
+
+All app-data routes require app principals and scope records to
+`request.principal().appId()`. Apps never name a host filesystem path or another app id when
+accessing records. Namespace and key identifiers are normalized and bounded; record values are
+stored under hashed key directories in the file-backed store rather than raw logical path segments.
+
+`app.data.read` grants reads of the caller app's status, namespace metadata, record values, and
+bounded exports. `app.data.write` grants create, replace, delete, import, clear, and schema
+metadata updates for the caller app only. Store-level caps remain positive even when the manifest
+omits `quota.data.bytes` or sets it to zero; positive manifest data quotas are also enforced when
+an installed app can be described.
+
+The app-data store is not AppVault, not secret storage, not a generic filesystem API, and not a
+database engine. Certification evidence must summarize counts, byte sizes, schema versions, caps,
+digests, booleans, and sanitized error codes. It must not include raw app-data values, raw request
+bodies, store roots, app data directories, staging paths, private insert URIs, private keys, app
+process tokens, browser-session tokens, form passwords, or raw vault secret material. See
+[app-data-store.md](app-data-store.md).
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,

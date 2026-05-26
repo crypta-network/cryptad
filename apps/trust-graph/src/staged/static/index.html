@@ -37,15 +37,18 @@
         <li><code>vault.identities.read</code> lists visible identity metadata.</li>
         <li><code>vault.identities.create</code> creates app-owned statement identities.</li>
         <li><code>vault.identities.use</code> requests vault-authored trust statements.</li>
+        <li><code>app.data.read</code> restores UI-local drafts, filters, and import summaries.</li>
+        <li><code>app.data.write</code> saves bounded UI-local preview state only.</li>
       </ul>
     </section>
 
     <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
       <h2 id="safe-use-title">Overview</h2>
       <p>Trust Graph Preview is a local preview, not full WoT or moderation.</p>
-      <p>App id: <code>trust-graph</code>. Platform API contract: <code>7</code>.</p>
+      <p>App id: <code>trust-graph</code>. Platform API contract: <code>9</code>.</p>
       <ul>
-        <li>Anchors, identities, fetched statements, scores, and results stay in memory.</li>
+        <li>Draft form values, selected filters, and redacted import summaries persist through app data.</li>
+        <li>The trust graph backend remains a local preview and is not made durable by this app state.</li>
         <li>Anchors are local and are not published automatically.</li>
         <li>Fetched statement content is rendered only as text.</li>
         <li>Statement authorship uses vault helpers without exposing private signing secrets.</li>

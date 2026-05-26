@@ -34,6 +34,8 @@
         <li><code>vault.identities.read</code> reads granted public identity metadata.</li>
         <li><code>vault.identities.create</code> creates an app-owned profile signing identity.</li>
         <li><code>vault.identities.use</code> requests domain-separated signatures without exporting private material.</li>
+        <li><code>app.data.read</code> restores the app-owned profile draft and publish summaries.</li>
+        <li><code>app.data.write</code> saves bounded drafts and publish history summaries.</li>
       </ul>
     </section>
 
@@ -82,7 +84,7 @@
 
     <form class="cr-card profile-form" id="profile-form">
       <div class="panel-heading">
-        <p class="cr-label">In-memory draft</p>
+        <p class="cr-label">Stored draft</p>
         <h2>Profile composition</h2>
       </div>
       <label class="cr-field">
@@ -212,7 +214,7 @@
           Queue app-document publish
         </button>
         <div class="publish-form__wide" id="recent-actions">
-          <p class="cr-empty">Recent publish actions stay only in this page's memory.</p>
+          <p class="cr-empty">Recent publish summaries restore from app data after restart.</p>
         </div>
       </form>
     </section>
