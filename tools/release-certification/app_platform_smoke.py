@@ -3730,6 +3730,8 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
         "router": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java",
         "routes": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppDataRoutes.java",
         "service": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataService.java",
+        "exportPayload": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataExportPayload.java",
         "fileStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/FileAppDataStore.java",
         "config": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataStoreConfig.java",
         "handler": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataApiHandler.java",
@@ -3797,7 +3799,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
             and "maxExportBytes" in text["config"]
             and "maxImportBytes" in text["config"]
             and "quota.data.bytes" in text["config"]
-            and "app_data_import_app_mismatch" in text["service"]
+            and "app_data_import_app_mismatch" in text["exportPayload"]
         ),
         "schemaMigrationMetadata": (
             "updateSchema" in text["service"]
@@ -7826,10 +7828,14 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appdata_api_dir / "AppDataService.java").write_text(
         "final class AppDataService { static final String CAPABILITY_APP_DATA_READ = \"app.data.read\"; "
         "static final String CAPABILITY_APP_DATA_WRITE = \"app.data.write\"; "
-        "String mismatch = \"app_data_import_app_mismatch\"; "
         "boolean storeUsageOutsideAppDataDir; "
         "void updateSchema(){ String fromSchemaVersion; String toSchemaVersion; } "
         "String lastMigrationAt; String quota = \"quota.data.bytes\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataExportPayload.java").write_text(
+        "final class AppDataExportPayload { "
+        "String mismatch = \"app_data_import_app_mismatch\"; }\n",
         encoding="utf-8",
     )
     (appdata_api_dir / "FileAppDataStore.java").write_text(
