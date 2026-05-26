@@ -314,14 +314,7 @@ final class PlatformApiAppRoutes {
 
   private void clearAppDataState(String appId) {
     if (appDataService != null) {
-      try {
-        appDataService.clearAppState(appId);
-      } catch (RuntimeException exception) {
-        LOG.log(
-            System.Logger.Level.WARNING,
-            "Failed to clear durable app-data state for removed app: "
-                + cleanupFailureReason(exception));
-      }
+      appDataService.clearAppState(appId);
     }
   }
 

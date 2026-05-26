@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataStore;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.appdist.AppUiMode;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +32,15 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("java:S100")
 class PlatformApiAppDataRouterTest {
   private static final String APP_ID = "feed-reader";
+  private static final String FIELD_RECORD_COUNT = "recordCount";
+  private static final String JSON_DATA_PRESERVED_FALSE = "\"dataPreserved\":false";
+  private static final String KEY_SETTINGS = "settings";
+  private static final String METHOD_DELETE = "DELETE";
+  private static final String PARAM_VALUE_TEXT = "valueText";
+  private static final String ROUTE_APP_DATA = "app-data";
+  private static final String ROUTE_APPS = "apps";
+  private static final String ROUTE_RECORDS = "records";
+  private static final String ROUTE_UI_STATE = "ui-state";
   private static final Instant NOW = Instant.parse("2026-05-24T12:00:00Z");
 
   @Test
@@ -43,23 +54,24 @@ class PlatformApiAppDataRouterTest {
                 AppDataService.CAPABILITY_APP_DATA_READ, AppDataService.CAPABILITY_APP_DATA_WRITE));
 
     PlatformApiResponse write =
-        router.route(request("POST", List.of("app-data", "records"), recordParams(), principal));
+        router.route(
+            request("POST", List.of(ROUTE_APP_DATA, ROUTE_RECORDS), recordParams(), principal));
     PlatformApiResponse list =
-        router.route(request("GET", List.of("app-data", "records"), Map.of(), principal));
+        router.route(request("GET", List.of(ROUTE_APP_DATA, ROUTE_RECORDS), Map.of(), principal));
     PlatformApiResponse read =
         router.route(
             request(
                 "GET",
-                List.of("app-data", "records", "ui-state", "settings"),
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS, ROUTE_UI_STATE, KEY_SETTINGS),
                 Map.of(),
                 principal));
     PlatformApiResponse status =
-        router.route(request("GET", List.of("app-data", "status"), Map.of(), principal));
+        router.route(request("GET", List.of(ROUTE_APP_DATA, "status"), Map.of(), principal));
     PlatformApiResponse delete =
         router.route(
             request(
-                "DELETE",
-                List.of("app-data", "records", "ui-state", "settings"),
+                METHOD_DELETE,
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS, ROUTE_UI_STATE, KEY_SETTINGS),
                 Map.of(),
                 principal));
 
@@ -68,9 +80,10 @@ class PlatformApiAppDataRouterTest {
     assertEquals(200, read.statusCode());
     assertEquals(200, status.statusCode());
     assertEquals(200, delete.statusCode());
-    assertTrue(read.body().contains("\"valueText\":\"{\\\"theme\\\":\\\"dark\\\"}\""));
-    assertTrue(list.body().contains("\"records\""));
-    assertFalse(list.body().contains("valueText"));
+    assertTrue(
+        read.body().contains("\"" + PARAM_VALUE_TEXT + "\":\"{\\\"theme\\\":\\\"dark\\\"}\""));
+    assertTrue(list.body().contains("\"" + ROUTE_RECORDS + "\""));
+    assertFalse(list.body().contains(PARAM_VALUE_TEXT));
   }
 
   @Test
@@ -87,7 +100,10 @@ class PlatformApiAppDataRouterTest {
     PlatformApiResponse response =
         router.route(
             request(
-                "GET", List.of("app-data", "records", "ui-state", "settings"), Map.of(), other));
+                "GET",
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS, ROUTE_UI_STATE, KEY_SETTINGS),
+                Map.of(),
+                other));
 
     assertEquals(404, response.statusCode());
     assertTrue(response.body().contains("app_data_record_not_found"));
@@ -100,7 +116,7 @@ class PlatformApiAppDataRouterTest {
         router.route(
             request(
                 "GET",
-                List.of("app-data", "records"),
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS),
                 Map.of(),
                 PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("app.data.write"))));
     PlatformApiResponse unavailable =
@@ -108,7 +124,7 @@ class PlatformApiAppDataRouterTest {
             .route(
                 request(
                     "GET",
-                    List.of("app-data", "records"),
+                    List.of(ROUTE_APP_DATA, ROUTE_RECORDS),
                     Map.of(),
                     PlatformApiPrincipal.appBrowserSession(
                         APP_ID, List.of(AppDataService.CAPABILITY_APP_DATA_READ))));
@@ -116,7 +132,7 @@ class PlatformApiAppDataRouterTest {
         router.route(
             request(
                 "GET",
-                List.of("app-data", "records"),
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS),
                 Map.of(),
                 PlatformApiPrincipal.hostOperator()));
 
@@ -134,12 +150,16 @@ class PlatformApiAppDataRouterTest {
         router.route(
             request(
                 "POST",
-                List.of("app-data", "records"),
+                List.of(ROUTE_APP_DATA, ROUTE_RECORDS),
                 params(
-                    "namespace", "../secret",
-                    "key", "settings",
-                    "schemaVersion", "1",
-                    "valueText", "one"),
+                    "namespace",
+                    "../secret",
+                    "key",
+                    KEY_SETTINGS,
+                    "schemaVersion",
+                    "1",
+                    PARAM_VALUE_TEXT,
+                    "one"),
                 PlatformApiPrincipal.appBrowserSession(
                     APP_ID, List.of(AppDataService.CAPABILITY_APP_DATA_WRITE))));
 
@@ -159,11 +179,34 @@ class PlatformApiAppDataRouterTest {
     PlatformApiResponse response =
         router.route(
             request(
-                "DELETE", List.of("apps", APP_ID), Map.of(), PlatformApiPrincipal.hostOperator()));
+                METHOD_DELETE,
+                List.of(ROUTE_APPS, APP_ID),
+                Map.of(),
+                PlatformApiPrincipal.hostOperator()));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"dataPreserved\":false"));
-    assertEquals(0, service.status(APP_ID).get("recordCount"));
+    assertTrue(response.body().contains(JSON_DATA_PRESERVED_FALSE));
+    assertEquals(0, service.status(APP_ID).get(FIELD_RECORD_COUNT));
+    verify(appHost).uninstall(APP_ID, AppUninstallOptions.removeAll());
+  }
+
+  @Test
+  void route_whenAppUninstallCannotClearAppData_expectStoreUnavailable() throws Exception {
+    AppDataService service = failingClearService();
+    AppHost appHost = appHost();
+    PlatformApiRouter router = router(appHost, service);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                METHOD_DELETE,
+                List.of(ROUTE_APPS, APP_ID),
+                Map.of(),
+                PlatformApiPrincipal.hostOperator()));
+
+    assertEquals(503, response.statusCode());
+    assertTrue(response.body().contains("app_data_store_unavailable"));
+    assertFalse(response.body().contains(JSON_DATA_PRESERVED_FALSE));
     verify(appHost).uninstall(APP_ID, AppUninstallOptions.removeAll());
   }
 
@@ -177,14 +220,14 @@ class PlatformApiAppDataRouterTest {
     PlatformApiResponse response =
         router.route(
             request(
-                "DELETE",
-                List.of("apps", APP_ID),
+                METHOD_DELETE,
+                List.of(ROUTE_APPS, APP_ID),
                 Map.of("preserveData", List.of("true")),
                 PlatformApiPrincipal.hostOperator()));
 
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"dataPreserved\":true"));
-    assertEquals(1, service.status(APP_ID).get("recordCount"));
+    assertEquals(1, service.status(APP_ID).get(FIELD_RECORD_COUNT));
     verify(appHost).uninstall(APP_ID, AppUninstallOptions.preservingData());
   }
 
@@ -198,15 +241,15 @@ class PlatformApiAppDataRouterTest {
     PlatformApiResponse response =
         router.route(
             request(
-                "DELETE",
-                List.of("apps", APP_ID),
+                METHOD_DELETE,
+                List.of(ROUTE_APPS, APP_ID),
                 Map.of("preserveData", List.of("true")),
                 PlatformApiPrincipal.appBrowserSession(
                     APP_ID, List.of(PlatformApiCapabilities.APPS_MANAGE))));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"dataPreserved\":false"));
-    assertEquals(0, service.status(APP_ID).get("recordCount"));
+    assertTrue(response.body().contains(JSON_DATA_PRESERVED_FALSE));
+    assertEquals(0, service.status(APP_ID).get(FIELD_RECORD_COUNT));
     verify(appHost).uninstall(APP_ID, AppUninstallOptions.removeAll());
   }
 
@@ -233,6 +276,17 @@ class PlatformApiAppDataRouterTest {
         new network.crypta.platform.apphost.AppDiskUsageScanner());
   }
 
+  private static AppDataService failingClearService() throws java.io.IOException {
+    AppDataStore store = mock(AppDataStore.class);
+    doThrow(new java.io.IOException("delete denied")).when(store).deleteAllForApp(APP_ID);
+    return new AppDataService(
+        store,
+        null,
+        new AppDataStoreConfig(128, 16, 4, 4096, 4096, 8),
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new network.crypta.platform.apphost.AppDiskUsageScanner());
+  }
+
   private static PlatformApiRequest request(
       String method,
       List<String> segments,
@@ -243,11 +297,16 @@ class PlatformApiAppDataRouterTest {
 
   private static Map<String, List<String>> recordParams() {
     return params(
-        "namespace", "ui-state",
-        "key", "settings",
-        "contentType", "application/json",
-        "schemaVersion", "1",
-        "valueText", "{\"theme\":\"dark\"}");
+        "namespace",
+        ROUTE_UI_STATE,
+        "key",
+        KEY_SETTINGS,
+        "contentType",
+        "application/json",
+        "schemaVersion",
+        "1",
+        PARAM_VALUE_TEXT,
+        "{\"theme\":\"dark\"}");
   }
 
   private static Map<String, List<String>> params(String... pairs) {
