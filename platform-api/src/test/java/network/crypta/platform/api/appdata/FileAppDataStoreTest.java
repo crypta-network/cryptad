@@ -117,7 +117,7 @@ class FileAppDataStoreTest {
   }
 
   @Test
-  void listRecordSummaries_whenValueHashDoesNotMatch_expectMetadataOnlySummaryStillBounded()
+  void listRecordSummaries_whenValueHashDoesNotMatch_expectSummaryButRecordReadFailure()
       throws Exception {
     FileAppDataStore store = new FileAppDataStore(tempDir);
     AppDataRecord appDataRecord =
@@ -139,8 +139,33 @@ class FileAppDataStoreTest {
     assertEquals(SETTINGS_KEY, summary.key());
     assertEquals(3, summary.valueBytes());
     assertEquals(appDataRecord.sha256(), summary.sha256());
-    assertTrue(store.readRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).isEmpty());
+    assertThrows(
+        IOException.class, () -> store.readRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY));
     assertEquals(1, store.listNamespaces(APP_ID).getFirst().recordCount());
+  }
+
+  @Test
+  void readRecord_whenCurrentValueFileIsTruncated_expectStoreFailure() throws Exception {
+    FileAppDataStore store = new FileAppDataStore(tempDir);
+    store.writeRecord(
+        new AppDataRecord(
+            APP_ID,
+            UI_STATE_NAMESPACE,
+            SETTINGS_KEY,
+            new AppDataRecord.Payload(TEXT_PLAIN, 1, "one".getBytes(StandardCharsets.UTF_8)),
+            NOW,
+            NOW));
+    Files.writeString(findValueFile(), "x", StandardCharsets.UTF_8);
+
+    IOException readFailure =
+        assertThrows(
+            IOException.class, () -> store.readRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY));
+    IOException summaryFailure =
+        assertThrows(
+            IOException.class, () -> store.listRecordSummaries(APP_ID, UI_STATE_NAMESPACE));
+
+    assertFalse(readFailure.getMessage().contains(tempDir.toString()));
+    assertFalse(summaryFailure.getMessage().contains(tempDir.toString()));
   }
 
   @Test

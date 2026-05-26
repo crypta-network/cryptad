@@ -502,7 +502,7 @@ public final class FileAppDataStore implements AppDataStore {
       byte[] value =
           readBoundedValue(metadata.valueFile(), metadata.summary().valueBytes()).orElse(null);
       if (value == null) {
-        return Optional.empty();
+        throw valueFileUnavailable();
       }
       AppDataRecord appDataRecord =
           new AppDataRecord(
@@ -514,10 +514,10 @@ public final class FileAppDataStore implements AppDataStore {
               metadata.summary().createdAt(),
               metadata.summary().updatedAt());
       if (appDataRecord.valueBytes() != metadata.summary().valueBytes()) {
-        return Optional.empty();
+        throw valueFileUnavailable();
       }
       if (!appDataRecord.sha256().equals(metadata.summary().sha256())) {
-        return Optional.empty();
+        throw valueFileUnavailable();
       }
       return Optional.of(appDataRecord);
     } catch (RuntimeException _) {
@@ -556,13 +556,8 @@ public final class FileAppDataStore implements AppDataStore {
       if (!expectedAppId.equals(appId)) {
         return Optional.empty();
       }
-      Path valueFile = generationDirectory.resolve(VALUE_FILE);
-      if (regularFileMissingOrHasSymlinkAncestor(valueFile)) {
-        return Optional.empty();
-      }
       int valueBytes = nonNegativeInt(properties.getProperty(KEY_VALUE_BYTES));
-      long fileBytes = fileSizeNoFollow(valueFile);
-      if (valueBytes > maxRecordBytes || fileBytes > maxRecordBytes || fileBytes != valueBytes) {
+      if (valueBytes > maxRecordBytes) {
         return Optional.empty();
       }
       AppDataRecordSummary summary =
@@ -581,10 +576,26 @@ public final class FileAppDataStore implements AppDataStore {
       if (expectedKey != null && !expectedKey.equals(summary.key())) {
         return Optional.empty();
       }
+      Path valueFile = generationDirectory.resolve(VALUE_FILE);
+      validateCurrentValueFile(valueFile, valueBytes);
       return Optional.of(new StoredRecordMetadata(appId, summary, valueFile));
     } catch (RuntimeException _) {
       return Optional.empty();
     }
+  }
+
+  private void validateCurrentValueFile(Path valueFile, int expectedBytes) throws IOException {
+    if (regularFileMissingOrHasSymlinkAncestor(valueFile)) {
+      throw valueFileUnavailable();
+    }
+    long fileBytes = fileSizeNoFollow(valueFile);
+    if (fileBytes > maxRecordBytes || fileBytes != expectedBytes) {
+      throw valueFileUnavailable();
+    }
+  }
+
+  private static IOException valueFileUnavailable() {
+    return new IOException("app-data value file is unavailable");
   }
 
   private Optional<byte[]> readBoundedValue(Path valueFile, int expectedBytes) throws IOException {

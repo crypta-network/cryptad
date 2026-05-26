@@ -132,16 +132,38 @@ public record AppDataExportPayload(
    * @throws PlatformApiException if the payload is not valid app-data export JSON
    */
   public static AppDataExportPayload parse(byte[] bytes) {
+    return parse(bytes, null);
+  }
+
+  /*
+   * Parses an import for the authenticated caller. Top-level and per-entry app ids must either be
+   * absent or match the caller; omitted entry ids are filled with the caller before the service
+   * performs quota preflight and commits records.
+   */
+  static AppDataExportPayload parseForImport(byte[] bytes, String callerAppId) {
+    return parse(bytes, AppDataRecord.normalizeAppId(callerAppId));
+  }
+
+  private static AppDataExportPayload parse(byte[] bytes, String callerAppId) {
     Object parsed = AppDataJsonParser.parse(new String(bytes, StandardCharsets.UTF_8));
     if (!(parsed instanceof Map<?, ?> map)) {
       throw invalidPayload();
     }
     int exportVersion = positiveInt(number(map.get(FIELD_EXPORT_VERSION)), FIELD_EXPORT_VERSION);
     String appId = stringOrNull(map.get(FIELD_APP_ID));
+    if (appId != null) {
+      appId = AppDataRecord.normalizeAppId(appId);
+    }
+    if (callerAppId != null && appId != null && !appId.equals(callerAppId)) {
+      throw appMismatch();
+    }
+    String effectiveAppId = callerAppId == null ? appId : callerAppId;
     Instant exportedAt = instant(string(map.get(FIELD_EXPORTED_AT)));
-    List<AppDataNamespaceMetadata> namespaces = namespaces(list(map.get(FIELD_NAMESPACES)), appId);
-    List<AppDataRecord> records = records(list(map.get(FIELD_RECORDS)), appId, exportedAt);
-    return new AppDataExportPayload(exportVersion, appId, exportedAt, namespaces, records);
+    List<AppDataNamespaceMetadata> namespaces =
+        namespaces(list(map.get(FIELD_NAMESPACES)), appId, callerAppId);
+    List<AppDataRecord> records =
+        records(list(map.get(FIELD_RECORDS)), appId, exportedAt, callerAppId);
+    return new AppDataExportPayload(exportVersion, effectiveAppId, exportedAt, namespaces, records);
   }
 
   private static Map<String, Object> recordJson(AppDataRecord appDataRecord) {
@@ -150,16 +172,18 @@ public record AppDataExportPayload(
     return json;
   }
 
-  private static List<AppDataNamespaceMetadata> namespaces(List<?> rawNamespaces, String appId) {
+  private static List<AppDataNamespaceMetadata> namespaces(
+      List<?> rawNamespaces, String appId, String callerAppId) {
     return rawNamespaces.stream()
-        .map(item -> namespace(asMap(item), appId))
+        .map(item -> namespace(asMap(item), appId, callerAppId))
         .sorted(java.util.Comparator.comparing(AppDataNamespaceMetadata::namespace))
         .toList();
   }
 
-  private static AppDataNamespaceMetadata namespace(Map<?, ?> map, String payloadAppId) {
+  private static AppDataNamespaceMetadata namespace(
+      Map<?, ?> map, String payloadAppId, String callerAppId) {
     String namespace = string(map.get("namespace"));
-    String appId = payloadAppId == null ? stringOrNull(map.get(FIELD_APP_ID)) : payloadAppId;
+    String appId = entryAppId(payloadAppId, stringOrNull(map.get(FIELD_APP_ID)), callerAppId);
     if (appId == null) {
       appId = "import-app";
     }
@@ -199,17 +223,19 @@ public record AppDataExportPayload(
     }
   }
 
-  private static List<AppDataRecord> records(List<?> rawRecords, String appId, Instant fallbackAt) {
+  private static List<AppDataRecord> records(
+      List<?> rawRecords, String appId, Instant fallbackAt, String callerAppId) {
     return rawRecords.stream()
-        .map(item -> parseRecord(asMap(item), appId, fallbackAt))
+        .map(item -> parseRecord(asMap(item), appId, fallbackAt, callerAppId))
         .sorted(
             java.util.Comparator.comparing(AppDataRecord::namespace)
                 .thenComparing(AppDataRecord::key))
         .toList();
   }
 
-  private static AppDataRecord parseRecord(Map<?, ?> map, String payloadAppId, Instant fallbackAt) {
-    String appId = payloadAppId == null ? stringOrNull(map.get(FIELD_APP_ID)) : payloadAppId;
+  private static AppDataRecord parseRecord(
+      Map<?, ?> map, String payloadAppId, Instant fallbackAt, String callerAppId) {
+    String appId = entryAppId(payloadAppId, stringOrNull(map.get(FIELD_APP_ID)), callerAppId);
     if (appId == null) {
       appId = "import-app";
     }
@@ -231,6 +257,16 @@ public record AppDataExportPayload(
             value),
         createdAt,
         updatedAt);
+  }
+
+  private static String entryAppId(String payloadAppId, String declaredAppId, String callerAppId) {
+    if (callerAppId == null) {
+      return declaredAppId == null ? payloadAppId : declaredAppId;
+    }
+    if (declaredAppId != null && !AppDataRecord.normalizeAppId(declaredAppId).equals(callerAppId)) {
+      throw appMismatch();
+    }
+    return callerAppId;
   }
 
   private static Map<?, ?> asMap(Object item) {
@@ -315,5 +351,10 @@ public record AppDataExportPayload(
   private static PlatformApiException invalidPayload() {
     return new PlatformApiException(
         400, "invalid_app_data_import", "Invalid app-data import payload.");
+  }
+
+  private static PlatformApiException appMismatch() {
+    return new PlatformApiException(
+        403, "app_data_import_app_mismatch", "App-data import belongs to another app.");
   }
 }

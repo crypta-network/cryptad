@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.when;
 
 class AppDataServiceTest {
   private static final String APP_ID = "feed-reader";
+  private static final String OTHER_APP_ID = "other-app";
   private static final String UI_STATE_NAMESPACE = "ui-state";
   private static final String PROFILE_DRAFT_NAMESPACE = "profile-draft";
   private static final String SETTINGS_KEY = "settings";
@@ -47,6 +49,7 @@ class AppDataServiceTest {
   private static final String PARAM_FROM_SCHEMA_VERSION = "fromSchemaVersion";
   private static final String PARAM_TO_SCHEMA_VERSION = "toSchemaVersion";
   private static final String ERROR_QUOTA_EXCEEDED = "app_data_quota_exceeded";
+  private static final String THEME_DARK_JSON = "{\"theme\":\"dark\"}";
   private static final Instant NOW = Instant.parse("2026-05-24T12:00:00Z");
 
   @TempDir private Path tempDir;
@@ -174,8 +177,7 @@ class AppDataServiceTest {
   @Test
   void exportImport_whenPayloadRoundTrips_expectValuesCopiedAndOtherAppRejected() {
     AppDataService service = service(config(128, 16, 4, 4096, 4096));
-    service.putRecord(
-        APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "{\"theme\":\"dark\"}"));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, THEME_DARK_JSON));
 
     Map<String, Object> exported = service.exportData(APP_ID, Map.of());
     String payloadBase64 = (String) exported.get(FIELD_PAYLOAD_BASE64);
@@ -186,15 +188,49 @@ class AppDataServiceTest {
 
     assertEquals(true, imported.get(FIELD_IMPORTED));
     assertEquals(
-        "{\"theme\":\"dark\"}",
+        THEME_DARK_JSON,
         target.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
     Map<String, List<String>> mismatchedAppImportParams =
         params(FIELD_PAYLOAD_BASE64, payloadBase64);
     PlatformApiException mismatch =
         assertThrows(
             PlatformApiException.class,
-            () -> target.importData("other-app", mismatchedAppImportParams));
+            () -> target.importData(OTHER_APP_ID, mismatchedAppImportParams));
     assertEquals("app_data_import_app_mismatch", mismatch.errorCode());
+  }
+
+  @Test
+  void importData_whenTopLevelAppIdOmittedButEntryAppIdsDiffer_expectAppMismatch() {
+    String payloadWithoutTopLevelAppId =
+        new String(themeExportPayloadBytes(), StandardCharsets.UTF_8)
+            .replaceFirst("\"appId\":\"" + APP_ID + "\",", "");
+    String payloadBase64 =
+        payloadBase64(payloadWithoutTopLevelAppId.getBytes(StandardCharsets.UTF_8));
+    AppDataService target = service(config(128, 16, 4, 4096, 4096));
+    Map<String, List<String>> importParams = params(FIELD_PAYLOAD_BASE64, payloadBase64);
+
+    PlatformApiException mismatch =
+        assertThrows(
+            PlatformApiException.class, () -> target.importData(OTHER_APP_ID, importParams));
+
+    assertEquals("app_data_import_app_mismatch", mismatch.errorCode());
+  }
+
+  @Test
+  void importData_whenAllAppIdsOmitted_expectImportedForCaller() {
+    String payloadWithoutAppIds =
+        new String(themeExportPayloadBytes(), StandardCharsets.UTF_8)
+            .replace("\"appId\":\"" + APP_ID + "\",", "");
+    String payloadBase64 = payloadBase64(payloadWithoutAppIds.getBytes(StandardCharsets.UTF_8));
+    AppDataService target = service(config(128, 16, 4, 4096, 4096));
+    Map<String, List<String>> importParams = params(FIELD_PAYLOAD_BASE64, payloadBase64);
+
+    Map<String, Object> imported = target.importData(OTHER_APP_ID, importParams);
+
+    assertEquals(true, imported.get(FIELD_IMPORTED));
+    assertEquals(
+        THEME_DARK_JSON,
+        target.getRecord(OTHER_APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
   }
 
   @Test
@@ -524,6 +560,31 @@ class AppDataServiceTest {
   }
 
   @Test
+  void putRecord_whenReplacingRecordAtManifestQuota_expectExistingMetadataNotChargedAgain()
+      throws Exception {
+    Path dataRoot = tempDir.resolve("data");
+    Files.createDirectories(dataRoot.resolve(APP_ID));
+    AtomicLong quotaBytes = new AtomicLong(Long.MAX_VALUE);
+    InMemoryAppDataStore store = new InMemoryAppDataStore();
+    AppDataService service =
+        new AppDataService(
+            store,
+            appHostWithMutableDataQuota(dataRoot, quotaBytes),
+            config(128, 16, 4, 4096, 4096),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    quotaBytes.set(quotaDataUsageBytes(service));
+    Map<String, List<String>> replacementParams =
+        recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok");
+
+    Map<String, Object> replaced = service.putRecord(APP_ID, replacementParams);
+
+    assertEquals("ok", replaced.get(FIELD_VALUE_TEXT));
+  }
+
+  @Test
   void putRecord_whenLimitsExceeded_expectPathFreeQuotaErrors() {
     AppDataService service = service(config(4, 1, 1, 128, 128));
     Map<String, List<String>> oversizedRecordParams =
@@ -655,6 +716,27 @@ class AppDataServiceTest {
         NOW);
   }
 
+  private static byte[] themeExportPayloadBytes() {
+    AppDataRecord appDataRecord =
+        new AppDataRecord(
+            APP_ID,
+            UI_STATE_NAMESPACE,
+            SETTINGS_KEY,
+            new AppDataRecord.Payload(
+                AppDataRecord.JSON_CONTENT_TYPE,
+                1,
+                THEME_DARK_JSON.getBytes(StandardCharsets.UTF_8)),
+            NOW,
+            NOW);
+    return new AppDataExportPayload(
+            AppDataExportPayload.CURRENT_EXPORT_VERSION,
+            APP_ID,
+            NOW,
+            List.of(uiStateNamespace()),
+            List.of(appDataRecord))
+        .toJsonBytes();
+  }
+
   private static String payloadBase64(byte[] bytes) {
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
@@ -667,10 +749,24 @@ class AppDataServiceTest {
     return values;
   }
 
+  private static long quotaDataUsageBytes(AppDataService service) {
+    @SuppressWarnings("unchecked")
+    Map<String, Object> quota = (Map<String, Object>) service.status(APP_ID).get("quota");
+    return ((Number) quota.get("dataUsageBytes")).longValue();
+  }
+
   private static AppHost appHostWithDataQuota(Path dataRoot, long dataQuotaBytes)
       throws java.io.IOException {
     AppHost appHost = mock(AppHost.class);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedApp(dataRoot, dataQuotaBytes)));
+    return appHost;
+  }
+
+  private static AppHost appHostWithMutableDataQuota(Path dataRoot, AtomicLong dataQuotaBytes)
+      throws java.io.IOException {
+    AppHost appHost = mock(AppHost.class);
+    when(appHost.describe(APP_ID))
+        .thenAnswer(_ -> Optional.of(installedApp(dataRoot, dataQuotaBytes.get())));
     return appHost;
   }
 

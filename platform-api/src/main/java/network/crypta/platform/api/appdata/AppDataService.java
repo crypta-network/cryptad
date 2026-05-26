@@ -547,11 +547,8 @@ public final class AppDataService {
           "invalid_query_parameter",
           "App-data import mode must be merge or replaceNamespace.");
     }
-    AppDataExportPayload payload = AppDataExportPayload.parse(payloadBytes);
-    if (payload.appId() != null && !payload.appId().equals(normalizedAppId)) {
-      throw new PlatformApiException(
-          403, "app_data_import_app_mismatch", "App-data import belongs to another app.");
-    }
+    AppDataExportPayload payload =
+        AppDataExportPayload.parseForImport(payloadBytes, normalizedAppId);
     List<AppDataNamespaceMetadata> importedNamespacesMetadata =
         payload.namespaces().stream()
             .map(metadata -> withCallerAppId(metadata, normalizedAppId))
@@ -720,7 +717,9 @@ public final class AppDataService {
     }
     long manifestDelta =
         Math.max(0L, newValueBytes - (existing == null ? 0L : existing.valueBytes()));
-    manifestDelta += RECORD_METADATA_QUOTA_RESERVE_BYTES;
+    if (!replacing) {
+      manifestDelta += RECORD_METADATA_QUOTA_RESERVE_BYTES;
+    }
     if (readNamespaceOptional(appId, namespace).isEmpty()) {
       manifestDelta += NAMESPACE_METADATA_QUOTA_RESERVE_BYTES;
     }
