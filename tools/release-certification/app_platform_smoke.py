@@ -153,7 +153,7 @@ WINDOWS_UNC_PATH_RE = re.compile(
 )
 FILE_URI_PATH_RE = re.compile(r"\bfile://(?P<path>[^\s\])},;\"']+)")
 ROUTE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_:/.\->])/(?:api/v1|apps|app/node|\.well-known)(?:/[^\s\])},;\"'?]*)?"
+    r"(?<![A-Za-z0-9_:/.\->])/(?:api/v1|apps|app/node|app-data|\.well-known)(?:/[^\s\])},;\"'?]*)?"
 )
 NON_SECRET_METADATA_SUFFIXES = (
     "available",
@@ -6672,12 +6672,14 @@ def run_self_test(repo_root: Path) -> None:
     assert "file://<path>/catalog.pem" in file_uri_scrubbed, file_uri_scrubbed
     route_scrubbed = scrub_text(
         "/apps/install /apps/cert-smoke/runtime /api/v1/diagnostics "
-        "/mnt/secrets/signing/key.pem",
+        "/app-data/status /app-data/records/{namespace}/{key} /mnt/secrets/signing/key.pem",
         repo_root,
     )
     assert "/apps/install" in route_scrubbed, route_scrubbed
     assert "/apps/cert-smoke/runtime" in route_scrubbed, route_scrubbed
     assert "/api/v1/diagnostics" in route_scrubbed, route_scrubbed
+    assert "/app-data/status" in route_scrubbed, route_scrubbed
+    assert "/app-data/records/{namespace}/{key}" in route_scrubbed, route_scrubbed
     assert "/mnt/secrets/signing/key.pem" not in route_scrubbed, route_scrubbed
     assert "<path>/key.pem" in route_scrubbed, route_scrubbed
     signing_metadata = sanitize_value(
@@ -6958,18 +6960,18 @@ def run_self_test(repo_root: Path) -> None:
             "queue.read",
         ], contract_item
         assert contract_details["stableEndpoints"] == [
-            "DELETE <path>/namespaces/{namespace}",
-            "DELETE <path>/records/{namespace}/{key}",
-            "GET <path>/export",
-            "GET <path>/namespaces",
-            "GET <path>/namespaces/{namespace}",
-            "GET <path>/records",
-            "GET <path>/records/{namespace}/{key}",
-            "GET <path>/status",
+            "DELETE /app-data/namespaces/{namespace}",
+            "DELETE /app-data/records/{namespace}/{key}",
+            "GET /app-data/export",
+            "GET /app-data/namespaces",
+            "GET /app-data/namespaces/{namespace}",
+            "GET /app-data/records",
+            "GET /app-data/records/{namespace}/{key}",
+            "GET /app-data/status",
             "GET /queue",
-            "POST <path>/import",
-            "POST <path>/namespaces/{namespace}/schema",
-            "POST <path>/records",
+            "POST /app-data/import",
+            "POST /app-data/namespaces/{namespace}/schema",
+            "POST /app-data/records",
         ], contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
