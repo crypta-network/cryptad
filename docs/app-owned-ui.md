@@ -446,16 +446,18 @@ app.version=1.0.0
 app.exec=bin/trust-graph.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
-app.permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use
+app.permissions=trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
 quota.data.bytes=1048576
 quota.cache.bytes=2097152
 ```
 
-Trust Graph Preview needs `trust.read` and `trust.write` for local preview state, `content.fetch`
-for bounded Crypta trust documents selected by the user, `content.insert.app-document` plus queue
-capabilities for generated statement publication, and `vault.identities.*` for app-owned trust
-identity creation and bounded trust-statement signing. It is not full Web of Trust, a moderation
-system, a background crawler, or old plugin compatibility.
+Trust Graph Preview needs `trust.read` and `trust.write` for local durable preview state,
+`content.fetch` for bounded URI import, `content.subscribe` for trust statement subscriptions,
+`content.insert.app-document` plus queue capabilities for generated statement publication,
+`vault.identities.*` for app-owned trust identity creation and bounded trust-statement signing,
+and `app.data.*` for UI-local drafts and redacted summaries. It is not full Web of Trust, a
+moderation system, a background crawler, routing policy, peer selection, or old plugin
+compatibility.
 
 Transitional shell-panel bundle:
 

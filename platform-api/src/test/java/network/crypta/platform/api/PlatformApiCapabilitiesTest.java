@@ -416,6 +416,19 @@ class PlatformApiCapabilitiesTest {
             "trust-graph.import",
             "trust.write"),
         route(
+            "POST",
+            List.of("trust-graph", "import-uri"),
+            "trust-graph",
+            "trust-graph.import-uri",
+            "content.fetch",
+            "trust.write"),
+        route(
+            "GET",
+            List.of("trust-graph", "audit"),
+            "trust-graph",
+            "trust-graph.audit",
+            "trust.read"),
+        route(
             "GET",
             List.of("trust-graph", "subjects"),
             "trust-graph",

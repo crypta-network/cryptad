@@ -121,10 +121,16 @@ final class MockPlatformApi {
       sendJson(exchange, 200, fixtures.vaultGrants());
     } else if (suffix.equals("/apps/current")) {
       sendJson(exchange, 200, fixtures.appsCurrent());
+    } else if (suffix.equals("/content/subscriptions")) {
+      sendJson(exchange, 200, fixtures.contentSubscriptions());
+    } else if (suffix.matches("/content/subscriptions/[^/]+")) {
+      sendJson(exchange, 200, fixtures.contentSubscription());
     } else if (suffix.equals("/trust-graph/status")) {
       sendJson(exchange, 200, fixtures.trustGraphStatus());
     } else if (suffix.equals("/trust-graph/anchors")) {
       sendJson(exchange, 200, fixtures.trustGraphAnchors());
+    } else if (suffix.equals("/trust-graph/audit")) {
+      sendJson(exchange, 200, fixtures.trustGraphAudit());
     } else if (suffix.equals("/trust-graph/score")) {
       sendJson(exchange, 200, fixtures.trustGraphScore());
     } else {
@@ -137,6 +143,10 @@ final class MockPlatformApi {
       routeQueuePost(exchange, suffix);
     } else if (suffix.equals("/content/fetch")) {
       routeContentFetchPost(exchange);
+    } else if (suffix.equals("/content/subscriptions")) {
+      sendFormMutation(exchange, "content.subscriptions.create", "uri");
+    } else if (suffix.matches("/content/subscriptions/[^/]+/(refresh|pause|resume)")) {
+      sendJson(exchange, 200, fixtures.mutation("content.subscriptions.update"));
     } else if (suffix.equals("/app-vault/identities")) {
       sendJson(exchange, 201, MockPlatformApiFixtures.CREATED_IDENTITY_RESPONSE);
     } else if (suffix.matches("/app-vault/identities/[^/]+/profile-document")) {
@@ -148,7 +158,9 @@ final class MockPlatformApi {
     } else if (suffix.equals("/trust-graph/anchors")) {
       sendFormMutation(exchange, "trust-graph.anchors.add", "issuerFingerprint");
     } else if (suffix.equals("/trust-graph/import")) {
-      sendFormMutation(exchange, "trust-graph.import", "document");
+      routeTrustImportPost(exchange, "document");
+    } else if (suffix.equals("/trust-graph/import-uri")) {
+      routeTrustImportPost(exchange, "uri");
     } else {
       throw new UnsupportedOperationException(suffix);
     }
@@ -160,9 +172,20 @@ final class MockPlatformApi {
     }
   }
 
+  private void routeTrustImportPost(HttpExchange exchange, String requiredField)
+      throws IOException {
+    if (hasRequiredFormFields(exchange, requiredField)) {
+      sendJson(exchange, 200, MockPlatformApiFixtures.TRUST_GRAPH_IMPORT_RESPONSE);
+    }
+  }
+
   private void routeDelete(HttpExchange exchange, String suffix) throws IOException {
     if (suffix.matches("/trust-graph/anchors/[^/]+")) {
       sendJson(exchange, 200, fixtures.mutation("trust-graph.anchors.remove"));
+      return;
+    }
+    if (suffix.matches("/content/subscriptions/[^/]+")) {
+      sendJson(exchange, 200, fixtures.mutation("content.subscriptions.remove"));
       return;
     }
     throw new UnsupportedOperationException(suffix);

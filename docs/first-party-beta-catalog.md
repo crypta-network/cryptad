@@ -100,7 +100,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=7
+api.maximumTestedVersion=10
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -116,7 +116,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=9
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -136,31 +136,32 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=9
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=false
 ```
 
-Trust Graph Preview descriptors should include trust, vault, content-fetch, and generated-document
-publication rationales, while making clear that the app is a local preview and not full WoT or a
-moderation system:
+Trust Graph Preview descriptors should include trust, vault, content-fetch, content-subscription,
+generated-document publication, and redacted audit rationales, while making clear that the app is a
+local durable preview and not full WoT or a moderation system:
 
 ```properties
-permissions=trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
-permissions.rationale.trust.read=Reads local trust graph scores and evidence for preview queries.
+permissions=trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
+permissions.rationale.trust.read=Reads local trust graph scores, evidence, and redacted audit entries for preview queries.
 permissions.rationale.trust.write=Imports local trust statements and manages local trust anchors.
 permissions.rationale.vault.identities.create=Creates an app-owned trust identity without exporting private material.
 permissions.rationale.vault.identities.use=Uses the bounded trust-statement route to sign trust statements.
 permissions.rationale.content.fetch=Fetches bounded Crypta trust documents selected by the user.
+permissions.rationale.content.subscribe=Manages trust statement content subscriptions without global crawling.
 permissions.rationale.content.insert.app-document=Publishes generated trust statements as Crypta content.
 permissions.rationale.queue.write=Creates generated trust statement publication inserts.
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 permissions.rationale.app.data.read=Restores UI-local drafts, selected filters, and redacted import summaries.
-permissions.rationale.app.data.write=Saves bounded UI-local preview state without making the trust backend durable.
+permissions.rationale.app.data.write=Saves bounded UI-local preview state separately from the trust backend.
 categories=identity,trust,preview
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
-api.minimumVersion=9
-api.maximumTestedVersion=9
+api.minimumVersion=10
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=true
 ```
 

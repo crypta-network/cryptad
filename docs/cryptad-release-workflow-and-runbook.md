@@ -119,10 +119,11 @@ Treat these as release blockers, in order:
    dedupe metadata, and redaction of raw feed bodies, raw fetched content, raw request bodies,
    tokens, form passwords, private insert URIs, queue HTML, and local paths.
    Trust Graph Preview is the local trust-service reference app; evidence must prove Platform API
-   v7 trust routes, `trust.read`, `trust.write`, bounded AppVault trust-statement signing, SDK
-   trust-helper usage, generated trust-statement publication permissions, and redaction of raw
-   trust documents, raw request bodies, tokens, form passwords, private insert URIs, and local
-   paths.
+   v7 trust routes, v10 URI import/audit routes, `trust.read`, `trust.write`, durable file-backed
+   trust graph storage, bounded AppVault trust-statement signing, SDK trust exchange helper usage,
+   trust-statement subscription management, generated trust-statement publication permissions, and
+   redaction of raw trust documents, raw fetched content, raw request bodies, tokens, form
+   passwords, private insert URIs, raw signatures, and local paths.
 9. **Trusted app-review receipt evidence** - verify the release certification report includes
    `app-review.trusted-receipts`, `app-review.policy`, `app-review.governance`,
    `app-review.reviewer-key-lifecycle`, `app-review.transparency-log`,

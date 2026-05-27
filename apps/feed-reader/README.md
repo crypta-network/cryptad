@@ -65,9 +65,9 @@ Feed Reader & Publisher declares:
 - `app.data.read` to restore the app-owned feed list and reader state.
 - `app.data.write` to save bounded feed, subscription, read-state, and draft metadata.
 
-The manifest targets Platform API contract v9 because the reference app depends on durable
-content subscription helpers and durable app-data records for reader state. Run focused validation
-with:
+The manifest requires Platform API contract v9 because the reference app depends on durable content
+subscription helpers and durable app-data records for reader state, and it is tested through the
+current v10 contract. Run focused validation with:
 
 ```bash
 ./gradlew :apps:feed-reader:test

@@ -50,13 +50,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 9
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 10
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=9` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=10` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -74,7 +74,7 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
 | Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
 | Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
-| Trust Graph Preview | `trust-graph` | Local trust statement import, scoring, signing, publication preview, and UI-local durable state. |
+| Trust Graph Preview | `trust-graph` | Durable local trust backend, URI import, scoring, signing, publication, subscription, redacted audit, and UI-local state. |
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
 [feed-reader-reference-app.md](feed-reader-reference-app.md), and

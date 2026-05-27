@@ -5,6 +5,7 @@ import network.crypta.config.Config;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
+import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appvault.AppVaultService;
@@ -115,6 +116,18 @@ public interface HttpShellRuntimeSupport {
    * @return shared durable app-data service, or {@code null} when unavailable
    */
   default AppDataService appDataService() {
+    return null;
+  }
+
+  /**
+   * Returns the shared durable trust graph preview handler used by Platform API trust routes.
+   *
+   * <p>A {@code null} value means the embedding has not configured durable trust graph state and
+   * the router may fall back to its reduced in-memory preview store.
+   *
+   * @return shared trust graph handler, or {@code null} when unavailable
+   */
+  default TrustGraphApiHandler trustGraphApiHandler() {
     return null;
   }
 

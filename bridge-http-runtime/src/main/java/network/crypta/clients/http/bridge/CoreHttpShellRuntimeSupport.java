@@ -41,6 +41,7 @@ import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSche
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionStore;
 import network.crypta.platform.api.content.subscriptions.FileContentSubscriptionStore;
+import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
@@ -55,6 +56,7 @@ import network.crypta.platform.apphost.AppInstallVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.platform.appvault.AppVaultService;
+import network.crypta.platform.trustgraph.FileTrustGraphStore;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
@@ -80,6 +82,7 @@ import org.slf4j.LoggerFactory;
  *     routes and scheduler
  * @param contentSubscriptionScheduler optional background content subscription scheduler
  * @param appDataService shared durable app-data service used by Platform API app-data routes
+ * @param trustGraphApiHandler shared durable trust graph handler used by Platform API trust routes
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
@@ -91,6 +94,7 @@ public record CoreHttpShellRuntimeSupport(
     ContentSubscriptionService contentSubscriptionService,
     ContentSubscriptionScheduler contentSubscriptionScheduler,
     AppDataService appDataService,
+    TrustGraphApiHandler trustGraphApiHandler,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -134,6 +138,7 @@ public record CoreHttpShellRuntimeSupport(
         services.contentSubscriptionService(),
         services.contentSubscriptionScheduler(),
         services.appDataService(),
+        services.trustGraphApiHandler(),
         services.appVaultService());
   }
 
@@ -187,6 +192,7 @@ public record CoreHttpShellRuntimeSupport(
         null,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -215,6 +221,7 @@ public record CoreHttpShellRuntimeSupport(
         appCatalogManager,
         appUpdateService,
         appUpdateScheduler,
+        null,
         null,
         null,
         null,
@@ -253,6 +260,7 @@ public record CoreHttpShellRuntimeSupport(
         contentSubscriptionService,
         contentSubscriptionScheduler,
         null,
+        null,
         appVaultService);
   }
 
@@ -267,6 +275,8 @@ public record CoreHttpShellRuntimeSupport(
    * @param contentSubscriptionService optional content subscription service
    * @param contentSubscriptionScheduler optional background content subscription scheduler
    * @param appDataService shared durable app-data service, or {@code null} when unavailable
+   * @param trustGraphApiHandler shared durable trust graph handler, or {@code null} when
+   *     unavailable
    * @param appVaultService shared app-vault service, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
@@ -279,6 +289,7 @@ public record CoreHttpShellRuntimeSupport(
       ContentSubscriptionService contentSubscriptionService,
       ContentSubscriptionScheduler contentSubscriptionScheduler,
       AppDataService appDataService,
+      TrustGraphApiHandler trustGraphApiHandler,
       AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
@@ -288,6 +299,7 @@ public record CoreHttpShellRuntimeSupport(
     this.contentSubscriptionService = contentSubscriptionService;
     this.contentSubscriptionScheduler = contentSubscriptionScheduler;
     this.appDataService = appDataService;
+    this.trustGraphApiHandler = trustGraphApiHandler;
     this.appVaultService = appVaultService;
   }
 
@@ -495,6 +507,7 @@ public record CoreHttpShellRuntimeSupport(
       contentSubscriptionScheduler.start();
     }
     AppDataService appDataService = createAppDataService(layout, appHost);
+    TrustGraphApiHandler trustGraphApiHandler = createTrustGraphApiHandler(layout);
     return new AppPlatformServices(
         appHost,
         appCatalogManager,
@@ -503,6 +516,7 @@ public record CoreHttpShellRuntimeSupport(
         contentSubscriptionService,
         contentSubscriptionScheduler,
         appDataService,
+        trustGraphApiHandler,
         appVaultService);
   }
 
@@ -591,6 +605,20 @@ public record CoreHttpShellRuntimeSupport(
     AppDataStoreConfig config = AppDataStoreConfig.loadFromSystem();
     Path storeRoot = layout.dataDir().resolve("apps").resolve("durable-app-data");
     return new AppDataService(new FileAppDataStore(storeRoot, config), appHost, config, true);
+  }
+
+  private static TrustGraphApiHandler createTrustGraphApiHandler(AppHostLayout layout) {
+    try {
+      Path appPlatformDataRoot = layout.dataDir();
+      Path storeRoot = appPlatformDataRoot.resolve("apps").resolve("trust-graph");
+      return new TrustGraphApiHandler(
+          new FileTrustGraphStore(storeRoot, appPlatformDataRoot), java.time.Clock.systemUTC());
+    } catch (RuntimeException _) {
+      LOG.warn(
+          "Trust graph store initialization failed; trust graph Platform API routes will report"
+              + " service unavailable.");
+      return TrustGraphApiHandler.unavailable();
+    }
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
@@ -734,6 +762,7 @@ public record CoreHttpShellRuntimeSupport(
       ContentSubscriptionService contentSubscriptionService,
       ContentSubscriptionScheduler contentSubscriptionScheduler,
       AppDataService appDataService,
+      TrustGraphApiHandler trustGraphApiHandler,
       AppVaultService appVaultService) {}
 
   /**

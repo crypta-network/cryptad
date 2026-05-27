@@ -349,7 +349,8 @@ final class FProxyRegistrar {
                 dependencies.appVaultService(),
                 dependencies.appUpdateService(),
                 dependencies.contentSubscriptionService(),
-                dependencies.appDataService()),
+                dependencies.appDataService(),
+                dependencies.trustGraphApiHandler()),
             appBrowserSessionStore,
             appUiOriginServer);
     server.register(

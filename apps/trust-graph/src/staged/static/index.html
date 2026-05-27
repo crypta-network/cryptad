@@ -30,7 +30,8 @@
       <ul>
         <li><code>trust.read</code> reads status, anchors, imported statements, and scores.</li>
         <li><code>trust.write</code> imports bounded trust statements and manages local anchors.</li>
-        <li><code>content.fetch</code> fetches statement text through the bounded SDK helper.</li>
+        <li><code>content.fetch</code> fetches statement documents through the bounded import helper.</li>
+        <li><code>content.subscribe</code> manages trust statement content subscriptions.</li>
         <li><code>content.insert.app-document</code> stages generated statement documents.</li>
         <li><code>queue.read</code> previews local queue entries for trust publications.</li>
         <li><code>queue.write</code> creates queue entries for generated statement documents.</li>
@@ -44,14 +45,15 @@
 
     <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
       <h2 id="safe-use-title">Overview</h2>
-      <p>Trust Graph Preview is a local preview, not full WoT or moderation.</p>
-      <p>App id: <code>trust-graph</code>. Platform API contract: <code>9</code>.</p>
+      <p>Trust Graph Preview is a local durable preview, not full WoT or moderation.</p>
+      <p>App id: <code>trust-graph</code>. Platform API contract: <code>10</code>.</p>
       <ul>
         <li>Draft form values, selected filters, and redacted import summaries persist through app data.</li>
-        <li>The trust graph backend remains a local preview and is not made durable by this app state.</li>
+        <li>Anchors and imported statements persist through the platform trust graph backend.</li>
         <li>Anchors are local and are not published automatically.</li>
-        <li>Fetched statement content is rendered only as text.</li>
-        <li>Statement authorship uses vault helpers without exposing private signing secrets.</li>
+        <li>Exchange uses content fetch, insert, and subscription APIs without protocol changes.</li>
+        <li>Fetched statement bodies are not displayed; pasted statement JSON is rendered only as text.</li>
+        <li>Statement authorship uses vault and trust exchange helpers without exposing private signing secrets.</li>
       </ul>
     </section>
 
@@ -197,6 +199,58 @@
         </form>
         <div class="summary-list" id="score-result">
           <p class="cr-empty">Trust score results appear here.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="exchange-grid" aria-label="Trust statement exchange">
+      <section class="cr-card subscriptions-panel" aria-labelledby="subscriptions-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Content subscriptions</p>
+            <h2 id="subscriptions-title">Subscriptions</h2>
+          </div>
+          <button
+            class="cr-button cr-button--secondary"
+            id="refresh-subscriptions-button"
+            type="button">
+            Refresh
+          </button>
+        </div>
+        <form class="stacked-form" id="subscription-form">
+          <label class="cr-field">
+            <span class="cr-label">Statement URI</span>
+            <input
+              class="cr-input"
+              name="uri"
+              type="text"
+              placeholder="USK@publisher/trust/0/trust.json"
+              autocomplete="off"
+              spellcheck="false">
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">Label</span>
+            <input class="cr-input" name="label" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">Subscribe</button>
+        </form>
+        <div class="summary-list" id="subscription-list">
+          <p class="cr-empty">Trust statement subscriptions load after refresh.</p>
+        </div>
+      </section>
+
+      <section class="cr-card audit-panel" aria-labelledby="audit-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Redacted local history</p>
+            <h2 id="audit-title">Audit</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="refresh-audit-button" type="button">
+            Refresh
+          </button>
+        </div>
+        <div class="summary-list" id="audit-list">
+          <p class="cr-empty">Audit entries load after refresh.</p>
         </div>
       </section>
     </section>

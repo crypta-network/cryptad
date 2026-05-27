@@ -667,7 +667,9 @@ public final class PlatformApiToadlet extends Toadlet {
     }
     if ("POST".equals(method)) {
       return pathSegments.size() == 2
-          && ("anchors".equals(pathSegments.get(1)) || "import".equals(pathSegments.get(1)));
+          && ("anchors".equals(pathSegments.get(1))
+              || "import".equals(pathSegments.get(1))
+              || "import-uri".equals(pathSegments.get(1)));
     }
     return DELETE_METHOD.equals(method)
         && pathSegments.size() == 3

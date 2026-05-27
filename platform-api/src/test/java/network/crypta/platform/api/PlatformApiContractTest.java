@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":9"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":10"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(9, version.contractVersion());
+    assertEquals(10, version.contractVersion());
   }
 
   @Test
@@ -275,6 +275,32 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingTrustGraphExchangeEndpoints_expectContractV10Capabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.of(
+            "POST /trust-graph/import-uri",
+            List.of("content.fetch", "trust.write"),
+            "GET /trust-graph/audit",
+            List.of("trust.read"));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(10, endpoint.sinceContractVersion(), key);
+      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void current_whenInspectingTrustStatementEndpoint_expectBoundedVaultCapabilities() {
     PlatformApiEndpointDescriptor endpoint =
         PlatformApiContract.current().endpoints().stream()
@@ -311,6 +337,10 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().equals("/trust-graph/import-uri")
+        || endpoint.routeTemplate().equals("/trust-graph/audit")) {
+      return 10;
+    }
     if (endpoint.routeTemplate().startsWith("/trust-graph")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {
       return 7;

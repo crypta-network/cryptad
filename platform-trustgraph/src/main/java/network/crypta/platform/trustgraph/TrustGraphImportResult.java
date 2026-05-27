@@ -16,8 +16,11 @@ import java.util.Map;
  * @param imported {@code true} when this call added a new retained document fingerprint
  * @param signatureVerified whether the statement signature verified against issuer key metadata
  * @param source sanitized local source label
- * @param sourceUri optional normalized Crypta content URI associated with the import
+ * @param sourceUri optional redacted Crypta content URI summary associated with the import
+ * @param sourceUriHash optional SHA-256 hash of the normalized source URI
  * @param sourceLabel optional short caller-supplied label for display
+ * @param importedAt first time this statement fingerprint was retained
+ * @param updatedAt latest time this statement fingerprint metadata was updated
  * @param document parsed trust statement model retained by the store
  */
 public record TrustGraphImportResult(
@@ -27,7 +30,10 @@ public record TrustGraphImportResult(
     boolean signatureVerified,
     String source,
     String sourceUri,
+    String sourceUriHash,
     String sourceLabel,
+    java.time.Instant importedAt,
+    java.time.Instant updatedAt,
     TrustStatementDocument document) {
   /**
    * Returns a redacted import summary without the raw document or signature value.
@@ -35,7 +41,7 @@ public record TrustGraphImportResult(
    * @return insertion-ordered JSON-compatible import metadata for app responses
    */
   public Map<String, Object> toJson() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(11);
     json.put("documentFingerprint", documentFingerprint);
     json.put("payloadHash", payloadHash);
     json.put("imported", imported);
@@ -48,8 +54,17 @@ public record TrustGraphImportResult(
     if (sourceUri != null) {
       json.put("sourceUri", sourceUri);
     }
+    if (sourceUriHash != null) {
+      json.put("sourceUriHash", sourceUriHash);
+    }
     if (sourceLabel != null) {
       json.put("sourceLabel", sourceLabel);
+    }
+    if (importedAt != null) {
+      json.put("importedAt", importedAt.toString());
+    }
+    if (updatedAt != null) {
+      json.put("updatedAt", updatedAt.toString());
     }
     return json;
   }

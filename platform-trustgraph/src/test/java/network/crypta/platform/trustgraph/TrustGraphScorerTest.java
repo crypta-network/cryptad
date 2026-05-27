@@ -208,6 +208,24 @@ class TrustGraphScorerTest {
   }
 
   @Test
+  void auditEvents_whenLimitIsLowerThanStoredCount_expectNewestFirstBoundedSnapshot() {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
+    store.appendAuditEvent(auditEvent("statement_imported", NOW, "first"));
+    store.appendAuditEvent(auditEvent("anchor_added_or_replaced", NOW.plusSeconds(1), "second"));
+    store.appendAuditEvent(auditEvent("statement_import_rejected", NOW.plusSeconds(2), "third"));
+
+    List<TrustGraphAuditEvent> limited = store.auditEvents(2);
+    List<TrustGraphAuditEvent> minimum = store.auditEvents(0);
+
+    assertEquals(
+        List.of("third", "second"),
+        limited.stream().map(TrustGraphAuditEvent::statusCode).toList());
+    assertEquals(List.of("third"), minimum.stream().map(TrustGraphAuditEvent::statusCode).toList());
+    assertEquals(InMemoryTrustGraphStore.DEFAULT_MAX_STATEMENTS, store.config().maxStatements());
+    assertEquals(InMemoryTrustGraphStore.DEFAULT_MAX_ANCHORS, store.config().maxAnchors());
+  }
+
+  @Test
   void importStatement_whenSourceUriIsNotCryptaContent_expectRejection() {
     InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
     TrustStatementDocument document = signedStatement(80, 50, "2026-05-16T00:00:00Z", null);
@@ -228,8 +246,11 @@ class TrustGraphScorerTest {
     TrustGraphImportResult result =
         store.importStatement(document, "fetched", "Crypta:CHK@trust-statement", null);
 
-    assertEquals("crypta:CHK@trust-statement", result.sourceUri());
-    assertEquals("crypta:CHK@trust-statement", store.statements().getFirst().sourceUri());
+    assertTrue(result.sourceUri().startsWith("CHK@sha256:"));
+    assertEquals(64, result.sourceUriHash().length());
+    assertEquals(result.sourceUri(), store.statements().getFirst().sourceUri());
+    assertEquals(result.sourceUriHash(), store.statements().getFirst().sourceUriHash());
+    assertFalse(result.sourceUri().contains("trust-statement"));
   }
 
   @Test
@@ -273,6 +294,26 @@ class TrustGraphScorerTest {
 
   private static TrustGraphQuery query() {
     return new TrustGraphQuery(TrustSubjectKind.PROFILE, "USK@example/profile.json", "profile");
+  }
+
+  private static TrustGraphAuditEvent auditEvent(
+      String eventType, Instant timestamp, String status) {
+    return new TrustGraphAuditEvent(
+        eventType,
+        timestamp,
+        "trust-graph",
+        "document-" + status,
+        "payload-" + status,
+        "issuer-" + status,
+        "profile",
+        TrustStatementFingerprint.sha256Hex(
+            ("USK@subject-" + status).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        "USK@sha256:0123456789abcdef",
+        "manual",
+        null,
+        null,
+        Boolean.TRUE,
+        status);
   }
 
   private static TrustStatementDocument signedStatement(

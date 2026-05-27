@@ -46,6 +46,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 10
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -102,6 +103,7 @@ TRUST_GRAPH_PERMISSIONS = {
     "trust.read",
     "trust.write",
     "content.fetch",
+    "content.subscribe",
     "content.insert.app-document",
     "queue.read",
     "queue.write",
@@ -153,8 +155,11 @@ WINDOWS_UNC_PATH_RE = re.compile(
 )
 FILE_URI_PATH_RE = re.compile(r"\bfile://(?P<path>[^\s\])},;\"']+)")
 ROUTE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_:/.\->])/(?:api/v1|apps|app/node|app-data|\.well-known)(?:/[^\s\])},;\"'?]*)?"
+    r"(?<![A-Za-z0-9_:/.\->])/"
+    r"(?:api/v1|apps|app/node|app-data|app-vault|content|identity-vault|platform|queue|"
+    r"trust-graph|\.well-known)(?:/[^\s\]),;\"'?]*)?"
 )
+ROUTE_IDENTIFIER_RE = re.compile(r"(?:\{[A-Za-z][A-Za-z0-9]*\}|[A-Za-z0-9][A-Za-z0-9._~-]*)")
 NON_SECRET_METADATA_SUFFIXES = (
     "available",
     "configured",
@@ -321,10 +326,159 @@ def scrub_sensitive_assignment_match(match: re.Match[str]) -> str:
     return match.group("prefix") + value_quote + "<redacted>" + value_quote
 
 
+def route_segments(route_path: str) -> list[str]:
+    return [segment for segment in route_path.strip("/").split("/") if segment]
+
+
+def is_route_identifier(segment: str) -> bool:
+    return bool(ROUTE_IDENTIFIER_RE.fullmatch(segment))
+
+
+def is_protected_apps_route(segments: list[str]) -> bool:
+    if segments == ["apps"] or segments == ["apps", "install"]:
+        return True
+    if len(segments) < 2 or segments[0] != "apps" or not is_route_identifier(segments[1]):
+        return False
+    if len(segments) == 2:
+        return True
+    if len(segments) == 3:
+        return segments[2] in {
+            "runtime",
+            "logs",
+            "permissions",
+            "audit",
+            "start",
+            "stop",
+            "update",
+            "updates",
+        }
+    return len(segments) == 4 and segments[2] == "updates" and segments[3] in {
+        "check",
+        "stage",
+        "apply",
+        "rollback",
+        "policy",
+    }
+
+
+def is_protected_queue_route(segments: list[str]) -> bool:
+    if segments == ["queue"]:
+        return True
+    if len(segments) == 2:
+        return segments[1] in {"count", "keys", "downloads"}
+    if len(segments) == 3 and segments[1] == "inserts":
+        return segments[2] in {"file", "directory", "app-document"}
+    if len(segments) == 3 and segments[1] == "requests":
+        return segments[2] in {"remove", "restart", "priority"}
+    return len(segments) == 3 and segments[1] == "cleanup" and segments[2] in {
+        "uploads",
+        "downloads",
+    }
+
+
+def is_protected_content_route(segments: list[str]) -> bool:
+    if segments == ["content", "fetch"] or segments == ["content", "subscriptions"]:
+        return True
+    if len(segments) == 3 and segments[:2] == ["content", "subscriptions"]:
+        return is_route_identifier(segments[2])
+    return (
+        len(segments) == 4
+        and segments[:2] == ["content", "subscriptions"]
+        and is_route_identifier(segments[2])
+        and segments[3] in {"refresh", "pause", "resume"}
+    )
+
+
+def is_protected_app_data_route(segments: list[str]) -> bool:
+    if len(segments) == 2 and segments[0] == "app-data":
+        return segments[1] in {"status", "namespaces", "records", "export", "import"}
+    if len(segments) == 3 and segments[:2] == ["app-data", "namespaces"]:
+        return is_route_identifier(segments[2])
+    if len(segments) == 4 and segments[:2] == ["app-data", "namespaces"]:
+        return is_route_identifier(segments[2]) and segments[3] == "schema"
+    return (
+        len(segments) == 4
+        and segments[:2] == ["app-data", "records"]
+        and is_route_identifier(segments[2])
+        and is_route_identifier(segments[3])
+    )
+
+
+def is_protected_app_vault_route(segments: list[str]) -> bool:
+    if len(segments) == 2 and segments[0] == "app-vault":
+        return segments[1] in {"secrets", "identities", "grants"}
+    if len(segments) == 3 and segments[:2] == ["app-vault", "secrets"]:
+        return is_route_identifier(segments[2])
+    if len(segments) == 3 and segments[:2] == ["app-vault", "identities"]:
+        return is_route_identifier(segments[2])
+    if len(segments) == 4 and segments[:2] == ["app-vault", "identities"]:
+        return is_route_identifier(segments[2]) and segments[3] in {
+            "use",
+            "profile-document",
+            "trust-statement",
+        }
+    return len(segments) == 3 and segments[:2] == ["app-vault", "grants"] and segments[2] == "request"
+
+
+def is_protected_identity_vault_route(segments: list[str]) -> bool:
+    if len(segments) == 2 and segments[0] == "identity-vault":
+        return segments[1] in {"identities", "grants"}
+    return (
+        len(segments) == 3
+        and segments[0] == "identity-vault"
+        and segments[1] in {"identities", "grants"}
+        and is_route_identifier(segments[2])
+    )
+
+
+def is_protected_trust_graph_route(segments: list[str]) -> bool:
+    if len(segments) == 2 and segments[0] == "trust-graph":
+        return segments[1] in {
+            "status",
+            "anchors",
+            "import",
+            "import-uri",
+            "audit",
+            "subjects",
+            "statements",
+            "score",
+        }
+    return (
+        len(segments) == 3
+        and segments[:2] == ["trust-graph", "anchors"]
+        and is_route_identifier(segments[2])
+    )
+
+
+def is_protected_route_path(route_path: str) -> bool:
+    segments = route_segments(route_path)
+    if len(segments) >= 2 and segments[:2] == ["api", "v1"]:
+        return True
+    if len(segments) >= 2 and segments[:2] == ["app", "node"]:
+        return True
+    if segments and segments[0] == ".well-known":
+        return True
+    if segments == ["platform", "contract"]:
+        return True
+    if not segments:
+        return False
+    return (
+        is_protected_apps_route(segments)
+        or is_protected_queue_route(segments)
+        or is_protected_content_route(segments)
+        or is_protected_app_data_route(segments)
+        or is_protected_app_vault_route(segments)
+        or is_protected_identity_vault_route(segments)
+        or is_protected_trust_graph_route(segments)
+    )
+
+
 def protect_route_paths(text: str) -> tuple[str, list[tuple[str, str]]]:
     routes: list[tuple[str, str]] = []
 
     def replace_route(match: re.Match[str]) -> str:
+        if not is_protected_route_path(match.group(0)):
+            return match.group(0)
         token = f"__CRYPTAD_ROUTE_{len(routes)}__"
         routes.append((token, match.group(0)))
         return token
@@ -610,7 +764,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/site-publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
-            "apiMaximumTestedVersion": 7,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
         },
         {
             "appId": "profile-publisher",
@@ -623,7 +777,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/profile-publisher.sh",
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 9,
-            "apiMaximumTestedVersion": 9,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
         },
         {
             "appId": "feed-reader",
@@ -635,7 +789,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/feed-reader.sh",
             "permissions": FEED_READER_PERMISSIONS,
             "apiMinimumVersion": 9,
-            "apiMaximumTestedVersion": 9,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
         },
         {
             "appId": "trust-graph",
@@ -646,8 +800,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/trust-graph/src/staged",
             "launcher": "bin/trust-graph.sh",
             "permissions": TRUST_GRAPH_PERMISSIONS,
-            "apiMinimumVersion": 9,
-            "apiMaximumTestedVersion": 9,
+            "apiMinimumVersion": 10,
+            "apiMaximumTestedVersion": 10,
             "experimentalCapabilitiesAccepted": True,
         },
     ]
@@ -1283,6 +1437,32 @@ def stable_endpoint_identities(endpoints: list[Any]) -> list[str]:
     return sorted(identities)
 
 
+def capability_names(capabilities: list[Any]) -> list[str]:
+    names: list[str] = []
+    for entry in capabilities:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or entry.get("id") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return sorted(names)
+
+
+def endpoint_identities(endpoints: list[Any]) -> list[str]:
+    identities: list[str] = []
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        route = str(entry.get("routeTemplate") or entry.get("path") or entry.get("route") or "").strip()
+        if not route:
+            continue
+        method = str(entry.get("method", "")).strip().upper()
+        identity = f"{method} {route}" if method else route
+        if identity not in identities:
+            identities.append(identity)
+    return sorted(identities)
+
+
 def collect_platform_api_contract_evidence(
     settings: Settings, cli: Path | None, sample_paths: dict[str, Path]
 ) -> EvidenceItem:
@@ -1362,23 +1542,45 @@ def collect_platform_api_contract_evidence(
         "GET /app-data/export",
         "POST /app-data/import",
     }
+    required_trust_exchange_capabilities = {"content.fetch", "trust.read", "trust.write"}
+    required_trust_exchange_endpoints = {
+        "GET /trust-graph/audit",
+        "POST /trust-graph/import-uri",
+    }
     stable_capabilities = set(details["stableCapabilities"])
     stable_endpoints = set(details["stableEndpoints"])
+    contract_capabilities = set(capability_names(capabilities))
+    contract_endpoints = set(endpoint_identities(endpoints))
     missing_app_data_capabilities = sorted(required_app_data_capabilities - stable_capabilities)
     missing_app_data_endpoints = sorted(required_app_data_endpoints - stable_endpoints)
+    missing_trust_exchange_capabilities = sorted(
+        required_trust_exchange_capabilities - contract_capabilities
+    )
+    missing_trust_exchange_endpoints = sorted(
+        required_trust_exchange_endpoints - contract_endpoints
+    )
     details["appDataContract"] = {
         "capabilities": sorted(required_app_data_capabilities),
         "endpoints": sorted(required_app_data_endpoints),
         "missingCapabilities": missing_app_data_capabilities,
         "missingEndpoints": missing_app_data_endpoints,
     }
+    details["trustGraphExchangeContract"] = {
+        "capabilities": sorted(required_trust_exchange_capabilities),
+        "endpoints": sorted(required_trust_exchange_endpoints),
+        "missingCapabilities": missing_trust_exchange_capabilities,
+        "missingEndpoints": missing_trust_exchange_endpoints,
+    }
     if contract:
         if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
             errors.append("contractVersion must be a positive integer")
         if not isinstance(api_version, str) or not api_version.strip():
             errors.append("apiVersion must be a non-empty string")
-        if contract_version != 9:
-            errors.append("contractVersion must be 9 for durable app-data support")
+        if contract_version != CURRENT_PLATFORM_API_CONTRACT_VERSION:
+            errors.append(
+                "contractVersion must be "
+                f"{CURRENT_PLATFORM_API_CONTRACT_VERSION} for trust graph durable exchange support"
+            )
     if not capabilities:
         errors.append("contract has no capability descriptors")
     if not endpoints:
@@ -1387,6 +1589,10 @@ def collect_platform_api_contract_evidence(
         errors.append("contract is missing app-data capability descriptors")
     if missing_app_data_endpoints:
         errors.append("contract is missing app-data endpoint descriptors")
+    if missing_trust_exchange_capabilities:
+        errors.append("contract is missing trust graph exchange capability descriptors")
+    if missing_trust_exchange_endpoints:
+        errors.append("contract is missing trust graph exchange endpoint descriptors")
 
     verifier_args = ["compat", "verify"]
     if settings.mode == "release-candidate":
@@ -3410,7 +3616,10 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
         "/content/subscriptions/{subscriptionId}/resume",
     )
     checks = {
-        "currentContractVersionV9": "CURRENT_CONTRACT_VERSION = 9" in contract_text,
+        "currentContractVersionV9": (
+            "CURRENT_CONTRACT_VERSION = 9" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 10" in contract_text
+        ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
             and "CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8" in contract_text
@@ -3765,7 +3974,10 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "contractV9AndCapabilities": (
-            "CURRENT_CONTRACT_VERSION = 9" in text["contract"]
+            (
+                "CURRENT_CONTRACT_VERSION = 9" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 10" in text["contract"]
+            )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
             and "app.data.write" in text["capabilities"]
@@ -4183,7 +4395,8 @@ def collect_profile_publisher_reference_app_evidence(settings: Settings) -> Evid
         )
         checks["manifestUsesAppDataContract"] = (
             manifest.get("api.minimumVersion") == "9"
-            and manifest.get("api.maximumTestedVersion") == "9"
+            and manifest.get("api.maximumTestedVersion")
+            == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         )
         checks["manifestAvoidsUnneededVaultManagement"] = not any(
             permission in manifest_permissions
@@ -4344,7 +4557,8 @@ def collect_feed_reader_reference_app_evidence(settings: Settings) -> EvidenceIt
         )
         checks["manifestUsesCertifiedApiRange"] = (
             manifest.get("api.minimumVersion") == "9"
-            and manifest.get("api.maximumTestedVersion") == "9"
+            and manifest.get("api.maximumTestedVersion")
+            == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         )
     else:
         checks["manifestDeclaresFeedReader"] = False
@@ -4430,7 +4644,8 @@ def collect_feed_reader_subscription_evidence(settings: Settings) -> EvidenceIte
         manifest.get("app.id") == "feed-reader"
         and FEED_READER_PERMISSIONS.issubset(manifest_permissions)
         and manifest.get("api.minimumVersion") == "9"
-        and manifest.get("api.maximumTestedVersion") == "9"
+        and manifest.get("api.maximumTestedVersion")
+        == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
     )
     checks["uiDisclosesSubscribePermission"] = (
         "content.subscribe" in permission_disclosure_block(source_index)
@@ -4544,7 +4759,8 @@ def collect_feed_reader_app_data_evidence(settings: Settings) -> EvidenceItem:
     checks = details["checks"]
     checks["manifestUsesAppDataContract"] = (
         manifest.get("api.minimumVersion") == "9"
-        and manifest.get("api.maximumTestedVersion") == "9"
+        and manifest.get("api.maximumTestedVersion")
+        == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         and {"app.data.read", "app.data.write"}.issubset(permissions)
     )
     checks["usesSdkJsonRecordHelpers"] = (
@@ -4645,7 +4861,8 @@ def collect_profile_publisher_app_data_evidence(settings: Settings) -> EvidenceI
     checks = details["checks"]
     checks["manifestUsesAppDataContract"] = (
         manifest.get("api.minimumVersion") == "9"
-        and manifest.get("api.maximumTestedVersion") == "9"
+        and manifest.get("api.maximumTestedVersion")
+        == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         and {"app.data.read", "app.data.write"}.issubset(permissions)
     )
     checks["usesSdkJsonRecordHelpers"] = (
@@ -4773,15 +4990,18 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
             "CryptaPlatform.trust.status",
             "CryptaPlatform.trust.anchors.list",
             "CryptaPlatform.trust.importStatement",
+            "CryptaPlatform.trust.exchange.fetchAndImport",
+            "CryptaPlatform.trust.audit.list",
             "CryptaPlatform.trust.score",
-            "CryptaPlatform.trust.publishStatement",
+            "CryptaPlatform.trust.exchange.publish",
         )
     )
     checks["usesBoundedTrustSigningHelper"] = (
-        "CryptaPlatform.vault.identities.createTrustStatement" in source_app_js
+        "CryptaPlatform.trust.exchange.publish" in source_app_js
     )
-    checks["usesContentFetchAndQueuePreview"] = (
-        "CryptaPlatform.content.fetchText" in source_app_js
+    checks["usesTrustExchangeAndQueuePreview"] = (
+        "CryptaPlatform.trust.exchange.fetchAndImport" in source_app_js
+        and "CryptaPlatform.trust.exchange.subscriptions." in source_app_js
         and "CryptaPlatform.queue.snapshot" in source_app_js
     )
     checks["usesAppDataPreviewState"] = (
@@ -4837,15 +5057,15 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         checks["manifestDeclaresTrustPermissions"] = TRUST_GRAPH_PERMISSIONS.issubset(
             manifest_permissions
         )
-        checks["manifestUsesContractV9"] = (
-            manifest.get("api.minimumVersion") == "9"
-            and manifest.get("api.maximumTestedVersion") == "9"
+        checks["manifestUsesContractV10"] = (
+            manifest.get("api.minimumVersion") == "10"
+            and manifest.get("api.maximumTestedVersion") == "10"
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
     else:
         checks["manifestDeclaresTrustGraph"] = False
         checks["manifestDeclaresTrustPermissions"] = False
-        checks["manifestUsesContractV9"] = False
+        checks["manifestUsesContractV10"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -4903,12 +5123,13 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
             "docs/release-certification.md",
         )
     )
+    docs_text_lower = docs_text.lower()
     manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
     permissions = parse_permission_set(manifest.get("app.permissions", ""))
     checks = details["checks"]
     checks["manifestUsesAppDataContract"] = (
-        manifest.get("api.minimumVersion") == "9"
-        and manifest.get("api.maximumTestedVersion") == "9"
+        manifest.get("api.minimumVersion") == "10"
+        and manifest.get("api.maximumTestedVersion") == "10"
         and {"app.data.read", "app.data.write"}.issubset(permissions)
     )
     checks["usesSdkJsonRecordHelpers"] = (
@@ -4929,16 +5150,12 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
         "app.data.read" in permission_disclosure_block(index)
         and "app.data.write" in permission_disclosure_block(index)
     )
-    checks["docsKeepTrustBackendOutOfScope"] = (
+    checks["docsSeparateAppDataAndTrustBackend"] = (
         "reference-app.trust-graph-app-data-preview" in docs_text
-        and "UI-local" in docs_text
-        and (
-            "not made durable" in docs_text
-            or "without making the trust backend durable" in docs_text
-            or "does not make\n"
-            "the `platform-trustgraph` store durable" in docs_text
-        )
-        and "not a full Web of Trust" in docs_text
+        and "ui-local" in docs_text_lower
+        and "separate from the platform trust graph backend" in docs_text_lower
+        and "durable local backend" in docs_text_lower
+        and "not a full web of trust" in docs_text_lower
     )
     checks["noBrowserStorageOrRawAdminPath"] = (
         "/api/v1/" not in app_js
@@ -5083,6 +5300,376 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         "pass",
         True,
         "Trust Graph Preview Platform API evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_durable_store_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    trustgraph_dir = workspace / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph"
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    bridge_text = read_source(
+        workspace
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    store_text = read_source(trustgraph_dir / "FileTrustGraphStore.java")
+    config_text = read_source(trustgraph_dir / "TrustGraphStoreConfig.java")
+    audit_text = read_source(trustgraph_dir / "TrustGraphAuditEvent.java")
+    store_test_text = read_source(
+        workspace
+        / "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph/FileTrustGraphStoreTest.java"
+    )
+    shared_services_text = read_source(api_dir / "PlatformApiSharedAppServices.java")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-graph-preview.md",
+            "docs/platform-api-contract.md",
+            "docs/release-certification.md",
+        )
+    )
+    checks = {
+        "fileBackedStorePresent": (
+            "class FileTrustGraphStore" in store_text and "implements TrustGraphStore" in store_text
+        ),
+        "persistsAnchorsStatementsAndAudit": all(
+            fragment in store_text for fragment in ('"anchors"', '"statements"', '"audit"')
+        ),
+        "usesAtomicCrashSafeWrites": (
+            "createTempFile" in store_text and "ATOMIC_MOVE" in store_text and "force(" in store_text
+        ),
+        "capsConfigured": all(
+            fragment in config_text
+            for fragment in (
+                "maxStatements",
+                "maxAnchors",
+                "maxAuditEntries",
+                "maxStoredDocumentBytes",
+            )
+        ),
+        "redactedAuditModelPresent": (
+            "record TrustGraphAuditEvent" in audit_text
+            and "sourceUriHash" in audit_text
+            and "sourceSummary" in audit_text
+            and "signatureVerified" in audit_text
+        ),
+        "runtimeInjectsDurableStore": (
+            "new FileTrustGraphStore" in bridge_text
+            and 'resolve("apps")' in bridge_text
+            and 'resolve("trust-graph")' in bridge_text
+            and "new TrustGraphApiHandler" in bridge_text
+        ),
+        "sharedServicesCarryTrustHandler": (
+            "TrustGraphApiHandler trustGraphApiHandler" in shared_services_text
+        ),
+        "durabilityTestsPresent": all(
+            fragment in store_test_text
+            for fragment in (
+                "reopen_whenAnchorStored_expectAnchorDurable",
+                "reopen_whenVerifiedStatementAndAnchorStored_expectScoreUsesDurableState",
+                "importStatement_whenSameDocumentImportedTwice_expectMetadataReplacedWithoutDuplicate",
+                "retention_whenCapsExceeded_expectOldestRecordsEvicted",
+                "reopen_whenPersistedRecordIsCorrupt_expectRecordIgnoredSafely",
+                "auditEvents_whenStoredAndReopened_expectBoundedNewestFirstAndRedacted",
+                "auditEvents_whenDuplicateEventsEvicted_expectOnlyOnePersistedDuplicateDeleted",
+            )
+        ),
+        "docsDescribeDurableLocalBackend": (
+            "durable file-backed preview store" in docs_text
+            and "persists local trust anchors" in docs_text
+            and "raw fetched content" in docs_text
+            and "private insert URIs" in docs_text
+        ),
+    }
+    details = {
+        "checks": checks,
+        "storeType": "file",
+        "safeFields": [
+            "documentFingerprint",
+            "payloadHash",
+            "source",
+            "sourceSummary",
+            "signatureVerified",
+        ],
+        "redaction": {
+            "rawTrustStatementsExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-graph-durable-store",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph durable store evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-graph-durable-store",
+        "pass",
+        True,
+        "Trust Graph durable store evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    )
+    handler_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
+    )
+    capabilities_test_text = read_source(
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiCapabilitiesTest.java"
+    )
+    router_test_text = read_source(
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/TrustGraphApiRouterTest.java"
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    sdk_test_text = read_source(
+        workspace
+        / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js/CryptaPlatformSdkResourceTest.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-graph-preview.md",
+            "docs/platform-api-contract.md",
+            "docs/platform-sdk-js.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/release-certification.md",
+        )
+    )
+    docs_text_lower = docs_text.lower()
+    docs_text_compact = " ".join(docs_text_lower.split())
+    checks = {
+        "contractVersionV10": (
+            "CURRENT_CONTRACT_VERSION = 10" in contract_text
+            and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
+        ),
+        "contractDescriptorsPresent": (
+            "/trust-graph/import-uri" in contract_text
+            and "/trust-graph/audit" in contract_text
+            and "PlatformApiCapabilities.CONTENT_FETCH" in contract_text
+            and "PlatformApiCapabilities.TRUST_READ" in contract_text
+            and "PlatformApiCapabilities.TRUST_WRITE" in contract_text
+        ),
+        "routerRoutesPresent": (
+            "importUri" in router_text
+            and "/trust-graph/import-uri" in contract_text
+            and 'envelope("audit"' in router_text
+        ),
+        "handlerUsesBoundedContentFetch": (
+            "ContentFetchPort" in handler_text
+            and "ContentApiHandler" in handler_text
+            and "maxStoredDocumentBytes" in handler_text
+            and "format" in handler_text
+        ),
+        "auditIsRedacted": (
+            "TrustGraphAuditEvent" in handler_text
+            and "redactedUriSummary" in handler_text
+            and "sourceUriHash" in handler_text
+        ),
+        "capabilityTestsPresent": (
+            (
+                "trust-graph/import-uri" in capabilities_test_text
+                or 'List.of("trust-graph", "import-uri")' in capabilities_test_text
+            )
+            and "content.fetch" in capabilities_test_text
+            and (
+                "trust-graph/audit" in capabilities_test_text
+                or 'List.of("trust-graph", "audit")' in capabilities_test_text
+            )
+        ),
+        "routerTestsPresent": (
+            "route_whenImportUriHasContentFetchCapability" in router_test_text
+            and "route_whenAuditReadAfterImport" in router_test_text
+        ),
+        "sdkExchangeHelpersPresent": all(
+            fragment in sdk_text
+            for fragment in (
+                "function importTrustUri",
+                "function trustAudit",
+                "function publishTrustStatement",
+                "function fetchAndImportTrustStatement",
+                "function createTrustSubscription",
+            )
+        ),
+        "sdkTestsPresent": (
+            "classpathResource_whenTrustExchangeHelpersRequested" in sdk_test_text
+            and "classpathResource_whenTrustExchangePublishSignsStatement" in sdk_test_text
+        ),
+        "docsDescribeExchangeLimits": (
+            "contract v10" in docs_text_compact
+            and (
+                "does not crawl the network globally" in docs_text_compact
+                or "global network crawling" in docs_text_compact
+                or "background crawler" in docs_text_compact
+            )
+            and "raw fetched content" in docs_text_compact
+            and "private insert uris" in docs_text_compact
+        ),
+    }
+    details = {
+        "checks": checks,
+        "routes": ["POST /trust-graph/import-uri", "GET /trust-graph/audit"],
+        "capabilities": ["trust.read", "trust.write", "content.fetch"],
+        "redaction": {
+            "rawFetchedContentExcluded": True,
+            "rawTrustStatementsExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-graph-exchange",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph exchange evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-graph-exchange",
+        "pass",
+        True,
+        "Trust Graph exchange evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_durable_exchange_reference_app_evidence(
+    settings: Settings,
+) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "trust-graph"
+        ),
+        None,
+    )
+    details: dict[str, Any] = {"appId": "trust-graph", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.trust-graph-durable-exchange",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph durable exchange app evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    queue_preview_text = ""
+    if "function renderQueue" in app_js and "function renderAudit" in app_js:
+        queue_preview_text = app_js.split("function renderQueue", 1)[1].split(
+            "function renderAudit", 1
+        )[0]
+    publication_summary_text = ""
+    if "function publicationSummary" in app_js and "function queueSnapshotSummary" in app_js:
+        publication_summary_text = app_js.split("function publicationSummary", 1)[1].split(
+            "function queueSnapshotSummary", 1
+        )[0]
+    checks = details["checks"]
+    checks["manifestUsesContractV10"] = (
+        manifest.get("api.minimumVersion") == "10"
+        and manifest.get("api.maximumTestedVersion") == "10"
+    )
+    checks["manifestDeclaresExchangePermissions"] = {
+        "trust.read",
+        "trust.write",
+        "content.fetch",
+        "content.subscribe",
+        "content.insert.app-document",
+        "queue.write",
+        "vault.identities.use",
+    }.issubset(permissions)
+    checks["uiShowsDurabilityExchangeAndAudit"] = all(
+        fragment in index
+        for fragment in (
+            "platform trust graph backend",
+            "Exchange uses content fetch, insert, and subscription APIs",
+            "Subscriptions",
+            "Audit",
+            "not full WoT",
+        )
+    )
+    checks["usesSdkExchangeHelpers"] = all(
+        fragment in app_js
+        for fragment in (
+            "CryptaPlatform.trust.exchange.fetchAndImport",
+            "CryptaPlatform.trust.exchange.publish",
+            "CryptaPlatform.trust.exchange.subscriptions.list",
+            "CryptaPlatform.trust.exchange.subscriptions.create",
+            "CryptaPlatform.trust.audit.list",
+        )
+    )
+    checks["noRawApiOrManualFetch"] = (
+        "/api/v1/" not in app_js and "CryptaPlatform.content.fetchText" not in app_js
+    )
+    checks["noPersistentBrowserStorage"] = (
+        "localStorage.setItem" not in app_js and "sessionStorage.setItem" not in app_js
+    )
+    checks["privateInsertUriNotPersisted"] = (
+        "privateInsertUri" not in app_js
+        and "lastDraft.publish = { authorIdentity" in app_js
+        and "insertUri" not in app_js.split("lastDraft.publish = { authorIdentity", 1)[1].split("};", 1)[0]
+    )
+    checks["queuePreviewDoesNotShowInsertUri"] = (
+        bool(queue_preview_text)
+        and bool(publication_summary_text)
+        and "insertUri" not in queue_preview_text
+        and "insertUri" not in publication_summary_text
+    )
+    details["redaction"] = {
+        "rawFetchedContentExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "rawTrustStatementsExcludedFromUriImport": True,
+        "browserStorageExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"trust graph durable exchange app check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.trust-graph-durable-exchange",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph durable exchange reference app evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.trust-graph-durable-exchange",
+        "pass",
+        True,
+        "Trust Graph durable exchange reference app evidence passed.",
         source,
         details,
     )
@@ -6405,6 +6992,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_content_subscription_scheduler_evidence(settings),
         collect_app_data_store_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
+        collect_trust_graph_durable_store_evidence(settings),
+        collect_trust_graph_exchange_evidence(settings),
         collect_trust_statement_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
@@ -6430,6 +7019,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_feed_reader_subscription_evidence(settings),
         collect_feed_reader_app_data_evidence(settings),
         collect_trust_graph_reference_app_evidence(settings),
+        collect_trust_graph_durable_exchange_reference_app_evidence(settings),
         collect_trust_graph_app_data_preview_evidence(settings),
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
@@ -6508,14 +7098,16 @@ def run_self_test(repo_root: Path) -> None:
         "app.data.read,app.data.write"
     )
     assert catalog["app.feed-reader.api.minimumVersion"] == "9"
-    assert catalog["app.feed-reader.api.maximumTestedVersion"] == "9"
+    assert catalog["app.feed-reader.api.maximumTestedVersion"] == str(
+        CURRENT_PLATFORM_API_CONTRACT_VERSION
+    )
     assert catalog["app.trust-graph.permissions"] == (
-        "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
-        "vault.identities.read,vault.identities.create,vault.identities.use,"
+        "trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,"
+        "queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,"
         "app.data.read,app.data.write"
     )
-    assert catalog["app.trust-graph.api.minimumVersion"] == "9"
-    assert catalog["app.trust-graph.api.maximumTestedVersion"] == "9"
+    assert catalog["app.trust-graph.api.minimumVersion"] == "10"
+    assert catalog["app.trust-graph.api.maximumTestedVersion"] == "10"
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -6672,7 +7264,9 @@ def run_self_test(repo_root: Path) -> None:
     assert "file://<path>/catalog.pem" in file_uri_scrubbed, file_uri_scrubbed
     route_scrubbed = scrub_text(
         "/apps/install /apps/cert-smoke/runtime /api/v1/diagnostics "
-        "/app-data/status /app-data/records/{namespace}/{key} /mnt/secrets/signing/key.pem",
+        "/app-data/status /app-data/records/{namespace}/{key} "
+        "/content/fetch /content/subscriptions/{subscriptionId}/refresh "
+        "/queue/inserts/app-document /trust-graph/import-uri /mnt/secrets/signing/key.pem",
         repo_root,
     )
     assert "/apps/install" in route_scrubbed, route_scrubbed
@@ -6680,8 +7274,25 @@ def run_self_test(repo_root: Path) -> None:
     assert "/api/v1/diagnostics" in route_scrubbed, route_scrubbed
     assert "/app-data/status" in route_scrubbed, route_scrubbed
     assert "/app-data/records/{namespace}/{key}" in route_scrubbed, route_scrubbed
+    assert "/content/fetch" in route_scrubbed, route_scrubbed
+    assert "/content/subscriptions/{subscriptionId}/refresh" in route_scrubbed, route_scrubbed
+    assert "/queue/inserts/app-document" in route_scrubbed, route_scrubbed
+    assert "/trust-graph/import-uri" in route_scrubbed, route_scrubbed
     assert "/mnt/secrets/signing/key.pem" not in route_scrubbed, route_scrubbed
     assert "<path>/key.pem" in route_scrubbed, route_scrubbed
+    content_root_path_scrubbed = scrub_text("/content/cryptad/build/key.pem", repo_root)
+    queue_root_path_scrubbed = scrub_text("/queue/cryptad/build/token.txt", repo_root)
+    assert "/content/cryptad" not in content_root_path_scrubbed, content_root_path_scrubbed
+    assert "/queue/cryptad" not in queue_root_path_scrubbed, queue_root_path_scrubbed
+    assert "<path>/key.pem" in content_root_path_scrubbed, content_root_path_scrubbed
+    assert "<path>/token.txt" in queue_root_path_scrubbed, queue_root_path_scrubbed
+    content_workspace_scrubbed = scrub_text(
+        "/content/cryptad/build/app-platform-smoke/summary.json",
+        Path("/content/cryptad"),
+    )
+    assert (
+        content_workspace_scrubbed == "<repo>/build/app-platform-smoke/summary.json"
+    ), content_workspace_scrubbed
     signing_metadata = sanitize_value(
         {
             "privateKeyPresent": False,
@@ -6910,7 +7521,7 @@ def run_self_test(repo_root: Path) -> None:
         assert python_fake_result.returncode == 0, python_fake_result.stderr
         assert json.loads(python_contract.read_text(encoding="utf-8"))["contract"][
             "contractVersion"
-        ] == 9
+        ] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -6950,14 +7561,19 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
         assert evidence_by_id["app-platform.durable-app-data-store"]["status"] == "pass"
         contract_details = contract_item["details"]
-        assert contract_details["contractVersion"] == 9, contract_item
-        assert contract_details["capabilityCount"] == 4, contract_item
-        assert contract_details["endpointCount"] == 12, contract_item
+        assert (
+            contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
+        ), contract_item
+        assert contract_details["capabilityCount"] == 7, contract_item
+        assert contract_details["endpointCount"] == 14, contract_item
         assert contract_details["stableCapabilities"] == [
             "app.data.read",
             "app.data.write",
+            "content.fetch",
             "platform.contract.read",
             "queue.read",
+            "trust.read",
+            "trust.write",
         ], contract_item
         assert contract_details["stableEndpoints"] == [
             "DELETE /app-data/namespaces/{namespace}",
@@ -6969,9 +7585,11 @@ def run_self_test(repo_root: Path) -> None:
             "GET /app-data/records/{namespace}/{key}",
             "GET /app-data/status",
             "GET /queue",
+            "GET /trust-graph/audit",
             "POST /app-data/import",
             "POST /app-data/namespaces/{namespace}/schema",
             "POST /app-data/records",
+            "POST /trust-graph/import-uri",
         ], contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
@@ -6992,8 +7610,11 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass"
+        assert evidence_by_id["reference-app.trust-graph-durable-exchange"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"
+        assert evidence_by_id["app-platform.trust-graph-durable-store"]["status"] == "pass"
+        assert evidence_by_id["app-platform.trust-graph-exchange"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
@@ -7469,7 +8090,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "function putAppDataJson(){} function getAppDataJson(){} const appDataExportPath = 'app-data/export'; "
         "const appDataImportPath = 'app-data/import'; "
         "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
-        "function trustScore(){} function publishTrustStatement(){} "
+        "function importTrustUri(){} function trustAudit(){} function trustScore(){} "
+        "function publishTrustStatement(){} function fetchAndImportTrustStatement(){} "
+        "function createTrustSubscription(){} "
         "function createContentSubscription(){} function removeContentSubscription(){} "
         "function contentSubscriptionPathSegment(){} const path = 'content/subscriptions'; "
         "function apiDeleteForm(){} "
@@ -7564,23 +8187,37 @@ def make_self_test_workspace(workspace: Path) -> None:
             "trust-graph",
             "Trust Graph Preview",
             "trust-graph.sh",
-            "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
+            "trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,"
             "vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write",
             "const appId = 'trust-graph';\n"
             "const dataNamespace = \"ui-state\";\n"
             "const dataStateKey = \"preview-state\";\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
             "function normalizeImportSummary(value) { return value; }\n"
+            "function publicationSummary(value) { return value; }\n"
+            "function queueSnapshotSummary(value) { return value; }\n"
+            "function redactedUri(value) { return value; }\n"
+            "function renderQueue(snapshot) { publicationSummary(snapshot); queueSnapshotSummary(snapshot); }\n"
+            "function renderAudit() {}\n"
+            "function renderSubscriptions() {}\n"
+            "const state = { recentImports: [], auditEvents: [], subscriptions: [], lastDraft: {} };\n"
             "CryptaPlatform.data.records.getJson('ui-state', 'preview-state');\n"
             "CryptaPlatform.data.records.putJson({ namespace: 'ui-state', key: 'preview-state', "
             "schemaVersion: 1, value: { lastDraft: {}, recentImports: [] } });\n"
             "CryptaPlatform.trust.status();\n"
             "CryptaPlatform.trust.anchors.list();\n"
             "CryptaPlatform.trust.importStatement({ document: '{}' });\n"
+            "CryptaPlatform.trust.exchange.fetchAndImport({ uri: 'CHK@redacted' });\n"
+            "CryptaPlatform.trust.audit.list({ limit: 12 });\n"
             "CryptaPlatform.trust.score({ subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile' });\n"
-            "CryptaPlatform.trust.publishStatement({ statement: { type: 'crypta.trust.statement.v1' } });\n"
-            "CryptaPlatform.vault.identities.createTrustStatement('trust-self-test', { subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile', score: 50, confidence: 80 });\n"
-            "CryptaPlatform.content.fetchText({ uri: 'CHK@redacted' });\n"
+            "CryptaPlatform.trust.exchange.publish({ identityId: 'trust-self-test', subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile', score: 50, confidence: 80, insertUri: 'USK@redacted', identifier: 'trust' });\n"
+            "CryptaPlatform.trust.exchange.subscriptions.list();\n"
+            "CryptaPlatform.trust.exchange.subscriptions.create({ uri: 'USK@redacted/trust/0/trust.json' });\n"
+            "CryptaPlatform.trust.exchange.subscriptions.refresh('sub-redacted');\n"
+            "CryptaPlatform.trust.exchange.subscriptions.pause('sub-redacted');\n"
+            "CryptaPlatform.trust.exchange.subscriptions.resume('sub-redacted');\n"
+            "CryptaPlatform.trust.exchange.subscriptions.remove('sub-redacted');\n"
+            "lastDraft.publish = { authorIdentity: 'trust-self-test', subjectKind: 'profile', subjectIdentity: 'USK@redacted', value: 50, context: 'profile' };\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
         ),
     ):
@@ -7591,6 +8228,13 @@ def make_self_test_workspace(workspace: Path) -> None:
             (root / "static/crypta-ui").mkdir(parents=True, exist_ok=True)
             (root / "bin" / launcher).write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             permission_items = "".join(f"<li><code>{permission}</code></li>" for permission in permissions.split(","))
+            extra_ui = (
+                "<p>Anchors and imported statements persist through the platform trust graph backend.</p>"
+                "<p>Exchange uses content fetch, insert, and subscription APIs.</p>"
+                "<h2>Subscriptions</h2><h2>Audit</h2><p>not full WoT</p>"
+                if app_id == "trust-graph"
+                else ""
+            )
             (root / "static/index.html").write_text(
                 "<!doctype html><html lang=\"en\"><head>"
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
@@ -7601,6 +8245,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "</head><body class=\"cr-app\"><main class=\"cr-shell\">"
                 f"<section class=\"cr-permission-summary\" data-crypta-permission-summary><ul>{permission_items}</ul></section>"
                 f"<h1>{display_name}</h1>"
+                f"{extra_ui}"
                 "</main><script src=\"./crypta-platform.js\"></script><script src=\"./app.js\"></script></body></html>",
                 encoding="utf-8",
             )
@@ -7616,12 +8261,15 @@ def make_self_test_workspace(workspace: Path) -> None:
         is_feed_reader = app_id == "feed-reader"
         is_trust_graph = app_id == "trust-graph"
         api_minimum = (
-            "9" if is_feed_reader or is_trust_graph or is_profile_publisher else "3"
+            "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
         )
         api_maximum = (
-            "9"
-            if is_feed_reader or is_trust_graph or is_profile_publisher
-            else "7" if app_id == "site-publisher" else "4"
+            "10"
+            if is_trust_graph
+            or is_feed_reader
+            or is_profile_publisher
+            or app_id == "site-publisher"
+            else "4"
         )
         experimental_accepted = "true" if is_profile_publisher or is_trust_graph else "false"
         (staged / "cryptad-app.properties").write_text(
@@ -7742,8 +8390,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 9; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
+        "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
         "String list = \"/app-catalogs/recommended\"; "
@@ -7788,11 +8437,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String trustStatus = \"/trust-graph/status\"; "
         "String trustAnchors = \"/trust-graph/anchors\"; "
         "String trustImport = \"/trust-graph/import\"; "
+        "String trustImportUri = \"/trust-graph/import-uri\"; "
+        "String trustAudit = \"/trust-graph/audit\"; "
         "String trustSubjects = \"/trust-graph/subjects\"; "
         "String trustStatements = \"/trust-graph/statements\"; "
         "String trustScore = \"/trust-graph/score\"; "
         "String trustRead = \"PlatformApiCapabilities.TRUST_READ\"; "
         "String trustWrite = \"PlatformApiCapabilities.TRUST_WRITE\"; "
+        "String trustFetch = \"PlatformApiCapabilities.CONTENT_FETCH\"; "
         "String trustStatement = \"/app-vault/identities/{identityId}/trust-statement\"; "
         "String trustStatementAction = \"app-vault.identities.trust-statement\"; "
         "String vaultRead = \"PlatformApiCapabilities.VAULT_IDENTITIES_READ\"; "
@@ -7802,6 +8454,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     (api_dir / "PlatformApiCapabilities.java").write_text(
         "final class PlatformApiCapabilities { static final String TRUST_READ = \"trust.read\"; "
         "static final String TRUST_WRITE = \"trust.write\"; "
+        "static final String CONTENT_FETCH = \"content.fetch\"; "
         "static final String CONTENT_SUBSCRIBE = \"content.subscribe\"; "
         "static final String APP_DATA_READ = \"app.data.read\"; "
         "static final String APP_DATA_WRITE = \"app.data.write\"; }\n",
@@ -7811,13 +8464,46 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class PlatformApiRouter { String a = \"/trust-graph/status\"; "
         "String b = \"/trust-graph/anchors\"; String c = \"/trust-graph/import\"; "
         "String d = \"/trust-graph/subjects\"; String e = \"/trust-graph/statements\"; "
-        "String f = \"/trust-graph/score\"; "
+        "String f = \"/trust-graph/score\"; String g = \"/trust-graph/import-uri\"; "
+        "Object audit = envelope(\"audit\"); void importUri() {} "
         "void routeContentSubscriptionsRequest() { requireAppPrincipalId(request); "
         "requireAllCapabilities(ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE, "
         "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH); "
         "Object h = new ContentSubscriptionsApiHandler(); "
         "String unavailable = \"content_subscription_service_unavailable 503\"; } "
         "PlatformApiAppDataRoutes appDataRoutes; }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiSharedAppServices.java").write_text(
+        "record PlatformApiSharedAppServices(TrustGraphApiHandler trustGraphApiHandler) {}\n",
+        encoding="utf-8",
+    )
+    api_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api"
+    api_test_dir.mkdir(parents=True, exist_ok=True)
+    (api_test_dir / "PlatformApiCapabilitiesTest.java").write_text(
+        "final class PlatformApiCapabilitiesTest { String a = \"trust-graph/import-uri content.fetch\"; "
+        "String b = \"trust-graph/audit trust.read\"; }\n",
+        encoding="utf-8",
+    )
+    (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
+        "final class TrustGraphApiRouterTest { void route_whenImportUriHasContentFetchCapability() {} "
+        "void route_whenAuditReadAfterImport() {} }\n",
+        encoding="utf-8",
+    )
+    sdk_test_dir = workspace / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js"
+    sdk_test_dir.mkdir(parents=True, exist_ok=True)
+    (sdk_test_dir / "CryptaPlatformSdkResourceTest.java").write_text(
+        "final class CryptaPlatformSdkResourceTest { "
+        "void classpathResource_whenTrustExchangeHelpersRequested() {} "
+        "void classpathResource_whenTrustExchangePublishSignsStatement() {} }\n",
+        encoding="utf-8",
+    )
+    bridge_dir = workspace / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge"
+    bridge_dir.mkdir(parents=True, exist_ok=True)
+    (bridge_dir / "CoreHttpShellRuntimeSupport.java").write_text(
+        "final class CoreHttpShellRuntimeSupport { void create() { "
+        "Object handler = new TrustGraphApiHandler(new FileTrustGraphStore("
+        "layout.dataDir().resolve(\"apps\").resolve(\"trust-graph\"))); } }\n",
         encoding="utf-8",
     )
     appdata_api_dir = api_dir / "appdata"
@@ -7880,7 +8566,46 @@ def make_self_test_workspace(workspace: Path) -> None:
     (trust_api_dir / "TrustGraphApiHandler.java").write_text(
         "final class TrustGraphApiHandler { Object store = new InMemoryTrustGraphStore(); "
         "void importStatement() { TrustStatementParser.parse(\"{}\"); } "
+        "void importUri(ContentFetchPort port) { Object handler = new ContentApiHandler(null); "
+        "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
+        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary\"; } "
         "Object score = new TrustGraphScorer(null, null); }\n",
+        encoding="utf-8",
+    )
+    trustgraph_main_dir = (
+        workspace / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph"
+    )
+    trustgraph_test_dir = (
+        workspace / "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph"
+    )
+    trustgraph_main_dir.mkdir(parents=True, exist_ok=True)
+    trustgraph_test_dir.mkdir(parents=True, exist_ok=True)
+    (trustgraph_main_dir / "FileTrustGraphStore.java").write_text(
+        "final class FileTrustGraphStore implements TrustGraphStore { "
+        "String anchors = \"anchors\"; String statements = \"statements\"; String audit = \"audit\"; "
+        "void write() { String temp = \"createTempFile\"; String move = \"ATOMIC_MOVE\"; force(); } "
+        "void force() {} }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphStoreConfig.java").write_text(
+        "record TrustGraphStoreConfig(int maxStatements, int maxAnchors, int maxAuditEntries, "
+        "int maxStoredDocumentBytes) {}\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphAuditEvent.java").write_text(
+        "record TrustGraphAuditEvent(String sourceUriHash, String sourceSummary, "
+        "Boolean signatureVerified) {}\n",
+        encoding="utf-8",
+    )
+    (trustgraph_test_dir / "FileTrustGraphStoreTest.java").write_text(
+        "final class FileTrustGraphStoreTest { "
+        "void reopen_whenAnchorStored_expectAnchorDurable() {} "
+        "void reopen_whenVerifiedStatementAndAnchorStored_expectScoreUsesDurableState() {} "
+        "void importStatement_whenSameDocumentImportedTwice_expectMetadataReplacedWithoutDuplicate() {} "
+        "void retention_whenCapsExceeded_expectOldestRecordsEvicted() {} "
+        "void reopen_whenPersistedRecordIsCorrupt_expectRecordIgnoredSafely() {} "
+        "void auditEvents_whenStoredAndReopened_expectBoundedNewestFirstAndRedacted() {} "
+        "void auditEvents_whenDuplicateEventsEvicted_expectOnlyOnePersistedDuplicateDeleted() {} }\n",
         encoding="utf-8",
     )
     queue_api_dir = api_dir / "queue"
@@ -8040,7 +8765,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "queue-manager publisher site-publisher profile-publisher feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
-        "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, and bounded trust-statement signing. "
+        "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, and bounded trust-statement signing. "
         "Trust anchors are local. "
         "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
         "api.minimumVersion, changelog.summary, and review receipts. "
@@ -8068,7 +8793,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "is not a filesystem API, is not a generic database, and is not a secret vault. "
         "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app values. "
         "Feed Reader and Profile Publisher use app-data for bounded local state. "
-        "Trust Graph Preview uses UI-local app-data state only; platform trustgraph is not made durable here and this is not a full Web of Trust. "
+        "Trust Graph Preview uses UI-local app-data state separate from the platform trust graph backend. "
+        "The durable local backend has a durable file-backed preview store that persists local trust anchors, imported public statements, and redacted audit entries. "
+        "Contract v10 adds POST /api/v1/trust-graph/import-uri and GET /api/v1/trust-graph/audit. "
+        "Exchange uses content fetch, insert, and subscription APIs and does not crawl the network globally. "
         "POST /api/v1/app-vault/identities/{identityId}/trust-statement signs bounded trust statements. "
         "GET /api/v1/trust-graph/status and GET /api/v1/trust-graph/score read local trust preview data. "
         "Release evidence covers reference-app.profile-publisher, "
@@ -8077,7 +8805,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "network-content.subscription-scheduler, "
         "app-platform.durable-app-data-store, reference-app.feed-reader-app-data, "
         "reference-app.profile-publisher-app-data, reference-app.trust-graph-app-data-preview, "
-        "reference-app.trust-graph, app-platform.trust-graph-preview, "
+        "reference-app.trust-graph, reference-app.trust-graph-durable-exchange, "
+        "app-platform.trust-graph-preview, app-platform.trust-graph-durable-store, "
+        "app-platform.trust-graph-exchange, "
         "app-platform.trust-statement-signing, app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "It excludes raw request bodies, private keys, raw signatures, private insert URIs, and "
         "absolute staging paths. It also excludes raw feed bodies, raw fetched content, raw trust statement bodies, browser-session tokens, "
@@ -8660,6 +9390,10 @@ class CoreHttpShellRuntimeSupport {
       new FileAppDataStore(layout.dataDir().resolve("apps").resolve("durable-app-data")),
       appHost, config, true);
   }
+  TrustGraphApiHandler createTrustGraphApiHandler() {
+    return new TrustGraphApiHandler(
+      new FileTrustGraphStore(layout.dataDir().resolve("apps").resolve("trust-graph")));
+  }
   ContentSubscriptionScheduler createContentSubscriptionScheduler() {
     return new ContentSubscriptionScheduler(contentSubscriptionService);
   }
@@ -8804,7 +9538,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=1",
+                "api.maximumTestedVersion=10",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -8953,7 +9687,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 9,
+                    "contractVersion": 10,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -8985,6 +9719,27 @@ def api_snapshot(args):
                             "deprecation": None,
                             "description": "Write app-owned durable state.",
                         },
+                        {
+                            "name": "content.fetch",
+                            "stability": "stable",
+                            "sinceContractVersion": 6,
+                            "deprecation": None,
+                            "description": "Fetch bounded content.",
+                        },
+                        {
+                            "name": "trust.read",
+                            "stability": "stable",
+                            "sinceContractVersion": 7,
+                            "deprecation": None,
+                            "description": "Read local trust graph preview state.",
+                        },
+                        {
+                            "name": "trust.write",
+                            "stability": "stable",
+                            "sinceContractVersion": 7,
+                            "deprecation": None,
+                            "description": "Mutate local trust graph preview state.",
+                        },
                     ],
                     "endpoints": [
                         {
@@ -9012,6 +9767,8 @@ def api_snapshot(args):
                         {"method": "DELETE", "routeTemplate": "/app-data/records/{namespace}/{key}", "stability": "stable"},
                         {"method": "GET", "routeTemplate": "/app-data/export", "stability": "stable"},
                         {"method": "POST", "routeTemplate": "/app-data/import", "stability": "stable"},
+                        {"method": "GET", "routeTemplate": "/trust-graph/audit", "stability": "stable"},
+                        {"method": "POST", "routeTemplate": "/trust-graph/import-uri", "stability": "stable"},
                     ],
                 }
             },
@@ -9089,7 +9846,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=1' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=10' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -9266,7 +10023,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 9,
+    "contractVersion": 10,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
@@ -9297,6 +10054,27 @@ PY
         "sinceContractVersion": 9,
         "deprecation": null,
         "description": "Write app-owned durable state."
+      },
+      {
+        "name": "content.fetch",
+        "stability": "stable",
+        "sinceContractVersion": 6,
+        "deprecation": null,
+        "description": "Fetch bounded content."
+      },
+      {
+        "name": "trust.read",
+        "stability": "stable",
+        "sinceContractVersion": 7,
+        "deprecation": null,
+        "description": "Read local trust graph preview state."
+      },
+      {
+        "name": "trust.write",
+        "stability": "stable",
+        "sinceContractVersion": 7,
+        "deprecation": null,
+        "description": "Mutate local trust graph preview state."
       }
     ],
     "endpoints": [
@@ -9369,6 +10147,16 @@ PY
       {
         "method": "POST",
         "routeTemplate": "/app-data/import",
+        "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/trust-graph/audit",
+        "stability": "stable"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/trust-graph/import-uri",
         "stability": "stable"
       }
     ]

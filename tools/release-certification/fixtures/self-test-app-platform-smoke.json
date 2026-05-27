@@ -316,6 +316,76 @@
     {
       "details": {
         "checks": {
+          "capsConfigured": true,
+          "docsDescribeDurableLocalBackend": true,
+          "durabilityTestsPresent": true,
+          "fileBackedStorePresent": true,
+          "persistsAnchorsStatementsAndAudit": true,
+          "redactedAuditModelPresent": true,
+          "runtimeInjectsDurableStore": true,
+          "sharedServicesCarryTrustHandler": true,
+          "usesAtomicCrashSafeWrites": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawTrustStatementsExcluded": true
+        },
+        "safeFields": [
+          "documentFingerprint",
+          "payloadHash",
+          "source",
+          "sourceSummary",
+          "signatureVerified"
+        ],
+        "storeType": "file"
+      },
+      "id": "app-platform.trust-graph-durable-store",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph durable store evidence passed."
+    },
+    {
+      "details": {
+        "capabilities": [
+          "trust.read",
+          "trust.write",
+          "content.fetch"
+        ],
+        "checks": {
+          "auditIsRedacted": true,
+          "capabilityTestsPresent": true,
+          "contractDescriptorsPresent": true,
+          "contractVersionV10": true,
+          "docsDescribeExchangeLimits": true,
+          "handlerUsesBoundedContentFetch": true,
+          "routerRoutesPresent": true,
+          "routerTestsPresent": true,
+          "sdkExchangeHelpersPresent": true,
+          "sdkTestsPresent": true
+        },
+        "redaction": {
+          "privateInsertUrisExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawTrustStatementsExcluded": true,
+          "tokensExcluded": true
+        },
+        "routes": [
+          "POST /trust-graph/import-uri",
+          "GET /trust-graph/audit"
+        ]
+      },
+      "id": "app-platform.trust-graph-exchange",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph exchange evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
           "capabilitiesInContract": true,
           "docsRedactPrivateMaterial": true,
           "handlerSignsCanonicalPayload": true,
@@ -910,7 +980,7 @@
           "docsDescribePreviewLimits": true,
           "manifestDeclaresTrustGraph": true,
           "manifestDeclaresTrustPermissions": true,
-          "manifestUsesContractV9": true,
+          "manifestUsesContractV10": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -922,7 +992,7 @@
           "stagedSdkPresent": true,
           "usesAppDataPreviewState": true,
           "usesBoundedTrustSigningHelper": true,
-          "usesContentFetchAndQueuePreview": true,
+          "usesTrustExchangeAndQueuePreview": true,
           "usesSdkBootstrap": true,
           "usesTrustHelpers": true
         },
@@ -930,6 +1000,7 @@
           "app.data.read",
           "app.data.write",
           "content.fetch",
+          "content.subscribe",
           "content.insert.app-document",
           "queue.read",
           "queue.write",
@@ -950,7 +1021,33 @@
       "details": {
         "appId": "trust-graph",
         "checks": {
-          "docsKeepTrustBackendOutOfScope": true,
+          "manifestDeclaresExchangePermissions": true,
+          "manifestUsesContractV10": true,
+          "noPersistentBrowserStorage": true,
+          "noRawApiOrManualFetch": true,
+          "privateInsertUriNotPersisted": true,
+          "queuePreviewDoesNotShowInsertUri": true,
+          "uiShowsDurabilityExchangeAndAudit": true,
+          "usesSdkExchangeHelpers": true
+        },
+        "redaction": {
+          "browserStorageExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawTrustStatementsExcludedFromUriImport": true
+        }
+      },
+      "id": "reference-app.trust-graph-durable-exchange",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph durable exchange reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "trust-graph",
+        "checks": {
+          "docsSeparateAppDataAndTrustBackend": true,
           "manifestUsesAppDataContract": true,
           "noBrowserStorageOrRawAdminPath": true,
           "permissionDisclosureMentionsAppData": true,

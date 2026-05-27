@@ -232,7 +232,7 @@ capabilities:
 | Site Publisher | Static site publishing pattern. | `content.insert`, `queue.read`, `queue.write` |
 | Profile Publisher | AppVault identity, bounded profile document signing, durable draft state, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 | Feed Reader & Publisher | Durable USK subscription metadata, durable reader state, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
-| Trust Graph Preview | Local trust statement import, UI-local durable state, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
+| Trust Graph Preview | Durable local trust graph backend, URI import, redacted audit, content subscription management, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 
 Release evidence for the Feed Reader path includes `network-content.subscription-scheduler`,
 which proves deterministic scheduler ticks, conservative limits, dedupe, backoff, and redacted

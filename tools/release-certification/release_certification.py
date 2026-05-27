@@ -937,6 +937,8 @@ def app_platform_evidence(
         "network-content.subscription-scheduler",
         "app-platform.durable-app-data-store",
         "app-platform.trust-graph-preview",
+        "app-platform.trust-graph-durable-store",
+        "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
@@ -962,6 +964,7 @@ def app_platform_evidence(
         "reference-app.feed-reader-subscriptions",
         "reference-app.feed-reader-app-data",
         "reference-app.trust-graph",
+        "reference-app.trust-graph-durable-exchange",
         "reference-app.trust-graph-app-data-preview",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
@@ -1541,6 +1544,8 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             title="Trust graph preview platform routes and signing",
             required_evidence_ids=(
                 "app-platform.trust-graph-preview",
+                "app-platform.trust-graph-durable-store",
+                "app-platform.trust-graph-exchange",
                 "app-platform.trust-statement-signing",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
@@ -1669,6 +1674,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             title="Trust Graph Preview reference app",
             required_evidence_ids=(
                 "reference-app.trust-graph",
+                "reference-app.trust-graph-durable-exchange",
                 "reference-app.trust-graph-app-data-preview",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
@@ -3238,6 +3244,10 @@ def evaluate_reference_content_gate(
     previous_feed_reader_app_data_item = previous.get("reference-app.feed-reader-app-data")
     trust_graph_item = current.get("reference-app.trust-graph")
     previous_trust_graph_item = previous.get("reference-app.trust-graph")
+    trust_graph_durable_exchange_item = current.get("reference-app.trust-graph-durable-exchange")
+    previous_trust_graph_durable_exchange_item = previous.get(
+        "reference-app.trust-graph-durable-exchange"
+    )
     trust_graph_app_data_item = current.get("reference-app.trust-graph-app-data-preview")
     previous_trust_graph_app_data_item = previous.get(
         "reference-app.trust-graph-app-data-preview"
@@ -3256,6 +3266,12 @@ def evaluate_reference_content_gate(
     previous_app_data_store_item = previous.get("app-platform.durable-app-data-store")
     trust_graph_preview_item = current.get("app-platform.trust-graph-preview")
     previous_trust_graph_preview_item = previous.get("app-platform.trust-graph-preview")
+    trust_graph_durable_store_item = current.get("app-platform.trust-graph-durable-store")
+    previous_trust_graph_durable_store_item = previous.get(
+        "app-platform.trust-graph-durable-store"
+    )
+    trust_graph_exchange_item = current.get("app-platform.trust-graph-exchange")
+    previous_trust_graph_exchange_item = previous.get("app-platform.trust-graph-exchange")
     trust_statement_signing_item = current.get("app-platform.trust-statement-signing")
     previous_trust_statement_signing_item = previous.get("app-platform.trust-statement-signing")
     details = evidence_details(item)
@@ -3265,6 +3281,7 @@ def evaluate_reference_content_gate(
     feed_reader_subscription_details = evidence_details(feed_reader_subscription_item)
     feed_reader_app_data_details = evidence_details(feed_reader_app_data_item)
     trust_graph_details = evidence_details(trust_graph_item)
+    trust_graph_durable_exchange_details = evidence_details(trust_graph_durable_exchange_item)
     trust_graph_app_data_details = evidence_details(trust_graph_app_data_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
@@ -3274,6 +3291,8 @@ def evaluate_reference_content_gate(
     )
     app_data_store_details = evidence_details(app_data_store_item)
     trust_graph_preview_details = evidence_details(trust_graph_preview_item)
+    trust_graph_durable_store_details = evidence_details(trust_graph_durable_store_item)
+    trust_graph_exchange_details = evidence_details(trust_graph_exchange_item)
     trust_statement_signing_details = evidence_details(trust_statement_signing_item)
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
@@ -3281,6 +3300,9 @@ def evaluate_reference_content_gate(
     feed_reader_checks = nested_dict(feed_reader_details, "checks")
     feed_reader_app_data_checks = nested_dict(feed_reader_app_data_details, "checks")
     trust_graph_checks = nested_dict(trust_graph_details, "checks")
+    trust_graph_durable_exchange_checks = nested_dict(
+        trust_graph_durable_exchange_details, "checks"
+    )
     trust_graph_app_data_checks = nested_dict(trust_graph_app_data_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
@@ -3298,6 +3320,10 @@ def evaluate_reference_content_gate(
     previous_feed_reader_app_data_status = evidence_status(previous_feed_reader_app_data_item)
     trust_graph_status = evidence_status(trust_graph_item)
     previous_trust_graph_status = evidence_status(previous_trust_graph_item)
+    trust_graph_durable_exchange_status = evidence_status(trust_graph_durable_exchange_item)
+    previous_trust_graph_durable_exchange_status = evidence_status(
+        previous_trust_graph_durable_exchange_item
+    )
     trust_graph_app_data_status = evidence_status(trust_graph_app_data_item)
     previous_trust_graph_app_data_status = evidence_status(previous_trust_graph_app_data_item)
     generated_document_status = evidence_status(generated_document_item)
@@ -3314,6 +3340,12 @@ def evaluate_reference_content_gate(
     previous_app_data_store_status = evidence_status(previous_app_data_store_item)
     trust_graph_preview_status = evidence_status(trust_graph_preview_item)
     previous_trust_graph_preview_status = evidence_status(previous_trust_graph_preview_item)
+    trust_graph_durable_store_status = evidence_status(trust_graph_durable_store_item)
+    previous_trust_graph_durable_store_status = evidence_status(
+        previous_trust_graph_durable_store_item
+    )
+    trust_graph_exchange_status = evidence_status(trust_graph_exchange_item)
+    previous_trust_graph_exchange_status = evidence_status(previous_trust_graph_exchange_item)
     trust_statement_signing_status = evidence_status(trust_statement_signing_item)
     previous_trust_statement_signing_status = evidence_status(
         previous_trust_statement_signing_item
@@ -3361,6 +3393,11 @@ def evaluate_reference_content_gate(
         ),
         ("reference-app.trust-graph", trust_graph_status, previous_trust_graph_status),
         (
+            "reference-app.trust-graph-durable-exchange",
+            trust_graph_durable_exchange_status,
+            previous_trust_graph_durable_exchange_status,
+        ),
+        (
             "reference-app.trust-graph-app-data-preview",
             trust_graph_app_data_status,
             previous_trust_graph_app_data_status,
@@ -3390,6 +3427,16 @@ def evaluate_reference_content_gate(
             "app-platform.trust-graph-preview",
             trust_graph_preview_status,
             previous_trust_graph_preview_status,
+        ),
+        (
+            "app-platform.trust-graph-durable-store",
+            trust_graph_durable_store_status,
+            previous_trust_graph_durable_store_status,
+        ),
+        (
+            "app-platform.trust-graph-exchange",
+            trust_graph_exchange_status,
+            previous_trust_graph_exchange_status,
         ),
         (
             "app-platform.trust-statement-signing",
@@ -3504,10 +3551,10 @@ def evaluate_reference_content_gate(
         for key in (
             "manifestDeclaresTrustGraph",
             "manifestDeclaresTrustPermissions",
-            "manifestUsesContractV9",
+            "manifestUsesContractV10",
             "usesTrustHelpers",
             "usesBoundedTrustSigningHelper",
-            "usesContentFetchAndQueuePreview",
+            "usesTrustExchangeAndQueuePreview",
             "docsDescribePreviewLimits",
         ):
             if trust_graph_checks.get(key) is not True:
@@ -3521,7 +3568,7 @@ def evaluate_reference_content_gate(
             "manifestUsesAppDataContract",
             "usesSdkJsonRecordHelpers",
             "persistsOnlyUiLocalPreviewState",
-            "docsKeepTrustBackendOutOfScope",
+            "docsSeparateAppDataAndTrustBackend",
         ):
             if trust_graph_app_data_checks.get(key) is not True:
                 failures.append(f"Trust Graph app-data preview check {key} failed")
@@ -3590,6 +3637,31 @@ def evaluate_reference_content_gate(
                 failures.append(f"Trust graph preview API check {key} failed")
                 add_evidence_issue(
                     gate_details, "failureEvidenceIds", "app-platform.trust-graph-preview"
+                )
+    trust_durable_store_checks = nested_dict(trust_graph_durable_store_details, "checks")
+    if trust_durable_store_checks:
+        for key in ("fileBackedStorePresent", "runtimeInjectsDurableStore", "durabilityTestsPresent"):
+            if trust_durable_store_checks.get(key) is not True:
+                failures.append(f"Trust graph durable store check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.trust-graph-durable-store"
+                )
+    trust_exchange_checks = nested_dict(trust_graph_exchange_details, "checks")
+    if trust_exchange_checks:
+        for key in ("contractVersionV10", "contractDescriptorsPresent", "sdkExchangeHelpersPresent"):
+            if trust_exchange_checks.get(key) is not True:
+                failures.append(f"Trust graph exchange check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-platform.trust-graph-exchange"
+                )
+    if trust_graph_durable_exchange_checks:
+        for key in ("manifestUsesContractV10", "usesSdkExchangeHelpers", "noRawApiOrManualFetch"):
+            if trust_graph_durable_exchange_checks.get(key) is not True:
+                failures.append(f"Trust Graph Preview durable exchange app check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.trust-graph-durable-exchange",
                 )
     trust_signing_checks = nested_dict(trust_statement_signing_details, "checks")
     if trust_signing_checks:
@@ -4004,6 +4076,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.feed-reader-subscriptions",
         "reference-app.feed-reader-app-data",
         "reference-app.trust-graph",
+        "reference-app.trust-graph-durable-exchange",
         "reference-app.trust-graph-app-data-preview",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
@@ -4700,6 +4773,8 @@ def run_self_test(repo_root: Path) -> None:
                 assert evidence_id in covered_evidence_ids, evidence_id
         for evidence_id in (
             "app-platform.trust-graph-preview",
+            "app-platform.trust-graph-durable-store",
+            "app-platform.trust-graph-exchange",
             "app-platform.trust-statement-signing",
             "app-review.governance",
             "app-review.reviewer-key-lifecycle",
@@ -4707,6 +4782,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-review.review-history-api",
             "app-review.first-party-review-chain",
             "reference-app.trust-graph",
+            "reference-app.trust-graph-durable-exchange",
             "legacy-admin.removal-wave-2",
             "app-platform.docs-portal",
             "app-platform.beta-program",
@@ -4771,6 +4847,12 @@ def run_self_test(repo_root: Path) -> None:
             "requiredForReleaseCandidate"
         ] is True
         assert (
+            evidence_by_id["app-platform.trust-graph-durable-store"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
+            evidence_by_id["app-platform.trust-graph-exchange"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
             evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
         ), evidence_by_id
         assert evidence_by_id["app-platform.trust-statement-signing"][
@@ -4796,6 +4878,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["reference-app.trust-graph"]["requiredForReleaseCandidate"] is True
+        assert (
+            evidence_by_id["reference-app.trust-graph-durable-exchange"]["status"] == "pass"
+        ), evidence_by_id
         assert (
             evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         ), evidence_by_id

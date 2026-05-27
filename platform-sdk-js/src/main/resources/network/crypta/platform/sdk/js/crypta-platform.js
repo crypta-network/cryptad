@@ -544,6 +544,26 @@
     );
   }
 
+  function importTrustUri(request, options) {
+    const source = requireOptionsObject(request, "Trust URI import");
+    return apiPostForm(
+      "trust-graph/import-uri",
+      normalizeTrustImportUri(source),
+      Object.assign({}, requestOptionsFrom(source), options || {})
+    ).then((response) => unwrapField(response, "importResult"));
+  }
+
+  function trustAudit(request, options) {
+    const source = request && typeof request === "object" ? request : {};
+    const requestOptions = Object.assign({}, requestOptionsFrom(source), options || {});
+    const params = new URLSearchParams();
+    copyIntegerParam(source, params, "limit");
+    requestOptions.params = params;
+    return apiGet("trust-graph/audit", requestOptions).then((response) =>
+      unwrapField(response, "audit")
+    );
+  }
+
   function trustSubjects(options) {
     return apiGet("trust-graph/subjects", options).then((response) =>
       unwrapField(response, "subjects")
@@ -568,14 +588,54 @@
     );
   }
 
-  function publishTrustStatement(options) {
+  async function publishTrustStatement(options) {
     const source = requireOptionsObject(options, "Trust statement publish options");
+    const statement = await resolveTrustStatementForPublish(source);
+    const document = trustStatementDocument({ statement });
+    const requestOptions = requestOptionsFrom(source);
     const insertOptions = Object.assign({}, source, {
-      document: trustStatementDocument(source),
+      document,
       contentType: trustStatementContentType,
       targetFilename: trustStatementTargetFilename,
     });
-    return insertAppDocument(insertOptions);
+    const preparedImportResult = await importTrustStatement(
+      {
+        document,
+        source: "local-import",
+        sourceLabel: "Prepared statement for publish",
+      },
+      requestOptions
+    );
+    const queue = await insertAppDocument(insertOptions);
+    let importResult = preparedImportResult;
+    let localPublishImportError = null;
+    try {
+      importResult = await importPublishedTrustStatement(document, source, requestOptions);
+    } catch (error) {
+      localPublishImportError = localPublishImportErrorSummary(error);
+    }
+    const publication = Object.assign({}, queue || {}, {
+      queue,
+      importResult,
+      documentFingerprint: importResult.documentFingerprint,
+      payloadHash: importResult.payloadHash,
+      signatureVerified: importResult.signatureVerified,
+      source: importResult.source,
+    });
+    if (localPublishImportError) {
+      publication.localPublishImportError = localPublishImportError;
+    }
+    return publication;
+  }
+
+  function localPublishImportErrorSummary(error) {
+    const summary = {
+      message: "Trust statement was queued, but local publish metadata could not be refreshed.",
+    };
+    if (error && typeof error.code === "string" && error.code.trim()) {
+      summary.code = error.code.trim();
+    }
+    return summary;
   }
 
   function createTrustStatement(identityIdOrOptions, payload, options) {
@@ -598,6 +658,56 @@
       normalizeTrustStatementPayload(request),
       requestOptions || requestOptionsFrom(request)
     );
+  }
+
+  function importPublishedTrustStatement(document, source, requestOptions) {
+    return importTrustStatement(
+      {
+        document,
+        source: "local-publish",
+        sourceLabel: source.sourceLabel || source.label || "Published statement",
+      },
+      requestOptions
+    );
+  }
+
+  function fetchAndImportTrustStatement(request, options) {
+    return importTrustUri(request, options);
+  }
+
+  function listTrustSubscriptions(options) {
+    return listContentSubscriptions(options);
+  }
+
+  function createTrustSubscription(options) {
+    const source = requireOptionsObject(options, "Trust subscription options");
+    const request = Object.assign(
+      {
+        label: "Trust statement subscription",
+      },
+      source
+    );
+    return createContentSubscription(request);
+  }
+
+  function getTrustSubscription(subscriptionIdOrOptions, options) {
+    return getContentSubscription(subscriptionIdOrOptions, options);
+  }
+
+  function refreshTrustSubscription(subscriptionIdOrOptions, options) {
+    return refreshContentSubscription(subscriptionIdOrOptions, options);
+  }
+
+  function pauseTrustSubscription(subscriptionIdOrOptions, options) {
+    return pauseContentSubscription(subscriptionIdOrOptions, options);
+  }
+
+  function resumeTrustSubscription(subscriptionIdOrOptions, options) {
+    return resumeContentSubscription(subscriptionIdOrOptions, options);
+  }
+
+  function removeTrustSubscription(subscriptionIdOrOptions, options) {
+    return removeContentSubscription(subscriptionIdOrOptions, options);
   }
 
   function parseFeedSnapshot(value) {
@@ -1213,10 +1323,21 @@
     const source = requireOptionsObject(request, "Trust import");
     const params = new URLSearchParams();
     params.set("document", trustStatementText(source));
+    copyStringParam(source, params, "source");
     copyStringParam(source, params, "sourceUri");
     copyStringParamAs(source, params, "uri", "sourceUri");
     copyStringParam(source, params, "sourceLabel");
     copyStringParamAs(source, params, "label", "sourceLabel");
+    return params;
+  }
+
+  function normalizeTrustImportUri(request) {
+    const source = requireOptionsObject(request, "Trust URI import");
+    const params = new URLSearchParams();
+    params.set("uri", trimmedRequired(source.uri || source.sourceUri, "uri"));
+    copyStringParam(source, params, "sourceLabel");
+    copyStringParamAs(source, params, "label", "sourceLabel");
+    copyIntegerParam(source, params, "maxBytes");
     return params;
   }
 
@@ -1290,6 +1411,22 @@
       }
     }
     return current;
+  }
+
+  async function resolveTrustStatementForPublish(source) {
+    if (
+      Object.prototype.hasOwnProperty.call(source, "statement") ||
+      Object.prototype.hasOwnProperty.call(source, "trustStatement") ||
+      Object.prototype.hasOwnProperty.call(source, "document")
+    ) {
+      return trustStatementDocument(source);
+    }
+    const identityId = source.identityId || source.authorIdentity || source.authorIdentityId;
+    if (!identityId) {
+      throw new Error("Trust statement publish options require identityId or statement.");
+    }
+    const signed = await createTrustStatement(identityId, source, requestOptionsFrom(source));
+    return trustStatementDocument({ statement: signed });
   }
 
   function trustStatementText(source) {
@@ -1858,10 +1995,27 @@
         remove: removeTrustAnchor,
       }),
       importStatement: importTrustStatement,
+      importUri: importTrustUri,
+      audit: Object.freeze({
+        list: trustAudit,
+      }),
       subjects: trustSubjects,
       statements: trustStatements,
       score: trustScore,
       publishStatement: publishTrustStatement,
+      exchange: Object.freeze({
+        publish: publishTrustStatement,
+        fetchAndImport: fetchAndImportTrustStatement,
+        subscriptions: Object.freeze({
+          list: listTrustSubscriptions,
+          create: createTrustSubscription,
+          get: getTrustSubscription,
+          refresh: refreshTrustSubscription,
+          pause: pauseTrustSubscription,
+          resume: resumeTrustSubscription,
+          remove: removeTrustSubscription,
+        }),
+      }),
     }),
     dom: Object.freeze({
       sanitizeFragment,

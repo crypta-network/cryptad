@@ -17,6 +17,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
+import network.crypta.platform.trustgraph.TrustGraphException;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -50,6 +51,9 @@ public final class PlatformApiRouter {
 
   /** Shared route segment and list envelope key for Trust Graph Preview anchors. */
   private static final String TRUST_GRAPH_ANCHORS_SEGMENT = "anchors";
+
+  /** Detached runtime ports used by routes that need direct access to optional runtime services. */
+  private final RuntimePorts runtimePorts;
 
   /** Handler for the {@code /node/...} endpoint family. */
   private final NodeApiHandler nodeApiHandler;
@@ -301,6 +305,7 @@ public final class PlatformApiRouter {
       AppUiOriginRegistry appUiOriginRegistry,
       PlatformApiSharedAppServices appServices) {
     RuntimePorts checkedRuntimePorts = requireNonNull(runtimePorts, "runtimePorts");
+    this.runtimePorts = checkedRuntimePorts;
     this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
     requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     PlatformApiSharedAppServices checkedAppServices = requireNonNull(appServices, "appServices");
@@ -330,7 +335,10 @@ public final class PlatformApiRouter {
         new AlertsApiHandler(checkedRuntimePorts.alertFeed(), checkedRuntimePorts.alertMutation());
     diagnosticsApiHandler =
         new DiagnosticsApiHandler(checkedRuntimePorts.diagnostic(), legacyAdminUsage);
-    trustGraphApiHandler = new TrustGraphApiHandler();
+    trustGraphApiHandler =
+        checkedAppServices.trustGraphApiHandler() == null
+            ? new TrustGraphApiHandler()
+            : checkedAppServices.trustGraphApiHandler();
     appRoutes =
         new PlatformApiAppRoutes(
             new PlatformApiAppRoutes.RouteDependencies(
@@ -424,6 +432,14 @@ public final class PlatformApiRouter {
           PlatformApiVaultRouter.statusCode(exception),
           PlatformApiVaultRouter.errorCode(exception),
           exception.getMessage());
+    }
+    if (exception instanceof TrustGraphException trustGraphException) {
+      return structuredFailureResponse(
+          checkedRequest,
+          authorization,
+          "trust_graph_store_unavailable".equals(trustGraphException.errorCode()) ? 503 : 400,
+          trustGraphException.errorCode(),
+          trustGraphException.getMessage());
     }
     return null;
   }
@@ -687,7 +703,28 @@ public final class PlatformApiRouter {
         }
         yield PlatformApiResponse.ok(
             envelope(
-                "importResult", trustGraphApiHandler.importStatement(request.queryParameters())));
+                "importResult",
+                trustGraphApiHandler.importStatement(
+                    request.queryParameters(), optionalAppPrincipalId(request))));
+      }
+      case "import-uri" -> {
+        if (!"POST".equals(request.method())) {
+          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                "importResult",
+                trustGraphApiHandler.importUri(
+                    request.queryParameters(),
+                    this.runtimePorts.contentFetch(),
+                    optionalAppPrincipalId(request))));
+      }
+      case "audit" -> {
+        if (!"GET".equals(request.method())) {
+          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("audit", trustGraphApiHandler.audit(request.queryParameters())));
       }
       case "subjects" -> {
         if (!"GET".equals(request.method())) {
@@ -720,7 +757,10 @@ public final class PlatformApiRouter {
     }
     if ("POST".equals(request.method())) {
       return PlatformApiResponse.created(
-          envelope("anchor", trustGraphApiHandler.addAnchor(request.queryParameters())));
+          envelope(
+              "anchor",
+              trustGraphApiHandler.addAnchor(
+                  request.queryParameters(), optionalAppPrincipalId(request))));
     }
     return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
   }
@@ -734,7 +774,9 @@ public final class PlatformApiRouter {
       return methodNotAllowed(METHOD_DELETE, DELETE_ONLY_MESSAGE);
     }
     return PlatformApiResponse.ok(
-        envelope("anchor", trustGraphApiHandler.removeAnchor(resourceId)));
+        envelope(
+            "anchor",
+            trustGraphApiHandler.removeAnchor(resourceId, optionalAppPrincipalId(request))));
   }
 
   /**
@@ -908,6 +950,10 @@ public final class PlatformApiRouter {
           403, "forbidden", "This Platform API route requires an app principal.");
     }
     return request.principal().appId();
+  }
+
+  private static String optionalAppPrincipalId(PlatformApiRequest request) {
+    return request.principal().isApp() ? request.principal().appId() : null;
   }
 
   /**

@@ -1,6 +1,7 @@
 package network.crypta.platform.trustgraph;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Local store abstraction for Trust Graph Preview statements and anchors.
@@ -17,7 +18,8 @@ public interface TrustGraphStore {
    *
    * @param document parsed and validated trust statement document
    * @param source bounded local source label, or {@code null} for an implementation default
-   * @param sourceUri optional Crypta content URI associated with the imported document
+   * @param sourceUri optional Crypta content URI associated with the imported document. Stores may
+   *     retain only a redacted summary and hash for this value.
    * @param sourceLabel optional short display label supplied by the importing app
    * @return redacted import summary including hashes and signature verification status
    */
@@ -77,6 +79,56 @@ public interface TrustGraphStore {
   int statementCount();
 
   /**
+   * Returns whether this store is backed by durable platform-owned storage.
+   *
+   * @return {@code true} when anchors, statements, and audit records survive process restart
+   */
+  default boolean durable() {
+    return false;
+  }
+
+  /**
+   * Returns a short implementation label for status responses.
+   *
+   * @return bounded store type label
+   */
+  default String storeType() {
+    return "in-memory";
+  }
+
+  /**
+   * Returns the retention and byte limits currently applied by this store.
+   *
+   * @return immutable store configuration
+   */
+  default TrustGraphStoreConfig config() {
+    return TrustGraphStoreConfig.defaults();
+  }
+
+  /**
+   * Appends a redacted local audit event.
+   *
+   * <p>Implementations may persist this event or keep it process-local. The default implementation
+   * intentionally ignores events for reduced embeddings that do not expose audit history.
+   *
+   * @param event redacted audit event that does not contain raw trust bodies, signatures, tokens,
+   *     private keys, private insert URIs, or local paths
+   */
+  default void appendAuditEvent(TrustGraphAuditEvent event) {
+    // Reduced embeddings may omit audit storage.
+  }
+
+  /**
+   * Returns recent redacted audit events in deterministic newest-first order.
+   *
+   * @param limit positive maximum number of events to return
+   * @return immutable audit event snapshot
+   */
+  default List<TrustGraphAuditEvent> auditEvents(int limit) {
+    return List.of();
+  }
+
+  /**
    * Stored trust statement metadata.
    *
    * <p>The record wraps the parsed document with hashes, verification status, and sanitized source
@@ -87,7 +139,8 @@ public interface TrustGraphStore {
    * @param payloadHash hash over the domain-separated canonical payload bytes
    * @param signatureVerified whether the statement signature verified during import
    * @param source sanitized local source label
-   * @param sourceUri optional normalized Crypta content URI
+   * @param sourceUri optional redacted Crypta content URI summary
+   * @param sourceUriHash optional SHA-256 hash of the normalized source URI
    * @param sourceLabel optional caller-provided display label
    */
   record StoredTrustStatement(
@@ -97,14 +150,28 @@ public interface TrustGraphStore {
       boolean signatureVerified,
       String source,
       String sourceUri,
-      String sourceLabel) {
+      String sourceUriHash,
+      String sourceLabel,
+      java.time.Instant importedAt,
+      java.time.Instant updatedAt) {
     /**
      * Returns a redacted statement summary.
      *
      * @return public metadata without raw document text or signature value
      */
-    public java.util.Map<String, Object> toSummaryJson() {
-      return document.toSummaryJson(signatureVerified, source, sourceUri, sourceLabel);
+    public Map<String, Object> toSummaryJson() {
+      Map<String, Object> summary =
+          document.toSummaryJson(signatureVerified, source, sourceUri, sourceLabel);
+      if (sourceUriHash != null) {
+        summary.put("sourceUriHash", sourceUriHash);
+      }
+      if (importedAt != null) {
+        summary.put("importedAt", importedAt.toString());
+      }
+      if (updatedAt != null) {
+        summary.put("updatedAt", updatedAt.toString());
+      }
+      return summary;
     }
   }
 }

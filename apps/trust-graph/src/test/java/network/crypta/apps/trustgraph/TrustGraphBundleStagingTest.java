@@ -26,14 +26,15 @@ class TrustGraphBundleStagingTest {
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/trust-graph.sh";
   private static final String EXPECTED_PERMISSIONS =
-      "trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,"
-          + "vault.identities.read,vault.identities.create,vault.identities.use,"
-          + "app.data.read,app.data.write";
+      "trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,"
+          + "queue.read,queue.write,vault.identities.read,vault.identities.create,"
+          + "vault.identities.use,app.data.read,app.data.write";
   private static final List<String> EXPECTED_PERMISSION_LIST =
       List.of(
           "trust.read",
           "trust.write",
           "content.fetch",
+          "content.subscribe",
           "content.insert.app-document",
           "queue.read",
           "queue.write",
@@ -42,8 +43,8 @@ class TrustGraphBundleStagingTest {
           "vault.identities.use",
           "app.data.read",
           "app.data.write");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 9;
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 10;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 10;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -202,6 +203,7 @@ class TrustGraphBundleStagingTest {
         "<code>trust.read</code>",
         "<code>trust.write</code>",
         "<code>content.fetch</code>",
+        "<code>content.subscribe</code>",
         "<code>content.insert.app-document</code>",
         "<code>queue.read</code>",
         "<code>queue.write</code>",
@@ -212,6 +214,8 @@ class TrustGraphBundleStagingTest {
         "Status",
         "Anchors",
         "Fetch and import",
+        "Subscriptions",
+        "Audit",
         "Pasted statement JSON",
         "Import pasted statement",
         "Score",
@@ -220,7 +224,7 @@ class TrustGraphBundleStagingTest {
         "Publish statement",
         "Queue preview",
         "persist through app data",
-        "not made durable by this app state",
+        "persist through the platform trust graph backend",
         "rendered only as text",
         "without exposing private signing secrets");
   }
@@ -282,12 +286,18 @@ class TrustGraphBundleStagingTest {
         "CryptaPlatform.trust.anchors.add",
         "CryptaPlatform.trust.anchors.remove",
         "CryptaPlatform.trust.importStatement",
+        "CryptaPlatform.trust.exchange.fetchAndImport",
+        "CryptaPlatform.trust.audit.list",
         "CryptaPlatform.trust.score",
-        "CryptaPlatform.trust.publishStatement",
-        "CryptaPlatform.content.fetchText",
+        "CryptaPlatform.trust.exchange.publish",
+        "CryptaPlatform.trust.exchange.subscriptions.list",
+        "CryptaPlatform.trust.exchange.subscriptions.create",
+        "CryptaPlatform.trust.exchange.subscriptions.refresh",
+        "CryptaPlatform.trust.exchange.subscriptions.pause",
+        "CryptaPlatform.trust.exchange.subscriptions.resume",
+        "CryptaPlatform.trust.exchange.subscriptions.remove",
         "CryptaPlatform.vault.identities.list",
         "CryptaPlatform.vault.identities.create",
-        "CryptaPlatform.vault.identities.createTrustStatement",
         "CryptaPlatform.queue.snapshot",
         "CryptaPlatform.data.records.getJson",
         "CryptaPlatform.data.records.putJson",
@@ -299,14 +309,22 @@ class TrustGraphBundleStagingTest {
         "state = {",
         "lastStatementText",
         "recentImports",
+        "auditEvents",
+        "subscriptions",
         "sourceKind",
         "importSummaryLabel",
+        "publicationSummary",
+        "redactedUri",
+        "renderAudit",
+        "renderSubscriptions",
         "loadDurableState",
         "persistDurableState",
         "maxStatementBytes",
         "isCryptaContentUri",
+        "isTrustSubscriptionUri",
         "uri.startsWith(\"KSK@\")",
         "Statement URI must start with CHK@, SSK@, USK@, KSK@, or crypta:.",
+        "Subscription URI must start with USK@ or crypta:USK@.",
         "generatedIdentifier",
         "stringField(anchor, \"createdAt\", \"addedAt\", \"updatedAt\", \"updated\")",
         "stringField(identity, \"fingerprint\", \"publicKeyFingerprint\")",
