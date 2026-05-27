@@ -52,7 +52,7 @@ public record TrustStatementDocument(
    *
    * @param signatureVerified whether the document signature verified during import
    * @param source sanitized local source label
-   * @param sourceUri optional normalized Crypta content URI
+   * @param sourceUri optional redacted Crypta content URI summary
    * @param sourceLabel optional caller-provided short display label
    * @return redacted public statement metadata for app-facing lists
    */

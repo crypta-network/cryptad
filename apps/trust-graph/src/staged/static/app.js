@@ -13,6 +13,8 @@
     lastDraft: {},
     queueItems: [],
     recentImports: [],
+    auditEvents: [],
+    subscriptions: [],
     status: null,
   };
 
@@ -33,10 +35,14 @@
     elements.scoreResult = document.getElementById("score-result");
     elements.publishResult = document.getElementById("publish-result");
     elements.queuePreview = document.getElementById("queue-preview");
+    elements.auditList = document.getElementById("audit-list");
+    elements.subscriptionList = document.getElementById("subscription-list");
     elements.refreshStatusButton = document.getElementById("refresh-status-button");
     elements.loadIdentitiesButton = document.getElementById("load-identities-button");
     elements.refreshAnchorsButton = document.getElementById("refresh-anchors-button");
     elements.refreshQueueButton = document.getElementById("refresh-queue-button");
+    elements.refreshAuditButton = document.getElementById("refresh-audit-button");
+    elements.refreshSubscriptionsButton = document.getElementById("refresh-subscriptions-button");
     elements.secondaryRefreshQueueButton =
       document.getElementById("secondary-refresh-queue-button");
     elements.identityForm = document.getElementById("identity-form");
@@ -44,6 +50,7 @@
     elements.fetchForm = document.getElementById("fetch-form");
     elements.scoreForm = document.getElementById("score-form");
     elements.publishForm = document.getElementById("publish-form");
+    elements.subscriptionForm = document.getElementById("subscription-form");
   }
 
   function bindEvents() {
@@ -51,12 +58,15 @@
     elements.loadIdentitiesButton.addEventListener("click", refreshIdentities);
     elements.refreshAnchorsButton.addEventListener("click", refreshAnchors);
     elements.refreshQueueButton.addEventListener("click", refreshQueue);
+    elements.refreshAuditButton.addEventListener("click", refreshAudit);
+    elements.refreshSubscriptionsButton.addEventListener("click", refreshSubscriptions);
     elements.secondaryRefreshQueueButton.addEventListener("click", refreshQueue);
     elements.identityForm.addEventListener("submit", createIdentity);
     elements.anchorForm.addEventListener("submit", addAnchor);
     elements.fetchForm.addEventListener("submit", fetchAndImportStatement);
     elements.scoreForm.addEventListener("submit", scoreSubject);
     elements.publishForm.addEventListener("submit", publishStatement);
+    elements.subscriptionForm.addEventListener("submit", createSubscription);
   }
 
   async function startApp() {
@@ -67,7 +77,14 @@
       }
       await loadDurableState();
       restoreDraftForms();
-      await Promise.all([refreshStatus(), refreshAnchors(), refreshIdentities(), refreshQueue()]);
+      await Promise.all([
+        refreshStatus(),
+        refreshAnchors(),
+        refreshIdentities(),
+        refreshQueue(),
+        refreshAudit(),
+        refreshSubscriptions(),
+      ]);
       setStatus("Trust Graph Preview is ready.");
     } catch (error) {
       setStatus(errorMessage(error));
@@ -96,6 +113,86 @@
     }
   }
 
+  async function refreshAudit() {
+    try {
+      const events = await CryptaPlatform.trust.audit.list({ limit: 12 });
+      state.auditEvents = asArray(events.events || events.items || events);
+      renderAudit();
+      setStatus("Trust audit refreshed.");
+    } catch (error) {
+      renderError(elements.auditList, error);
+    }
+  }
+
+  async function refreshSubscriptions() {
+    try {
+      const response = await CryptaPlatform.trust.exchange.subscriptions.list();
+      state.subscriptions = asArray(response.subscriptions || response.items || response);
+      renderSubscriptions();
+      setStatus("Trust subscriptions refreshed.");
+    } catch (error) {
+      renderError(elements.subscriptionList, error);
+    }
+  }
+
+  async function createSubscription(event) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const uri = textValue(formData, "uri");
+    const label = textValue(formData, "label") || "Trust statement subscription";
+    if (!uri) {
+      setStatus("Enter a trust statement subscription URI.");
+      return;
+    }
+    if (!isTrustSubscriptionUri(uri)) {
+      setStatus("Subscription URI must start with USK@ or crypta:USK@.");
+      return;
+    }
+
+    try {
+      await CryptaPlatform.trust.exchange.subscriptions.create({
+        uri,
+        label,
+        maxBytes: maxStatementBytes,
+      });
+      event.currentTarget.reset();
+      await Promise.all([refreshSubscriptions(), refreshAudit()]);
+      setStatus("Trust statement subscription created.");
+    } catch (error) {
+      renderError(elements.subscriptionList, error);
+    }
+  }
+
+  async function refreshSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, CryptaPlatform.trust.exchange.subscriptions.refresh);
+  }
+
+  async function pauseSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, CryptaPlatform.trust.exchange.subscriptions.pause);
+  }
+
+  async function resumeSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, CryptaPlatform.trust.exchange.subscriptions.resume);
+  }
+
+  async function removeSubscription(subscriptionId) {
+    await mutateSubscription(subscriptionId, CryptaPlatform.trust.exchange.subscriptions.remove);
+  }
+
+  async function mutateSubscription(subscriptionId, action) {
+    if (!subscriptionId) {
+      setStatus("Subscription id is unavailable.");
+      return;
+    }
+    try {
+      await action(subscriptionId);
+      await Promise.all([refreshSubscriptions(), refreshAudit()]);
+      setStatus("Trust subscription updated.");
+    } catch (error) {
+      renderError(elements.subscriptionList, error);
+    }
+  }
+
   async function addAnchor(event) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -113,7 +210,7 @@
         source: "manual",
       });
       event.currentTarget.reset();
-      await refreshAnchors();
+      await Promise.all([refreshAnchors(), refreshAudit(), refreshStatus()]);
       setStatus("Trust anchor added.");
     } catch (error) {
       setStatus(errorMessage(error));
@@ -123,7 +220,7 @@
   async function removeAnchor(identity) {
     try {
       await CryptaPlatform.trust.anchors.remove(identity);
-      await refreshAnchors();
+      await Promise.all([refreshAnchors(), refreshAudit(), refreshStatus()]);
       setStatus("Trust anchor removed.");
     } catch (error) {
       setStatus(errorMessage(error));
@@ -184,10 +281,21 @@
     }
 
     try {
-      const fetched = await CryptaPlatform.content.fetchText({ uri, maxBytes: maxStatementBytes });
-      const text = fetched.contentText || fetched.text || fetched.content || String(fetched);
-      state.lastStatementText = text;
-      await importStatementText(uri, text, uri);
+      const imported = await CryptaPlatform.trust.exchange.fetchAndImport({
+        uri,
+        maxBytes: maxStatementBytes,
+        sourceLabel: "Fetched statement",
+      });
+      state.lastStatementText = "";
+      rememberImportSummary(
+        "Fetched statement",
+        uri,
+        numberField(imported, "documentBytes", "bytes"),
+        imported
+      );
+      renderImportSummary(uri, imported);
+      await Promise.all([refreshStatus(), refreshAudit()]);
+      setStatus("Statement fetched and imported.");
     } catch (error) {
       renderError(elements.statementPreview, error);
     }
@@ -209,8 +317,9 @@
       }
       const imported = await CryptaPlatform.trust.importStatement(request);
       state.lastStatementText = text;
-      rememberImportSummary(label, sourceUri, text, imported);
+      rememberImportSummary(label, sourceUri, byteLength(text || ""), imported);
       renderStatement(label, text, imported);
+      await Promise.all([refreshStatus(), refreshAudit()]);
       setStatus("Statement imported.");
     } catch (error) {
       renderError(elements.statementPreview, error);
@@ -262,23 +371,24 @@
     }
 
     try {
-      const statement = await CryptaPlatform.vault.identities.createTrustStatement(authorIdentity, {
+      const published = await CryptaPlatform.trust.exchange.publish({
+        identityId: authorIdentity,
         subjectKind,
         subjectUri: subjectIdentity,
         context,
         score: value,
         confidence: 80,
         reason,
-      });
-      const published = await CryptaPlatform.trust.publishStatement({
         insertUri,
         identifier,
-        statement,
       });
-      await refreshQueue();
+      await Promise.all([refreshQueue(), refreshStatus(), refreshAudit()]);
       state.lastDraft.publish = { authorIdentity, subjectKind, subjectIdentity, value, context, reason };
       persistDurableState();
-      replaceChildren(elements.publishResult, summaryNodes(published, "Published statement"));
+      replaceChildren(
+        elements.publishResult,
+        summaryNodes(publicationSummary(published), "Published statement")
+      );
       setStatus("Trust statement publication requested.");
     } catch (error) {
       renderError(elements.publishResult, error);
@@ -343,13 +453,13 @@
     );
   }
 
-  function rememberImportSummary(label, sourceUri, text, imported) {
+  function rememberImportSummary(label, sourceUri, bytes, imported) {
     const sourceKind = importSourceKind(sourceUri);
     state.recentImports.unshift({
       at: new Date().toISOString(),
       label: importSummaryLabel(label, sourceUri),
       sourceKind,
-      bytes: byteLength(text || ""),
+      bytes: Number(bytes) || 0,
       result: stringField(imported, "status", "outcome") || "imported",
     });
     state.recentImports = state.recentImports.slice(0, 8);
@@ -500,16 +610,29 @@
 
   function renderStatement(uri, text, imported) {
     const nodes = [
-      rowNode("URI", uri),
+      rowNode("Source", importSummaryLabel(uri, "")),
       rowNode("Import", compactValue(imported)),
       textBlock("Statement text", text),
     ];
     replaceChildren(elements.statementPreview, nodes);
   }
 
+  function renderImportSummary(uri, imported) {
+    const summary = {
+      source: "content-fetch",
+      sourceSummary: redactedUri(uri),
+      documentFingerprint: stringField(imported, "documentFingerprint"),
+      payloadHash: stringField(imported, "payloadHash"),
+      signatureVerified: stringField(imported, "signatureVerified"),
+      importedAt: stringField(imported, "importedAt"),
+      updatedAt: stringField(imported, "updatedAt"),
+    };
+    replaceChildren(elements.statementPreview, summaryNodes(summary, "Imported statement"));
+  }
+
   function renderQueue(snapshot) {
     if (state.queueItems.length === 0) {
-      replaceChildren(elements.queuePreview, summaryNodes(snapshot, "Queue snapshot"));
+      replaceChildren(elements.queuePreview, summaryNodes(queueSnapshotSummary(snapshot), "Queue snapshot"));
       return;
     }
 
@@ -519,11 +642,97 @@
       article.append(
         rowNode("Identifier", stringField(item, "identifier", "id") || "Unknown"),
         rowNode("State", stringField(item, "state", "status") || "Unknown"),
-        rowNode("URI", stringField(item, "uri", "targetUri", "insertUri") || "Not shown")
+        rowNode("Request", stringField(item, "requestId", "request", "id") || "Not shown")
       );
       return article;
     });
     replaceChildren(elements.queuePreview, nodes);
+  }
+
+  function renderAudit() {
+    if (state.auditEvents.length === 0) {
+      replaceChildren(elements.auditList, [emptyNode("No trust graph audit entries returned.")]);
+      return;
+    }
+
+    const nodes = state.auditEvents.map((event) => {
+      const article = document.createElement("article");
+      article.className = "audit-item";
+      article.append(
+        rowNode("Event", stringField(event, "eventType", "type") || "Unknown"),
+        rowNode("Status", stringField(event, "statusCode", "status") || "ok"),
+        rowNode("Document", stringField(event, "documentFingerprint") || "Not shown"),
+        rowNode("Payload", stringField(event, "payloadHash") || "Not shown"),
+        rowNode("Source", stringField(event, "sourceSummary", "source") || "Not shown"),
+        rowNode("At", stringField(event, "timestamp", "at") || "Unknown")
+      );
+      return article;
+    });
+    replaceChildren(elements.auditList, nodes);
+  }
+
+  function renderSubscriptions() {
+    if (state.subscriptions.length === 0) {
+      replaceChildren(elements.subscriptionList, [
+        emptyNode("No trust statement subscriptions returned."),
+      ]);
+      return;
+    }
+
+    const nodes = state.subscriptions.map((subscription) => {
+      const subscriptionId = stringField(subscription, "subscriptionId", "id");
+      const article = document.createElement("article");
+      article.className = "subscription-item";
+      article.append(
+        rowNode("Label", stringField(subscription, "label", "name") || "Trust statement"),
+        rowNode("URI", redactedUri(stringField(subscription, "uri", "sourceUri")) || "Not shown"),
+        rowNode("Status", stringField(subscription, "state", "status") || "Unknown"),
+        rowNode(
+          "Edition",
+          stringField(subscription, "lastKnownEdition", "lastEdition", "edition") || "Unknown"
+        )
+      );
+
+      const actions = document.createElement("div");
+      actions.className = "subscription-item__actions";
+      actions.append(
+        subscriptionButton("Refresh", () => refreshSubscription(subscriptionId), subscriptionId),
+        subscriptionButton("Pause", () => pauseSubscription(subscriptionId), subscriptionId),
+        subscriptionButton("Resume", () => resumeSubscription(subscriptionId), subscriptionId),
+        subscriptionButton("Remove", () => removeSubscription(subscriptionId), subscriptionId)
+      );
+      article.append(actions);
+      return article;
+    });
+    replaceChildren(elements.subscriptionList, nodes);
+  }
+
+  function subscriptionButton(label, action, subscriptionId) {
+    const button = document.createElement("button");
+    button.className = "cr-button cr-button--secondary";
+    button.type = "button";
+    button.textContent = label;
+    button.disabled = !subscriptionId;
+    button.addEventListener("click", action);
+    return button;
+  }
+
+  function publicationSummary(published) {
+    return {
+      requestId: stringField(published, "requestId", "id"),
+      documentFingerprint: stringField(published, "documentFingerprint"),
+      payloadHash: stringField(published, "payloadHash"),
+      signatureVerified: stringField(published, "signatureVerified"),
+      source: stringField(published, "source") || "local-publish",
+    };
+  }
+
+  function queueSnapshotSummary(snapshot) {
+    return {
+      count: Array.isArray(state.queueItems) ? state.queueItems.length : 0,
+      page: stringField(snapshot, "page"),
+      status: stringField(snapshot, "status"),
+    };
   }
 
   function summaryNodes(value, title) {
@@ -608,6 +817,31 @@
     return "";
   }
 
+  function numberField(value, ...keys) {
+    if (!value || typeof value !== "object") {
+      return 0;
+    }
+    for (const key of keys) {
+      const number = Number(value[key]);
+      if (Number.isFinite(number)) {
+        return number;
+      }
+    }
+    return 0;
+  }
+
+  function redactedUri(uri) {
+    const value = String(uri || "").trim();
+    if (!value) {
+      return "";
+    }
+    const marker = value.startsWith("crypta:") ? "crypta:" : "";
+    const remainder = marker ? value.slice(marker.length) : value;
+    const separator = remainder.indexOf("@");
+    const prefix = separator > 0 ? remainder.slice(0, separator + 1) : "";
+    return `${marker}${prefix}redacted`;
+  }
+
   function compactValue(value) {
     if (value === undefined || value === null || value === "") {
       return "None";
@@ -644,6 +878,15 @@
       uri.startsWith("KSK@") ||
       uri.startsWith("crypta:")
     );
+  }
+
+  function isTrustSubscriptionUri(uri) {
+    const value = String(uri || "").trim();
+    if (!value || /\s/.test(value) || value.includes("?") || value.includes("#")) {
+      return false;
+    }
+    const runtimeUri = value.toLowerCase().startsWith("crypta:") ? value.slice(7).trim() : value;
+    return runtimeUri.toUpperCase().startsWith("USK@");
   }
 
   function byteLength(value) {

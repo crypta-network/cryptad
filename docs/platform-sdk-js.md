@@ -250,7 +250,7 @@ The SDK never writes durable app state to `localStorage` or `sessionStorage`. Ap
 bounded app-owned user state, not secrets or identity material. Use AppVault for private material
 and keep raw app-data values out of release evidence.
 
-Trust Graph Preview uses the v7 trust helpers:
+Trust Graph Preview uses the trust helpers:
 
 ```js
 const status = await CryptaPlatform.trust.status();
@@ -265,19 +265,30 @@ await CryptaPlatform.trust.importStatement({
   sourceUri,
   sourceLabel: "fetched",
 });
+const imported = await CryptaPlatform.trust.importUri({
+  uri,
+  sourceLabel: "reviewed statement",
+  maxBytes: 65536,
+});
 const score = await CryptaPlatform.trust.score({
   subjectKind: "profile",
   subjectUri,
   context: "profile",
   includeEvidence: true,
 });
+const audit = await CryptaPlatform.trust.audit.list({ limit: 25 });
 ```
 
-To create and publish a bounded trust statement, apps should use the AppVault helper and the trust
-publishing helper instead of constructing API forms directly:
+Trust import responses expose document fingerprints, payload hashes, verification status, and
+redacted source URI summaries plus `sourceUriHash` when a source URI was supplied. They do not echo
+the raw URI, raw fetched body, raw statement JSON, or raw signature value.
+
+To create and publish a bounded trust statement, apps should use the trust exchange helper instead
+of constructing API forms directly:
 
 ```js
-const signed = await CryptaPlatform.vault.identities.createTrustStatement(identityId, {
+await CryptaPlatform.trust.exchange.publish({
+  identityId,
   subjectKind: "profile",
   subjectUri,
   context: "profile",
@@ -286,25 +297,40 @@ const signed = await CryptaPlatform.vault.identities.createTrustStatement(identi
   reason,
   tags,
   expiresAt,
-});
-
-await CryptaPlatform.trust.publishStatement({
   insertUri,
   identifier,
-  statement: signed,
 });
 ```
 
-`CryptaPlatform.trust.publishStatement` wraps `insertAppDocument` and defaults `contentType` to
-`application/vnd.crypta.trust+json` and `targetFilename` to `trust.json`. Trust helpers require
-the corresponding manifest capabilities: `trust.read` for status, anchors, subjects, statements,
-and score reads; `trust.write` for import and anchor mutation; and `trust.write`,
-`vault.identities.read`, and `vault.identities.use` for bounded trust-statement signing. Apps
-should render imported and fetched trust fields as text, keep document sizes bounded, and avoid
-storing raw trust documents from real users, raw request bodies, signatures, private identity
-material, browser-session tokens, form passwords, or local paths in browser storage or release
-evidence. Imported statements that lack a verifiable AppVault preview signature are still visible
-as evidence, but the local scorer marks them non-contributing.
+`CryptaPlatform.trust.publishStatement` and `CryptaPlatform.trust.exchange.publish` call the
+bounded AppVault trust-statement route when given an identity and payload, queue the public
+statement through `insertAppDocument`, default `contentType` to
+`application/vnd.crypta.trust+json` and `targetFilename` to `trust.json`, and import the local
+public statement summary into the durable trust graph backend with source `local-publish`.
+
+`CryptaPlatform.trust.exchange.fetchAndImport` is an alias for the v10 URI import workflow.
+`CryptaPlatform.trust.exchange.subscriptions.*` wraps the content subscription helpers with a
+trust-statement default label:
+
+```js
+await CryptaPlatform.trust.exchange.fetchAndImport({ uri, maxBytes: 65536 });
+await CryptaPlatform.trust.exchange.subscriptions.create({ uri, maxBytes: 65536 });
+await CryptaPlatform.trust.exchange.subscriptions.refresh(subscriptionId);
+await CryptaPlatform.trust.exchange.subscriptions.pause(subscriptionId);
+await CryptaPlatform.trust.exchange.subscriptions.resume(subscriptionId);
+await CryptaPlatform.trust.exchange.subscriptions.remove(subscriptionId);
+```
+
+Trust helpers require the corresponding manifest capabilities: `trust.read` for status, anchors,
+subjects, statements, audit, and score reads; `trust.write` for import and anchor mutation;
+`content.fetch` for URI import and subscription refresh/create; `content.subscribe` for
+subscription metadata and lifecycle; `content.insert.app-document` plus `queue.write` for
+publication; and `vault.identities.read` plus `vault.identities.use` for bounded trust-statement
+signing. Apps should render pasted trust fields as text, keep document sizes bounded, and avoid
+storing raw trust documents from real users, raw fetched bodies, raw request bodies, signatures,
+private insert URIs, private identity material, browser-session tokens, form passwords, or local
+paths in browser storage or release evidence. Imported statements that lack a verifiable AppVault
+preview signature are still visible as evidence, but the local scorer marks them non-contributing.
 
 `app-vault/identities` creates an app-owned identity for an authorized static app browser session.
 `app-vault/identities/{identityId}/profile-document` asks Cryptad to create the profile document

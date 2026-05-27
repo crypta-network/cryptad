@@ -194,17 +194,31 @@ local paths out of persisted output.
 
 Trust Graph Preview is the local trust-service reference app. Score/status reads require
 `trust.read`; imports and local anchor changes require `trust.write`; bounded trust-statement
-signing also requires `vault.identities.read` and `vault.identities.use`. `trust.write` covers
-import and anchor management only; it does not publish anchors automatically, export private
-identity material, grant moderation authority, or apply scores to content blocking. Audit entries
-for trust routes should include principal type, app id, trust-graph endpoint family, allowed or
-denied outcome, capability label, and bounded action label, but not raw trust documents, raw
-request bodies, signature values, private keys, app process tokens, browser-session tokens, form
-passwords, or absolute local paths.
+signing also requires `vault.identities.read` and `vault.identities.use`. URI import additionally
+requires `content.fetch`; trust-statement subscription management uses `content.subscribe` and the
+same `content.fetch` grant for create/refresh that content subscriptions require. Publication uses
+`content.insert.app-document` and `queue.write`. `trust.write` covers import and anchor management
+only; it does not publish anchors automatically, export private identity material, grant moderation
+authority, or apply scores to content blocking.
+
+Trust Graph Preview also has a bounded redacted trust graph audit route:
+
+```text
+GET /api/v1/trust-graph/audit
+```
+
+It requires `trust.read` and returns local mutation/exchange summaries such as anchor changes,
+imports, URI imports, local publication imports, subscription actions when available, and rejected
+imports. Trust graph audit entries may include app id, event type, document fingerprint, payload
+hash, issuer fingerprint, subject kind, redacted/hash URI summaries, source type, verification
+status, and stable status codes. They must not include raw trust documents, raw fetched content,
+raw request bodies, signature values, private insert URIs, private keys, app process tokens,
+browser-session tokens, form passwords, daemon exception text, or absolute local paths.
 
 The Trust Graph Preview app also uses `app.data.read` and `app.data.write` for UI-local draft
-values, selected filters, and redacted import summaries. Those permissions do not make the
-`platform-trustgraph` backend durable and do not grant a trust-statement exchange protocol.
+values, selected filters, and redacted import summaries. Those permissions are separate from the
+platform trust graph backend, which persists public anchors and imported public statements as local
+platform service state.
 
 ## Audit trail
 

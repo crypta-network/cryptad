@@ -64,10 +64,11 @@ Profile Publisher declares:
 - `app.data.read` to restore the app-owned profile draft and publish summaries.
 - `app.data.write` to save bounded draft and publish-history state.
 
-The manifest targets Platform API contract v9 because Profile Publisher now combines the
-profile-document and app-document insert routes with durable app-data records. It also sets
-`api.experimentalCapabilitiesAccepted=true`; the current app-vault identity capabilities remain
-experimental even though the app keeps the operation narrow and first-party reviewed.
+The manifest requires Platform API contract v9 because Profile Publisher combines the
+profile-document and app-document insert routes with durable app-data records, and it is tested
+through the current v10 contract. It also sets `api.experimentalCapabilitiesAccepted=true`; the
+current app-vault identity capabilities remain experimental even though the app keeps the operation
+narrow and first-party reviewed.
 
 The browser UI does not use persistent browser storage, cookies, external resources, browser file
 inputs, or direct local file reads. Profile documents are built from bounded app-owned form state,

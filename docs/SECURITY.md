@@ -192,10 +192,11 @@ identity-use route. `POST /api/v1/app-vault/identities/{identityId}/trust-statem
 `trust.write`, `vault.identities.read`, and `vault.identities.use`; it signs only the canonical
 `crypta.trust.statement.v1` payload and must not expose private key material, vault paths, raw
 request bodies, app process tokens, browser session tokens, form passwords, or local paths. The
-local trust graph API is a preview service, not full WoT, old WebOfTrust plugin compatibility, or
-moderation. Trust anchors are local, imported statements are non-contributing until anchored and
-signature-verified, and release evidence must not record raw trust statement bodies from real users
-or raw signature values.
+local trust graph API is a durable local preview service, not full WoT, old WebOfTrust plugin
+compatibility, moderation, routing policy, or peer-selection policy. Trust anchors are local,
+imported statements are non-contributing until anchored and signature-verified, and release
+evidence must not record raw trust statement bodies from real users, raw fetched content, private
+insert URIs, or raw signature values.
 
 Static UI code should run on its isolated per-app loopback origin when available. Browser app
 sessions improve server-side attribution and capability enforcement for SDK/API calls, and the

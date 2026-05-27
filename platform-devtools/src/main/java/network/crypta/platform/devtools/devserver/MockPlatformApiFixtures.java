@@ -52,9 +52,19 @@ final class MockPlatformApiFixtures {
               {"appId":"${APP_ID}","name":"${APP_NAME}","version":"${APP_VERSION}","mode":"mock-dev"}
               """),
           Map.entry(
+              "content-subscriptions.json",
+              """
+              {"subscriptions":[{"subscriptionId":"mock-trust-subscription","id":"mock-trust-subscription","uri":"USK@mock/trust/0/trust.json","label":"Trust statement subscription","status":"active","lastKnownEdition":0,"mock":true}]}
+              """),
+          Map.entry(
+              "content-subscription.json",
+              """
+              {"subscription":{"subscriptionId":"mock-trust-subscription","id":"mock-trust-subscription","uri":"USK@mock/trust/0/trust.json","label":"Trust statement subscription","status":"active","lastKnownEdition":0,"mock":true}}
+              """),
+          Map.entry(
               "trust-graph-status.json",
               """
-              {"trustGraph":{"available":true,"service":"trust-graph-preview","documentType":"crypta.trust.statement.v1","contentType":"application/vnd.crypta.trust+json","statementCount":1,"anchorCount":1,"scoring":"mock-direct-local-anchor","completeWot":false,"mock":true}}
+              {"trustGraph":{"available":true,"service":"trust-graph-preview","documentType":"crypta.trust.statement.v1","contentType":"application/vnd.crypta.trust+json","statementCount":1,"anchorCount":1,"auditCount":1,"durable":true,"storeType":"mock-file","limits":{"maxStatements":1000,"maxAnchors":100,"maxAuditEntries":512,"maxStoredDocumentBytes":65536},"scoring":"mock-direct-local-anchor","completeWot":false,"mock":true}}
               """),
           Map.entry(
               "trust-graph-anchors.json",
@@ -65,6 +75,11 @@ final class MockPlatformApiFixtures {
               "trust-graph-score.json",
               """
               {"score":{"subject":{"kind":"profile","uri":"USK@mock/profile.json"},"context":"profile","status":"trusted","score":50,"confidence":80,"evidenceCount":1,"contributingEvidenceCount":1,"evidence":[{"issuerFingerprint":"mock-profile-fingerprint","score":50,"confidence":80,"issuedAt":"2026-05-16T00:00:00Z","contributing":true,"source":"mock-fixture"}],"mock":true}}
+              """),
+          Map.entry(
+              "trust-graph-audit.json",
+              """
+              {"audit":[{"eventType":"statement_imported_from_uri","timestamp":"2026-05-17T00:00:00Z","documentFingerprint":"mock-document-fingerprint","payloadHash":"mock-payload-hash","source":"content-fetch","sourceSummary":"CHK@redacted","signatureVerified":true,"statusCode":"ok"}]}
               """));
 
   /** Deterministic app-owned identity creation response. */
@@ -83,6 +98,12 @@ final class MockPlatformApiFixtures {
   static final String CONTENT_FETCH_TRUST_STATEMENT_RESPONSE =
       """
       {"requestedUri":"CHK@mock-trust-statement","resolvedUri":"CHK@mock-trust-statement","format":"text","bytesLength":445,"contentText":"{\\"type\\":\\"crypta.trust.statement.v1\\",\\"payload\\":{\\"issuer\\":{\\"identityId\\":\\"local-profile\\",\\"publicKeyFingerprint\\":\\"mock-profile-fingerprint\\"},\\"subject\\":{\\"kind\\":\\"profile\\",\\"uri\\":\\"USK@mock/profile.json\\"},\\"context\\":\\"profile\\",\\"score\\":50,\\"confidence\\":80,\\"issuedAt\\":\\"2026-05-16T00:00:00Z\\"},\\"signature\\":{\\"algorithm\\":\\"app-vault-ed25519-preview\\",\\"domain\\":\\"crypta.trust.statement.v1\\",\\"value\\":\\"mock-preview-signature\\"}}","mock":true}
+      """;
+
+  /** Deterministic redacted trust graph import response. */
+  static final String TRUST_GRAPH_IMPORT_RESPONSE =
+      """
+      {"importResult":{"status":"imported","source":"mock","documentFingerprint":"mock-document-fingerprint","payloadHash":"mock-payload-hash","signatureVerified":true,"importedAt":"2026-05-17T00:00:00Z","updatedAt":"2026-05-17T00:00:00Z","mock":true}}
       """;
 
   /** Optional normalized directory containing user-supplied JSON fixture files. */
@@ -163,6 +184,26 @@ final class MockPlatformApiFixtures {
   }
 
   /**
+   * Returns content subscription listing fixture JSON.
+   *
+   * @return fixture-backed or built-in subscription list JSON
+   * @throws IOException if fixture loading fails
+   */
+  String contentSubscriptions() throws IOException {
+    return fixture("content-subscriptions.json");
+  }
+
+  /**
+   * Returns one content subscription fixture JSON.
+   *
+   * @return fixture-backed or built-in subscription JSON
+   * @throws IOException if fixture loading fails
+   */
+  String contentSubscription() throws IOException {
+    return fixture("content-subscription.json");
+  }
+
+  /**
    * Returns Trust Graph Preview status fixture JSON.
    *
    * @return fixture-backed or built-in trust graph status JSON
@@ -190,6 +231,16 @@ final class MockPlatformApiFixtures {
    */
   String trustGraphScore() throws IOException {
     return fixture("trust-graph-score.json");
+  }
+
+  /**
+   * Returns deterministic redacted Trust Graph Preview audit JSON.
+   *
+   * @return fixture-backed or built-in trust graph audit JSON
+   * @throws IOException if fixture loading fails
+   */
+  String trustGraphAudit() throws IOException {
+    return fixture("trust-graph-audit.json");
   }
 
   /**

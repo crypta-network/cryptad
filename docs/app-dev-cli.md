@@ -307,7 +307,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=7
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -338,7 +338,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=9
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -347,7 +347,8 @@ signatures, or absolute staging paths in descriptor notes, generated catalog met
 evidence.
 
 A Feed Reader catalog descriptor should include the content-subscription, content-fetch, durable
-app-data, generated-document publication permissions, and v9 API compatibility metadata:
+app-data, generated-document publication permissions, and minimum-v9, tested-through-v10 API
+compatibility metadata:
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/feed-reader-1.0.0.zip
@@ -372,7 +373,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=9
+api.maximumTestedVersion=10
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -624,7 +625,7 @@ review keys outside the repository.
    permissions=queue.read,queue.write
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=7
+   api.maximumTestedVersion=10
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```

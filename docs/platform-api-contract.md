@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=9
+contractVersion=10
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 9,
+    "contractVersion": 10,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -151,7 +151,7 @@ publish anything automatically, export private identity material, or create a gl
 
 The preview service is intentionally not a full Web of Trust implementation and does not provide
 old WebOfTrust plugin compatibility. Trust anchors are local, imported statements are
-non-contributing until anchored, and the scorer uses direct local anchors with a simple
+persisted locally, non-contributing until anchored, and the scorer uses direct local anchors with a simple
 confidence-weighted average. No FNP/FCP/wire protocol, routing, datastore, peer-management, or
 FProxy browse behavior changes are part of contract v7. See
 [trust-graph-preview.md](trust-graph-preview.md).
@@ -224,6 +224,21 @@ digests, booleans, and sanitized error codes. It must not include raw app-data v
 bodies, store roots, app data directories, staging paths, private insert URIs, private keys, app
 process tokens, browser-session tokens, form passwords, or raw vault secret material. See
 [app-data-store.md](app-data-store.md).
+
+Contract version 10 adds durable Trust Graph Preview exchange and audit routes:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/trust-graph/import-uri` | `trust.write`, `content.fetch` | Fetch bounded Crypta content by URI, parse one `crypta.trust.statement.v1` document, persist the normalized public statement in the local trust graph store, and return a redacted import summary. |
+| `GET /api/v1/trust-graph/audit` | `trust.read` | Read bounded redacted local trust graph mutation and exchange audit entries. |
+
+The existing v7 trust routes remain compatible. Runtime embeddings can still inject an in-memory
+store for tests, but the full HTTP runtime wires a shared file-backed trust graph store under the
+platform-owned AppHost data tree. The store persists local anchors, imported public statements,
+redacted source metadata, and enough public document data to score after restart. It does not
+persist raw request bodies, raw fetched content outside normalized trust statement records,
+private insert URIs, private identity material, browser-session tokens, form passwords, absolute
+paths, or raw signatures.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,

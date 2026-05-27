@@ -1,9 +1,10 @@
 # Trust Graph Preview
 
-`apps/trust-graph` stages a first-party static AppHost bundle for previewing the planned trust
-graph SDK surface. The bundle is named `Trust Graph Preview` and uses app id `trust-graph`.
-It is not full WoT, old WebOfTrust plugin compatibility, moderation, or automatic content
-blocking. Trust anchors are local to the node and are not published automatically.
+`apps/trust-graph` stages a first-party static AppHost bundle for previewing the local durable
+trust graph SDK surface. The bundle is named `Trust Graph Preview` and uses app id `trust-graph`.
+It is not full WoT, old WebOfTrust plugin compatibility, moderation, routing policy, peer
+selection, or automatic content blocking. Trust anchors are local to the node and are not published
+automatically.
 
 ## Stage
 
@@ -63,7 +64,8 @@ loads only local design-system assets and the staged `crypta-platform.js` SDK.
 
 - `trust.read` reads local trust graph status, anchor summaries, imported statements, and scores.
 - `trust.write` imports bounded trust statements and adds/removes local trust anchors.
-- `content.fetch` fetches a statement document through the bounded content fetch helper.
+- `content.fetch` fetches a statement document through the bounded trust import helper.
+- `content.subscribe` manages trust statement content subscriptions.
 - `content.insert.app-document` queues a generated trust statement document for insertion.
 - `queue.read` previews queue status for generated trust statement inserts.
 - `queue.write` creates generated trust statement insert jobs.
@@ -72,18 +74,31 @@ loads only local design-system assets and the staged `crypta-platform.js` SDK.
 - `vault.identities.use` asks the vault to create trust statement payloads without exposing private
   signing secrets to the browser UI.
 - `app.data.read` restores UI-local drafts, selected filters, and redacted import summaries.
-- `app.data.write` saves bounded UI-local preview state without making the trust backend durable.
+- `app.data.write` saves bounded UI-local preview state only.
 
 The bounded AppVault route is `app-vault/identities/{identityId}/trust-statement`; it signs only
 the trust statement payload and does not export private key material.
 
+## Durable Backend and Exchange
+
+Trust anchors and imported public trust statements are stored by the platform trust graph backend,
+not in this app's app-data namespace. The app-data store remains UI-local state for drafts and
+redacted summaries.
+
+The preview exchange workflow uses existing Crypta content APIs. URI import fetches bounded content
+and persists only the normalized public trust statement plus redacted source metadata. Publication
+uses AppVault to create the public statement, queues it through generated app-document insertion,
+and imports the local public statement summary into the durable trust graph store. Subscriptions use
+the content subscription scheduler and do not crawl the network globally.
+
 ## Browser Safety
 
 The UI persists draft form values, selected filters, and redacted import summaries through
-app-data. Fetched statement text, raw trust documents, status results, and queue previews are not
-stored as durable backend trust state. The UI does not use persistent browser storage, direct
-Platform API URLs, external scripts, untrusted HTML insertion, app launch credentials, private
-signing secrets, or local file paths.
+app-data. Fetched statement bodies are not displayed during URI imports, and pasted trust statement
+JSON is rendered only as text when the operator deliberately imports pasted content. Queue and
+publication summaries avoid private insert URIs. The UI does not use persistent browser storage,
+direct Platform API URLs, external scripts, untrusted HTML insertion, app launch credentials,
+private signing secrets, tokens, raw signatures, or local file paths.
 
 Run the staged bundle test with:
 

@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 9;
+  public static final int CURRENT_CONTRACT_VERSION = 10;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -68,6 +68,7 @@ public record PlatformApiContract(
   private static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7;
   private static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8;
   private static final int APP_DATA_STORE_CONTRACT_VERSION = 9;
+  private static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -1209,6 +1210,8 @@ public record PlatformApiContract(
           "trust-graph.import",
           List.of(PlatformApiCapabilities.TRUST_WRITE),
           "Import one bounded trust statement into the local preview store.");
+      trustGraphImportUriPost();
+      trustGraphAuditGet();
       trustGraphGet(
           "/trust-graph/subjects",
           "trust-graph.subjects",
@@ -1308,6 +1311,38 @@ public record PlatformApiContract(
               true,
               PlatformApiStabilityLevel.EXPERIMENTAL,
               description));
+    }
+
+    private void trustGraphAuditGet() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_GET,
+              "/trust-graph/audit",
+              "trust-graph.audit",
+              List.of(PlatformApiCapabilities.TRUST_READ),
+              TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "List recent redacted Trust Graph Preview audit events."));
+    }
+
+    private void trustGraphImportUriPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              "/trust-graph/import-uri",
+              "trust-graph.import-uri",
+              List.of(PlatformApiCapabilities.CONTENT_FETCH, PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Fetch and import one bounded trust statement from a Crypta content URI."));
     }
 
     private void trustGraphAnchorDelete() {

@@ -16,6 +16,8 @@
 .anchors-panel,
 .fetch-panel,
 .score-panel,
+.subscriptions-panel,
+.audit-panel,
 .publish-panel,
 .queue-panel {
   display: grid;
@@ -36,6 +38,7 @@
 
 .workspace-grid,
 .workflow-grid,
+.exchange-grid,
 .publish-grid {
   align-items: start;
   display: grid;
@@ -72,6 +75,8 @@
 .summary-item,
 .anchor-item,
 .identity-item,
+.subscription-item,
+.audit-item,
 .queue-item {
   border-bottom: var(--cr-border);
   display: grid;
@@ -82,12 +87,15 @@
 .summary-item:last-child,
 .anchor-item:last-child,
 .identity-item:last-child,
+.subscription-item:last-child,
+.audit-item:last-child,
 .queue-item:last-child {
   border-bottom: 0;
   padding-bottom: 0;
 }
 
-.anchor-item__actions {
+.anchor-item__actions,
+.subscription-item__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cr-space-2);
@@ -121,6 +129,7 @@
 @media (max-width: 900px) {
   .workspace-grid,
   .workflow-grid,
+  .exchange-grid,
   .publish-grid,
   .publish-panel {
     grid-template-columns: 1fr;

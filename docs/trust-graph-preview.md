@@ -7,22 +7,42 @@ generated document inserts, signed catalog metadata, review receipts, and releas
 evidence.
 
 It is not a full Web of Trust implementation. It does not implement the old WebOfTrust plugin,
-`FCPPluginMessage`, PluginTalker compatibility, global moderation, automatic blocking, durable
-background crawling, daemon-core identity sharing, durable trust-graph backend storage,
-trust-statement exchange, FNP/FCP/wire protocol changes, routing changes, datastore changes,
-peer-management changes, or FProxy browse removal.
+`FCPPluginMessage`, PluginTalker compatibility, global moderation, automatic blocking, global
+network crawling, daemon-core identity sharing, FNP/FCP/wire protocol changes, routing changes,
+datastore changes, peer-management changes, or FProxy browse removal.
 
 ## Components
 
 - `:platform-trustgraph` owns the bounded statement model, strict JSON parser, deterministic
-  canonical payload writer, fingerprints, in-memory store, local anchors, and preview scorer.
-- `:platform-api` exposes contract v7 `trust.read` and `trust.write` capabilities, the local
-  `/api/v1/trust-graph/*` route family, and the bounded AppVault signing route
+  canonical payload writer, fingerprints, local anchors, durable file-backed preview store,
+  redacted trust audit events, in-memory test store, and preview scorer.
+- `:platform-api` exposes contract v7 `trust.read` and `trust.write` compatibility routes,
+  contract v10 trust exchange and audit routes, the local `/api/v1/trust-graph/*` route family,
+  and the bounded AppVault signing route
   `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
-- `:platform-sdk-js` exposes `CryptaPlatform.trust.*` helpers and
-  `CryptaPlatform.vault.identities.createTrustStatement(...)`.
+- `:platform-sdk-js` exposes `CryptaPlatform.trust.*`, `CryptaPlatform.trust.exchange.*`, and
+  `CryptaPlatform.vault.identities.createTrustStatement(...)` helpers.
 - `apps:trust-graph` stages the static Trust Graph Preview reference app with SDK, durable
-  UI-local app-data state, and design-system assets.
+  backend status, URI import, publication, subscription, redacted audit, UI-local app-data state,
+  and design-system assets.
+
+## Durable Local Backend
+
+The runtime wires a shared file-backed trust graph store under the platform-owned AppHost data
+tree. It persists local trust anchors, normalized public trust statements, redacted source
+metadata, and bounded redacted trust audit events across process restart. Reduced embeddings and
+unit tests may still inject the in-memory store.
+
+The durable store records canonical public `crypta.trust.statement.v1` documents rather than raw
+request bodies or raw fetched content. Statement metadata is bounded and redacted: source type,
+optional source URI summary/hash, source label, imported/updated timestamps, document fingerprint,
+payload hash, and signature verification status. Imports are idempotent by document fingerprint,
+listing order is deterministic, and retention caps bound anchors, statements, audit entries, and
+stored document bytes. Corrupt persisted entries are ignored safely without exposing local paths or
+raw document data.
+
+App data remains separate. The Trust Graph Preview app uses app data only for UI-local drafts,
+filters, and redacted import summaries; it is not the trust graph backend.
 
 ## Trust Statement Format
 
@@ -99,7 +119,7 @@ anchor is added.
 
 ## Platform API
 
-Contract v7 adds:
+Contract v7 adds the original local trust graph routes:
 
 | Capability | Purpose |
 | --- | --- |
@@ -119,6 +139,13 @@ GET  /api/v1/trust-graph/statements
 GET  /api/v1/trust-graph/score
 ```
 
+Contract v10 adds durable exchange and audit routes:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/trust-graph/import-uri` | `trust.write`, `content.fetch` | Fetch bounded Crypta content by URI, parse it as one trust statement, persist it, and return a redacted import summary. |
+| `GET /api/v1/trust-graph/audit` | `trust.read` | Return a bounded list of redacted trust graph mutation/exchange audit events. |
+
 `POST /api/v1/trust-graph/import` accepts form-encoded `document`, optional `sourceUri`, and
 optional `sourceLabel`. It validates size, parses `crypta.trust.statement.v1`, stores a redacted
 summary, records whether the signature verifies against the issuer public key, and returns an
@@ -127,6 +154,16 @@ import summary without raw private data.
 `GET /api/v1/trust-graph/score` accepts `subjectKind`, `subjectUri`, `context`, and optional
 `includeEvidence=true`. Other apps can query scores only when their manifest grants `trust.read`.
 Apps can import statements or manage anchors only when their manifest grants `trust.write`.
+
+`POST /api/v1/trust-graph/import-uri` accepts a Crypta content URI, optional `sourceLabel`, and an
+optional byte cap bounded by the trust graph configuration. It uses the same content fetch rules as
+the content API, rejects oversized content before parsing, stores only the normalized public trust
+statement and redacted source metadata, and never returns raw fetched content.
+
+Trust statement subscription management uses the contract v8 content subscription routes through
+SDK trust exchange helpers. This avoids a separate crawler and keeps subscription ownership,
+restart durability, refresh, pause, resume, and delete semantics in the content subscription
+service.
 
 The bounded signing route is:
 
@@ -141,30 +178,34 @@ vault paths, raw process tokens, browser session tokens, form passwords, or gene
 
 ## Reference App
 
-`apps:trust-graph` declares API v9 and:
+`apps:trust-graph` declares API v10 and:
 
 ```text
-trust.read,trust.write,content.fetch,content.insert.app-document,queue.read,queue.write,
-vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
+trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,
+queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,
+app.data.write
 ```
 
-The static app can create or select an app-owned trust identity, create a bounded statement, sign it
-through AppVault, publish it as `application/vnd.crypta.trust+json` with target filename
-`trust.json`, fetch/import selected Crypta trust documents, manage local anchors, query scores, and
-show recent queue state. It uses `CryptaPlatform.data.records.getJson` and `putJson` only for
-UI-local state: draft form values, selected filters, and redacted import summaries. It does not make
-the `platform-trustgraph` store durable and does not persist imported statements or anchors as a
-full scoring backend in this PR.
+The static app can create or select an app-owned trust identity, ask AppVault to create a bounded
+statement, publish it as `application/vnd.crypta.trust+json` with target filename `trust.json`,
+import the locally generated public statement into the durable backend, fetch/import selected
+Crypta trust documents by URI, manage content subscriptions for trust statement URIs, manage local
+anchors, query scores, show recent queue state, and show redacted trust audit entries. It uses
+`CryptaPlatform.data.records.getJson` and `putJson` only for UI-local state: draft form values,
+selected filters, and redacted import summaries.
 
-The app renders imported and fetched fields as text, uses SDK helpers, uses the design-system
-assets, and does not store app tokens or browser-session tokens in browser storage.
+The app uses SDK helpers rather than hard-coded `/api/v1/` URLs. URI fetch/import does not display
+raw fetched bodies. Pasted statement JSON is rendered only as text when the operator deliberately
+imports pasted content. Publication and audit summaries avoid private insert URIs, private identity
+material, raw signatures, tokens, and local paths.
 
 ## Redaction
 
-Model `toString()` output, API errors, audit entries, diagnostics, UI errors, release evidence, and
-developer-tooling reports must not include raw trust document bodies from real users, raw request
-bodies, private keys, seed material, app process tokens, browser-session tokens, form passwords,
-absolute local paths, or raw signatures. Release-certification evidence should use route names,
-capability labels, booleans, counts, fixture hashes, and redacted summaries. Durable UI-local
-app-data evidence should similarly use counts and summary fields instead of raw trust statements,
-private insert URIs, or raw form bodies.
+Model `toString()` output, API errors, trust audit entries, authorization audit entries,
+diagnostics, UI errors, release evidence, and developer-tooling reports must not include raw trust
+document bodies from real users, raw request bodies, raw fetched content, private insert URIs,
+private keys, seed material, app process tokens, browser-session tokens, form passwords, absolute
+local paths, or raw signatures. Release-certification evidence should use route names, capability
+labels, booleans, counts, fixture hashes, and redacted summaries. Durable UI-local app-data
+evidence should similarly use counts and summary fields instead of raw trust statements, private
+insert URIs, or raw form bodies.

@@ -1,6 +1,7 @@
 package network.crypta.platform.trustgraph;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -39,17 +40,13 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
    */
   public static final int DEFAULT_MAX_ANCHORS = 256;
 
-  private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
-  private static final String CHK_PREFIX = "CHK@";
-  private static final String SSK_PREFIX = "SSK@";
-  private static final String USK_PREFIX = "USK@";
-  private static final String KSK_PREFIX = "KSK@";
-
   private final Clock clock;
   private final int maxStatements;
   private final int maxAnchors;
+  private final int maxAuditEntries;
   private final Map<String, TrustAnchor> anchors = new LinkedHashMap<>();
   private final Map<String, StoredTrustStatement> statements = new LinkedHashMap<>();
+  private final List<TrustGraphAuditEvent> auditEvents = new ArrayList<>();
 
   /**
    * Creates an in-memory store using the system UTC clock.
@@ -98,6 +95,7 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
     }
     this.maxStatements = maxStatements;
     this.maxAnchors = maxAnchors;
+    this.maxAuditEntries = TrustGraphStoreConfig.defaults().maxAuditEntries();
   }
 
   @Override
@@ -106,14 +104,14 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
     String documentFingerprint = TrustStatementFingerprint.documentFingerprint(document);
     String payloadHash = TrustStatementFingerprint.payloadHash(document);
     boolean signatureVerified = TrustStatementVerifier.isSignatureVerified(document);
-    String normalizedSource =
-        TrustStatementValidator.optionalText("source", source, 32) == null
-            ? "manual"
-            : source.trim();
-    String normalizedSourceUri = normalizeSourceUri(sourceUri);
-    String normalizedSourceLabel =
-        TrustStatementValidator.optionalText("sourceLabel", sourceLabel, 120);
-    boolean imported = !statements.containsKey(documentFingerprint);
+    String normalizedSource = TrustGraphStoreSanitizer.normalizeSource(source);
+    String normalizedSourceUri = TrustGraphStoreSanitizer.redactedUriSummary(sourceUri);
+    String sourceUriHash = TrustGraphStoreSanitizer.sourceUriHash(sourceUri);
+    String normalizedSourceLabel = TrustGraphStoreSanitizer.normalizeSourceLabel(sourceLabel);
+    StoredTrustStatement existing = statements.get(documentFingerprint);
+    boolean imported = existing == null;
+    Instant now = clock.instant();
+    Instant importedAt = imported ? now : existing.importedAt();
     if (imported) {
       evictEldestStatementIfFull();
     }
@@ -126,7 +124,10 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
             signatureVerified,
             normalizedSource,
             normalizedSourceUri,
-            normalizedSourceLabel));
+            sourceUriHash,
+            normalizedSourceLabel,
+            importedAt,
+            now));
     return new TrustGraphImportResult(
         documentFingerprint,
         payloadHash,
@@ -134,7 +135,10 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
         signatureVerified,
         normalizedSource,
         normalizedSourceUri,
+        sourceUriHash,
         normalizedSourceLabel,
+        importedAt,
+        now,
         document);
   }
 
@@ -206,67 +210,32 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
     return statements.size();
   }
 
-  private static String normalizeSourceUri(String sourceUri) {
-    String normalized = TrustStatementValidator.optionalText("sourceUri", sourceUri, 1024);
-    if (normalized == null) {
-      return null;
-    }
-    if (normalized.isEmpty()
-        || containsWhitespace(normalized)
-        || normalized.indexOf('?') >= 0
-        || normalized.indexOf('#') >= 0) {
-      throw invalidSourceUri();
-    }
-    String runtimeUri = runtimeFetchUri(normalized);
-    if (runtimeUri.isEmpty()
-        || containsWhitespace(runtimeUri)
-        || runtimeUri.indexOf('?') >= 0
-        || runtimeUri.indexOf('#') >= 0
-        || runtimeUri.startsWith("/")
-        || runtimeUri.startsWith("\\")
-        || hasDisallowedScheme(runtimeUri)
-        || isUnsupportedContentKey(runtimeUri)) {
-      throw invalidSourceUri();
-    }
-    if (normalized.regionMatches(true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
-      return CRYPTA_SCHEME_PREFIX + runtimeUri;
-    }
-    return runtimeUri;
+  @Override
+  public TrustGraphStoreConfig config() {
+    return new TrustGraphStoreConfig(
+        maxStatements, maxAnchors, maxAuditEntries, TrustStatementValidator.MAX_DOCUMENT_BYTES);
   }
 
-  private static String runtimeFetchUri(String requestedUri) {
-    if (requestedUri.regionMatches(
-        true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
-      return requestedUri.substring(CRYPTA_SCHEME_PREFIX.length()).trim();
+  @Override
+  public synchronized void appendAuditEvent(TrustGraphAuditEvent event) {
+    auditEvents.add(java.util.Objects.requireNonNull(event, "event"));
+    while (auditEvents.size() > maxAuditEntries) {
+      auditEvents.removeFirst();
     }
-    return requestedUri;
   }
 
-  private static boolean hasDisallowedScheme(String uri) {
-    int colon = uri.indexOf(':');
-    int at = uri.indexOf('@');
-    return colon >= 0 && (at < 0 || colon < at);
-  }
-
-  private static boolean isUnsupportedContentKey(String uri) {
-    return !(uri.startsWith(CHK_PREFIX)
-        || uri.startsWith(SSK_PREFIX)
-        || uri.startsWith(USK_PREFIX)
-        || uri.startsWith(KSK_PREFIX));
-  }
-
-  private static boolean containsWhitespace(String value) {
-    for (int index = 0; index < value.length(); index++) {
-      if (Character.isWhitespace(value.charAt(index))) {
-        return true;
-      }
+  @Override
+  public synchronized List<TrustGraphAuditEvent> auditEvents(int limit) {
+    int boundedLimit = Math.clamp(limit, 1, maxAuditEntries);
+    ArrayList<TrustGraphAuditEvent> ordered = new ArrayList<>(auditEvents);
+    ordered.sort(
+        Comparator.comparing(TrustGraphAuditEvent::timestamp)
+            .reversed()
+            .thenComparing(TrustGraphAuditEvent::eventType));
+    if (ordered.size() > boundedLimit) {
+      return List.copyOf(ordered.subList(0, boundedLimit));
     }
-    return false;
-  }
-
-  private static TrustGraphException invalidSourceUri() {
-    return new TrustGraphException(
-        "invalid_trust_statement", "Field 'sourceUri' must be a Crypta content URI.");
+    return List.copyOf(ordered);
   }
 
   private void evictEldestStatementIfFull() {
