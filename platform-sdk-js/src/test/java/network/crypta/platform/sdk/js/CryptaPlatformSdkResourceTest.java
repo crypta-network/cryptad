@@ -606,10 +606,10 @@ class CryptaPlatformSdkResourceTest {
           },
           {
             importResult: {
-              documentFingerprint: "doc-published",
-              payloadHash: "payload-published",
+              documentFingerprint: "doc-prepared",
+              payloadHash: "payload-prepared",
               signatureVerified: true,
-              source: "local-publish"
+              source: "local-import"
             }
           });
         enqueueResponse(
@@ -619,6 +619,20 @@ class CryptaPlatformSdkResourceTest {
               && options.method === "POST";
           },
           { requestId: "trust-insert-1" });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            importResult: {
+              documentFingerprint: "doc-published",
+              payloadHash: "payload-published",
+              signatureVerified: true,
+              source: "local-publish"
+            }
+          });
 
         const result = await CryptaPlatform.trust.publishStatement({
           insertUri: "USK@trust",
@@ -651,6 +665,7 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(result.documentFingerprint, "doc-published");
         assert.equal(result.payloadHash, "payload-published");
         assert.equal(result.signatureVerified, true);
+        assert.equal(calls.length, 4);
         const params = decodeFormBody(calls[2]);
         assert.equal(params.get("insertUri"), "USK@trust");
         assert.equal(params.get("identifier"), "trust-root");
@@ -661,10 +676,13 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(document.type, "crypta.trust.statement.v1");
         assert.equal(document.signature.value, "fixture");
         assert.equal(document.payloadHash, undefined);
-        const importParams = decodeFormBody(calls[1]);
-        assert.equal(importParams.get("source"), "local-publish");
-        assert.equal(importParams.get("sourceLabel"), "Published statement");
-        const importedDocument = JSON.parse(importParams.get("document"));
+        const preparedImportParams = decodeFormBody(calls[1]);
+        assert.equal(preparedImportParams.get("source"), "local-import");
+        assert.equal(preparedImportParams.get("sourceLabel"), "Prepared statement for publish");
+        const publishImportParams = decodeFormBody(calls[3]);
+        assert.equal(publishImportParams.get("source"), "local-publish");
+        assert.equal(publishImportParams.get("sourceLabel"), "Published statement");
+        const importedDocument = JSON.parse(publishImportParams.get("document"));
         assert.equal(importedDocument.type, "crypta.trust.statement.v1");
         assert.equal(importedDocument.signature.value, "fixture");
         """);
@@ -717,6 +735,152 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(failed, true);
         assert.equal(calls.length, 2);
         assert.equal(new URL(calls[1].url).pathname, "/api/v1/trust-graph/import");
+        const importParams = decodeFormBody(calls[1]);
+        assert.equal(importParams.get("source"), "local-import");
+        """);
+  }
+
+  @Test
+  void classpathResource_whenTrustPublishQueueFails_expectLocalPublishNotRecorded()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            importResult: {
+              documentFingerprint: "doc-prepared",
+              payloadHash: "payload-prepared",
+              signatureVerified: true,
+              source: "local-import"
+            }
+          });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/queue/inserts/app-document"
+              && options.method === "POST";
+          },
+          {
+            error: {
+              code: "invalid_insert_uri",
+              message: "Invalid insert URI."
+            }
+          },
+          400,
+          "Bad Request");
+
+        let failed = false;
+        try {
+          await CryptaPlatform.trust.publishStatement({
+            insertUri: "USK@trust",
+            identifier: "trust-root",
+            statement: {
+              type: "crypta.trust.statement.v1",
+              payload: {
+                issuer: { identityId: "issuer", publicKeyFingerprint: "fingerprint" },
+                subject: { kind: "profile", uri: "USK@alice/profile.json" },
+                context: "profile",
+                score: 50,
+                confidence: 80,
+                issuedAt: "2026-05-16T00:00:00Z"
+              },
+              signature: { algorithm: "app-vault-ed25519-preview", domain: "crypta.trust.statement.v1", value: "fixture" }
+            }
+          });
+        } catch (error) {
+          failed = true;
+          assert.equal(error.code, "invalid_insert_uri");
+        }
+
+        assert.equal(failed, true);
+        assert.equal(calls.length, 3);
+        const importParams = decodeFormBody(calls[1]);
+        assert.equal(importParams.get("source"), "local-import");
+        const queueParams = decodeFormBody(calls[2]);
+        assert.equal(queueParams.get("insertUri"), "USK@trust");
+        assert.equal(
+          calls.filter((call) => String(call.url).includes("/api/v1/trust-graph/import")).length,
+          1);
+        """);
+  }
+
+  @Test
+  void classpathResource_whenTrustPublishFinalImportFails_expectQueueResultReturned()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            importResult: {
+              documentFingerprint: "doc-prepared",
+              payloadHash: "payload-prepared",
+              signatureVerified: true,
+              source: "local-import"
+            }
+          });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/queue/inserts/app-document"
+              && options.method === "POST";
+          },
+          { requestId: "trust-insert-queued" });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            error: {
+              code: "trust_graph_store_unavailable",
+              message: "Trust graph store is unavailable."
+            }
+          },
+          503,
+          "Service Unavailable");
+
+        const result = await CryptaPlatform.trust.publishStatement({
+          insertUri: "USK@trust",
+          identifier: "trust-root",
+          statement: {
+            type: "crypta.trust.statement.v1",
+            payload: {
+              issuer: { identityId: "issuer", publicKeyFingerprint: "fingerprint" },
+              subject: { kind: "profile", uri: "USK@alice/profile.json" },
+              context: "profile",
+              score: 50,
+              confidence: 80,
+              issuedAt: "2026-05-16T00:00:00Z"
+            },
+            signature: { algorithm: "app-vault-ed25519-preview", domain: "crypta.trust.statement.v1", value: "fixture" }
+          }
+        });
+
+        assert.equal(result.requestId, "trust-insert-queued");
+        assert.equal(result.documentFingerprint, "doc-prepared");
+        assert.equal(result.source, "local-import");
+        assert.equal(result.localPublishImportError.code, "trust_graph_store_unavailable");
+        assert.equal(
+          result.localPublishImportError.message,
+          "Trust statement was queued, but local publish metadata could not be refreshed.");
+        assert.equal(calls.length, 4);
+        const preparedImportParams = decodeFormBody(calls[1]);
+        assert.equal(preparedImportParams.get("source"), "local-import");
+        const publishImportParams = decodeFormBody(calls[3]);
+        assert.equal(publishImportParams.get("source"), "local-publish");
         """);
   }
 
@@ -734,10 +898,10 @@ class CryptaPlatformSdkResourceTest {
           },
           {
             importResult: {
-              documentFingerprint: "doc-serialized",
-              payloadHash: "payload-serialized",
+              documentFingerprint: "doc-prepared-serialized",
+              payloadHash: "payload-prepared-serialized",
               signatureVerified: true,
-              source: "local-publish"
+              source: "local-import"
             }
           });
         enqueueResponse(
@@ -747,6 +911,20 @@ class CryptaPlatformSdkResourceTest {
               && options.method === "POST";
           },
           { requestId: "trust-insert-serialized" });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            importResult: {
+              documentFingerprint: "doc-serialized",
+              payloadHash: "payload-serialized",
+              signatureVerified: true,
+              source: "local-publish"
+            }
+          });
 
         const signedResponse = JSON.stringify({
           identity: { identityId: "issuer", publicKeyFingerprint: "fingerprint", appId: "trust-graph" },
@@ -782,9 +960,11 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(document.type, "crypta.trust.statement.v1");
         assert.equal(document.signature.value, "fixture");
         assert.equal(document.payloadHash, undefined);
-        const importParams = decodeFormBody(calls[1]);
-        assert.equal(importParams.get("source"), "local-publish");
-        const importedDocument = JSON.parse(importParams.get("document"));
+        const preparedImportParams = decodeFormBody(calls[1]);
+        assert.equal(preparedImportParams.get("source"), "local-import");
+        const publishImportParams = decodeFormBody(calls[3]);
+        assert.equal(publishImportParams.get("source"), "local-publish");
+        const importedDocument = JSON.parse(publishImportParams.get("document"));
         assert.equal(importedDocument.type, "crypta.trust.statement.v1");
         assert.equal(importedDocument.signature.value, "fixture");
         """);
@@ -828,10 +1008,10 @@ class CryptaPlatformSdkResourceTest {
           },
           {
             importResult: {
-              documentFingerprint: "doc-signed",
-              payloadHash: "payload-signed",
+              documentFingerprint: "doc-prepared-signed",
+              payloadHash: "payload-prepared-signed",
               signatureVerified: true,
-              source: "local-publish"
+              source: "local-import"
             }
           });
         enqueueResponse(
@@ -841,6 +1021,20 @@ class CryptaPlatformSdkResourceTest {
               && options.method === "POST";
           },
           { requestId: "trust-insert-signed" });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import"
+              && options.method === "POST";
+          },
+          {
+            importResult: {
+              documentFingerprint: "doc-signed",
+              payloadHash: "payload-signed",
+              signatureVerified: true,
+              source: "local-publish"
+            }
+          });
 
         const result = await CryptaPlatform.trust.exchange.publish({
           identityId: "issuer",
@@ -862,15 +1056,17 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(vaultParams.get("context"), "profile");
         assert.equal(vaultParams.get("score"), "50");
         assert.equal(vaultParams.get("confidence"), "80");
-        const importParams = decodeFormBody(calls[2]);
-        assert.equal(importParams.get("source"), "local-publish");
-        const importedDocument = JSON.parse(importParams.get("document"));
+        const preparedImportParams = decodeFormBody(calls[2]);
+        assert.equal(preparedImportParams.get("source"), "local-import");
+        const importedDocument = JSON.parse(preparedImportParams.get("document"));
         assert.equal(importedDocument.type, "crypta.trust.statement.v1");
         assert.equal(importedDocument.signature.value, "fixture");
         const queueParams = decodeFormBody(calls[3]);
         assert.equal(queueParams.get("insertUri"), "USK@trust");
         assert.equal(queueParams.get("identifier"), "trust-root");
         assert.equal(queueParams.get("contentType"), "application/vnd.crypta.trust+json");
+        const publishImportParams = decodeFormBody(calls[4]);
+        assert.equal(publishImportParams.get("source"), "local-publish");
         """);
   }
 

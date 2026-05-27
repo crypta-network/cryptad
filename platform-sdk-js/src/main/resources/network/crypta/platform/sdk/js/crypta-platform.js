@@ -592,21 +592,29 @@
     const source = requireOptionsObject(options, "Trust statement publish options");
     const statement = await resolveTrustStatementForPublish(source);
     const document = trustStatementDocument({ statement });
+    const requestOptions = requestOptionsFrom(source);
     const insertOptions = Object.assign({}, source, {
       document,
       contentType: trustStatementContentType,
       targetFilename: trustStatementTargetFilename,
     });
-    const importResult = await importTrustStatement(
+    const preparedImportResult = await importTrustStatement(
       {
         document,
-        source: "local-publish",
-        sourceLabel: source.sourceLabel || source.label || "Published statement",
+        source: "local-import",
+        sourceLabel: "Prepared statement for publish",
       },
-      requestOptionsFrom(source)
+      requestOptions
     );
     const queue = await insertAppDocument(insertOptions);
-    return Object.assign({}, queue || {}, {
+    let importResult = preparedImportResult;
+    let localPublishImportError = null;
+    try {
+      importResult = await importPublishedTrustStatement(document, source, requestOptions);
+    } catch (error) {
+      localPublishImportError = localPublishImportErrorSummary(error);
+    }
+    const publication = Object.assign({}, queue || {}, {
       queue,
       importResult,
       documentFingerprint: importResult.documentFingerprint,
@@ -614,6 +622,20 @@
       signatureVerified: importResult.signatureVerified,
       source: importResult.source,
     });
+    if (localPublishImportError) {
+      publication.localPublishImportError = localPublishImportError;
+    }
+    return publication;
+  }
+
+  function localPublishImportErrorSummary(error) {
+    const summary = {
+      message: "Trust statement was queued, but local publish metadata could not be refreshed.",
+    };
+    if (error && typeof error.code === "string" && error.code.trim()) {
+      summary.code = error.code.trim();
+    }
+    return summary;
   }
 
   function createTrustStatement(identityIdOrOptions, payload, options) {
@@ -635,6 +657,17 @@
       `app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}/trust-statement`,
       normalizeTrustStatementPayload(request),
       requestOptions || requestOptionsFrom(request)
+    );
+  }
+
+  function importPublishedTrustStatement(document, source, requestOptions) {
+    return importTrustStatement(
+      {
+        document,
+        source: "local-publish",
+        sourceLabel: source.sourceLabel || source.label || "Published statement",
+      },
+      requestOptions
     );
   }
 
