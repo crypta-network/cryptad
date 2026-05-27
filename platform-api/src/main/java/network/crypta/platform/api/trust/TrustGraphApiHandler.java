@@ -56,6 +56,13 @@ public final class TrustGraphApiHandler {
   private static final String AUDIT_EVENT_STATEMENT_IMPORT_REJECTED = "statement_import_rejected";
   private static final String AUDIT_STATUS_OK = "ok";
   private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
+  private static final String CHK_PREFIX = "CHK@";
+  private static final String SSK_PREFIX = "SSK@";
+  private static final String USK_PREFIX = "USK@";
+  private static final String KSK_PREFIX = "KSK@";
+  private static final String SOURCE_LOCAL_IMPORT = "local-import";
+  private static final String SOURCE_LOCAL_PUBLISH = "local-publish";
+  private static final String SOURCE_MANUAL = "manual";
   private static final int DEFAULT_AUDIT_LIMIT = 50;
 
   private final TrustGraphStore store;
@@ -213,8 +220,8 @@ public final class TrustGraphApiHandler {
    * policy to the store, and returns only a redacted import summary. Unverified statements remain
    * visible as evidence but cannot contribute to score results.
    *
-   * @param queryParameters decoded form fields containing {@code document} and optional source
-   *     metadata
+   * @param queryParameters decoded form fields containing {@code document} and optional redacted
+   *     source URI/label metadata
    * @return redacted import summary without raw document text or signature values
    * @throws PlatformApiException when the document or source metadata is invalid
    */
@@ -236,14 +243,10 @@ public final class TrustGraphApiHandler {
     try {
       String documentJson = PlatformApiParameters.requireString(queryParameters, PARAM_DOCUMENT);
       TrustStatementDocument document = TrustStatementParser.parse(documentJson);
-      String source =
-          PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE) == null
-              ? "local-import"
-              : PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE);
       TrustGraphImportResult result =
           store.importStatement(
               document,
-              source,
+              importSource(queryParameters),
               PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
               PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL));
       appendImportAudit("statement_imported", appId, result);
@@ -484,6 +487,18 @@ public final class TrustGraphApiHandler {
         "Query parameter '" + name + "' must be a positive integer.");
   }
 
+  private static String importSource(Map<String, List<String>> queryParameters) {
+    String source = PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE);
+    if (source == null) {
+      return SOURCE_LOCAL_IMPORT;
+    }
+    String normalized = source.trim();
+    return switch (normalized) {
+      case SOURCE_LOCAL_IMPORT, SOURCE_LOCAL_PUBLISH, SOURCE_MANUAL -> normalized;
+      default -> SOURCE_LOCAL_IMPORT;
+    };
+  }
+
   private void appendAnchorAudit(String eventType, String appId, String issuerFingerprint) {
     store.appendAuditEvent(
         new TrustGraphAuditEvent(
@@ -496,7 +511,7 @@ public final class TrustGraphApiHandler {
             null,
             null,
             null,
-            "manual",
+            SOURCE_MANUAL,
             null,
             null,
             null,
@@ -555,27 +570,44 @@ public final class TrustGraphApiHandler {
       return null;
     }
     String trimmed = uri.trim();
-    String type = "uri";
-    int at = trimmed.indexOf('@');
-    if (at > 0 && at <= 8) {
-      type = safeUriType(trimmed.substring(0, at).replace(':', '_'));
-    } else if (trimmed.regionMatches(
-        true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
-      String runtime = trimmed.substring(CRYPTA_SCHEME_PREFIX.length());
-      int nestedAt = runtime.indexOf('@');
-      if (nestedAt > 0 && nestedAt <= 8) {
-        type = "crypta_" + safeUriType(runtime.substring(0, nestedAt));
-      }
-    }
+    String type = redactedUriSummaryType(trimmed);
     return type + ":sha256:" + hashText(trimmed).substring(0, 16);
   }
 
-  private static String safeUriType(String value) {
-    String text = value == null ? "" : value;
-    if (text.matches("\\w{1,16}")) {
-      return text;
+  private static String redactedUriSummaryType(String trimmed) {
+    String directType = knownContentKeyFamily(trimmed);
+    if (directType != null) {
+      return directType;
+    }
+    if (trimmed.regionMatches(true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
+      String runtime = trimmed.substring(CRYPTA_SCHEME_PREFIX.length());
+      String nestedType = knownContentKeyFamily(runtime);
+      if (nestedType != null) {
+        return "crypta_" + nestedType;
+      }
     }
     return "uri";
+  }
+
+  private static String knownContentKeyFamily(String candidate) {
+    String family = knownContentKeyFamily(candidate, CHK_PREFIX);
+    if (family == null) {
+      family = knownContentKeyFamily(candidate, SSK_PREFIX);
+    }
+    if (family == null) {
+      family = knownContentKeyFamily(candidate, USK_PREFIX);
+    }
+    if (family == null) {
+      family = knownContentKeyFamily(candidate, KSK_PREFIX);
+    }
+    return family;
+  }
+
+  private static String knownContentKeyFamily(String candidate, String prefix) {
+    if (candidate.regionMatches(true, 0, prefix, 0, prefix.length())) {
+      return prefix.substring(0, prefix.length() - 1);
+    }
+    return null;
   }
 
   private static final class UnavailableTrustGraphStore implements TrustGraphStore {

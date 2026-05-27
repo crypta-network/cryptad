@@ -187,6 +187,93 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenImportSourceContainsUnsafeRequestText_expectAuditUsesSafeSource() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.read"));
+    String requestSource = "/tmp/CRYPTAD_APP_TOKEN";
+
+    PlatformApiResponse imported =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement()), "source", List.of(requestSource)),
+                writer));
+    PlatformApiResponse audit =
+        router.route(request("GET", List.of("trust-graph", "audit"), Map.of(), reader));
+
+    assertEquals(200, imported.statusCode());
+    assertTrue(imported.body().contains("\"source\":\"local-import\""));
+    assertFalse(imported.body().contains(requestSource));
+    assertEquals(200, audit.statusCode());
+    assertTrue(audit.body().contains("\"source\":\"local-import\""));
+    assertFalse(audit.body().contains(requestSource));
+  }
+
+  @Test
+  void route_whenRejectedImportSourceUriHasUnknownPrefix_expectAuditUsesGenericUriSummary() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.read"));
+    String unsafeSourceUri = "token@secret-material";
+
+    PlatformApiResponse imported =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of(
+                    "document", List.of(validStatement()), "sourceUri", List.of(unsafeSourceUri)),
+                writer));
+    PlatformApiResponse audit =
+        router.route(request("GET", List.of("trust-graph", "audit"), Map.of(), reader));
+
+    assertEquals(400, imported.statusCode());
+    assertTrue(imported.body().contains("invalid_trust_statement"));
+    assertEquals(200, audit.statusCode());
+    assertTrue(audit.body().contains("\"eventType\":\"statement_import_rejected\""));
+    assertTrue(audit.body().contains("\"sourceSummary\":\"uri:sha256:"));
+    assertFalse(audit.body().contains("\"sourceSummary\":\"token:sha256:"));
+    assertFalse(audit.body().contains(unsafeSourceUri));
+    assertFalse(audit.body().contains("secret-material"));
+  }
+
+  @Test
+  void route_whenRejectedImportSourceUriHasCryptaKeyPrefix_expectAuditKeepsOnlyKnownFamily() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.read"));
+    String wrappedSourceUri = "crypta:USK@statement";
+
+    PlatformApiResponse imported =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of(
+                    "document",
+                    List.of("{\"type\":\"wrong\"}"),
+                    "sourceUri",
+                    List.of(wrappedSourceUri)),
+                writer));
+    PlatformApiResponse audit =
+        router.route(request("GET", List.of("trust-graph", "audit"), Map.of(), reader));
+
+    assertEquals(400, imported.statusCode());
+    assertEquals(200, audit.statusCode());
+    assertTrue(audit.body().contains("\"sourceSummary\":\"crypta_USK:sha256:"));
+    assertFalse(audit.body().contains(wrappedSourceUri));
+    assertFalse(audit.body().contains("USK@statement"));
+  }
+
+  @Test
   void route_whenImportUriHasContentFetchCapability_expectFetchedStatementImported() {
     ContentFetchPort fetchPort =
         request ->
