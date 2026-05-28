@@ -107,6 +107,11 @@ signatures over deterministic canonical JSON for this public document shape:
 }
 ```
 
+When importing remote outboxes, the app rejects messages whose `messageId` is not the route-style
+`msg-<sha256>` value recomputed from the canonical public message payload without the `messageId`
+field. Read-state keys are accepted only for that safe generated shape, so imported content cannot
+choose object-prototype names or collide with another signed payload's identifier.
+
 The signing response contains public verification material only. Release evidence and logs must not
 include raw request bodies, raw message bodies, raw signatures, private identity material,
 browser-session tokens, app process tokens, local vault paths, or private insert URIs.
@@ -173,7 +178,8 @@ social/read-state
 social/drafts
 ```
 
-`social/read-state` tracks read/unread, pinned, archived/hidden, and last viewed timestamp.
+`social/read-state` tracks read/unread, pinned, archived/hidden, and last viewed timestamp keyed by
+validated `msg-<sha256>` message ids.
 `social/sources` tracks safe subscription metadata, source URI summaries, and source URI hashes,
 not raw source URIs. `social/imported-message-index` stores capped message summaries.
 `social/drafts` stores a draft body only when the user explicitly selects the draft checkbox, and

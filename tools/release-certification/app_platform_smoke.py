@@ -6160,6 +6160,10 @@ def collect_social_inbox_signed_message_evidence(settings: Settings) -> Evidence
     checks["verifiesImportedMessageSignatures"] = (
         "verifySocialMessageSignature" in app_js
         and "canonicalSocialMessagePayload" in app_js
+        and "expectedSocialMessageId" in app_js
+        and "canonicalSocialMessageIdPayload" in app_js
+        and "messageIdPattern" in app_js
+        and "Social message id does not match canonical payload." in app_js
         and "window.crypto.subtle.verify" in app_js
         and "signature.publicKeyFingerprint !== message.authorFingerprint" in app_js
         and "const publicKeyBytes = decodeBase64(signature.publicKeyBase64" in app_js
@@ -6343,6 +6347,9 @@ def collect_social_inbox_app_data_evidence(settings: Settings) -> EvidenceItem:
             "maxImportedMessages",
             "maxReadStateEntries",
             "boundedDrafts",
+            "boundedReadState",
+            "Object.create(null)",
+            "isSafeMessageId",
         )
     )
     checks["storesSafeSummariesOnly"] = all(
@@ -9046,6 +9053,7 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const maxImportedMessages = 160;\n"
             "const maxReadStateEntries = 240;\n"
             "const maxFetchedDocumentChars = 131072;\n"
+            "const messageIdPattern = /^msg-[0-9a-f]{64}$/;\n"
             "const records = { uiState: [\"ui-state\", \"social-inbox\"], sources: [\"social\", \"sources\"], "
             "outboxSummary: [\"social\", \"outbox-summary\"], importedMessageIndex: [\"social\", \"imported-message-index\"], "
             "readState: [\"social\", \"read-state\"], drafts: [\"social\", \"drafts\"] };\n"
@@ -9055,8 +9063,10 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.vault.identities.createProfileDocument('social-self-test', { displayName: 'Social' });\n"
             "CryptaPlatform.vault.identities.createSocialMessageDocument('social-self-test', { body: 'redacted' });\n"
             "function ensureSignedSocialMessage(value) { const signature = value.signature || {}; if (signature.domain !== socialMessageType) throw new Error(); }\n"
-            "async function verifySocialMessageSignature(value) { const signature = value.signature || {}; const message = value.message || {}; if (signature.publicKeyFingerprint !== message.authorFingerprint) throw new Error(); const publicKeyBytes = decodeBase64(signature.publicKeyBase64, 'publicKeyBase64'); const publicKeyFingerprint = await sha256Hex(publicKeyBytes); if (publicKeyFingerprint !== stringValue(signature.publicKeyFingerprint)) throw new Error(); return window.crypto.subtle.verify(); }\n"
+            "async function verifySocialMessageSignature(value) { const signature = value.signature || {}; const message = value.message || {}; if (signature.publicKeyFingerprint !== message.authorFingerprint) throw new Error(); const expected = await expectedSocialMessageId(message); if (message.messageId !== expected) throw new Error('Social message id does not match canonical payload.'); const publicKeyBytes = decodeBase64(signature.publicKeyBase64, 'publicKeyBase64'); const publicKeyFingerprint = await sha256Hex(publicKeyBytes); if (publicKeyFingerprint !== stringValue(signature.publicKeyFingerprint)) throw new Error(); return window.crypto.subtle.verify(); }\n"
             "function canonicalSocialMessagePayload(value) { return value; }\n"
+            "function canonicalSocialMessageIdPayload(value) { return value; }\n"
+            "async function expectedSocialMessageId(value) { return 'msg-' + await sha256Hex(canonicalSocialMessageIdPayload(value)); }\n"
             "function requireIsoTimestamp(value) { return value; }\n"
             "CryptaPlatform.content.insertAppDocument({ document: { type: socialOutboxType }, contentType: 'application/vnd.crypta.social.outbox+json', targetFilename: 'social-outbox.json' });\n"
             "CryptaPlatform.content.fetchText({ uri: 'USK@redacted/social/0/social-outbox.json', maxBytes: maxFetchedDocumentChars });\n"
@@ -9070,6 +9080,8 @@ def make_self_test_workspace(workspace: Path) -> None:
             "function isSocialSourceUri(uri) { return uri.startsWith('USK@') || uri.startsWith('crypta:USK@'); }\n"
             "function parseJsonObject(value) { return JSON.parse(value); }\n"
             "function boundedDrafts(value) { return value; }\n"
+            "function isSafeMessageId(value) { return messageIdPattern.test(value); }\n"
+            "function boundedReadState(value) { return Object.create(null); }\n"
             "const bodySha256 = 'redacted'; const bodyPreview = 'redacted'; const signatureSha256 = 'redacted';\n"
             "const uriHash = 'redacted'; const uriSummary = 'USK source URI redacted'; "
             "const publicSourceUriHash = 'redacted'; const publicSourceUriSummary = 'redacted';\n"

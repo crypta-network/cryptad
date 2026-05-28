@@ -23,6 +23,7 @@
   const maxFetchedDocumentChars = 128 * 1024;
   const sourcePollIntervalSeconds = 15 * 60;
   const dataSchemaVersion = 1;
+  const messageIdPattern = /^msg-[0-9a-f]{64}$/;
 
   const records = {
     uiState: ["ui-state", "social-inbox"],
@@ -40,7 +41,7 @@
     sources: [],
     subscriptions: [],
     importedMessages: [],
-    readState: {},
+    readState: Object.create(null),
     drafts: {},
     outboxSummary: null,
     trustScores: {},
@@ -445,7 +446,7 @@
     const message = signedMessage.message;
     const signature = signedMessage.signature;
     const body = rawString(message.body);
-    const messageId = stringValue(message.messageId) || (await sha256Hex(JSON.stringify(message)));
+    const messageId = rawString(message.messageId);
     return {
       messageId,
       authorFingerprint: stringValue(message.authorFingerprint),
@@ -533,6 +534,9 @@
     requireBoundedText(message.authorFingerprint, maxRecipientFingerprintLength, "authorFingerprint");
     requireBoundedText(message.identityId, maxMessageReferenceLength, "identityId");
     requireBoundedText(message.messageId, maxMessageReferenceLength, "messageId");
+    if (!isSafeMessageId(rawString(message.messageId))) {
+      throw new Error("Social message id is malformed.");
+    }
     requireBoundedText(message.channel, maxImportedChannelLength, "channel");
     requireBoundedText(message.subject, maxImportedSubjectLength, "subject");
     requireBoundedText(message.authorLabel, maxAuthorLabelLength, "authorLabel");
@@ -576,6 +580,10 @@
     const payloadHash = await sha256Hex(canonicalPayload);
     if (payloadHash !== stringValue(signature.payloadHash)) {
       throw new Error("Social message payload hash does not match.");
+    }
+    const expectedMessageId = await expectedSocialMessageId(message);
+    if (rawString(message.messageId) !== expectedMessageId) {
+      throw new Error("Social message id does not match canonical payload.");
     }
     if (!window.crypto || !window.crypto.subtle) {
       throw new Error("Social message signature verification is unavailable.");
@@ -627,6 +635,31 @@
       payload.tags = message.tags.map((tag) => stringValue(tag));
     }
     return `${socialMessageType}\n${JSON.stringify({ type: socialMessageType, message: payload })}`;
+  }
+
+  async function expectedSocialMessageId(message) {
+    return `msg-${await sha256Hex(canonicalSocialMessageIdPayload(message))}`;
+  }
+
+  function canonicalSocialMessageIdPayload(message) {
+    const payload = {
+      appId: rawString(message.appId),
+      identityId: rawString(message.identityId),
+      authorFingerprint: rawString(message.authorFingerprint),
+    };
+    appendOptionalCanonicalField(payload, "authorLabel", message.authorLabel);
+    appendOptionalCanonicalField(payload, "profileUri", message.profileUri);
+    payload.createdAt = rawString(message.createdAt);
+    payload.channel = rawString(message.channel);
+    payload.subject = rawString(message.subject);
+    payload.body = rawString(message.body);
+    payload.format = "text/plain";
+    appendOptionalCanonicalField(payload, "replyTo", message.replyTo);
+    appendOptionalCanonicalField(payload, "recipientFingerprint", message.recipientFingerprint);
+    if (Array.isArray(message.tags) && message.tags.length > 0) {
+      payload.tags = message.tags.map((tag) => stringValue(tag));
+    }
+    return JSON.stringify(payload);
   }
 
   function appendOptionalCanonicalField(target, name, value) {
@@ -805,11 +838,11 @@
     state.selectedIdentityId = stringValue(uiState.selectedIdentityId);
     state.sources = boundedArray(await readAppDataRecord(records.sources, []), maxSources);
     state.outboxSummary = await readAppDataRecord(records.outboxSummary, null);
-    state.importedMessages = boundedArray(
+    state.importedMessages = boundedImportedMessages(
       await readAppDataRecord(records.importedMessageIndex, []),
       maxImportedMessages
     );
-    state.readState = boundedObject(
+    state.readState = boundedReadState(
       await readAppDataRecord(records.readState, {}),
       maxReadStateEntries
     );
@@ -842,12 +875,12 @@
   }
 
   async function persistImportedMessages() {
-    state.importedMessages = state.importedMessages.slice(0, maxImportedMessages);
+    state.importedMessages = boundedImportedMessages(state.importedMessages, maxImportedMessages);
     await putJsonRecord(records.importedMessageIndex, state.importedMessages);
   }
 
   async function persistReadState() {
-    state.readState = boundedObject(state.readState, maxReadStateEntries);
+    state.readState = boundedReadState(state.readState, maxReadStateEntries);
     await putJsonRecord(records.readState, state.readState);
   }
 
@@ -1084,7 +1117,10 @@
     actions.className = "message-actions";
     actions.append(
       actionButton(itemState.read ? "Mark unread" : "Mark read", () =>
-        updateMessageState(message.messageId, { read: !itemState.read, lastViewedAt: new Date().toISOString() })
+        updateMessageState(message.messageId, {
+          read: !itemState.read,
+          lastViewedAt: new Date().toISOString(),
+        })
       ),
       actionButton(itemState.pinned ? "Unpin" : "Pin", () =>
         updateMessageState(message.messageId, { pinned: !itemState.pinned })
@@ -1095,7 +1131,14 @@
   }
 
   async function updateMessageState(messageId, patch) {
-    state.readState[messageId] = Object.assign({}, state.readState[messageId] || {}, patch);
+    if (!isSafeMessageId(messageId)) {
+      throw new Error("Cannot update read state for an unsafe message id.");
+    }
+    state.readState[messageId] = Object.assign(
+      Object.create(null),
+      state.readState[messageId] || {},
+      patch
+    );
     await persistReadState();
     renderInbox();
   }
@@ -1179,7 +1222,11 @@
   }
 
   function readState(message) {
-    return state.readState[message.messageId] || {};
+    const messageId = message && rawString(message.messageId);
+    if (!isSafeMessageId(messageId)) {
+      return {};
+    }
+    return state.readState[messageId] || {};
   }
 
   function messageDraftFromForm(formData) {
@@ -1264,13 +1311,40 @@
     return Array.isArray(value) ? value.slice(0, limit) : [];
   }
 
-  function boundedObject(value, limit) {
+  function boundedImportedMessages(value, limit) {
+    return boundedArray(value, limit).filter((message) =>
+      isSafeMessageId(message && message.messageId)
+    );
+  }
+
+  function boundedReadState(value, limit) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    const result = {};
-    for (const key of Object.keys(source).slice(0, limit)) {
-      result[key] = source[key];
+    const result = Object.create(null);
+    let count = 0;
+    for (const key of Object.keys(source)) {
+      if (!isSafeMessageId(key)) {
+        continue;
+      }
+      const item = source[key];
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        continue;
+      }
+      result[key] = {
+        read: Boolean(item.read),
+        pinned: Boolean(item.pinned),
+        archived: Boolean(item.archived),
+        lastViewedAt: boundedPreview(item.lastViewedAt, 64),
+      };
+      count += 1;
+      if (count >= limit) {
+        break;
+      }
     }
     return result;
+  }
+
+  function isSafeMessageId(value) {
+    return typeof value === "string" && messageIdPattern.test(value);
   }
 
   function tagsFromText(value) {
