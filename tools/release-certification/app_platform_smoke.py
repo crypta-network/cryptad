@@ -840,7 +840,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/trust-graph.sh",
             "permissions": TRUST_GRAPH_PERMISSIONS,
             "apiMinimumVersion": 10,
-            "apiMaximumTestedVersion": 10,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
             "experimentalCapabilitiesAccepted": True,
         },
     ]
@@ -5121,15 +5121,16 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         checks["manifestDeclaresTrustPermissions"] = TRUST_GRAPH_PERMISSIONS.issubset(
             manifest_permissions
         )
-        checks["manifestUsesContractV10"] = (
+        checks["manifestUsesContractV10ThroughCurrent"] = (
             manifest.get("api.minimumVersion") == "10"
-            and manifest.get("api.maximumTestedVersion") == "10"
+            and manifest.get("api.maximumTestedVersion")
+            == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
     else:
         checks["manifestDeclaresTrustGraph"] = False
         checks["manifestDeclaresTrustPermissions"] = False
-        checks["manifestUsesContractV10"] = False
+        checks["manifestUsesContractV10ThroughCurrent"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -5193,7 +5194,8 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
     checks = details["checks"]
     checks["manifestUsesAppDataContract"] = (
         manifest.get("api.minimumVersion") == "10"
-        and manifest.get("api.maximumTestedVersion") == "10"
+        and manifest.get("api.maximumTestedVersion")
+        == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         and {"app.data.read", "app.data.write"}.issubset(permissions)
     )
     checks["usesSdkJsonRecordHelpers"] = (
@@ -5661,9 +5663,10 @@ def collect_trust_graph_durable_exchange_reference_app_evidence(
             "function queueSnapshotSummary", 1
         )[0]
     checks = details["checks"]
-    checks["manifestUsesContractV10"] = (
+    checks["manifestUsesContractV10ThroughCurrent"] = (
         manifest.get("api.minimumVersion") == "10"
-        and manifest.get("api.maximumTestedVersion") == "10"
+        and manifest.get("api.maximumTestedVersion")
+        == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
     )
     checks["manifestDeclaresExchangePermissions"] = {
         "trust.read",
@@ -7940,7 +7943,9 @@ def run_self_test(repo_root: Path) -> None:
         "app.data.read,app.data.write"
     )
     assert catalog["app.trust-graph.api.minimumVersion"] == "10"
-    assert catalog["app.trust-graph.api.maximumTestedVersion"] == "10"
+    assert catalog["app.trust-graph.api.maximumTestedVersion"] == str(
+        CURRENT_PLATFORM_API_CONTRACT_VERSION
+    )
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -9172,10 +9177,9 @@ def make_self_test_workspace(workspace: Path) -> None:
             else "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
         )
         api_maximum = (
-            "10"
+            str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
             if is_trust_graph
-            else str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
-            if is_feed_reader
+            or is_feed_reader
             or is_profile_publisher
             or is_social_inbox
             or app_id == "site-publisher"

@@ -1178,7 +1178,7 @@
           "docsDescribePreviewLimits": true,
           "manifestDeclaresTrustGraph": true,
           "manifestDeclaresTrustPermissions": true,
-          "manifestUsesContractV10": true,
+          "manifestUsesContractV10ThroughCurrent": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -1220,7 +1220,7 @@
         "appId": "trust-graph",
         "checks": {
           "manifestDeclaresExchangePermissions": true,
-          "manifestUsesContractV10": true,
+          "manifestUsesContractV10ThroughCurrent": true,
           "noPersistentBrowserStorage": true,
           "noRawApiOrManualFetch": true,
           "privateInsertUriNotPersisted": true,

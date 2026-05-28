@@ -187,7 +187,7 @@ categories=identity,trust,preview
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=true
 ```
 

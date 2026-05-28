@@ -3684,7 +3684,7 @@ def evaluate_reference_content_gate(
         for key in (
             "manifestDeclaresTrustGraph",
             "manifestDeclaresTrustPermissions",
-            "manifestUsesContractV10",
+            "manifestUsesContractV10ThroughCurrent",
             "usesTrustHelpers",
             "usesBoundedTrustSigningHelper",
             "usesTrustExchangeAndQueuePreview",
@@ -3904,7 +3904,11 @@ def evaluate_reference_content_gate(
                     gate_details, "failureEvidenceIds", "app-platform.trust-graph-exchange"
                 )
     if trust_graph_durable_exchange_checks:
-        for key in ("manifestUsesContractV10", "usesSdkExchangeHelpers", "noRawApiOrManualFetch"):
+        for key in (
+            "manifestUsesContractV10ThroughCurrent",
+            "usesSdkExchangeHelpers",
+            "noRawApiOrManualFetch",
+        ):
             if trust_graph_durable_exchange_checks.get(key) is not True:
                 failures.append(f"Trust Graph Preview durable exchange app check {key} failed")
                 add_evidence_issue(
