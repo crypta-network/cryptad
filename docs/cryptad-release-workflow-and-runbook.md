@@ -103,7 +103,11 @@ Treat these as release blockers, in order:
    `app-platform.generated-document-insert`, `app-platform.content-fetch`,
    `app-platform.content-subscriptions`, `network-content.subscription-scheduler`,
    `app-platform.trust-graph-preview`, `app-platform.trust-statement-signing`,
-   `reference-apps.content`, `reference-app.profile-publisher`, `reference-app.feed-reader`,
+   `app-platform.social-message-signing`, `reference-apps.content`,
+   `reference-app.profile-publisher`, `reference-app.social-inbox`,
+   `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
+   `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
+   `migration.social-mail-preview`, `reference-app.feed-reader`,
    `reference-app.feed-reader-subscriptions`, and
    `reference-app.trust-graph`. Site Publisher is the
    content-oriented reference app;

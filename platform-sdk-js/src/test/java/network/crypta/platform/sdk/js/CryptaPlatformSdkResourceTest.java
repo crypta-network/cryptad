@@ -1107,6 +1107,55 @@ class CryptaPlatformSdkResourceTest {
   }
 
   @Test
+  void classpathResource_whenSocialMessageSigned_expectBoundedVaultRoute() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-vault/identities/social-id/social-message"
+              && options.method === "POST";
+          },
+          {
+            socialMessage: {
+              identity: { identityId: "social-id" },
+              payloadHash: "hash",
+              domain: "crypta.social.message.v1",
+              socialMessage: { type: "crypta.social.message.v1" }
+            }
+          });
+
+        const result = await CryptaPlatform.vault.identities.createSocialMessageDocument("social-id", {
+          channel: "general",
+          subject: "Hello",
+          body: "Plain text body",
+          authorLabel: "Ada",
+          profileUri: "USK@example/profile/1/profile.json",
+          replyTo: "msg-parent",
+          recipientFingerprint: "recipient",
+          tags: ["social", "preview"]
+        });
+
+        assert.equal(result.socialMessage.type, "crypta.social.message.v1");
+        assert.equal(result.identity.identityId, "social-id");
+        assert.equal(result.domain, "crypta.social.message.v1");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("channel"), "general");
+        assert.equal(params.get("subject"), "Hello");
+        assert.equal(params.get("body"), "Plain text body");
+        assert.equal(params.get("authorLabel"), "Ada");
+        assert.equal(params.get("profileUri"), "USK@example/profile/1/profile.json");
+        assert.equal(params.get("replyTo"), "msg-parent");
+        assert.equal(params.get("recipientFingerprint"), "recipient");
+        assert.equal(params.get("tags"), "social,preview");
+        assert.equal(params.has("purpose"), false);
+        assert.equal(params.has("domain"), false);
+        assert.equal(params.has("payloadBase64"), false);
+        """);
+  }
+
+  @Test
   void classpathResource_whenAppIdCanonicalizationRequested_expectComparisonUsesNormalizedIds()
       throws IOException {
     String script = readSdkScript();
@@ -1190,17 +1239,22 @@ class CryptaPlatformSdkResourceTest {
       "return apiPostForm(",
       "\"app-vault/identities\"",
       "function createProfileDocument(identityId, profile, options)",
+      "function createSocialMessageDocument(identityIdOrOptions, message, options)",
       "function createTrustStatement(identityIdOrOptions, payload, options)",
       "function normalizeProfileDocument(profile)",
+      "function normalizeSocialMessageDocument(message)",
       "function normalizeTrustStatementPayload(source)",
       "copyStringParam(source, params, \"displayName\");",
+      "copyStringParam(source, params, \"recipientFingerprint\");",
       "appendTagsParam(source.tags, params);",
       "/profile-document`",
+      "/social-message`",
       "function normalizeVaultGrantScope(scope)",
       "normalized !== \"sign.domain-separated\"",
       "identities: Object.freeze({",
       "create: createVaultIdentity",
       "createProfileDocument",
+      "createSocialMessageDocument",
       "createTrustStatement",
       "grants: Object.freeze({"
     };

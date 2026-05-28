@@ -178,7 +178,7 @@ vault paths, raw process tokens, browser session tokens, form passwords, or gene
 
 ## Reference App
 
-`apps:trust-graph` declares API v10 and:
+`apps:trust-graph` declares API minimum v10 and maximum tested v11, with:
 
 ```text
 trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,

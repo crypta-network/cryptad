@@ -483,6 +483,43 @@
     );
   }
 
+  function createSocialMessageDocument(identityIdOrOptions, message, options) {
+    let identityId = identityIdOrOptions;
+    let source = message;
+    let requestOptions = options;
+    if (
+      identityIdOrOptions &&
+      typeof identityIdOrOptions === "object" &&
+      !Array.isArray(identityIdOrOptions) &&
+      typeof identityIdOrOptions.entries !== "function"
+    ) {
+      source = identityIdOrOptions;
+      identityId = source.identityId || source.authorIdentity || source.authorIdentityId;
+      requestOptions = requestOptionsFrom(source);
+    }
+    const request = requireOptionsObject(source, "Social message document");
+    return apiPostForm(
+      `app-vault/identities/${encodeURIComponent(vaultPathSegment(identityId))}/social-message`,
+      normalizeSocialMessageDocument(request),
+      requestOptions || requestOptionsFrom(request)
+    ).then(normalizeSocialMessageResponse);
+  }
+
+  function normalizeSocialMessageResponse(response) {
+    if (
+      response &&
+      response.socialMessage &&
+      response.socialMessage.socialMessage &&
+      typeof response.socialMessage === "object" &&
+      !Array.isArray(response.socialMessage)
+    ) {
+      return Object.assign({}, response.socialMessage, {
+        socialMessage: response.socialMessage.socialMessage,
+      });
+    }
+    return response;
+  }
+
   function listVaultGrants(options) {
     return apiGet("app-vault/grants", options);
   }
@@ -1148,6 +1185,24 @@
     copyStringParam(source, params, "avatarUri");
     copyStringParam(source, params, "contactUri");
     appendTagsParam(source.tags, params);
+    return params;
+  }
+
+  function normalizeSocialMessageDocument(message) {
+    const source = requireOptionsObject(message, "Social message document");
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "channel");
+    copyStringParam(source, params, "subject");
+    copyStringParam(source, params, "body");
+    copyStringParam(source, params, "format");
+    copyStringParam(source, params, "replyTo");
+    copyStringParam(source, params, "recipientFingerprint");
+    copyStringParam(source, params, "profileUri");
+    copyStringParam(source, params, "authorLabel");
+    appendTagsParam(source.tags, params);
+    if (!params.has("body")) {
+      throw new Error("Social message document requires body.");
+    }
     return params;
   }
 
@@ -1972,6 +2027,7 @@
         get: getVaultIdentity,
         create: createVaultIdentity,
         createProfileDocument,
+        createSocialMessageDocument,
         createTrustStatement,
       }),
       grants: Object.freeze({

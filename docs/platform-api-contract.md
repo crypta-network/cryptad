@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=10
+contractVersion=11
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 10,
+    "contractVersion": 11,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -240,6 +240,26 @@ persist raw request bodies, raw fetched content outside normalized trust stateme
 private insert URIs, private identity material, browser-session tokens, form passwords, absolute
 paths, or raw signatures.
 
+Contract version 11 adds bounded Social Inbox Preview message signing:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/app-vault/identities/{identityId}/social-message` | `vault.identities.read`, `vault.identities.use` | Ask AppVault to sign one bounded `crypta.social.message.v1` plain-text message document for an app-visible identity without exposing a generic browser signing API. |
+
+The social-message route fixes the signing purpose to `crypta.social.message.v1`, uses the server
+clock for `createdAt`, bounds subject, body, tags, profile URI, reply metadata, and total canonical
+payload bytes, and rejects caller-supplied signing domains, raw payload bytes, or arbitrary signing
+purposes. The response contains the public signed document and verification metadata only. It must
+not include private key material, private identity material, local vault paths, browser-session
+tokens, app process tokens, raw request bodies, domain-separated payload bytes, or private insert
+URIs.
+
+This route exists so `apps/social-inbox` can demonstrate a social/mail-like migration spike using
+AppVault identity, content insert/fetch/subscriptions, durable app data, and Trust Graph Preview
+annotations outside daemon core. It is not full WoT, old plugin ABI compatibility, Freetalk, Sone,
+Freemail, encrypted mail transport, a moderation system, a daemon-core message protocol, or a
+network protocol change. See [social-inbox-reference-app.md](social-inbox-reference-app.md).
+
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
 `vault.identities.create`, `vault.identities.use`, and `vault.identities.manage`. They are
@@ -370,7 +390,11 @@ has separate release evidence: `app-platform.content-fetch` for `POST /api/v1/co
 `app-platform.content-subscriptions` for the v8 subscription routes,
 `network-content.subscription-scheduler` for deterministic bounded scheduler behavior, and
 `reference-app.feed-reader` plus `reference-app.feed-reader-subscriptions` for the first-party
-Feed Reader bundle. Trust Graph Preview has
+Feed Reader bundle. Social Inbox Preview has separate evidence:
+`app-platform.social-message-signing` for the bounded v11 AppVault social-message route,
+`reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
+`reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
+`reference-app.social-inbox-trust-annotations`, and `migration.social-mail-preview`. Trust Graph Preview has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the v7 trust routes and SDK helpers, and
 `app-platform.trust-statement-signing` for the bounded AppVault signing route and redaction checks.

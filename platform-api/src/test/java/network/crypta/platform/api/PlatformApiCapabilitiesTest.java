@@ -528,6 +528,13 @@ class PlatformApiCapabilitiesTest {
             "vault.identities.use"),
         route(
             "POST",
+            List.of("app-vault", "identities", "id-sample", "social-message"),
+            "app-vault",
+            "app-vault.identities.social-message",
+            "vault.identities.read",
+            "vault.identities.use"),
+        route(
+            "POST",
             List.of("app-vault", "identities", "id-sample", "trust-statement"),
             "app-vault",
             "app-vault.identities.trust-statement",

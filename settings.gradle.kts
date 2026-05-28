@@ -28,6 +28,7 @@ include(
   ":apps:publisher",
   ":apps:feed-reader",
   ":apps:profile-publisher",
+  ":apps:social-inbox",
   ":apps:site-publisher",
   ":apps:trust-graph",
   ":platform-design-system",

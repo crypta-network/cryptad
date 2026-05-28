@@ -6,8 +6,8 @@ catalog.
 ## Scope
 
 The first-party beta catalog is a signed catalog for the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and
-`trust-graph`. It does not auto-install apps and does not
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `social-inbox`,
+`feed-reader`, and `trust-graph`. It does not auto-install apps and does not
 weaken any existing gates. Catalog signatures, bundle signatures, review receipts, artifact
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
@@ -100,7 +100,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -116,7 +116,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -136,8 +136,34 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=false
+```
+
+Social Inbox Preview descriptors should include vault, content-fetch, content-subscription,
+generated-document publication, app-data, and trust-read rationales while making clear that the app
+is a migration spike, not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, or a
+daemon-core message protocol:
+
+```properties
+permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+permissions.rationale.vault.identities.read=Lists public metadata for app-owned social signing identities.
+permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox preview identity without exporting private material.
+permissions.rationale.vault.identities.use=Uses the bounded social-message and profile-document routes without exposing generic browser signing.
+permissions.rationale.content.fetch=Fetches bounded social outbox JSON selected by the user or a subscription.
+permissions.rationale.content.subscribe=Manages durable USK social source subscriptions without global crawling.
+permissions.rationale.content.insert.app-document=Publishes generated social outbox snapshots without local source-path authority.
+permissions.rationale.queue.write=Creates generated social outbox publication inserts.
+permissions.rationale.queue.read=Displays safe upload queue summaries.
+permissions.rationale.app.data.read=Restores bounded sources, imported-message summaries, read state, outbox summaries, and explicit drafts.
+permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
+permissions.rationale.trust.read=Reads Trust Graph Preview scores for message-author annotations.
+categories=social,identity,preview
+review.status=reviewed
+review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
+api.minimumVersion=11
+api.maximumTestedVersion=11
+api.experimentalCapabilitiesAccepted=true
 ```
 
 Trust Graph Preview descriptors should include trust, vault, content-fetch, content-subscription,
@@ -161,7 +187,7 @@ categories=identity,trust,preview
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -177,6 +203,7 @@ platform-devtools/build/install/crypta-app/bin/crypta-app catalog create \
   --entry build/first-party-beta-catalog/publisher.properties \
   --entry build/first-party-beta-catalog/site-publisher.properties \
   --entry build/first-party-beta-catalog/profile-publisher.properties \
+  --entry build/first-party-beta-catalog/social-inbox.properties \
   --entry build/first-party-beta-catalog/feed-reader.properties \
   --entry build/first-party-beta-catalog/trust-graph.properties \
   --overwrite
@@ -260,12 +287,17 @@ Crypta CHK artifact transport tests, first-party metadata documentation, governe
 parsing, transparency-log verification, review-history routing, and whether the certification
 environment has source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
-`app-platform.generated-document-insert`. Feed Reader is covered by `reference-app.feed-reader`,
+`app-platform.generated-document-insert`. Social Inbox Preview is covered by
+`app-platform.social-message-signing`, `reference-app.social-inbox`,
+`reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
+`reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`, and
+`migration.social-mail-preview`. Feed Reader is covered by `reference-app.feed-reader`,
 `reference-app.feed-reader-subscriptions`, `app-platform.content-fetch`,
 `app-platform.content-subscriptions`, and `network-content.subscription-scheduler`. Trust Graph Preview is covered by
 `reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
 `app-platform.trust-statement-signing`. Normal certification must not record tokens, form
-passwords, private insert URIs, raw request bodies, raw feed bodies, raw trust statement bodies
+passwords, private insert URIs, raw request bodies, raw feed bodies, raw social message bodies,
+raw fetched social documents, raw trust statement bodies
 from real users, private keys, raw public key bytes, raw receipt signatures, transparency-log
 paths, or absolute staging paths. It does not fetch a public Crypta network catalog during normal
 unit tests.

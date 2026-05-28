@@ -45,7 +45,7 @@ catalog.version=2
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
-catalog.entries=queue-manager,publisher,site-publisher,profile-publisher,feed-reader,trust-graph
+catalog.entries=queue-manager,publisher,site-publisher,profile-publisher,social-inbox,feed-reader,trust-graph
 
 app.queue-manager.id=queue-manager
 app.queue-manager.name=Queue Manager
@@ -93,7 +93,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=10
+app.site-publisher.api.maximumTestedVersion=11
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -120,8 +120,39 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=10
+app.profile-publisher.api.maximumTestedVersion=11
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
+
+app.social-inbox.id=social-inbox
+app.social-inbox.name=Social Inbox Preview
+app.social-inbox.version=1.0.0
+app.social-inbox.summary=Reference app for the social/mail migration preview outside daemon core.
+app.social-inbox.bundle.uri=https://example.invalid/apps/social-inbox-1.0.0.zip
+app.social-inbox.bundle.sha256=<lowercase-hex-sha256-of-zip>
+app.social-inbox.bundle.size.bytes=12345
+app.social-inbox.bundle.type=zip
+app.social-inbox.permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+app.social-inbox.homepage=https://example.invalid/apps/social-inbox
+app.social-inbox.source=https://example.invalid/src/social-inbox
+app.social-inbox.license=GPL-3.0-only
+app.social-inbox.categories=social,identity,preview
+app.social-inbox.review.status=reviewed
+app.social-inbox.review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
+app.social-inbox.permissions.rationale.vault.identities.read=Lists public metadata for app-owned social signing identities.
+app.social-inbox.permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox preview identity without exporting private material.
+app.social-inbox.permissions.rationale.vault.identities.use=Uses bounded social-message and profile-document routes without exposing generic browser signing.
+app.social-inbox.permissions.rationale.content.fetch=Fetches bounded social outbox JSON selected by the user or a subscription.
+app.social-inbox.permissions.rationale.content.subscribe=Manages durable USK social source subscriptions without global crawling.
+app.social-inbox.permissions.rationale.content.insert.app-document=Publishes generated social outbox snapshots without local source-path authority.
+app.social-inbox.permissions.rationale.queue.write=Creates generated social outbox publication inserts.
+app.social-inbox.permissions.rationale.queue.read=Displays safe upload queue summaries.
+app.social-inbox.permissions.rationale.app.data.read=Restores bounded sources, imported-message summaries, read state, outbox summaries, and explicit drafts.
+app.social-inbox.permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
+app.social-inbox.permissions.rationale.trust.read=Reads Trust Graph Preview scores for message-author annotations.
+app.social-inbox.changelog.summary=Adds the social/mail migration preview reference app.
+app.social-inbox.api.minimumVersion=11
+app.social-inbox.api.maximumTestedVersion=11
+app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader
 app.feed-reader.name=Feed Reader & Publisher
@@ -147,7 +178,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=10
+app.feed-reader.api.maximumTestedVersion=11
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
 app.trust-graph.id=trust-graph
@@ -178,7 +209,7 @@ app.trust-graph.permissions.rationale.app.data.read=Restores UI-local drafts, se
 app.trust-graph.permissions.rationale.app.data.write=Saves bounded UI-local preview state separately from the trust backend.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Preview reference app.
 app.trust-graph.api.minimumVersion=10
-app.trust-graph.api.maximumTestedVersion=10
+app.trust-graph.api.maximumTestedVersion=11
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
@@ -590,8 +621,8 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
 The first-party beta catalog is expected to contain the current first-party apps:
-`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `feed-reader`, and
-`trust-graph`. Entries should include
+`queue-manager`, `publisher`, `site-publisher`, `profile-publisher`, `social-inbox`,
+`feed-reader`, and `trust-graph`. Entries should include
 source/review/API, sandbox, permission rationale, and changelog metadata, for example
 `permissions.rationale.*`,
 `api.minimumVersion`, `api.maximumTestedVersion`, and `changelog.summary`. First-party public

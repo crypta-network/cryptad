@@ -283,6 +283,42 @@ final class MockPlatformApiFixtures {
   }
 
   /**
+   * Builds a deterministic social-message preview response for a mock identity.
+   *
+   * @param identityId identity id segment supplied in the route
+   * @return compact JSON response with public social message metadata only
+   */
+  String socialMessage(String identityId) {
+    String escapedIdentityId = Json.escape(identityId);
+    String escapedAppId = Json.escape(appId);
+    String payloadHash = "1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714";
+    String messageId = "msg-" + payloadHash;
+    return "{\"socialMessage\":{\"identity\":{\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"publicKeyFingerprint\":\"mock-profile-fingerprint\",\"publicKeyBase64\":\"bW9jay1wdWJsaWMta2V5\",\"appId\":\""
+        + escapedAppId
+        + "\"},\"payloadHash\":\""
+        + payloadHash
+        + "\",\"domain\":\"crypta.social.message.v1\",\"socialMessage\":{\"type\":\"crypta.social.message.v1\","
+        + "\"message\":{\"appId\":\""
+        + escapedAppId
+        + "\",\"identityId\":\""
+        + escapedIdentityId
+        + "\",\"authorFingerprint\":\"mock-profile-fingerprint\",\"messageId\":\""
+        + messageId
+        + "\",\"createdAt\":\"2026-05-16T00:00:00Z\",\"channel\":\"general\",\"subject\":\"Mock"
+        + " social message\",\"body\":\"Mock social message body\","
+        + "\"format\":\"text/plain\",\"tags\":[\"local\",\"mock\"]},"
+        + "\"signature\":{\"algorithm\":\"Ed25519\",\"domain\":\"crypta.social.message.v1\","
+        + "\"payloadHash\":\""
+        + payloadHash
+        + "\",\"publicKeyFingerprint\":\"mock-profile-fingerprint\","
+        + "\"publicKeyBase64\":\"bW9jay1wdWJsaWMta2V5\","
+        + "\"signatureBase64\":\"bW9jay1zaWduYXR1cmU=\"}},\"mock\":true,"
+        + "\"action\":\"app-vault.identities.social-message\"}}";
+  }
+
+  /**
    * Builds a deterministic mutation acknowledgement.
    *
    * @param action stable action label for the route that accepted the mutation

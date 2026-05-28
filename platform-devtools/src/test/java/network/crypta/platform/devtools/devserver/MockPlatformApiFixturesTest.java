@@ -53,18 +53,25 @@ class MockPlatformApiFixturesTest {
 
     String identities = fixtures.vaultIdentities();
     String profileDocument = fixtures.profileDocument("local-profile");
+    String socialMessage = fixtures.socialMessage("local-profile");
     MockPlatformApi api = new MockPlatformApi("mock-session"::equals, fixtures);
     TestHttpExchange createdIdentity =
         TestHttpExchange.post(
             "/api/v1/app-vault/identities",
             "label=Local+Profile&scopes=metadata.read%2Csign.domain-separated");
+    TestHttpExchange socialMessagePost =
+        TestHttpExchange.post(
+            "/api/v1/app-vault/identities/local-profile/social-message",
+            "body=Hello+from+the+mock+route");
     TestHttpExchange appDocumentInsert =
         TestHttpExchange.post(
             "/api/v1/queue/inserts/app-document",
             "insertUri=CHK%40sample&identifier=profile-local&documentBase64=e30%3D");
     api.handle(createdIdentity);
+    api.handle(socialMessagePost);
     api.handle(appDocumentInsert);
     String createdIdentityBody = createdIdentity.responseBody();
+    String socialMessageBody = socialMessagePost.responseBody();
     String appDocumentInsertBody = appDocumentInsert.responseBody();
 
     assertTrue(identities.contains("\"identityId\":\"local-profile\""));
@@ -76,10 +83,26 @@ class MockPlatformApiFixturesTest {
     assertTrue(profileDocument.contains("\"action\":\"app-vault.identities.profile-document\""));
     assertTrue(profileDocument.contains("\"identityId\":\"local-profile\""));
     assertTrue(profileDocument.contains("\"fingerprint\":\"mock-profile-fingerprint\""));
+    assertTrue(socialMessage.contains("\"action\":\"app-vault.identities.social-message\""));
+    assertTrue(socialMessage.contains("\"type\":\"crypta.social.message.v1\""));
+    assertTrue(socialMessage.contains("\"identityId\":\"local-profile\""));
+    assertTrue(
+        socialMessage.contains(
+            "\"messageId\":\"msg-1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714\""));
+    assertFalse(socialMessage.contains("mock-social-message"));
+    assertEquals(200, socialMessagePost.responseCode());
+    assertTrue(socialMessageBody.contains("\"action\":\"app-vault.identities.social-message\""));
+    assertTrue(socialMessageBody.contains("\"domain\":\"crypta.social.message.v1\""));
+    assertTrue(socialMessageBody.contains("\"identityId\":\"local-profile\""));
+    assertTrue(
+        socialMessageBody.contains(
+            "\"messageId\":\"msg-1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714\""));
     assertEquals(200, appDocumentInsert.responseCode());
     assertTrue(appDocumentInsertBody.contains("\"action\":\"queue.inserts.app-document\""));
     assertTrue(appDocumentInsertBody.contains("\"uri\":\"CHK@mock-app-document\""));
     assertFalse(profileDocument.contains("privateKey"));
+    assertFalse(socialMessageBody.contains("privateKey"));
+    assertFalse(socialMessageBody.contains("browserSessionToken"));
     assertFalse(appDocumentInsertBody.contains("browserSessionToken"));
   }
 
@@ -110,6 +133,26 @@ class MockPlatformApiFixturesTest {
     assertFalse(score.contains("rawRequestBody"));
     assertFalse(statement.contains("privateKey"));
     assertFalse(statement.contains("/work/"));
+  }
+
+  @Test
+  void socialMessagePost_whenBodyMissing_expectDeterministicBadRequest() throws Exception {
+    Files.createDirectories(tempDir);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+    MockPlatformApi api = new MockPlatformApi("mock-session"::equals, fixtures);
+    TestHttpExchange socialMessagePost =
+        TestHttpExchange.post(
+            "/api/v1/app-vault/identities/local-profile/social-message", "subject=Missing+body");
+
+    api.handle(socialMessagePost);
+    String responseBody = socialMessagePost.responseBody();
+
+    assertEquals(400, socialMessagePost.responseCode());
+    assertTrue(responseBody.contains("\"code\":\"invalid_mock_form\""));
+    assertTrue(responseBody.contains("Missing required form field 'body'"));
+    assertFalse(responseBody.contains("browserSessionToken"));
+    assertFalse(responseBody.contains("privateKey"));
   }
 
   @Test

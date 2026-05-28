@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 10;
+  public static final int CURRENT_CONTRACT_VERSION = 11;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -69,6 +69,7 @@ public record PlatformApiContract(
   private static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8;
   private static final int APP_DATA_STORE_CONTRACT_VERSION = 9;
   private static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10;
+  private static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -738,6 +739,7 @@ public record PlatformApiContract(
         false,
         "Use one granted vault identity for a bounded operation.");
     builder.appVaultProfileDocumentPost();
+    builder.appVaultSocialMessagePost();
     builder.appVaultTrustStatementPost();
     builder.appVaultGet(
         "/app-vault/grants",
@@ -1261,6 +1263,24 @@ public record PlatformApiContract(
               true,
               PlatformApiStabilityLevel.EXPERIMENTAL,
               "Create a signed bounded trust statement for one app-visible vault identity."));
+    }
+
+    private void appVaultSocialMessagePost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_VAULT,
+              METHOD_POST,
+              "/app-vault/identities/{identityId}/social-message",
+              "app-vault.identities.social-message",
+              List.of(
+                  PlatformApiCapabilities.VAULT_IDENTITIES_READ,
+                  PlatformApiCapabilities.VAULT_IDENTITIES_USE),
+              SOCIAL_MESSAGE_CONTRACT_VERSION,
+              false,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Create a signed bounded social message for one app-visible vault identity."));
     }
 
     private void endpoint(EndpointSpec spec) {

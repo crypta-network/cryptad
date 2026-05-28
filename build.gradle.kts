@@ -523,6 +523,7 @@ tasks.register("stageFirstPartyApps") {
   dependsOn(":apps:publisher:stageApp")
   dependsOn(":apps:feed-reader:stageApp")
   dependsOn(":apps:profile-publisher:stageApp")
+  dependsOn(":apps:social-inbox:stageApp")
   dependsOn(":apps:site-publisher:stageApp")
   dependsOn(":apps:trust-graph:stageApp")
 }
@@ -534,6 +535,7 @@ tasks.register("signFirstPartyApps") {
   dependsOn(":apps:publisher:signApp")
   dependsOn(":apps:feed-reader:signApp")
   dependsOn(":apps:profile-publisher:signApp")
+  dependsOn(":apps:social-inbox:signApp")
   dependsOn(":apps:site-publisher:signApp")
   dependsOn(":apps:trust-graph:signApp")
 }
@@ -545,6 +547,7 @@ tasks.register("verifyFirstPartyApps") {
   dependsOn(":apps:publisher:verifyApp")
   dependsOn(":apps:feed-reader:verifyApp")
   dependsOn(":apps:profile-publisher:verifyApp")
+  dependsOn(":apps:social-inbox:verifyApp")
   dependsOn(":apps:site-publisher:verifyApp")
   dependsOn(":apps:trust-graph:verifyApp")
   mustRunAfter("signFirstPartyApps")

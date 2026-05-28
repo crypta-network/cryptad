@@ -241,6 +241,9 @@ Per app:
 - `:apps:profile-publisher:stageApp`
 - `:apps:profile-publisher:signApp`
 - `:apps:profile-publisher:verifyApp`
+- `:apps:social-inbox:stageApp`
+- `:apps:social-inbox:signApp`
+- `:apps:social-inbox:verifyApp`
 - `:apps:feed-reader:stageApp`
 - `:apps:feed-reader:signApp`
 - `:apps:feed-reader:verifyApp`
@@ -321,6 +324,12 @@ Stage the Feed Reader reference app:
 ./gradlew :apps:feed-reader:stageApp
 ```
 
+Stage the Social Inbox Preview reference app:
+
+```bash
+./gradlew :apps:social-inbox:stageApp
+```
+
 Stage the Trust Graph Preview reference app:
 
 ```bash
@@ -355,6 +364,14 @@ Sign Feed Reader with the same local development key pair:
 
 ```bash
 ./gradlew :apps:feed-reader:signApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+```
+
+Sign Social Inbox Preview with the same local development key pair:
+
+```bash
+./gradlew :apps:social-inbox:signApp \
   -PcryptadAppSigningKeyId=dev-local \
   -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
 ```
@@ -399,6 +416,14 @@ Verify Feed Reader with the matching public key:
   -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
 ```
 
+Verify Social Inbox Preview with the matching public key:
+
+```bash
+./gradlew :apps:social-inbox:verifyApp \
+  -PcryptadAppSigningKeyId=dev-local \
+  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+```
+
 Verify Trust Graph Preview with the matching public key:
 
 ```bash
@@ -409,8 +434,8 @@ Verify Trust Graph Preview with the matching public key:
 
 Stage, sign, and verify all first-party apps:
 
-The root first-party tasks include Site Publisher, Profile Publisher, Feed Reader, and Trust Graph
-Preview.
+The root first-party tasks include Site Publisher, Profile Publisher, Social Inbox Preview, Feed
+Reader, and Trust Graph Preview.
 
 ```bash
 ./gradlew \

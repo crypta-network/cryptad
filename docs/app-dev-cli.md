@@ -307,7 +307,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -338,7 +338,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -347,7 +347,7 @@ signatures, or absolute staging paths in descriptor notes, generated catalog met
 evidence.
 
 A Feed Reader catalog descriptor should include the content-subscription, content-fetch, durable
-app-data, generated-document publication permissions, and minimum-v9, tested-through-v10 API
+app-data, generated-document publication permissions, and minimum-v9, tested-through-v11 API
 compatibility metadata:
 
 ```properties
@@ -373,13 +373,51 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=10
+api.maximumTestedVersion=11
 api.experimentalCapabilitiesAccepted=false
 ```
 
 Feed Reader evidence must not include raw feed bodies, raw fetched content, raw request bodies,
 private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, or
 local paths.
+
+A Social Inbox Preview catalog descriptor should include the social/mail migration permissions and
+contract-v11 compatibility metadata:
+
+```properties
+artifact.path=/abs/path/to/dist/apps/social-inbox-1.0.0.zip
+bundle.uri=file:/abs/path/to/dist/apps/social-inbox-1.0.0.zip
+summary=Reference app for the social/mail migration preview outside daemon core.
+name=Social Inbox Preview
+version=1.0.0
+permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+app.id=social-inbox
+homepage=https://example.invalid/apps/social-inbox
+source=https://example.invalid/src/social-inbox
+license=GPL-3.0-only
+categories=social,identity,preview
+review.status=reviewed
+review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
+permissions.rationale.vault.identities.read=Lists public metadata for app-owned social signing identities.
+permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox preview identity without exporting private material.
+permissions.rationale.vault.identities.use=Uses bounded social-message and profile-document routes without exposing generic browser signing.
+permissions.rationale.content.fetch=Fetches bounded social outbox JSON selected by the user or a subscription.
+permissions.rationale.content.subscribe=Manages durable USK social source subscriptions without global crawling.
+permissions.rationale.content.insert.app-document=Publishes generated social outbox snapshots without local source-path authority.
+permissions.rationale.queue.write=Creates generated social outbox publication inserts.
+permissions.rationale.queue.read=Displays safe upload queue summaries.
+permissions.rationale.app.data.read=Restores bounded Social Inbox state.
+permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
+permissions.rationale.trust.read=Reads Trust Graph Preview scores for message-author annotations.
+changelog.summary=Adds the social/mail migration preview reference app.
+api.minimumVersion=11
+api.maximumTestedVersion=11
+api.experimentalCapabilitiesAccepted=true
+```
+
+Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
+raw request bodies, raw signatures, private insert URIs, private identity material,
+browser-session tokens, form passwords, or local paths.
 
 Only `artifact.path`, `bundle.uri`, and `summary` are required. The writer derives the catalog app
 id and version from the ZIP artifact's root `cryptad-app.properties`; descriptor `app.id` and

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Social Inbox Preview</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+  <main class="cr-shell social-inbox-layout">
+    <header class="cr-header">
+      <div>
+        <p class="cr-label">Crypta app-platform reference app</p>
+        <h1>Social Inbox Preview</h1>
+      </div>
+      <div class="header-actions">
+        <button class="cr-button cr-button--secondary" id="refresh-identities-button" type="button">
+          Refresh identities
+        </button>
+        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+          Refresh queue
+        </button>
+      </div>
+    </header>
+
+    <section class="cr-permission-summary" data-crypta-permission-summary>
+      <p><strong>Declared permissions</strong></p>
+      <ul>
+        <li><code>vault.identities.read</code> lists public metadata for granted social signing identities.</li>
+        <li><code>vault.identities.create</code> creates an app-owned preview identity without exporting private key material.</li>
+        <li><code>vault.identities.use</code> requests bounded social-message signatures from AppVault.</li>
+        <li><code>content.fetch</code> fetches bounded social outbox JSON selected by the user.</li>
+        <li><code>content.subscribe</code> manages app-owned USK social source subscriptions.</li>
+        <li><code>content.insert.app-document</code> queues generated social outbox snapshots.</li>
+        <li><code>queue.read</code> reads upload queue summaries for outbox publication.</li>
+        <li><code>queue.write</code> creates generated outbox publication inserts.</li>
+        <li><code>app.data.read</code> restores bounded sources, summaries, drafts, and read state.</li>
+        <li><code>app.data.write</code> saves bounded app-owned social inbox state.</li>
+        <li><code>trust.read</code> reads Trust Graph Preview scores for message author annotations.</li>
+      </ul>
+    </section>
+
+    <section class="cr-card preview-warning" aria-labelledby="preview-warning-title">
+      <h2 id="preview-warning-title">Migration spike status</h2>
+      <p>
+        This preview demonstrates a social/mail-like layer outside the daemon by combining AppVault
+        identity, bounded signed message documents, content insert/fetch/subscriptions, app data,
+        and Trust Graph Preview annotations.
+      </p>
+      <ul>
+        <li>It is not full WoT and is not compatible with old WebOfTrust plugin APIs.</li>
+        <li>It is not Freetalk, Sone, Freemail, and it is not encrypted mail or multi-recipient private messaging.</li>
+        <li>It does not add a daemon-core message store, moderation service, plugin ABI, or network protocol change.</li>
+      </ul>
+    </section>
+
+    <section class="identity-grid" aria-label="Identity setup">
+      <form class="cr-card identity-card" id="identity-form">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">AppVault setup</p>
+            <h2>Create identity</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Identity label</span>
+          <input
+            class="cr-input"
+            name="identityLabel"
+            type="text"
+            value="Social Inbox preview identity"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <button class="cr-button cr-button--primary" type="submit">
+          Create preview identity
+        </button>
+      </form>
+
+      <section class="cr-card identity-card" aria-labelledby="identity-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Public metadata only</p>
+            <h2 id="identity-title">Available identities</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Social signing identity</span>
+          <select class="cr-input" id="identity-select"></select>
+        </label>
+        <div id="identity-summary">
+          <p class="cr-empty">Identity metadata loads after the app opens.</p>
+        </div>
+      </section>
+
+      <form class="cr-card profile-card" id="profile-form">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Author metadata</p>
+            <h2>Profile link</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Author label</span>
+          <input
+            class="cr-input"
+            name="authorLabel"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Profile URI</span>
+          <input
+            class="cr-input"
+            name="profileUri"
+            type="text"
+            placeholder="USK@profile-key/profile/1/profile.json"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Display name for profile document</span>
+          <input
+            class="cr-input"
+            name="displayName"
+            type="text"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <button class="cr-button cr-button--secondary" id="prepare-profile-button" type="button">
+          Prepare signed profile
+        </button>
+        <pre class="document-preview" id="profile-preview" tabindex="0">Profile metadata is optional for messages.</pre>
+      </form>
+    </section>
+
+    <section class="compose-publish-grid" aria-label="Compose and publish">
+      <form class="cr-card compose-card" id="compose-form">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Signed message</p>
+            <h2>Compose</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Channel</span>
+          <input
+            class="cr-input"
+            name="channel"
+            type="text"
+            value="general"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Subject</span>
+          <input
+            class="cr-input"
+            name="subject"
+            type="text"
+            maxlength="160"
+            autocomplete="off"
+            spellcheck="true">
+        </label>
+        <label class="cr-field compose-card__wide">
+          <span class="cr-label">Body</span>
+          <textarea class="cr-input" name="body" rows="7" maxlength="4096" required></textarea>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Reply to</span>
+          <input class="cr-input" name="replyTo" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Recipient fingerprint</span>
+          <input class="cr-input" name="recipientFingerprint" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Tags</span>
+          <input
+            class="cr-input"
+            name="tags"
+            type="text"
+            placeholder="preview, board"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-checkbox">
+          <input name="persistDraft" type="checkbox">
+          <span>Save this draft body in app data</span>
+        </label>
+        <button class="cr-button cr-button--primary compose-card__wide" type="submit">
+          Sign and add to outbox
+        </button>
+        <div class="compose-card__wide" id="outbox-list">
+          <p class="cr-empty">Signed local messages appear here before publication.</p>
+        </div>
+      </form>
+
+      <form class="cr-card publish-card" id="publish-form">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Generated document insert</p>
+            <h2>Publish outbox</h2>
+          </div>
+        </div>
+        <label class="cr-field">
+          <span class="cr-label">Insert URI</span>
+          <input
+            class="cr-input"
+            name="insertUri"
+            type="text"
+            placeholder="KSK@social-outbox"
+            autocomplete="off"
+            spellcheck="false"
+            required>
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Public source URI summary</span>
+          <input
+            class="cr-input"
+            name="publicSourceUri"
+            type="text"
+            placeholder="USK@public-source/social/0/social-outbox.json"
+            autocomplete="off"
+            spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Queue identifier</span>
+          <input class="cr-input" name="identifier" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="cr-field">
+          <span class="cr-label">Source label</span>
+          <input class="cr-input" name="sourceLabel" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <button class="cr-button cr-button--primary" type="submit">
+          Queue outbox snapshot
+        </button>
+        <div id="publish-summary">
+          <p class="cr-empty">Outbox publication summaries omit private insert URIs.</p>
+        </div>
+        <div id="queue-preview">
+          <p class="cr-empty">Upload queue summaries load after refresh.</p>
+        </div>
+      </form>
+    </section>
+
+    <section class="sources-inbox-grid" aria-label="Sources and inbox">
+      <section class="cr-card sources-card" aria-labelledby="sources-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">USK social sources</p>
+            <h2 id="sources-title">Sources and subscriptions</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="refresh-subscriptions-button" type="button">
+            Refresh metadata
+          </button>
+        </div>
+        <form class="source-form" id="source-form">
+          <label class="cr-field">
+            <span class="cr-label">Source label</span>
+            <input class="cr-input" name="label" type="text" autocomplete="off" spellcheck="false" required>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">USK source URI</span>
+            <input
+              class="cr-input"
+              name="uri"
+              type="text"
+              placeholder="crypta:USK@source-key/social/0/social-outbox.json"
+              autocomplete="off"
+              spellcheck="false"
+              required>
+          </label>
+          <button class="cr-button cr-button--primary" type="submit">
+            Add source
+          </button>
+        </form>
+        <div class="source-list" id="source-list">
+          <p class="cr-empty">Add a USK source to import social messages.</p>
+        </div>
+        <div class="subscription-list" id="subscription-list">
+          <p class="cr-empty">Subscription metadata loads after the app opens.</p>
+        </div>
+      </section>
+
+      <section class="cr-card inbox-card" aria-labelledby="inbox-title">
+        <div class="panel-heading">
+          <div>
+            <p class="cr-label">Plain-text message summaries</p>
+            <h2 id="inbox-title">Inbox</h2>
+          </div>
+          <button class="cr-button cr-button--secondary" id="refresh-trust-button" type="button">
+            Refresh trust
+          </button>
+        </div>
+        <div class="inbox-list" id="inbox-list">
+          <p class="cr-empty">Imported messages appear here with neutral Trust Graph annotations.</p>
+        </div>
+      </section>
+    </section>
+
+    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script src="./crypta-ui/crypta-ui-components.js" defer></script>
+  <script src="./crypta-platform.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>
