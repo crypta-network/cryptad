@@ -1,0 +1,16 @@
+manifest.version=1
+app.id=social-inbox
+app.name=Social Inbox Preview
+app.version=${appVersion}
+api.minimumVersion=11
+api.maximumTestedVersion=11
+api.experimentalCapabilitiesAccepted=true
+app.exec=bin/social-inbox.sh
+app.ui.mode=static
+app.ui.entry=static/index.html
+app.permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+sandbox.mode=restricted-process
+sandbox.required=false
+app.restart.policy=never
+quota.data.bytes=2097152
+quota.cache.bytes=2097152

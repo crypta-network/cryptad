@@ -153,6 +153,8 @@ final class MockPlatformApi {
       routeProfileDocumentPost(exchange, suffix);
     } else if (suffix.matches("/app-vault/identities/[^/]+/trust-statement")) {
       routeTrustStatementPost(exchange, suffix);
+    } else if (suffix.matches("/app-vault/identities/[^/]+/social-message")) {
+      routeSocialMessagePost(exchange, suffix);
     } else if (suffix.equals("/app-vault/grants/request")) {
       sendJson(exchange, 200, fixtures.mutation("app-vault.grants.request"));
     } else if (suffix.equals("/trust-graph/anchors")) {
@@ -207,6 +209,15 @@ final class MockPlatformApi {
       int suffixLength = "/trust-statement".length();
       String identityId = suffix.substring(prefixLength, suffix.length() - suffixLength);
       sendJson(exchange, 200, fixtures.trustStatement(identityId));
+    }
+  }
+
+  private void routeSocialMessagePost(HttpExchange exchange, String suffix) throws IOException {
+    if (hasRequiredFormFields(exchange, "body")) {
+      int prefixLength = APP_VAULT_IDENTITIES_PREFIX.length();
+      int suffixLength = "/social-message".length();
+      String identityId = suffix.substring(prefixLength, suffix.length() - suffixLength);
+      sendJson(exchange, 200, fixtures.socialMessage(identityId));
     }
   }
 

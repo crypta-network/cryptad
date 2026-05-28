@@ -33,6 +33,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | AppHost runtime hardening | [apphost-runtime-hardening.md](apphost-runtime-hardening.md) |
 | App update lifecycle and rollback | [app-update-lifecycle.md](app-update-lifecycle.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
+| Social Inbox Preview | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
 | Trust Graph Preview | [trust-graph-preview.md](trust-graph-preview.md) |
 | Legacy HTTP boundary | [legacy-http-boundary.md](legacy-http-boundary.md) |
@@ -50,13 +51,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 10
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 11
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=10` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=11` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -73,10 +74,12 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Publisher | `publisher` | Legacy publisher replacement for content insert workflows. |
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
 | Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
+| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and Trust Graph annotations. |
 | Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
 | Trust Graph Preview | `trust-graph` | Durable local trust backend, URI import, scoring, signing, publication, subscription, redacted audit, and UI-local state. |
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
+[social-inbox-reference-app.md](social-inbox-reference-app.md),
 [feed-reader-reference-app.md](feed-reader-reference-app.md), and
 [trust-graph-preview.md](trust-graph-preview.md) for app-specific notes.
 
@@ -118,7 +121,7 @@ Phase 7 closeout treats these workstreams as one ecosystem beta readiness story:
 | --- | --- |
 | First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), `app-catalog.first-party-beta`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
-| Reference apps | [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
+| Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), `background update scheduler`, `rollback` evidence |
 | Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`; FProxy browse remains retained |

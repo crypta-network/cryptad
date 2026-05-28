@@ -49,6 +49,10 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - Trust Graph Preview has durable local backend storage for anchors and imported public
   statements, but it remains a local preview. It is not full Web of Trust, old plugin
   compatibility, global moderation, routing policy, peer selection, or a background crawler.
+- Social Inbox Preview is a social/mail-like migration spike outside daemon core and legacy plugin
+  APIs. Its `crypta.social.message.v1` route is bounded social-message signing only; it is not a
+  generic browser signing API, full WoT, Freetalk, Sone, Freemail, encrypted mail transport,
+  moderation, daemon-core message storage, or a network protocol change.
 - Review governance uses local trust configuration plus a local tamper-evident transparency log.
   It is not a global public transparency log.
 - Sandbox provider support depends on platform and provider availability. Linux bubblewrap support
@@ -96,8 +100,8 @@ Do not paste or commit:
 - Private insert URIs.
 - Browser session tokens, app process tokens, form passwords, authorization headers, cookies, or
   request bodies.
-- Raw feed bodies, raw trust documents from real users, raw profile documents, or raw receipt
-  signatures.
+- Raw feed bodies, raw social message bodies, raw fetched social documents, raw trust documents
+  from real users, raw profile documents, raw signatures, or raw receipt signatures.
 - Local absolute paths, catalog scratch paths, staging paths, rollback backup paths, or host private
   configuration paths unless they are already redacted.
 
@@ -118,5 +122,6 @@ app ids, capability names, evidence ids, and redacted summaries instead of raw p
 
 The beta does not introduce a live public app store, live public-network test dependency, global
 transparency log, full Web of Trust, generic crawling, arbitrary HTTP/HTTPS fetching, a generic
-filesystem or database API for apps, new sandbox provider, new update scheduler policy, legacy
-route removal wave 3, or any FNP/FCP/wire protocol change.
+filesystem or database API for apps, Freetalk/Sone/Freemail compatibility, encrypted mail
+delivery, daemon-core social or mail protocols, new sandbox provider, new update scheduler policy,
+legacy route removal wave 3, or any FNP/FCP/wire protocol change.

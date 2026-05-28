@@ -231,6 +231,7 @@ capabilities:
 | Publisher | Content insert workflow. | `content.insert`, `queue.read`, `queue.write` |
 | Site Publisher | Static site publishing pattern. | `content.insert`, `queue.read`, `queue.write` |
 | Profile Publisher | AppVault identity, bounded profile document signing, durable draft state, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
+| Social Inbox Preview | Social/mail-like migration spike with bounded `crypta.social.message.v1` signing, generated outbox inserts, durable USK sources, app data, and Trust Graph annotations. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `trust.read`, `queue.read`, `queue.write` |
 | Feed Reader & Publisher | Durable USK subscription metadata, durable reader state, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 | Trust Graph Preview | Durable local trust graph backend, URI import, redacted audit, content subscription management, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 
@@ -241,6 +242,7 @@ metadata.
 Use the detailed docs before copying a reference pattern:
 
 - [feed-reader-reference-app.md](feed-reader-reference-app.md)
+- [social-inbox-reference-app.md](social-inbox-reference-app.md)
 - [trust-graph-preview.md](trust-graph-preview.md)
 - [app-data-store.md](app-data-store.md)
 - [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)

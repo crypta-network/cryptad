@@ -371,6 +371,205 @@ class AppVaultApiRouterTest {
   }
 
   @Test
+  void route_whenBrowserCreatesSocialMessage_expectSignedPublicSocialDocument() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Social identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of(
+                        "authorLabel",
+                        List.of("Ada Example"),
+                        "profileUri",
+                        List.of("USK@example/profile/1/profile.json"),
+                        "channel",
+                        List.of("general"),
+                        "subject",
+                        List.of("Hello"),
+                        "body",
+                        List.of("Plain text social message."),
+                        "replyTo",
+                        List.of("msg-parent"),
+                        "recipientFingerprint",
+                        List.of("recipient"),
+                        "tags",
+                        List.of("social,preview")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"socialMessage\":{"));
+    assertTrue(response.body().contains("\"type\":\"crypta.social.message.v1\""));
+    assertTrue(response.body().contains("\"domain\":\"crypta.social.message.v1\""));
+    assertTrue(response.body().contains("\"authorFingerprint\":\"" + identity.fingerprint()));
+    assertTrue(response.body().contains("\"profileUri\":\"USK@example/profile/1/profile.json\""));
+    assertTrue(response.body().contains("\"format\":\"text/plain\""));
+    assertTrue(response.body().contains("\"messageId\":\"msg-"));
+    assertTrue(response.body().contains("\"payloadHash\""));
+    assertTrue(response.body().contains("\"publicKeyBase64\""));
+    assertTrue(response.body().contains("\"signatureBase64\""));
+    assertFalse(response.body().contains("CryptaAppVault:v1:"));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains("private.envelope"));
+    assertFalse(response.body().contains("payloadBase64"));
+    assertFalse(response.body().contains("domainSeparatedPayload"));
+    assertFalse(response.body().contains(tempDir.toString()));
+  }
+
+  @Test
+  void route_whenBrowserCreatesSocialMessageWithoutUseCapability_expectForbidden()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Social identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of("body", List.of("hello")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
+  }
+
+  @Test
+  void route_whenSocialMessageGrantLacksSigningScope_expectVaultDenial() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createOperatorIdentity(
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Shared social identity",
+            null,
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+    vaultService.grantIdentity(
+        identity.identityId(),
+        APP_ID,
+        java.util.Set.of(AppIdentityGrantScope.METADATA_READ),
+        "operator",
+        "metadata only",
+        null,
+        null);
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of("body", List.of("hello")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("identity_grant_denied"));
+    assertFalse(response.body().contains("privateKey"));
+    assertFalse(response.body().contains("payloadBase64"));
+  }
+
+  @Test
+  void route_whenBrowserCreatesSocialMessageForMissingIdentity_expectNotFound() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", "missing-social-id", "social-message"),
+                    Map.of("body", List.of("hello")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(404, response.statusCode());
+    assertTrue(response.body().contains("identity_not_found"));
+  }
+
+  @Test
+  void route_whenSocialMessageMissingBodyOrUnsupportedFormat_expectBadRequest() throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Social identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse missingBody =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of("subject", List.of("missing")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+    PlatformApiResponse unsupportedFormat =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of("format", List.of("text/html"), "body", List.of("hello")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(400, missingBody.statusCode());
+    assertTrue(missingBody.body().contains("invalid_query_parameter"));
+    assertTrue(missingBody.body().contains("body"));
+    assertEquals(400, unsupportedFormat.statusCode());
+    assertTrue(unsupportedFormat.body().contains("text/plain"));
+  }
+
+  @Test
+  void route_whenSocialMessageSuppliesArbitrarySigningPurpose_expectBadRequest()
+      throws IOException {
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppIdentityRecord identity =
+        vaultService.createAppOwnedIdentity(
+            APP_ID,
+            AppIdentityKind.LOCAL_ED25519_SIGNING,
+            "Social identity",
+            java.util.Set.of(
+                AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+
+    PlatformApiResponse response =
+        router(vaultService)
+            .route(
+                request(
+                    "POST",
+                    List.of("app-vault", "identities", identity.identityId(), "social-message"),
+                    Map.of("purpose", List.of("arbitrary"), "body", List.of("hello")),
+                    PlatformApiPrincipal.appBrowserSession(
+                        APP_ID, List.of("vault.identities.read", "vault.identities.use"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_query_parameter"));
+    assertTrue(response.body().contains("purpose"));
+  }
+
+  @Test
   void route_whenBrowserCreatesTrustStatementWithoutTrustWrite_expectForbidden()
       throws IOException {
     AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));

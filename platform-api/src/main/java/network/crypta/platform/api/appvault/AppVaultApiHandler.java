@@ -336,6 +336,51 @@ public final class AppVaultApiHandler {
   }
 
   /**
+   * Builds and signs one bounded Social Inbox Preview message.
+   *
+   * <p>This browser-safe route is the social/mail migration counterpart to the profile-document and
+   * trust-statement routes. It signs only the documented plain-text social message shape with the
+   * fixed {@code crypta.social.message.v1} domain, uses the server clock for {@code createdAt}, and
+   * returns public verification material only. It never accepts caller-selected signing purposes,
+   * raw payload bytes, generic identity-use parameters, private key material, local vault paths, or
+   * request bodies.
+   *
+   * @param appId authenticated app principal id supplied by the router
+   * @param identityId identity id segment from the request path
+   * @param queryParameters decoded social-message request parameters
+   * @return public signed social message response
+   */
+  public Map<String, Object> createSocialMessage(
+      String appId, String identityId, Map<String, List<String>> queryParameters) {
+    appVaultService.requireAppAccessAllowed(appId);
+    AppIdentityRecord identity = appVaultService.getIdentityForApp(appId, identityId);
+    SocialMessageRequest socialMessageRequest =
+        SocialMessageRequest.fromQuery(
+            appId, identity.identityId(), identity.fingerprint(), queryParameters, clock);
+    AppIdentityUsageResult usageResult =
+        appVaultService.signDomainSeparatedPayload(
+            new AppIdentityUsageRequest(
+                appId,
+                identity.identityId(),
+                AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED,
+                SocialMessageRequest.SIGNING_PURPOSE,
+                socialMessageRequest.canonicalBytes()));
+    LinkedHashMap<String, Object> response = LinkedHashMap.newLinkedHashMap(4);
+    LinkedHashMap<String, Object> identityJson = LinkedHashMap.newLinkedHashMap(4);
+    identityJson.put(FIELD_IDENTITY_ID, identity.identityId());
+    identityJson.put("publicKeyFingerprint", identity.fingerprint());
+    identityJson.put(FIELD_PUBLIC_KEY_BASE64, usageResult.publicKeyBase64());
+    identityJson.put(FIELD_APP_ID, appId);
+    response.put("identity", identityJson);
+    response.put("payloadHash", usageResult.payloadSha256());
+    response.put("domain", SocialMessageRequest.SIGNING_PURPOSE);
+    response.put(
+        "socialMessage",
+        SignedSocialMessageDocumentBuilder.build(socialMessageRequest, identity, usageResult));
+    return response;
+  }
+
+  /**
    * Lists grants for the calling app.
    *
    * <p>This app-facing list omits retained revoked grants from previous installations.

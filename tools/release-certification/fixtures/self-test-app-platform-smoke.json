@@ -8,6 +8,7 @@
           "site-publisher",
           "profile-publisher",
           "feed-reader",
+          "social-inbox",
           "trust-graph"
         ]
       },
@@ -59,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 23,
-        "contractVersion": 2,
+        "contractVersion": 11,
         "endpointCount": 52,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -403,6 +404,29 @@
     },
     {
       "details": {
+        "checks": {
+          "builderReturnsPublicDocumentOnly": true,
+          "capabilitiesInContract": true,
+          "contractVersionV11": true,
+          "docsDescribeBoundedSigningBoundary": true,
+          "handlerUsesFixedDomainAppVaultSigning": true,
+          "requestRejectsGenericSigningInputs": true,
+          "routeInContract": true,
+          "routerDispatchesBoundedRoute": true,
+          "sdkHelperUsesBoundedRoute": true
+        },
+        "contractVersion": 11,
+        "domain": "crypta.social.message.v1",
+        "route": "app-vault/identities/{identityId}/social-message"
+      },
+      "id": "app-platform.social-message-signing",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social message signing evidence passed."
+    },
+    {
+      "details": {
         "keyId": "dev-local"
       },
       "id": "app-platform.signed-bundles",
@@ -467,6 +491,7 @@
           "site-publisher",
           "profile-publisher",
           "feed-reader",
+          "social-inbox",
           "trust-graph"
         ]
       },
@@ -606,14 +631,15 @@
           "site-publisher",
           "profile-publisher",
           "feed-reader",
+          "social-inbox",
           "trust-graph"
         ],
         "coverage": {
-          "catalogAppsInspected": 6,
+          "catalogAppsInspected": 7,
           "expiredOrMismatchedOrUnknownReviewer": 0,
           "missingReceipts": 0,
           "promotionBlocked": false,
-          "trustedPositiveReceipts": 6,
+          "trustedPositiveReceipts": 7,
           "trustedRejectedReceipts": 0
         },
         "catalog": {
@@ -623,6 +649,7 @@
             "publisher",
             "queue-manager",
             "site-publisher",
+            "social-inbox",
             "trust-graph"
           ],
           "receiptStatuses": {
@@ -631,6 +658,7 @@
             "publisher": "reviewed",
             "queue-manager": "reviewed",
             "site-publisher": "reviewed",
+            "social-inbox": "reviewed",
             "trust-graph": "reviewed"
           }
         },
@@ -722,6 +750,13 @@
               "warnings": 0
             }
           },
+          "social-inbox": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          },
           "trust-graph": {
             "summary": {
               "errors": 0,
@@ -753,6 +788,9 @@
             "usesDesignSystemClasses": true
           },
           "site-publisher": {
+            "usesDesignSystemClasses": true
+          },
+          "social-inbox": {
             "usesDesignSystemClasses": true
           },
           "trust-graph": {
@@ -972,6 +1010,166 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Feed Reader durable app-data evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "manifestDeclaresSocialInbox": true,
+          "manifestDeclaresSocialPermissions": true,
+          "manifestUsesContractV11": true,
+          "moduleExists": true,
+          "noRawAdminOrBrowserStorage": true,
+          "permissionDisclosureMentionsDeclaredPermissions": true,
+          "previewAndNonGoalCopyPresent": true,
+          "sourceStaticUiPresent": true,
+          "stagedDesignSystemPresent": true,
+          "stagedManifestPresent": true,
+          "stagedSdkPresent": true,
+          "usesAppVaultIdentityFlow": true,
+          "usesDurableAppData": true,
+          "usesGeneratedOutboxInsert": true,
+          "usesProfileMetadataFlow": true,
+          "usesQueueSummary": true,
+          "usesSdkBootstrap": true,
+          "usesSubscriptionAndFetchFlow": true,
+          "usesTrustAnnotations": true
+        },
+        "expectedPermissions": [
+          "app.data.read",
+          "app.data.write",
+          "content.fetch",
+          "content.insert.app-document",
+          "content.subscribe",
+          "queue.read",
+          "queue.write",
+          "trust.read",
+          "vault.identities.create",
+          "vault.identities.read",
+          "vault.identities.use"
+        ]
+      },
+      "id": "reference-app.social-inbox",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox reference app evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "docsDescribeSignedMessageFormat": true,
+          "documentShapeIsBounded": true,
+          "manifestAllowsBoundedSigning": true,
+          "usesSdkBoundedSigner": true,
+          "verifiesImportedMessageSignatures": true
+        },
+        "redaction": {
+          "genericSigningInputsExcluded": true,
+          "privateIdentityMaterialExcluded": true,
+          "rawSignatureValuesExcluded": true
+        }
+      },
+      "id": "reference-app.social-inbox-signed-message",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox signed-message evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "appUsesPlatformSubscriptionLifecycle": true,
+          "docsDescribeDurableUskSources": true,
+          "manifestDeclaresSubscriptionPermissions": true,
+          "manualFetchUsesBoundedContentFetch": true,
+          "uiDisclosesSubscriptionWorkflow": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "sourceMetadataOnly": true
+        }
+      },
+      "id": "reference-app.social-inbox-subscriptions",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox subscription evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "docsDescribePrivacyRules": true,
+          "manifestDeclaresAppDataPermissions": true,
+          "noBrowserStorageOrRawAdminPath": true,
+          "permissionDisclosureMentionsAppData": true,
+          "persistsNamedBoundedRecords": true,
+          "storesSafeSummariesOnly": true,
+          "usesSdkJsonRecordHelpers": true
+        },
+        "redaction": {
+          "localPathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawFetchedDocumentsExcluded": true,
+          "rawMessageBodiesExcludedFromEvidence": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "reference-app.social-inbox-app-data",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox app-data evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "appQueriesAuthorScores": true,
+          "docsFrameScoresAsAnnotations": true,
+          "manifestDeclaresTrustRead": true,
+          "uiShowsNeutralAndScoredStates": true
+        },
+        "redaction": {
+          "messageBodiesExcludedFromEvidence": true,
+          "trustEvidenceSummariesOnly": true
+        }
+      },
+      "id": "reference-app.social-inbox-trust-annotations",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox trust annotation evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "appComposesExpectedPlatformSurfaces": true,
+          "evidenceIdsDocumented": true,
+          "migrationFramingPresent": true,
+          "nonGoalsDocumented": true,
+          "uiStatesPreviewBoundary": true
+        },
+        "redaction": {
+          "localPathsExcluded": true,
+          "privateIdentityMaterialExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawMessageBodiesExcluded": true,
+          "rawRequestBodiesExcluded": true,
+          "rawSignaturesExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "migration.social-mail-preview",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social/mail migration preview evidence passed."
     },
     {
       "details": {

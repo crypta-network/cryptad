@@ -98,12 +98,19 @@ app-platform.content-subscriptions
 network-content.subscription-scheduler
 app-platform.trust-graph-preview
 app-platform.trust-statement-signing
+app-platform.social-message-signing
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
 app-ui.smoke
 reference-apps.content
 reference-app.profile-publisher
+reference-app.social-inbox
+reference-app.social-inbox-signed-message
+reference-app.social-inbox-subscriptions
+reference-app.social-inbox-app-data
+reference-app.social-inbox-trust-annotations
+migration.social-mail-preview
 reference-app.feed-reader
 reference-app.feed-reader-subscriptions
 reference-app.trust-graph
@@ -356,9 +363,11 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - the host/operator form password;
 - raw request bodies;
 - raw feed bodies;
+- raw social message bodies or fetched social documents;
 - raw trust statement documents or trust-document bodies from real users;
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw profile-document signatures or signed profile-document payloads;
+- raw social-message signatures or signed social-message payloads;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;

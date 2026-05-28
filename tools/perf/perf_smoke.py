@@ -42,6 +42,7 @@ FIRST_PARTY_APP_SIZE_TARGETS = (
     ("publisher", "publisher"),
     ("profile_publisher", "profile-publisher"),
     ("site_publisher", "site-publisher"),
+    ("social_inbox", "social-inbox"),
     ("trust_graph", "trust-graph"),
 )
 SENSITIVE_KEY_PATTERN = (

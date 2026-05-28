@@ -43,10 +43,11 @@ APP_IDS = (
     "publisher",
     "site-publisher",
     "profile-publisher",
+    "social-inbox",
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 10
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 11
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -113,6 +114,19 @@ TRUST_GRAPH_PERMISSIONS = {
     "app.data.read",
     "app.data.write",
 }
+SOCIAL_INBOX_PERMISSIONS = {
+    "vault.identities.read",
+    "vault.identities.create",
+    "vault.identities.use",
+    "content.fetch",
+    "content.subscribe",
+    "content.insert.app-document",
+    "queue.read",
+    "queue.write",
+    "app.data.read",
+    "app.data.write",
+    "trust.read",
+}
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -127,6 +141,9 @@ SENSITIVE_KEY_PATTERN = (
     r"raw[-_ ]?request[-_ ]?bod(?:y|ies)|request[-_ ]?bod(?:y|ies)|"
     r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)|"
     r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
 )
 SENSITIVE_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -165,6 +182,7 @@ NON_SECRET_METADATA_SUFFIXES = (
     "configured",
     "enabled",
     "excluded",
+    "excludedfromevidence",
     "present",
     "redacted",
     "required",
@@ -191,6 +209,14 @@ BODY_KEY_FRAGMENTS = (
     "rawtruststatementpayload",
     "truststatementcontent",
     "rawtruststatementcontent",
+    "messagebody",
+    "rawmessagebody",
+    "messagebodies",
+    "rawmessagebodies",
+    "fetchedbody",
+    "rawfetchedbody",
+    "fetchedbodies",
+    "rawfetchedbodies",
 )
 
 
@@ -778,6 +804,19 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 9,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+        },
+        {
+            "appId": "social-inbox",
+            "name": "Social Inbox Preview",
+            "stagedDir": (
+                settings.workspace_root / "apps/social-inbox/build/cryptad-app/social-inbox"
+            ),
+            "sourceDir": settings.workspace_root / "apps/social-inbox/src/staged",
+            "launcher": "bin/social-inbox.sh",
+            "permissions": SOCIAL_INBOX_PERMISSIONS,
+            "apiMinimumVersion": 11,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "experimentalCapabilitiesAccepted": True,
         },
         {
             "appId": "feed-reader",
@@ -1547,6 +1586,13 @@ def collect_platform_api_contract_evidence(
         "GET /trust-graph/audit",
         "POST /trust-graph/import-uri",
     }
+    required_social_message_capabilities = {
+        "vault.identities.read",
+        "vault.identities.use",
+    }
+    required_social_message_endpoints = {
+        "POST /app-vault/identities/{identityId}/social-message",
+    }
     stable_capabilities = set(details["stableCapabilities"])
     stable_endpoints = set(details["stableEndpoints"])
     contract_capabilities = set(capability_names(capabilities))
@@ -1559,6 +1605,12 @@ def collect_platform_api_contract_evidence(
     missing_trust_exchange_endpoints = sorted(
         required_trust_exchange_endpoints - contract_endpoints
     )
+    missing_social_message_capabilities = sorted(
+        required_social_message_capabilities - contract_capabilities
+    )
+    missing_social_message_endpoints = sorted(
+        required_social_message_endpoints - contract_endpoints
+    )
     details["appDataContract"] = {
         "capabilities": sorted(required_app_data_capabilities),
         "endpoints": sorted(required_app_data_endpoints),
@@ -1570,6 +1622,12 @@ def collect_platform_api_contract_evidence(
         "endpoints": sorted(required_trust_exchange_endpoints),
         "missingCapabilities": missing_trust_exchange_capabilities,
         "missingEndpoints": missing_trust_exchange_endpoints,
+    }
+    details["socialMessageContract"] = {
+        "capabilities": sorted(required_social_message_capabilities),
+        "endpoints": sorted(required_social_message_endpoints),
+        "missingCapabilities": missing_social_message_capabilities,
+        "missingEndpoints": missing_social_message_endpoints,
     }
     if contract:
         if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
@@ -1593,6 +1651,10 @@ def collect_platform_api_contract_evidence(
         errors.append("contract is missing trust graph exchange capability descriptors")
     if missing_trust_exchange_endpoints:
         errors.append("contract is missing trust graph exchange endpoint descriptors")
+    if missing_social_message_capabilities:
+        errors.append("contract is missing social message capability descriptors")
+    if missing_social_message_endpoints:
+        errors.append("contract is missing social message endpoint descriptors")
 
     verifier_args = ["compat", "verify"]
     if settings.mode == "release-candidate":
@@ -3619,6 +3681,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
         "currentContractVersionV9": (
             "CURRENT_CONTRACT_VERSION = 9" in contract_text
             or "CURRENT_CONTRACT_VERSION = 10" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 11" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -3977,6 +4040,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
             (
                 "CURRENT_CONTRACT_VERSION = 9" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 10" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 11" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -5461,7 +5525,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     docs_text_compact = " ".join(docs_text_lower.split())
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 10" in contract_text
+            "CURRENT_CONTRACT_VERSION = 11" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -5743,6 +5807,758 @@ def collect_trust_statement_signing_evidence(settings: Settings) -> EvidenceItem
         "pass",
         True,
         "Trust statement signing evidence passed.",
+        source,
+        details,
+    )
+
+
+def social_inbox_spec(settings: Settings) -> dict[str, Any] | None:
+    return next(
+        (
+            candidate
+            for candidate in first_party_app_specs(settings)
+            if candidate["appId"] == "social-inbox"
+        ),
+        None,
+    )
+
+
+def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
+    vault_router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiVaultRouter.java"
+    )
+    vault_handler_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/AppVaultApiHandler.java"
+    )
+    request_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java"
+    )
+    builder_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/SignedSocialMessageDocumentBuilder.java"
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    tests_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/SocialMessageRequestTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/SignedSocialMessageDocumentBuilderTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/AppVaultApiRouterTest.java",
+            "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js/CryptaPlatformSdkResourceTest.java",
+        )
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/social-inbox-reference-app.md",
+            "docs/app-secret-and-identity-vault.md",
+            "docs/platform-api-contract.md",
+            "docs/release-certification.md",
+        )
+    )
+    checks = {
+        "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 11" in contract_text
+        and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
+        "capabilitiesInContract": all(
+            fragment in contract_text
+            for fragment in (
+                "PlatformApiCapabilities.VAULT_IDENTITIES_READ",
+                "PlatformApiCapabilities.VAULT_IDENTITIES_USE",
+            )
+        ),
+        "routerDispatchesBoundedRoute": "social-message" in vault_router_text,
+        "handlerUsesFixedDomainAppVaultSigning": (
+            "SocialMessageRequest.fromQuery" in vault_handler_text
+            and "SocialMessageRequest.SIGNING_PURPOSE" in vault_handler_text
+            and "signDomainSeparatedPayload" in vault_handler_text
+        ),
+        "requestRejectsGenericSigningInputs": (
+            "ALLOWED_PARAMETERS" in request_text
+            and "purpose" in tests_text
+            and "payloadBase64" in tests_text
+            and "crypta.social.message.v1" in request_text
+        ),
+        "builderReturnsPublicDocumentOnly": (
+            "publicKeyBase64" in builder_text
+            and "signatureBase64" in builder_text
+            and "domainSeparatedPayload" in tests_text
+            and "privateKey" in tests_text
+        ),
+        "sdkHelperUsesBoundedRoute": (
+            "createSocialMessageDocument" in sdk_text
+            and "/social-message" in sdk_text
+            and "normalizeSocialMessageDocument" in sdk_text
+        ),
+        "docsDescribeBoundedSigningBoundary": (
+            "crypta.social.message.v1" in docs_text
+            and "not a generic browser signing API" in docs_text
+            and "private key material" in docs_text
+        ),
+    }
+    details = {
+        "checks": checks,
+        "route": "app-vault/identities/{identityId}/social-message",
+        "domain": "crypta.social.message.v1",
+        "contractVersion": 11,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "app-platform.social-message-signing",
+            root_consequence(settings, "fail"),
+            True,
+            "Social message signing evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.social-message-signing",
+        "pass",
+        True,
+        "Social message signing evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_inbox_reference_app_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {
+        "appId": "social-inbox",
+        "checks": {},
+        "expectedPermissions": sorted(SOCIAL_INBOX_PERMISSIONS),
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox first-party app spec is missing.",
+            source,
+            details,
+        )
+
+    workspace = settings.workspace_root
+    app_dir = workspace / "apps/social-inbox"
+    source_static_dir = spec["sourceDir"] / "static"
+    staged_static_dir = spec["stagedDir"] / "static"
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_index = read_source(source_static_dir / "index.html")
+    source_app_js = read_source(source_static_dir / "app.js")
+    app_readme = read_source(app_dir / "README.md")
+    reference_doc = read_source(workspace / "docs/social-inbox-reference-app.md")
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    details.update(
+        {
+            "sourceDir": display_path(spec["sourceDir"], workspace),
+            "stagedDir": display_path(spec["stagedDir"], workspace),
+        }
+    )
+    disclosure = permission_disclosure_block(source_index)
+    mentioned_permissions = set(
+        re.findall(r"\b[a-z][a-z0-9._-]*\.[a-z][a-z0-9._-]*\b", disclosure)
+    )
+    checks = details["checks"]
+    checks["moduleExists"] = app_dir.is_dir()
+    checks["stagedManifestPresent"] = manifest_path.is_file()
+    checks["sourceStaticUiPresent"] = (source_static_dir / "index.html").is_file() and (
+        source_static_dir / "app.js"
+    ).is_file()
+    checks["stagedSdkPresent"] = (staged_static_dir / "crypta-platform.js").is_file()
+    checks["stagedDesignSystemPresent"] = all(
+        (staged_static_dir / "crypta-ui" / asset_name).is_file()
+        for asset_name in design_system_asset_names()
+    )
+    checks["usesSdkBootstrap"] = "CryptaPlatform.bootstrap.load({ appId })" in source_app_js
+    checks["usesAppVaultIdentityFlow"] = all(
+        fragment in source_app_js
+        for fragment in (
+            "CryptaPlatform.vault.identities.list",
+            "CryptaPlatform.vault.identities.create",
+            "CryptaPlatform.vault.identities.createSocialMessageDocument",
+        )
+    )
+    checks["usesProfileMetadataFlow"] = "createProfileDocument" in source_app_js
+    checks["usesGeneratedOutboxInsert"] = (
+        "CryptaPlatform.content.insertAppDocument" in source_app_js
+        and "application/vnd.crypta.social.outbox+json" in source_app_js
+        and "social-outbox.json" in source_app_js
+    )
+    checks["usesSubscriptionAndFetchFlow"] = all(
+        fragment in source_app_js
+        for fragment in (
+            "CryptaPlatform.content.subscriptions.create",
+            "CryptaPlatform.content.subscriptions.refresh",
+            "CryptaPlatform.content.subscriptions.pause",
+            "CryptaPlatform.content.subscriptions.resume",
+            "CryptaPlatform.content.subscriptions.remove",
+            "CryptaPlatform.content.fetchText",
+            "lastSeenResolvedUri",
+        )
+    )
+    checks["usesDurableAppData"] = all(
+        fragment in source_app_js
+        for fragment in (
+            "CryptaPlatform.data.records.getJson",
+            "CryptaPlatform.data.records.putJson",
+            "ui-state\", \"social-inbox\"",
+            "social\", \"sources\"",
+            "social\", \"outbox-summary\"",
+            "social\", \"imported-message-index\"",
+            "social\", \"read-state\"",
+            "social\", \"drafts\"",
+        )
+    )
+    checks["usesTrustAnnotations"] = (
+        "CryptaPlatform.trust.score" in source_app_js
+        and "context: \"message-author\"" in source_app_js
+        and "subjectKind: \"identity\"" in source_app_js
+    )
+    checks["usesQueueSummary"] = "CryptaPlatform.queue.snapshot" in source_app_js
+    checks["permissionDisclosureMentionsDeclaredPermissions"] = manifest_permissions.issubset(
+        mentioned_permissions
+    )
+    checks["previewAndNonGoalCopyPresent"] = all(
+        fragment in source_index + "\n" + app_readme + "\n" + reference_doc
+        for fragment in (
+            "social/mail-like",
+            "migration",
+            "not full WoT",
+            "Freetalk",
+            "Sone",
+            "Freemail",
+            "encrypted mail",
+            "daemon-core message store",
+            "network protocol",
+        )
+    )
+    checks["noRawAdminOrBrowserStorage"] = all(
+        forbidden not in source_app_js
+        for forbidden in (
+            "/api/v1/",
+            "localStorage",
+            "sessionStorage",
+            "indexedDB",
+            "document.cookie",
+            "innerHTML",
+            "insertAdjacentHTML",
+            "CRYPTAD_APP_TOKEN",
+        )
+    )
+    if manifest:
+        details["manifest"] = {
+            "appId": manifest.get("app.id"),
+            "name": manifest.get("app.name"),
+            "uiMode": manifest.get("app.ui.mode"),
+            "uiEntry": manifest.get("app.ui.entry"),
+            "permissions": sorted(manifest_permissions),
+            "apiMinimumVersion": manifest.get("api.minimumVersion"),
+            "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+            "experimentalCapabilitiesAccepted": manifest.get(
+                "api.experimentalCapabilitiesAccepted"
+            ),
+        }
+        checks["manifestDeclaresSocialInbox"] = (
+            manifest.get("app.id") == "social-inbox"
+            and manifest.get("app.name") == "Social Inbox Preview"
+            and manifest.get("app.ui.mode") == "static"
+            and manifest.get("app.ui.entry") == "static/index.html"
+        )
+        checks["manifestDeclaresSocialPermissions"] = SOCIAL_INBOX_PERMISSIONS.issubset(
+            manifest_permissions
+        )
+        checks["manifestUsesContractV11"] = (
+            manifest.get("api.minimumVersion") == "11"
+            and manifest.get("api.maximumTestedVersion")
+            == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
+            and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
+        )
+    else:
+        checks["manifestDeclaresSocialInbox"] = False
+        checks["manifestDeclaresSocialPermissions"] = False
+        checks["manifestUsesContractV11"] = False
+
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox app check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox reference app evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox",
+        "pass",
+        True,
+        "Social Inbox reference app evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_inbox_signed_message_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {"appId": "social-inbox", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox-signed-message",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox signed-message evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    reference_doc = read_source(workspace / "docs/social-inbox-reference-app.md")
+    request_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java"
+    )
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestAllowsBoundedSigning"] = (
+        {"vault.identities.read", "vault.identities.use"}.issubset(permissions)
+        and manifest.get("api.minimumVersion") == "11"
+    )
+    checks["usesSdkBoundedSigner"] = (
+        "CryptaPlatform.vault.identities.createSocialMessageDocument" in app_js
+        and "ensureSignedSocialMessage" in app_js
+        and "signature.domain !== socialMessageType" in app_js
+    )
+    checks["verifiesImportedMessageSignatures"] = (
+        "verifySocialMessageSignature" in app_js
+        and "canonicalSocialMessagePayload" in app_js
+        and "window.crypto.subtle.verify" in app_js
+        and "signature.publicKeyFingerprint !== message.authorFingerprint" in app_js
+        and "const publicKeyBytes = decodeBase64(signature.publicKeyBase64" in app_js
+        and "const publicKeyFingerprint = await sha256Hex(publicKeyBytes)" in app_js
+        and "publicKeyFingerprint !== stringValue(signature.publicKeyFingerprint)" in app_js
+    )
+    checks["documentShapeIsBounded"] = all(
+        fragment in request_text
+        for fragment in (
+            "MAX_BODY_LENGTH = 4096",
+            "MAX_SUBJECT_LENGTH = 160",
+            "MAX_TAG_COUNT = 12",
+            "MAX_SIGNED_PAYLOAD_BYTES",
+            "FORMAT_TEXT_PLAIN",
+        )
+    ) and "requireIsoTimestamp" in app_js
+    checks["docsDescribeSignedMessageFormat"] = (
+        "Signed social message document" in reference_doc
+        and "crypta.social.message.v1" in reference_doc
+        and "domain-separated" in reference_doc
+    )
+    details["redaction"] = {
+        "privateIdentityMaterialExcluded": True,
+        "genericSigningInputsExcluded": True,
+        "rawSignatureValuesExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox signed-message check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox-signed-message",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox signed-message evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox-signed-message",
+        "pass",
+        True,
+        "Social Inbox signed-message evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_inbox_subscriptions_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {"appId": "social-inbox", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox-subscriptions",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox subscription evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    reference_doc = read_source(workspace / "docs/social-inbox-reference-app.md")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestDeclaresSubscriptionPermissions"] = {
+        "content.fetch",
+        "content.subscribe",
+    }.issubset(permissions)
+    checks["uiDisclosesSubscriptionWorkflow"] = (
+        "content.subscribe" in permission_disclosure_block(index)
+        and "USK social sources" in index
+        and "Sources and subscriptions" in index
+    )
+    checks["appUsesPlatformSubscriptionLifecycle"] = all(
+        fragment in app_js
+        for fragment in (
+            "CryptaPlatform.content.subscriptions.create",
+            "CryptaPlatform.content.subscriptions.list",
+            "CryptaPlatform.content.subscriptions.refresh",
+            "CryptaPlatform.content.subscriptions.pause",
+            "CryptaPlatform.content.subscriptions.resume",
+            "CryptaPlatform.content.subscriptions.remove",
+            "isSocialSourceUri",
+            "lastSeenResolvedUri",
+            "updateCount",
+            "lastError",
+        )
+    )
+    checks["manualFetchUsesBoundedContentFetch"] = (
+        "CryptaPlatform.content.fetchText" in app_js
+        and "maxFetchedDocumentChars" in app_js
+        and "parseJsonObject" in app_js
+    )
+    checks["docsDescribeDurableUskSources"] = (
+        "content.subscribe" in reference_doc
+        and "durable" in reference_doc.lower()
+        and "USK" in reference_doc
+        and "raw fetched content" in reference_doc
+    )
+    details["redaction"] = {
+        "rawFetchedContentExcluded": True,
+        "sourceMetadataOnly": True,
+        "absolutePathsExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox subscription check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox-subscriptions",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox subscription evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox-subscriptions",
+        "pass",
+        True,
+        "Social Inbox subscription evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_inbox_app_data_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {"appId": "social-inbox", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox app-data evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "apps/social-inbox/README.md",
+            "docs/social-inbox-reference-app.md",
+            "docs/app-data-store.md",
+            "docs/release-certification.md",
+        )
+    )
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestDeclaresAppDataPermissions"] = {
+        "app.data.read",
+        "app.data.write",
+    }.issubset(permissions)
+    checks["usesSdkJsonRecordHelpers"] = (
+        "CryptaPlatform.data.records.getJson" in app_js
+        and "CryptaPlatform.data.records.putJson" in app_js
+    )
+    checks["persistsNamedBoundedRecords"] = all(
+        fragment in app_js
+        for fragment in (
+            "ui-state\", \"social-inbox\"",
+            "social\", \"sources\"",
+            "social\", \"outbox-summary\"",
+            "social\", \"imported-message-index\"",
+            "social\", \"read-state\"",
+            "social\", \"drafts\"",
+            "maxSources",
+            "maxImportedMessages",
+            "maxReadStateEntries",
+            "boundedDrafts",
+        )
+    )
+    checks["storesSafeSummariesOnly"] = all(
+        fragment in app_js
+        for fragment in (
+            "bodySha256",
+            "bodyPreview",
+            "signatureSha256",
+            "insertUriRedaction",
+            "redactedInsertUri",
+            "uriHash",
+            "uriSummary",
+            "publicSourceUriHash",
+            "publicSourceUriSummary",
+        )
+    ) and "privateInsertUri" not in app_js and not re.search(r"\bsource\.uri\b", app_js)
+    checks["permissionDisclosureMentionsAppData"] = (
+        "app.data.read" in permission_disclosure_block(index)
+        and "app.data.write" in permission_disclosure_block(index)
+    )
+    checks["docsDescribePrivacyRules"] = (
+        "reference-app.social-inbox-app-data" in docs_text
+        and "private insert URIs" in docs_text
+        and "raw source URIs" in docs_text
+        and "browser-session tokens" in docs_text
+        and "raw fetched documents" in docs_text
+    )
+    checks["noBrowserStorageOrRawAdminPath"] = (
+        "/api/v1/" not in app_js
+        and "localStorage" not in app_js
+        and "sessionStorage" not in app_js
+        and "document.cookie" not in app_js
+    )
+    details["redaction"] = {
+        "rawMessageBodiesExcludedFromEvidence": True,
+        "rawFetchedDocumentsExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "tokensExcluded": True,
+        "localPathsExcluded": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox app-data check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox-app-data",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox app-data evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox-app-data",
+        "pass",
+        True,
+        "Social Inbox app-data evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {"appId": "social-inbox", "checks": {}}
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox-trust-annotations",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox trust annotation evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    reference_doc = read_source(workspace / "docs/social-inbox-reference-app.md")
+    manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
+    permissions = parse_permission_set(manifest.get("app.permissions", ""))
+    checks = details["checks"]
+    checks["manifestDeclaresTrustRead"] = "trust.read" in permissions
+    checks["appQueriesAuthorScores"] = (
+        "CryptaPlatform.trust.score" in app_js
+        and "subjectKind: \"identity\"" in app_js
+        and "context: \"message-author\"" in app_js
+        and "authorFingerprint" in app_js
+    )
+    checks["uiShowsNeutralAndScoredStates"] = (
+        "trust unscored" in app_js
+        and "trust neutral" in app_js
+        and "evidence" in app_js
+        and "Refresh trust" in index
+    )
+    checks["docsFrameScoresAsAnnotations"] = (
+        "Trust Graph Preview" in reference_doc
+        and "message-author" in reference_doc
+        and "not a moderation decision" in reference_doc
+    )
+    details["redaction"] = {
+        "trustEvidenceSummariesOnly": True,
+        "messageBodiesExcludedFromEvidence": True,
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox trust annotation check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox-trust-annotations",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox trust annotation evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox-trust-annotations",
+        "pass",
+        True,
+        "Social Inbox trust annotation evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_social_mail_migration_preview_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    app_js = read_source(workspace / "apps/social-inbox/src/staged/static/app.js")
+    index = read_source(workspace / "apps/social-inbox/src/staged/static/index.html")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/social-inbox-reference-app.md",
+            "docs/app-platform-developer-portal.md",
+            "docs/app-platform-beta-tutorials.md",
+            "docs/app-platform-beta-known-limitations.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    docs_lower = docs_text.lower()
+    checks = {
+        "migrationFramingPresent": (
+            "social/mail-like" in docs_text
+            and "migration spike" in docs_lower
+            and "outside the daemon" in docs_lower
+        ),
+        "nonGoalsDocumented": all(
+            fragment in docs_text
+            for fragment in (
+                "old plugin ABI compatibility",
+                "Freetalk",
+                "Sone",
+                "Freemail",
+                "encrypted mail",
+                "network protocol changes",
+                "daemon-core message protocol",
+            )
+        ),
+        "appComposesExpectedPlatformSurfaces": all(
+            fragment in app_js
+            for fragment in (
+                "createSocialMessageDocument",
+                "insertAppDocument",
+                "content.subscriptions",
+                "data.records",
+                "trust.score",
+            )
+        ),
+        "uiStatesPreviewBoundary": (
+            "Migration spike status" in index
+            and "not Freetalk, Sone, Freemail" in index
+            and "does not add a daemon-core message store" in index
+        ),
+        "evidenceIdsDocumented": all(
+            evidence_id in docs_text
+            for evidence_id in (
+                "reference-app.social-inbox",
+                "reference-app.social-inbox-signed-message",
+                "reference-app.social-inbox-subscriptions",
+                "reference-app.social-inbox-app-data",
+                "reference-app.social-inbox-trust-annotations",
+                "migration.social-mail-preview",
+            )
+        ),
+    }
+    details = {
+        "checks": checks,
+        "redaction": {
+            "rawMessageBodiesExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawRequestBodiesExcluded": True,
+            "rawSignaturesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "privateIdentityMaterialExcluded": True,
+            "tokensExcluded": True,
+            "localPathsExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "migration.social-mail-preview",
+            root_consequence(settings, "fail"),
+            True,
+            "Social/mail migration preview evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "migration.social-mail-preview",
+        "pass",
+        True,
+        "Social/mail migration preview evidence passed.",
         source,
         details,
     )
@@ -6995,6 +7811,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_trust_graph_durable_store_evidence(settings),
         collect_trust_graph_exchange_evidence(settings),
         collect_trust_statement_signing_evidence(settings),
+        collect_social_message_signing_evidence(settings),
         collect_signed_bundle_evidence(settings, sample_paths),
         collect_catalog_evidence(settings, sample_paths),
         collect_live_usk_catalog_publication_evidence(settings, sample_paths),
@@ -7015,6 +7832,12 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_reference_content_app_evidence(settings),
         collect_profile_publisher_reference_app_evidence(settings),
         collect_profile_publisher_app_data_evidence(settings),
+        collect_social_inbox_reference_app_evidence(settings),
+        collect_social_inbox_signed_message_evidence(settings),
+        collect_social_inbox_subscriptions_evidence(settings),
+        collect_social_inbox_app_data_evidence(settings),
+        collect_social_inbox_trust_annotation_evidence(settings),
+        collect_social_mail_migration_preview_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
         collect_feed_reader_subscription_evidence(settings),
         collect_feed_reader_app_data_evidence(settings),
@@ -7091,6 +7914,7 @@ def run_self_test(repo_root: Path) -> None:
     catalog = parse_properties(catalog_fixture)
     assert catalog["catalog.id"] == "cert-smoke"
     assert "feed-reader" in parse_permission_set(catalog["catalog.entries"])
+    assert "social-inbox" in parse_permission_set(catalog["catalog.entries"])
     assert "trust-graph" in parse_permission_set(catalog["catalog.entries"])
     assert catalog["app.cert-smoke.bundle.sha256"] == "0" * 64
     assert catalog["app.feed-reader.permissions"] == (
@@ -7099,6 +7923,15 @@ def run_self_test(repo_root: Path) -> None:
     )
     assert catalog["app.feed-reader.api.minimumVersion"] == "9"
     assert catalog["app.feed-reader.api.maximumTestedVersion"] == str(
+        CURRENT_PLATFORM_API_CONTRACT_VERSION
+    )
+    assert catalog["app.social-inbox.permissions"] == (
+        "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,"
+        "content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,"
+        "app.data.write,trust.read"
+    )
+    assert catalog["app.social-inbox.api.minimumVersion"] == "11"
+    assert catalog["app.social-inbox.api.maximumTestedVersion"] == str(
         CURRENT_PLATFORM_API_CONTRACT_VERSION
     )
     assert catalog["app.trust-graph.permissions"] == (
@@ -7374,6 +8207,7 @@ def run_self_test(repo_root: Path) -> None:
             "feedSummary": "3 entries",
             "rawFeedBodyRedacted": True,
             "rawFeedBodiesExcluded": True,
+            "rawMessageBodiesExcludedFromEvidence": True,
         },
         repo_root,
     )
@@ -7392,6 +8226,7 @@ def run_self_test(repo_root: Path) -> None:
     assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
     assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
     assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
+    assert feed_body_metadata["rawMessageBodiesExcludedFromEvidence"] is True, feed_body_metadata
     credential_scrubbed = scrub_text(
         'Authorization: Bearer app-secret\n'
         'Cookie: session=abc; csrf=def\n'
@@ -7564,8 +8399,8 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
-        assert contract_details["capabilityCount"] == 7, contract_item
-        assert contract_details["endpointCount"] == 14, contract_item
+        assert contract_details["capabilityCount"] == 9, contract_item
+        assert contract_details["endpointCount"] == 15, contract_item
         assert contract_details["stableCapabilities"] == [
             "app.data.read",
             "app.data.write",
@@ -7606,6 +8441,12 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-apps.content"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher"]["status"] == "pass"
         assert evidence_by_id["reference-app.profile-publisher-app-data"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox-signed-message"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox-subscriptions"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox-app-data"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox-trust-annotations"]["status"] == "pass"
+        assert evidence_by_id["migration.social-mail-preview"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
@@ -7616,6 +8457,7 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.trust-graph-durable-store"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-exchange"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
+        assert evidence_by_id["app-platform.social-message-signing"]["status"] == "pass"
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
         try:
@@ -8085,14 +8927,17 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk.parent.mkdir(parents=True, exist_ok=True)
     sdk.write_text(
         "window.CryptaPlatform = { data: Object.freeze({ records: Object.freeze({ getJson(){}, putJson(){} }), "
-        "export(){}, import(){} }), trust: {}, vault: { identities: { createTrustStatement(){} } }, "
-        "content: { subscriptions: Object.freeze({ list(){}, create(){}, get(){}, refresh(){}, pause(){}, resume(){}, remove(){} }) } }; "
+        "export(){}, import(){} }), queue: { snapshot(){} }, trust: { score(){} }, "
+        "vault: { identities: { create(){}, list(){}, createProfileDocument(){}, "
+        "createTrustStatement(){}, createSocialMessageDocument(){} } }, "
+        "content: { insertAppDocument(){}, fetchText(){}, subscriptions: Object.freeze({ list(){}, create(){}, get(){}, refresh(){}, pause(){}, resume(){}, remove(){} }) } }; "
         "function putAppDataJson(){} function getAppDataJson(){} const appDataExportPath = 'app-data/export'; "
         "const appDataImportPath = 'app-data/import'; "
         "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
         "function importTrustUri(){} function trustAudit(){} function trustScore(){} "
         "function publishTrustStatement(){} function fetchAndImportTrustStatement(){} "
-        "function createTrustSubscription(){} "
+        "function createTrustSubscription(){} function normalizeSocialMessageDocument(){} "
+        "const socialMessageRoute = '/social-message'; "
         "function createContentSubscription(){} function removeContentSubscription(){} "
         "function contentSubscriptionPathSegment(){} const path = 'content/subscriptions'; "
         "function apiDeleteForm(){} "
@@ -8183,6 +9028,55 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n",
         ),
         (
+            "social-inbox",
+            "social-inbox",
+            "Social Inbox Preview",
+            "social-inbox.sh",
+            "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,"
+            "content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read",
+            "const appId = 'social-inbox';\n"
+            "const socialMessageType = 'crypta.social.message.v1';\n"
+            "const socialOutboxType = 'crypta.social.outbox.v1';\n"
+            "const maxSources = 16;\n"
+            "const maxImportedMessages = 160;\n"
+            "const maxReadStateEntries = 240;\n"
+            "const maxFetchedDocumentChars = 131072;\n"
+            "const records = { uiState: [\"ui-state\", \"social-inbox\"], sources: [\"social\", \"sources\"], "
+            "outboxSummary: [\"social\", \"outbox-summary\"], importedMessageIndex: [\"social\", \"imported-message-index\"], "
+            "readState: [\"social\", \"read-state\"], drafts: [\"social\", \"drafts\"] };\n"
+            "CryptaPlatform.bootstrap.load({ appId });\n"
+            "CryptaPlatform.vault.identities.list();\n"
+            "CryptaPlatform.vault.identities.create({ label: 'Social' });\n"
+            "CryptaPlatform.vault.identities.createProfileDocument('social-self-test', { displayName: 'Social' });\n"
+            "CryptaPlatform.vault.identities.createSocialMessageDocument('social-self-test', { body: 'redacted' });\n"
+            "function ensureSignedSocialMessage(value) { const signature = value.signature || {}; if (signature.domain !== socialMessageType) throw new Error(); }\n"
+            "async function verifySocialMessageSignature(value) { const signature = value.signature || {}; const message = value.message || {}; if (signature.publicKeyFingerprint !== message.authorFingerprint) throw new Error(); const publicKeyBytes = decodeBase64(signature.publicKeyBase64, 'publicKeyBase64'); const publicKeyFingerprint = await sha256Hex(publicKeyBytes); if (publicKeyFingerprint !== stringValue(signature.publicKeyFingerprint)) throw new Error(); return window.crypto.subtle.verify(); }\n"
+            "function canonicalSocialMessagePayload(value) { return value; }\n"
+            "function requireIsoTimestamp(value) { return value; }\n"
+            "CryptaPlatform.content.insertAppDocument({ document: { type: socialOutboxType }, contentType: 'application/vnd.crypta.social.outbox+json', targetFilename: 'social-outbox.json' });\n"
+            "CryptaPlatform.content.fetchText({ uri: 'USK@redacted/social/0/social-outbox.json', maxBytes: maxFetchedDocumentChars });\n"
+            "CryptaPlatform.content.subscriptions.list();\n"
+            "CryptaPlatform.content.subscriptions.create({ uri: 'USK@redacted/social/0/social-outbox.json' });\n"
+            "CryptaPlatform.content.subscriptions.refresh('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.pause('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.resume('sub-redacted');\n"
+            "CryptaPlatform.content.subscriptions.remove('sub-redacted');\n"
+            "const lastSeenResolvedUri = 'USK@redacted/social/0/social-outbox.json'; const updateCount = 1; const lastError = '';\n"
+            "function isSocialSourceUri(uri) { return uri.startsWith('USK@') || uri.startsWith('crypta:USK@'); }\n"
+            "function parseJsonObject(value) { return JSON.parse(value); }\n"
+            "function boundedDrafts(value) { return value; }\n"
+            "const bodySha256 = 'redacted'; const bodyPreview = 'redacted'; const signatureSha256 = 'redacted';\n"
+            "const uriHash = 'redacted'; const uriSummary = 'USK source URI redacted'; "
+            "const publicSourceUriHash = 'redacted'; const publicSourceUriSummary = 'redacted';\n"
+            "const insertUriRedaction = 'redacted'; function redactedInsertUri(value) { return 'redacted'; }\n"
+            "CryptaPlatform.data.records.getJson('ui-state', 'social-inbox');\n"
+            "CryptaPlatform.data.records.putJson({ namespace: 'social', key: 'sources', schemaVersion: 1, value: [] });\n"
+            "CryptaPlatform.trust.score({ subjectKind: \"identity\", subjectUri: 'fingerprint', context: \"message-author\" });\n"
+            "const authorFingerprint = 'fingerprint'; const trustNeutral = 'trust neutral'; const trustUnscored = 'trust unscored'; const evidence = [];\n"
+            "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n"
+            "const dataRecords = 'data.records'; const contentSubscriptions = 'content.subscriptions'; const trustScore = 'trust.score';\n",
+        ),
+        (
             "trust-graph",
             "trust-graph",
             "Trust Graph Preview",
@@ -8228,13 +9122,24 @@ def make_self_test_workspace(workspace: Path) -> None:
             (root / "static/crypta-ui").mkdir(parents=True, exist_ok=True)
             (root / "bin" / launcher).write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             permission_items = "".join(f"<li><code>{permission}</code></li>" for permission in permissions.split(","))
-            extra_ui = (
-                "<p>Anchors and imported statements persist through the platform trust graph backend.</p>"
-                "<p>Exchange uses content fetch, insert, and subscription APIs.</p>"
-                "<h2>Subscriptions</h2><h2>Audit</h2><p>not full WoT</p>"
-                if app_id == "trust-graph"
-                else ""
-            )
+            if app_id == "trust-graph":
+                extra_ui = (
+                    "<p>Anchors and imported statements persist through the platform trust graph backend.</p>"
+                    "<p>Exchange uses content fetch, insert, and subscription APIs.</p>"
+                    "<h2>Subscriptions</h2><h2>Audit</h2><p>not full WoT</p>"
+                )
+            elif app_id == "social-inbox":
+                extra_ui = (
+                    "<h2>Migration spike status</h2>"
+                    "<p>This social/mail-like migration spike runs outside the daemon.</p>"
+                    "<p>It is not full WoT and is not Freetalk, Sone, Freemail, encrypted mail, "
+                    "and does not add a daemon-core message store. It makes no network protocol change.</p>"
+                    "<h2>Identity</h2><h2>Compose</h2><h2>Publish outbox</h2>"
+                    "<h2>USK social sources</h2><h2>Sources and subscriptions</h2>"
+                    "<h2>Inbox</h2><button>Refresh trust</button>"
+                )
+            else:
+                extra_ui = ""
             (root / "static/index.html").write_text(
                 "<!doctype html><html lang=\"en\"><head>"
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
@@ -8259,19 +9164,24 @@ def make_self_test_workspace(workspace: Path) -> None:
             shutil.copy2(sdk, root / "static/crypta-platform.js")
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
+        is_social_inbox = app_id == "social-inbox"
         is_trust_graph = app_id == "trust-graph"
         api_minimum = (
-            "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
+            "11"
+            if is_social_inbox
+            else "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
         )
         api_maximum = (
             "10"
             if is_trust_graph
-            or is_feed_reader
+            else str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
+            if is_feed_reader
             or is_profile_publisher
+            or is_social_inbox
             or app_id == "site-publisher"
             else "4"
         )
-        experimental_accepted = "true" if is_profile_publisher or is_trust_graph else "false"
+        experimental_accepted = "true" if is_profile_publisher or is_social_inbox or is_trust_graph else "false"
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
                 [
@@ -8312,6 +9222,17 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "uses durable content.subscribe metadata for USK subscriptions, "
                 "uses app-data for bounded local reader state, "
                 "then publishes generated feed summaries without storing raw feed bodies.\n",
+                encoding="utf-8",
+            )
+        if app_id == "social-inbox":
+            (workspace / "apps/social-inbox/README.md").write_text(
+                "Social Inbox Preview is a social/mail-like migration spike outside the daemon. "
+                "It uses AppVault identities, profile-document metadata, bounded crypta.social.message.v1 "
+                "domain-separated signing, generated app-document outbox publication, content.subscribe "
+                "USK source metadata, durable app-data records, and Trust Graph Preview annotations. "
+                "It is not full WoT, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message store, "
+                "or a network protocol change, and it avoids private insert URIs, browser-session tokens, "
+                "raw fetched documents, and private identity material.\n",
                 encoding="utf-8",
             )
         if app_id == "trust-graph":
@@ -8390,9 +9311,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 10; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 11; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
+        "static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
         "String list = \"/app-catalogs/recommended\"; "
@@ -8447,6 +9369,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String trustFetch = \"PlatformApiCapabilities.CONTENT_FETCH\"; "
         "String trustStatement = \"/app-vault/identities/{identityId}/trust-statement\"; "
         "String trustStatementAction = \"app-vault.identities.trust-statement\"; "
+        "String socialMessage = \"/app-vault/identities/{identityId}/social-message\"; "
+        "String socialMessageAction = \"app-vault.identities.social-message\"; "
         "String vaultRead = \"PlatformApiCapabilities.VAULT_IDENTITIES_READ\"; "
         "String vaultUse = \"PlatformApiCapabilities.VAULT_IDENTITIES_USE\"; }\n",
         encoding="utf-8",
@@ -8480,9 +9404,26 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     api_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api"
     api_test_dir.mkdir(parents=True, exist_ok=True)
+    app_vault_test_dir = api_test_dir / "appvault"
+    app_vault_test_dir.mkdir(parents=True, exist_ok=True)
+    (app_vault_test_dir / "SocialMessageRequestTest.java").write_text(
+        "class SocialMessageRequestTest { String purpose = \"purpose\"; "
+        "String payloadBase64 = \"payloadBase64\"; String type = \"crypta.social.message.v1\"; }\n",
+        encoding="utf-8",
+    )
+    (app_vault_test_dir / "SignedSocialMessageDocumentBuilderTest.java").write_text(
+        "class SignedSocialMessageDocumentBuilderTest { String domainSeparatedPayload; "
+        "String privateKey; }\n",
+        encoding="utf-8",
+    )
+    (api_test_dir / "AppVaultApiRouterTest.java").write_text(
+        "class AppVaultApiRouterTest { String route = \"social-message\"; "
+        "String domain = \"crypta.social.message.v1\"; String privateKey; String payloadBase64; }\n",
+        encoding="utf-8",
+    )
     (api_test_dir / "PlatformApiCapabilitiesTest.java").write_text(
         "final class PlatformApiCapabilitiesTest { String a = \"trust-graph/import-uri content.fetch\"; "
-        "String b = \"trust-graph/audit trust.read\"; }\n",
+        "String b = \"trust-graph/audit trust.read\"; String c = \"social-message vault.identities.use\"; }\n",
         encoding="utf-8",
     )
     (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
@@ -8495,7 +9436,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     (sdk_test_dir / "CryptaPlatformSdkResourceTest.java").write_text(
         "final class CryptaPlatformSdkResourceTest { "
         "void classpathResource_whenTrustExchangeHelpersRequested() {} "
-        "void classpathResource_whenTrustExchangePublishSignsStatement() {} }\n",
+        "void classpathResource_whenTrustExchangePublishSignsStatement() {} "
+        "void classpathResource_whenSocialMessageSigned_expectBoundedVaultRoute() { "
+        "String route = \"/social-message\"; String recipientFingerprint; } }\n",
         encoding="utf-8",
     )
     bridge_dir = workspace / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge"
@@ -8549,7 +9492,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void createProfileDocument() { String route = \"profile-document\"; } "
         "void createTrustStatement() { String route = \"trust-statement\"; "
         "Object request = TrustStatementRequest.fromQuery(null); "
-        "String type = \"TrustDocumentTypes.TRUST_STATEMENT_V1\"; } }\n",
+        "String type = \"TrustDocumentTypes.TRUST_STATEMENT_V1\"; } "
+        "void createSocialMessage() { String route = \"social-message\"; "
+        "Object request = SocialMessageRequest.fromQuery(null); "
+        "String domain = SocialMessageRequest.SIGNING_PURPOSE; "
+        "Object result = signDomainSeparatedPayload(null); } }\n",
         encoding="utf-8",
     )
     (app_vault_api_dir / "TrustStatementRequest.java").write_text(
@@ -8557,8 +9504,21 @@ def make_self_test_workspace(workspace: Path) -> None:
         "byte[] canonicalBytes() { return TrustStatementCanonicalizer.canonicalPayloadBytes(null); } }\n",
         encoding="utf-8",
     )
+    (app_vault_api_dir / "SocialMessageRequest.java").write_text(
+        "final class SocialMessageRequest { static final int MAX_BODY_LENGTH = 4096; "
+        "static final int MAX_SUBJECT_LENGTH = 160; static final int MAX_TAG_COUNT = 12; "
+        "static final int MAX_SIGNED_PAYLOAD_BYTES = 32768; static final String FORMAT_TEXT_PLAIN = \"text/plain\"; "
+        "static final String SIGNING_PURPOSE = \"crypta.social.message.v1\"; "
+        "Object ALLOWED_PARAMETERS; Object fromQuery(Object query) { return null; } }\n",
+        encoding="utf-8",
+    )
+    (app_vault_api_dir / "SignedSocialMessageDocumentBuilder.java").write_text(
+        "final class SignedSocialMessageDocumentBuilder { String publicKeyBase64; "
+        "String signatureBase64; }\n",
+        encoding="utf-8",
+    )
     (api_dir / "PlatformApiVaultRouter.java").write_text(
-        "final class PlatformApiVaultRouter { String route = \"trust-statement\"; }\n",
+        "final class PlatformApiVaultRouter { String route = \"trust-statement social-message\"; }\n",
         encoding="utf-8",
     )
     trust_api_dir = api_dir / "trust"
@@ -8762,8 +9722,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     docs.mkdir(parents=True, exist_ok=True)
     first_party_docs = (
         "No private keys are shipped. "
-        "queue-manager publisher site-publisher profile-publisher feed-reader trust-graph use permissions.rationale entries, "
+        "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
+        "Social Inbox Preview is a social/mail-like migration spike outside the daemon and not a generic browser signing API. "
+        "It uses AppVault identity, bounded crypta.social.message.v1 social message signing, a Signed social message document format with domain-separated signatures, profile-document metadata, generated app-document outbox insert, "
+        "durable content.subscribe USK sources, app-data read-state and drafts, and Trust Graph Preview message-author annotations that are not a moderation decision. "
+        "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message protocol, or network protocol changes. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
         "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, and bounded trust-statement signing. "
         "Trust anchors are local. "
@@ -8798,8 +9762,12 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Contract v10 adds POST /api/v1/trust-graph/import-uri and GET /api/v1/trust-graph/audit. "
         "Exchange uses content fetch, insert, and subscription APIs and does not crawl the network globally. "
         "POST /api/v1/app-vault/identities/{identityId}/trust-statement signs bounded trust statements. "
+        "POST /api/v1/app-vault/identities/{identityId}/social-message signs bounded social messages with vault.identities.read and vault.identities.use. "
         "GET /api/v1/trust-graph/status and GET /api/v1/trust-graph/score read local trust preview data. "
         "Release evidence covers reference-app.profile-publisher, "
+        "reference-app.social-inbox, reference-app.social-inbox-signed-message, "
+        "reference-app.social-inbox-subscriptions, reference-app.social-inbox-app-data, "
+        "reference-app.social-inbox-trust-annotations, migration.social-mail-preview, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
         "network-content.subscription-scheduler, "
@@ -8808,9 +9776,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.trust-graph, reference-app.trust-graph-durable-exchange, "
         "app-platform.trust-graph-preview, app-platform.trust-graph-durable-store, "
         "app-platform.trust-graph-exchange, "
-        "app-platform.trust-statement-signing, app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
-        "It excludes raw request bodies, private keys, raw signatures, private insert URIs, and "
-        "absolute staging paths. It also excludes raw feed bodies, raw fetched content, raw trust statement bodies, browser-session tokens, "
+        "app-platform.trust-statement-signing, app-platform.social-message-signing, "
+        "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
+        "It excludes raw request bodies, private keys, private key material, raw signatures, private insert URIs, raw source URIs, and "
+        "absolute staging paths. It also excludes raw feed bodies, raw message bodies, raw fetched content, raw fetched documents, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
     )
     for doc_name in (
@@ -8818,9 +9787,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-data-store.md",
         "app-dev-cli.md",
         "app-platform-developer-portal.md",
+        "app-platform-beta-known-limitations.md",
+        "app-platform-beta-tutorials.md",
+        "app-permissions-and-audit.md",
         "feed-reader-reference-app.md",
         "platform-api-contract.md",
         "platform-api-surface.md",
+        "platform-sdk-js.md",
+        "social-inbox-reference-app.md",
         "trust-graph-preview.md",
         "first-party-beta-catalog.md",
         "release-certification.md",
@@ -9538,7 +10512,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=10",
+                "api.maximumTestedVersion=11",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -9687,7 +10661,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 10,
+                    "contractVersion": 11,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -9740,6 +10714,20 @@ def api_snapshot(args):
                             "deprecation": None,
                             "description": "Mutate local trust graph preview state.",
                         },
+                        {
+                            "name": "vault.identities.read",
+                            "stability": "experimental",
+                            "sinceContractVersion": 11,
+                            "deprecation": None,
+                            "description": "Read app-visible identity metadata.",
+                        },
+                        {
+                            "name": "vault.identities.use",
+                            "stability": "experimental",
+                            "sinceContractVersion": 11,
+                            "deprecation": None,
+                            "description": "Use bounded AppVault signing routes.",
+                        },
                     ],
                     "endpoints": [
                         {
@@ -9769,6 +10757,12 @@ def api_snapshot(args):
                         {"method": "POST", "routeTemplate": "/app-data/import", "stability": "stable"},
                         {"method": "GET", "routeTemplate": "/trust-graph/audit", "stability": "stable"},
                         {"method": "POST", "routeTemplate": "/trust-graph/import-uri", "stability": "stable"},
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/app-vault/identities/{identityId}/social-message",
+                            "requiredCapabilities": ["vault.identities.read", "vault.identities.use"],
+                            "stability": "experimental",
+                        },
                     ],
                 }
             },
@@ -9846,7 +10840,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=10' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=11' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -10023,7 +11017,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 10,
+    "contractVersion": 11,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
@@ -10075,6 +11069,20 @@ PY
         "sinceContractVersion": 7,
         "deprecation": null,
         "description": "Mutate local trust graph preview state."
+      },
+      {
+        "name": "vault.identities.read",
+        "stability": "experimental",
+        "sinceContractVersion": 11,
+        "deprecation": null,
+        "description": "Read app-visible identity metadata."
+      },
+      {
+        "name": "vault.identities.use",
+        "stability": "experimental",
+        "sinceContractVersion": 11,
+        "deprecation": null,
+        "description": "Use bounded AppVault signing routes."
       }
     ],
     "endpoints": [
@@ -10158,6 +11166,15 @@ PY
         "method": "POST",
         "routeTemplate": "/trust-graph/import-uri",
         "stability": "stable"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-vault/identities/{identityId}/social-message",
+        "requiredCapabilities": [
+          "vault.identities.read",
+          "vault.identities.use"
+        ],
+        "stability": "experimental"
       }
     ]
   }

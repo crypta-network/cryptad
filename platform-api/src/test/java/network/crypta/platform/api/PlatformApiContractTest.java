@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":10"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":11"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(10, version.contractVersion());
+    assertEquals(11, version.contractVersion());
   }
 
   @Test
@@ -323,6 +323,28 @@ class PlatformApiContractTest {
         endpoint.requiredCapabilities());
   }
 
+  @Test
+  void current_whenInspectingSocialMessageEndpoint_expectBoundedVaultCapabilities() {
+    PlatformApiEndpointDescriptor endpoint =
+        PlatformApiContract.current().endpoints().stream()
+            .filter(
+                descriptor ->
+                    descriptor.method().equals("POST")
+                        && descriptor
+                            .routeTemplate()
+                            .equals("/app-vault/identities/{identityId}/social-message"))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(11, endpoint.sinceContractVersion());
+    assertEquals("app-vault", endpoint.routeFamily());
+    assertEquals("app-vault.identities.social-message", endpoint.actionLabel());
+    assertTrue(endpoint.appProcessAllowed());
+    assertTrue(endpoint.appBrowserAllowed());
+    assertEquals(
+        List.of("vault.identities.read", "vault.identities.use"), endpoint.requiredCapabilities());
+  }
+
   private static void assertEndpointAuthorization(
       PlatformApiEndpointDescriptor endpoint,
       PlatformApiAuthorizationDecision decision,
@@ -340,6 +362,9 @@ class PlatformApiContractTest {
     if (endpoint.routeTemplate().equals("/trust-graph/import-uri")
         || endpoint.routeTemplate().equals("/trust-graph/audit")) {
       return 10;
+    }
+    if (endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/social-message")) {
+      return 11;
     }
     if (endpoint.routeTemplate().startsWith("/trust-graph")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {

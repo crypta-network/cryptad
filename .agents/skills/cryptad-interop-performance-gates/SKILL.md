@@ -42,8 +42,8 @@ INTEROP_MODE=extended INTEROP_SKIP_BUILD=1 tools/interop/run-hyphanet-interop-sm
 
 - The performance gate records lightweight packaged-node startup, local FCP/Platform API timing,
   distribution size, Web Shell asset size, SDK asset size, and first-party static app source and
-  staged-bundle size signals for Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed
-  Reader, and Trust Graph Preview. It is not a broad benchmark suite.
+  staged-bundle size signals for Queue Manager, Publisher, Site Publisher, Profile Publisher,
+  Social Inbox Preview, Feed Reader, and Trust Graph Preview. It is not a broad benchmark suite.
 - The runner requires Python 3.12 or newer.
 - Normal local commands:
 

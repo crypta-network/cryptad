@@ -46,6 +46,15 @@
       "unit": "bytes",
       "warn_ratio": 1.35
     },
+    "apphost.social_inbox_staged_bundle_bytes": {
+      "baseline": 145223,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 200000,
+      "required": false,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
     "apphost.trust_graph_staged_bundle_bytes": {
       "baseline": 85360,
       "fail_on_regression": true,
@@ -93,6 +102,15 @@
     },
     "apps.site_publisher_static_bytes": {
       "baseline": 20262,
+      "fail_on_regression": true,
+      "fail_ratio": 1.75,
+      "max_bytes": 150000,
+      "required": true,
+      "unit": "bytes",
+      "warn_ratio": 1.35
+    },
+    "apps.social_inbox_static_bytes": {
+      "baseline": 69472,
       "fail_on_regression": true,
       "fail_ratio": 1.75,
       "max_bytes": 150000,

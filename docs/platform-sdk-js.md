@@ -17,8 +17,9 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview
-bundles receive `crypta-platform.js` during their Gradle `stageApp` tasks. The canonical source
+The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview,
+Feed Reader, and Trust Graph Preview bundles receive `crypta-platform.js` during their Gradle
+`stageApp` tasks. The canonical source
 lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
 The standalone developer CLI follows the same static filename. When `crypta-app init --ui-mode
@@ -152,6 +153,36 @@ await CryptaPlatform.content.insertAppDocument({
   targetFilename: "profile.json",
 });
 ```
+
+Social Inbox Preview uses the bounded social-message helper instead of the process-only generic
+identity-use route:
+
+```js
+const signedMessageResponse =
+  await CryptaPlatform.vault.identities.createSocialMessageDocument(identityId, {
+    channel: "general",
+    subject,
+    body,
+    authorLabel,
+    profileUri,
+    replyTo,
+    recipientFingerprint,
+    tags,
+  });
+
+const signedMessage = signedMessageResponse.socialMessage;
+```
+
+`CryptaPlatform.vault.identities.createSocialMessageDocument` posts to
+`app-vault/identities/{identityId}/social-message`, preserves SDK request options such as
+`signal`, `headers`, `bootstrap`, `force`, and `refreshBootstrap`, and serializes only bounded
+document fields. It does not accept a caller-selected signing purpose, signing domain, or raw
+payload. The server fixes the domain to `crypta.social.message.v1`, and the helper normalizes the
+route envelope so `signedMessageResponse.socialMessage` is the public signed document. Social apps
+should keep inserted outbox documents bounded, render user content as text, and avoid storing raw
+message bodies in release evidence, raw fetched social documents,
+private insert URIs, private identity material, raw signatures, browser-session tokens, form
+passwords, or local paths.
 
 Feed Reader uses the v8 feed and content subscription helpers instead of constructing fetch forms
 by hand:
@@ -334,7 +365,9 @@ preview signature are still visible as evidence, but the local scorer marks them
 
 `app-vault/identities` creates an app-owned identity for an authorized static app browser session.
 `app-vault/identities/{identityId}/profile-document` asks Cryptad to create the profile document
-without exporting private identity material. `queue/inserts/app-document` queues app-generated
+without exporting private identity material. `app-vault/identities/{identityId}/social-message`
+asks Cryptad to create a bounded `crypta.social.message.v1` signed message document for the
+selected identity without exposing generic browser signing. `queue/inserts/app-document` queues app-generated
 document content with `content.insert.app-document` instead of local source-path authority. The SDK
 Base64-encodes the JSON document for `insertAppDocument` and preserves the same
 `X-Crypta-App-Session` header path as other browser mutations. Apps should render returned status

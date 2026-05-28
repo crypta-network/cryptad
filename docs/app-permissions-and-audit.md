@@ -151,7 +151,7 @@ The current capabilities are intentionally conservative:
 | `vault.secrets.write` | create, update, rotate, or delete app-owned vault secrets |
 | `vault.identities.read` | read app-granted identity metadata and public identity material |
 | `vault.identities.create` | create app-owned identities, including `POST /api/v1/app-vault/identities` for browser-safe Profile Publisher setup |
-| `vault.identities.use` | use an app-granted identity without exporting private identity material; the profile-document route combines this with `vault.identities.read` |
+| `vault.identities.use` | use an app-granted identity without exporting private identity material; bounded profile-document, trust-statement, and social-message routes combine this with `vault.identities.read` |
 | `vault.identities.manage` | manage app-owned identities and app grants for shared identities |
 
 Capability descriptors, endpoint descriptors, and stability levels are described in
@@ -176,6 +176,20 @@ the app-data API for bounded drafts and publish summaries, and
 `POST /api/v1/queue/inserts/app-document` for app-generated document insertion without local
 source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
 `vault.secrets.*` unless a later feature needs those broader capabilities.
+
+Social Inbox Preview is the social/mail-like migration reference app. It requests
+`vault.identities.read`, `vault.identities.create`, and `vault.identities.use` to create/select an
+app-owned identity and call the bounded `social-message` signing route. It requests
+`content.insert.app-document`, `queue.write`, and `queue.read` to publish generated
+`crypta.social.outbox.v1` snapshots and display queue summaries. It requests `content.fetch` and
+`content.subscribe` for bounded USK source fetch/subscription metadata, `app.data.read` and
+`app.data.write` for sources, outbox summaries, imported-message summaries, read state, and
+explicitly saved drafts, and `trust.read` for Trust Graph Preview `message-author` annotations.
+It should not request `vault.identities.manage`, `vault.secrets.*`, local source-path insert
+permissions, moderation authority, or any legacy plugin/Core protocol capability. Audit and
+release evidence must exclude raw social message bodies, raw fetched social documents, raw request
+bodies, raw signatures, private insert URIs, private identity material, browser-session tokens,
+form passwords, and local paths.
 
 Feed Reader is the first content-subscription reference app. Its read flow uses `content.fetch`
 for on-demand `POST /api/v1/content/fetch` rendering and `content.subscribe` for durable USK

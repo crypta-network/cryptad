@@ -84,6 +84,7 @@ NON_SECRET_METADATA_SUFFIXES = (
     "configured",
     "enabled",
     "excluded",
+    "excludedfromevidence",
     "present",
     "redacted",
     "required",
@@ -102,6 +103,22 @@ BODY_KEY_FRAGMENTS = (
     "rawfeedpayload",
     "feedcontent",
     "rawfeedcontent",
+    "truststatementbody",
+    "rawtruststatementbody",
+    "truststatementbodies",
+    "rawtruststatementbodies",
+    "truststatementpayload",
+    "rawtruststatementpayload",
+    "truststatementcontent",
+    "rawtruststatementcontent",
+    "messagebody",
+    "rawmessagebody",
+    "messagebodies",
+    "rawmessagebodies",
+    "fetchedbody",
+    "rawfetchedbody",
+    "fetchedbodies",
+    "rawfetchedbodies",
 )
 
 
@@ -940,6 +957,7 @@ def app_platform_evidence(
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
+        "app-platform.social-message-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "catalog.live-usk-publication",
@@ -966,6 +984,12 @@ def app_platform_evidence(
         "reference-app.trust-graph",
         "reference-app.trust-graph-durable-exchange",
         "reference-app.trust-graph-app-data-preview",
+        "reference-app.social-inbox",
+        "reference-app.social-inbox-signed-message",
+        "reference-app.social-inbox-subscriptions",
+        "reference-app.social-inbox-app-data",
+        "reference-app.social-inbox-trust-annotations",
+        "migration.social-mail-preview",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "legacy-admin.removal-wave-2",
@@ -1236,6 +1260,7 @@ EXPECTED_FIRST_PARTY_APPS = (
     "site-publisher",
     "profile-publisher",
     "feed-reader",
+    "social-inbox",
     "trust-graph",
 )
 EXPECTED_VAULT_CAPABILITIES = (
@@ -1680,6 +1705,27 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             gate_ids=("ecosystem.reference-content-apps",),
             docs=("docs/trust-graph-preview.md",),
             first_party_apps=("trust-graph",),
+        ),
+        MatrixRowSpec(
+            id="social-inbox-preview",
+            category="reference-apps",
+            title="Social Inbox / Message Board Preview reference app",
+            required_evidence_ids=(
+                "app-platform.social-message-signing",
+                "reference-app.social-inbox",
+                "reference-app.social-inbox-signed-message",
+                "reference-app.social-inbox-subscriptions",
+                "reference-app.social-inbox-app-data",
+                "reference-app.social-inbox-trust-annotations",
+                "migration.social-mail-preview",
+            ),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=(
+                "docs/social-inbox-reference-app.md",
+                "docs/platform-api-contract.md",
+                "docs/app-secret-and-identity-vault.md",
+            ),
+            first_party_apps=("social-inbox",),
         ),
         MatrixRowSpec(
             id="legacy-retirement",
@@ -3252,6 +3298,26 @@ def evaluate_reference_content_gate(
     previous_trust_graph_app_data_item = previous.get(
         "reference-app.trust-graph-app-data-preview"
     )
+    social_message_signing_item = current.get("app-platform.social-message-signing")
+    previous_social_message_signing_item = previous.get("app-platform.social-message-signing")
+    social_inbox_item = current.get("reference-app.social-inbox")
+    previous_social_inbox_item = previous.get("reference-app.social-inbox")
+    social_inbox_signed_message_item = current.get("reference-app.social-inbox-signed-message")
+    previous_social_inbox_signed_message_item = previous.get(
+        "reference-app.social-inbox-signed-message"
+    )
+    social_inbox_subscription_item = current.get("reference-app.social-inbox-subscriptions")
+    previous_social_inbox_subscription_item = previous.get(
+        "reference-app.social-inbox-subscriptions"
+    )
+    social_inbox_app_data_item = current.get("reference-app.social-inbox-app-data")
+    previous_social_inbox_app_data_item = previous.get("reference-app.social-inbox-app-data")
+    social_inbox_trust_item = current.get("reference-app.social-inbox-trust-annotations")
+    previous_social_inbox_trust_item = previous.get(
+        "reference-app.social-inbox-trust-annotations"
+    )
+    social_mail_migration_item = current.get("migration.social-mail-preview")
+    previous_social_mail_migration_item = previous.get("migration.social-mail-preview")
     generated_document_item = current.get("app-platform.generated-document-insert")
     previous_generated_document_item = previous.get("app-platform.generated-document-insert")
     content_fetch_item = current.get("app-platform.content-fetch")
@@ -3283,6 +3349,13 @@ def evaluate_reference_content_gate(
     trust_graph_details = evidence_details(trust_graph_item)
     trust_graph_durable_exchange_details = evidence_details(trust_graph_durable_exchange_item)
     trust_graph_app_data_details = evidence_details(trust_graph_app_data_item)
+    social_message_signing_details = evidence_details(social_message_signing_item)
+    social_inbox_details = evidence_details(social_inbox_item)
+    social_inbox_signed_message_details = evidence_details(social_inbox_signed_message_item)
+    social_inbox_subscription_details = evidence_details(social_inbox_subscription_item)
+    social_inbox_app_data_details = evidence_details(social_inbox_app_data_item)
+    social_inbox_trust_details = evidence_details(social_inbox_trust_item)
+    social_mail_migration_details = evidence_details(social_mail_migration_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
     content_subscription_details = evidence_details(content_subscription_item)
@@ -3304,6 +3377,15 @@ def evaluate_reference_content_gate(
         trust_graph_durable_exchange_details, "checks"
     )
     trust_graph_app_data_checks = nested_dict(trust_graph_app_data_details, "checks")
+    social_message_signing_checks = nested_dict(social_message_signing_details, "checks")
+    social_inbox_checks = nested_dict(social_inbox_details, "checks")
+    social_inbox_signed_message_checks = nested_dict(
+        social_inbox_signed_message_details, "checks"
+    )
+    social_inbox_subscription_checks = nested_dict(social_inbox_subscription_details, "checks")
+    social_inbox_app_data_checks = nested_dict(social_inbox_app_data_details, "checks")
+    social_inbox_trust_checks = nested_dict(social_inbox_trust_details, "checks")
+    social_mail_migration_checks = nested_dict(social_mail_migration_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
@@ -3326,6 +3408,26 @@ def evaluate_reference_content_gate(
     )
     trust_graph_app_data_status = evidence_status(trust_graph_app_data_item)
     previous_trust_graph_app_data_status = evidence_status(previous_trust_graph_app_data_item)
+    social_message_signing_status = evidence_status(social_message_signing_item)
+    previous_social_message_signing_status = evidence_status(
+        previous_social_message_signing_item
+    )
+    social_inbox_status = evidence_status(social_inbox_item)
+    previous_social_inbox_status = evidence_status(previous_social_inbox_item)
+    social_inbox_signed_message_status = evidence_status(social_inbox_signed_message_item)
+    previous_social_inbox_signed_message_status = evidence_status(
+        previous_social_inbox_signed_message_item
+    )
+    social_inbox_subscription_status = evidence_status(social_inbox_subscription_item)
+    previous_social_inbox_subscription_status = evidence_status(
+        previous_social_inbox_subscription_item
+    )
+    social_inbox_app_data_status = evidence_status(social_inbox_app_data_item)
+    previous_social_inbox_app_data_status = evidence_status(previous_social_inbox_app_data_item)
+    social_inbox_trust_status = evidence_status(social_inbox_trust_item)
+    previous_social_inbox_trust_status = evidence_status(previous_social_inbox_trust_item)
+    social_mail_migration_status = evidence_status(social_mail_migration_item)
+    previous_social_mail_migration_status = evidence_status(previous_social_mail_migration_item)
     generated_document_status = evidence_status(generated_document_item)
     previous_generated_document_status = evidence_status(previous_generated_document_item)
     content_fetch_status = evidence_status(content_fetch_item)
@@ -3401,6 +3503,37 @@ def evaluate_reference_content_gate(
             "reference-app.trust-graph-app-data-preview",
             trust_graph_app_data_status,
             previous_trust_graph_app_data_status,
+        ),
+        (
+            "app-platform.social-message-signing",
+            social_message_signing_status,
+            previous_social_message_signing_status,
+        ),
+        ("reference-app.social-inbox", social_inbox_status, previous_social_inbox_status),
+        (
+            "reference-app.social-inbox-signed-message",
+            social_inbox_signed_message_status,
+            previous_social_inbox_signed_message_status,
+        ),
+        (
+            "reference-app.social-inbox-subscriptions",
+            social_inbox_subscription_status,
+            previous_social_inbox_subscription_status,
+        ),
+        (
+            "reference-app.social-inbox-app-data",
+            social_inbox_app_data_status,
+            previous_social_inbox_app_data_status,
+        ),
+        (
+            "reference-app.social-inbox-trust-annotations",
+            social_inbox_trust_status,
+            previous_social_inbox_trust_status,
+        ),
+        (
+            "migration.social-mail-preview",
+            social_mail_migration_status,
+            previous_social_mail_migration_status,
         ),
         (
             "app-platform.generated-document-insert",
@@ -3582,6 +3715,122 @@ def evaluate_reference_content_gate(
         add_evidence_issue(
             gate_details, "warningEvidenceIds", "reference-app.trust-graph-app-data-preview"
         )
+    if social_message_signing_checks:
+        for key in (
+            "routeInContract",
+            "contractVersionV11",
+            "capabilitiesInContract",
+            "handlerUsesFixedDomainAppVaultSigning",
+            "requestRejectsGenericSigningInputs",
+            "sdkHelperUsesBoundedRoute",
+            "docsDescribeBoundedSigningBoundary",
+        ):
+            if social_message_signing_checks.get(key) is not True:
+                failures.append(f"Social message signing check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "app-platform.social-message-signing",
+                )
+    if social_inbox_details.get("appId") not in {"social-inbox", None}:
+        failures.append("Social Inbox evidence is not for social-inbox")
+        add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.social-inbox")
+    if social_inbox_checks:
+        for key in (
+            "manifestDeclaresSocialInbox",
+            "manifestDeclaresSocialPermissions",
+            "manifestUsesContractV11",
+            "usesAppVaultIdentityFlow",
+            "usesProfileMetadataFlow",
+            "usesGeneratedOutboxInsert",
+            "usesSubscriptionAndFetchFlow",
+            "usesDurableAppData",
+            "usesTrustAnnotations",
+            "previewAndNonGoalCopyPresent",
+            "noRawAdminOrBrowserStorage",
+        ):
+            if social_inbox_checks.get(key) is not True:
+                failures.append(f"Social Inbox reference app check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.social-inbox")
+    elif social_inbox_status == "pass":
+        warnings.append("Social Inbox coverage lacks detailed staged app checks")
+        add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.social-inbox")
+    if social_inbox_signed_message_checks:
+        for key in (
+            "manifestAllowsBoundedSigning",
+            "usesSdkBoundedSigner",
+            "verifiesImportedMessageSignatures",
+            "documentShapeIsBounded",
+            "docsDescribeSignedMessageFormat",
+        ):
+            if social_inbox_signed_message_checks.get(key) is not True:
+                failures.append(f"Social Inbox signed-message check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-signed-message",
+                )
+    if social_inbox_subscription_checks:
+        for key in (
+            "manifestDeclaresSubscriptionPermissions",
+            "uiDisclosesSubscriptionWorkflow",
+            "appUsesPlatformSubscriptionLifecycle",
+            "manualFetchUsesBoundedContentFetch",
+            "docsDescribeDurableUskSources",
+        ):
+            if social_inbox_subscription_checks.get(key) is not True:
+                failures.append(f"Social Inbox subscription check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-subscriptions",
+                )
+    if social_inbox_app_data_checks:
+        for key in (
+            "manifestDeclaresAppDataPermissions",
+            "usesSdkJsonRecordHelpers",
+            "persistsNamedBoundedRecords",
+            "storesSafeSummariesOnly",
+            "permissionDisclosureMentionsAppData",
+            "docsDescribePrivacyRules",
+            "noBrowserStorageOrRawAdminPath",
+        ):
+            if social_inbox_app_data_checks.get(key) is not True:
+                failures.append(f"Social Inbox app-data check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-app-data",
+                )
+    if social_inbox_trust_checks:
+        for key in (
+            "manifestDeclaresTrustRead",
+            "appQueriesAuthorScores",
+            "uiShowsNeutralAndScoredStates",
+            "docsFrameScoresAsAnnotations",
+        ):
+            if social_inbox_trust_checks.get(key) is not True:
+                failures.append(f"Social Inbox trust annotation check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-trust-annotations",
+                )
+    if social_mail_migration_checks:
+        for key in (
+            "migrationFramingPresent",
+            "nonGoalsDocumented",
+            "appComposesExpectedPlatformSurfaces",
+            "uiStatesPreviewBoundary",
+            "evidenceIdsDocumented",
+        ):
+            if social_mail_migration_checks.get(key) is not True:
+                failures.append(f"Social/mail migration preview check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "migration.social-mail-preview",
+                )
     generated_checks = nested_dict(generated_document_details, "checks")
     if generated_checks and generated_checks.get("routeDocumented") is not True:
         failures.append("Generated document insert route documentation check failed")
@@ -3688,6 +3937,20 @@ def evaluate_reference_content_gate(
             "previousTrustGraphStatus": previous_trust_graph_status,
             "trustGraphAppDataPreviewStatus": trust_graph_app_data_status,
             "previousTrustGraphAppDataPreviewStatus": previous_trust_graph_app_data_status,
+            "socialMessageSigningStatus": social_message_signing_status,
+            "previousSocialMessageSigningStatus": previous_social_message_signing_status,
+            "socialInboxStatus": social_inbox_status,
+            "previousSocialInboxStatus": previous_social_inbox_status,
+            "socialInboxSignedMessageStatus": social_inbox_signed_message_status,
+            "previousSocialInboxSignedMessageStatus": previous_social_inbox_signed_message_status,
+            "socialInboxSubscriptionStatus": social_inbox_subscription_status,
+            "previousSocialInboxSubscriptionStatus": previous_social_inbox_subscription_status,
+            "socialInboxAppDataStatus": social_inbox_app_data_status,
+            "previousSocialInboxAppDataStatus": previous_social_inbox_app_data_status,
+            "socialInboxTrustAnnotationStatus": social_inbox_trust_status,
+            "previousSocialInboxTrustAnnotationStatus": previous_social_inbox_trust_status,
+            "socialMailMigrationStatus": social_mail_migration_status,
+            "previousSocialMailMigrationStatus": previous_social_mail_migration_status,
             "generatedDocumentInsertStatus": generated_document_status,
             "previousGeneratedDocumentInsertStatus": previous_generated_document_status,
             "contentFetchStatus": content_fetch_status,
@@ -3701,11 +3964,12 @@ def evaluate_reference_content_gate(
             "profilePublisherAppId": profile_details.get("appId"),
             "feedReaderAppId": feed_reader_details.get("appId"),
             "trustGraphAppId": trust_graph_details.get("appId"),
+            "socialInboxAppId": social_inbox_details.get("appId"),
         }
     )
     return gate_from_issues(
         "ecosystem.reference-content-apps",
-        "Reference content, profile, feed, and trust app evidence passed.",
+        "Reference content, profile, feed, trust, and social inbox app evidence passed.",
         failures,
         warnings,
         gate_details,
@@ -4051,7 +4315,10 @@ def render_report(summary: dict[str, Any]) -> str:
         "network-content.subscription-scheduler",
         "app-platform.durable-app-data-store",
         "app-platform.trust-graph-preview",
+        "app-platform.trust-graph-durable-store",
+        "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
+        "app-platform.social-message-signing",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "catalog.live-usk-publication",
@@ -4078,6 +4345,12 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.trust-graph",
         "reference-app.trust-graph-durable-exchange",
         "reference-app.trust-graph-app-data-preview",
+        "reference-app.social-inbox",
+        "reference-app.social-inbox-signed-message",
+        "reference-app.social-inbox-subscriptions",
+        "reference-app.social-inbox-app-data",
+        "reference-app.social-inbox-trust-annotations",
+        "migration.social-mail-preview",
         "apphost.sandbox-provider",
         "app-update.lifecycle",
         "app-update.scheduler",
@@ -4753,6 +5026,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-vault-and-generated-documents",
             "content-fetch-and-networked-content",
             "trust-graph-preview-platform",
+            "social-inbox-preview",
             "apphost-sandbox-provider",
             "platform-api-contract",
             "interop-smoke",
@@ -4776,6 +5050,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.trust-graph-durable-store",
             "app-platform.trust-graph-exchange",
             "app-platform.trust-statement-signing",
+            "app-platform.social-message-signing",
             "app-review.governance",
             "app-review.reviewer-key-lifecycle",
             "app-review.transparency-log",
@@ -4783,6 +5058,8 @@ def run_self_test(repo_root: Path) -> None:
             "app-review.first-party-review-chain",
             "reference-app.trust-graph",
             "reference-app.trust-graph-durable-exchange",
+            "reference-app.social-inbox",
+            "migration.social-mail-preview",
             "legacy-admin.removal-wave-2",
             "app-platform.docs-portal",
             "app-platform.beta-program",
@@ -4858,6 +5135,12 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.trust-statement-signing"][
             "requiredForReleaseCandidate"
         ] is True
+        assert evidence_by_id["app-platform.social-message-signing"]["status"] == "pass", (
+            evidence_by_id
+        )
+        assert evidence_by_id["app-platform.social-message-signing"][
+            "requiredForReleaseCandidate"
+        ] is True
         for evidence_id in (
             "app-review.governance",
             "app-review.reviewer-key-lifecycle",
@@ -4884,6 +5167,16 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         ), evidence_by_id
+        for evidence_id in (
+            "reference-app.social-inbox",
+            "reference-app.social-inbox-signed-message",
+            "reference-app.social-inbox-subscriptions",
+            "reference-app.social-inbox-app-data",
+            "reference-app.social-inbox-trust-annotations",
+            "migration.social-mail-preview",
+        ):
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass", evidence_by_id
@@ -4922,6 +5215,11 @@ def run_self_test(repo_root: Path) -> None:
                 "feedSummary": "3 entries",
                 "rawFeedBodyRedacted": True,
                 "rawFeedBodiesExcluded": True,
+                "rawMessageBody": "private social message body",
+                "messageBodyText": "private social message text",
+                "rawFetchedBody": "{\"messages\":[{\"body\":\"private fetched body\"}]}",
+                "fetchedBodyPreview": "private fetched preview",
+                "rawMessageBodiesExcludedFromEvidence": True,
             },
             workspace,
             out_dir,
@@ -4936,6 +5234,11 @@ def run_self_test(repo_root: Path) -> None:
         assert feed_body_metadata["feedSummary"] == "3 entries", feed_body_metadata
         assert feed_body_metadata["rawFeedBodyRedacted"] is True, feed_body_metadata
         assert feed_body_metadata["rawFeedBodiesExcluded"] is True, feed_body_metadata
+        assert feed_body_metadata["rawMessageBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["messageBodyText"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawFetchedBody"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["fetchedBodyPreview"] == "<redacted>", feed_body_metadata
+        assert feed_body_metadata["rawMessageBodiesExcludedFromEvidence"] is True, feed_body_metadata
         interop_item = next(item for item in summary["evidence"] if item["id"] == "interop.smoke")
         assert "artifacts/private-insert-uris.json" not in json.dumps(interop_item)
 
@@ -5690,6 +5993,7 @@ def run_self_test(repo_root: Path) -> None:
                             "site-publisher": {},
                             "profile-publisher": {},
                             "feed-reader": {},
+                            "social-inbox": {},
                             "trust-graph": {},
                         }
                     }
@@ -5888,6 +6192,49 @@ def run_self_test(repo_root: Path) -> None:
         assert trust_signing_missing_exit_code == 1, trust_signing_missing_summary
         assert (
             gate_by_id(trust_signing_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
+
+        social_inbox_missing_path = write_app_summary_variant(
+            "social-inbox-missing",
+            lambda value: update_evidence(
+                value,
+                "reference-app.social-inbox",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        social_inbox_missing_summary, social_inbox_missing_exit_code = run_with_previous(
+            "social-inbox-missing-cert", app_platform_summary=social_inbox_missing_path
+        )
+        assert social_inbox_missing_exit_code == 1, social_inbox_missing_summary
+        assert (
+            gate_by_id(social_inbox_missing_summary, "ecosystem.reference-content-apps")[
+                "status"
+            ]
+            == "fail"
+        )
+
+        social_message_signing_missing_path = write_app_summary_variant(
+            "social-message-signing-missing",
+            lambda value: update_evidence(
+                value,
+                "app-platform.social-message-signing",
+                lambda entry: entry.update({"status": "missing"}),
+            ),
+        )
+        social_message_signing_missing_summary, social_message_signing_missing_exit_code = (
+            run_with_previous(
+                "social-message-signing-missing-cert",
+                app_platform_summary=social_message_signing_missing_path,
+            )
+        )
+        assert social_message_signing_missing_exit_code == 1, (
+            social_message_signing_missing_summary
+        )
+        assert (
+            gate_by_id(social_message_signing_missing_summary, "ecosystem.reference-content-apps")[
                 "status"
             ]
             == "fail"
@@ -6469,6 +6816,7 @@ def run_self_test(repo_root: Path) -> None:
             'Cookie: session=abc; csrf=def\n'
             '{"token":"json-secret","authorization":"Bearer json-secret","password":"pw"} '
             "authorization=Bearer inline-secret "
+            "rawMessageBody=private-social-body rawFetchedBody=private-fetched-body "
             "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64=base64-secret "
             "privateKeyBase64=key-secret clientSecret=client-secret api_password=api-secret "
             "privateKeyPresent=false",
@@ -6486,6 +6834,8 @@ def run_self_test(repo_root: Path) -> None:
             "key-secret",
             "client-secret",
             "api-secret",
+            "private-social-body",
+            "private-fetched-body",
         ):
             assert forbidden not in credential_scrubbed, credential_scrubbed
         assert "Authorization: <redacted>" in credential_scrubbed, credential_scrubbed

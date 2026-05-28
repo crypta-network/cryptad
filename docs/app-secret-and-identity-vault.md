@@ -97,6 +97,29 @@ passwords, or raw request bodies. Release-certification evidence should record t
 capability labels, fixture hashes, and redacted checks rather than raw trust statement bodies or
 raw signatures.
 
+## Social message signing route
+
+Social Inbox Preview uses a separate bounded identity-use route for social/mail-like migration
+experiments:
+
+```text
+POST /api/v1/app-vault/identities/{identityId}/social-message
+```
+
+The route requires `vault.identities.read` and `vault.identities.use`. It accepts only the
+documented `crypta.social.message.v1` plain-text message fields, generates `createdAt` from the
+server clock, fixes the signing domain to `crypta.social.message.v1`, and rejects caller-selected
+signing domains, raw payload bytes, and arbitrary signing purposes. It is not a generic browser
+signing API and it does not make the process-only identity-use route browser-safe.
+
+The response may include the public signed social message document, public identity metadata,
+payload hash, public verification key, and public signature bytes. It must not expose private
+keys, seeds, recovery phrases, vault file paths, raw generic signing inputs, app process tokens,
+browser-session tokens, form passwords, raw request bodies, or private insert URIs. Release
+certification should record route names, capability labels, bounds, fixture hashes, and redacted
+checks rather than raw social message bodies, raw fetched content, raw signatures, or private
+identity material. See [social-inbox-reference-app.md](social-inbox-reference-app.md).
+
 ## Process and browser restrictions
 
 App process calls authenticate with the current AppHost launch token in `CRYPTAD_APP_TOKEN`.
