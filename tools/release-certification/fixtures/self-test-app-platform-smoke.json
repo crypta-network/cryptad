@@ -1108,6 +1108,7 @@
           "noBrowserStorageOrRawAdminPath": true,
           "permissionDisclosureMentionsAppData": true,
           "persistsNamedBoundedRecords": true,
+          "signingDoesNotOverwritePublishSummary": true,
           "storesSafeSummariesOnly": true,
           "usesSdkJsonRecordHelpers": true
         },
@@ -1132,6 +1133,7 @@
           "appQueriesAuthorScores": true,
           "docsFrameScoresAsAnnotations": true,
           "manifestDeclaresTrustRead": true,
+          "unknownScoresRemainUnscored": true,
           "uiShowsNeutralAndScoredStates": true
         },
         "redaction": {

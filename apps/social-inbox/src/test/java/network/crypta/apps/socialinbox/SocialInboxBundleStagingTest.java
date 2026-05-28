@@ -325,6 +325,9 @@ class SocialInboxBundleStagingTest {
         "Object.create(null)",
         "boundedReadState",
         "isSafeMessageId",
+        "optionalNumberField",
+        "contributingEvidenceCount",
+        "[\"trusted\", \"distrusted\", \"mixed\"].includes(trustStatus)",
         "const publicKeyBytes = decodeBase64(signature.publicKeyBase64, \"publicKeyBase64\")",
         "const publicKeyFingerprint = await sha256Hex(publicKeyBytes)",
         "isSocialSourceUri",
@@ -350,7 +353,9 @@ class SocialInboxBundleStagingTest {
         "formPassword",
         "CRYPTAD_APP_TOKEN",
         "innerHTML",
-        "insertAdjacentHTML");
+        "insertAdjacentHTML",
+        "persistOutboxSummary(await localOutboxSummary())",
+        "function localOutboxSummary");
   }
 
   private static void verifyContainsAll(String text, String... expectedFragments) {

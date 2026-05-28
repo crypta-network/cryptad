@@ -207,7 +207,6 @@
         delete state.drafts.message;
       }
       await persistDrafts();
-      await persistOutboxSummary(await localOutboxSummary());
       renderOutbox();
       renderPublishSummary();
       setStatus("Message signed and added to the local outbox.");
@@ -1164,9 +1163,18 @@
   }
 
   function normalizeTrustScore(score) {
-    const value = numberField(score, "score", "value");
-    const evidence = score && Array.isArray(score.evidence) ? score.evidence.length : 0;
-    if (Number.isFinite(value)) {
+    const trustStatus = stringField(score, "status");
+    const value = optionalNumberField(score, "score", "value");
+    const contributingEvidence = numberField(score, "contributingEvidenceCount", "contributingCount");
+    const evidence =
+      numberField(score, "evidenceCount") ||
+      (score && Array.isArray(score.evidence) ? score.evidence.length : 0) ||
+      contributingEvidence;
+    if (
+      ["trusted", "distrusted", "mixed"].includes(trustStatus) &&
+      contributingEvidence > 0 &&
+      Number.isFinite(value)
+    ) {
       return { status: "scored", value, evidenceCount: evidence };
     }
     return { status: "unscored", summary: "No local trust evidence." };
@@ -1239,28 +1247,6 @@
       replyTo: textValue(formData, "replyTo"),
       recipientFingerprint: textValue(formData, "recipientFingerprint"),
       tags: tagsFromText(textValue(formData, "tags")),
-    };
-  }
-
-  async function localOutboxSummary() {
-    const summaries = [];
-    for (const signedMessage of state.localOutbox) {
-      const message = signedMessage.message || {};
-      const signature = signedMessage.signature || {};
-      summaries.push({
-        messageId: stringValue(message.messageId),
-        authorFingerprint: stringValue(message.authorFingerprint),
-        createdAt: stringValue(message.createdAt),
-        channel: stringValue(message.channel),
-        subject: boundedPreview(stringValue(message.subject), 160),
-        bodySha256: await sha256Hex(stringValue(message.body)),
-        signatureSha256: await sha256Hex(stringValue(signature.signatureBase64)),
-      });
-    }
-    return {
-      updatedAt: new Date().toISOString(),
-      localMessageCount: state.localOutbox.length,
-      messages: summaries,
     };
   }
 
@@ -1529,6 +1515,22 @@
       }
     }
     return 0;
+  }
+
+  function optionalNumberField(object, ...names) {
+    if (!object || typeof object !== "object") {
+      return null;
+    }
+    for (const name of names) {
+      const value = object[name];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string" && /^-?[0-9]+$/.test(value.trim())) {
+        return Number.parseInt(value.trim(), 10);
+      }
+    }
+    return null;
   }
 
   function boundedPreview(value, maxLength) {

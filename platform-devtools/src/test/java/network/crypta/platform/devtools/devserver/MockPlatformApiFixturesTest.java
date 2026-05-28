@@ -86,10 +86,17 @@ class MockPlatformApiFixturesTest {
     assertTrue(socialMessage.contains("\"action\":\"app-vault.identities.social-message\""));
     assertTrue(socialMessage.contains("\"type\":\"crypta.social.message.v1\""));
     assertTrue(socialMessage.contains("\"identityId\":\"local-profile\""));
+    assertTrue(
+        socialMessage.contains(
+            "\"messageId\":\"msg-1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714\""));
+    assertFalse(socialMessage.contains("mock-social-message"));
     assertEquals(200, socialMessagePost.responseCode());
     assertTrue(socialMessageBody.contains("\"action\":\"app-vault.identities.social-message\""));
     assertTrue(socialMessageBody.contains("\"domain\":\"crypta.social.message.v1\""));
     assertTrue(socialMessageBody.contains("\"identityId\":\"local-profile\""));
+    assertTrue(
+        socialMessageBody.contains(
+            "\"messageId\":\"msg-1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714\""));
     assertEquals(200, appDocumentInsert.responseCode());
     assertTrue(appDocumentInsertBody.contains("\"action\":\"queue.inserts.app-document\""));
     assertTrue(appDocumentInsertBody.contains("\"uri\":\"CHK@mock-app-document\""));

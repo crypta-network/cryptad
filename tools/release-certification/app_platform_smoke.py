@@ -6352,6 +6352,11 @@ def collect_social_inbox_app_data_evidence(settings: Settings) -> EvidenceItem:
             "isSafeMessageId",
         )
     )
+    checks["signingDoesNotOverwritePublishSummary"] = (
+        "persistOutboxSummary(await localOutboxSummary())" not in app_js
+        and "function localOutboxSummary" not in app_js
+        and "await persistOutboxSummary(summary)" in app_js
+    )
     checks["storesSafeSummariesOnly"] = all(
         fragment in app_js
         for fragment in (
@@ -6446,6 +6451,12 @@ def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> Eviden
         and "trust neutral" in app_js
         and "evidence" in app_js
         and "Refresh trust" in index
+    )
+    checks["unknownScoresRemainUnscored"] = (
+        "optionalNumberField" in app_js
+        and "contributingEvidenceCount" in app_js
+        and "[\"trusted\", \"distrusted\", \"mixed\"].includes(trustStatus)" in app_js
+        and "return { status: \"unscored\", summary: \"No local trust evidence.\" }" in app_js
     )
     checks["docsFrameScoresAsAnnotations"] = (
         "Trust Graph Preview" in reference_doc
@@ -9082,6 +9093,9 @@ def make_self_test_workspace(workspace: Path) -> None:
             "function boundedDrafts(value) { return value; }\n"
             "function isSafeMessageId(value) { return messageIdPattern.test(value); }\n"
             "function boundedReadState(value) { return Object.create(null); }\n"
+            "function optionalNumberField(value) { return 0; }\n"
+            "function normalizeTrustScore(score) { const trustStatus = 'unknown'; const contributingEvidenceCount = 0; if ([\"trusted\", \"distrusted\", \"mixed\"].includes(trustStatus)) return { status: \"scored\" }; return { status: \"unscored\", summary: \"No local trust evidence.\" }; }\n"
+            "async function publishOutbox() { const summary = {}; await persistOutboxSummary(summary); }\n"
             "const bodySha256 = 'redacted'; const bodyPreview = 'redacted'; const signatureSha256 = 'redacted';\n"
             "const uriHash = 'redacted'; const uriSummary = 'USK source URI redacted'; "
             "const publicSourceUriHash = 'redacted'; const publicSourceUriSummary = 'redacted';\n"

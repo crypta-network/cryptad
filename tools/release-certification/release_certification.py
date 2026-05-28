@@ -3790,6 +3790,7 @@ def evaluate_reference_content_gate(
             "manifestDeclaresAppDataPermissions",
             "usesSdkJsonRecordHelpers",
             "persistsNamedBoundedRecords",
+            "signingDoesNotOverwritePublishSummary",
             "storesSafeSummariesOnly",
             "permissionDisclosureMentionsAppData",
             "docsDescribePrivacyRules",
@@ -3807,6 +3808,7 @@ def evaluate_reference_content_gate(
             "manifestDeclaresTrustRead",
             "appQueriesAuthorScores",
             "uiShowsNeutralAndScoredStates",
+            "unknownScoresRemainUnscored",
             "docsFrameScoresAsAnnotations",
         ):
             if social_inbox_trust_checks.get(key) is not True:

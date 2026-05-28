@@ -292,6 +292,7 @@ final class MockPlatformApiFixtures {
     String escapedIdentityId = Json.escape(identityId);
     String escapedAppId = Json.escape(appId);
     String payloadHash = "1270c1caf9a8c647f1b3292b53740e1cf401e229cf8034cf2ecdb528ad75e714";
+    String messageId = "msg-" + payloadHash;
     return "{\"socialMessage\":{\"identity\":{\"identityId\":\""
         + escapedIdentityId
         + "\",\"publicKeyFingerprint\":\"mock-profile-fingerprint\",\"publicKeyBase64\":\"bW9jay1wdWJsaWMta2V5\",\"appId\":\""
@@ -303,7 +304,9 @@ final class MockPlatformApiFixtures {
         + escapedAppId
         + "\",\"identityId\":\""
         + escapedIdentityId
-        + "\",\"authorFingerprint\":\"mock-profile-fingerprint\",\"messageId\":\"mock-social-message\",\"createdAt\":\"2026-05-16T00:00:00Z\",\"channel\":\"general\",\"subject\":\"Mock"
+        + "\",\"authorFingerprint\":\"mock-profile-fingerprint\",\"messageId\":\""
+        + messageId
+        + "\",\"createdAt\":\"2026-05-16T00:00:00Z\",\"channel\":\"general\",\"subject\":\"Mock"
         + " social message\",\"body\":\"Mock social message body\","
         + "\"format\":\"text/plain\",\"tags\":[\"local\",\"mock\"]},"
         + "\"signature\":{\"algorithm\":\"Ed25519\",\"domain\":\"crypta.social.message.v1\","
