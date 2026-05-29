@@ -1152,17 +1152,33 @@
 
   function normalizeAppServiceInvocation(source) {
     const params = new URLSearchParams();
-    copyStringParam(source, params, "subjectKind");
-    copyStringParamAs(source, params, "kind", "subjectKind");
-    copyStringParam(source, params, "subjectUri");
-    copyStringParamAs(source, params, "uri", "subjectUri");
-    copyStringParamAs(source, params, "subject", "subjectUri");
-    copyStringParam(source, params, "context");
-    copyStringParam(source, params, "scope");
-    if (!params.has("subjectKind") || !params.has("subjectUri") || !params.has("context")) {
-      throw new Error("App-service invocation requires subjectKind, subjectUri, and context.");
-    }
+    appendAppServiceInvocationParams(source, params);
     return params;
+  }
+
+  function appendAppServiceInvocationParams(source, params) {
+    Object.keys(source).forEach((key) => {
+      if (isRequestOptionKey(key)) {
+        return;
+      }
+      const value = source[key];
+      if (Array.isArray(value)) {
+        value.forEach((item) => appendParam(params, key, item, true));
+      } else {
+        appendParam(params, key, value, true);
+      }
+    });
+  }
+
+  function isRequestOptionKey(key) {
+    return (
+      key === "appId" ||
+      key === "signal" ||
+      key === "headers" ||
+      key === "bootstrap" ||
+      key === "force" ||
+      key === "refreshBootstrap"
+    );
   }
 
   function normalizeAppServiceTokenList(value, name) {

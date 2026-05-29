@@ -264,6 +264,47 @@ class CryptaPlatformSdkResourceTest {
   }
 
   @Test
+  void classpathResource_whenAppServiceInvokeHasServiceSpecificParams_expectForwardedAsForm()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/profile-app/services/profile.lookup/invoke"
+              && options.method === "POST";
+          },
+          { serviceCall: { status: "ok", result: { profileId: "alice" } } });
+
+        const invoked = await CryptaPlatform.services.invoke("profile-app", "profile.lookup", {
+          scope: "profile.read",
+          profileId: "alice",
+          includeMeta: true,
+          limit: 2,
+          tags: ["local", "trusted"],
+          appId: "feed-reader",
+          force: true
+        });
+
+        assert.equal(invoked.serviceCall.result.profileId, "alice");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("scope"), "profile.read");
+        assert.equal(params.get("profileId"), "alice");
+        assert.equal(params.get("includeMeta"), "true");
+        assert.equal(params.get("limit"), "2");
+        assert.deepEqual(params.getAll("tags"), ["local", "trusted"]);
+        assert.equal(params.has("subjectKind"), false);
+        assert.equal(params.has("subjectUri"), false);
+        assert.equal(params.has("context"), false);
+        assert.equal(params.has("appId"), false);
+        assert.equal(params.has("force"), false);
+        assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
+        assert.equal(calls[1].credentials, "omit");
+        """);
+  }
+
+  @Test
   void classpathResource_whenContentFetchRequested_expectSessionHeaderUsed() throws Exception {
     runSdkNode(
         """
