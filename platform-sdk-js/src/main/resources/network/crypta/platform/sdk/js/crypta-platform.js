@@ -449,6 +449,55 @@
     );
   }
 
+  function listAppServices(options) {
+    return apiGet("app-services", options);
+  }
+
+  function getAppService(providerAppId, serviceId, options) {
+    return apiGet(
+      `app-services/${encodeURIComponent(appServiceSegment(providerAppId, "providerAppId"))}/services/${encodeURIComponent(
+        appServiceSegment(serviceId, "serviceId")
+      )}`,
+      options
+    );
+  }
+
+  function listAppServiceGrants(options) {
+    return apiGet("app-services/grants", options);
+  }
+
+  function requestAppServiceGrant(request, options) {
+    const source = requireOptionsObject(request, "App-service grant request");
+    return apiPostForm(
+      "app-services/grants",
+      normalizeAppServiceGrantRequest(source),
+      options || requestOptionsFrom(source)
+    );
+  }
+
+  function revokeAppServiceGrant(grantIdOrOptions, options) {
+    const grantId =
+      typeof grantIdOrOptions === "string"
+        ? grantIdOrOptions
+        : appServiceGrantId(grantIdOrOptions);
+    return apiPostForm(
+      `app-services/grants/${encodeURIComponent(trimmedRequired(grantId, "grantId"))}/revoke`,
+      {},
+      options || requestOptionsFrom(grantIdOrOptions)
+    );
+  }
+
+  function invokeAppService(providerAppId, serviceId, request, options) {
+    const source = requireOptionsObject(request, "App-service invocation");
+    return apiPostForm(
+      `app-services/${encodeURIComponent(appServiceSegment(providerAppId, "providerAppId"))}/services/${encodeURIComponent(
+        appServiceSegment(serviceId, "serviceId")
+      )}/invoke`,
+      normalizeAppServiceInvocation(source),
+      options || requestOptionsFrom(source)
+    );
+  }
+
   function insertAppDocument(options) {
     const source = requireOptionsObject(options, "App document insert options");
     return apiPostForm(
@@ -1083,6 +1132,53 @@
     }
     appendAppDataValueParam(source, params);
     return params;
+  }
+
+  function normalizeAppServiceGrantRequest(source) {
+    const params = new URLSearchParams();
+    params.set("providerAppId", appServiceSegment(source.providerAppId, "providerAppId"));
+    params.set("serviceId", appServiceSegment(source.serviceId, "serviceId"));
+    params.set("scopes", normalizeAppServiceTokenList(source.scopes, "scopes"));
+    const contexts = normalizeAppServiceTokenList(source.contexts || source.context, "contexts");
+    if (contexts) {
+      params.set("contexts", contexts);
+    }
+    copyStringParam(source, params, "purpose");
+    if (!params.has("purpose")) {
+      throw new Error("App-service grant request purpose is required.");
+    }
+    return params;
+  }
+
+  function normalizeAppServiceInvocation(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "subjectKind");
+    copyStringParamAs(source, params, "kind", "subjectKind");
+    copyStringParam(source, params, "subjectUri");
+    copyStringParamAs(source, params, "uri", "subjectUri");
+    copyStringParamAs(source, params, "subject", "subjectUri");
+    copyStringParam(source, params, "context");
+    copyStringParam(source, params, "scope");
+    if (!params.has("subjectKind") || !params.has("subjectUri") || !params.has("context")) {
+      throw new Error("App-service invocation requires subjectKind, subjectUri, and context.");
+    }
+    return params;
+  }
+
+  function normalizeAppServiceTokenList(value, name) {
+    if (typeof value === "string" && value.trim()) {
+      return value
+        .split(",")
+        .map((item) => appServiceSegment(item, name))
+        .join(",");
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => appServiceSegment(item, name)).join(",");
+    }
+    if (name === "scopes") {
+      throw new Error("App-service grant request scopes are required.");
+    }
+    return "";
   }
 
   function appendAppDataValueParam(source, params) {
@@ -1891,6 +1987,24 @@
     return normalized;
   }
 
+  function appServiceSegment(value, description) {
+    if (typeof value !== "string") {
+      throw new Error(`App-service ${description} must be a string.`);
+    }
+    const normalized = value.trim().toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(normalized)) {
+      throw new Error(`App-service ${description} must be one normalized local path segment.`);
+    }
+    return normalized;
+  }
+
+  function appServiceGrantId(source) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("App-service grant id is required.");
+    }
+    return source.grantId || source.id;
+  }
+
   function normalizeVaultGrantRequest(request) {
     const source = request && typeof request === "object" ? request : {};
     const params = {
@@ -2020,6 +2134,16 @@
         putJson: putAppDataJson,
         getJson: getAppDataJson,
       }),
+    }),
+    services: Object.freeze({
+      list: listAppServices,
+      get: getAppService,
+      grants: Object.freeze({
+        list: listAppServiceGrants,
+        request: requestAppServiceGrant,
+        revoke: revokeAppServiceGrant,
+      }),
+      invoke: invokeAppService,
     }),
     vault: Object.freeze({
       identities: Object.freeze({

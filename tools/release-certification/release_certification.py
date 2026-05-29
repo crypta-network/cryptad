@@ -958,6 +958,12 @@ def app_platform_evidence(
         "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
+        "app-services.registry",
+        "app-services.grants",
+        "app-services.trust-score-provider",
+        "reference-app.social-inbox-service-grant",
+        "app-services.web-shell",
+        "app-services.redaction",
         "app-platform.signed-bundles",
         "catalog.smoke",
         "catalog.live-usk-publication",
@@ -1577,6 +1583,26 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             docs=("docs/trust-graph-preview.md", "docs/platform-api-contract.md"),
         ),
         MatrixRowSpec(
+            id="app-service-discovery-and-grants",
+            category="app-platform",
+            title="App-service discovery, grants, and Trust Score Service",
+            required_evidence_ids=(
+                "app-services.registry",
+                "app-services.grants",
+                "app-services.trust-score-provider",
+                "reference-app.social-inbox-service-grant",
+                "app-services.web-shell",
+                "app-services.redaction",
+            ),
+            gate_ids=("ecosystem.reference-content-apps",),
+            docs=(
+                "docs/app-service-discovery-and-grants.md",
+                "docs/platform-api-contract.md",
+                "docs/social-inbox-reference-app.md",
+                "docs/trust-graph-preview.md",
+            ),
+        ),
+        MatrixRowSpec(
             id="apphost-sandbox-provider",
             category="app-platform",
             title="AppHost sandbox-provider enforcement",
@@ -1717,6 +1743,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "reference-app.social-inbox-subscriptions",
                 "reference-app.social-inbox-app-data",
                 "reference-app.social-inbox-trust-annotations",
+                "reference-app.social-inbox-service-grant",
                 "migration.social-mail-preview",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
@@ -1724,6 +1751,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/social-inbox-reference-app.md",
                 "docs/platform-api-contract.md",
                 "docs/app-secret-and-identity-vault.md",
+                "docs/app-service-discovery-and-grants.md",
             ),
             first_party_apps=("social-inbox",),
         ),
@@ -3340,6 +3368,20 @@ def evaluate_reference_content_gate(
     previous_trust_graph_exchange_item = previous.get("app-platform.trust-graph-exchange")
     trust_statement_signing_item = current.get("app-platform.trust-statement-signing")
     previous_trust_statement_signing_item = previous.get("app-platform.trust-statement-signing")
+    app_services_registry_item = current.get("app-services.registry")
+    previous_app_services_registry_item = previous.get("app-services.registry")
+    app_services_grants_item = current.get("app-services.grants")
+    previous_app_services_grants_item = previous.get("app-services.grants")
+    app_services_provider_item = current.get("app-services.trust-score-provider")
+    previous_app_services_provider_item = previous.get("app-services.trust-score-provider")
+    social_inbox_service_grant_item = current.get("reference-app.social-inbox-service-grant")
+    previous_social_inbox_service_grant_item = previous.get(
+        "reference-app.social-inbox-service-grant"
+    )
+    app_services_web_shell_item = current.get("app-services.web-shell")
+    previous_app_services_web_shell_item = previous.get("app-services.web-shell")
+    app_services_redaction_item = current.get("app-services.redaction")
+    previous_app_services_redaction_item = previous.get("app-services.redaction")
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
     profile_app_data_details = evidence_details(profile_app_data_item)
@@ -3367,6 +3409,12 @@ def evaluate_reference_content_gate(
     trust_graph_durable_store_details = evidence_details(trust_graph_durable_store_item)
     trust_graph_exchange_details = evidence_details(trust_graph_exchange_item)
     trust_statement_signing_details = evidence_details(trust_statement_signing_item)
+    app_services_registry_details = evidence_details(app_services_registry_item)
+    app_services_grants_details = evidence_details(app_services_grants_item)
+    app_services_provider_details = evidence_details(app_services_provider_item)
+    social_inbox_service_grant_details = evidence_details(social_inbox_service_grant_item)
+    app_services_web_shell_details = evidence_details(app_services_web_shell_item)
+    app_services_redaction_details = evidence_details(app_services_redaction_item)
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
     profile_app_data_checks = nested_dict(profile_app_data_details, "checks")
@@ -3385,7 +3433,13 @@ def evaluate_reference_content_gate(
     social_inbox_subscription_checks = nested_dict(social_inbox_subscription_details, "checks")
     social_inbox_app_data_checks = nested_dict(social_inbox_app_data_details, "checks")
     social_inbox_trust_checks = nested_dict(social_inbox_trust_details, "checks")
+    social_inbox_service_grant_checks = nested_dict(social_inbox_service_grant_details, "checks")
     social_mail_migration_checks = nested_dict(social_mail_migration_details, "checks")
+    app_services_registry_checks = nested_dict(app_services_registry_details, "checks")
+    app_services_grants_checks = nested_dict(app_services_grants_details, "checks")
+    app_services_provider_checks = nested_dict(app_services_provider_details, "checks")
+    app_services_web_shell_checks = nested_dict(app_services_web_shell_details, "checks")
+    app_services_redaction_checks = nested_dict(app_services_redaction_details, "checks")
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
@@ -3452,6 +3506,20 @@ def evaluate_reference_content_gate(
     previous_trust_statement_signing_status = evidence_status(
         previous_trust_statement_signing_item
     )
+    app_services_registry_status = evidence_status(app_services_registry_item)
+    previous_app_services_registry_status = evidence_status(previous_app_services_registry_item)
+    app_services_grants_status = evidence_status(app_services_grants_item)
+    previous_app_services_grants_status = evidence_status(previous_app_services_grants_item)
+    app_services_provider_status = evidence_status(app_services_provider_item)
+    previous_app_services_provider_status = evidence_status(previous_app_services_provider_item)
+    social_inbox_service_grant_status = evidence_status(social_inbox_service_grant_item)
+    previous_social_inbox_service_grant_status = evidence_status(
+        previous_social_inbox_service_grant_item
+    )
+    app_services_web_shell_status = evidence_status(app_services_web_shell_item)
+    previous_app_services_web_shell_status = evidence_status(previous_app_services_web_shell_item)
+    app_services_redaction_status = evidence_status(app_services_redaction_item)
+    previous_app_services_redaction_status = evidence_status(previous_app_services_redaction_item)
     gate_details: dict[str, Any] = {}
     failures: list[str] = []
     warnings: list[str] = []
@@ -3576,6 +3644,28 @@ def evaluate_reference_content_gate(
             trust_statement_signing_status,
             previous_trust_statement_signing_status,
         ),
+        ("app-services.registry", app_services_registry_status, previous_app_services_registry_status),
+        ("app-services.grants", app_services_grants_status, previous_app_services_grants_status),
+        (
+            "app-services.trust-score-provider",
+            app_services_provider_status,
+            previous_app_services_provider_status,
+        ),
+        (
+            "reference-app.social-inbox-service-grant",
+            social_inbox_service_grant_status,
+            previous_social_inbox_service_grant_status,
+        ),
+        (
+            "app-services.web-shell",
+            app_services_web_shell_status,
+            previous_app_services_web_shell_status,
+        ),
+        (
+            "app-services.redaction",
+            app_services_redaction_status,
+            previous_app_services_redaction_status,
+        ),
     ):
         if current_status in {"fail", "missing", "skip"}:
             failures.append(f"{evidence_id} evidence is not passing")
@@ -3689,6 +3779,8 @@ def evaluate_reference_content_gate(
             "usesBoundedTrustSigningHelper",
             "usesTrustExchangeAndQueuePreview",
             "docsDescribePreviewLimits",
+            "docsDescribeTrustScoreService",
+            "manifestAdvertisesTrustScoreService",
         ):
             if trust_graph_checks.get(key) is not True:
                 failures.append(f"Trust Graph Preview reference app check {key} failed")
@@ -3739,7 +3831,8 @@ def evaluate_reference_content_gate(
         for key in (
             "manifestDeclaresSocialInbox",
             "manifestDeclaresSocialPermissions",
-            "manifestUsesContractV11",
+            "manifestUsesContractV12",
+            "manifestDeclaresTrustScoreServiceRequest",
             "usesAppVaultIdentityFlow",
             "usesProfileMetadataFlow",
             "usesGeneratedOutboxInsert",
@@ -3805,7 +3898,8 @@ def evaluate_reference_content_gate(
                 )
     if social_inbox_trust_checks:
         for key in (
-            "manifestDeclaresTrustRead",
+            "manifestDeclaresAppServiceCapabilities",
+            "manifestDeclaresTrustScoreRequest",
             "appQueriesAuthorScores",
             "uiShowsNeutralAndScoredStates",
             "unknownScoresRemainUnscored",
@@ -3818,6 +3912,77 @@ def evaluate_reference_content_gate(
                     "failureEvidenceIds",
                     "reference-app.social-inbox-trust-annotations",
                 )
+    if social_inbox_service_grant_checks:
+        for key in (
+            "socialManifestRequestsServiceGrant",
+            "socialManifestUsesAppServiceCapabilities",
+            "socialUsesSdkServicesNamespace",
+            "socialUiShowsGrantStates",
+            "socialDocsDescribeRevocation",
+        ):
+            if social_inbox_service_grant_checks.get(key) is not True:
+                failures.append(f"Social Inbox service-grant check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-service-grant",
+                )
+    if app_services_registry_checks:
+        for key in (
+            "contractV12AndCapabilitiesPresent",
+            "routeFamilyPresent",
+            "descriptorParserPresent",
+            "runtimeWiresSharedCoordinator",
+            "sdkHelpersPresent",
+            "testsCoverManifestAndRouter",
+        ):
+            if app_services_registry_checks.get(key) is not True:
+                failures.append(f"App-service registry check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.registry")
+    if app_services_grants_checks:
+        for key in (
+            "grantModelHasRequiredFields",
+            "grantStatusesPresent",
+            "storesAreFileBackedAndInMemory",
+            "coordinatorEnforcesApprovalRevocation",
+            "testsCoverGrantLifecycle",
+        ):
+            if app_services_grants_checks.get(key) is not True:
+                failures.append(f"App-service grant check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.grants")
+    if app_services_provider_checks:
+        for key in (
+            "trustGraphManifestAdvertisesService",
+            "adapterIsBoundedNotProxy",
+            "providerDocsAndUiDescribePreviewGrantBoundary",
+            "adapterTestsCoverRedaction",
+        ):
+            if app_services_provider_checks.get(key) is not True:
+                failures.append(f"Trust-score provider check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.trust-score-provider"
+                )
+    if app_services_web_shell_checks:
+        for key in (
+            "webShellLoadsAppServiceData",
+            "webShellRendersGrantActions",
+            "webShellOmitsPrivateMaterial",
+            "webShellTestsPresent",
+        ):
+            if app_services_web_shell_checks.get(key) is not True:
+                failures.append(f"App-service Web Shell check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.web-shell")
+    if app_services_redaction_checks:
+        for key in (
+            "auditModelIsRedacted",
+            "invocationReturnsHashNotRawSubject",
+            "grantJsonContainsOnlyFingerprint",
+            "docsStateNoGenericProxyOrLocalhostTrust",
+            "evidenceIdsDocumented",
+        ):
+            if app_services_redaction_checks.get(key) is not True:
+                failures.append(f"App-service redaction check {key} failed")
+                add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.redaction")
     if social_mail_migration_checks:
         for key in (
             "migrationFramingPresent",
@@ -5179,7 +5344,17 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox-subscriptions",
             "reference-app.social-inbox-app-data",
             "reference-app.social-inbox-trust-annotations",
+            "reference-app.social-inbox-service-grant",
             "migration.social-mail-preview",
+        ):
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
+        for evidence_id in (
+            "app-services.registry",
+            "app-services.grants",
+            "app-services.trust-score-provider",
+            "app-services.web-shell",
+            "app-services.redaction",
         ):
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
             assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True

@@ -231,13 +231,17 @@ capabilities:
 | Publisher | Content insert workflow. | `content.insert`, `queue.read`, `queue.write` |
 | Site Publisher | Static site publishing pattern. | `content.insert`, `queue.read`, `queue.write` |
 | Profile Publisher | AppVault identity, bounded profile document signing, durable draft state, and app-generated document insert. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
-| Social Inbox Preview | Social/mail-like migration spike with bounded `crypta.social.message.v1` signing, generated outbox inserts, durable USK sources, app data, and Trust Graph annotations. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `trust.read`, `queue.read`, `queue.write` |
+| Social Inbox Preview | Social/mail-like migration spike with bounded `crypta.social.message.v1` signing, generated outbox inserts, durable USK sources, app data, and operator-approved Trust Graph score annotations. | `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `app.services.read`, `app.services.call`, `queue.read`, `queue.write` |
 | Feed Reader & Publisher | Durable USK subscription metadata, durable reader state, bounded content fetch, and feed snapshot publish. | `content.fetch`, `content.subscribe`, `content.insert.app-document`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 | Trust Graph Preview | Durable local trust graph backend, URI import, redacted audit, content subscription management, score, sign, and publish preview. | `trust.read`, `trust.write`, `content.fetch`, `content.subscribe`, `content.insert.app-document`, `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, `app.data.read`, `app.data.write`, `queue.read`, `queue.write` |
 
 Release evidence for the Feed Reader path includes `network-content.subscription-scheduler`,
 which proves deterministic scheduler ticks, conservative limits, dedupe, backoff, and redacted
 metadata.
+Release evidence for the app-service grant path includes `app-services.registry`,
+`app-services.grants`, `app-services.trust-score-provider`,
+`reference-app.social-inbox-service-grant`, `app-services.web-shell`, and
+`app-services.redaction`.
 
 Use the detailed docs before copying a reference pattern:
 

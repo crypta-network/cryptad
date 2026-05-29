@@ -184,6 +184,48 @@ message bodies in release evidence, raw fetched social documents,
 private insert URIs, private identity material, raw signatures, browser-session tokens, form
 passwords, or local paths.
 
+## App Services
+
+Contract v12 adds `CryptaPlatform.services` for local app-service discovery, grant requests, grant
+revocation, and mediated invocation. These helpers wrap `/api/v1/app-services`; they do not create
+or cache bearer tokens and they do not call provider localhost ports directly.
+
+```js
+const services = await CryptaPlatform.services.list();
+const trustScore = await CryptaPlatform.services.get("trust-graph", "trust.score");
+const grants = await CryptaPlatform.services.grants.list();
+
+await CryptaPlatform.services.grants.request({
+  providerAppId: "trust-graph",
+  serviceId: "trust.score",
+  scopes: ["score.read"],
+  contexts: ["message-author"],
+  purpose: "Annotate message authors with the local Trust Graph Preview score service.",
+});
+
+const score = await CryptaPlatform.services.invoke("trust-graph", "trust.score", {
+  subjectKind: "identity",
+  subjectUri: "crypta:identity:example",
+  context: "message-author",
+  scope: "score.read",
+});
+
+await CryptaPlatform.services.grants.revoke("asg-111111111111111111111111");
+```
+
+Discovery and grant listing require `app.services.read`. Grant requests and invocation require
+`app.services.call`, and invocation also requires an active operator-approved grant checked on each
+call. A pending, revoked, inactive, expired, missing, or no-longer-authorized grant makes the
+service call fail. Apps cannot approve their own grants; approval is a Web Shell host/operator
+action.
+
+For the v12 proving path, Social Inbox Preview invokes `trust-graph` / `trust.score` only through
+`CryptaPlatform.services.invoke(...)`. The Trust Graph Preview provider advertises a
+`platform-adapter` descriptor, so the platform dispatches to a built-in Trust Graph score adapter
+instead of proxying an arbitrary app server. Responses include service-call metadata and a redacted
+score result. Apps should render missing or revoked grants as neutral unavailable states and must
+not fall back to direct Trust Graph score routes after revocation.
+
 Feed Reader uses the v8 feed and content subscription helpers instead of constructing fetch forms
 by hand:
 

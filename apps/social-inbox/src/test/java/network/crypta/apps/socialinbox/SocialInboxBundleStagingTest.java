@@ -28,7 +28,7 @@ class SocialInboxBundleStagingTest {
   private static final String EXPECTED_PERMISSIONS =
       "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,"
           + "content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,"
-          + "app.data.write,trust.read";
+          + "app.data.write,app.services.read,app.services.call";
   private static final List<String> EXPECTED_PERMISSION_LIST =
       List.of(
           "vault.identities.read",
@@ -41,9 +41,10 @@ class SocialInboxBundleStagingTest {
           "queue.write",
           "app.data.read",
           "app.data.write",
-          "trust.read");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 11;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 11;
+          "app.services.read",
+          "app.services.call");
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 12;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 12;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -112,6 +113,15 @@ class SocialInboxBundleStagingTest {
     assertTrue(manifestText.contains("app.ui.mode=static"));
     assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));
     assertTrue(manifestText.contains("app.permissions=" + EXPECTED_PERMISSIONS));
+    assertTrue(manifestText.contains("app.services.requests=trust-score"));
+    assertTrue(manifestText.contains("app.service-request.trust-score.provider=trust-graph"));
+    assertTrue(manifestText.contains("app.service-request.trust-score.service=trust.score"));
+    assertTrue(manifestText.contains("app.service-request.trust-score.scopes=score.read"));
+    assertTrue(manifestText.contains("app.service-request.trust-score.contexts=message-author"));
+    assertTrue(
+        manifestText.contains(
+            "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using"
+                + " the local Trust Graph Preview score service."));
     assertTrue(manifestText.contains("sandbox.mode=restricted-process"));
     assertTrue(manifestText.contains("sandbox.required=false"));
     assertTrue(manifestText.contains("app.restart.policy=never"));
@@ -209,13 +219,14 @@ class SocialInboxBundleStagingTest {
         "<code>queue.write</code>",
         "<code>app.data.read</code>",
         "<code>app.data.write</code>",
-        "<code>trust.read</code>",
+        "<code>app.services.read</code>",
+        "<code>app.services.call</code>",
         "Migration spike status",
         "social/mail-like layer outside the daemon",
         "AppVault",
         "bounded signed message documents",
         "content insert/fetch/subscriptions",
-        "Trust Graph Preview annotations",
+        "operator-approved Trust Graph Preview service annotations",
         "not full WoT",
         "not compatible with old WebOfTrust plugin APIs",
         "not Freetalk, Sone, Freemail",
@@ -271,6 +282,7 @@ class SocialInboxBundleStagingTest {
         "content:",
         "data:",
         "trust:",
+        "services:",
         "browserSessionToken",
         "X-Crypta-App-Session",
         "createSocialMessageDocument",
@@ -299,8 +311,21 @@ class SocialInboxBundleStagingTest {
         "CryptaPlatform.content.subscriptions.remove",
         "CryptaPlatform.data.records.getJson",
         "CryptaPlatform.data.records.putJson",
-        "CryptaPlatform.trust.score",
-        "context: \"message-author\"",
+        "CryptaPlatform.services.get",
+        "CryptaPlatform.services.grants.list",
+        "CryptaPlatform.services.grants.request",
+        "CryptaPlatform.services.invoke",
+        "trustScoreProviderAppId = \"trust-graph\"",
+        "trustScoreServiceId = \"trust.score\"",
+        "trustScoreScope = \"score.read\"",
+        "Trust score unavailable / grant required.",
+        "trustScoreContext = \"message-author\"",
+        "function grantCoversTrustScore",
+        "scopes.includes(trustScoreScope)",
+        "function grantContextsCoverTrustScore",
+        "contexts.includes(trustScoreContext)",
+        "stringListField(state.trustServiceDescriptor, \"contexts\", 16).length === 0",
+        "function stringListField",
         "subjectKind: \"identity\"",
         "CryptaPlatform.queue.snapshot",
         "ui-state\", \"social-inbox\"",
@@ -345,6 +370,7 @@ class SocialInboxBundleStagingTest {
         "function postForm",
         "function loadJson",
         "function apiError",
+        "CryptaPlatform.trust.score",
         "/api/v1/",
         "localStorage",
         "sessionStorage",

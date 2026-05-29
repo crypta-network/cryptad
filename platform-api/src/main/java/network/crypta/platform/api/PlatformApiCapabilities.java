@@ -43,6 +43,12 @@ final class PlatformApiCapabilities {
   /** Manifest permission that allows app principals to write app-owned durable data. */
   static final String APP_DATA_WRITE = "app.data.write";
 
+  /** Manifest permission that allows app principals to discover local app services and grants. */
+  static final String APP_SERVICES_READ = "app.services.read";
+
+  /** Manifest permission that allows app principals to request grants and invoke local services. */
+  static final String APP_SERVICES_CALL = "app.services.call";
+
   /** Manifest permission that allows app principals to read local trust graph preview data. */
   static final String TRUST_READ = "trust.read";
 

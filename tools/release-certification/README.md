@@ -99,6 +99,12 @@ network-content.subscription-scheduler
 app-platform.trust-graph-preview
 app-platform.trust-statement-signing
 app-platform.social-message-signing
+app-services.registry
+app-services.grants
+app-services.trust-score-provider
+reference-app.social-inbox-service-grant
+app-services.web-shell
+app-services.redaction
 app-ui.design-system
 app-ui.lint
 app-ui.first-party-adoption
@@ -368,6 +374,8 @@ Certification outputs must remain suitable for release-candidate evidence.  Do n
 - raw app-vault secret values, identity private keys, identity seeds, or recovery phrases;
 - raw profile-document signatures or signed profile-document payloads;
 - raw social-message signatures or signed social-message payloads;
+- raw app-service invocation request bodies, raw subject URIs, raw service tokens, provider app
+  data, or local app-service store paths;
 - raw update or rollback command output;
 - full query strings that may contain secrets;
 - private insert URIs;

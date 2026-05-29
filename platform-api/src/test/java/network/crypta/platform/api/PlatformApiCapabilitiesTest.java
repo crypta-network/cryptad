@@ -31,6 +31,8 @@ class PlatformApiCapabilitiesTest {
             "alerts.write",
             "app.data.read",
             "app.data.write",
+            "app.services.call",
+            "app.services.read",
             "apps.manage",
             "apps.read",
             "catalogs.manage",
@@ -310,6 +312,48 @@ class PlatformApiCapabilitiesTest {
         route("GET", List.of("app-data", "export"), "app-data", "app-data.export", "app.data.read"),
         route(
             "POST", List.of("app-data", "import"), "app-data", "app-data.import", "app.data.write"),
+        route(
+            "GET",
+            List.of("app-services"),
+            "app-services",
+            "app-services.list",
+            "app.services.read"),
+        route(
+            "GET",
+            List.of("app-services", "grants"),
+            "app-services",
+            "app-services.grants.list",
+            "app.services.read"),
+        route(
+            "POST",
+            List.of("app-services", "grants"),
+            "app-services",
+            "app-services.grants.request",
+            "app.services.call"),
+        route(
+            "POST",
+            List.of("app-services", "grants", "asg-0123456789abcdef01234567", "revoke"),
+            "app-services",
+            "app-services.grants.revoke",
+            "app.services.call"),
+        route(
+            "GET",
+            List.of("app-services", "trust-graph", "services"),
+            "app-services",
+            "app-services.provider.list",
+            "app.services.read"),
+        route(
+            "GET",
+            List.of("app-services", "trust-graph", "services", "trust.score"),
+            "app-services",
+            "app-services.provider.read",
+            "app.services.read"),
+        route(
+            "POST",
+            List.of("app-services", "trust-graph", "services", "trust.score", "invoke"),
+            "app-services",
+            "app-services.invoke",
+            "app.services.call"),
         route(
             "POST",
             List.of("queue", "downloads"),
@@ -604,6 +648,10 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("PUT", List.of("app-data", "records")),
         new UnmappedRouteCase("GET", List.of("app-data", "import")),
         new UnmappedRouteCase("POST", List.of("app-data", "status")),
+        new UnmappedRouteCase("GET", List.of("app-services", "audit")),
+        new UnmappedRouteCase(
+            "POST", List.of("app-services", "grants", "asg-0123456789abcdef01234567", "approve")),
+        new UnmappedRouteCase("PUT", List.of("app-services", "grants")),
         new UnmappedRouteCase("PUT", List.of("trust-graph", "anchors")),
         new UnmappedRouteCase("GET", List.of("trust-graph", "import")),
         new UnmappedRouteCase("POST", List.of("trust-graph", "score")),

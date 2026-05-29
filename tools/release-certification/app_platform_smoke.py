@@ -47,7 +47,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 11
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 12
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -125,7 +125,8 @@ SOCIAL_INBOX_PERMISSIONS = {
     "queue.write",
     "app.data.read",
     "app.data.write",
-    "trust.read",
+    "app.services.read",
+    "app.services.call",
 }
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
@@ -814,7 +815,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/social-inbox/src/staged",
             "launcher": "bin/social-inbox.sh",
             "permissions": SOCIAL_INBOX_PERMISSIONS,
-            "apiMinimumVersion": 11,
+            "apiMinimumVersion": 12,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
             "experimentalCapabilitiesAccepted": True,
         },
@@ -1593,6 +1594,21 @@ def collect_platform_api_contract_evidence(
     required_social_message_endpoints = {
         "POST /app-vault/identities/{identityId}/social-message",
     }
+    required_app_service_capabilities = {
+        "app.services.read",
+        "app.services.call",
+    }
+    required_app_service_endpoints = {
+        "GET /app-services",
+        "GET /app-services/audit",
+        "GET /app-services/grants",
+        "POST /app-services/grants",
+        "POST /app-services/grants/{grantId}/approve",
+        "POST /app-services/grants/{grantId}/revoke",
+        "GET /app-services/{providerAppId}/services",
+        "GET /app-services/{providerAppId}/services/{serviceId}",
+        "POST /app-services/{providerAppId}/services/{serviceId}/invoke",
+    }
     stable_capabilities = set(details["stableCapabilities"])
     stable_endpoints = set(details["stableEndpoints"])
     contract_capabilities = set(capability_names(capabilities))
@@ -1611,6 +1627,10 @@ def collect_platform_api_contract_evidence(
     missing_social_message_endpoints = sorted(
         required_social_message_endpoints - contract_endpoints
     )
+    missing_app_service_capabilities = sorted(
+        required_app_service_capabilities - contract_capabilities
+    )
+    missing_app_service_endpoints = sorted(required_app_service_endpoints - contract_endpoints)
     details["appDataContract"] = {
         "capabilities": sorted(required_app_data_capabilities),
         "endpoints": sorted(required_app_data_endpoints),
@@ -1629,6 +1649,12 @@ def collect_platform_api_contract_evidence(
         "missingCapabilities": missing_social_message_capabilities,
         "missingEndpoints": missing_social_message_endpoints,
     }
+    details["appServicesContract"] = {
+        "capabilities": sorted(required_app_service_capabilities),
+        "endpoints": sorted(required_app_service_endpoints),
+        "missingCapabilities": missing_app_service_capabilities,
+        "missingEndpoints": missing_app_service_endpoints,
+    }
     if contract:
         if not isinstance(contract_version, int) or isinstance(contract_version, bool) or contract_version <= 0:
             errors.append("contractVersion must be a positive integer")
@@ -1637,7 +1663,7 @@ def collect_platform_api_contract_evidence(
         if contract_version != CURRENT_PLATFORM_API_CONTRACT_VERSION:
             errors.append(
                 "contractVersion must be "
-                f"{CURRENT_PLATFORM_API_CONTRACT_VERSION} for trust graph durable exchange support"
+                f"{CURRENT_PLATFORM_API_CONTRACT_VERSION} for app-service grant support"
             )
     if not capabilities:
         errors.append("contract has no capability descriptors")
@@ -1655,6 +1681,10 @@ def collect_platform_api_contract_evidence(
         errors.append("contract is missing social message capability descriptors")
     if missing_social_message_endpoints:
         errors.append("contract is missing social message endpoint descriptors")
+    if missing_app_service_capabilities:
+        errors.append("contract is missing app-service capability descriptors")
+    if missing_app_service_endpoints:
+        errors.append("contract is missing app-service endpoint descriptors")
 
     verifier_args = ["compat", "verify"]
     if settings.mode == "release-candidate":
@@ -1705,6 +1735,374 @@ def collect_platform_api_contract_evidence(
         source,
         details,
     )
+
+
+def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    appservices_dir = api_dir / "appservices"
+    api_tests_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api"
+    appservices_tests_dir = api_tests_dir / "appservices"
+    trust_manifest_path = workspace / "apps/trust-graph/src/staged/cryptad-app.properties.template"
+    social_manifest_path = workspace / "apps/social-inbox/src/staged/cryptad-app.properties.template"
+    if not trust_manifest_path.is_file():
+        trust_manifest_path = (
+            workspace / "apps/trust-graph/build/cryptad-app/trust-graph/cryptad-app.properties"
+        )
+    if not social_manifest_path.is_file():
+        social_manifest_path = (
+            workspace / "apps/social-inbox/build/cryptad-app/social-inbox/cryptad-app.properties"
+        )
+    try:
+        trust_manifest = parse_properties(trust_manifest_path) if trust_manifest_path.is_file() else {}
+    except ValueError:
+        trust_manifest = {}
+    try:
+        social_manifest = parse_properties(social_manifest_path) if social_manifest_path.is_file() else {}
+    except ValueError:
+        social_manifest = {}
+    social_permissions = parse_permission_set(social_manifest.get("app.permissions", ""))
+    contract_text = read_source(api_dir / "PlatformApiContract.java")
+    capabilities_text = read_source(api_dir / "PlatformApiCapabilities.java")
+    router_text = read_source(api_dir / "PlatformApiRouter.java")
+    route_text = read_source(api_dir / "PlatformApiAppServiceRoutes.java")
+    shared_services_text = read_source(api_dir / "PlatformApiSharedAppServices.java")
+    runtime_text = read_source(
+        workspace
+        / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    coordinator_text = read_source(appservices_dir / "AppServiceCoordinator.java")
+    parser_text = read_source(appservices_dir / "AppServiceManifestParser.java")
+    descriptor_text = read_source(appservices_dir / "AppServiceDescriptor.java")
+    request_descriptor_text = read_source(appservices_dir / "AppServiceRequestDescriptor.java")
+    grant_text = read_source(appservices_dir / "AppServiceGrant.java")
+    status_text = read_source(appservices_dir / "AppServiceGrantStatus.java")
+    audit_text = read_source(appservices_dir / "AppServiceAuditEvent.java")
+    audit_text_normalized = re.sub(r"\s+", " ", re.sub(r"(?m)^\s*\*\s?", " ", audit_text))
+    store_text = "\n".join(
+        read_source(appservices_dir / name)
+        for name in (
+            "AppServiceGrantStore.java",
+            "FileAppServiceGrantStore.java",
+            "InMemoryAppServiceGrantStore.java",
+        )
+    )
+    adapter_text = read_source(appservices_dir / "TrustGraphScoreAppServiceAdapter.java")
+    tests_text = "\n".join(
+        read_source(path)
+        for path in (
+            appservices_tests_dir / "AppServiceManifestParserTest.java",
+            appservices_tests_dir / "AppServiceGrantStoreTest.java",
+            appservices_tests_dir / "AppServiceCoordinatorTest.java",
+            appservices_tests_dir / "TrustGraphScoreAppServiceAdapterTest.java",
+            api_tests_dir / "PlatformApiAppServicesRouterTest.java",
+        )
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    shell_text = read_source(
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    social_app_js = read_source(workspace / "apps/social-inbox/src/staged/static/app.js")
+    social_index = read_source(workspace / "apps/social-inbox/src/staged/static/index.html")
+    trust_index = read_source(workspace / "apps/trust-graph/src/staged/static/index.html")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-service-discovery-and-grants.md",
+            "docs/platform-api-contract.md",
+            "docs/platform-sdk-js.md",
+            "docs/social-inbox-reference-app.md",
+            "docs/trust-graph-preview.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+
+    def item(
+        evidence_id: str,
+        pass_summary: str,
+        fail_summary: str,
+        checks: dict[str, bool],
+        details: dict[str, Any] | None = None,
+    ) -> EvidenceItem:
+        errors = [name for name, passed in checks.items() if passed is not True]
+        payload: dict[str, Any] = {
+            "checks": checks,
+            "sources": {
+                "contract": display_path(api_dir / "PlatformApiContract.java", workspace),
+                "routes": display_path(api_dir / "PlatformApiAppServiceRoutes.java", workspace),
+                "coordinator": display_path(appservices_dir / "AppServiceCoordinator.java", workspace),
+                "socialManifest": display_path(social_manifest_path, workspace),
+                "trustManifest": display_path(trust_manifest_path, workspace),
+            },
+        }
+        if details:
+            payload.update(details)
+        if errors:
+            return EvidenceItem(
+                evidence_id,
+                root_consequence(settings, "fail"),
+                True,
+                fail_summary,
+                source,
+                {"errors": errors, **payload},
+            )
+        return EvidenceItem(evidence_id, "pass", True, pass_summary, source, payload)
+
+    registry_checks = {
+        "contractV12AndCapabilitiesPresent": (
+            "CURRENT_CONTRACT_VERSION = 12" in contract_text
+            and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
+            and "APP_SERVICES_READ" in capabilities_text
+            and "APP_SERVICES_CALL" in capabilities_text
+            and "app.services.read" in capabilities_text
+            and "app.services.call" in capabilities_text
+        ),
+        "routeFamilyPresent": (
+            "PlatformApiAppServiceRoutes" in router_text
+            and 'case "app-services"' in router_text
+            and "Routes local app-service discovery" in route_text
+            and "service.listServices()" in route_text
+        ),
+        "descriptorParserPresent": (
+            "record AppServiceDescriptor" in descriptor_text
+            and "record AppServiceRequestDescriptor" in request_descriptor_text
+            and "app.services.provides" in parser_text
+            and "app.service-request." in parser_text
+        ),
+        "runtimeWiresSharedCoordinator": (
+            "AppServiceCoordinator appServiceCoordinator" in shared_services_text
+            and "new AppServiceCoordinator" in runtime_text
+            and 'resolve("app-services")' in runtime_text
+            and "TrustGraphScoreAppServiceAdapter" in runtime_text
+        ),
+        "sdkHelpersPresent": (
+            "services: Object.freeze" in sdk_text
+            and "listAppServices" in sdk_text
+            and "requestAppServiceGrant" in sdk_text
+            and "invokeAppService" in sdk_text
+        ),
+        "testsCoverManifestAndRouter": (
+            "AppServiceManifestParserTest" in tests_text
+            and "PlatformApiAppServicesRouterTest" in tests_text
+        ),
+    }
+    grants_checks = {
+        "grantModelHasRequiredFields": all(
+            fragment in grant_text
+            for fragment in (
+                "grantId",
+                "consumerAppId",
+                "providerAppId",
+                "serviceId",
+                "scopes",
+                "contexts",
+                "purpose",
+                "approvedAt",
+                "revokedAt",
+                "lastUsedAt",
+                "useCount",
+                "tokenFingerprint",
+            )
+        ),
+        "grantStatusesPresent": all(
+            status in status_text for status in ("PENDING", "ACTIVE", "REVOKED", "INACTIVE", "EXPIRED")
+        ),
+        "storesAreFileBackedAndInMemory": (
+            "class FileAppServiceGrantStore" in store_text
+            and "class InMemoryAppServiceGrantStore" in store_text
+            and "ATOMIC_MOVE" in store_text
+            and '"grants"' in store_text
+            and '"audit"' in store_text
+        ),
+        "coordinatorEnforcesApprovalRevocation": (
+            "requestGrant" in coordinator_text
+            and "approveGrant" in coordinator_text
+            and "revokeGrant" in coordinator_text
+            and "App principals cannot approve app-service grants." in coordinator_text
+            and "active app-service grant" in coordinator_text
+        ),
+        "testsCoverGrantLifecycle": all(
+            fragment in tests_text
+            for fragment in (
+                "grantLifecycle_whenApprovedThenRevoked_expectInvocationBoundary",
+                "invoke_whenConsumerManifestDropsCallPermission_expectDenied",
+                "requestGrant_whenProviderNotInstalled_expectProviderMissing",
+                "fileStore_whenGrantsReload_expectDeterministicOrderingAndRedactedJson",
+                "fileStore_whenAuditEventsReload_expectNewestFirstAndRedactedSubjectHash",
+            )
+        ),
+    }
+    provider_checks = {
+        "trustGraphManifestAdvertisesService": (
+            trust_manifest.get("app.services.provides") == "trust-score"
+            and trust_manifest.get("app.service.trust-score.id") == "trust.score"
+            and trust_manifest.get("app.service.trust-score.kind") == "platform-adapter"
+            and trust_manifest.get("app.service.trust-score.adapter") == "trust-graph.score"
+            and "score.read" in parse_permission_set(
+                trust_manifest.get("app.service.trust-score.scopes", "")
+            )
+        ),
+        "adapterIsBoundedNotProxy": (
+            'ADAPTER_ID = "trust-graph.score"' in adapter_text
+            and "trustGraphApiHandler.score" in adapter_text
+            and "not a proxy" in adapter_text
+            and "subjectUriHash" in adapter_text
+            and 'json.put("subjectUri",' not in adapter_text
+        ),
+        "providerDocsAndUiDescribePreviewGrantBoundary": (
+            "Trust Score Service" in trust_index
+            and "operator-approved app-service grants" in trust_index
+            and "trust.score" in docs_text
+            and "not complete WoT" in docs_text
+        ),
+        "adapterTestsCoverRedaction": (
+            "TrustGraphScoreAppServiceAdapterTest" in tests_text
+            and "invoke_whenScoreRequested_expectRedactedScoreSummary" in tests_text
+            and "subjectUriHash" in tests_text
+        ),
+    }
+    social_checks = {
+        "socialManifestRequestsServiceGrant": (
+            social_manifest.get("app.services.requests") == "trust-score"
+            and social_manifest.get("app.service-request.trust-score.provider") == "trust-graph"
+            and social_manifest.get("app.service-request.trust-score.service") == "trust.score"
+            and social_manifest.get("app.service-request.trust-score.scopes") == "score.read"
+            and social_manifest.get("app.service-request.trust-score.contexts") == "message-author"
+        ),
+        "socialManifestUsesAppServiceCapabilities": (
+            {"app.services.read", "app.services.call"}.issubset(social_permissions)
+            and "trust.read" not in social_permissions
+            and social_manifest.get("api.minimumVersion") == "12"
+            and social_manifest.get("api.maximumTestedVersion") == "12"
+        ),
+        "socialUsesSdkServicesNamespace": (
+            "CryptaPlatform.services.get" in social_app_js
+            and "CryptaPlatform.services.grants.list" in social_app_js
+            and "CryptaPlatform.services.grants.request" in social_app_js
+            and "CryptaPlatform.services.invoke" in social_app_js
+            and "CryptaPlatform.trust.score" not in social_app_js
+        ),
+        "socialUiShowsGrantStates": (
+            "Request trust grant" in social_index
+            and "trust-service-status" in social_index
+            and "Trust score unavailable / grant required" in social_app_js
+        ),
+        "socialDocsDescribeRevocation": (
+            "Trust Score Service grant" in docs_text
+            and "revoked" in docs_text
+            and "must not fall back to\n`CryptaPlatform.trust.score`" in docs_text
+        ),
+    }
+    web_shell_checks = {
+        "webShellLoadsAppServiceData": (
+            'apiUrl("app-services")' in shell_text
+            and 'apiUrl("app-services/grants")' in shell_text
+            and 'apiUrl("app-services/audit?limit=12")' in shell_text
+        ),
+        "webShellRendersGrantActions": (
+            "App-service grants" in shell_text
+            and "Approve" in shell_text
+            and "Revoke" in shell_text
+            and "appServiceGrantPath" in shell_text
+        ),
+        "webShellOmitsPrivateMaterial": (
+            "tokenFingerprint" not in shell_text
+            and "CRYPTAD_APP_TOKEN" not in shell_text
+            and "privateInsertUri" not in shell_text
+        ),
+        "webShellTestsPresent": "App-service grants" in read_source(
+            workspace
+            / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+        ),
+    }
+    redaction_checks = {
+        "auditModelIsRedacted": (
+            "subjectUriHash" in audit_text
+            and "raw subject URIs" in audit_text_normalized
+            and "raw tokens" in audit_text_normalized
+            and "local paths" in audit_text_normalized
+        ),
+        "invocationReturnsHashNotRawSubject": (
+            "subjectUriHash" in adapter_text
+            and 'json.put("subjectUri",' not in adapter_text
+            and "completeWot" in adapter_text
+        ),
+        "grantJsonContainsOnlyFingerprint": (
+            "tokenFingerprint" in grant_text
+            and "PR-243 does not issue raw service tokens" in grant_text
+            and "rawToken" not in grant_text
+        ),
+        "docsStateNoGenericProxyOrLocalhostTrust": (
+            "not a localhost proxy" in docs_text
+            and "not generic RPC" in docs_text
+            and "ambient access" in docs_text
+            and "raw request bodies" in docs_text
+        ),
+        "evidenceIdsDocumented": all(
+            evidence_id in docs_text
+            for evidence_id in (
+                "app-services.registry",
+                "app-services.grants",
+                "app-services.trust-score-provider",
+                "reference-app.social-inbox-service-grant",
+                "app-services.web-shell",
+                "app-services.redaction",
+            )
+        ),
+    }
+    return [
+        item(
+            "app-services.registry",
+            "App-service registry and descriptor evidence passed deterministic checks.",
+            "App-service registry evidence is incomplete.",
+            registry_checks,
+        ),
+        item(
+            "app-services.grants",
+            "App-service grant lifecycle evidence passed deterministic checks.",
+            "App-service grant lifecycle evidence is incomplete.",
+            grants_checks,
+        ),
+        item(
+            "app-services.trust-score-provider",
+            "Trust Graph trust.score provider evidence passed deterministic checks.",
+            "Trust Graph trust.score provider evidence is incomplete.",
+            provider_checks,
+        ),
+        item(
+            "reference-app.social-inbox-service-grant",
+            "Social Inbox app-service grant evidence passed deterministic checks.",
+            "Social Inbox app-service grant evidence is incomplete.",
+            social_checks,
+        ),
+        item(
+            "app-services.web-shell",
+            "Web Shell app-service grant UI evidence passed deterministic checks.",
+            "Web Shell app-service grant UI evidence is incomplete.",
+            web_shell_checks,
+        ),
+        item(
+            "app-services.redaction",
+            "App-service redaction and boundary evidence passed deterministic checks.",
+            "App-service redaction and boundary evidence is incomplete.",
+            redaction_checks,
+            {
+                "redaction": {
+                    "rawTokensExcluded": True,
+                    "rawSubjectUrisExcluded": True,
+                    "privateInsertUrisExcluded": True,
+                    "absolutePathsExcluded": True,
+                    "genericProxyExcluded": True,
+                }
+            },
+        ),
+    ]
 
 
 def collect_signed_bundle_evidence(settings: Settings, sample_paths: dict[str, Path]) -> EvidenceItem:
@@ -3682,6 +4080,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             "CURRENT_CONTRACT_VERSION = 9" in contract_text
             or "CURRENT_CONTRACT_VERSION = 10" in contract_text
             or "CURRENT_CONTRACT_VERSION = 11" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 12" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4041,6 +4440,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 "CURRENT_CONTRACT_VERSION = 9" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 10" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 11" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 12" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -5093,6 +5493,12 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         and "trust.write" in reference_doc
         and "UI-local" in reference_doc
     )
+    checks["docsDescribeTrustScoreService"] = (
+        "Trust Score Service" in reference_doc
+        and "trust.score" in reference_doc
+        and "operator-approved app-service grants" in reference_doc
+        and "not complete WoT" in reference_doc
+    )
     checks["readmeDocumentsTrustFlow"] = (
         "Trust Graph Preview" in app_readme
         and "trust-statement" in app_readme
@@ -5111,6 +5517,8 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
             "experimentalCapabilitiesAccepted": manifest.get(
                 "api.experimentalCapabilitiesAccepted"
             ),
+            "providedServices": manifest.get("app.services.provides"),
+            "trustScoreService": manifest.get("app.service.trust-score.id"),
         }
         checks["manifestDeclaresTrustGraph"] = (
             manifest.get("app.id") == "trust-graph"
@@ -5127,10 +5535,18 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
             == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
+        checks["manifestAdvertisesTrustScoreService"] = (
+            manifest.get("app.services.provides") == "trust-score"
+            and manifest.get("app.service.trust-score.id") == "trust.score"
+            and manifest.get("app.service.trust-score.kind") == "platform-adapter"
+            and manifest.get("app.service.trust-score.adapter") == "trust-graph.score"
+            and manifest.get("app.service.trust-score.scopes") == "score.read"
+        )
     else:
         checks["manifestDeclaresTrustGraph"] = False
         checks["manifestDeclaresTrustPermissions"] = False
         checks["manifestUsesContractV10ThroughCurrent"] = False
+        checks["manifestAdvertisesTrustScoreService"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -5527,7 +5943,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     docs_text_compact = " ".join(docs_text_lower.split())
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 11" in contract_text
+            "CURRENT_CONTRACT_VERSION = 12" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -5871,7 +6287,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 11" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 12" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -6033,9 +6449,13 @@ def collect_social_inbox_reference_app_evidence(settings: Settings) -> EvidenceI
         )
     )
     checks["usesTrustAnnotations"] = (
-        "CryptaPlatform.trust.score" in source_app_js
-        and "context: \"message-author\"" in source_app_js
+        "CryptaPlatform.services.invoke" in source_app_js
+        and "CryptaPlatform.services.grants.request" in source_app_js
+        and "trustScoreProviderAppId = \"trust-graph\"" in source_app_js
+        and "trustScoreServiceId = \"trust.score\"" in source_app_js
+        and "trustScoreContext = \"message-author\"" in source_app_js
         and "subjectKind: \"identity\"" in source_app_js
+        and "CryptaPlatform.trust.score" not in source_app_js
     )
     checks["usesQueueSummary"] = "CryptaPlatform.queue.snapshot" in source_app_js
     checks["permissionDisclosureMentionsDeclaredPermissions"] = manifest_permissions.issubset(
@@ -6080,6 +6500,8 @@ def collect_social_inbox_reference_app_evidence(settings: Settings) -> EvidenceI
             "experimentalCapabilitiesAccepted": manifest.get(
                 "api.experimentalCapabilitiesAccepted"
             ),
+            "serviceRequests": manifest.get("app.services.requests"),
+            "trustScoreRequest": manifest.get("app.service-request.trust-score.service"),
         }
         checks["manifestDeclaresSocialInbox"] = (
             manifest.get("app.id") == "social-inbox"
@@ -6090,16 +6512,24 @@ def collect_social_inbox_reference_app_evidence(settings: Settings) -> EvidenceI
         checks["manifestDeclaresSocialPermissions"] = SOCIAL_INBOX_PERMISSIONS.issubset(
             manifest_permissions
         )
-        checks["manifestUsesContractV11"] = (
-            manifest.get("api.minimumVersion") == "11"
+        checks["manifestUsesContractV12"] = (
+            manifest.get("api.minimumVersion") == "12"
             and manifest.get("api.maximumTestedVersion")
             == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
+        checks["manifestDeclaresTrustScoreServiceRequest"] = (
+            manifest.get("app.services.requests") == "trust-score"
+            and manifest.get("app.service-request.trust-score.provider") == "trust-graph"
+            and manifest.get("app.service-request.trust-score.service") == "trust.score"
+            and manifest.get("app.service-request.trust-score.scopes") == "score.read"
+            and manifest.get("app.service-request.trust-score.contexts") == "message-author"
+        )
     else:
         checks["manifestDeclaresSocialInbox"] = False
         checks["manifestDeclaresSocialPermissions"] = False
-        checks["manifestUsesContractV11"] = False
+        checks["manifestUsesContractV12"] = False
+        checks["manifestDeclaresTrustScoreServiceRequest"] = False
 
     for name, passed in checks.items():
         if passed is not True:
@@ -6150,7 +6580,7 @@ def collect_social_inbox_signed_message_evidence(settings: Settings) -> Evidence
     checks = details["checks"]
     checks["manifestAllowsBoundedSigning"] = (
         {"vault.identities.read", "vault.identities.use"}.issubset(permissions)
-        and manifest.get("api.minimumVersion") == "11"
+        and manifest.get("api.minimumVersion") in {"11", "12"}
     )
     checks["usesSdkBoundedSigner"] = (
         "CryptaPlatform.vault.identities.createSocialMessageDocument" in app_js
@@ -6439,17 +6869,30 @@ def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> Eviden
     manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
     permissions = parse_permission_set(manifest.get("app.permissions", ""))
     checks = details["checks"]
-    checks["manifestDeclaresTrustRead"] = "trust.read" in permissions
+    checks["manifestDeclaresAppServiceCapabilities"] = (
+        {"app.services.read", "app.services.call"}.issubset(permissions)
+        and "trust.read" not in permissions
+    )
+    checks["manifestDeclaresTrustScoreRequest"] = (
+        manifest.get("app.service-request.trust-score.provider") == "trust-graph"
+        and manifest.get("app.service-request.trust-score.service") == "trust.score"
+        and manifest.get("app.service-request.trust-score.scopes") == "score.read"
+        and manifest.get("app.service-request.trust-score.contexts") == "message-author"
+    )
     checks["appQueriesAuthorScores"] = (
-        "CryptaPlatform.trust.score" in app_js
+        "CryptaPlatform.services.invoke" in app_js
+        and "CryptaPlatform.services.grants.list" in app_js
+        and "CryptaPlatform.services.grants.request" in app_js
         and "subjectKind: \"identity\"" in app_js
-        and "context: \"message-author\"" in app_js
+        and "trustScoreContext = \"message-author\"" in app_js
         and "authorFingerprint" in app_js
+        and "CryptaPlatform.trust.score" not in app_js
     )
     checks["uiShowsNeutralAndScoredStates"] = (
-        "trust unscored" in app_js
-        and "trust neutral" in app_js
-        and "evidence" in app_js
+        "Trust score unavailable / grant required" in app_js
+        and "Trust score unavailable / grant revoked" in app_js
+        and "evidenceCount" in app_js
+        and "Request trust grant" in index
         and "Refresh trust" in index
     )
     checks["unknownScoresRemainUnscored"] = (
@@ -6461,6 +6904,7 @@ def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> Eviden
     checks["docsFrameScoresAsAnnotations"] = (
         "Trust Graph Preview" in reference_doc
         and "message-author" in reference_doc
+        and "Trust Score Service grant" in reference_doc
         and "not a moderation decision" in reference_doc
     )
     details["redaction"] = {
@@ -6532,7 +6976,7 @@ def collect_social_mail_migration_preview_evidence(settings: Settings) -> Eviden
                 "insertAppDocument",
                 "content.subscriptions",
                 "data.records",
-                "trust.score",
+                "services.invoke",
             )
         ),
         "uiStatesPreviewBoundary": (
@@ -7821,6 +8265,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         cli_item,
         collect_developer_beta_toolkit_evidence(settings),
         collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
+        *collect_app_services_evidence(settings),
         collect_app_vault_evidence(settings),
         collect_identity_profile_publish_evidence(settings),
         collect_generated_document_insert_evidence(settings),
@@ -7949,9 +8394,9 @@ def run_self_test(repo_root: Path) -> None:
     assert catalog["app.social-inbox.permissions"] == (
         "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,"
         "content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,"
-        "app.data.write,trust.read"
+        "app.data.write,app.services.read,app.services.call"
     )
-    assert catalog["app.social-inbox.api.minimumVersion"] == "11"
+    assert catalog["app.social-inbox.api.minimumVersion"] == "12"
     assert catalog["app.social-inbox.api.maximumTestedVersion"] == str(
         CURRENT_PLATFORM_API_CONTRACT_VERSION
     )
@@ -8412,6 +8857,15 @@ def run_self_test(repo_root: Path) -> None:
         assert vault_item["status"] == "pass", vault_item
         assert vault_item["requiredForReleaseCandidate"] is True, vault_item
         assert vault_item["details"]["capabilities"] == list(APP_VAULT_CAPABILITIES), vault_item
+        for evidence_id in (
+            "app-services.registry",
+            "app-services.grants",
+            "app-services.trust-score-provider",
+            "reference-app.social-inbox-service-grant",
+            "app-services.web-shell",
+            "app-services.redaction",
+        ):
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
         assert evidence_by_id["app-platform.identity-profile-publish"]["status"] == "pass"
         assert evidence_by_id["app-platform.generated-document-insert"]["status"] == "pass"
         assert evidence_by_id["app-platform.content-fetch"]["status"] == "pass"
@@ -8422,8 +8876,10 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
-        assert contract_details["capabilityCount"] == 9, contract_item
-        assert contract_details["endpointCount"] == 15, contract_item
+        assert contract_details["capabilityCount"] == 11, contract_item
+        assert contract_details["endpointCount"] == 24, contract_item
+        assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
+        assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
         assert contract_details["stableCapabilities"] == [
             "app.data.read",
             "app.data.write",
@@ -8951,6 +9407,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk.write_text(
         "window.CryptaPlatform = { data: Object.freeze({ records: Object.freeze({ getJson(){}, putJson(){} }), "
         "export(){}, import(){} }), queue: { snapshot(){} }, trust: { score(){} }, "
+        "services: Object.freeze({ list: listAppServices, get: getAppService, "
+        "grants: Object.freeze({ list: listAppServiceGrants, request: requestAppServiceGrant, "
+        "revoke: revokeAppServiceGrant }), invoke: invokeAppService }), "
         "vault: { identities: { create(){}, list(){}, createProfileDocument(){}, "
         "createTrustStatement(){}, createSocialMessageDocument(){} } }, "
         "content: { insertAppDocument(){}, fetchText(){}, subscriptions: Object.freeze({ list(){}, create(){}, get(){}, refresh(){}, pause(){}, resume(){}, remove(){} }) } }; "
@@ -8960,6 +9419,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "function importTrustUri(){} function trustAudit(){} function trustScore(){} "
         "function publishTrustStatement(){} function fetchAndImportTrustStatement(){} "
         "function createTrustSubscription(){} function normalizeSocialMessageDocument(){} "
+        "function listAppServices(){} function getAppService(){} "
+        "function listAppServiceGrants(){} function requestAppServiceGrant(){} "
+        "function revokeAppServiceGrant(){} function invokeAppService(){} "
         "const socialMessageRoute = '/social-message'; "
         "function createContentSubscription(){} function removeContentSubscription(){} "
         "function contentSubscriptionPathSegment(){} const path = 'content/subscriptions'; "
@@ -9056,7 +9518,8 @@ def make_self_test_workspace(workspace: Path) -> None:
             "Social Inbox Preview",
             "social-inbox.sh",
             "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,"
-            "content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read",
+            "content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,"
+            "app.services.read,app.services.call",
             "const appId = 'social-inbox';\n"
             "const socialMessageType = 'crypta.social.message.v1';\n"
             "const socialOutboxType = 'crypta.social.outbox.v1';\n"
@@ -9102,10 +9565,14 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const insertUriRedaction = 'redacted'; function redactedInsertUri(value) { return 'redacted'; }\n"
             "CryptaPlatform.data.records.getJson('ui-state', 'social-inbox');\n"
             "CryptaPlatform.data.records.putJson({ namespace: 'social', key: 'sources', schemaVersion: 1, value: [] });\n"
-            "CryptaPlatform.trust.score({ subjectKind: \"identity\", subjectUri: 'fingerprint', context: \"message-author\" });\n"
-            "const authorFingerprint = 'fingerprint'; const trustNeutral = 'trust neutral'; const trustUnscored = 'trust unscored'; const evidence = [];\n"
+            "const trustScoreProviderAppId = \"trust-graph\"; const trustScoreServiceId = \"trust.score\"; const trustScoreContext = \"message-author\";\n"
+            "CryptaPlatform.services.get(trustScoreProviderAppId, trustScoreServiceId);\n"
+            "CryptaPlatform.services.grants.list();\n"
+            "CryptaPlatform.services.grants.request({ providerAppId: trustScoreProviderAppId, serviceId: trustScoreServiceId, scopes: [\"score.read\"], contexts: [trustScoreContext], purpose: 'Annotate message authors.' });\n"
+            "CryptaPlatform.services.invoke(trustScoreProviderAppId, trustScoreServiceId, { subjectKind: \"identity\", subjectUri: 'fingerprint', context: trustScoreContext, scope: 'score.read' });\n"
+            "const authorFingerprint = 'fingerprint'; const trustGrantRequired = 'Trust score unavailable / grant required.'; const trustGrantRevoked = 'Trust score unavailable / grant revoked.'; const evidenceCount = 0;\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n"
-            "const dataRecords = 'data.records'; const contentSubscriptions = 'content.subscriptions'; const trustScore = 'trust.score';\n",
+            "const dataRecords = 'data.records'; const contentSubscriptions = 'content.subscriptions'; const serviceInvocation = 'services.invoke'; const trustScore = 'trust.score';\n",
         ),
         (
             "trust-graph",
@@ -9157,6 +9624,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 extra_ui = (
                     "<p>Anchors and imported statements persist through the platform trust graph backend.</p>"
                     "<p>Exchange uses content fetch, insert, and subscription APIs.</p>"
+                    "<p>Trust Score Service exposes trust.score through operator-approved app-service grants.</p>"
                     "<h2>Subscriptions</h2><h2>Audit</h2><p>not full WoT</p>"
                 )
             elif app_id == "social-inbox":
@@ -9167,7 +9635,8 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "and does not add a daemon-core message store. It makes no network protocol change.</p>"
                     "<h2>Identity</h2><h2>Compose</h2><h2>Publish outbox</h2>"
                     "<h2>USK social sources</h2><h2>Sources and subscriptions</h2>"
-                    "<h2>Inbox</h2><button>Refresh trust</button>"
+                    "<h2>Inbox</h2><div id=\"trust-service-status\"></div>"
+                    "<button>Request trust grant</button><button>Refresh trust</button>"
                 )
             else:
                 extra_ui = ""
@@ -9198,7 +9667,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         is_social_inbox = app_id == "social-inbox"
         is_trust_graph = app_id == "trust-graph"
         api_minimum = (
-            "11"
+            "12"
             if is_social_inbox
             else "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
         )
@@ -9212,6 +9681,28 @@ def make_self_test_workspace(workspace: Path) -> None:
             else "4"
         )
         experimental_accepted = "true" if is_profile_publisher or is_social_inbox or is_trust_graph else "false"
+        service_lines: list[str] = []
+        if is_social_inbox:
+            service_lines = [
+                "app.services.requests=trust-score",
+                "app.service-request.trust-score.provider=trust-graph",
+                "app.service-request.trust-score.service=trust.score",
+                "app.service-request.trust-score.scopes=score.read",
+                "app.service-request.trust-score.contexts=message-author",
+                "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.",
+            ]
+        elif is_trust_graph:
+            service_lines = [
+                "app.services.provides=trust-score",
+                "app.service.trust-score.id=trust.score",
+                "app.service.trust-score.name=Trust Score Service",
+                "app.service.trust-score.version=1",
+                "app.service.trust-score.kind=platform-adapter",
+                "app.service.trust-score.adapter=trust-graph.score",
+                "app.service.trust-score.scopes=score.read",
+                "app.service.trust-score.contexts=message-author,profile",
+                "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.",
+            ]
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
                 [
@@ -9226,6 +9717,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "app.ui.mode=static",
                     "app.ui.entry=static/index.html",
                     f"app.permissions={permissions}",
+                    *service_lines,
                     "quota.data.bytes=0",
                     "quota.cache.bytes=0",
                 ]
@@ -9341,12 +9833,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 11; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 12; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
+        "static final int APP_SERVICES_CONTRACT_VERSION = 12; "
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
@@ -9401,6 +9894,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String trustStatementAction = \"app-vault.identities.trust-statement\"; "
         "String socialMessage = \"/app-vault/identities/{identityId}/social-message\"; "
         "String socialMessageAction = \"app-vault.identities.social-message\"; "
+        "String appServices = \"/app-services\"; "
+        "String appServicesAudit = \"/app-services/audit\"; "
+        "String appServicesGrants = \"/app-services/grants\"; "
+        "String appServicesApprove = \"/app-services/grants/{grantId}/approve\"; "
+        "String appServicesRevoke = \"/app-services/grants/{grantId}/revoke\"; "
+        "String appServicesProvider = \"/app-services/{providerAppId}/services\"; "
+        "String appServicesDescriptor = \"/app-services/{providerAppId}/services/{serviceId}\"; "
+        "String appServicesInvoke = \"/app-services/{providerAppId}/services/{serviceId}/invoke\"; "
+        "String appServicesRead = \"app.services.read\"; "
+        "String appServicesCall = \"app.services.call\"; "
         "String vaultRead = \"PlatformApiCapabilities.VAULT_IDENTITIES_READ\"; "
         "String vaultUse = \"PlatformApiCapabilities.VAULT_IDENTITIES_USE\"; }\n",
         encoding="utf-8",
@@ -9411,7 +9914,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "static final String CONTENT_FETCH = \"content.fetch\"; "
         "static final String CONTENT_SUBSCRIBE = \"content.subscribe\"; "
         "static final String APP_DATA_READ = \"app.data.read\"; "
-        "static final String APP_DATA_WRITE = \"app.data.write\"; }\n",
+        "static final String APP_DATA_WRITE = \"app.data.write\"; "
+        "static final String APP_SERVICES_READ = \"app.services.read\"; "
+        "static final String APP_SERVICES_CALL = \"app.services.call\"; }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiRouter.java").write_text(
@@ -9425,11 +9930,79 @@ def make_self_test_workspace(workspace: Path) -> None:
         "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH); "
         "Object h = new ContentSubscriptionsApiHandler(); "
         "String unavailable = \"content_subscription_service_unavailable 503\"; } "
-        "PlatformApiAppDataRoutes appDataRoutes; }\n",
+        "PlatformApiAppDataRoutes appDataRoutes; "
+        "PlatformApiAppServiceRoutes appServiceRoutes; String route = \"app-services\"; "
+        "// case \"app-services\" "
+        "Object app = appServiceRoutes.route(null, null); }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiSharedAppServices.java").write_text(
-        "record PlatformApiSharedAppServices(TrustGraphApiHandler trustGraphApiHandler) {}\n",
+        "record PlatformApiSharedAppServices(TrustGraphApiHandler trustGraphApiHandler, "
+        "AppServiceCoordinator appServiceCoordinator) {}\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiAppServiceRoutes.java").write_text(
+        "final class PlatformApiAppServiceRoutes { // Routes local app-service discovery\n"
+        "Object route(Object segments, Object request) { return service.listServices(); } }\n",
+        encoding="utf-8",
+    )
+    appservices_dir = api_dir / "appservices"
+    appservices_dir.mkdir(parents=True, exist_ok=True)
+    (appservices_dir / "AppServiceDescriptor.java").write_text(
+        "public record AppServiceDescriptor(String providerAppId, String serviceId) {}\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceRequestDescriptor.java").write_text(
+        "public record AppServiceRequestDescriptor(String consumerAppId, String serviceId) {}\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceManifestParser.java").write_text(
+        "final class AppServiceManifestParser { String provides = \"app.services.provides\"; "
+        "String requests = \"app.service-request.\"; }\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceGrant.java").write_text(
+        "record AppServiceGrant(String grantId, String consumerAppId, String providerAppId, "
+        "String serviceId, String scopes, String contexts, String purpose, String approvedAt, "
+        "String revokedAt, String lastUsedAt, long useCount, String tokenFingerprint) { "
+        "// PR-243 does not issue raw service tokens\n"
+        "String noRawToken = \"fingerprint only\"; }\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceGrantStatus.java").write_text(
+        "enum AppServiceGrantStatus { PENDING, ACTIVE, REVOKED, INACTIVE, EXPIRED }\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceAuditEvent.java").write_text(
+        "record AppServiceAuditEvent(String subjectUriHash) { "
+        "// omits raw subject URIs, raw tokens, and local paths\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceGrantStore.java").write_text(
+        "interface AppServiceGrantStore {}\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "FileAppServiceGrantStore.java").write_text(
+        "class FileAppServiceGrantStore implements AppServiceGrantStore { "
+        "String a = \"ATOMIC_MOVE\"; String b = \"grants\"; String c = \"audit\"; }\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "InMemoryAppServiceGrantStore.java").write_text(
+        "class InMemoryAppServiceGrantStore implements AppServiceGrantStore {}\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "AppServiceCoordinator.java").write_text(
+        "class AppServiceCoordinator { void requestGrant(){} void approveGrant(){} void revokeGrant(){} "
+        "String a = \"App principals cannot approve app-service grants.\"; "
+        "String b = \"active app-service grant\"; }\n",
+        encoding="utf-8",
+    )
+    (appservices_dir / "TrustGraphScoreAppServiceAdapter.java").write_text(
+        "class TrustGraphScoreAppServiceAdapter { static final String ADAPTER_ID = \"trust-graph.score\"; "
+        "// not a proxy\n"
+        "void invoke(){ trustGraphApiHandler.score(null); json.put(\"subjectUriHash\", \"sha256:redacted\"); "
+        "String completeWot = \"completeWot\"; } }\n",
         encoding="utf-8",
     )
     api_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api"
@@ -9456,6 +10029,36 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String b = \"trust-graph/audit trust.read\"; String c = \"social-message vault.identities.use\"; }\n",
         encoding="utf-8",
     )
+    appservices_test_dir = api_test_dir / "appservices"
+    appservices_test_dir.mkdir(parents=True, exist_ok=True)
+    (appservices_test_dir / "AppServiceManifestParserTest.java").write_text(
+        "class AppServiceManifestParserTest { "
+        "void parseProvidedServices_whenManifestDeclaresTrustScore_expectDescriptor() {} }\n",
+        encoding="utf-8",
+    )
+    (appservices_test_dir / "AppServiceGrantStoreTest.java").write_text(
+        "class AppServiceGrantStoreTest { "
+        "void fileStore_whenGrantsReload_expectDeterministicOrderingAndRedactedJson() {} "
+        "void fileStore_whenAuditEventsReload_expectNewestFirstAndRedactedSubjectHash() {} }\n",
+        encoding="utf-8",
+    )
+    (appservices_test_dir / "AppServiceCoordinatorTest.java").write_text(
+        "class AppServiceCoordinatorTest { "
+        "void grantLifecycle_whenApprovedThenRevoked_expectInvocationBoundary() {} "
+        "void invoke_whenConsumerManifestDropsCallPermission_expectDenied() {} "
+        "void requestGrant_whenProviderNotInstalled_expectProviderMissing() {} }\n",
+        encoding="utf-8",
+    )
+    (appservices_test_dir / "TrustGraphScoreAppServiceAdapterTest.java").write_text(
+        "class TrustGraphScoreAppServiceAdapterTest { "
+        "void invoke_whenScoreRequested_expectRedactedScoreSummary() { String subjectUriHash; } }\n",
+        encoding="utf-8",
+    )
+    (api_test_dir / "PlatformApiAppServicesRouterTest.java").write_text(
+        "class PlatformApiAppServicesRouterTest { "
+        "void route_whenAppUsesDiscoveryGrantAndInvocation_expectGrantBoundary() {} }\n",
+        encoding="utf-8",
+    )
     (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
         "final class TrustGraphApiRouterTest { void route_whenImportUriHasContentFetchCapability() {} "
         "void route_whenAuditReadAfterImport() {} }\n",
@@ -9476,7 +10079,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     (bridge_dir / "CoreHttpShellRuntimeSupport.java").write_text(
         "final class CoreHttpShellRuntimeSupport { void create() { "
         "Object handler = new TrustGraphApiHandler(new FileTrustGraphStore("
-        "layout.dataDir().resolve(\"apps\").resolve(\"trust-graph\"))); } }\n",
+        "layout.dataDir().resolve(\"apps\").resolve(\"trust-graph\"))); "
+        "Object appServices = new AppServiceCoordinator(layout.dataDir().resolve(\"apps\").resolve(\"app-services\"), "
+        "new TrustGraphScoreAppServiceAdapter(handler)); } }\n",
         encoding="utf-8",
     )
     appdata_api_dir = api_dir / "appdata"
@@ -9745,9 +10350,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
         "const path = 'app-catalogs/recommended';\n"
-        "const action = 'addRecommended';\n",
+        "const action = 'addRecommended';\n"
+        "function appServiceGrantPath(){}\n"
+        "const grants = 'App-service grants'; const approve = 'Approve'; const revoke = 'Revoke';\n"
+        "apiUrl(\"app-services\"); apiUrl(\"app-services/grants\"); apiUrl(\"app-services/audit?limit=12\");\n",
         encoding="utf-8",
     )
+    web_shell_test = (
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    web_shell_test.parent.mkdir(parents=True, exist_ok=True)
+    web_shell_test.write_text("class WebShellResourcesTest { String grants = \"App-service grants\"; }\n", encoding="utf-8")
     docs = workspace / "docs"
     docs.mkdir(parents=True, exist_ok=True)
     first_party_docs = (
@@ -9759,7 +10373,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "durable content.subscribe USK sources, app-data read-state and drafts, and Trust Graph Preview message-author annotations that are not a moderation decision. "
         "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message protocol, or network protocol changes. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
-        "Trust Graph Preview is not a full Web of Trust and uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, and bounded trust-statement signing. "
+        "Trust Graph Preview is not a full Web of Trust, not complete WoT, and uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, bounded trust-statement signing, and operator-approved app-service grants. "
         "Trust anchors are local. "
         "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
         "api.minimumVersion, changelog.summary, and review receipts. "
@@ -9786,6 +10400,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "It requires app.data.read and app.data.write, enforces cryptad.appData.maxRecordBytes and quota bounds, "
         "is not a filesystem API, is not a generic database, and is not a secret vault. "
         "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app values. "
+        "Contract v12 adds GET /api/v1/app-services, app.services.read, app.services.call, "
+        "operator-approved app-service grants, and mediated trust.score invocation through Trust Score Service grants. "
+        "It is not generic RPC, not a localhost proxy, and does not give apps ambient access to provider ports or data. "
+        "Social Inbox uses a Trust Score Service grant for message-author annotations; revoked grants fail, and it must not fall back to\n"
+        "`CryptaPlatform.trust.score`. "
+        "Release evidence covers app-services.registry, app-services.grants, app-services.trust-score-provider, "
+        "reference-app.social-inbox-service-grant, app-services.web-shell, and app-services.redaction. "
         "Feed Reader and Profile Publisher use app-data for bounded local state. "
         "Trust Graph Preview uses UI-local app-data state separate from the platform trust graph backend. "
         "The durable local backend has a durable file-backed preview store that persists local trust anchors, imported public statements, and redacted audit entries. "
@@ -10398,6 +11019,11 @@ class CoreHttpShellRuntimeSupport {
     return new TrustGraphApiHandler(
       new FileTrustGraphStore(layout.dataDir().resolve("apps").resolve("trust-graph")));
   }
+  AppServiceCoordinator createAppServiceCoordinator() {
+    return new AppServiceCoordinator(
+      new FileAppServiceGrantStore(layout.dataDir().resolve("apps").resolve("app-services")),
+      new TrustGraphScoreAppServiceAdapter(createTrustGraphApiHandler()));
+  }
   ContentSubscriptionScheduler createContentSubscriptionScheduler() {
     return new ContentSubscriptionScheduler(contentSubscriptionService);
   }
@@ -10425,6 +11051,13 @@ function renderRecommendedCatalogs(){}
 function renderRecommendedCatalogCard(){}
 const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";
+function appServiceGrantPath(){}
+const appServiceTitle = "App-service grants";
+const approve = "Approve";
+const revoke = "Revoke";
+apiUrl("app-services");
+apiUrl("app-services/grants");
+apiUrl("app-services/audit?limit=12");
 definitionList([
   ["Scheduler status", scheduler.status],
   ["Scheduler failures", scheduler.failureCount],
@@ -10542,7 +11175,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=11",
+                "api.maximumTestedVersion=12",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -10691,7 +11324,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 11,
+                    "contractVersion": 12,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -10758,6 +11391,20 @@ def api_snapshot(args):
                             "deprecation": None,
                             "description": "Use bounded AppVault signing routes.",
                         },
+                        {
+                            "name": "app.services.read",
+                            "stability": "experimental",
+                            "sinceContractVersion": 12,
+                            "deprecation": None,
+                            "description": "Discover local app services and grants.",
+                        },
+                        {
+                            "name": "app.services.call",
+                            "stability": "experimental",
+                            "sinceContractVersion": 12,
+                            "deprecation": None,
+                            "description": "Request grants and invoke approved services.",
+                        },
                     ],
                     "endpoints": [
                         {
@@ -10791,6 +11438,35 @@ def api_snapshot(args):
                             "method": "POST",
                             "routeTemplate": "/app-vault/identities/{identityId}/social-message",
                             "requiredCapabilities": ["vault.identities.read", "vault.identities.use"],
+                            "stability": "experimental",
+                        },
+                        {"method": "GET", "routeTemplate": "/app-services", "stability": "experimental"},
+                        {"method": "GET", "routeTemplate": "/app-services/audit", "stability": "experimental"},
+                        {"method": "GET", "routeTemplate": "/app-services/grants", "stability": "experimental"},
+                        {"method": "POST", "routeTemplate": "/app-services/grants", "stability": "experimental"},
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/app-services/grants/{grantId}/approve",
+                            "stability": "experimental",
+                        },
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/app-services/grants/{grantId}/revoke",
+                            "stability": "experimental",
+                        },
+                        {
+                            "method": "GET",
+                            "routeTemplate": "/app-services/{providerAppId}/services",
+                            "stability": "experimental",
+                        },
+                        {
+                            "method": "GET",
+                            "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}",
+                            "stability": "experimental",
+                        },
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}/invoke",
                             "stability": "experimental",
                         },
                     ],
@@ -10870,7 +11546,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=11' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=12' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -11047,7 +11723,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 11,
+    "contractVersion": 12,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
@@ -11113,6 +11789,20 @@ PY
         "sinceContractVersion": 11,
         "deprecation": null,
         "description": "Use bounded AppVault signing routes."
+      },
+      {
+        "name": "app.services.read",
+        "stability": "experimental",
+        "sinceContractVersion": 12,
+        "deprecation": null,
+        "description": "Discover local app services and grants."
+      },
+      {
+        "name": "app.services.call",
+        "stability": "experimental",
+        "sinceContractVersion": 12,
+        "deprecation": null,
+        "description": "Request grants and invoke approved services."
       }
     ],
     "endpoints": [
@@ -11204,6 +11894,51 @@ PY
           "vault.identities.read",
           "vault.identities.use"
         ],
+        "stability": "experimental"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-services",
+        "stability": "experimental"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-services/audit",
+        "stability": "experimental"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-services/grants",
+        "stability": "experimental"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-services/grants",
+        "stability": "experimental"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-services/grants/{grantId}/approve",
+        "stability": "experimental"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-services/grants/{grantId}/revoke",
+        "stability": "experimental"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-services/{providerAppId}/services",
+        "stability": "experimental"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}",
+        "stability": "experimental"
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}/invoke",
         "stability": "experimental"
       }
     ]

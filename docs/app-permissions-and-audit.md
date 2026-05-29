@@ -133,6 +133,8 @@ The current capabilities are intentionally conservative:
 | `security.write` | network and physical threat-level mutations |
 | `trust.read` | read local Trust Graph Preview status, anchors, subjects, statement summaries, scores, and bounded evidence |
 | `trust.write` | import bounded trust statements and add/remove local trust anchors |
+| `app.services.read` | discover local app-service descriptors and read caller-visible grant state |
+| `app.services.call` | request and invoke operator-approved local app-service grants |
 | `updates.read` | `GET /api/v1/updates/**` |
 | `updates.write` | core update download trigger |
 | `wizard.read` | `GET /api/v1/wizard/**` |
@@ -184,7 +186,8 @@ app-owned identity and call the bounded `social-message` signing route. It reque
 `crypta.social.outbox.v1` snapshots and display queue summaries. It requests `content.fetch` and
 `content.subscribe` for bounded USK source fetch/subscription metadata, `app.data.read` and
 `app.data.write` for sources, outbox summaries, imported-message summaries, read state, and
-explicitly saved drafts, and `trust.read` for Trust Graph Preview `message-author` annotations.
+explicitly saved drafts, and `app.services.read` plus `app.services.call` for the operator-approved
+Trust Graph Preview `trust.score` service used for `message-author` annotations.
 It should not request `vault.identities.manage`, `vault.secrets.*`, local source-path insert
 permissions, moderation authority, or any legacy plugin/Core protocol capability. Audit and
 release evidence must exclude raw social message bodies, raw fetched social documents, raw request

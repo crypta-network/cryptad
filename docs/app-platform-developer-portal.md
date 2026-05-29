@@ -25,6 +25,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
+| App-service discovery and grants | [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) |
 | Durable app data | [app-data-store.md](app-data-store.md) |
 | App-owned UI and isolated origins | [app-owned-ui.md](app-owned-ui.md) |
 | App UI design system and lint | [app-ui-design-system.md](app-ui-design-system.md) |
@@ -51,13 +52,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 11
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 12
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=11` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=12` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -74,7 +75,7 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Publisher | `publisher` | Legacy publisher replacement for content insert workflows. |
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
 | Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
-| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and Trust Graph annotations. |
+| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and operator-approved Trust Graph service annotations. |
 | Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
 | Trust Graph Preview | `trust-graph` | Durable local trust backend, URI import, scoring, signing, publication, subscription, redacted audit, and UI-local state. |
 

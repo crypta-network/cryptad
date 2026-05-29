@@ -1,6 +1,7 @@
 package network.crypta.platform.api;
 
 import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
@@ -21,13 +22,15 @@ import network.crypta.platform.appvault.AppVaultService;
  * @param contentSubscriptionService optional shared content-subscription service
  * @param appDataService optional shared durable app-data service
  * @param trustGraphApiHandler optional shared durable trust graph preview handler
+ * @param appServiceCoordinator optional shared app-service discovery and grant coordinator
  */
 public record PlatformApiSharedAppServices(
     AppVaultService vaultService,
     AppUpdateService updateService,
     ContentSubscriptionService contentSubscriptionService,
     AppDataService appDataService,
-    TrustGraphApiHandler trustGraphApiHandler) {
+    TrustGraphApiHandler trustGraphApiHandler,
+    AppServiceCoordinator appServiceCoordinator) {
 
   /**
    * Returns an empty shared-service group.
@@ -35,7 +38,7 @@ public record PlatformApiSharedAppServices(
    * @return service group with every optional app-platform service absent
    */
   public static PlatformApiSharedAppServices none() {
-    return new PlatformApiSharedAppServices(null, null, null, null, null);
+    return new PlatformApiSharedAppServices(null, null, null, null, null, null);
   }
 
   /**
@@ -45,7 +48,7 @@ public record PlatformApiSharedAppServices(
    * @return service group with vault routing enabled when {@code vaultService} is non-null
    */
   public static PlatformApiSharedAppServices withVault(AppVaultService vaultService) {
-    return new PlatformApiSharedAppServices(vaultService, null, null, null, null);
+    return new PlatformApiSharedAppServices(vaultService, null, null, null, null, null);
   }
 
   /**
@@ -96,11 +99,39 @@ public record PlatformApiSharedAppServices(
       ContentSubscriptionService contentSubscriptionService,
       AppDataService appDataService,
       TrustGraphApiHandler trustGraphApiHandler) {
+    return of(
+        vaultService,
+        appUpdateService,
+        contentSubscriptionService,
+        appDataService,
+        trustGraphApiHandler,
+        null);
+  }
+
+  /**
+   * Returns a service group containing all currently shared app-platform service types.
+   *
+   * @param vaultService optional app-vault service
+   * @param appUpdateService optional shared app-update lifecycle service
+   * @param contentSubscriptionService optional shared content-subscription service
+   * @param appDataService optional durable app-data service
+   * @param trustGraphApiHandler optional shared durable trust graph preview handler
+   * @param appServiceCoordinator optional shared app-service discovery and grant coordinator
+   * @return service group for runtime-managed app-platform route families
+   */
+  public static PlatformApiSharedAppServices of(
+      AppVaultService vaultService,
+      AppUpdateService appUpdateService,
+      ContentSubscriptionService contentSubscriptionService,
+      AppDataService appDataService,
+      TrustGraphApiHandler trustGraphApiHandler,
+      AppServiceCoordinator appServiceCoordinator) {
     return new PlatformApiSharedAppServices(
         vaultService,
         appUpdateService,
         contentSubscriptionService,
         appDataService,
-        trustGraphApiHandler);
+        trustGraphApiHandler,
+        appServiceCoordinator);
   }
 }

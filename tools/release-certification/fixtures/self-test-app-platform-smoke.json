@@ -59,9 +59,9 @@
     {
       "details": {
         "apiVersion": "v1",
-        "capabilityCount": 23,
-        "contractVersion": 11,
-        "endpointCount": 52,
+        "capabilityCount": 25,
+        "contractVersion": 12,
+        "endpointCount": 61,
         "flaggedStability": [],
         "stabilityCounts": {
           "stable": 75
@@ -72,6 +72,101 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Platform API contract snapshot and offline compatibility checks passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "contractV12AndCapabilitiesPresent": true,
+          "descriptorParserPresent": true,
+          "routeFamilyPresent": true,
+          "runtimeWiresSharedCoordinator": true,
+          "sdkHelpersPresent": true,
+          "testsCoverManifestAndRouter": true
+        }
+      },
+      "id": "app-services.registry",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service registry and descriptor evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "coordinatorEnforcesApprovalRevocation": true,
+          "grantModelHasRequiredFields": true,
+          "grantStatusesPresent": true,
+          "storesAreFileBackedAndInMemory": true,
+          "testsCoverGrantLifecycle": true
+        }
+      },
+      "id": "app-services.grants",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service grant lifecycle evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "adapterIsBoundedNotProxy": true,
+          "adapterTestsCoverRedaction": true,
+          "providerDocsAndUiDescribePreviewGrantBoundary": true,
+          "trustGraphManifestAdvertisesService": true
+        }
+      },
+      "id": "app-services.trust-score-provider",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph trust.score provider evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "socialDocsDescribeRevocation": true,
+          "socialManifestRequestsServiceGrant": true,
+          "socialManifestUsesAppServiceCapabilities": true,
+          "socialUiShowsGrantStates": true,
+          "socialUsesSdkServicesNamespace": true
+        }
+      },
+      "id": "reference-app.social-inbox-service-grant",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox app-service grant evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "webShellOmitsPrivateMaterial": true,
+          "webShellLoadsAppServiceData": true,
+          "webShellRendersGrantActions": true,
+          "webShellTestsPresent": true
+        }
+      },
+      "id": "app-services.web-shell",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Web Shell app-service grant UI evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "auditModelIsRedacted": true,
+          "docsStateNoGenericProxyOrLocalhostTrust": true,
+          "evidenceIdsDocumented": true,
+          "grantJsonContainsOnlyFingerprint": true,
+          "invocationReturnsHashNotRawSubject": true
+        }
+      },
+      "id": "app-services.redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service redaction and boundary evidence passed deterministic checks."
     },
     {
       "details": {
@@ -1017,7 +1112,8 @@
         "checks": {
           "manifestDeclaresSocialInbox": true,
           "manifestDeclaresSocialPermissions": true,
-          "manifestUsesContractV11": true,
+          "manifestDeclaresTrustScoreServiceRequest": true,
+          "manifestUsesContractV12": true,
           "moduleExists": true,
           "noRawAdminOrBrowserStorage": true,
           "permissionDisclosureMentionsDeclaredPermissions": true,
@@ -1132,7 +1228,8 @@
         "checks": {
           "appQueriesAuthorScores": true,
           "docsFrameScoresAsAnnotations": true,
-          "manifestDeclaresTrustRead": true,
+          "manifestDeclaresAppServiceCapabilities": true,
+          "manifestDeclaresTrustScoreRequest": true,
           "unknownScoresRemainUnscored": true,
           "uiShowsNeutralAndScoredStates": true
         },
@@ -1178,6 +1275,8 @@
         "appId": "trust-graph",
         "checks": {
           "docsDescribePreviewLimits": true,
+          "docsDescribeTrustScoreService": true,
+          "manifestAdvertisesTrustScoreService": true,
           "manifestDeclaresTrustGraph": true,
           "manifestDeclaresTrustPermissions": true,
           "manifestUsesContractV10ThroughCurrent": true,

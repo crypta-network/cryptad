@@ -2,22 +2,14 @@ package network.crypta.platform.api;
 
 import java.util.List;
 import java.util.Map;
-import network.crypta.platform.api.alerts.AlertsApiHandler;
 import network.crypta.platform.api.config.ConfigApiHandler;
-import network.crypta.platform.api.connectivity.ConnectivityApiHandler;
-import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
-import network.crypta.platform.api.node.NodeApiHandler;
 import network.crypta.platform.api.peers.PeersApiHandler;
 import network.crypta.platform.api.queue.QueueApiHandler;
 import network.crypta.platform.api.security.SecurityLevelsApiHandler;
-import network.crypta.platform.api.trust.TrustGraphApiHandler;
-import network.crypta.platform.api.updates.UpdatesApiHandler;
-import network.crypta.platform.api.wizard.FirstTimeWizardApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
-import network.crypta.platform.trustgraph.TrustGraphException;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -39,54 +31,23 @@ public final class PlatformApiRouter {
   /** Shared 405 message for routes that only support POST. */
   private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
 
-  /** Shared method token for routes that remove local resources. */
-  private static final String METHOD_DELETE = "DELETE";
-
-  /** Shared 405 message for routes that only support DELETE. */
-  private static final String DELETE_ONLY_MESSAGE =
-      "Platform API v1 supports DELETE requests only.";
-
-  /** Shared route segment and envelope key for app-update lifecycle responses. */
-  private static final String UPDATES_ROUTE_SEGMENT = "updates";
-
-  /** Shared route segment and list envelope key for Trust Graph Preview anchors. */
-  private static final String TRUST_GRAPH_ANCHORS_SEGMENT = "anchors";
-
-  /** Detached runtime ports used by routes that need direct access to optional runtime services. */
-  private final RuntimePorts runtimePorts;
-
-  /** Handler for the {@code /node/...} endpoint family. */
-  private final NodeApiHandler nodeApiHandler;
-
   /** Handler for the {@code /peers/...} endpoint family. */
   private final PeersApiHandler peersApiHandler;
 
   /** Handler for the {@code /config} endpoint. */
   private final ConfigApiHandler configApiHandler;
 
-  /** Handler for the {@code /connectivity} endpoint. */
-  private final ConnectivityApiHandler connectivityApiHandler;
-
   /** Handler for the {@code /security-levels} endpoint. */
   private final SecurityLevelsApiHandler securityLevelsApiHandler;
-
-  /** Handler for the {@code /updates/core} endpoint family. */
-  private final UpdatesApiHandler updatesApiHandler;
-
-  /** Handler for the {@code /wizard/first-time} endpoint family. */
-  private final FirstTimeWizardApiHandler firstTimeWizardApiHandler;
 
   /** Handler for the {@code /queue/...} endpoint family. */
   private final QueueApiHandler queueApiHandler;
 
-  /** Handler for the {@code /alerts/...} endpoint family. */
-  private final AlertsApiHandler alertsApiHandler;
+  /** Routes daemon-operational endpoint families. */
+  private final PlatformApiOperationalRoutes operationalRoutes;
 
-  /** Handler for the {@code /diagnostics} endpoint family. */
-  private final DiagnosticsApiHandler diagnosticsApiHandler;
-
-  /** Handler for the local {@code /trust-graph/...} preview endpoint family. */
-  private final TrustGraphApiHandler trustGraphApiHandler;
+  /** Routes local Trust Graph Preview endpoint families. */
+  private final PlatformApiTrustGraphRoutes trustGraphRoutes;
 
   /** Routes app, app-catalog, app-update, and vault endpoint families. */
   private final PlatformApiAppRoutes appRoutes;
@@ -96,6 +57,9 @@ public final class PlatformApiRouter {
 
   /** Routes durable app-owned data endpoint families. */
   private final PlatformApiAppDataRoutes appDataRoutes;
+
+  /** Routes local app-service discovery, grant, and invocation endpoint families. */
+  private final PlatformApiAppServiceRoutes appServiceRoutes;
 
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
@@ -305,24 +269,19 @@ public final class PlatformApiRouter {
       AppUiOriginRegistry appUiOriginRegistry,
       PlatformApiSharedAppServices appServices) {
     RuntimePorts checkedRuntimePorts = requireNonNull(runtimePorts, "runtimePorts");
-    this.runtimePorts = checkedRuntimePorts;
     this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
     requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     PlatformApiSharedAppServices checkedAppServices = requireNonNull(appServices, "appServices");
     AppVaultService appVaultService = checkedAppServices.vaultService();
-    nodeApiHandler = new NodeApiHandler(checkedRuntimePorts.nodeInfo());
+    operationalRoutes = new PlatformApiOperationalRoutes(checkedRuntimePorts, legacyAdminUsage);
     peersApiHandler =
         new PeersApiHandler(checkedRuntimePorts.peer(), checkedRuntimePorts.darknetConnections());
     configApiHandler = new ConfigApiHandler(checkedRuntimePorts.config());
-    connectivityApiHandler = new ConnectivityApiHandler(checkedRuntimePorts.connectivity());
     securityLevelsApiHandler =
         new SecurityLevelsApiHandler(
             checkedRuntimePorts.securityLevels(),
             checkedRuntimePorts.config(),
             checkedRuntimePorts.firstTimeWizard());
-    updatesApiHandler = new UpdatesApiHandler(checkedRuntimePorts.coreUpdateAction());
-    firstTimeWizardApiHandler =
-        new FirstTimeWizardApiHandler(checkedRuntimePorts.firstTimeWizard());
     queueApiHandler =
         new QueueApiHandler(
             checkedRuntimePorts.queuePage(),
@@ -331,14 +290,8 @@ public final class PlatformApiRouter {
             checkedRuntimePorts.queueInsert(),
             checkedRuntimePorts.queueSupport(),
             checkedRuntimePorts.queueCompletion());
-    alertsApiHandler =
-        new AlertsApiHandler(checkedRuntimePorts.alertFeed(), checkedRuntimePorts.alertMutation());
-    diagnosticsApiHandler =
-        new DiagnosticsApiHandler(checkedRuntimePorts.diagnostic(), legacyAdminUsage);
-    trustGraphApiHandler =
-        checkedAppServices.trustGraphApiHandler() == null
-            ? new TrustGraphApiHandler()
-            : checkedAppServices.trustGraphApiHandler();
+    trustGraphRoutes =
+        PlatformApiTrustGraphRoutes.from(checkedAppServices, checkedRuntimePorts.contentFetch());
     appRoutes =
         new PlatformApiAppRoutes(
             new PlatformApiAppRoutes.RouteDependencies(
@@ -346,16 +299,18 @@ public final class PlatformApiRouter {
                 appCatalogManager,
                 this.appAuditLog,
                 appUiOriginRegistry,
-                this::currentCryptaVersion),
+                operationalRoutes::currentCryptaVersion),
             new PlatformApiAppRoutes.SharedServices(
                 appVaultService,
                 checkedAppServices.updateService(),
                 checkedAppServices.contentSubscriptionService(),
-                checkedAppServices.appDataService()));
+                checkedAppServices.appDataService(),
+                checkedAppServices.appServiceCoordinator()));
     contentRoutes =
         new PlatformApiContentRoutes(
             checkedRuntimePorts, checkedAppServices.contentSubscriptionService());
     appDataRoutes = new PlatformApiAppDataRoutes(checkedAppServices.appDataService());
+    appServiceRoutes = new PlatformApiAppServiceRoutes(checkedAppServices.appServiceCoordinator());
   }
 
   /**
@@ -433,14 +388,6 @@ public final class PlatformApiRouter {
           PlatformApiVaultRouter.errorCode(exception),
           exception.getMessage());
     }
-    if (exception instanceof TrustGraphException trustGraphException) {
-      return structuredFailureResponse(
-          checkedRequest,
-          authorization,
-          "trust_graph_store_unavailable".equals(trustGraphException.errorCode()) ? 503 : 400,
-          trustGraphException.errorCode(),
-          trustGraphException.getMessage());
-    }
     return null;
   }
 
@@ -479,14 +426,14 @@ public final class PlatformApiRouter {
       case "queue" -> routeQueueRequest(segments, request);
       case "content" -> contentRoutes.route(segments, request);
       case "app-data" -> appDataRoutes.route(segments, request);
-      case "trust-graph" -> routeTrustGraphRequest(segments, request);
+      case "app-services" -> appServiceRoutes.route(segments, request);
+      case "trust-graph" -> trustGraphRoutes.route(segments, request);
+      case "node", "connectivity", "diagnostics", "updates", "wizard", "alerts" ->
+          operationalRoutes.route(segments, request);
       case "peers" -> routePeersRequest(segments, request);
       case "config" -> routeConfigRequest(segments, request);
       case "security-levels" -> routeSecurityLevelsRequest(segments, request);
-      case UPDATES_ROUTE_SEGMENT -> routeUpdatesRequest(segments, request);
-      case "wizard" -> routeWizardRequest(segments, request);
-      case "alerts" -> routeAlertsRequest(segments, request);
-      default -> routeGetOnlyRequest(segments, request, firstSegment);
+      default -> routeUnknownRequest(request);
     };
   }
 
@@ -502,58 +449,9 @@ public final class PlatformApiRouter {
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
 
-  private String currentCryptaVersion() {
-    var greeting = nodeApiHandler.rawGreeting();
-    return greeting == null ? null : Integer.toString(greeting.buildNumber());
-  }
-
-  private PlatformApiResponse routeGetOnlyRequest(
-      List<String> segments, PlatformApiRequest request, String firstSegment) {
+  private PlatformApiResponse routeUnknownRequest(PlatformApiRequest request) {
     if (!"GET".equals(request.method())) {
       return methodNotAllowed("GET", GET_ONLY_MESSAGE);
-    }
-    if ("node".equals(firstSegment)) {
-      return routeNodeRequest(segments, request);
-    }
-    if ("connectivity".equals(firstSegment) && segments.size() == 1) {
-      return PlatformApiResponse.ok(connectivityApiHandler.snapshot(request.queryParameters()));
-    }
-    if ("diagnostics".equals(firstSegment) && segments.size() == 1) {
-      return PlatformApiResponse.ok(diagnosticsApiHandler.snapshot());
-    }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-  }
-
-  /**
-   * Routes requests beneath the {@code /alerts} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected alert endpoint
-   */
-  private PlatformApiResponse routeAlertsRequest(
-      List<String> segments, PlatformApiRequest request) {
-    return switch (segments.size()) {
-      case 1 -> routeAlertsCollection(request);
-      case 3 -> routeAlertAction(segments.get(1), segments.get(2), request);
-      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-    };
-  }
-
-  private PlatformApiResponse routeAlertsCollection(PlatformApiRequest request) {
-    if (!"GET".equals(request.method())) {
-      return methodNotAllowed("GET", GET_ONLY_MESSAGE);
-    }
-    return PlatformApiResponse.ok(alertsApiHandler.list());
-  }
-
-  private PlatformApiResponse routeAlertAction(
-      String alertIdSegment, String action, PlatformApiRequest request) {
-    if (!"POST".equals(request.method())) {
-      return methodNotAllowed("POST", POST_ONLY_MESSAGE);
-    }
-    if ("dismiss".equals(action)) {
-      return PlatformApiResponse.ok(alertsApiHandler.dismiss(alertIdSegment));
     }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
@@ -641,166 +539,6 @@ public final class PlatformApiRouter {
       }
       return PlatformApiResponse.ok(
           securityLevelsApiHandler.setPhysicalThreatLevel(request.queryParameters()));
-    }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-  }
-
-  /**
-   * Routes requests beneath the {@code /updates} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected update endpoint
-   */
-  private PlatformApiResponse routeUpdatesRequest(
-      List<String> segments, PlatformApiRequest request) {
-    if (segments.size() == 2 && "core".equals(segments.get(1))) {
-      if (!"GET".equals(request.method())) {
-        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(updatesApiHandler.coreSnapshot());
-    }
-    if (segments.size() == 3
-        && "core".equals(segments.get(1))
-        && "download".equals(segments.get(2))) {
-      if (!"POST".equals(request.method())) {
-        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(updatesApiHandler.startCoreDownload());
-    }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-  }
-
-  /**
-   * Routes requests beneath the local {@code /trust-graph} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected Trust Graph Preview endpoint
-   */
-  private PlatformApiResponse routeTrustGraphRequest(
-      List<String> segments, PlatformApiRequest request) {
-    return switch (segments.size()) {
-      case 2 -> routeTrustGraphCollection(segments.get(1), request);
-      case 3 -> routeTrustGraphResource(segments.get(1), segments.get(2), request);
-      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-    };
-  }
-
-  private PlatformApiResponse routeTrustGraphCollection(
-      String resource, PlatformApiRequest request) {
-    return switch (resource) {
-      case "status" -> {
-        if (!"GET".equals(request.method())) {
-          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(envelope("trustGraph", trustGraphApiHandler.status()));
-      }
-      case TRUST_GRAPH_ANCHORS_SEGMENT -> routeTrustGraphAnchors(request);
-      case "import" -> {
-        if (!"POST".equals(request.method())) {
-          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(
-            envelope(
-                "importResult",
-                trustGraphApiHandler.importStatement(
-                    request.queryParameters(), optionalAppPrincipalId(request))));
-      }
-      case "import-uri" -> {
-        if (!"POST".equals(request.method())) {
-          yield methodNotAllowed("POST", POST_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(
-            envelope(
-                "importResult",
-                trustGraphApiHandler.importUri(
-                    request.queryParameters(),
-                    this.runtimePorts.contentFetch(),
-                    optionalAppPrincipalId(request))));
-      }
-      case "audit" -> {
-        if (!"GET".equals(request.method())) {
-          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(
-            envelope("audit", trustGraphApiHandler.audit(request.queryParameters())));
-      }
-      case "subjects" -> {
-        if (!"GET".equals(request.method())) {
-          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(envelope("subjects", trustGraphApiHandler.subjects()));
-      }
-      case "statements" -> {
-        if (!"GET".equals(request.method())) {
-          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(
-            envelope("statements", trustGraphApiHandler.statements(request.queryParameters())));
-      }
-      case "score" -> {
-        if (!"GET".equals(request.method())) {
-          yield methodNotAllowed("GET", GET_ONLY_MESSAGE);
-        }
-        yield PlatformApiResponse.ok(
-            envelope("score", trustGraphApiHandler.score(request.queryParameters())));
-      }
-      default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-    };
-  }
-
-  private PlatformApiResponse routeTrustGraphAnchors(PlatformApiRequest request) {
-    if ("GET".equals(request.method())) {
-      return PlatformApiResponse.ok(
-          envelope(TRUST_GRAPH_ANCHORS_SEGMENT, trustGraphApiHandler.anchors()));
-    }
-    if ("POST".equals(request.method())) {
-      return PlatformApiResponse.created(
-          envelope(
-              "anchor",
-              trustGraphApiHandler.addAnchor(
-                  request.queryParameters(), optionalAppPrincipalId(request))));
-    }
-    return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
-  }
-
-  private PlatformApiResponse routeTrustGraphResource(
-      String resource, String resourceId, PlatformApiRequest request) {
-    if (!TRUST_GRAPH_ANCHORS_SEGMENT.equals(resource)) {
-      throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-    }
-    if (!METHOD_DELETE.equals(request.method())) {
-      return methodNotAllowed(METHOD_DELETE, DELETE_ONLY_MESSAGE);
-    }
-    return PlatformApiResponse.ok(
-        envelope(
-            "anchor",
-            trustGraphApiHandler.removeAnchor(resourceId, optionalAppPrincipalId(request))));
-  }
-
-  /**
-   * Routes requests beneath the {@code /wizard} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected wizard endpoint
-   */
-  private PlatformApiResponse routeWizardRequest(
-      List<String> segments, PlatformApiRequest request) {
-    if (segments.size() == 2 && "first-time".equals(segments.get(1))) {
-      if (!"GET".equals(request.method())) {
-        return methodNotAllowed("GET", GET_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(firstTimeWizardApiHandler.snapshot());
-    }
-    if (segments.size() == 3
-        && "first-time".equals(segments.get(1))
-        && "apply".equals(segments.get(2))) {
-      if (!"POST".equals(request.method())) {
-        return methodNotAllowed("POST", POST_ONLY_MESSAGE);
-      }
-      return PlatformApiResponse.ok(firstTimeWizardApiHandler.apply(request.queryParameters()));
     }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }
@@ -952,28 +690,6 @@ public final class PlatformApiRouter {
     return request.principal().appId();
   }
 
-  private static String optionalAppPrincipalId(PlatformApiRequest request) {
-    return request.principal().isApp() ? request.principal().appId() : null;
-  }
-
-  /**
-   * Routes requests beneath the {@code /node} endpoint family.
-   *
-   * @param segments decoded path segments relative to the Platform API mount point
-   * @param request full request metadata, including query parameters
-   * @return JSON response for the selected node endpoint
-   * @throws PlatformApiException if the path does not identify a supported node endpoint
-   */
-  private PlatformApiResponse routeNodeRequest(List<String> segments, PlatformApiRequest request) {
-    if (segments.size() == 2 && "greeting".equals(segments.get(1))) {
-      return PlatformApiResponse.ok(nodeApiHandler.greeting());
-    }
-    if (segments.size() == 2 && "reference".equals(segments.get(1))) {
-      return PlatformApiResponse.ok(nodeApiHandler.reference(request.queryParameters()));
-    }
-    throw new PlatformApiException(404, "not_found", "Platform API route not found.");
-  }
-
   /**
    * Routes requests beneath the {@code /peers} endpoint family.
    *
@@ -1061,12 +777,6 @@ public final class PlatformApiRouter {
       throw new NullPointerException(parameterName);
     }
     return value;
-  }
-
-  private static Map<String, Object> envelope(String key, Object value) {
-    java.util.LinkedHashMap<String, Object> envelope = java.util.LinkedHashMap.newLinkedHashMap(1);
-    envelope.put(key, value);
-    return envelope;
   }
 
   /**

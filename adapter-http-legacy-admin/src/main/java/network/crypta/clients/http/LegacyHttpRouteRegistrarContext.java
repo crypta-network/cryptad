@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.util.Objects;
 import network.crypta.config.Config;
 import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
@@ -34,6 +35,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     scheduling
  * @param appDataService optional durable app-data service shared with Platform API routes
  * @param trustGraphApiHandler optional durable trust graph handler shared with Platform API routes
+ * @param appServiceCoordinator optional app-service coordinator shared with Platform API routes
  * @param appVaultService optional app-vault service for vault Platform API routes
  * @param config node configuration view used when listing or filtering sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet that anchors the registration pass at the legacy
@@ -51,6 +53,7 @@ public record LegacyHttpRouteRegistrarContext(
     ContentSubscriptionService contentSubscriptionService,
     AppDataService appDataService,
     TrustGraphApiHandler trustGraphApiHandler,
+    AppServiceCoordinator appServiceCoordinator,
     AppVaultService appVaultService,
     Config config,
     Toadlet browseRoot,
@@ -85,6 +88,7 @@ public record LegacyHttpRouteRegistrarContext(
         null,
         null,
         null,
+        null,
         config,
         browseRoot,
         browseRouteRegistrar,
@@ -108,6 +112,7 @@ public record LegacyHttpRouteRegistrarContext(
    * @param appDataService optional durable app-data service shared with Platform API routes
    * @param trustGraphApiHandler optional durable trust graph handler shared with Platform API
    *     routes
+   * @param appServiceCoordinator optional app-service coordinator shared with Platform API routes
    * @param appVaultService optional app-vault service for vault Platform API routes
    * @param config node configuration view that registration may inspect for sub-config pages
    * @param browseRoot prebuilt root browse toadlet registered at the browsing root

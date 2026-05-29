@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":11"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":12"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(11, version.contractVersion());
+    assertEquals(12, version.contractVersion());
   }
 
   @Test
@@ -80,6 +80,18 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
     assertEquals(9, appDataWriteCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor appServicesReadCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("app.services.read"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(12, appServicesReadCapability.sinceContractVersion());
+    PlatformApiCapabilityDescriptor appServicesCallCapability =
+        PlatformApiContract.current().capabilities().stream()
+            .filter(capability -> capability.name().equals("app.services.call"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(12, appServicesCallCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor trustReadCapability =
         PlatformApiContract.current().capabilities().stream()
             .filter(capability -> capability.name().equals("trust.read"))
@@ -99,7 +111,9 @@ class PlatformApiContractTest {
     Set<String> knownCapabilities = PlatformApiContract.current().capabilityNames();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
-      assertFalse(endpoint.requiredCapabilities().isEmpty(), endpoint.routeTemplate());
+      if (endpoint.appProcessAllowed() || endpoint.appBrowserAllowed()) {
+        assertFalse(endpoint.requiredCapabilities().isEmpty(), endpoint.routeTemplate());
+      }
       assertTrue(
           knownCapabilities.containsAll(endpoint.requiredCapabilities()), endpoint.routeTemplate());
       assertEquals(expectedSinceContractVersion(endpoint), endpoint.sinceContractVersion());
@@ -275,6 +289,49 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingAppServiceEndpoints_expectContractV12Capabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.ofEntries(
+            Map.entry("GET /app-services", List.of("app.services.read")),
+            Map.entry("GET /app-services/audit", List.of()),
+            Map.entry("GET /app-services/grants", List.of("app.services.read")),
+            Map.entry("POST /app-services/grants", List.of("app.services.call")),
+            Map.entry("POST /app-services/grants/{grantId}/approve", List.of()),
+            Map.entry("POST /app-services/grants/{grantId}/revoke", List.of("app.services.call")),
+            Map.entry("GET /app-services/{providerAppId}/services", List.of("app.services.read")),
+            Map.entry(
+                "GET /app-services/{providerAppId}/services/{serviceId}",
+                List.of("app.services.read")),
+            Map.entry(
+                "POST /app-services/{providerAppId}/services/{serviceId}/invoke",
+                List.of("app.services.call")));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(12, endpoint.sinceContractVersion(), key);
+      assertEquals("app-services", endpoint.routeFamily(), key);
+      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+      if (key.endsWith("/approve") || key.equals("GET /app-services/audit")) {
+        assertTrue(endpoint.hostOperatorBypassAllowed(), key);
+        assertFalse(endpoint.appProcessAllowed(), key);
+        assertFalse(endpoint.appBrowserAllowed(), key);
+      } else if (key.equals("POST /app-services/grants")
+          || key.equals("POST /app-services/{providerAppId}/services/{serviceId}/invoke")) {
+        assertFalse(endpoint.hostOperatorBypassAllowed(), key);
+        assertTrue(endpoint.appProcessAllowed(), key);
+        assertTrue(endpoint.appBrowserAllowed(), key);
+      }
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void current_whenInspectingTrustGraphExchangeEndpoints_expectContractV10Capabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
@@ -366,6 +423,9 @@ class PlatformApiContractTest {
     if (endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/social-message")) {
       return 11;
     }
+    if (endpoint.routeTemplate().startsWith("/app-services")) {
+      return 12;
+    }
     if (endpoint.routeTemplate().startsWith("/trust-graph")
         || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {
       return 7;
@@ -396,6 +456,7 @@ class PlatformApiContractTest {
   private static PlatformApiStabilityLevel expectedStability(
       PlatformApiEndpointDescriptor endpoint) {
     if (endpoint.routeTemplate().startsWith("/trust-graph")
+        || endpoint.routeTemplate().startsWith("/app-services")
         || endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/identity-vault")) {
       return PlatformApiStabilityLevel.EXPERIMENTAL;

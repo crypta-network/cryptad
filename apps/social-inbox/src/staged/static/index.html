@@ -38,7 +38,8 @@
         <li><code>queue.write</code> creates generated outbox publication inserts.</li>
         <li><code>app.data.read</code> restores bounded sources, summaries, drafts, and read state.</li>
         <li><code>app.data.write</code> saves bounded app-owned social inbox state.</li>
-        <li><code>trust.read</code> reads Trust Graph Preview scores for message author annotations.</li>
+        <li><code>app.services.read</code> discovers local app-service descriptors and grant state.</li>
+        <li><code>app.services.call</code> requests and invokes approved local app-service grants.</li>
       </ul>
     </section>
 
@@ -47,7 +48,7 @@
       <p>
         This preview demonstrates a social/mail-like layer outside the daemon by combining AppVault
         identity, bounded signed message documents, content insert/fetch/subscriptions, app data,
-        and Trust Graph Preview annotations.
+        and operator-approved Trust Graph Preview service annotations.
       </p>
       <ul>
         <li>It is not full WoT and is not compatible with old WebOfTrust plugin APIs.</li>
@@ -293,9 +294,17 @@
             <p class="cr-label">Plain-text message summaries</p>
             <h2 id="inbox-title">Inbox</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="refresh-trust-button" type="button">
-            Refresh trust
-          </button>
+          <div class="panel-actions">
+            <button class="cr-button cr-button--secondary" id="request-trust-grant-button" type="button">
+              Request trust grant
+            </button>
+            <button class="cr-button cr-button--secondary" id="refresh-trust-button" type="button">
+              Refresh trust
+            </button>
+          </div>
+        </div>
+        <div class="trust-service-status" id="trust-service-status">
+          <p class="cr-empty">Trust Score Service discovery runs after the app opens.</p>
         </div>
         <div class="inbox-list" id="inbox-list">
           <p class="cr-empty">Imported messages appear here with neutral Trust Graph annotations.</p>

@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=11
+contractVersion=12
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 11,
+    "contractVersion": 12,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -256,9 +256,44 @@ URIs.
 
 This route exists so `apps/social-inbox` can demonstrate a social/mail-like migration spike using
 AppVault identity, content insert/fetch/subscriptions, durable app data, and Trust Graph Preview
-annotations outside daemon core. It is not full WoT, old plugin ABI compatibility, Freetalk, Sone,
-Freemail, encrypted mail transport, a moderation system, a daemon-core message protocol, or a
-network protocol change. See [social-inbox-reference-app.md](social-inbox-reference-app.md).
+annotations outside daemon core. Contract v12 moves those annotations behind app-service grants,
+so Social Inbox no longer needs direct `trust.read` for the proving path. It is not full WoT, old
+plugin ABI compatibility, Freetalk, Sone, Freemail, encrypted mail transport, a moderation system,
+a daemon-core message protocol, or a network protocol change. See
+[social-inbox-reference-app.md](social-inbox-reference-app.md).
+
+Contract version 12 adds local app-service discovery, operator-approved grants, redacted audit, and
+mediated invocation:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/app-services` | `app.services.read` | List advertised local service descriptors and the caller-visible manifest service requests. |
+| `GET /api/v1/app-services/{providerAppId}/services` | `app.services.read` | List services advertised by one installed provider app. |
+| `GET /api/v1/app-services/{providerAppId}/services/{serviceId}` | `app.services.read` | Read one public service descriptor. |
+| `GET /api/v1/app-services/grants` | `app.services.read` | List caller-visible service grants; app principals see their own consumer grants and host/operator sees all. |
+| `POST /api/v1/app-services/grants` | `app.services.call` | Request a pending grant for a provider/service/scope/context. |
+| `POST /api/v1/app-services/grants/{grantId}/approve` | Host/operator only | Approve a pending grant. App principals cannot approve their own grants. |
+| `POST /api/v1/app-services/grants/{grantId}/revoke` | `app.services.call` for app self-revoke, host/operator for any grant | Revoke a service grant so future invocations fail. |
+| `GET /api/v1/app-services/audit` | Host/operator only | Read bounded redacted app-service grant and invocation audit events. |
+| `POST /api/v1/app-services/{providerAppId}/services/{serviceId}/invoke` | `app.services.call` | Invoke an explicitly registered platform adapter through an active grant. |
+
+`app.services.read` allows discovery of public descriptors and grant state, not provider app data.
+`app.services.call` allows a consumer app to request grants and invoke services only when an active
+consumer/provider/service grant exists at call time. Approval remains host/operator-only.
+
+The initial first-party service is `trust-graph` / `trust.score` using adapter
+`trust-graph.score`. Its manifest descriptor is metadata-only: provider app id/name/version,
+service id/name/version, kind, adapter, scopes such as `score.read`, contexts such as
+`message-author`, description, stability, and availability. Invocation accepts bounded
+`subjectKind`, `subjectUri`, `context`, and optional `scope`, then returns a service-call envelope
+with a redacted score summary and subject URI hash.
+
+App-service invocation is not generic RPC, not a localhost proxy, not a plugin ABI, and not remote
+service discovery. The platform dispatches only to registered in-process adapters. Responses,
+audit, Web Shell, docs, and release evidence must not expose provider app data, Trust Graph store
+files, raw statement bodies, raw request bodies, private insert URIs, private identity material,
+browser-session tokens, app process tokens, form passwords, absolute local paths, or raw service
+bearer tokens.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -394,7 +429,10 @@ Feed Reader bundle. Social Inbox Preview has separate evidence:
 `app-platform.social-message-signing` for the bounded v11 AppVault social-message route,
 `reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
 `reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
-`reference-app.social-inbox-trust-annotations`, and `migration.social-mail-preview`. Trust Graph Preview has
+`reference-app.social-inbox-trust-annotations`, `app-services.registry`,
+`app-services.grants`, `app-services.trust-score-provider`,
+`reference-app.social-inbox-service-grant`, `app-services.web-shell`,
+`app-services.redaction`, and `migration.social-mail-preview`. Trust Graph Preview has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the v7 trust routes and SDK helpers, and
 `app-platform.trust-statement-signing` for the bounded AppVault signing route and redaction checks.

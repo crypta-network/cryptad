@@ -6,6 +6,10 @@
   const socialOutboxType = "crypta.social.outbox.v1";
   const socialOutboxContentType = "application/vnd.crypta.social.outbox+json";
   const socialOutboxTargetFilename = "social-outbox.json";
+  const trustScoreProviderAppId = "trust-graph";
+  const trustScoreServiceId = "trust.score";
+  const trustScoreScope = "score.read";
+  const trustScoreContext = "message-author";
   const maxSources = 16;
   const maxImportedMessages = 160;
   const maxLocalOutboxMessages = 24;
@@ -45,6 +49,9 @@
     drafts: {},
     outboxSummary: null,
     trustScores: {},
+    trustServiceDescriptor: null,
+    trustServiceGrants: [],
+    trustServiceError: "",
   };
 
   const elements = {
@@ -64,10 +71,12 @@
     refreshQueueButton: document.getElementById("refresh-queue-button"),
     refreshSubscriptionsButton: document.getElementById("refresh-subscriptions-button"),
     refreshTrustButton: document.getElementById("refresh-trust-button"),
+    requestTrustGrantButton: document.getElementById("request-trust-grant-button"),
     sourceForm: document.getElementById("source-form"),
     sourceList: document.getElementById("source-list"),
     status: document.getElementById("status"),
     subscriptionList: document.getElementById("subscription-list"),
+    trustServiceStatus: document.getElementById("trust-service-status"),
   };
 
   document.addEventListener("DOMContentLoaded", start);
@@ -80,6 +89,7 @@
       restoreDrafts();
       await refreshIdentities({ silent: true });
       await refreshSubscriptions({ silent: true });
+      await refreshTrustServiceStatus({ silent: true });
       renderAll();
       await refreshUploadQueue({ silent: true });
     } catch (error) {
@@ -98,6 +108,7 @@
     elements.refreshQueueButton.addEventListener("click", refreshUploadQueue);
     elements.refreshSubscriptionsButton.addEventListener("click", refreshSubscriptions);
     elements.refreshTrustButton.addEventListener("click", refreshTrustAnnotations);
+    elements.requestTrustGrantButton.addEventListener("click", requestTrustServiceGrant);
   }
 
   async function createIdentity(event) {
@@ -794,25 +805,85 @@
       }
       return;
     }
+    if (!activeTrustServiceGrant()) {
+      await refreshTrustServiceStatus({ silent: true });
+    }
+    const grant = activeTrustServiceGrant();
+    if (!grant) {
+      markTrustScoresUnavailable(fingerprints, trustServiceUnavailableSummary());
+      renderInbox();
+      if (!(options && options.silent)) {
+        setStatus(trustServiceUnavailableSummary(), "warning");
+      }
+      return;
+    }
     for (const fingerprint of fingerprints) {
       try {
-        const score = await CryptaPlatform.trust.score({
+        const response = await CryptaPlatform.services.invoke(trustScoreProviderAppId, trustScoreServiceId, {
           subjectKind: "identity",
           subjectUri: fingerprint,
-          context: "message-author",
-          includeEvidence: true,
+          context: trustScoreContext,
+          scope: trustScoreScope,
         });
-        state.trustScores[fingerprint] = normalizeTrustScore(score);
+        const result =
+          response && response.serviceCall && response.serviceCall.result
+            ? response.serviceCall.result
+            : response;
+        state.trustScores[fingerprint] = normalizeTrustScore(result);
       } catch (error) {
         state.trustScores[fingerprint] = {
           status: "unscored",
-          summary: CryptaPlatform.api.errorMessage(error),
+          summary: "Trust score unavailable / grant required.",
         };
+        await refreshTrustServiceStatus({ silent: true });
       }
     }
     renderInbox();
     if (!(options && options.silent)) {
       setStatus("Trust annotations refreshed.");
+    }
+  }
+
+  async function refreshTrustServiceStatus(options) {
+    try {
+      const serviceResponse = await CryptaPlatform.services.get(
+        trustScoreProviderAppId,
+        trustScoreServiceId
+      );
+      const grantsResponse = await CryptaPlatform.services.grants.list();
+      state.trustServiceDescriptor = serviceResponse.service || serviceResponse;
+      state.trustServiceGrants = boundedArray(grantsResponse.grants || grantsResponse, 20);
+      state.trustServiceError = "";
+      renderTrustServiceStatus();
+      if (!(options && options.silent)) {
+        setStatus("Trust Score Service status refreshed.");
+      }
+    } catch (error) {
+      state.trustServiceDescriptor = null;
+      state.trustServiceGrants = [];
+      state.trustServiceError = CryptaPlatform.api.errorMessage(error);
+      renderTrustServiceStatus();
+      if (!(options && options.silent)) {
+        setStatus(state.trustServiceError, "warning");
+      }
+    }
+  }
+
+  async function requestTrustServiceGrant() {
+    try {
+      setStatus("Requesting Trust Score Service grant...");
+      await CryptaPlatform.services.grants.request({
+        providerAppId: trustScoreProviderAppId,
+        serviceId: trustScoreServiceId,
+        scopes: [trustScoreScope],
+        contexts: [trustScoreContext],
+        purpose:
+          "Annotate Social Inbox message authors using the local Trust Graph Preview score service.",
+      });
+      await refreshTrustServiceStatus({ silent: true });
+      setStatus("Trust Score Service grant requested; an operator must approve it.");
+    } catch (error) {
+      setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
   }
 
@@ -923,6 +994,7 @@
     renderSubscriptions();
     renderOutbox();
     renderPublishSummary();
+    renderTrustServiceStatus();
     renderInbox();
   }
 
@@ -1089,6 +1161,34 @@
     }
   }
 
+  function renderTrustServiceStatus() {
+    elements.trustServiceStatus.replaceChildren();
+    const descriptor = state.trustServiceDescriptor;
+    const grant = preferredTrustServiceGrant();
+    const status = grant ? stringField(grant, "status") : "";
+    const serviceName = descriptor
+      ? stringField(descriptor, "name") || trustScoreServiceId
+      : "Trust Score Service";
+    const rows = [
+      summaryRow("Service", serviceName),
+      summaryRow("Provider", descriptor ? stringField(descriptor, "providerName") : trustScoreProviderAppId),
+      summaryRow("Service id", trustScoreServiceId),
+      summaryRow("Scope", trustScoreScope),
+      summaryRow("Context", trustScoreContext),
+      summaryRow("Grant", status || trustServiceUnavailableSummary()),
+    ];
+    if (grant) {
+      rows.push(summaryRow("Use count", String(numberField(grant, "useCount"))));
+      rows.push(summaryRow("Last used", stringField(grant, "lastUsedAt")));
+    }
+    if (state.trustServiceError) {
+      rows.push(summaryRow("Status", state.trustServiceError));
+    }
+    elements.trustServiceStatus.append(...rows);
+    elements.requestTrustGrantButton.disabled =
+      !descriptor || ["active", "pending"].includes(status);
+  }
+
   function renderQueue(response) {
     elements.queuePreview.replaceChildren();
     const rows = queueRows(response);
@@ -1151,15 +1251,82 @@
       values.push("pinned");
     }
     if (!score) {
-      return badges(values.concat(["trust unscored"]));
+      return badges(values.concat([trustServiceUnavailableSummary()]));
     }
     if (score.status === "scored") {
       values.push(`trust ${score.value}`);
       values.push(`${score.evidenceCount} evidence`);
       return badges(values, "score");
     }
-    values.push("trust neutral");
+    values.push(score.summary || "Trust score unavailable / grant required.");
     return badges(values, "warning");
+  }
+
+  function activeTrustServiceGrant() {
+    return state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "active"));
+  }
+
+  function preferredTrustServiceGrant() {
+    return (
+      activeTrustServiceGrant() ||
+      state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "pending")) ||
+      state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "inactive")) ||
+      state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "revoked")) ||
+      null
+    );
+  }
+
+  function trustGrantMatches(grant, status) {
+    return (
+      grant &&
+      stringField(grant, "providerAppId") === trustScoreProviderAppId &&
+      stringField(grant, "serviceId") === trustScoreServiceId &&
+      grantCoversTrustScore(grant) &&
+      (!status || stringField(grant, "status") === status)
+    );
+  }
+
+  function grantCoversTrustScore(grant) {
+    const scopes = stringListField(grant, "scopes", 16);
+    const contexts = stringListField(grant, "contexts", 16);
+    return scopes.includes(trustScoreScope) && grantContextsCoverTrustScore(contexts);
+  }
+
+  function grantContextsCoverTrustScore(contexts) {
+    if (contexts.includes(trustScoreContext)) {
+      return true;
+    }
+    if (contexts.length > 0) {
+      return false;
+    }
+    return stringListField(state.trustServiceDescriptor, "contexts", 16).length === 0;
+  }
+
+  function trustServiceUnavailableSummary() {
+    const grant = preferredTrustServiceGrant();
+    const status = grant ? stringField(grant, "status") : "";
+    if (!state.trustServiceDescriptor) {
+      return "Trust score unavailable / service not discovered.";
+    }
+    if (status === "pending") {
+      return "Trust score unavailable / grant pending.";
+    }
+    if (status === "revoked") {
+      return "Trust score unavailable / grant revoked.";
+    }
+    if (status === "inactive") {
+      return "Trust score unavailable / grant inactive.";
+    }
+    return "Trust score unavailable / grant required.";
+  }
+
+  function markTrustScoresUnavailable(fingerprints, summary) {
+    for (const fingerprint of fingerprints) {
+      state.trustScores[fingerprint] = {
+        status: "unscored",
+        summary,
+      };
+    }
   }
 
   function normalizeTrustScore(score) {
@@ -1295,6 +1462,13 @@
 
   function boundedArray(value, limit) {
     return Array.isArray(value) ? value.slice(0, limit) : [];
+  }
+
+  function stringListField(object, name, limit) {
+    if (!object || typeof object !== "object" || !Array.isArray(object[name])) {
+      return [];
+    }
+    return object[name].map(stringValue).filter((value) => value).slice(0, limit);
   }
 
   function boundedImportedMessages(value, limit) {
