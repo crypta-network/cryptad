@@ -1,5 +1,6 @@
 package network.crypta.platform.api.appservices;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -8,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.appdist.AppUiMode;
@@ -221,6 +223,24 @@ class AppServiceCoordinatorTest {
 
     assertEquals(400, exception.statusCode());
     assertEquals("app_service_context_unsupported", exception.errorCode());
+  }
+
+  @Test
+  void requestGrant_whenSameGrantRequestedAcrossClockTicks_expectExistingGrantReturned()
+      throws Exception {
+    InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
+    AppServiceCoordinator firstCoordinator =
+        coordinator(CLOCK, store, installedProvider(), installedConsumer());
+    Clock laterClock = Clock.fixed(CLOCK.instant().plusSeconds(1), ZoneOffset.UTC);
+    AppServiceCoordinator secondCoordinator =
+        coordinator(laterClock, store, installedProvider(), installedConsumer());
+
+    Map<String, Object> firstGrant = firstCoordinator.requestGrant(SOCIAL_INBOX, grantParams());
+    Map<String, Object> secondGrant = secondCoordinator.requestGrant(SOCIAL_INBOX, grantParams());
+
+    assertEquals(firstGrant.get("grantId"), secondGrant.get("grantId"));
+    assertEquals("pending", secondGrant.get("status"));
+    assertEquals(1, store.listGrants().size());
   }
 
   @Test
@@ -488,6 +508,40 @@ class AppServiceCoordinatorTest {
   }
 
   @Test
+  void clearAppState_whenGrantCleanupCannotPersist_expectFailClosedUntilCleanupSucceeds()
+      throws Exception {
+    FailingWriteGrantStore store = new FailingWriteGrantStore();
+    store.writeGrant(activeGrant("asg-111111111111111111111111", "social-inbox"));
+    AppServiceCoordinator coordinator =
+        coordinator(store, installedProvider(), installedConsumer());
+    Map<String, List<String>> invocationParams = invokeParams();
+    store.failWrites(true);
+
+    PlatformApiException cleanupFailure =
+        assertThrows(PlatformApiException.class, () -> coordinator.clearAppState("social-inbox"));
+
+    assertEquals("app_services_unavailable", cleanupFailure.errorCode());
+    assertEquals("inactive", coordinator.listGrants(HOST_OPERATOR).getFirst().get("status"));
+    PlatformApiException failClosedInvocation =
+        assertThrows(
+            PlatformApiException.class,
+            () -> coordinator.invoke(SOCIAL_INBOX, "trust-graph", "trust.score", invocationParams));
+    assertEquals("app_services_unavailable", failClosedInvocation.errorCode());
+
+    store.failWrites(false);
+    coordinator.clearAppState("social-inbox");
+
+    assertEquals(
+        AppServiceGrantStatus.INACTIVE,
+        store.readGrant("asg-111111111111111111111111").orElseThrow().status());
+    PlatformApiException inactiveGrantInvocation =
+        assertThrows(
+            PlatformApiException.class,
+            () -> coordinator.invoke(SOCIAL_INBOX, "trust-graph", "trust.score", invocationParams));
+    assertEquals("app_service_grant_required", inactiveGrantInvocation.errorCode());
+  }
+
+  @Test
   void requestGrant_whenProviderNotInstalled_expectProviderMissing() throws Exception {
     AppServiceCoordinator coordinator =
         coordinator(new InMemoryAppServiceGrantStore(), installedConsumer());
@@ -503,9 +557,15 @@ class AppServiceCoordinatorTest {
 
   private AppServiceCoordinator coordinator(
       AppServiceGrantStore store, InstalledAppSnapshot... installedApps) throws Exception {
+    return coordinator(CLOCK, store, installedApps);
+  }
+
+  private AppServiceCoordinator coordinator(
+      Clock clock, AppServiceGrantStore store, InstalledAppSnapshot... installedApps)
+      throws Exception {
     AppHost appHost = mock(AppHost.class);
     when(appHost.listInstalled()).thenReturn(List.of(installedApps));
-    return new AppServiceCoordinator(appHost, store, CLOCK, List.of(fakeAdapter()));
+    return new AppServiceCoordinator(appHost, store, clock, List.of(fakeAdapter()));
   }
 
   private AppServiceAdapter fakeAdapter() {
@@ -664,5 +724,42 @@ class AppServiceCoordinatorTest {
   private static Map<String, List<String>> invokeParamsWithoutContext() {
     return Map.of(
         "subjectKind", List.of("identity"), "subjectUri", List.of("crypta:identity:alice"));
+  }
+
+  private static final class FailingWriteGrantStore implements AppServiceGrantStore {
+    private final InMemoryAppServiceGrantStore delegate = new InMemoryAppServiceGrantStore();
+    private boolean failWrites;
+
+    @Override
+    public List<AppServiceGrant> listGrants() {
+      return delegate.listGrants();
+    }
+
+    @Override
+    public Optional<AppServiceGrant> readGrant(String grantId) {
+      return delegate.readGrant(grantId);
+    }
+
+    @Override
+    public void writeGrant(AppServiceGrant grant) throws IOException {
+      if (failWrites) {
+        throw new IOException("grant writes disabled");
+      }
+      delegate.writeGrant(grant);
+    }
+
+    @Override
+    public void appendAuditEvent(AppServiceAuditEvent event) {
+      delegate.appendAuditEvent(event);
+    }
+
+    @Override
+    public List<AppServiceAuditEvent> listAuditEvents(int limit) {
+      return delegate.listAuditEvents(limit);
+    }
+
+    private void failWrites(boolean failWrites) {
+      this.failWrites = failWrites;
+    }
   }
 }

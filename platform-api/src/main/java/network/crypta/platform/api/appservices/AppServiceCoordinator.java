@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
@@ -67,6 +69,7 @@ public final class AppServiceCoordinator {
   private final AppServiceGrantStore store;
   private final Clock clock;
   private final Map<String, AppServiceAdapter> adapters;
+  private final Set<String> cleanupFailedAppIds = new HashSet<>();
   private final String auditEventRunId = UUID.randomUUID().toString();
   private final AtomicLong auditEventSequence = new AtomicLong();
 
@@ -213,7 +216,9 @@ public final class AppServiceCoordinator {
    * installed and declare {@code app.services.call}; the provider must be installed and advertise
    * the requested service; scopes and contexts must be supported by that descriptor. Contextual
    * services require an explicit context so the operator sees the narrow requested boundary.
-   * Unscoped services reject requested contexts rather than treating them as a wildcard.
+   * Unscoped services reject requested contexts rather than treating them as a wildcard. Repeated
+   * requests for the same consumer, provider, service, scope set, and context set return the
+   * existing pending or active grant instead of creating unbounded durable records.
    *
    * @param principal authenticated app principal requesting access
    * @param parameters decoded form parameters containing provider, service, scopes, context, and
@@ -235,6 +240,7 @@ public final class AppServiceCoordinator {
         AppServiceManifestParser.commaList(
             PlatformApiParameters.requireString(parameters, PARAM_SCOPES), PARAM_SCOPES);
     List<String> contexts = requestedContexts(parameters);
+    ensureNoFailedCleanup(consumerAppId, providerAppId);
     if (descriptor.hasUnsupportedScopes(scopes)) {
       throw new PlatformApiException(
           400,
@@ -262,24 +268,30 @@ public final class AppServiceCoordinator {
       }
     }
     Instant now = clock.instant();
-    AppServiceGrant grant =
-        new AppServiceGrant(
-            newGrantId(consumerAppId, providerAppId, serviceId, scopes, contexts, now),
-            consumerAppId,
-            providerAppId,
-            serviceId,
-            scopes,
-            contexts,
-            PlatformApiParameters.requireString(parameters, PARAM_PURPOSE),
-            AppServiceGrantStatus.PENDING,
-            now,
-            now,
-            null,
-            null,
-            null,
-            0,
-            null);
     try {
+      Optional<AppServiceGrant> existing =
+          existingReusableGrant(consumerAppId, providerAppId, serviceId, scopes, contexts);
+      if (existing.isPresent()) {
+        AppServiceGrant grant = existing.get();
+        return grant.toJson(effectiveStatus(grant));
+      }
+      AppServiceGrant grant =
+          new AppServiceGrant(
+              newGrantId(consumerAppId, providerAppId, serviceId, scopes, contexts, now),
+              consumerAppId,
+              providerAppId,
+              serviceId,
+              scopes,
+              contexts,
+              PlatformApiParameters.requireString(parameters, PARAM_PURPOSE),
+              AppServiceGrantStatus.PENDING,
+              now,
+              now,
+              null,
+              null,
+              null,
+              0,
+              null);
       store.writeGrant(grant);
       appendAudit("grant_requested", grant, null, null, "pending", "grant_pending", null);
       return grant.toJson();
@@ -310,6 +322,7 @@ public final class AppServiceCoordinator {
     AppServiceDescriptor descriptor = serviceRequired(grant.providerAppId(), grant.serviceId());
     ensureGrantSupportedByDescriptor(grant, descriptor);
     ensureConsumerCanCall(grant.consumerAppId());
+    ensureNoFailedCleanup(grant.consumerAppId(), grant.providerAppId());
     AppServiceGrant approved = grant.withStatus(AppServiceGrantStatus.ACTIVE, clock.instant());
     try {
       store.writeGrant(approved);
@@ -373,6 +386,7 @@ public final class AppServiceCoordinator {
     String consumerAppId = requireAppPrincipal(principal);
     ensureConsumerCanCall(consumerAppId);
     AppServiceDescriptor descriptor = serviceRequired(providerAppId, serviceId);
+    ensureNoFailedCleanup(consumerAppId, descriptor.providerAppId());
     String context = requestedContext(parameters, descriptor);
     Map<String, List<String>> normalizedParameters = withInvocationContext(parameters, context);
     String scope = requestedScope(parameters, descriptor);
@@ -450,12 +464,15 @@ public final class AppServiceCoordinator {
    * <p>The method is a runtime hook for AppHost state changes. It does not delete historical grants
    * or audit events; it changes active relationships into non-authorizing records and appends a
    * redacted audit event for each affected grant. Invalid app ids are rejected through the same
-   * normalizer used by route inputs.
+   * normalizer used by route inputs. If durable cleanup cannot be persisted, the app id is kept in
+   * a process-local fail-closed set and future grant approval or invocation involving that app id
+   * fails until a later cleanup attempt succeeds.
    *
    * @param appId provider or consumer app id whose local service state was cleared
    */
   public synchronized void clearAppState(String appId) {
     String normalizedAppId = AppServiceManifestParser.normalizeAppId(appId);
+    cleanupFailedAppIds.add(normalizedAppId);
     try {
       Instant now = clock.instant();
       for (AppServiceGrant grant : store.listGrants()) {
@@ -467,8 +484,10 @@ public final class AppServiceCoordinator {
               "grant_inactivated", inactive, null, null, "inactive", "app_state_cleared", null);
         }
       }
+      cleanupFailedAppIds.remove(normalizedAppId);
     } catch (IOException exception) {
       LOG.log(System.Logger.Level.WARNING, "Failed to clear app-service state", exception);
+      throw unavailable();
     }
   }
 
@@ -592,6 +611,7 @@ public final class AppServiceCoordinator {
               .filter(grant -> grant.providerAppId().equals(descriptor.providerAppId()))
               .filter(grant -> grant.serviceId().equals(descriptor.serviceId()))
               .filter(grant -> grant.status() == AppServiceGrantStatus.ACTIVE)
+              .filter(grant -> !cleanupFailedFor(grant))
               .filter(grant -> grantSupportedByDescriptor(grant, descriptor))
               .filter(grant -> grant.scopes().contains(scope))
               .filter(grant -> grantCoversContext(descriptor, grant, context))
@@ -645,6 +665,9 @@ public final class AppServiceCoordinator {
     if (grant.status() != AppServiceGrantStatus.ACTIVE) {
       return grant.status();
     }
+    if (cleanupFailedFor(grant)) {
+      return AppServiceGrantStatus.INACTIVE;
+    }
     if (!consumerCanCall(grant.consumerAppId())) {
       return AppServiceGrantStatus.INACTIVE;
     }
@@ -664,12 +687,49 @@ public final class AppServiceCoordinator {
     return serviceAdvertised ? AppServiceGrantStatus.ACTIVE : AppServiceGrantStatus.INACTIVE;
   }
 
+  private Optional<AppServiceGrant> existingReusableGrant(
+      String consumerAppId,
+      String providerAppId,
+      String serviceId,
+      List<String> scopes,
+      List<String> contexts)
+      throws IOException {
+    return store.listGrants().stream()
+        .filter(grant -> grant.consumerAppId().equals(consumerAppId))
+        .filter(grant -> grant.providerAppId().equals(providerAppId))
+        .filter(grant -> grant.serviceId().equals(serviceId))
+        .filter(grant -> sameTokens(grant.scopes(), scopes))
+        .filter(grant -> sameTokens(grant.contexts(), contexts))
+        .filter(this::grantCanBeReusedForRequest)
+        .findFirst();
+  }
+
+  private boolean grantCanBeReusedForRequest(AppServiceGrant grant) {
+    if (grant.status() == AppServiceGrantStatus.PENDING) {
+      return true;
+    }
+    return grant.status() == AppServiceGrantStatus.ACTIVE
+        && effectiveStatus(grant) == AppServiceGrantStatus.ACTIVE;
+  }
+
   private boolean consumerCanCall(String consumerAppId) {
     return installedApps().stream()
         .filter(snapshot -> snapshot.appId().equals(consumerAppId))
         .findFirst()
         .map(snapshot -> snapshot.manifest().permissions().contains(CAPABILITY_APP_SERVICES_CALL))
         .orElse(false);
+  }
+
+  private void ensureNoFailedCleanup(String consumerAppId, String providerAppId) {
+    if (cleanupFailedAppIds.contains(consumerAppId)
+        || cleanupFailedAppIds.contains(providerAppId)) {
+      throw unavailable();
+    }
+  }
+
+  private boolean cleanupFailedFor(AppServiceGrant grant) {
+    return cleanupFailedAppIds.contains(grant.consumerAppId())
+        || cleanupFailedAppIds.contains(grant.providerAppId());
   }
 
   private void appendAudit(
@@ -863,6 +923,10 @@ public final class AppServiceCoordinator {
     return "ase-"
         + hashHex(eventType + "|" + grantId + "|" + now + "|" + runId + "|" + sequence)
             .substring(0, 24);
+  }
+
+  private static boolean sameTokens(List<String> first, List<String> second) {
+    return Set.copyOf(first).equals(Set.copyOf(second));
   }
 
   private static String hashHex(String value) {
