@@ -1,5 +1,6 @@
 package network.crypta.platform.api.appservices;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppServiceGrantStoreTest {
@@ -77,6 +79,58 @@ class AppServiceGrantStoreTest {
     assertFalse(Files.exists(auditDirectory.resolve(eventId(2) + ".properties")));
     assertTrue(Files.exists(auditDirectory.resolve(eventId(3) + ".properties")));
     assertEquals(eventId(514), store.listAuditEvents(10).getFirst().eventId());
+  }
+
+  @Test
+  void fileStore_whenGrantRecordHasMalformedValue_expectIOException() throws Exception {
+    Path root = tempDir.resolve("app-services");
+    FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
+    AppServiceGrant grant =
+        grant("asg-111111111111111111111111", Instant.parse("2026-05-24T12:00:01Z"));
+    store.writeGrant(grant);
+    Files.writeString(
+        root.resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        version=1
+        grantId=asg-111111111111111111111111
+        consumerAppId=social-inbox
+        providerAppId=trust-graph
+        serviceId=trust.score
+        scopes=score.read
+        contexts=message-author
+        purpose=Annotate message authors.
+        status=active
+        createdAt=2026-05-24T12:00:01Z
+        updatedAt=2026-05-24T12:00:01Z
+        useCount=not-a-number
+        """);
+
+    IOException exception = assertThrows(IOException.class, store::listGrants);
+
+    assertEquals("malformed app-service grant record", exception.getMessage());
+  }
+
+  @Test
+  void fileStore_whenAuditRecordHasMalformedValue_expectIOException() throws Exception {
+    Path root = tempDir.resolve("app-services");
+    FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
+    AppServiceAuditEvent event =
+        event("ase-111111111111111111111111", Instant.parse("2026-05-24T12:00:01Z"));
+    store.appendAuditEvent(event);
+    Files.writeString(
+        root.resolve("audit").resolve(event.eventId() + ".properties"),
+        """
+        version=1
+        eventId=ase-111111111111111111111111
+        timestamp=not-an-instant
+        eventType=service_invoked
+        status=ok
+        reasonCode=invocation_allowed
+        """);
+
+    IOException exception = assertThrows(IOException.class, () -> store.listAuditEvents(10));
+
+    assertEquals("malformed app-service audit record", exception.getMessage());
   }
 
   private static AppServiceGrant grant(String grantId, Instant createdAt) {

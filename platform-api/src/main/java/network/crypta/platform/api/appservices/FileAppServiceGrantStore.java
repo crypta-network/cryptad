@@ -236,39 +236,47 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
 
   private AppServiceGrant readGrantFile(Path file) throws IOException {
     Properties properties = readProperties(file);
-    return new AppServiceGrant(
-        require(properties, KEY_GRANT_ID),
-        require(properties, KEY_CONSUMER_APP_ID),
-        require(properties, KEY_PROVIDER_APP_ID),
-        require(properties, KEY_SERVICE_ID),
-        AppServiceManifestParser.commaList(require(properties, KEY_SCOPES), KEY_SCOPES),
-        AppServiceManifestParser.commaList(properties.getProperty(KEY_CONTEXTS), KEY_CONTEXTS),
-        require(properties, "purpose"),
-        AppServiceGrantStatus.parse(require(properties, KEY_STATUS)),
-        Instant.parse(require(properties, "createdAt")),
-        Instant.parse(require(properties, "updatedAt")),
-        optionalInstant(properties, "approvedAt"),
-        optionalInstant(properties, "revokedAt"),
-        optionalInstant(properties, "lastUsedAt"),
-        Long.parseLong(require(properties, "useCount")),
-        properties.getProperty("tokenFingerprint"));
+    try {
+      return new AppServiceGrant(
+          require(properties, KEY_GRANT_ID),
+          require(properties, KEY_CONSUMER_APP_ID),
+          require(properties, KEY_PROVIDER_APP_ID),
+          require(properties, KEY_SERVICE_ID),
+          AppServiceManifestParser.commaList(require(properties, KEY_SCOPES), KEY_SCOPES),
+          AppServiceManifestParser.commaList(properties.getProperty(KEY_CONTEXTS), KEY_CONTEXTS),
+          require(properties, "purpose"),
+          AppServiceGrantStatus.parse(require(properties, KEY_STATUS)),
+          Instant.parse(require(properties, "createdAt")),
+          Instant.parse(require(properties, "updatedAt")),
+          optionalInstant(properties, "approvedAt"),
+          optionalInstant(properties, "revokedAt"),
+          optionalInstant(properties, "lastUsedAt"),
+          Long.parseLong(require(properties, "useCount")),
+          properties.getProperty("tokenFingerprint"));
+    } catch (RuntimeException exception) {
+      throw malformedRecord("grant", exception);
+    }
   }
 
   private AppServiceAuditEvent readAuditFile(Path file) throws IOException {
     Properties properties = readProperties(file);
-    return new AppServiceAuditEvent(
-        require(properties, KEY_EVENT_ID),
-        Instant.parse(require(properties, "timestamp")),
-        require(properties, "eventType"),
-        properties.getProperty(KEY_CONSUMER_APP_ID),
-        properties.getProperty(KEY_PROVIDER_APP_ID),
-        properties.getProperty(KEY_SERVICE_ID),
-        properties.getProperty(KEY_GRANT_ID),
-        properties.getProperty("scope"),
-        properties.getProperty("context"),
-        require(properties, KEY_STATUS),
-        require(properties, "reasonCode"),
-        properties.getProperty("subjectUriHash"));
+    try {
+      return new AppServiceAuditEvent(
+          require(properties, KEY_EVENT_ID),
+          Instant.parse(require(properties, "timestamp")),
+          require(properties, "eventType"),
+          properties.getProperty(KEY_CONSUMER_APP_ID),
+          properties.getProperty(KEY_PROVIDER_APP_ID),
+          properties.getProperty(KEY_SERVICE_ID),
+          properties.getProperty(KEY_GRANT_ID),
+          properties.getProperty("scope"),
+          properties.getProperty("context"),
+          require(properties, KEY_STATUS),
+          require(properties, "reasonCode"),
+          properties.getProperty("subjectUriHash"));
+    } catch (RuntimeException exception) {
+      throw malformedRecord("audit", exception);
+    }
   }
 
   private Properties readProperties(Path file) throws IOException {
@@ -332,6 +340,10 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
   private static Instant optionalInstant(Properties properties, String key) {
     String value = properties.getProperty(key);
     return value == null || value.isBlank() ? null : Instant.parse(value);
+  }
+
+  private static IOException malformedRecord(String kind, RuntimeException cause) {
+    return new IOException("malformed app-service " + kind + " record", cause);
   }
 
   private static void setInstant(Properties properties, String key, Instant value) {
