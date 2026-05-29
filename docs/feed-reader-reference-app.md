@@ -1,7 +1,7 @@
 # Feed Reader reference app
 
 This page describes the first-party Feed Reader reference app and the Platform API
-content-subscription and durable app-data surfaces introduced in v8/v9 and tested through v11.
+content-subscription and durable app-data surfaces introduced in v8/v9 and tested through v12.
 
 ## Scope
 
@@ -109,7 +109,7 @@ permissions.rationale.queue.read=Displays publication progress from the local tr
 permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 api.minimumVersion=9
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -127,7 +127,7 @@ Release certification records these required evidence ids for this workflow:
 | `network-content.subscription-scheduler` | The background scheduler has deterministic offline evidence for bounded due checks, per-app/global/per-tick limits, backoff, dedupe, queue pressure handling with no queue HTML parsing, and path-free durable metadata. |
 | `reference-app.feed-reader` | Feed Reader exists as a first-party static app, declares the expected permissions, uses SDK feed helpers, and publishes generated feed documents without local source-path authority. |
 | `reference-app.feed-reader-subscriptions` | Feed Reader declares `content.subscribe`, uses the contract v8 platform subscription helpers, and no longer relies on a tab-local follow loop as the durable follow path. |
-| `reference-app.feed-reader-app-data` | Feed Reader declares `app.data.read` and `app.data.write`, requires at least API v9, is tested through v11, uses SDK app-data helpers, and keeps durable app-data evidence redacted. |
+| `reference-app.feed-reader-app-data` | Feed Reader declares `app.data.read` and `app.data.write`, requires at least API v9, is tested through v12, uses SDK app-data helpers, and keeps durable app-data evidence redacted. |
 
 Evidence and reports must not include raw feed bodies, raw fetched content, raw request bodies,
 private insert URIs, app process tokens, browser-session tokens, form passwords, private keys,

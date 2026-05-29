@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.apps.AppsApiHandler;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.appupdates.AppUpdatesApiHandler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
@@ -48,6 +49,7 @@ final class PlatformApiAppRoutes {
   private final AppUpdateService appUpdateService;
   private final ContentSubscriptionService contentSubscriptionService;
   private final AppDataService appDataService;
+  private final AppServiceCoordinator appServiceCoordinator;
   private final AppCatalogsApiHandler appCatalogsApiHandler;
   private final PlatformApiVaultRouter vaultRouter;
 
@@ -76,7 +78,8 @@ final class PlatformApiAppRoutes {
       AppVaultService appVaultService,
       AppUpdateService appUpdateService,
       ContentSubscriptionService contentSubscriptionService,
-      AppDataService appDataService) {}
+      AppDataService appDataService,
+      AppServiceCoordinator appServiceCoordinator) {}
 
   /**
    * Creates app-platform routes from the optional app runtime services.
@@ -107,6 +110,7 @@ final class PlatformApiAppRoutes {
     appUpdateService = resolvedUpdateService;
     contentSubscriptionService = sharedServices.contentSubscriptionService();
     appDataService = sharedServices.appDataService();
+    appServiceCoordinator = sharedServices.appServiceCoordinator();
     appUpdatesApiHandler =
         appUpdateService == null ? null : new AppUpdatesApiHandler(appUpdateService);
     appCatalogsApiHandler =
@@ -288,6 +292,7 @@ final class PlatformApiAppRoutes {
   private void clearAppState(String appId, boolean preserveData) {
     clearAppUpdateState(appId);
     clearContentSubscriptionState(appId);
+    clearAppServiceState(appId);
     if (!preserveData) {
       clearAppDataState(appId);
     }
@@ -315,6 +320,12 @@ final class PlatformApiAppRoutes {
   private void clearAppDataState(String appId) {
     if (appDataService != null) {
       appDataService.clearAppState(appId);
+    }
+  }
+
+  private void clearAppServiceState(String appId) {
+    if (appServiceCoordinator != null) {
+      appServiceCoordinator.clearAppState(appId);
     }
   }
 

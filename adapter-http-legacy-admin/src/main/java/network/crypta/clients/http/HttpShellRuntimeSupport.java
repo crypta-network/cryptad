@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.io.File;
 import network.crypta.config.Config;
 import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
@@ -128,6 +129,18 @@ public interface HttpShellRuntimeSupport {
    * @return shared trust graph handler, or {@code null} when unavailable
    */
   default TrustGraphApiHandler trustGraphApiHandler() {
+    return null;
+  }
+
+  /**
+   * Returns the shared app-service coordinator used by Platform API app-service routes.
+   *
+   * <p>A {@code null} value means app-service discovery and grant routes are unavailable in this
+   * embedding and should report a stable service-unavailable response.
+   *
+   * @return shared app-service coordinator, or {@code null} when unavailable
+   */
+  default AppServiceCoordinator appServiceCoordinator() {
     return null;
   }
 

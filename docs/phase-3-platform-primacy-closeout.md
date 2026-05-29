@@ -203,9 +203,10 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
 - The first content-oriented reference app has landed as Site Publisher, the first
   identity-profile reference app has landed as Profile Publisher, the first feed/content-fetch
   reference app has landed as Feed Reader, and the first local trust-service preview reference app
-  has landed as Trust Graph Preview. Broader first-party app catalog depth beyond Queue Manager,
-  Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview remains future
-  work.
+  has landed as Trust Graph Preview. Later app-platform phases add Social Inbox Preview, durable app
+  data, content subscriptions, and app-service grants; see
+  [app-platform-developer-portal.md](app-platform-developer-portal.md) for the current first-party
+  app map.
 - App permission enforcement and app-origin audit landed after this Phase 3 closeout; see
   [app-permissions-and-audit.md](app-permissions-and-audit.md).
 - Legacy admin and browse retirement plan.

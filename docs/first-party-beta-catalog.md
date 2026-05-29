@@ -100,7 +100,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -116,7 +116,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -136,17 +136,17 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=false
 ```
 
 Social Inbox Preview descriptors should include vault, content-fetch, content-subscription,
-generated-document publication, app-data, and trust-read rationales while making clear that the app
-is a migration spike, not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, or a
-daemon-core message protocol:
+generated-document publication, app-data, and app-service grant rationales while making clear that
+the app is a migration spike, not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, or
+a daemon-core message protocol:
 
 ```properties
-permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,app.services.read,app.services.call
 permissions.rationale.vault.identities.read=Lists public metadata for app-owned social signing identities.
 permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox preview identity without exporting private material.
 permissions.rationale.vault.identities.use=Uses the bounded social-message and profile-document routes without exposing generic browser signing.
@@ -157,12 +157,19 @@ permissions.rationale.queue.write=Creates generated social outbox publication in
 permissions.rationale.queue.read=Displays safe upload queue summaries.
 permissions.rationale.app.data.read=Restores bounded sources, imported-message summaries, read state, outbox summaries, and explicit drafts.
 permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
-permissions.rationale.trust.read=Reads Trust Graph Preview scores for message-author annotations.
+permissions.rationale.app.services.read=Discovers local app-service descriptors and caller-visible grant state.
+permissions.rationale.app.services.call=Requests and invokes an operator-approved Trust Graph score service grant.
+services.requests=trust-score
+service-request.trust-score.provider=trust-graph
+service-request.trust-score.service=trust.score
+service-request.trust-score.scopes=score.read
+service-request.trust-score.contexts=message-author
+service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
 categories=social,identity,preview
 review.status=reviewed
 review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
-api.minimumVersion=11
-api.maximumTestedVersion=11
+api.minimumVersion=12
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -183,11 +190,20 @@ permissions.rationale.queue.write=Creates generated trust statement publication 
 permissions.rationale.queue.read=Displays publication progress from the local transfer queue.
 permissions.rationale.app.data.read=Restores UI-local drafts, selected filters, and redacted import summaries.
 permissions.rationale.app.data.write=Saves bounded UI-local preview state separately from the trust backend.
+services.provides=trust-score
+service.trust-score.id=trust.score
+service.trust-score.name=Trust Score Service
+service.trust-score.version=1
+service.trust-score.kind=platform-adapter
+service.trust-score.adapter=trust-graph.score
+service.trust-score.scopes=score.read
+service.trust-score.contexts=message-author,profile
+service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.
 categories=identity,trust,preview
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -290,17 +306,19 @@ environment has source and key hints configured. Profile Publisher is also cover
 `app-platform.generated-document-insert`. Social Inbox Preview is covered by
 `app-platform.social-message-signing`, `reference-app.social-inbox`,
 `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
-`reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`, and
-`migration.social-mail-preview`. Feed Reader is covered by `reference-app.feed-reader`,
+`reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
+`reference-app.social-inbox-service-grant`, and `migration.social-mail-preview`. Feed Reader is
+covered by `reference-app.feed-reader`,
 `reference-app.feed-reader-subscriptions`, `app-platform.content-fetch`,
-`app-platform.content-subscriptions`, and `network-content.subscription-scheduler`. Trust Graph Preview is covered by
-`reference-app.trust-graph`, `app-platform.trust-graph-preview`, and
-`app-platform.trust-statement-signing`. Normal certification must not record tokens, form
-passwords, private insert URIs, raw request bodies, raw feed bodies, raw social message bodies,
-raw fetched social documents, raw trust statement bodies
-from real users, private keys, raw public key bytes, raw receipt signatures, transparency-log
-paths, or absolute staging paths. It does not fetch a public Crypta network catalog during normal
-unit tests.
+`app-platform.content-subscriptions`, and `network-content.subscription-scheduler`. Trust Graph
+Preview is covered by `reference-app.trust-graph`, `app-platform.trust-graph-preview`,
+`app-platform.trust-statement-signing`, `app-services.registry`, `app-services.grants`,
+`app-services.trust-score-provider`, `app-services.web-shell`, and `app-services.redaction`.
+Normal certification must not record tokens, form passwords, private insert URIs, raw request
+bodies, raw feed bodies, raw social message bodies, raw fetched social documents, raw trust
+statement bodies from real users, raw app-service subject URIs, provider app data, private keys,
+raw public key bytes, raw receipt signatures, transparency-log paths, or absolute staging paths.
+It does not fetch a public Crypta network catalog during normal unit tests.
 
 ## Related docs
 

@@ -83,7 +83,9 @@ recognizes the app-vault capability names `vault.secrets.read`, `vault.secrets.w
 `vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and
 `vault.identities.manage`; see [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)
 before requesting them. It also recognizes Trust Graph Preview capabilities `trust.read` and
-`trust.write`; see [trust-graph-preview.md](trust-graph-preview.md) before using them. Use
+`trust.write`; see [trust-graph-preview.md](trust-graph-preview.md) before using them. It recognizes
+local app-service capabilities `app.services.read` and `app.services.call`; see
+[app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) before using them. Use
 `--overwrite` only when you deliberately want to replace an existing
 scaffolded directory.
 
@@ -307,7 +309,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -338,7 +340,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -347,7 +349,7 @@ signatures, or absolute staging paths in descriptor notes, generated catalog met
 evidence.
 
 A Feed Reader catalog descriptor should include the content-subscription, content-fetch, durable
-app-data, generated-document publication permissions, and minimum-v9, tested-through-v11 API
+app-data, generated-document publication permissions, and minimum-v9, tested-through-v12 API
 compatibility metadata:
 
 ```properties
@@ -373,7 +375,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=11
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -381,8 +383,8 @@ Feed Reader evidence must not include raw feed bodies, raw fetched content, raw 
 private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, or
 local paths.
 
-A Social Inbox Preview catalog descriptor should include the social/mail migration permissions and
-contract-v11 compatibility metadata:
+A Social Inbox Preview catalog descriptor should include the social/mail migration permissions,
+app-service request metadata, and contract-v12 compatibility metadata:
 
 ```properties
 artifact.path=/abs/path/to/dist/apps/social-inbox-1.0.0.zip
@@ -390,7 +392,7 @@ bundle.uri=file:/abs/path/to/dist/apps/social-inbox-1.0.0.zip
 summary=Reference app for the social/mail migration preview outside daemon core.
 name=Social Inbox Preview
 version=1.0.0
-permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,app.services.read,app.services.call
 app.id=social-inbox
 homepage=https://example.invalid/apps/social-inbox
 source=https://example.invalid/src/social-inbox
@@ -408,10 +410,17 @@ permissions.rationale.queue.write=Creates generated social outbox publication in
 permissions.rationale.queue.read=Displays safe upload queue summaries.
 permissions.rationale.app.data.read=Restores bounded Social Inbox state.
 permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
-permissions.rationale.trust.read=Reads Trust Graph Preview scores for message-author annotations.
+permissions.rationale.app.services.read=Discovers local app-service descriptors and caller-visible grant state.
+permissions.rationale.app.services.call=Requests and invokes an operator-approved Trust Graph score service grant.
+services.requests=trust-score
+service-request.trust-score.provider=trust-graph
+service-request.trust-score.service=trust.score
+service-request.trust-score.scopes=score.read
+service-request.trust-score.contexts=message-author
+service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
 changelog.summary=Adds the social/mail migration preview reference app.
-api.minimumVersion=11
-api.maximumTestedVersion=11
+api.minimumVersion=12
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -437,6 +446,10 @@ Descriptors can also author optional app-store metadata:
 | `review.status` | `app.<id>.review.status` |
 | `review.note` | `app.<id>.review.note` |
 | `permissions.rationale.<permission>` | `app.<id>.permissions.rationale.<permission>` |
+| `services.provides` | `app.<id>.services.provides` |
+| `service.<alias>.*` | `app.<id>.service.<alias>.*` |
+| `services.requests` | `app.<id>.services.requests` |
+| `service-request.<alias>.*` | `app.<id>.service-request.<alias>.*` |
 | `screenshot.N` | `app.<id>.screenshot.N` |
 | `changelog.summary` | `app.<id>.changelog.summary` |
 | `changelog.uri` | `app.<id>.changelog.uri` |
@@ -618,6 +631,10 @@ projects:
 ./gradlew :apps:profile-publisher:stageApp
 ./gradlew :apps:profile-publisher:signApp
 ./gradlew :apps:profile-publisher:verifyApp
+
+./gradlew :apps:social-inbox:stageApp
+./gradlew :apps:social-inbox:signApp
+./gradlew :apps:social-inbox:verifyApp
 
 ./gradlew :apps:feed-reader:stageApp
 ./gradlew :apps:feed-reader:signApp

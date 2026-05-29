@@ -5,8 +5,9 @@ social/mail-like migration path outside the daemon core and legacy plugin surfac
 `social-inbox` and the displayed name is `Social Inbox Preview`.
 
 The preview combines AppVault identities, bounded signed social-message documents, generated
-app-document inserts, content fetch/subscriptions, durable app data, and Trust Graph Preview
-annotations. It is not a production social network, mail protocol, full WoT implementation,
+app-document inserts, content fetch/subscriptions, durable app data, and an operator-approved
+Trust Graph Preview Trust Score Service grant. It is not a production social network, mail
+protocol, full WoT implementation,
 Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation service, or daemon
 message store.
 
@@ -41,11 +42,14 @@ The root first-party aggregate tasks also include this app:
 
 ## Runtime Surface
 
-The app requires Platform API contract 11 because it uses the bounded browser-safe social-message
-signing route:
+The app requires Platform API contract 12 because it uses the bounded browser-safe social-message
+signing route and the local app-service grant routes:
 
 ```text
 POST /api/v1/app-vault/identities/{identityId}/social-message
+GET /api/v1/app-services
+POST /api/v1/app-services/grants
+POST /api/v1/app-services/trust-graph/services/trust.score/invoke
 ```
 
 The route fixes the signing domain to `crypta.social.message.v1`; the browser app cannot choose an
@@ -65,8 +69,15 @@ queue.read
 queue.write
 app.data.read
 app.data.write
-trust.read
+app.services.read
+app.services.call
 ```
+
+The signed manifest also declares a transparent service request for Trust Graph Preview's
+`trust.score` service with `score.read` in the `message-author` context. The request does not
+approve access by itself; Web Shell must approve the grant before score annotations can run. If the
+grant is missing, pending, revoked, or inactive, the UI keeps messages visible and shows a neutral
+trust-score unavailable state.
 
 ## Durable State
 

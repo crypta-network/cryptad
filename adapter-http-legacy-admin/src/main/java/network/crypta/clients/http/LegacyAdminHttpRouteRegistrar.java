@@ -49,6 +49,7 @@ public final class LegacyAdminHttpRouteRegistrar implements LegacyHttpRouteRegis
             context.contentSubscriptionService(),
             context.appDataService(),
             context.trustGraphApiHandler(),
+            context.appServiceCoordinator(),
             context.appVaultService(),
             context.config(),
             context.browseRoot(),

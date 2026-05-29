@@ -46,11 +46,12 @@
     <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
       <h2 id="safe-use-title">Overview</h2>
       <p>Trust Graph Preview is a local durable preview, not full WoT or moderation.</p>
-      <p>App id: <code>trust-graph</code>. Platform API contract: <code>10</code>.</p>
+      <p>App id: <code>trust-graph</code>. Platform API contracts: <code>10-12</code>.</p>
       <ul>
         <li>Draft form values, selected filters, and redacted import summaries persist through app data.</li>
         <li>Anchors and imported statements persist through the platform trust graph backend.</li>
         <li>Anchors are local and are not published automatically.</li>
+        <li>The local Trust Score Service is preview-only and available to other apps only through operator-approved app-service grants.</li>
         <li>Exchange uses content fetch, insert, and subscription APIs without protocol changes.</li>
         <li>Fetched statement bodies are not displayed; pasted statement JSON is rendered only as text.</li>
         <li>Statement authorship uses vault and trust exchange helpers without exposing private signing secrets.</li>

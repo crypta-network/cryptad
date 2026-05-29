@@ -4,13 +4,14 @@ Social Inbox Preview is a first-party static AppHost bundle under `apps/social-i
 demonstrates that social/mail-like functionality can move outside the daemon, out of daemon core
 and legacy plugin surfaces, and into an out-of-process app-platform reference app.
 
-The app composes existing platform surfaces with one bounded Platform API v11 addition:
+The app composes existing platform surfaces with bounded Platform API v11 signing and v12
+app-service grants:
 
 ```text
 AppVault identity + signed profile/message documents
 + content insert/fetch/subscribe
 + durable app data
-+ Trust Graph Preview score annotations
++ Trust Graph Preview score annotations through app-service grants
 = social/mail-like reference layer outside the daemon
 ```
 
@@ -24,8 +25,8 @@ daemon-core message store, daemon-core message protocol, or network protocol cha
 ```text
 app.id=social-inbox
 app.name=Social Inbox Preview
-api.minimumVersion=11
-api.maximumTestedVersion=11
+api.minimumVersion=12
+api.maximumTestedVersion=12
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -43,7 +44,20 @@ The app declares these permissions:
 | `queue.write` | Queues generated outbox document inserts. |
 | `app.data.read` | Restores bounded sources, summaries, drafts, imported message summaries, and read state. |
 | `app.data.write` | Saves bounded app-owned Social Inbox state. |
-| `trust.read` | Queries Trust Graph Preview scores for message-author annotations. |
+| `app.services.read` | Discovers the local Trust Score Service descriptor and caller-visible grant state. |
+| `app.services.call` | Requests and invokes an approved local `trust.score` service grant. |
+
+The signed manifest also declares a transparent service request:
+
+```text
+app.services.requests=trust-score
+app.service-request.trust-score.provider=trust-graph
+app.service-request.trust-score.service=trust.score
+app.service-request.trust-score.scopes=score.read
+app.service-request.trust-score.contexts=message-author
+```
+
+This metadata is visible to operators and catalog review, but it does not auto-approve a grant.
 
 ## Identity and profile metadata
 
@@ -188,19 +202,32 @@ the draft remains bounded.
 These records must not contain private identity material, private insert URIs, browser-session
 tokens, app process tokens, raw fetched documents, raw signatures, local paths, or generic secrets.
 
-## Trust annotations
+## Trust Score Service Grant
 
-For each message author fingerprint, the app queries Trust Graph Preview:
+For each message author fingerprint, the app queries Trust Graph Preview through the v12
+app-services API:
 
 ```text
+POST /api/v1/app-services/trust-graph/services/trust.score/invoke
 subjectKind=identity
 context=message-author
+scope=score.read
 ```
 
-The result is rendered as a preview annotation. Scores and evidence counts are displayed when
-available. Missing or failed trust evidence is shown as a neutral/unscored badge. The app still
-shows unscored and untrusted messages; Trust Graph annotations are not a moderation decision, not
-content hiding, and not daemon routing policy.
+The app first calls `CryptaPlatform.services.get("trust-graph", "trust.score")` and
+`CryptaPlatform.services.grants.list()` to show whether the service is discovered and whether its
+grant is missing, pending, active, revoked, or inactive. The request button calls
+`CryptaPlatform.services.grants.request(...)`, creating a pending grant that the operator must
+approve in Web Shell. After approval, author annotations use
+`CryptaPlatform.services.invoke("trust-graph", "trust.score", ...)`.
+
+Pending, revoked, inactive, missing, or no-longer-authorized grants are rendered as neutral
+`Trust score unavailable / grant required` states. The app must not fall back to
+`CryptaPlatform.trust.score` or direct Trust Graph routes after revocation. The result is rendered
+as a preview annotation. Scores and evidence counts are displayed when available. Missing or failed
+trust evidence is shown as a neutral/unscored badge. The app still shows unscored and untrusted
+messages; Trust Graph annotations are not a moderation decision, not content hiding, and not daemon
+routing policy.
 
 ## Release evidence
 
@@ -213,13 +240,20 @@ reference-app.social-inbox-signed-message
 reference-app.social-inbox-subscriptions
 reference-app.social-inbox-app-data
 reference-app.social-inbox-trust-annotations
+reference-app.social-inbox-service-grant
+app-services.registry
+app-services.grants
+app-services.trust-score-provider
+app-services.web-shell
+app-services.redaction
 migration.social-mail-preview
 ```
 
 Evidence must verify the app exists and stages, declares its permissions, uses the SDK and design
 system, signs messages through the bounded AppVault social-message route, publishes generated
-outbox documents, manages durable USK subscriptions, persists only safe bounded app data, queries
-Trust Graph Preview for message-author scores, and documents the migration boundary.
+outbox documents, manages durable USK subscriptions, persists only safe bounded app data, requests
+and uses a mediated Trust Score Service grant for message-author scores, verifies revocation
+failure, and documents the migration boundary.
 
 Evidence must not include raw message bodies, raw fetched content, raw request bodies, raw
 signatures, private insert URIs, private keys, private identity material, browser-session tokens,

@@ -6,6 +6,10 @@ It is not full WoT, old WebOfTrust plugin compatibility, moderation, routing pol
 selection, or automatic content blocking. Trust anchors are local to the node and are not published
 automatically.
 
+The signed manifest advertises a preview-only local `trust.score` service named Trust Score
+Service. Other apps can invoke it only through the Platform API app-services layer after an
+operator-approved grant; the app does not expose an arbitrary localhost server for score access.
+
 ## Stage
 
 ```bash
@@ -78,6 +82,23 @@ loads only local design-system assets and the staged `crypta-platform.js` SDK.
 
 The bounded AppVault route is `app-vault/identities/{identityId}/trust-statement`; it signs only
 the trust statement payload and does not export private key material.
+
+## Trust Score Service
+
+Trust Graph Preview advertises this service metadata in `cryptad-app.properties`:
+
+```properties
+app.services.provides=trust-score
+app.service.trust-score.id=trust.score
+app.service.trust-score.kind=platform-adapter
+app.service.trust-score.adapter=trust-graph.score
+app.service.trust-score.scopes=score.read
+app.service.trust-score.contexts=message-author,profile
+```
+
+The platform adapter calls the existing local Trust Graph score implementation and returns a
+redacted score summary with a subject URI hash. It does not return raw trust statement bodies,
+raw signatures, local store paths, private identity material, or private insert URIs.
 
 ## Durable Backend and Exchange
 

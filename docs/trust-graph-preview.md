@@ -18,8 +18,8 @@ datastore changes, peer-management changes, or FProxy browse removal.
   redacted trust audit events, in-memory test store, and preview scorer.
 - `:platform-api` exposes contract v7 `trust.read` and `trust.write` compatibility routes,
   contract v10 trust exchange and audit routes, the local `/api/v1/trust-graph/*` route family,
-  and the bounded AppVault signing route
-  `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
+  contract v12 app-service discovery/grant routes for the local `trust.score` service, and the
+  bounded AppVault signing route `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
 - `:platform-sdk-js` exposes `CryptaPlatform.trust.*`, `CryptaPlatform.trust.exchange.*`, and
   `CryptaPlatform.vault.identities.createTrustStatement(...)` helpers.
 - `apps:trust-graph` stages the static Trust Graph Preview reference app with SDK, durable
@@ -152,8 +152,31 @@ summary, records whether the signature verifies against the issuer public key, a
 import summary without raw private data.
 
 `GET /api/v1/trust-graph/score` accepts `subjectKind`, `subjectUri`, `context`, and optional
-`includeEvidence=true`. Other apps can query scores only when their manifest grants `trust.read`.
-Apps can import statements or manage anchors only when their manifest grants `trust.write`.
+`includeEvidence=true`. First-party Trust Graph UI uses this direct route for its own preview
+screen. Other apps should not use this route for the v12 service proving path; they use the
+platform-mediated `trust.score` service with `app.services.read`, `app.services.call`, and an active
+operator-approved grant. Apps can import statements or manage anchors only when their manifest
+grants `trust.write`.
+
+Other apps need operator-approved app-service grants before they can call `trust.score`.
+
+Contract v12 advertises the local Trust Score Service from the signed Trust Graph manifest:
+
+```text
+app.services.provides=trust-score
+app.service.trust-score.id=trust.score
+app.service.trust-score.name=Trust Score Service
+app.service.trust-score.version=1
+app.service.trust-score.kind=platform-adapter
+app.service.trust-score.adapter=trust-graph.score
+app.service.trust-score.scopes=score.read
+app.service.trust-score.contexts=message-author,profile
+```
+
+The service is preview-only and not complete WoT. Invocation is not a proxy to a Trust Graph app
+localhost server. The platform dispatches to a built-in `trust-graph.score` adapter, checks the
+consumer manifest and active grant at call time, and returns only a redacted score summary and
+subject URI hash.
 
 `POST /api/v1/trust-graph/import-uri` accepts a Crypta content URI, optional `sourceLabel`, and an
 optional byte cap bounded by the trust graph configuration. It uses the same content fetch rules as
@@ -178,7 +201,7 @@ vault paths, raw process tokens, browser session tokens, form passwords, or gene
 
 ## Reference App
 
-`apps:trust-graph` declares API minimum v10 and maximum tested v11, with:
+`apps:trust-graph` declares API minimum v10 and maximum tested v12, with:
 
 ```text
 trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,
@@ -201,11 +224,11 @@ material, raw signatures, tokens, and local paths.
 
 ## Redaction
 
-Model `toString()` output, API errors, trust audit entries, authorization audit entries,
-diagnostics, UI errors, release evidence, and developer-tooling reports must not include raw trust
-document bodies from real users, raw request bodies, raw fetched content, private insert URIs,
-private keys, seed material, app process tokens, browser-session tokens, form passwords, absolute
-local paths, or raw signatures. Release-certification evidence should use route names, capability
-labels, booleans, counts, fixture hashes, and redacted summaries. Durable UI-local app-data
-evidence should similarly use counts and summary fields instead of raw trust statements, private
-insert URIs, or raw form bodies.
+Model `toString()` output, API errors, trust audit entries, authorization audit entries, UI errors,
+release evidence, and developer-tooling reports must not include raw trust statement bodies from
+real users, raw request bodies, raw fetched content, private insert URIs, private keys, seed
+material, app process tokens, browser-session tokens, form passwords, absolute local paths, or raw
+signatures. Release-certification evidence should use route names, capability labels, booleans,
+counts, fixture hashes, and redacted summaries. Durable UI-local app-data evidence should similarly
+use counts and summary fields instead of raw trust statements, private insert URIs, or raw form
+bodies.

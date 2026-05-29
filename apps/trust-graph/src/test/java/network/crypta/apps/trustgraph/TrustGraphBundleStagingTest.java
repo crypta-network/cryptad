@@ -44,7 +44,7 @@ class TrustGraphBundleStagingTest {
           "app.data.read",
           "app.data.write");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 10;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 11;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 12;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -113,6 +113,18 @@ class TrustGraphBundleStagingTest {
     assertTrue(manifestText.contains("app.ui.mode=static"));
     assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));
     assertTrue(manifestText.contains("app.permissions=" + EXPECTED_PERMISSIONS));
+    assertTrue(manifestText.contains("app.services.provides=trust-score"));
+    assertTrue(manifestText.contains("app.service.trust-score.id=trust.score"));
+    assertTrue(manifestText.contains("app.service.trust-score.name=Trust Score Service"));
+    assertTrue(manifestText.contains("app.service.trust-score.version=1"));
+    assertTrue(manifestText.contains("app.service.trust-score.kind=platform-adapter"));
+    assertTrue(manifestText.contains("app.service.trust-score.adapter=trust-graph.score"));
+    assertTrue(manifestText.contains("app.service.trust-score.scopes=score.read"));
+    assertTrue(manifestText.contains("app.service.trust-score.contexts=message-author,profile"));
+    assertTrue(
+        manifestText.contains(
+            "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score"
+                + " summary for an app-provided public subject."));
     assertTrue(manifestText.contains("sandbox.mode=restricted-process"));
     assertTrue(manifestText.contains("sandbox.required=false"));
     assertTrue(manifestText.contains("app.restart.policy=never"));
@@ -225,6 +237,8 @@ class TrustGraphBundleStagingTest {
         "Queue preview",
         "persist through app data",
         "persist through the platform trust graph backend",
+        "Trust Score Service",
+        "operator-approved app-service grants",
         "rendered only as text",
         "without exposing private signing secrets");
   }

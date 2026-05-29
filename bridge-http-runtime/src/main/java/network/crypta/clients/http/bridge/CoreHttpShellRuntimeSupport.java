@@ -30,6 +30,9 @@ import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.FileAppDataStore;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
+import network.crypta.platform.api.appservices.FileAppServiceGrantStore;
+import network.crypta.platform.api.appservices.TrustGraphScoreAppServiceAdapter;
 import network.crypta.platform.api.appupdates.AppUpdateScheduler;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerConfig;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerStore;
@@ -83,6 +86,7 @@ import org.slf4j.LoggerFactory;
  * @param contentSubscriptionScheduler optional background content subscription scheduler
  * @param appDataService shared durable app-data service used by Platform API app-data routes
  * @param trustGraphApiHandler shared durable trust graph handler used by Platform API trust routes
+ * @param appServiceCoordinator shared app-service coordinator used by Platform API service routes
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
@@ -95,6 +99,7 @@ public record CoreHttpShellRuntimeSupport(
     ContentSubscriptionScheduler contentSubscriptionScheduler,
     AppDataService appDataService,
     TrustGraphApiHandler trustGraphApiHandler,
+    AppServiceCoordinator appServiceCoordinator,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -139,6 +144,7 @@ public record CoreHttpShellRuntimeSupport(
         services.contentSubscriptionScheduler(),
         services.appDataService(),
         services.trustGraphApiHandler(),
+        services.appServiceCoordinator(),
         services.appVaultService());
   }
 
@@ -193,6 +199,7 @@ public record CoreHttpShellRuntimeSupport(
         null,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -221,6 +228,7 @@ public record CoreHttpShellRuntimeSupport(
         appCatalogManager,
         appUpdateService,
         appUpdateScheduler,
+        null,
         null,
         null,
         null,
@@ -261,6 +269,7 @@ public record CoreHttpShellRuntimeSupport(
         contentSubscriptionScheduler,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -280,6 +289,7 @@ public record CoreHttpShellRuntimeSupport(
    * @param appVaultService shared app-vault service, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
+  @SuppressWarnings("unused")
   public CoreHttpShellRuntimeSupport(
       NodeClientCore core,
       AppHost appHost,
@@ -291,6 +301,49 @@ public record CoreHttpShellRuntimeSupport(
       AppDataService appDataService,
       TrustGraphApiHandler trustGraphApiHandler,
       AppVaultService appVaultService) {
+    this(
+        core,
+        appHost,
+        appCatalogManager,
+        appUpdateService,
+        appUpdateScheduler,
+        contentSubscriptionService,
+        contentSubscriptionScheduler,
+        appDataService,
+        trustGraphApiHandler,
+        null,
+        appVaultService);
+  }
+
+  /**
+   * Creates a core-backed HTTP runtime adapter with explicit app-platform services.
+   *
+   * @param core daemon core that supplies the shell-level runtime services
+   * @param appHost shared AppHost instance used by the platform control plane
+   * @param appCatalogManager shared app-catalog manager, or {@code null} when unavailable
+   * @param appUpdateService shared app-update lifecycle service, or {@code null} when unavailable
+   * @param appUpdateScheduler optional background app-update scheduler
+   * @param contentSubscriptionService optional content subscription service
+   * @param contentSubscriptionScheduler optional background content subscription scheduler
+   * @param appDataService shared durable app-data service, or {@code null} when unavailable
+   * @param trustGraphApiHandler shared durable trust graph handler, or {@code null} when
+   *     unavailable
+   * @param appServiceCoordinator shared app-service coordinator, or {@code null} when unavailable
+   * @param appVaultService shared app-vault service, or {@code null} when unavailable
+   * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
+   */
+  public CoreHttpShellRuntimeSupport(
+      NodeClientCore core,
+      AppHost appHost,
+      AppCatalogManager appCatalogManager,
+      AppUpdateService appUpdateService,
+      AppUpdateScheduler appUpdateScheduler,
+      ContentSubscriptionService contentSubscriptionService,
+      ContentSubscriptionScheduler contentSubscriptionScheduler,
+      AppDataService appDataService,
+      TrustGraphApiHandler trustGraphApiHandler,
+      AppServiceCoordinator appServiceCoordinator,
+      AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.appCatalogManager = appCatalogManager;
@@ -300,6 +353,7 @@ public record CoreHttpShellRuntimeSupport(
     this.contentSubscriptionScheduler = contentSubscriptionScheduler;
     this.appDataService = appDataService;
     this.trustGraphApiHandler = trustGraphApiHandler;
+    this.appServiceCoordinator = appServiceCoordinator;
     this.appVaultService = appVaultService;
   }
 
@@ -508,6 +562,8 @@ public record CoreHttpShellRuntimeSupport(
     }
     AppDataService appDataService = createAppDataService(layout, appHost);
     TrustGraphApiHandler trustGraphApiHandler = createTrustGraphApiHandler(layout);
+    AppServiceCoordinator appServiceCoordinator =
+        createAppServiceCoordinator(layout, appHost, trustGraphApiHandler);
     return new AppPlatformServices(
         appHost,
         appCatalogManager,
@@ -517,6 +573,7 @@ public record CoreHttpShellRuntimeSupport(
         contentSubscriptionScheduler,
         appDataService,
         trustGraphApiHandler,
+        appServiceCoordinator,
         appVaultService);
   }
 
@@ -619,6 +676,16 @@ public record CoreHttpShellRuntimeSupport(
               + " service unavailable.");
       return TrustGraphApiHandler.unavailable();
     }
+  }
+
+  private static AppServiceCoordinator createAppServiceCoordinator(
+      AppHostLayout layout, AppHost appHost, TrustGraphApiHandler trustGraphApiHandler) {
+    Path storeRoot = layout.dataDir().resolve("apps").resolve("app-services");
+    return new AppServiceCoordinator(
+        appHost,
+        new FileAppServiceGrantStore(storeRoot),
+        java.time.Clock.systemUTC(),
+        java.util.List.of(new TrustGraphScoreAppServiceAdapter(trustGraphApiHandler)));
   }
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
@@ -763,6 +830,7 @@ public record CoreHttpShellRuntimeSupport(
       ContentSubscriptionScheduler contentSubscriptionScheduler,
       AppDataService appDataService,
       TrustGraphApiHandler trustGraphApiHandler,
+      AppServiceCoordinator appServiceCoordinator,
       AppVaultService appVaultService) {}
 
   /**

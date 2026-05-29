@@ -37,6 +37,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("namespaces: Object.freeze({"));
     assertTrue(script.contains("feed:"));
     assertTrue(script.contains("trust:"));
+    assertTrue(script.contains("services: Object.freeze({"));
     assertTrue(script.contains("vault:"));
     assertTrue(script.contains("profile:"));
     assertTrue(script.contains("dom:"));
@@ -158,6 +159,149 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("\"trust-graph/import-uri\""));
     assertTrue(script.contains("\"trust-graph/audit\""));
     assertTrue(script.contains("/trust-statement`"));
+  }
+
+  @Test
+  void classpathResource_whenAppServicesRequested_expectRoutesAndFormFields() throws Exception {
+    String script = readSdkScript();
+
+    assertTrue(script.contains("function listAppServices(options)"));
+    assertTrue(script.contains("function getAppService(providerAppId, serviceId, options)"));
+    assertTrue(script.contains("function listAppServiceGrants(options)"));
+    assertTrue(script.contains("function requestAppServiceGrant(request, options)"));
+    assertTrue(script.contains("function revokeAppServiceGrant(grantIdOrOptions, options)"));
+    assertTrue(
+        script.contains("function invokeAppService(providerAppId, serviceId, request, options)"));
+    assertTrue(script.contains("\"app-services/grants\""));
+    assertTrue(script.contains("normalizeAppServiceGrantRequest(source)"));
+    assertTrue(script.contains("normalizeAppServiceInvocation(source)"));
+    assertTrue(script.contains("appServiceSegment(value, description)"));
+
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services"
+              && options.method === "GET";
+          },
+          { services: [{ serviceId: "trust.score" }], requests: [] });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/trust-graph/services/trust.score"
+              && options.method === "GET";
+          },
+          { service: { serviceId: "trust.score" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grants"
+              && options.method === "GET";
+          },
+          { grants: [] });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grants"
+              && options.method === "POST";
+          },
+          { grant: { grantId: "asg-111111111111111111111111", status: "pending" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/trust-graph/services/trust.score/invoke"
+              && options.method === "POST";
+          },
+          { serviceCall: { status: "ok", result: { score: 0.5 } } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grants/asg-111111111111111111111111/revoke"
+              && options.method === "POST";
+          },
+          { grant: { status: "revoked" } });
+
+        const listed = await CryptaPlatform.services.list();
+        const service = await CryptaPlatform.services.get("trust-graph", "trust.score");
+        const grants = await CryptaPlatform.services.grants.list();
+        const requested = await CryptaPlatform.services.grants.request({
+          providerAppId: "trust-graph",
+          serviceId: "trust.score",
+          scopes: ["score.read"],
+          contexts: ["message-author"],
+          purpose: "Annotate message authors."
+        });
+        const invoked = await CryptaPlatform.services.invoke("trust-graph", "trust.score", {
+          subjectKind: "identity",
+          subjectUri: "crypta:identity:alice",
+          context: "message-author",
+          scope: "score.read"
+        });
+        const revoked = await CryptaPlatform.services.grants.revoke("asg-111111111111111111111111");
+
+        assert.equal(listed.services[0].serviceId, "trust.score");
+        assert.equal(service.service.serviceId, "trust.score");
+        assert.equal(grants.grants.length, 0);
+        assert.equal(requested.grant.status, "pending");
+        assert.equal(invoked.serviceCall.status, "ok");
+        assert.equal(revoked.grant.status, "revoked");
+        const requestParams = decodeFormBody(calls[4]);
+        assert.equal(requestParams.get("providerAppId"), "trust-graph");
+        assert.equal(requestParams.get("serviceId"), "trust.score");
+        assert.equal(requestParams.get("scopes"), "score.read");
+        assert.equal(requestParams.get("contexts"), "message-author");
+        assert.equal(requestParams.get("purpose"), "Annotate message authors.");
+        const invokeParams = decodeFormBody(calls[5]);
+        assert.equal(invokeParams.get("subjectKind"), "identity");
+        assert.equal(invokeParams.get("subjectUri"), "crypta:identity:alice");
+        assert.equal(invokeParams.get("context"), "message-author");
+        assert.equal(invokeParams.get("scope"), "score.read");
+        assert.equal(headerValue(calls[5].headers, "X-Crypta-App-Session"), "session-token");
+        assert.equal(calls[5].credentials, "omit");
+        """);
+  }
+
+  @Test
+  void classpathResource_whenAppServiceInvokeHasServiceSpecificParams_expectForwardedAsForm()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/profile-app/services/profile.lookup/invoke"
+              && options.method === "POST";
+          },
+          { serviceCall: { status: "ok", result: { profileId: "alice" } } });
+
+        const invoked = await CryptaPlatform.services.invoke("profile-app", "profile.lookup", {
+          scope: "profile.read",
+          profileId: "alice",
+          includeMeta: true,
+          limit: 2,
+          tags: ["local", "trusted"],
+          appId: "feed-reader",
+          force: true
+        });
+
+        assert.equal(invoked.serviceCall.result.profileId, "alice");
+        const params = decodeFormBody(calls[1]);
+        assert.equal(params.get("scope"), "profile.read");
+        assert.equal(params.get("profileId"), "alice");
+        assert.equal(params.get("includeMeta"), "true");
+        assert.equal(params.get("limit"), "2");
+        assert.deepEqual(params.getAll("tags"), ["local", "trusted"]);
+        assert.equal(params.has("subjectKind"), false);
+        assert.equal(params.has("subjectUri"), false);
+        assert.equal(params.has("context"), false);
+        assert.equal(params.has("appId"), false);
+        assert.equal(params.has("force"), false);
+        assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
+        assert.equal(calls[1].credentials, "omit");
+        """);
   }
 
   @Test

@@ -446,7 +446,12 @@ app.version=1.0.0
 app.exec=bin/social-inbox.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
-app.permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,trust.read
+app.permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,app.services.read,app.services.call
+app.services.requests=trust-score
+app.service-request.trust-score.provider=trust-graph
+app.service-request.trust-score.service=trust.score
+app.service-request.trust-score.scopes=score.read
+app.service-request.trust-score.contexts=message-author
 quota.data.bytes=2097152
 quota.cache.bytes=2097152
 ```
@@ -454,12 +459,13 @@ quota.cache.bytes=2097152
 Social Inbox Preview needs AppVault identity permissions for bounded social-message signing,
 `content.insert.app-document` and queue permissions for generated outbox publication,
 `content.fetch` and `content.subscribe` for bounded USK source following, `app.data.*` for safe
-sources/read-state/draft summaries, and `trust.read` for Trust Graph Preview message-author
-annotations. It is a social/mail-like migration spike, not Freetalk/Sone/Freemail compatibility,
-encrypted mail, full WoT, a daemon-core message store, or a network protocol change. UI, app data,
-logs, and release evidence must not persist private insert URIs, private identity material, raw
-social message bodies, raw fetched social documents, raw signatures, browser-session tokens, form
-passwords, or local paths.
+sources/read-state/draft summaries, and `app.services.read`/`app.services.call` for the
+operator-approved Trust Graph Preview `trust.score` message-author annotation service. It is a
+social/mail-like migration spike, not Freetalk/Sone/Freemail compatibility, encrypted mail, full
+WoT, a daemon-core message store, or a network protocol change. UI, app data, logs, and release
+evidence must not persist private insert URIs, private identity material, raw social message
+bodies, raw fetched social documents, raw app-service request bodies, raw signatures,
+browser-session tokens, form passwords, or local paths.
 
 Trust Graph Preview reference app bundle:
 
@@ -472,6 +478,12 @@ app.exec=bin/trust-graph.sh
 app.ui.mode=static
 app.ui.entry=static/index.html
 app.permissions=trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write
+app.services.provides=trust-score
+app.service.trust-score.id=trust.score
+app.service.trust-score.kind=platform-adapter
+app.service.trust-score.adapter=trust-graph.score
+app.service.trust-score.scopes=score.read
+app.service.trust-score.contexts=message-author,profile
 quota.data.bytes=1048576
 quota.cache.bytes=2097152
 ```
@@ -480,9 +492,9 @@ Trust Graph Preview needs `trust.read` and `trust.write` for local durable previ
 `content.fetch` for bounded URI import, `content.subscribe` for trust statement subscriptions,
 `content.insert.app-document` plus queue capabilities for generated statement publication,
 `vault.identities.*` for app-owned trust identity creation and bounded trust-statement signing,
-and `app.data.*` for UI-local drafts and redacted summaries. It is not full Web of Trust, a
-moderation system, a background crawler, routing policy, peer selection, or old plugin
-compatibility.
+`app.data.*` for UI-local drafts and redacted summaries, and a `trust.score` service descriptor for
+operator-approved app-service grants. It is not full Web of Trust, a moderation system, a
+background crawler, routing policy, peer selection, old plugin compatibility, or a localhost proxy.
 
 Transitional shell-panel bundle:
 

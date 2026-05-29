@@ -506,6 +506,7 @@ public final class SimpleToadletServer
             runtimeSupportRef.contentSubscriptionService(),
             runtimeSupportRef.appDataService(),
             runtimeSupportRef.trustGraphApiHandler(),
+            runtimeSupportRef.appServiceCoordinator(),
             runtimeSupportRef.appVaultService(),
             runtimeSupportRef.config(),
             bootstrap.browseRoot(),

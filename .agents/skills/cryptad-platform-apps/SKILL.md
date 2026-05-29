@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, beta docs evidence, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, durable app data, content subscriptions, local app-service grants, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, beta docs evidence, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -21,10 +21,13 @@ Load only the docs needed for the change:
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
+- Durable app data: `docs/app-data-store.md`
+- Local app-service discovery and grants: `docs/app-service-discovery-and-grants.md`
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
 - App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
 - Feed Reader and content-fetch reference app: `docs/feed-reader-reference-app.md`
+- Social Inbox Preview reference app: `docs/social-inbox-reference-app.md`
 - Trust Graph Preview reference app and local trust-service API: `docs/trust-graph-preview.md`
 - App secret and identity vault: `docs/app-secret-and-identity-vault.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
@@ -37,9 +40,10 @@ Load only the docs needed for the change:
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
-  staging, bounded content fetch routing, local Trust Graph Preview route handlers, bounded app
-  audit log, and the local app-update lifecycle service plus scheduler above
-  AppHost/catalog/vault/trust/runtime primitives.
+  staging, bounded content fetch routing, durable content subscriptions, durable app data,
+  local Trust Graph Preview route handlers, local app-service discovery/grants and adapters,
+  bounded app audit logs, and the local app-update lifecycle service plus scheduler above
+  AppHost/catalog/vault/app-data/content/trust/runtime primitives.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -48,7 +52,8 @@ Load only the docs needed for the change:
   isolated per-app loopback origin metadata, launch-proof bootstrap, and short-lived browser
   session issuance/verification for static app Platform API calls.
 - `:platform-sdk-js` owns `crypta-platform.js`, the dependency-free browser helper staged into
-  first-party static app bundles.
+  first-party static app bundles, including queue/content/feed/vault/trust/app-data/app-service
+  helpers.
 - `:platform-design-system` owns canonical local app UI CSS/JS assets and safe asset metadata/copy
   helpers used by scaffolds, first-party staging, UI lint, and release evidence.
 - `:platform-appvault` owns app secret and identity vault storage records, metadata/grant value
@@ -70,9 +75,10 @@ Load only the docs needed for the change:
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
   packaging, verifying, catalog-authoring, API contract snapshotting, compatibility verification,
   mock dev serving, offline app tests, developer key generation, and dry-run publication planning
-  for developer-owned staged bundles, including `crypta-app ui lint` and review receipt sign/verify
-  helpers.
-- `:platform-web-shell` owns `/app/node/` browser shell assets and bootstrap.
+  or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
+  lint` and review receipt sign/verify helpers.
+- `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
+  operator views, and app-service grant approval/revocation UI.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
   and legacy admin retirement notices and diagnostics counters.
@@ -80,8 +86,10 @@ Load only the docs needed for the change:
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
 - `:apps:profile-publisher` stages the first-party identity-profile reference static UI bundle.
-- `:apps:feed-reader` stages the first-party feed reader and publisher reference static UI bundle.
-- `:apps:trust-graph` stages the first-party Trust Graph Preview reference static UI bundle.
+- `:apps:social-inbox` stages the first-party social/mail migration preview static UI bundle.
+- `:apps:feed-reader` stages the first-party feed reader/subscription reference static UI bundle.
+- `:apps:trust-graph` stages the first-party Trust Graph Preview reference static UI bundle and
+  advertises the local `trust.score` app-service provider.
 
 ## Guardrails
 
@@ -99,6 +107,13 @@ Load only the docs needed for the change:
   require `content.fetch`, cap bytes and timeouts, allow only Crypta/Freenet content-key forms, and
   reject `file:`, arbitrary HTTP(S), loopback/LAN URLs, and absolute local paths before calling the
   runtime fetch port.
+- Durable content subscriptions are bounded USK follow metadata plus scheduled refresh requests.
+  They must not become a crawler, arbitrary HTTP client, queue-HTML parser, raw content archive, or
+  source of private insert URIs.
+- Durable app data is app-owned state only. It must remain scoped to the authenticated caller app,
+  enforce bounded namespaces/keys/values/imports, and keep raw values, request bodies, store roots,
+  app data directories, private insert URIs, tokens, and local paths out of public JSON, audit,
+  docs, and release evidence.
 - App-generated document insert routes accept generated document bytes, not local source paths.
   Keep raw generated documents, raw feed/profile/trust bodies, private insert URIs, raw
   signatures, and request bodies out of audit entries, logs, and release evidence.
@@ -106,6 +121,14 @@ Load only the docs needed for the change:
   Do not claim full Web of Trust compatibility, old plugin compatibility, global moderation,
   background crawling, daemon-core identity sharing, or protocol/network behavior changes. Trust
   evidence must stay bounded and redacted; do not record raw trust documents from real users.
+- App-service discovery and grants are local Platform API mediation only. Do not add generic RPC,
+  arbitrary localhost proxying, bearer tokens apps can pass around, remote discovery, daemon-core
+  plugin ABIs, cross-app app-data access, or provider run/cache/store path exposure. Invocation must
+  check the authenticated app principal, declared capabilities, current provider descriptor, active
+  grant, scope, and context at call time.
+- Social Inbox Preview is a migration spike for social/mail-like workflows. Do not present it as
+  encrypted mail transport, Freetalk/Sone/Freemail compatibility, full WoT, or a daemon-core message
+  protocol.
 - Audit entries are bounded and process-local. Do not add query strings, request bodies, form
   passwords, tokens, absolute filesystem paths, or large payloads.
 - Static UI routes must serve only immutable installed-bundle files. Reject traversal, encoded path
@@ -156,10 +179,11 @@ Load only the docs needed for the change:
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
   Platform API contract snapshots, app-vault capability evidence, generated document insert
-  evidence, bounded content-fetch evidence, signed bundle evidence, signed catalog evidence,
-  first-party beta catalog metadata, trusted app-review receipt evidence, sandbox-provider
-  evidence, app-update lifecycle/scheduler/rollback evidence, Site Publisher/Profile
-  Publisher/Feed Reader/Trust Graph Preview reference-app evidence, app-review governance and
+  evidence, bounded content-fetch/subscription evidence, durable app-data evidence, signed bundle
+  evidence, signed catalog/live USK publication evidence, first-party beta catalog metadata, trusted
+  app-review receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback
+  evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Preview
+  reference-app evidence, app-service registry/grant/redaction evidence, app-review governance and
   local transparency-log evidence, legacy-admin retirement state, and optional localhost-only live
   AppHost lifecycle evidence.
 - `tools/release-certification/app_platform_docs_check.py` is the deterministic docs evidence
@@ -193,6 +217,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:publisher:test
 ./gradlew :apps:site-publisher:test
 ./gradlew :apps:profile-publisher:test
+./gradlew :apps:social-inbox:test
 ./gradlew :apps:feed-reader:test
 ./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
@@ -207,11 +232,12 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 `./gradlew :platform-devtools:installDist` and smoke the generated
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
 
-When changing signed bundle/catalog, app-review receipts, static UI, design-system assets, UI lint,
-SDK, Platform API contract, AppHost lifecycle, app-vault capabilities, generated document inserts,
-content fetch, Trust Graph Preview, app-update lifecycle/scheduler/rollback, sandbox-provider
-evidence, reference content/profile/feed/trust apps, app platform beta docs evidence, or
-legacy-admin retirement evidence behavior, also run:
+When changing signed bundle/catalog, live USK publication, app-review receipts, static UI,
+design-system assets, UI lint, SDK, Platform API contract, AppHost lifecycle, app-vault
+capabilities, generated document inserts, content fetch/subscriptions, durable app data,
+app-service grants/adapters, Trust Graph Preview, Social Inbox Preview, app-update
+lifecycle/scheduler/rollback, sandbox-provider evidence, reference content/profile/social/feed/trust
+apps, app platform beta docs evidence, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test

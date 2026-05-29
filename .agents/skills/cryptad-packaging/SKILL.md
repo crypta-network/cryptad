@@ -96,10 +96,10 @@ Use this skill when working on:
 - Packaging does not have separate entrypoints per leaf project; it still assembles a single daemon
   artifact and distribution layout from the root build.
 - First-party app projects such as `:apps:queue-manager`, `:apps:publisher`,
-  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
-  `:apps:trust-graph` provide staged app bundles through their `stageApp`, `signApp`, and
-  `verifyApp` tasks. Those bundles are release artifacts and AppHost install inputs; they are not
-  daemon entrypoints inside `build/cryptad-dist`.
+  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:social-inbox`,
+  `:apps:feed-reader`, and `:apps:trust-graph` provide staged app bundles through their
+  `stageApp`, `signApp`, and `verifyApp` tasks. Those bundles are release artifacts and AppHost
+  install inputs; they are not daemon entrypoints inside `build/cryptad-dist`.
   Their static UI staging copies the current `:platform-sdk-js` browser resource and canonical
   `:platform-design-system` assets into each bundle's `static/` assets.
 

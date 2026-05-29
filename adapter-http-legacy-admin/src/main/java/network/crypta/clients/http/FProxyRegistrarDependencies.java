@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.util.Objects;
 import network.crypta.config.Config;
 import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
@@ -33,6 +34,7 @@ import network.crypta.runtime.spi.RuntimePorts;
  *     scheduling
  * @param appDataService optional durable app-data service shared with Platform API routes
  * @param trustGraphApiHandler optional durable trust graph handler shared with Platform API routes
+ * @param appServiceCoordinator optional app-service coordinator shared with Platform API routes
  * @param appVaultService optional app-vault service exposed through vault Platform API routes
  * @param config node configuration used to list sub-config toadlets
  * @param browseRoot prebuilt root browse toadlet handed to the registrar for root-path registration
@@ -48,6 +50,7 @@ record FProxyRegistrarDependencies(
     ContentSubscriptionService contentSubscriptionService,
     AppDataService appDataService,
     TrustGraphApiHandler trustGraphApiHandler,
+    AppServiceCoordinator appServiceCoordinator,
     AppVaultService appVaultService,
     Config config,
     Toadlet browseRoot,
@@ -81,6 +84,7 @@ record FProxyRegistrarDependencies(
         null,
         null,
         null,
+        null,
         config,
         browseRoot,
         browseRouteRegistrar,
@@ -103,6 +107,7 @@ record FProxyRegistrarDependencies(
    * @param appDataService optional durable app-data service shared with Platform API routes
    * @param trustGraphApiHandler optional durable trust graph handler shared with Platform API
    *     routes
+   * @param appServiceCoordinator optional app-service coordinator shared with Platform API routes
    * @param appVaultService optional app-vault service exposed through vault Platform API routes
    * @param config node configuration used to list and filter sub-config toadlets
    * @param browseRoot prebuilt root browse toadlet that is registered at the HTTP root path

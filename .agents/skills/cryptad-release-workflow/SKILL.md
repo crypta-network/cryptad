@@ -33,11 +33,12 @@ Build: 2
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
   app-review governance/reviewer-key/transparency-log evidence, app-owned UI design-system/lint
   smoke, app-vault capability evidence, generated-document insert evidence, content-fetch evidence,
-  Trust Graph Preview evidence, Site Publisher/Profile Publisher/Feed Reader/Trust Graph Preview
-  reference-app evidence, app platform beta docs/program evidence, app-update
-  lifecycle/scheduler/rollback evidence, `crypta-app` developer beta toolkit smoke,
-  legacy-admin retirement/removal evidence, Hyphanet interop smoke/soak evidence, and the
-  packaged-node performance smoke.
+  durable content-subscription evidence, durable app-data evidence, app-service grant evidence,
+  Trust Graph Preview evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust
+  Graph Preview reference-app evidence, app platform beta docs/program evidence, live USK catalog
+  publication evidence, app-update lifecycle/scheduler/rollback evidence, `crypta-app` developer
+  beta toolkit smoke, legacy-admin retirement/removal evidence, Hyphanet interop smoke/soak
+  evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -101,20 +102,23 @@ git push origin v<build-number>
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
-      app-vault capability, generated-document insert, content-fetch, app UI design-system/lint,
-      app-owned UI smoke, Site Publisher reference-content, Profile Publisher identity-profile,
-      Feed Reader content-fetch, Trust Graph Preview, app-review governance/reviewer-key lifecycle
-      and transparency-log, app platform beta docs/program/redaction, AppHost sandbox-provider,
-      app-update lifecycle, app-update scheduler, app-update rollback, developer beta toolkit, and
-      legacy-admin retirement/removal evidence are present in the certification summary.
+      app-vault capability, generated-document insert, content-fetch/subscription, durable
+      app-data, app-service registry/grant/redaction, app UI design-system/lint, app-owned UI smoke,
+      Site Publisher reference-content, Profile Publisher identity-profile, Social Inbox migration,
+      Feed Reader content-subscription, Trust Graph Preview durable exchange, live USK catalog
+      refresh, app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
+      docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
+      app-update rollback, developer beta toolkit, and legacy-admin retirement/removal evidence are
+      present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
       performance-sensitive changes require it.
 - [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, private
       reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
-      feed bodies, raw trust documents, private insert URIs, raw trusted reviewer public key bytes,
-      and unsanitized local paths.
+      feed bodies, raw social message bodies, raw trust documents, raw app-data values, raw
+      app-service subject URIs, private insert URIs, raw trusted reviewer public key bytes, provider
+      app data, and unsanitized local paths.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

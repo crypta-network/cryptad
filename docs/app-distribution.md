@@ -71,16 +71,16 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, Feed Reader, and
-Trust Graph Preview bundles use `app.ui.mode=static` and `app.ui.entry=static/index.html`, so
-installed copies open through isolated app origins when available. Queue Manager and legacy
-Publisher remain compatibility fallbacks for the current retirement map. Site Publisher is the
-content reference app for local publishing workflows, Profile Publisher is the identity-profile
-reference app for vault-backed profile-document publishing, Feed Reader is the bounded
-content-subscription reference app for durable USK feed follow behavior, feed reading, and
-generated feed publication, and Trust Graph
-Preview is the local trust-service reference app for trust statements, anchors, and preview
-scoring.
+The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, Social Inbox
+Preview, Feed Reader, and Trust Graph Preview bundles use `app.ui.mode=static` and
+`app.ui.entry=static/index.html`, so installed copies open through isolated app origins when
+available. Queue Manager and legacy Publisher remain compatibility fallbacks for the current
+retirement map. Site Publisher is the content reference app for local publishing workflows, Profile
+Publisher is the identity-profile reference app for vault-backed profile-document publishing,
+Social Inbox Preview is the social/mail-like migration reference app, Feed Reader is the bounded
+content-subscription reference app for durable USK feed follow behavior, feed reading, and generated
+feed publication, and Trust Graph Preview is the local trust-service reference app for trust
+statements, anchors, preview scoring, and the `trust.score` app-service provider.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
@@ -203,8 +203,9 @@ static template copies or vendors the browser SDK as `static/crypta-platform.js`
 is available, and copies canonical design-system assets into `static/crypta-ui/`. See
 [app-dev-cli.md](app-dev-cli.md) for the full scaffold, lint, pack, and catalog flow.
 
-The CLI does not replace the first-party Gradle workflow. Queue Manager, legacy Publisher, and Site
-Publisher can keep using their `stageApp`, `signApp`, and `verifyApp` tasks.
+The CLI does not replace the first-party Gradle workflow. Queue Manager, legacy Publisher, Site
+Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Preview can keep
+using their `stageApp`, `signApp`, and `verifyApp` tasks.
 
 ## Catalog Store Metadata
 
@@ -434,8 +435,8 @@ Verify Trust Graph Preview with the matching public key:
 
 Stage, sign, and verify all first-party apps:
 
-The root first-party tasks include Site Publisher, Profile Publisher, Social Inbox Preview, Feed
-Reader, and Trust Graph Preview.
+The root first-party tasks include Queue Manager, Publisher, Site Publisher, Profile Publisher,
+Social Inbox Preview, Feed Reader, and Trust Graph Preview.
 
 ```bash
 ./gradlew \

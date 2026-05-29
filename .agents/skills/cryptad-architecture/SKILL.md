@@ -66,7 +66,8 @@ Use this skill when you need to:
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
     compatibility contract, app capabilities/audit, app-vault routes, app-generated document
-    inserts, bounded content fetch, and app-update lifecycle/scheduler)
+    inserts, bounded content fetch, durable content subscriptions, durable app data,
+    local app-service discovery/grants, and app-update lifecycle/scheduler)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -76,8 +77,8 @@ Use this skill when you need to:
   - `:platform-design-system` → `network.crypta.platform.designsystem` (canonical local app UI
     CSS/JS resources plus asset metadata and safe bundle-copy helpers)
   - `:platform-sdk-js` → browser SDK resource for app-owned static UI bootstrap, Platform API
-    transport helpers, mutation form handling, queue/content/vault/feed helpers, error parsing,
-    and conservative fragment sanitization
+    transport helpers, mutation form handling, queue/content/vault/feed/app-data/app-service
+    helpers, error parsing, and conservative fragment sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
     signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
@@ -89,8 +90,10 @@ Use this skill when you need to:
     direct-anchor scoring)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
     CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, developer
-    keys, publication plans, API snapshot, and compatibility verification workflows)
-  - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1)
+    keys, publication plans, explicit live USK catalog publication, API snapshot, and compatibility
+    verification workflows)
+  - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
+    including Apps, catalog, update, review, and app-service grant operator surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -123,13 +126,19 @@ Use this skill when you need to:
   - `:apps:profile-publisher` → staged Profile Publisher identity-profile reference AppHost bundle
     with a static UI under an isolated app origin when available, using app-vault profile-document
     creation and app-generated document insertion
-  - `:apps:feed-reader` → staged Feed Reader content-fetch reference AppHost bundle with a static
-    UI under an isolated app origin when available, using bounded Crypta content fetch and
-    app-generated feed document insertion
+  - `:apps:social-inbox` → staged Social Inbox Preview social/mail migration reference AppHost
+    bundle with a static UI under an isolated app origin when available, using bounded AppVault
+    social-message signing, generated outbox insertion, durable content subscriptions, durable app
+    data, and operator-approved Trust Graph score app-service grants
+  - `:apps:feed-reader` → staged Feed Reader content-fetch and subscription reference AppHost bundle
+    with a static UI under an isolated app origin when available, using bounded Crypta content
+    fetch, durable USK content subscriptions, durable app data, and app-generated feed document
+    insertion
   - `:apps:trust-graph` → staged Trust Graph Preview local trust-service reference AppHost bundle
     with a static UI under an isolated app origin when available, using `trust.read`,
-    `trust.write`, bounded content fetch, AppVault trust-statement signing, and app-generated trust
-    statement insertion
+    `trust.write`, durable trust graph storage/exchange, bounded content fetch/subscriptions,
+    AppVault trust-statement signing, app-generated trust statement insertion, and the
+    `trust.score` app-service provider
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -157,7 +166,9 @@ Use this skill when you need to:
   `:kernel-transport` owns the compile-neutral phase-1 transport helper slice,
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
-  handlers, app-generated document inserts, bounded content fetch, and app-update scheduling,
+  handlers, social-message signing, app-generated document inserts, bounded content fetch,
+  durable content subscriptions, durable app data, local app-service discovery/grants, and
+  app-update scheduling,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
@@ -357,11 +368,12 @@ Use this skill when you need to:
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
   apps, app updates, app-catalog control-plane families, app-vault route handlers, generated
-  app-document inserts, bounded content fetch, and the deterministic Platform API compatibility
-  contract, and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns the
-  central app-token authorization matrix, browser-session authorization decisions, bounded
-  process-local app audit log, and local app-update lifecycle/scheduler coordination above
-  AppHost, signed catalog, vault, and runtime fetch primitives.
+  app-document inserts, bounded content fetch, durable content subscriptions, durable app data,
+  local app-service discovery/grants, and the deterministic Platform API compatibility contract,
+  and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
+  browser-session authorization decisions, bounded process-local app audit logs, and local
+  app-update lifecycle/scheduler coordination above AppHost, signed catalog, vault, app-data,
+  content-fetch, content-subscription, trust graph, and app-service primitives.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 under
   `network.crypta.platform.apphost`. It validates staged local app bundles, owns the immutable
   installed-bundle layout plus mutable data/cache/run directories, and provides local
@@ -379,11 +391,12 @@ Use this skill when you need to:
 - `:platform-appvault` owns `network.crypta.platform.appvault`, the local app secret and identity
   vault model. It provides encrypted record envelopes, local wrapping-key lookup, app-owned and
   shared identity metadata, grant records, identity-use result types, and audit/redaction values
-  used by Platform API app and vault workflows without exporting raw private material.
+  used by Platform API app, profile-document, trust-statement, and social-message workflows without
+  exporting raw private material.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource staged into first-party static
   app bundles. It wraps route bootstrap, same-origin Platform API reads, app-browser form
-  mutations, queue/content/app-vault/feed helpers, error parsing, and conservative legacy HTML
-  fragment sanitization; it is not an authority or isolation boundary.
+  mutations, queue/content/app-vault/feed/app-data/app-service helpers, error parsing, and
+  conservative legacy HTML fragment sanitization; it is not an authority or isolation boundary.
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
   sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries,
@@ -402,14 +415,16 @@ Use this skill when you need to:
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
   linting, offline UI linting, mock dev serving, offline app tests, developer key generation,
-  publication plan dry-runs, API contract snapshot/compatibility verification, review receipt
-  signing/verification, and catalog create/sign/verify commands around the platform distribution,
-  API, design-system, and catalog libraries.
+  publication plan dry-runs, explicit live USK catalog publication, API contract
+  snapshot/compatibility verification, review receipt signing/verification, and catalog
+  create/sign/verify commands around the platform distribution, API, design-system, and catalog
+  libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
   opens app-owned `uiUrl` values when installed app summaries expose them and surfaces app catalog
-  review, update candidate, staged update, policy, health-gate, and rollback state for operators.
+  review, update candidate, staged update, policy, health-gate, rollback, advertised app-service,
+  and service-grant approval/revocation state for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`

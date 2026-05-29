@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 11;
+  public static final int CURRENT_CONTRACT_VERSION = 12;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -70,6 +70,7 @@ public record PlatformApiContract(
   private static final int APP_DATA_STORE_CONTRACT_VERSION = 9;
   private static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10;
   private static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11;
+  private static final int APP_SERVICES_CONTRACT_VERSION = 12;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -89,6 +90,7 @@ public record PlatformApiContract(
 
   private static final String ROUTE_FAMILY_APPS = "apps";
   private static final String ROUTE_FAMILY_APP_DATA = "app-data";
+  private static final String ROUTE_FAMILY_APP_SERVICES = "app-services";
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
   private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
   private static final String ROUTE_FAMILY_CONFIG = "config";
@@ -265,6 +267,19 @@ public record PlatformApiContract(
             APP_DATA_STORE_CONTRACT_VERSION,
             null,
             "Create, replace, delete, import, and migrate bounded app-owned durable data."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.APP_SERVICES_CALL,
+            PlatformApiStabilityLevel.EXPERIMENTAL,
+            APP_SERVICES_CONTRACT_VERSION,
+            null,
+            "Request operator-approved local app-service grants and invoke approved bounded"
+                + " services."),
+        new PlatformApiCapabilityDescriptor(
+            PlatformApiCapabilities.APP_SERVICES_READ,
+            PlatformApiStabilityLevel.EXPERIMENTAL,
+            APP_SERVICES_CONTRACT_VERSION,
+            null,
+            "Discover advertised local app services and read app-scoped service grants."),
         capability(
             PlatformApiCapabilities.CATALOGS_MANAGE,
             "Add, refresh, remove, install from, or update from app catalogs."),
@@ -490,6 +505,7 @@ public record PlatformApiContract(
     builder.contentFetchPost();
     builder.contentSubscriptionEndpoints();
     builder.appDataEndpoints();
+    builder.appServiceEndpoints();
     builder.trustGraphPreviewEndpoints();
     builder.post(
         ROUTE_FAMILY_QUEUE,
@@ -1194,6 +1210,97 @@ public record PlatformApiContract(
               description));
     }
 
+    private void appServiceEndpoints() {
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services",
+              "app-services.list",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "List advertised local app services and manifest-declared service requests."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/audit",
+              "app-services.audit",
+              List.of(),
+              EndpointAccess.HOST_OPERATOR_ONLY,
+              "List recent redacted app-service grant and invocation audit events."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/grants",
+              "app-services.grants.list",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "List app-service grants visible to the caller."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grants",
+              "app-services.grants.request",
+              List.of(PlatformApiCapabilities.APP_SERVICES_CALL),
+              EndpointAccess.APP_PRINCIPALS_ONLY,
+              "Request an operator-approved local app-service grant."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grants/{grantId}/approve",
+              "app-services.grants.approve",
+              List.of(),
+              EndpointAccess.HOST_OPERATOR_ONLY,
+              "Approve one pending app-service grant."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grants/{grantId}/revoke",
+              "app-services.grants.revoke",
+              List.of(PlatformApiCapabilities.APP_SERVICES_CALL),
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "Revoke one app-service grant."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/{providerAppId}/services",
+              "app-services.provider.list",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "List services advertised by one installed provider app."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/{providerAppId}/services/{serviceId}",
+              "app-services.provider.read",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "Read one advertised local app-service descriptor."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/{providerAppId}/services/{serviceId}/invoke",
+              "app-services.invoke",
+              List.of(PlatformApiCapabilities.APP_SERVICES_CALL),
+              EndpointAccess.APP_PRINCIPALS_ONLY,
+              "Invoke one bounded local app service through an active grant."));
+    }
+
+    private void appServiceEndpoint(AppServiceEndpointSpec spec) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_SERVICES,
+              spec.method(),
+              spec.routeTemplate(),
+              spec.actionLabel(),
+              spec.capabilities(),
+              APP_SERVICES_CONTRACT_VERSION,
+              spec.access().hostOperatorBypassAllowed(),
+              spec.access().appProcessAllowed(),
+              spec.access().appBrowserAllowed(),
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              spec.description()));
+    }
+
     private void trustGraphPreviewEndpoints() {
       trustGraphGet(
           "/trust-graph/status", "trust-graph.status", "Read local Trust Graph Preview status.");
@@ -1423,6 +1530,27 @@ public record PlatformApiContract(
     private List<PlatformApiEndpointDescriptor> build() {
       return List.copyOf(endpoints);
     }
+  }
+
+  private record AppServiceEndpointSpec(
+      String method,
+      String routeTemplate,
+      String actionLabel,
+      List<String> capabilities,
+      EndpointAccess access,
+      String description) {
+    private AppServiceEndpointSpec {
+      capabilities = List.copyOf(capabilities);
+      Objects.requireNonNull(access, "access");
+    }
+  }
+
+  private record EndpointAccess(
+      boolean hostOperatorBypassAllowed, boolean appProcessAllowed, boolean appBrowserAllowed) {
+    private static final EndpointAccess APP_PRINCIPALS_ONLY = new EndpointAccess(false, true, true);
+    private static final EndpointAccess HOST_AND_APP_PRINCIPALS =
+        new EndpointAccess(true, true, true);
+    private static final EndpointAccess HOST_OPERATOR_ONLY = new EndpointAccess(true, false, false);
   }
 
   private record EndpointSpec(

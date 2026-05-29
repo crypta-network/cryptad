@@ -97,19 +97,24 @@ Treat these as release blockers, in order:
    design-system assets, strict UI lint summaries, and visible permission disclosure. The route
    contract is documented in [app-owned-ui.md](app-owned-ui.md); the design-system/lint contract is
    documented in [app-ui-design-system.md](app-ui-design-system.md).
-8. **App-vault, trust graph, and reference-app evidence** - verify the release certification report
-   includes
+8. **App-vault, app-service, trust graph, and reference-app evidence** - verify the release
+   certification report includes
    `app-vault.capabilities`, `app-platform.identity-profile-publish`,
    `app-platform.generated-document-insert`, `app-platform.content-fetch`,
    `app-platform.content-subscriptions`, `network-content.subscription-scheduler`,
-   `app-platform.trust-graph-preview`, `app-platform.trust-statement-signing`,
-   `app-platform.social-message-signing`, `reference-apps.content`,
+   `app-platform.durable-app-data-store`, `app-platform.trust-graph-preview`,
+   `app-platform.trust-graph-durable-store`, `app-platform.trust-graph-exchange`,
+   `app-platform.trust-statement-signing`, `app-platform.social-message-signing`,
+   `app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
+   `app-services.web-shell`, `app-services.redaction`, `reference-apps.content`,
    `reference-app.profile-publisher`, `reference-app.social-inbox`,
    `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
    `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
-   `migration.social-mail-preview`, `reference-app.feed-reader`,
-   `reference-app.feed-reader-subscriptions`, and
-   `reference-app.trust-graph`. Site Publisher is the
+   `reference-app.social-inbox-service-grant`, `migration.social-mail-preview`,
+   `reference-app.feed-reader`, `reference-app.feed-reader-subscriptions`,
+   `reference-app.feed-reader-app-data`, `reference-app.trust-graph`,
+   `reference-app.trust-graph-durable-exchange`, and
+   `reference-app.trust-graph-app-data-preview`. Site Publisher is the
    content-oriented reference app;
    release evidence must prove its staged bundle, SDK usage, design-system adoption, permission
    disclosure, content/queue helper usage, and absence of vault/identity permissions. Profile

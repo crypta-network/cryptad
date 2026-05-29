@@ -75,6 +75,7 @@
 .outbox-list,
 .queue-content,
 .publish-summary,
+.trust-service-status,
 .document-preview {
   display: grid;
   gap: var(--cr-space-3);
@@ -84,6 +85,7 @@
 .source-item,
 .subscription-item,
 .queue-item,
+.trust-service-status,
 .summary-item {
   border-bottom: var(--cr-border);
   display: grid;
@@ -95,6 +97,7 @@
 .source-item:last-child,
 .subscription-item:last-child,
 .queue-item:last-child,
+.trust-service-status:last-child,
 .summary-item:last-child {
   border-bottom: 0;
   padding-bottom: 0;

@@ -403,6 +403,14 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function buildIdentityVaultGrantForm("));
     assertTrue(script.contains("function buildIdentityVaultRevokeForm(grant)"));
     assertTrue(script.contains("function identityVaultGrantPath(grantId)"));
+    assertTrue(script.contains("function appServiceGrantPath(grantId, action)"));
+    assertTrue(script.contains("function buildAppServiceGrantActionForm(grant, action, label)"));
+    assertTrue(script.contains("function renderAppServices(appServices, appServicesError)"));
+    assertTrue(script.contains("function renderAppServiceDescriptorCard(service)"));
+    assertTrue(script.contains("function renderAppServiceRequestCard(request)"));
+    assertTrue(script.contains("function renderAppServiceGrantCard(grant)"));
+    assertTrue(script.contains("function renderAppServiceAuditDetails(auditEvents)"));
+    assertTrue(script.contains("function appServiceGrantTone(status)"));
     assertTrue(script.contains("function renderIdentityVault("));
     assertTrue(script.contains("function renderIdentityVaultCard(identity, grants)"));
     assertTrue(script.contains("function renderIdentityGrantCard(grant)"));
@@ -439,6 +447,23 @@ class WebShellResourcesTest {
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs/recommended\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/identities\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/grants\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/grants\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/audit?limit=12\"))"));
+    assertTrue(script.contains("App-service grants"));
+    assertTrue(script.contains("Service grant summary"));
+    assertTrue(script.contains("Advertised services"));
+    assertTrue(script.contains("Declared requests"));
+    assertTrue(script.contains("Pending grants"));
+    assertTrue(script.contains("Active grants"));
+    assertTrue(script.contains("Revoked grants"));
+    assertTrue(script.contains("App-service audit"));
+    assertTrue(script.contains("App-service grant actions unavailable in read-only mode."));
+    assertTrue(script.contains("App-service grant action unavailable."));
+    assertTrue(script.contains("App-service grant ${action} completed."));
+    assertTrue(script.contains("form.dataset.appServiceGrantAction = action;"));
+    assertTrue(
+        script.contains("await submitAppServiceGrantMutation(form, appServiceGrantAction);"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
     assertTrue(script.contains("recommendedSnapshot.catalogs"));
     assertTrue(script.contains("renderRecommendedCatalogs("));
@@ -472,6 +497,9 @@ class WebShellResourcesTest {
         script.contains(
             "return `app-catalogs/${encodedCatalogId}/apps/${encodedAppId}/${action}`;"));
     assertTrue(script.contains("`identity-vault/grants/${encodeURIComponent(grantId)}`"));
+    assertTrue(
+        script.contains(
+            "`app-services/grants/${encodeURIComponent(grantId)}/${encodeURIComponent(action)}`"));
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
     assertTrue(script.contains("Catalog actions unavailable in read-only mode."));
@@ -606,8 +634,16 @@ class WebShellResourcesTest {
         script.indexOf("const catalogAction = form.dataset.catalogAction;", bindAppsIndex);
     int catalogMutationIndex =
         script.indexOf("await submitCatalogMutation(form, catalogAction);", bindAppsIndex);
+    int appServiceActionLookupIndex =
+        script.indexOf(
+            "const appServiceGrantAction = form.dataset.appServiceGrantAction;", bindAppsIndex);
+    int appServiceMutationIndex =
+        script.indexOf(
+            "await submitAppServiceGrantMutation(form, appServiceGrantAction);", bindAppsIndex);
 
     assertTrue(bindAppsIndex >= 0);
+    assertTrue(appServiceActionLookupIndex > bindAppsIndex);
+    assertTrue(appServiceMutationIndex > appServiceActionLookupIndex);
     assertTrue(catalogActionLookupIndex > bindAppsIndex);
     assertTrue(catalogMutationIndex > catalogActionLookupIndex);
     assertTrue(actionLookupIndex > bindAppsIndex);
