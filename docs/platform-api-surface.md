@@ -180,9 +180,10 @@ gate error codes include `app_review_missing`, `app_review_untrusted`, `app_revi
 
 The Web Shell uses the Platform API for node management, queue control, peer control, alerts,
 diagnostics, config, updater, security levels, wizard, and installed-app lifecycle work. The
-repo-owned Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview apps use the same
-Platform API from their own static routes under `/apps/queue-manager/`, `/apps/publisher/`,
-`/apps/site-publisher/`, `/apps/profile-publisher/`, `/apps/feed-reader/`, and
+repo-owned Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed
+Reader, and Trust Graph Preview apps use the same Platform API from their own static routes under
+`/apps/queue-manager/`, `/apps/publisher/`, `/apps/site-publisher/`,
+`/apps/profile-publisher/`, `/apps/social-inbox/`, `/apps/feed-reader/`, and
 `/apps/trust-graph/`.
 
 The shell currently includes these first-party panels and surfaces:
@@ -193,8 +194,8 @@ The shell currently includes these first-party panels and surfaces:
   install/update.
 - Security levels, updater state, config controls, and first-time wizard controls.
 - Peer control plane.
-- Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview open as independent first-party app UIs when
-  installed.
+- Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed Reader,
+  and Trust Graph Preview open as independent first-party app UIs when installed.
 - Publisher local file/directory insert workflow and queue control remain available in the shell as
   fallback operator panels.
 - Legacy links for retained or pending tools that remain legitimate legacy entry points.

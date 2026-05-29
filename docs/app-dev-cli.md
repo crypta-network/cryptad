@@ -632,6 +632,10 @@ projects:
 ./gradlew :apps:profile-publisher:signApp
 ./gradlew :apps:profile-publisher:verifyApp
 
+./gradlew :apps:social-inbox:stageApp
+./gradlew :apps:social-inbox:signApp
+./gradlew :apps:social-inbox:verifyApp
+
 ./gradlew :apps:feed-reader:stageApp
 ./gradlew :apps:feed-reader:signApp
 ./gradlew :apps:feed-reader:verifyApp

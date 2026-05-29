@@ -396,21 +396,24 @@ compatibility fallback, and shell-panel bundles keep existing local links such a
 `/app/node/#queue`. See [`docs/app-owned-ui.md`](docs/app-owned-ui.md) for the route contract,
 origin-bound bootstrap JSON, restricted Platform API CORS behavior, security headers, and static
 asset boundary. The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher,
-Feed Reader, and Trust Graph Preview bundles now stage static UIs that open through the isolated app UI path when available,
-including the browser SDK described in [`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and
-the canonical UI design-system assets described in
-[`docs/app-ui-design-system.md`](docs/app-ui-design-system.md). Site Publisher is the content
-reference app for publishing workflows. Profile Publisher is the identity-profile reference app:
-it creates an app-owned identity, asks Cryptad to produce a profile document, and queues the
+Social Inbox Preview, Feed Reader, and Trust Graph Preview bundles now stage static UIs that open
+through the isolated app UI path when available, including the browser SDK described in
+[`docs/platform-sdk-js.md`](docs/platform-sdk-js.md) and the canonical UI design-system assets
+described in [`docs/app-ui-design-system.md`](docs/app-ui-design-system.md). Site Publisher is the
+content reference app for publishing workflows. Profile Publisher is the identity-profile reference
+app: it creates an app-owned identity, asks Cryptad to produce a profile document, and queues the
 generated app document without exporting private keys or recording raw signatures in release
-evidence. Feed Reader is the content-fetch reference app: it uses `POST /api/v1/content/fetch`
-through SDK feed helpers and publishes generated feed documents without recording raw feed bodies,
-request bodies, private insert URIs, tokens, form passwords, or local paths. Legacy Publisher
-remains the compatibility replacement for old insert admin pages.
-Trust Graph Preview is the local trust-service reference app: it uses Platform API v7
-`trust.read` and `trust.write`, bounded AppVault trust-statement signing, content fetch, and
-generated-document insert to demonstrate direct/imported trust statements and local anchors without
-claiming full WoT, old plugin compatibility, moderation, or daemon-core trust behavior.
+evidence. Feed Reader is the content-fetch and subscription reference app: it uses bounded content
+fetch, durable USK content subscriptions, durable app data, and generated feed-document publication
+without recording raw feed bodies, request bodies, private insert URIs, tokens, form passwords, or
+local paths. Social Inbox Preview is the social/mail-like migration reference app: it composes
+bounded social-message signing, generated outbox inserts, durable subscriptions, durable app data,
+and operator-approved Trust Graph service annotations outside daemon core. Legacy Publisher remains
+the compatibility replacement for old insert admin pages. Trust Graph Preview is the local
+trust-service reference app: it uses direct Trust Graph routes, bounded AppVault trust-statement
+signing, content fetch/subscriptions, durable app data for UI-local state, and the v12
+`trust.score` app-service provider to demonstrate direct/imported trust statements and local anchors
+without claiming full WoT, old plugin compatibility, moderation, or daemon-core trust behavior.
 
 Production-facing installs reject unsigned bundles by default. To install signed bundles through a
 live node, configure a trusted public key with `CRYPTAD_APPHOST_TRUSTED_KEY_ID` plus
@@ -516,8 +519,8 @@ into the generated catalog entry so Platform API responses can expose `reviewTru
 legacy advisory `review` object.
 
 First-party apps can keep using `:apps:queue-manager`, `:apps:publisher`,
-`:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
-`:apps:trust-graph` `stageApp`, `signApp`, and `verifyApp` tasks. See
+`:apps:site-publisher`, `:apps:profile-publisher`, `:apps:social-inbox`,
+`:apps:feed-reader`, and `:apps:trust-graph` `stageApp`, `signApp`, and `verifyApp` tasks. See
 [docs/app-platform-developer-portal.md](docs/app-platform-developer-portal.md) for the beta
 developer portal, [docs/app-platform-beta-tutorials.md](docs/app-platform-beta-tutorials.md) for
 copyable offline flows, [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow,
@@ -538,8 +541,8 @@ Phase 5 app-platform work added signed catalog sources, Crypta catalog transport
 UI routes, browser sessions for static app API calls, richer catalog review metadata, AppHost
 sandbox/quota visibility, the `crypta-app` developer CLI, and the first independent first-party app
 UIs. Later reference-app work adds Queue Manager, Publisher, Site Publisher, Profile Publisher,
-Feed Reader, and Trust Graph Preview as the current repo-owned app set. Phase 6 adds isolated per-app loopback origins for
-static app UIs while
+Social Inbox Preview, Feed Reader, and Trust Graph Preview as the current repo-owned app set. Phase
+6 adds isolated per-app loopback origins for static app UIs while
 retaining `/apps/{appId}/` as a compatibility fallback, and adds the first enforced Linux AppHost
 process sandbox provider through bubblewrap for supported `restricted-process` launches. Installed
 apps can be launched through `/app/node/` shell-panel links or through isolated app UI URLs when the
@@ -558,7 +561,10 @@ needed for browser-safe profile publishing. PR-227 adds Feed Reader as the conte
 app, with Platform API v6 `POST /api/v1/content/fetch`, the `content.fetch` permission, and SDK
 feed helpers. PR-228 adds Trust Graph Preview as the local trust-service reference app, with
 Platform API v7 trust routes, `trust.read`, `trust.write`, SDK trust helpers, and the bounded
-AppVault trust-statement signing route.
+AppVault trust-statement signing route. Phase 8 expands the app platform with explicit live USK
+catalog publication, durable USK content subscriptions, durable app-owned data, a file-backed Trust
+Graph store with exchange/import support, Social Inbox Preview, and contract v12 app-service
+discovery/grants for local platform-mediated app-to-app calls.
 Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
 `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
 `/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue
@@ -589,7 +595,10 @@ Key docs:
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
+- [Durable app data store](docs/app-data-store.md)
 - [Feed Reader reference app](docs/feed-reader-reference-app.md)
+- [Social Inbox Preview reference app](docs/social-inbox-reference-app.md)
+- [App-service discovery and grants](docs/app-service-discovery-and-grants.md)
 - [Trust Graph Preview](docs/trust-graph-preview.md)
 - [AppHost runtime hardening](docs/apphost-runtime-hardening.md)
 - [App permissions and audit](docs/app-permissions-and-audit.md)
@@ -673,22 +682,24 @@ Add `--previous-summary build/release-certification-history/latest-summary.json`
 release's sanitized summary has been restored locally or in CI.
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
-including `app-review.trusted-receipts`, `app-review.policy`, and
-`app-review.first-party-catalog`, `reference-app.profile-publisher`,
-`reference-app.feed-reader`, `reference-app.trust-graph`,
-`app-platform.identity-profile-publish`,
-`app-platform.generated-document-insert`, `app-platform.content-fetch`,
-`app-platform.trust-graph-preview`, `app-platform.trust-statement-signing`, app-vault
-capability/redaction evidence, historical comparison, ecosystem gates, structured waivers,
-optional live-node evidence, and redaction rules.
+including `app-review.trusted-receipts`, `app-review.policy`,
+`app-review.first-party-catalog`, `app-update.live-catalog-refresh`,
+`app-platform.content-subscriptions`, `network-content.subscription-scheduler`,
+`app-platform.durable-app-data-store`, `reference-app.profile-publisher`,
+`reference-app.feed-reader`, `reference-app.social-inbox`, `reference-app.trust-graph`,
+`app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
+`app-services.web-shell`, `app-services.redaction`, app-vault capability/redaction evidence,
+historical comparison, ecosystem gates, structured waivers, optional live-node evidence, and
+redaction rules.
 
 ## Trust Graph Preview
 
 Trust Graph Preview is a reference app and local preview API for direct trust statements, local
-anchors, and deterministic local scoring. It stores trust data as Crypta content, signs bounded
-trust statements through AppVault without exporting private identity material, imports selected
-trust statements through bounded content fetch, and lets app principals with `trust.read` query the
-same local score API.
+anchors, and deterministic local scoring. It stores trust data in a durable local preview store,
+signs bounded trust statements through AppVault without exporting private identity material, imports
+selected trust statements through bounded content fetch or durable content subscriptions, and
+advertises a local `trust.score` app-service provider. Other apps, including Social Inbox Preview,
+can invoke that service only through Platform API mediation after an operator-approved grant.
 
 The preview is intentionally not a full Web of Trust implementation. It does not implement the old
 WebOfTrust plugin, PluginTalker/FCP plugin compatibility, global moderation, automatic content

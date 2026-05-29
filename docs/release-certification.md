@@ -100,7 +100,7 @@ Release-candidate mode requires these evidence ids:
 | --- | --- | --- |
 | `interop.smoke` | `build/interop-smoke/summary.json` | Tier 1 Hyphanet interop smoke passed with CHK, SSK, USK, peer exchange, and restart-recovery coverage. |
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
-| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
+| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, live publication CLI wiring, docs, and self-test evidence is present. |
 | `app-platform.docs-portal` | App-platform docs check. | The developer portal, required docs, known limitations page, portal links, and README portal link are present. |
@@ -291,8 +291,9 @@ Social Inbox Preview supplies the social/mail migration reference path. Release 
 `app-platform.social-message-signing`, `reference-app.social-inbox`,
 `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
 `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
-`reference-app.social-inbox-service-grant`, and `migration.social-mail-preview` before a release
-claims social/mail migration preview support.
+`reference-app.social-inbox-service-grant`, `app-services.registry`, `app-services.grants`,
+`app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`, and
+`migration.social-mail-preview` before a release claims social/mail migration preview support.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
 raw request bodies, raw signature values, private insert URIs, private identity material, app
 process tokens, browser-session tokens, form passwords, private keys, absolute staging paths, or

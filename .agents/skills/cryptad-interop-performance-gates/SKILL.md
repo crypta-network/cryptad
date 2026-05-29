@@ -74,12 +74,13 @@ build/release-certification/artifacts/
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review
-  receipts, app-owned UI origin behavior, app UI design-system/lint evidence, Site Publisher
-  reference-content coverage, Profile Publisher identity-profile coverage, Feed Reader
-  content-fetch coverage, Trust Graph Preview coverage, generated document insert/content-fetch and
-  trust redaction coverage, app-review governance/reviewer-key/transparency-log evidence,
-  legacy-admin retirement/removal evidence, sandbox provider selection, and app-update
-  lifecycle/scheduler/rollback.
+  receipts, app-owned UI origin behavior, app UI design-system/lint evidence, live USK catalog
+  publication, Site Publisher reference-content coverage, Profile Publisher identity-profile
+  coverage, Feed Reader content-fetch/subscription/app-data coverage, Social Inbox migration
+  coverage, Trust Graph Preview durable exchange coverage, app-service registry/grant/redaction
+  coverage, generated document insert/content-fetch and trust redaction coverage, app-review
+  governance/reviewer-key/transparency-log evidence, legacy-admin retirement/removal evidence,
+  sandbox provider selection, and app-update lifecycle/scheduler/rollback.
 - `tools/release-certification/app_platform_docs_check.py` produces deterministic app-platform
   beta docs evidence for the developer portal, tutorials, beta program, issue templates, relative
   Markdown links, and docs redaction checks.
@@ -103,23 +104,35 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `app-platform.docs-redaction`, `app-platform.signed-bundles`, `catalog.smoke`,
   `app-catalog.first-party-beta`, `platform-api.contract`, `app-vault.capabilities`,
   `app-platform.identity-profile-publish`, `app-platform.generated-document-insert`,
-  `app-platform.content-fetch`, `app-platform.trust-graph-preview`,
-  `app-platform.trust-statement-signing`, `app-ui.design-system`, `app-ui.lint`,
-  `app-ui.first-party-adoption`, `app-ui.smoke`, `reference-apps.content`,
-  `reference-app.profile-publisher`, `reference-app.feed-reader`, `reference-app.trust-graph`,
+  `app-platform.content-fetch`, `app-platform.content-subscriptions`,
+  `network-content.subscription-scheduler`, `app-platform.durable-app-data-store`,
+  `app-platform.trust-graph-preview`, `app-platform.trust-graph-durable-store`,
+  `app-platform.trust-graph-exchange`, `app-platform.trust-statement-signing`,
+  `app-platform.social-message-signing`, `app-services.registry`, `app-services.grants`,
+  `app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`,
+  `app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`, `app-ui.smoke`,
+  `reference-apps.content`, `reference-app.profile-publisher`,
+  `reference-app.profile-publisher-app-data`, `reference-app.feed-reader`,
+  `reference-app.feed-reader-subscriptions`, `reference-app.feed-reader-app-data`,
+  `reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
+  `reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
+  `reference-app.social-inbox-trust-annotations`, `reference-app.social-inbox-service-grant`,
+  `migration.social-mail-preview`, `reference-app.trust-graph`,
+  `reference-app.trust-graph-durable-exchange`, `reference-app.trust-graph-app-data-preview`,
   `legacy.retirement`, `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`,
   `apphost.sandbox-provider`, `app-update.lifecycle`, `app-update.scheduler`,
-  `app-update.rollback`, `app-review.trusted-receipts`, `app-review.policy`,
-  `app-review.governance`, `app-review.reviewer-key-lifecycle`,
+  `app-update.rollback`, `app-update.live-catalog-refresh`, `app-review.trusted-receipts`,
+  `app-review.policy`, `app-review.governance`, `app-review.reviewer-key-lifecycle`,
   `app-review.transparency-log`, `app-review.review-history-api`,
   `app-review.first-party-catalog`, `app-review.first-party-review-chain`, and
   `release-certification.ecosystem-matrix`.
 - Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw
   reviewer keys, raw trusted reviewer public key bytes, raw request bodies, raw feed bodies, raw
-  trust documents from real users, raw update/rollback command output, private insert URIs,
-  non-localhost endpoint metadata, catalog scratch paths, staged bundle paths, rollback backup
-  paths, UI lint report paths, or other unsanitized local paths. The aggregator filters
-  `artifacts/private-insert-uris.json` even when interop summaries reference it.
+  trust documents from real users, raw social message bodies, raw fetched social documents, raw
+  app-service subject URIs, provider app data, raw app-data values, raw update/rollback command
+  output, private insert URIs, non-localhost endpoint metadata, catalog scratch paths, staged bundle
+  paths, rollback backup paths, UI lint report paths, or other unsanitized local paths. The
+  aggregator filters `artifacts/private-insert-uris.json` even when interop summaries reference it.
 - Treat docs redaction findings as non-waivable blockers. Link-only or presence-only docs gaps can
   be waived by a release manager when policy allows, but raw secret/path findings must keep the
   evidence and matrix row failing.

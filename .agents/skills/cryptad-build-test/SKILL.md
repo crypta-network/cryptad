@@ -30,8 +30,8 @@ Use this skill when you need to:
   `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, `:thirdparty-onion`,
   `:thirdparty-legacy`, and `:launcher-desktop`.
 - First-party app bundle projects live under `:apps:queue-manager`, `:apps:publisher`,
-  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:feed-reader`, and
-  `:apps:trust-graph`.
+  `:apps:site-publisher`, `:apps:profile-publisher`, `:apps:social-inbox`,
+  `:apps:feed-reader`, and `:apps:trust-graph`.
 - The extracted leaf projects compile separately, but `buildJar`, `run`, `runLauncher`,
   `assembleCryptadDist`, and jpackage tasks are still rooted at `:cryptad`.
 - `:foundation-support` owns the current stable generic support subset under
@@ -286,13 +286,15 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## First-party app bundle checks
 - Stage first-party app bundles, especially after changing `:platform-sdk-js` or
   `:platform-design-system` because Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  Feed Reader, and Trust Graph Preview copy those assets into staged static UI bundles:
+  Social Inbox Preview, Feed Reader, and Trust Graph Preview copy those assets into staged static UI
+  bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:
   - `./gradlew :apps:queue-manager:test`
   - `./gradlew :apps:publisher:test`
   - `./gradlew :apps:site-publisher:test`
   - `./gradlew :apps:profile-publisher:test`
+  - `./gradlew :apps:social-inbox:test`
   - `./gradlew :apps:feed-reader:test`
   - `./gradlew :apps:trust-graph:test`
 - Sign and verify staged bundles only when signing/trusted-key inputs are available:
