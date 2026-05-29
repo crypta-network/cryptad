@@ -592,6 +592,7 @@ public final class AppServiceCoordinator {
               .filter(grant -> grant.providerAppId().equals(descriptor.providerAppId()))
               .filter(grant -> grant.serviceId().equals(descriptor.serviceId()))
               .filter(grant -> grant.status() == AppServiceGrantStatus.ACTIVE)
+              .filter(grant -> grantSupportedByDescriptor(grant, descriptor))
               .filter(grant -> grant.scopes().contains(scope))
               .filter(grant -> grantCoversContext(descriptor, grant, context))
               .findFirst();

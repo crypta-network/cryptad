@@ -277,6 +277,50 @@ class AppServiceCoordinatorTest {
   }
 
   @Test
+  void invoke_whenActiveGrantContainsStaleScope_expectDeniedAndInactive() throws Exception {
+    InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
+    AppServiceCoordinator coordinator =
+        coordinator(store, installedProvider(), installedConsumer());
+    store.writeGrant(
+        activeGrant(
+            "asg-111111111111111111111111",
+            "social-inbox",
+            List.of("score.read", "profile.read"),
+            List.of("message-author")));
+    Map<String, List<String>> invocationParams = invokeParams();
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> coordinator.invoke(SOCIAL_INBOX, "trust-graph", "trust.score", invocationParams));
+
+    assertEquals("app_service_grant_required", exception.errorCode());
+    assertEquals("inactive", coordinator.listGrants(HOST_OPERATOR).getFirst().get("status"));
+  }
+
+  @Test
+  void invoke_whenActiveGrantContainsStaleContext_expectDeniedAndInactive() throws Exception {
+    InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
+    AppServiceCoordinator coordinator =
+        coordinator(store, installedProviderWithContexts("message-author"), installedConsumer());
+    store.writeGrant(
+        activeGrant(
+            "asg-111111111111111111111111",
+            "social-inbox",
+            List.of("score.read"),
+            List.of("message-author", "profile")));
+    Map<String, List<String>> invocationParams = invokeParams();
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> coordinator.invoke(SOCIAL_INBOX, "trust-graph", "trust.score", invocationParams));
+
+    assertEquals("app_service_grant_required", exception.errorCode());
+    assertEquals("inactive", coordinator.listGrants(HOST_OPERATOR).getFirst().get("status"));
+  }
+
+  @Test
   void invoke_whenContextHasWhitespaceAndMixedCase_expectNormalizedGrantMatchAndAdapterInput()
       throws Exception {
     InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
@@ -552,13 +596,18 @@ class AppServiceCoordinatorTest {
   }
 
   private static AppServiceGrant activeGrant(String grantId, String consumerAppId) {
+    return activeGrant(grantId, consumerAppId, List.of("score.read"), List.of("message-author"));
+  }
+
+  private static AppServiceGrant activeGrant(
+      String grantId, String consumerAppId, List<String> scopes, List<String> contexts) {
     return new AppServiceGrant(
         grantId,
         consumerAppId,
         "trust-graph",
         "trust.score",
-        List.of("score.read"),
-        List.of("message-author"),
+        scopes,
+        contexts,
         "Annotate message authors.",
         AppServiceGrantStatus.ACTIVE,
         CLOCK.instant(),
