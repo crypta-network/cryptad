@@ -143,6 +143,16 @@ the expected browser origin, and must not be persisted by app JavaScript. Invali
 fail with `401 invalid_app_browser_session`; mismatched isolated origins fail with
 `403 origin_mismatch`.
 
+Static app UI responses use an explicit local CSP: `default-src 'none'`, local-only script and
+style sources, `connect-src 'self'` plus a validated local Platform API origin when isolated,
+`object-src 'none'`, `base-uri 'none'`, `worker-src 'none'`, `frame-src 'none'`, and local
+`frame-ancestors`. Platform API and shell origins are inserted only when they are local admin
+origins using `127.0.0.1`, `localhost`, `[::1]`, or `[0:0:0:0:0:0:0:1]` without credentials,
+query strings, fragments, wildcard bind addresses, or suffix-trap hostnames. CSP is a browser mitigation
+for bundled static UI. It does not replace
+AppHost process sandboxing, signed bundle verification, app-token authentication, or server-side
+capability checks.
+
 Isolated bootstrap token issuance also requires an admin/Web Shell launch proof. Web Shell first
 checks that the current browser can read a token-free origin probe from the app loopback listener.
 Only then does it send an explicit same-origin compatibility launch request, which redirects to the
@@ -170,6 +180,14 @@ short reason code. They also include the token-free authentication source so ope
 distinguish process-token requests from browser-session requests. They must not include raw launch
 tokens, raw browser session tokens, query strings, request bodies, form passwords, signatures, or
 filesystem paths.
+
+Public-beta release evidence is redacted evidence, not a raw-data export. App audit events,
+app-service audit events, trust graph audit events, app-data summaries, review governance reports,
+local transparency-log verification responses, live USK publication summaries, AppHost log tails,
+and Web Shell summaries may include counts, hashes, policy ids, key ids, lifecycle states, status
+codes, and bounded redacted summaries. They must not include private insert URIs, private keys,
+raw fetched bodies, raw request bodies, raw trust statements, raw signatures, app or browser
+tokens, form passwords, local paths, catalog scratch paths, or raw app bundle paths.
 
 The app secret and identity vault is a local at-rest protection boundary, not a remote KMS,
 hardware-backed enclave, OS keychain, or replacement for process sandboxing. Vault records are

@@ -480,7 +480,9 @@ class AppReviewReceiptTest {
         TrustedReviewerKeyStatus.RETIRED, keys.find("retired-reviewer").orElseThrow().status());
     assertEquals(
         TrustedReviewerKeyStatus.REVOKED, keys.find("revoked-reviewer").orElseThrow().status());
-    assertFalse(keys.summaries().getFirst().toJsonValue().containsKey("publicKey"));
+    assertFalse(
+        keys.summaries().getFirst().toJsonValue().containsKey("publicKey"),
+        "raw public key bytes must not appear in trusted reviewer summaries");
   }
 
   @Test

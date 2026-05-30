@@ -165,6 +165,30 @@ class AppSandboxProvidersTest {
   }
 
   @Test
+  void providers_whenRequiredRestrictedProcessBubblewrapPreflightFails_expectFailClosed() {
+    AppSandboxProviders providers =
+        new AppSandboxProviders(
+            new NoSandboxProvider(),
+            List.of(
+                bubblewrapProviderWithNamespacePreflight(false),
+                new RestrictedProcessSandboxProvider()),
+            false,
+            null);
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, true));
+
+    AppSandboxException exception =
+        assertThrows(AppSandboxException.class, () -> providers.prepareLaunch(context));
+
+    assertEquals("unsupported_sandbox", exception.errorCode());
+    assertTrue(exception.sandboxStatus().isPresent());
+    assertEquals(
+        AppSandboxSupportLevel.UNSUPPORTED, exception.sandboxStatus().orElseThrow().supportLevel());
+    assertFalse(exception.getMessage().contains("secret-token"));
+    assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
   void providers_whenRequiredRestrictedProcessBubblewrapUnavailable_expectFailClosed() {
     AppSandboxProviders providers =
         AppSandboxProviders.fromHostConfiguration(linuxWithoutPath(), Map.of());

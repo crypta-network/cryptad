@@ -1507,6 +1507,116 @@
     },
     {
       "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.app-ui-csp",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Static app UI CSP and defensive header evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.app-origin-policy",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Web Shell app-origin launch policy evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.content-fetch-bounds",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Content fetch bound and URI-family evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.feed-sanitization",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Feed Reader sanitization evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.social-inbox-sanitization",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox sanitization evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.profile-sanitization",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Profile Publisher sanitization evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.trust-statement-hardening",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust statement parser, signing, and audit hardening evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.apphost-env-minimization",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "AppHost launch environment minimization evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.sandbox-host-checks",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Sandbox provider host-check and fail-closed evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.audit-redaction-fuzz",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Audit and release evidence redaction fuzz fixtures passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "public-beta-security.transparency-log-privacy",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-review governance and transparency-log privacy evidence passed."
+    },
+    {
+      "details": {
         "checks": {
           "updateApplyRunningConflictTest": true,
           "updateApplyRunningConflictRouteTest": true,

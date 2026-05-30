@@ -4,6 +4,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
@@ -55,5 +56,18 @@ class BoundedContentFetchRequestTest {
         () ->
             new BoundedContentFetchRequest(
                 VALID_URI, VALID_MAX_BYTES, Duration.ZERO, VALID_PURPOSE));
+  }
+
+  @Test
+  void toString_whenUriAndPurposeContainSensitiveText_expectValuesRedacted() {
+    BoundedContentFetchRequest request =
+        new BoundedContentFetchRequest(
+            "CHK@example/private/path", 4096L, Duration.ofSeconds(5), "preview-token-value");
+
+    String text = request.toString();
+
+    assertFalse(text.contains("CHK@example"));
+    assertFalse(text.contains("private/path"));
+    assertFalse(text.contains("preview-token-value"));
   }
 }

@@ -154,7 +154,21 @@ SENSITIVE_RE = re.compile(
     re.IGNORECASE,
 )
 SENSITIVE_HEADER_RE = re.compile(
-    r"(?P<prefix>\b(?:Authorization|Cookie|Set-Cookie|X-Crypta-App-Session)\s*:\s*)"
+    r"(?P<prefix>\b(?:Authorization|Cookie|Set-Cookie|X-Crypta-App-Session|X-Crypta-Form-Password)\s*:\s*)"
+    r"(?P<value>[^\r\n]*)",
+    re.IGNORECASE,
+)
+SENSITIVE_TEXT_LABEL_RE = re.compile(
+    r"(?P<prefix>\b(?:"
+    r"raw[-_ ]+request[-_ ]+bod(?:y|ies)|request[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+feed[-_ ]+bod(?:y|ies)|feed[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
+    r"trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+message[-_ ]+bod(?:y|ies)|message[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+fetched[-_ ]+bod(?:y|ies)|fetched[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+trust[-_ ]+signature|trust[-_ ]+signature|"
+    r"raw[-_ ]+signature[-_ ]+valu(?:e|es)|signature[-_ ]+valu(?:e|es)"
+    r")\s*:\s*)"
     r"(?P<value>[^\r\n]*)",
     re.IGNORECASE,
 )
@@ -165,6 +179,48 @@ SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?:(?P<value_quote>[\"'])(?P<quoted_value>[^\"'\r\n]*)(?P=value_quote)|"
     r"(?P<value>(?:(?:Bearer|Basic|Digest)\s+)?[^\s,;&}\]]+))",
     re.IGNORECASE,
+)
+PRIVATE_KEY_BLOCK_RE = re.compile(
+    r"-----BEGIN (?P<key_type>[A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END (?P=key_type)-----"
+    r"|-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?=\r?\n-----BEGIN [A-Z0-9 ]+-----|\Z)",
+    re.IGNORECASE,
+)
+PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
+    "public-beta-security.app-ui-csp",
+    "public-beta-security.app-origin-policy",
+    "public-beta-security.content-fetch-bounds",
+    "public-beta-security.feed-sanitization",
+    "public-beta-security.social-inbox-sanitization",
+    "public-beta-security.profile-sanitization",
+    "public-beta-security.trust-statement-hardening",
+    "public-beta-security.apphost-env-minimization",
+    "public-beta-security.sandbox-host-checks",
+    "public-beta-security.audit-redaction-fuzz",
+    "public-beta-security.transparency-log-privacy",
+)
+PUBLIC_BETA_SECURITY_SENSITIVE_FIXTURES = (
+    "CRYPTAD_APP_TOKEN=0123456789abcdef0123456789abcdef",
+    "X-Crypta-App-Session: browser-session-secret",
+    "X-Crypta-Form-Password=form-secret",
+    "Authorization: Bearer host-or-app-secret",
+    "SSK@PRIVATE-INSERT-URI",
+    "USK@PRIVATE-INSERT-URI",
+    "-----BEGIN PRIVATE KEY-----",
+    "-----BEGIN PRIVATE KEY-----\npem-private-key-body\n-----END PRIVATE KEY-----",
+    "-----BEGIN PRIVATE KEY-----\ntruncated-pem-private-key-body",
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "/home/alice/.crypta/apps/social-inbox/data",
+    r"C:\Users\Alice\Crypta\apps\social-inbox\data",
+    "raw fetched body: <script>alert(1)</script>",
+    "raw trust statement body: {\"subject\":\"private-document\"}",
+    "raw message body: private-social-body",
+    "raw trust signature: MEUCIQD...",
+)
+PUBLIC_BETA_SECURITY_MARKUP_FIXTURES = (
+    "<script>alert(1)</script>",
+    "<img src=x onerror=alert(1)>",
+    '<a href="javascript:alert(1)">click</a>',
+    '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
 )
 URI_KEY_RE = re.compile(r"\b(?:CHK|SSK|USK)@[^\s\])},;\"']+")
 ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])/(?:[A-Za-z0-9._ -]+/)+[A-Za-z0-9._ -]+")
@@ -536,6 +592,8 @@ def normalize_redacted_separators(text: str) -> str:
 
 def scrub_text(text: str, workspace_root: Path) -> str:
     redacted = SENSITIVE_HEADER_RE.sub(lambda match: match.group("prefix") + "<redacted>", text)
+    redacted = SENSITIVE_TEXT_LABEL_RE.sub(lambda match: match.group("prefix") + "<redacted>", redacted)
+    redacted = PRIVATE_KEY_BLOCK_RE.sub("<redacted-private-key>", redacted)
     redacted = SENSITIVE_ASSIGNMENT_RE.sub(scrub_sensitive_assignment_match, redacted)
     redacted = URI_KEY_RE.sub("<redacted-uri>", redacted)
     redacted = FILE_URI_PATH_RE.sub(scrub_file_uri_match, redacted)
@@ -612,13 +670,15 @@ def sanitize_value(value: Any, workspace_root: Path, key_hint: str = "") -> Any:
         return {str(key): sanitize_value(child, workspace_root, str(key)) for key, child in value.items()}
     if isinstance(value, list):
         return [sanitize_value(child, workspace_root, key_hint) for child in value]
+    if isinstance(value, tuple):
+        return tuple(sanitize_value(child, workspace_root, key_hint) for child in value)
     if isinstance(value, str):
         return scrub_text(value, workspace_root)
     return value
 
 
 def is_local_live_host(host: str) -> bool:
-    return host in {"127.0.0.1", "localhost", "::1"}
+    return host in {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
 
 
 DIRECT_LOCAL_ENDPOINT_RE = re.compile(
@@ -7808,6 +7868,472 @@ def read_source(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def source_contains_markup_fixture(source: str, fixture: str) -> bool:
+    return fixture in source or fixture.replace('"', '\\"') in source
+
+
+def public_beta_security_item(
+    settings: Settings,
+    evidence_id: str,
+    pass_summary: str,
+    checks: dict[str, bool],
+    details: dict[str, Any],
+) -> EvidenceItem:
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            evidence_id,
+            root_consequence(settings, "fail"),
+            True,
+            f"{evidence_id} evidence is incomplete.",
+            summary_source(settings),
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(evidence_id, "pass", True, pass_summary, summary_source(settings), details)
+
+
+def public_beta_redaction_fuzz_checks(settings: Settings) -> dict[str, Any]:
+    raw = {
+        "auditEvent": PUBLIC_BETA_SECURITY_SENSITIVE_FIXTURES,
+        "transparencyLog": {
+            "recordCount": 2,
+            "latestHash": "sha256:0123456789abcdef",
+            "reviewerKeyId": "reviewer-local-public",
+            "policyId": "crypta-app-review-v1",
+            "rawSignatureValue": "MEUCIQD...",
+            "localEvidencePath": "/home/alice/.crypta/reviews/evidence.json",
+        },
+        "webShellSummary": (
+            "Authorization: Bearer host-or-app-secret\n"
+            "raw fetched body: <script>alert(1)</script>\n"
+            "raw trust statement body: signed-trust-document\n"
+            "raw message body: private-social-body"
+        ),
+    }
+    redacted = sanitize_value(raw, settings.workspace_root, "releaseEvidence")
+    encoded = json.dumps(redacted, sort_keys=True)
+    fixture_leaks = [
+        value for value in PUBLIC_BETA_SECURITY_SENSITIVE_FIXTURES if value and value in encoded
+    ]
+    high_risk_leaks = [
+        value
+        for value in (
+            "browser-session-secret",
+            "form-secret",
+            "host-or-app-secret",
+            "PRIVATE-INSERT-URI",
+            "BEGIN PRIVATE KEY",
+            "BEGIN OPENSSH PRIVATE KEY",
+            "pem-private-key-body",
+            "truncated-pem-private-key-body",
+            "END PRIVATE KEY",
+            "private-document",
+            "signed-trust-document",
+            "private-social-body",
+            "/home/alice/.crypta",
+            r"C:\Users\Alice",
+            "<script>alert(1)</script>",
+            "MEUCIQD",
+        )
+        if value in encoded
+    ]
+    return {
+        "redacted": redacted,
+        "encoded": encoded,
+        "fixtureLeaks": fixture_leaks,
+        "highRiskLeaks": high_risk_leaks,
+        "placeholdersPresent": "<redacted>" in encoded or "<redacted-uri>" in encoded,
+        "publicMetadataRetained": "reviewer-local-public" in encoded
+        and "sha256:0123456789abcdef" in encoded,
+    }
+
+
+def collect_public_beta_security_evidence(settings: Settings) -> list[EvidenceItem]:
+    workspace = settings.workspace_root
+    app_ui_headers = read_source(
+        workspace
+        / "platform-app-ui/src/main/java/network/crypta/platform/appui/AppUiSecurityHeaders.java"
+    )
+    app_ui_headers_test = read_source(
+        workspace
+        / "platform-app-ui/src/test/java/network/crypta/platform/appui/AppUiSecurityHeadersTest.java"
+    )
+    web_shell = read_source(
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    web_shell_test = read_source(
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    content_policy = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/ContentFetchPolicy.java"
+    )
+    content_handler = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/ContentApiHandler.java"
+    )
+    content_tests = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "platform-api/src/test/java").rglob("*Content*.java"))
+    )
+    feed_app = read_source(workspace / "apps/feed-reader/src/staged/static/app.js")
+    feed_tests = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "apps/feed-reader/src/test/java").rglob("*.java"))
+    )
+    social_app = read_source(workspace / "apps/social-inbox/src/staged/static/app.js")
+    social_tests = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "apps/social-inbox/src/test/java").rglob("*.java"))
+    )
+    profile_app = read_source(workspace / "apps/profile-publisher/src/staged/static/app.js")
+    profile_tests = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "apps/profile-publisher/src/test/java").rglob("*.java"))
+    )
+    trust_sources = "\n".join(
+        read_source(path)
+        for path in (
+            workspace
+            / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustStatementParser.java",
+            workspace
+            / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustStatementValidator.java",
+            workspace
+            / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustGraphStoreSanitizer.java",
+            workspace
+            / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustStatementPayload.java",
+            workspace
+            / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java",
+            workspace
+            / "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java",
+        )
+    )
+    trust_tests = "\n".join(
+        read_source(path)
+        for path in (
+            workspace
+            / "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph/TrustStatementParserTest.java",
+            workspace
+            / "platform-api/src/test/java/network/crypta/platform/api/TrustGraphApiRouterTest.java",
+            workspace / "platform-api/src/test/java/network/crypta/platform/api/AppVaultApiRouterTest.java",
+        )
+    )
+    apphost_source = read_source(
+        workspace
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
+    )
+    apphost_tests = read_source(
+        workspace
+        / "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java"
+    )
+    sandbox_sources = "\n".join(
+        read_source(path)
+        for path in sorted(
+            (
+                workspace
+                / "platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"
+            ).glob("*.java")
+        )
+    )
+    sandbox_tests = "\n".join(
+        read_source(path)
+        for path in sorted(
+            (
+                workspace
+                / "platform-apphost/src/test/java/network/crypta/platform/apphost/sandbox"
+            ).glob("*.java")
+        )
+    )
+    appreview_source = "\n".join(
+        read_source(path)
+        for path in sorted(
+            (workspace / "platform-appcatalog/src/main/java").rglob("*Review*.java")
+        )
+    )
+    appreview_tests = "\n".join(
+        read_source(path)
+        for path in sorted(
+            (workspace / "platform-appcatalog/src/test/java").rglob("*Review*.java")
+        )
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/SECURITY.md",
+            "docs/app-owned-ui.md",
+            "docs/app-ui-design-system.md",
+            "docs/app-permissions-and-audit.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/social-inbox-reference-app.md",
+            "docs/trust-graph-preview.md",
+            "docs/apphost-runtime-hardening.md",
+            "docs/app-platform-beta-known-limitations.md",
+            "docs/release-certification.md",
+        )
+    )
+    redaction_checks = public_beta_redaction_fuzz_checks(settings)
+    return [
+        public_beta_security_item(
+            settings,
+            "public-beta-security.app-ui-csp",
+            "Static app UI CSP and defensive header evidence passed.",
+            {
+                "defaultNone": "default-src " in app_ui_headers and "'none'" in app_ui_headers,
+                "localScriptStyleConnect": all(
+                    marker in app_ui_headers for marker in ("script-src", "style-src", "connect-src")
+                ),
+                "blockedDangerousDirectives": all(
+                    marker in app_ui_headers
+                    for marker in ("object-src", "base-uri", "worker-src", "frame-src", "manifest-src")
+                ),
+                "defensiveHeaders": all(
+                    marker in app_ui_headers
+                    for marker in (
+                        "permissions-policy",
+                        "cross-origin-resource-policy",
+                        "nosniff",
+                        "no-referrer",
+                    )
+                ),
+                "safeOriginTests": all(
+                    marker in app_ui_headers_test
+                    for marker in ("admin.example", "0.0.0.0", "127.0.0.1.attacker.example", "user:pass@", "ftp://")
+                ),
+                "docsUpdated": "default-src 'none'" in docs_text
+                and "CSP is a browser mitigation" in docs_text,
+            },
+            {"sources": ["platform-app-ui", "docs/app-owned-ui.md"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.app-origin-policy",
+            "Web Shell app-origin launch policy evidence passed.",
+            {
+                "registeredLoopbackOrigin": "function registeredAppUiOrigin(app)" in web_shell
+                and "127.0.0.1" in web_shell,
+                "rejectsCredentials": "url.username" in web_shell and "url.password" in web_shell,
+                "rejectsSearchHash": "url.search !== \"\"" in web_shell
+                and "url.hash !== \"\"" in web_shell,
+                "sameOriginFallbackOnly": "safeSameOriginAppUiHref" in web_shell and "/apps/" in web_shell,
+                "probeCorsSafe": "credentials: \"omit\"" in web_shell and "mode: \"cors\"" in web_shell,
+                "sourceTests": "assertAppUiOriginHardeningMarkersPresent" in web_shell_test,
+            },
+            {"sources": ["platform-web-shell"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.content-fetch-bounds",
+            "Content fetch bound and URI-family evidence passed.",
+            {
+                "sharedPolicy": "class ContentFetchPolicy" in content_policy,
+                "contentKeyFamiliesOnly": all(
+                    marker in content_policy for marker in ("CHK@", "SSK@", "USK@", "KSK@", "crypta:")
+                ),
+                "rejectsExternalSources": all(
+                    marker in content_tests
+                    for marker in ("http://", "https://", "file://", "//example.invalid", "C:\\\\Users")
+                ),
+                "hardBounds": "HARD_APP_FETCH_MAX_BYTES" in content_policy
+                and "HARD_APP_FETCH_TIMEOUT_MILLIS" in content_policy,
+                "strictUtf8": "CodingErrorAction.REPORT" in content_handler
+                and "unsupported_content_encoding" in content_handler,
+                "redactedErrors": "content_fetch_failed" in content_handler and "SECRET" in content_tests,
+            },
+            {"sources": ["platform-api", "runtime-spi"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.feed-sanitization",
+            "Feed Reader sanitization evidence passed.",
+            {
+                "textRendering": "textContent" in feed_app,
+                "noHtmlInjection": "innerHTML" not in feed_app and "insertAdjacentHTML" not in feed_app,
+                "activeMarkupNeutralized": all(
+                    marker in feed_app for marker in ("srcdoc", "iframe", "base", "svg")
+                ),
+                "cryptaUriValidation": "normalizedCryptaContentUri" in feed_app,
+                "adversarialFixtures": all(
+                    source_contains_markup_fixture(feed_tests, marker)
+                    for marker in PUBLIC_BETA_SECURITY_MARKUP_FIXTURES
+                ),
+            },
+            {"sources": ["apps/feed-reader"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.social-inbox-sanitization",
+            "Social Inbox sanitization evidence passed.",
+            {
+                "textRendering": "textContent" in social_app,
+                "noHtmlInjection": "innerHTML" not in social_app and "insertAdjacentHTML" not in social_app,
+                "cryptaUriValidation": "normalizedCryptaContentUri" in social_app,
+                "boundedFields": all(
+                    marker in social_app
+                    for marker in (
+                        "maxDraftBodyLength",
+                        "maxImportedSubjectLength",
+                        "maxAuthorLabelLength",
+                        "maxImportedMessages",
+                    )
+                )
+                and ("maxImportedBodyPreviewLength" in social_app),
+                "adversarialFixtures": all(
+                    source_contains_markup_fixture(social_tests, marker)
+                    for marker in PUBLIC_BETA_SECURITY_MARKUP_FIXTURES
+                ),
+            },
+            {"sources": ["apps/social-inbox"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.profile-sanitization",
+            "Profile Publisher sanitization evidence passed.",
+            {
+                "textRendering": "textContent" in profile_app,
+                "noHtmlInjection": "innerHTML" not in profile_app and "insertAdjacentHTML" not in profile_app,
+                "activeMarkupNeutralized": all(
+                    marker in profile_app for marker in ("srcdoc", "iframe", "base", "svg")
+                ),
+                "bounds": all(
+                    marker in profile_app
+                    for marker in (
+                        "maxProfileTextLength",
+                        "maxProfileBioLength",
+                        "maxContentUriLength",
+                        "maxRecentActions",
+                    )
+                ),
+                "websiteTextPreserved": "optionalProfileWebsite" in profile_app
+                and "website.length > maxContentUriLength" in profile_app
+                and "website: optionalProfileWebsite" in profile_app,
+                "privateMaterialExcluded": all(
+                    marker not in profile_app for marker in ("privateKey", "seedPhrase", "rawSignature")
+                ),
+                "sourceTests": "textContent" in profile_tests and "innerHTML" in profile_tests,
+            },
+            {"sources": ["apps/profile-publisher"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.trust-statement-hardening",
+            "Trust statement parser, signing, and audit hardening evidence passed.",
+            {
+                "byteCap": "MAX_DOCUMENT_BYTES" in trust_sources,
+                "unknownFields": "rejectUnknown" in trust_sources,
+                "isoControlRejected": "Character.isISOControl" in trust_sources,
+                "rangeChecks": "requireScore" in trust_sources and "requireConfidence" in trust_sources,
+                "expiresAfterIssued": "expiresAt.isAfter(issuedAt)" in trust_sources,
+                "unsupportedSigningParameters": "SUPPORTED_PARAMETERS" in trust_sources,
+                "redactedRejectedAudit": "redactedRejectedUriSummary" in trust_sources
+                and "uri:redacted" in trust_tests,
+                "maliciousTests": all(
+                    marker in trust_tests for marker in ("\\u0000", "\\u0085", "50.5", "token=secret")
+                ),
+            },
+            {"sources": ["platform-trustgraph", "platform-api"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.apphost-env-minimization",
+            "AppHost launch environment minimization evidence passed.",
+            {
+                "clearsEnvironment": "environment.clear()" in apphost_source,
+                "documentedAppVariables": all(
+                    marker in apphost_source
+                    for marker in (
+                        "CRYPTAD_APP_ID",
+                        "CRYPTAD_APP_TOKEN",
+                        "CRYPTAD_APP_PERMISSIONS",
+                        "CRYPTAD_APP_UI_MODE",
+                    )
+                ),
+                "deterministicUnixPath": "safeUnixPath" in apphost_source
+                and "BASE_UNIX_PATH_ENTRIES" in apphost_source,
+                "secretEnvTests": all(
+                    marker in apphost_tests
+                    for marker in (
+                        "JAVA_TOOL_OPTIONS",
+                        "LD_PRELOAD",
+                        "AWS_SECRET_ACCESS_KEY",
+                        "OPENAI_API_KEY",
+                        "SSH_AUTH_SOCK",
+                        "PRIVATE_KEY",
+                        "CRYPTAD_APPHOST_BWRAP",
+                    )
+                ),
+                "docsBoundary": "Public-beta certification treats the environment allow-list"
+                in docs_text,
+            },
+            {"sources": ["platform-apphost"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.sandbox-host-checks",
+            "Sandbox provider host-check and fail-closed evidence passed.",
+            {
+                "pathFreeAvailability": "path-free" in sandbox_sources.lower(),
+                "failClosedRequired": "RequiredRestrictedProcess" in sandbox_tests
+                and "expectFailClosed" in sandbox_tests,
+                "preflightFailure": "PreflightFails" in sandbox_tests,
+                "commandContainmentFlags": all(
+                    marker in sandbox_tests
+                    for marker in (
+                        "--die-with-parent",
+                        "--new-session",
+                        "--unshare-pid",
+                        "--unshare-ipc",
+                        "--ro-bind",
+                        "--bind",
+                    )
+                ),
+                "tokenNotInCommand": "CRYPTAD_APP_TOKEN" in sandbox_tests
+                and "assertFalse(commandText.contains" in sandbox_tests,
+                "noOverclaim": "network isolation" in docs_text
+                and "does not enforce CPU, memory, or network isolation" in docs_text,
+            },
+            {"sources": ["platform-apphost/src/main/java/network/crypta/platform/apphost/sandbox"]},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.audit-redaction-fuzz",
+            "Audit and release evidence redaction fuzz fixtures passed.",
+            {
+                "noFixtureLeaks": not redaction_checks["fixtureLeaks"],
+                "noHighRiskLeaks": not redaction_checks["highRiskLeaks"],
+                "placeholdersPresent": bool(redaction_checks["placeholdersPresent"]),
+                "publicMetadataRetained": bool(redaction_checks["publicMetadataRetained"]),
+                "docsBoundary": "Public-beta release evidence is redacted evidence" in docs_text,
+            },
+            {"redaction": {k: v for k, v in redaction_checks.items() if k != "encoded"}},
+        ),
+        public_beta_security_item(
+            settings,
+            "public-beta-security.transparency-log-privacy",
+            "App-review governance and transparency-log privacy evidence passed.",
+            {
+                "sourcePresent": "Transparency" in appreview_source,
+                "privacyTests": "raw public key" in appreview_tests.lower()
+                or "rawPublicKey" in appreview_tests,
+                "redactedSummaries": all(
+                    marker in docs_text
+                    for marker in (
+                        "record counts",
+                        "latest hashes",
+                        "raw receipt signatures",
+                        "catalog scratch paths",
+                    )
+                ),
+                "localLogScoped": "local transparency log" in docs_text
+                and "not a global public log" in docs_text,
+                "noKnownPrivateFixtures": not redaction_checks["highRiskLeaks"],
+            },
+            {"sources": ["platform-appcatalog", "docs/SECURITY.md", "docs/release-certification.md"]},
+        ),
+    ]
+
+
 def collect_app_update_lifecycle_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     apphost_source = (
@@ -8660,6 +9186,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_removal_wave_two_evidence(settings),
         collect_legacy_removal_wave_three_evidence(settings),
         collect_sandbox_provider_evidence(settings),
+        *collect_public_beta_security_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
         collect_app_update_live_catalog_refresh_evidence(settings),
@@ -8893,6 +9420,46 @@ def run_self_test(repo_root: Path) -> None:
     )
     assert "raw-signature" not in signature_scrubbed, signature_scrubbed
     assert "Ed25519" in signature_scrubbed, signature_scrubbed
+    body_label_scrubbed = scrub_text(
+        "raw trust statement body: signed-trust-document\n"
+        "raw message body: private-social-body\n"
+        "request body: form-password=secret\n"
+        "raw feed body: <script>alert(1)</script>",
+        repo_root,
+    )
+    for forbidden in (
+        "signed-trust-document",
+        "private-social-body",
+        "form-password=secret",
+        "<script>alert(1)</script>",
+    ):
+        assert forbidden not in body_label_scrubbed, body_label_scrubbed
+    assert "raw trust statement body: <redacted>" in body_label_scrubbed, body_label_scrubbed
+    assert "raw message body: <redacted>" in body_label_scrubbed, body_label_scrubbed
+    pem_scrubbed = scrub_text(
+        "-----BEGIN PRIVATE KEY-----\n"
+        "pem-private-key-body\n"
+        "-----END PRIVATE KEY-----\n"
+        "public reviewer key id remains",
+        repo_root,
+    )
+    for forbidden in ("BEGIN PRIVATE KEY", "pem-private-key-body", "END PRIVATE KEY"):
+        assert forbidden not in pem_scrubbed, pem_scrubbed
+    assert "public reviewer key id remains" in pem_scrubbed, pem_scrubbed
+    truncated_pem_scrubbed = scrub_text(
+        "before\n"
+        "-----BEGIN PRIVATE KEY-----\n"
+        "truncated-pem-private-key-body\n"
+        "more-private-key-body",
+        repo_root,
+    )
+    for forbidden in (
+        "BEGIN PRIVATE KEY",
+        "truncated-pem-private-key-body",
+        "more-private-key-body",
+    ):
+        assert forbidden not in truncated_pem_scrubbed, truncated_pem_scrubbed
+    assert "before" in truncated_pem_scrubbed, truncated_pem_scrubbed
     repo_tmp_path = repo_root / "build/tmp-release-certification/app-platform-smoke/summary.json"
     assert (
         scrub_text(str(repo_tmp_path), repo_root)
@@ -9521,6 +10088,8 @@ def run_self_test(repo_root: Path) -> None:
         assert sandbox_checks["noSetenvCommand"] is True, sandbox_checks
         assert "enforcedStatusToken" not in sandbox_checks, sandbox_checks
         assert "noTokenSetenvCommand" not in sandbox_checks, sandbox_checks
+        for evidence_id in PUBLIC_BETA_SECURITY_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass"
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         lifecycle_checks = evidence_by_id["app-update.lifecycle"]["details"]["checks"]
@@ -9898,8 +10467,13 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const appId = 'profile-publisher';\n"
             "const identityId = 'profile-self-test';\n"
             "const maxRecentActions = 5;\n"
+            "const maxProfileTextLength = 512; const maxProfileBioLength = 2048; const maxContentUriLength = 1024;\n"
+            "function optionalProfileWebsite(value) { const website = String(value || '').trim(); "
+            "return website.length > maxContentUriLength ? '' : website; }\n"
+            "const draft = { website: optionalProfileWebsite('https://example.org') };\n"
             "const dataNamespace = \"profile-draft\";\n"
             "const dataStateKey = \"publisher-state\";\n"
+            "const activeMarkup = ['srcdoc', 'iframe', 'base', 'svg']; const preview = { textContent: '' };\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
             "CryptaPlatform.data.records.getJson('profile-draft', 'publisher-state');\n"
             "CryptaPlatform.data.records.putJson({ namespace: 'profile-draft', key: 'publisher-state', "
@@ -9919,6 +10493,8 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const appId = 'feed-reader';\n"
             "const maxSources = 12;\n"
             "const maxRememberedSnapshots = 12;\n"
+            "function normalizedCryptaContentUri(uri) { return String(uri).startsWith('USK@') || String(uri).startsWith('crypta:USK@') ? uri : null; }\n"
+            "const activeMarkup = ['srcdoc', 'iframe', 'base', 'svg']; const feedNode = { textContent: '' };\n"
             "const dataNamespace = \"ui-state\";\n"
             "const dataStateKey = \"reader-state\";\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
@@ -9950,8 +10526,12 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const socialOutboxType = 'crypta.social.outbox.v1';\n"
             "const maxSources = 16;\n"
             "const maxImportedMessages = 160;\n"
+            "const maxDraftBodyLength = 4096; const maxImportedSubjectLength = 160; const maxAuthorLabelLength = 120;\n"
+            "const maxImportedBodyPreviewLength = 700;\n"
             "const maxReadStateEntries = 240;\n"
             "const maxFetchedDocumentChars = 131072;\n"
+            "function normalizedCryptaContentUri(uri) { return String(uri).startsWith('USK@') || String(uri).startsWith('crypta:USK@') ? uri : null; }\n"
+            "const socialNode = { textContent: '' };\n"
             "const messageIdPattern = /^msg-[0-9a-f]{64}$/;\n"
             "const records = { uiState: [\"ui-state\", \"social-inbox\"], sources: [\"social\", \"sources\"], "
             "outboxSummary: [\"social\", \"outbox-summary\"], importedMessageIndex: [\"social\", \"imported-message-index\"], "
@@ -10189,8 +10769,56 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "through AppVault, stores UI-local app-data draft summaries, imports local anchors, and is not full WoT.\n",
                 encoding="utf-8",
             )
+    adversarial_markup_test_text = "\n".join(PUBLIC_BETA_SECURITY_MARKUP_FIXTURES)
+    feed_test_dir = workspace / "apps/feed-reader/src/test/java/network/crypta/apps/feedreader"
+    feed_test_dir.mkdir(parents=True, exist_ok=True)
+    (feed_test_dir / "FeedReaderBundleStagingTest.java").write_text(
+        "class FeedReaderBundleStagingTest { String fixtures = "
+        + repr(adversarial_markup_test_text)
+        + "; String rendering = \"textContent innerHTML insertAdjacentHTML\"; }\n",
+        encoding="utf-8",
+    )
+    social_test_dir = workspace / "apps/social-inbox/src/test/java/network/crypta/apps/socialinbox"
+    social_test_dir.mkdir(parents=True, exist_ok=True)
+    (social_test_dir / "SocialInboxBundleStagingTest.java").write_text(
+        "class SocialInboxBundleStagingTest { String fixtures = "
+        + repr(adversarial_markup_test_text)
+        + "; String rendering = \"textContent innerHTML insertAdjacentHTML\"; }\n",
+        encoding="utf-8",
+    )
+    profile_test_dir = workspace / "apps/profile-publisher/src/test/java/network/crypta/apps/profilepublisher"
+    profile_test_dir.mkdir(parents=True, exist_ok=True)
+    (profile_test_dir / "ProfilePublisherBundleStagingTest.java").write_text(
+        "class ProfilePublisherBundleStagingTest { String rendering = \"textContent innerHTML insertAdjacentHTML\"; }\n",
+        encoding="utf-8",
+    )
     appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
     appcatalog_dir.mkdir(parents=True, exist_ok=True)
+    (appcatalog_dir / "AppReviewTransparencyRecord.java").write_text(
+        "record AppReviewTransparencyRecord(String reviewerKeyId, String latestHash) { "
+        "String privacy = \"record counts latest hashes no raw public key bytes no raw receipt signatures no local paths\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "FileAppReviewTransparencyStore.java").write_text(
+        "final class FileAppReviewTransparencyStore { String reviewTransparencyLog = \"local transparency log\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewTransparencyLog.java").write_text(
+        "final class AppReviewTransparencyLog { String latestHash; String recordCount; }\n",
+        encoding="utf-8",
+    )
+    appcatalog_test_dir = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    appcatalog_test_dir.mkdir(parents=True, exist_ok=True)
+    (appcatalog_test_dir / "AppReviewReceiptTest.java").write_text(
+        "class AppReviewReceiptTest { "
+        "void evaluate_whenReviewerKeyIsRevoked_expectRevokedReviewer() {} "
+        "void evaluate_whenRetiredReviewerCoversReviewedAt_expectTrustedHistoricalReview() {} "
+        "void evaluate_whenRetiredReviewerHasNoValidityEnd_expectRetiredReviewer() {} "
+        "void evaluate_whenPolicyVersionDoesNotMatchReviewerConstraint_expectPolicyMismatch() {} "
+        "void trustedReviewerKeysLoad_whenPolicyVersionOmitsPolicyId_expectInvalidCatalogEntry() {} "
+        "void transparency_whenSummarized_expectNoRawPublicKeyBytesOrPaths() { String s = \"raw public key\"; } }\n",
+        encoding="utf-8",
+    )
     (appcatalog_dir / "RecommendedAppCatalog.java").write_text(
         "public record RecommendedAppCatalog(String trustedCatalogKeyId) { "
         "Object source = AppCatalogSource.parse(\"crypta:USK@example/cryptad-app-catalog.properties\"); }\n",
@@ -10447,7 +11075,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_test_dir / "AppVaultApiRouterTest.java").write_text(
         "class AppVaultApiRouterTest { String route = \"social-message\"; "
-        "String domain = \"crypta.social.message.v1\"; String privateKey; String payloadBase64; }\n",
+        "String domain = \"crypta.social.message.v1\"; String privateKey; String payloadBase64; "
+        "String trustHardening = \"token=secret unsupported parameter\"; }\n",
         encoding="utf-8",
     )
     (api_test_dir / "PlatformApiCapabilitiesTest.java").write_text(
@@ -10487,7 +11116,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
         "final class TrustGraphApiRouterTest { void route_whenImportUriHasContentFetchCapability() {} "
-        "void route_whenAuditReadAfterImport() {} }\n",
+        "void route_whenAuditReadAfterImport() { String summary = \"uri:redacted token=secret\"; } }\n",
         encoding="utf-8",
     )
     sdk_test_dir = workspace / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js"
@@ -10562,6 +11191,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (app_vault_api_dir / "TrustStatementRequest.java").write_text(
         "final class TrustStatementRequest { // not an arbitrary signing API\n"
+        "Object SUPPORTED_PARAMETERS; "
         "byte[] canonicalBytes() { return TrustStatementCanonicalizer.canonicalPayloadBytes(null); } }\n",
         encoding="utf-8",
     )
@@ -10589,7 +11219,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void importStatement() { TrustStatementParser.parse(\"{}\"); } "
         "void importUri(ContentFetchPort port) { Object handler = new ContentApiHandler(null); "
         "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
-        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary\"; } "
+        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } "
         "Object score = new TrustGraphScorer(null, null); }\n",
         encoding="utf-8",
     )
@@ -10601,6 +11231,20 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     trustgraph_main_dir.mkdir(parents=True, exist_ok=True)
     trustgraph_test_dir.mkdir(parents=True, exist_ok=True)
+    (trustgraph_main_dir / "TrustStatementParser.java").write_text(
+        "final class TrustStatementParser { void parse() { rejectUnknown(null, null, null); } }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustStatementValidator.java").write_text(
+        "final class TrustStatementValidator { static final int MAX_DOCUMENT_BYTES = 65536; "
+        "void validate(Object expiresAt, Object issuedAt) { requireScore(0); requireConfidence(0); "
+        "String check = \"expiresAt.isAfter(issuedAt) Character.isISOControl\"; } }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphStoreSanitizer.java").write_text(
+        "final class TrustGraphStoreSanitizer { boolean control(char ch) { return Character.isISOControl(ch); } }\n",
+        encoding="utf-8",
+    )
     (trustgraph_main_dir / "FileTrustGraphStore.java").write_text(
         "final class FileTrustGraphStore implements TrustGraphStore { "
         "String anchors = \"anchors\"; String statements = \"statements\"; String audit = \"audit\"; "
@@ -10629,6 +11273,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void auditEvents_whenDuplicateEventsEvicted_expectOnlyOnePersistedDuplicateDeleted() {} }\n",
         encoding="utf-8",
     )
+    (trustgraph_test_dir / "TrustStatementParserTest.java").write_text(
+        "final class TrustStatementParserTest { String malicious = \"\\\\u0000 \\\\u0085 50.5 token=secret uri:redacted\"; }\n",
+        encoding="utf-8",
+    )
     queue_api_dir = api_dir / "queue"
     queue_api_dir.mkdir(parents=True, exist_ok=True)
     (queue_api_dir / "QueueApiHandler.java").write_text(
@@ -10638,8 +11286,16 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     content_api_dir = api_dir / "content"
     content_api_dir.mkdir(parents=True, exist_ok=True)
+    (content_api_dir / "ContentFetchPolicy.java").write_text(
+        "final class ContentFetchPolicy { static final long HARD_APP_FETCH_MAX_BYTES = 1048576; "
+        "static final long HARD_APP_FETCH_TIMEOUT_MILLIS = 60000; "
+        "String families = \"CHK@ SSK@ USK@ KSK@ crypta:\"; "
+        "boolean unsafe(String uri) { return uri.contains(\"http://\") || uri.contains(\"https://\") || uri.contains(\"file://\"); } }\n",
+        encoding="utf-8",
+    )
     (content_api_dir / "ContentApiHandler.java").write_text(
-        "final class ContentApiHandler { void contentFetch() { String route = \"content/fetch\"; } }\n",
+        "final class ContentApiHandler { void contentFetch() { String route = \"content/fetch\"; "
+        "Object coding = CodingErrorAction.REPORT; String error = \"unsupported_content_encoding content_fetch_failed\"; } }\n",
         encoding="utf-8",
     )
     content_subscriptions_dir = content_api_dir / "subscriptions"
@@ -10711,7 +11367,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (platform_api_tests / "ContentFetchApiTest.java").write_text(
         "void contentFetch_whenFeedFetched_expectNoRawFeedBodyOrRequestBodyEvidence() { "
-        "String route = \"content/fetch\"; String capability = \"content.fetch\"; }\n",
+        "String route = \"content/fetch\"; String capability = \"content.fetch\"; "
+        "String rejected = \"http:// https:// file:// //example.invalid C:\\\\Users SECRET\"; }\n",
         encoding="utf-8",
     )
     (platform_api_tests / "PlatformApiContentSubscriptionsRouterTest.java").write_text(
@@ -10775,6 +11432,13 @@ def make_self_test_workspace(workspace: Path) -> None:
     shell.write_text(
         'const legacySecurityLevelsPath = normalizeLocalPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");\n'
         'const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";\n'
+        "function registeredAppUiOrigin(app){ return 'http://127.0.0.1:1234'; }\n"
+        "function safeSameOriginAppUiHref(url, allowIsolatedLaunchParameter){ return '/apps/demo/'; }\n"
+        "function normalizeLaunchFallbackHref(value){}\n"
+        "function normalizeIsolatedLaunchHref(value){}\n"
+        "function normalizeIsolatedProbeHref(value, expectedOrigin){}\n"
+        "const originPolicy = 'url.username url.password url.search !== \"\" url.hash !== \"\" /apps/';\n"
+        "fetch('/.well-known/cryptad-origin.json', { credentials: \"omit\", mode: \"cors\" });\n"
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
         "const path = 'app-catalogs/recommended';\n"
@@ -10785,6 +11449,21 @@ def make_self_test_workspace(workspace: Path) -> None:
         "sections.security.append(renderSecurityLegacyFallbackAction());\n"
         "const grants = 'App-service grants'; const approve = 'Approve'; const revoke = 'Revoke';\n"
         "apiUrl(\"app-services\"); apiUrl(\"app-services/grants\"); apiUrl(\"app-services/audit?limit=12\");\n",
+        encoding="utf-8",
+    )
+    app_ui_dir = workspace / "platform-app-ui/src/main/java/network/crypta/platform/appui"
+    app_ui_test_dir = workspace / "platform-app-ui/src/test/java/network/crypta/platform/appui"
+    app_ui_dir.mkdir(parents=True, exist_ok=True)
+    app_ui_test_dir.mkdir(parents=True, exist_ok=True)
+    (app_ui_dir / "AppUiSecurityHeaders.java").write_text(
+        "final class AppUiSecurityHeaders { String csp = \"default-src 'none'; script-src style-src connect-src "
+        "object-src base-uri worker-src frame-src manifest-src\"; String headers = "
+        "\"permissions-policy cross-origin-resource-policy nosniff no-referrer\"; }\n",
+        encoding="utf-8",
+    )
+    (app_ui_test_dir / "AppUiSecurityHeadersTest.java").write_text(
+        "class AppUiSecurityHeadersTest { String unsafe = "
+        "\"admin.example 0.0.0.0 127.0.0.1.attacker.example user:pass@ ftp://\"; }\n",
         encoding="utf-8",
     )
     web_shell_bootstrap_dir = (
@@ -10805,11 +11484,21 @@ def make_self_test_workspace(workspace: Path) -> None:
         / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
     )
     web_shell_test.parent.mkdir(parents=True, exist_ok=True)
-    web_shell_test.write_text("class WebShellResourcesTest { String grants = \"App-service grants\"; }\n", encoding="utf-8")
+    web_shell_test.write_text(
+        "class WebShellResourcesTest { String grants = \"App-service grants\"; "
+        "void assertAppUiOriginHardeningMarkersPresent() {} }\n",
+        encoding="utf-8",
+    )
     docs = workspace / "docs"
     docs.mkdir(parents=True, exist_ok=True)
     first_party_docs = (
         "No private keys are shipped. "
+        "Static app CSP uses default-src 'none'. CSP is a browser mitigation and not a process sandbox. "
+        "Public-beta certification treats the environment allow-list as a release boundary. "
+        "Bubblewrap filesystem containment does not enforce CPU, memory, or network isolation. "
+        "Public-beta release evidence is redacted evidence. "
+        "Review governance reports record counts, latest hashes, raw receipt signatures exclusions, and catalog scratch paths exclusions. "
+        "The local transparency log is not a global public log. "
         "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
         "Social Inbox Preview is a social/mail-like migration spike outside the daemon and not a generic browser signing API. "
@@ -11131,11 +11820,14 @@ def make_self_test_workspace(workspace: Path) -> None:
     sandbox_test_dir.mkdir(parents=True, exist_ok=True)
     (sandbox_dir / "BubblewrapSandboxProvider.java").write_text(
         'class BubblewrapSandboxProvider { static final String PROVIDER_NAME = "bubblewrap"; '
-        'Object level = AppSandboxSupportLevel.ENFORCED; Object env = checkedContext.environment(); }\n',
+        'Object level = AppSandboxSupportLevel.ENFORCED; Object env = checkedContext.environment(); '
+        'String docs = "path-free status"; }\n',
         encoding="utf-8",
     )
     (sandbox_dir / "BubblewrapCommandBuilder.java").write_text(
-        'class BubblewrapCommandBuilder { void command() { command.add("--"); } }\n',
+        'class BubblewrapCommandBuilder { void command() { command.add("--die-with-parent"); '
+        'command.add("--new-session"); command.add("--unshare-pid"); command.add("--unshare-ipc"); '
+        'command.add("--ro-bind"); command.add("--bind"); command.add("--"); } }\n',
         encoding="utf-8",
     )
     (sandbox_dir / "BubblewrapAvailability.java").write_text(
@@ -11145,7 +11837,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "class AppSandboxProviders { BubblewrapSandboxProvider provider; }\n", encoding="utf-8"
     )
     (sandbox_test_dir / "BubblewrapSandboxProviderTest.java").write_text(
-        "class BubblewrapSandboxProviderTest { }\n", encoding="utf-8"
+        "class BubblewrapSandboxProviderTest { void prepareLaunch_whenContextContainsToken_expectCommandDoesNotExposeEnvironmentValues() { "
+        "String commandText = \"--die-with-parent --new-session --unshare-pid --unshare-ipc --ro-bind --bind CRYPTAD_APP_TOKEN\"; "
+        "assertFalse(commandText.contains(\"secret-token\")); } }\n",
+        encoding="utf-8",
+    )
+    (sandbox_test_dir / "AppSandboxProvidersTest.java").write_text(
+        "class AppSandboxProvidersTest { void providers_whenRequiredRestrictedProcessBubblewrapPreflightFails_expectFailClosed() {} "
+        "void providers_whenRequiredRestrictedProcessBubblewrapUnavailable_expectFailClosed() {} "
+        "String name = \"PreflightFails RequiredRestrictedProcess expectFailClosed\"; }\n",
+        encoding="utf-8",
     )
     apphost = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/runtime/LocalProcessAppHost.java"
     apphost.parent.mkdir(parents=True, exist_ok=True)
@@ -11158,6 +11859,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     apphost.write_text(
         """
 class LocalProcessAppHost {
+  private static final String BASE_UNIX_PATH_ENTRIES = "/usr/bin:/bin";
   private static final String TEMP_UPDATE_BACKUP_PREFIX = "app-install-backup-";
   private static final String TEMP_ROLLBACK_BACKUP_PREFIX = "app-rollback-backup-";
   InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory) throws IOException {
@@ -11194,6 +11896,15 @@ class LocalProcessAppHost {
     }
   }
   void deleteAppData(String appId) {}
+  void populateEnvironment(Map<String, String> environment) {
+    environment.clear();
+    environment.put("PATH", safeUnixPath());
+    environment.put("CRYPTAD_APP_ID", "sample-app");
+    environment.put("CRYPTAD_APP_TOKEN", "token");
+    environment.put("CRYPTAD_APP_PERMISSIONS", "content.fetch");
+    environment.put("CRYPTAD_APP_UI_MODE", "static");
+  }
+  String safeUnixPath() { return BASE_UNIX_PATH_ENTRIES; }
   private Path rollbackRootFor(String appId) { return layout.rollbackAppsDir().resolve(appId); }
   private Path ensureRollbackAppsDirectory() { return layout.rollbackAppsDir(); }
   private void replaceInstalledBundle(Path installedRoot, Path replacementRoot, Path backupRoot, Path rollbackRoot, Path previousRollbackBackupRoot) throws IOException {
@@ -11233,6 +11944,9 @@ class LocalProcessAppHost {
     apphost_test.write_text(
         """
 class LocalProcessAppHostTest {
+  void populateEnvironment_whenHostEnvironmentContainsSecrets_expectSanitizedChildEnvironment() {
+    String names = "JAVA_TOOL_OPTIONS LD_PRELOAD AWS_SECRET_ACCESS_KEY OPENAI_API_KEY SSH_AUTH_SOCK PRIVATE_KEY CRYPTAD_APPHOST_BWRAP";
+  }
   void updateFromDirectory_whenInstalledStoppedApp_expectManifestAndExecutableReplacedPreservingMutableDirs() {
     String data = "preserve-data.txt";
     String cache = "preserve-cache.txt";
@@ -11544,6 +12258,13 @@ const revoke = "Revoke";
 apiUrl("app-services");
 apiUrl("app-services/grants");
 apiUrl("app-services/audit?limit=12");
+function registeredAppUiOrigin(app){ return "http://127.0.0.1:1234"; }
+function safeSameOriginAppUiHref(url, allowIsolatedLaunchParameter){ return "/apps/demo/"; }
+function normalizeLaunchFallbackHref(value){}
+function normalizeIsolatedLaunchHref(value){}
+function normalizeIsolatedProbeHref(value, expectedOrigin){}
+const originPolicy = 'url.username url.password url.search !== "" url.hash !== "" /apps/';
+fetch("/.well-known/cryptad-origin.json", { credentials: "omit", mode: "cors" });
 definitionList([
   ["Scheduler status", scheduler.status],
   ["Scheduler failures", scheduler.failureCount],

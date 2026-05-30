@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -67,5 +68,22 @@ class BoundedContentFetchResultTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> new BoundedContentFetchResult(new byte[] {1}, "CHK@requested", null, "ok\nbad"));
+  }
+
+  @Test
+  void toString_whenUriAndStatusContainSensitiveText_expectValuesRedacted() {
+    BoundedContentFetchResult result =
+        new BoundedContentFetchResult(
+            new byte[] {1},
+            "CHK@requested/private",
+            "CHK@resolved/private",
+            "fetched from /tmp/private?token=SECRET");
+
+    String text = result.toString();
+
+    assertFalse(text.contains("CHK@requested"));
+    assertFalse(text.contains("CHK@resolved"));
+    assertFalse(text.contains("SECRET"));
+    assertFalse(text.contains("/tmp/private"));
   }
 }

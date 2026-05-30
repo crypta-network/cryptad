@@ -132,18 +132,27 @@ paired with `X-Content-Type-Options: nosniff`.
 Static UI responses include conservative headers:
 
 ```text
-Content-Security-Policy: default-src 'self'; script-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'self'
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=()
+Cross-Origin-Resource-Policy: same-origin
 ```
 
 If JavaScript is disabled for the legacy admin UI, Cryptad changes the app UI CSP to
 `script-src 'none'` for the same response.
 
 Isolated app-origin responses keep scripts local to the app origin and add `connect-src` for the
-admin Platform API root supplied in bootstrap. They do not allow remote scripts, objects, embeds,
-or `base` rewriting. Frame ancestry is limited to the Web Shell/admin origin when embedding is
-enabled by the host response.
+admin Platform API root supplied in bootstrap only when that root is a local
+`http://127.0.0.1:<port>`, `http://localhost:<port>`, `http://[::1]:<port>`,
+`http://[0:0:0:0:0:0:0:1]:<port>`, or matching HTTPS origin without credentials, query strings,
+or fragments. The shell origin used for
+`frame-ancestors` follows the same local-origin rule. Remote hosts, wildcard bind addresses,
+`0.0.0.0`, userinfo, suffix traps such as `127.0.0.1.attacker.example` or
+`localhost.attacker.example`, unsupported schemes, query strings, and fragments are ignored rather
+than inserted into CSP. Isolated responses do not allow remote scripts, objects, embeds, workers,
+media, frames, or `base` rewriting. `X-Frame-Options: SAMEORIGIN` is retained for same-origin
+fallback responses and omitted when CSP needs to express a cross-origin local frame ancestor.
 
 The same CSP model means static app bundles should avoid remote stylesheets, CDN scripts, inline
 scripts, inline event handlers, `javascript:` URLs, dynamic code evaluation, and browser storage

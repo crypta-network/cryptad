@@ -91,6 +91,7 @@ class WebShellResourcesTest {
     assertPublisherSubmissionOrder(script);
     assertAlertsAndDiagnosticsMarkersPresent(script);
     assertPlatformControlPlaneMarkersPresent(script);
+    assertAppUiOriginHardeningMarkersPresent(script);
   }
 
   @Test
@@ -265,6 +266,43 @@ class WebShellResourcesTest {
     assertTrue(postRefreshIndex > refreshFormPasswordIndex);
   }
 
+  private static void assertAppUiOriginHardeningMarkersPresent(String script) {
+    assertContainsAll(
+        script,
+        "function registeredAppUiOrigin(app)",
+        "function safeSameOriginAppUiHref(url, allowIsolatedLaunchParameter)",
+        "function normalizeLaunchFallbackHref(value)",
+        "function normalizeIsolatedLaunchHref(value)",
+        "function normalizeIsolatedProbeHref(value, expectedOrigin)",
+        "link.dataset.isolatedUiOrigin = registeredAppUiOrigin(app);",
+        "await isolatedAppOriginReachable(safeProbeHref, expectedAppId, expectedOrigin)",
+        "credentials: \"omit\"",
+        "mode: \"cors\"");
+    assertContainsAll(
+        script,
+        "origin.protocol !== \"http:\"",
+        "origin.hostname.toLowerCase() !== \"127.0.0.1\"",
+        "origin.username",
+        "origin.password",
+        "origin.search !== \"\"",
+        "origin.hash !== \"\"",
+        "origin.pathname !== \"/\"",
+        "url.pathname !== isolatedOriginProbePath",
+        "url.search !== \"\"",
+        "url.hash !== \"\"");
+    assertContainsAll(
+        script,
+        "url.username ||",
+        "url.password ||",
+        "!url.pathname.startsWith(\"/apps/\")",
+        "url.searchParams.get(isolatedLaunchParameter) !== \"1\"");
+    assertFalse(script.contains("javascript:"));
+    assertFalse(script.contains("data:"));
+    assertFalse(script.contains("blob:"));
+    assertFalse(script.contains("file:"));
+    assertFalse(script.contains("ftp:"));
+  }
+
   private static void assertPeerMutationMarkersPresent(String script) {
     assertTrue(script.contains("let peerLoadGeneration = 0;"));
     assertTrue(script.contains("function updatePeerToolbar()"));
@@ -338,8 +376,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function normalizeAppUiEntryHref(value, app)"));
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
     assertTrue(script.contains("allowedAppUiOrigin(url, app)"));
-    assertTrue(script.contains("return url.origin === window.location.origin"));
-    assertTrue(script.contains(": url.href;"));
+    assertTrue(script.contains("return safeSameOriginAppUiHref(url, false);"));
+    assertTrue(script.contains("return url.href;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));
     assertTrue(script.contains("const isolatedFallbackHref = isolatedAppUiFallbackHref(app);"));
@@ -349,7 +387,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("return normalizeAppUiEntryHref(app.sameOriginFallbackUrl, app);"));
     assertTrue(script.contains("function isolatedAppUiProbeHref(app)"));
     assertTrue(
-        script.contains("async function isolatedAppOriginReachable(probeHref, expectedAppId)"));
+        script.contains(
+            "async function isolatedAppOriginReachable(probeHref, expectedAppId, expectedOrigin)"));
     assertTrue(script.contains("const probeOrigin = new URL(probeHref).origin;"));
     assertTrue(script.contains("credentials: \"omit\""));
     assertTrue(script.contains("mode: \"cors\""));

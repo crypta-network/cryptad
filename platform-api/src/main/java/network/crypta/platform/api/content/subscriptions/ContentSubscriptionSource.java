@@ -1,6 +1,7 @@
 package network.crypta.platform.api.content.subscriptions;
 
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.content.ContentFetchPolicy;
 
 /**
  * Normalized source metadata for a background content subscription.
@@ -19,9 +20,6 @@ import network.crypta.platform.api.PlatformApiException;
  * @param runtimeFetchUri normalized USK URI used for detached runtime fetches
  */
 public record ContentSubscriptionSource(String sourceUri, String runtimeFetchUri) {
-  private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
-  private static final String USK_PREFIX = "USK@";
-
   /**
    * Normalizes an app-supplied source URI for durable subscription state.
    *
@@ -35,27 +33,9 @@ public record ContentSubscriptionSource(String sourceUri, String runtimeFetchUri
    * @throws PlatformApiException if the URI is blank, unsafe, or not a USK source
    */
   static ContentSubscriptionSource normalizeSourceUri(String rawUri) {
-    if (rawUri == null) {
-      throw invalidSource();
-    }
-    if (rawUri.indexOf('\n') >= 0 || rawUri.indexOf('\r') >= 0 || rawUri.indexOf('\u0000') >= 0) {
-      throw invalidSource();
-    }
-    String sourceUri = rawUri.trim();
-    if (sourceUri.isEmpty()
-        || containsWhitespace(sourceUri)
-        || sourceUri.indexOf('?') >= 0
-        || sourceUri.indexOf('#') >= 0) {
-      throw invalidSource();
-    }
-    String runtimeUri = runtimeFetchUri(sourceUri);
-    if (runtimeUri.startsWith("/")
-        || runtimeUri.startsWith("\\")
-        || hasDisallowedScheme(runtimeUri)
-        || !startsWithUsk(runtimeUri)) {
-      throw invalidSource();
-    }
-    return new ContentSubscriptionSource(sourceUri, runtimeUri);
+    ContentFetchPolicy.NormalizedContentSource source =
+        ContentFetchPolicy.normalizeSubscriptionSource(rawUri);
+    return new ContentSubscriptionSource(source.requestedUri(), source.runtimeUri());
   }
 
   /**
@@ -69,14 +49,7 @@ public record ContentSubscriptionSource(String sourceUri, String runtimeFetchUri
    * @return normalized public source URI, or {@code null} when the value is absent or unsafe
    */
   static String sanitizeResolvedUri(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    try {
-      return normalizeSourceUri(value).sourceUri();
-    } catch (PlatformApiException _) {
-      return null;
-    }
+    return ContentFetchPolicy.sanitizeSubscriptionResolvedUri(value);
   }
 
   /**
@@ -91,53 +64,6 @@ public record ContentSubscriptionSource(String sourceUri, String runtimeFetchUri
    * @return parsed USK edition number, or {@code null} when no safe edition is available
    */
   static Long resolvedUskEdition(String value) {
-    String sanitized = sanitizeResolvedUri(value);
-    if (sanitized == null) {
-      return null;
-    }
-    String runtimeUri = runtimeFetchUri(sanitized);
-    String[] segments = runtimeUri.split("/", -1);
-    if (segments.length < 3) {
-      return null;
-    }
-    try {
-      return Long.parseLong(segments[2]);
-    } catch (NumberFormatException _) {
-      return null;
-    }
-  }
-
-  private static String runtimeFetchUri(String requestedUri) {
-    if (requestedUri.regionMatches(
-        true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
-      return requestedUri.substring(CRYPTA_SCHEME_PREFIX.length()).trim();
-    }
-    return requestedUri;
-  }
-
-  private static boolean hasDisallowedScheme(String uri) {
-    int colon = uri.indexOf(':');
-    int at = uri.indexOf('@');
-    return colon >= 0 && (at < 0 || colon < at);
-  }
-
-  private static boolean startsWithUsk(String uri) {
-    return uri.regionMatches(true, 0, USK_PREFIX, 0, USK_PREFIX.length());
-  }
-
-  private static boolean containsWhitespace(String value) {
-    for (int index = 0; index < value.length(); index++) {
-      if (Character.isWhitespace(value.charAt(index))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static PlatformApiException invalidSource() {
-    return new PlatformApiException(
-        400,
-        "unsupported_content_subscription_source",
-        "Content subscriptions require a USK@ or crypta:USK@ source URI.");
+    return ContentFetchPolicy.resolvedUskEdition(value);
   }
 }

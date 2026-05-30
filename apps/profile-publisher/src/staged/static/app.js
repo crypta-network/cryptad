@@ -4,6 +4,12 @@
   const appId = "profile-publisher";
   const defaultProfileContentType = "application/vnd.crypta.profile+json";
   const maxRecentActions = 5;
+  const maxDisplayTextLength = 240;
+  const maxProfileTextLength = 512;
+  const maxProfileBioLength = 4096;
+  const maxContentUriLength = 512;
+  const maxDocumentPreviewLength = 8192;
+  const maxQueueRows = 8;
   const dataNamespace = "profile-draft";
   const dataStateKey = "publisher-state";
   const dataSchemaVersion = 1;
@@ -287,19 +293,19 @@
     return {
       identityId: identityId(selectedIdentity),
       label: identityLabel(selectedIdentity),
-      fingerprint: stringValue(selectedIdentity.fingerprint),
-      publicSummary: stringValue(selectedIdentity.publicSummary),
+      fingerprint: boundedText(selectedIdentity.fingerprint, maxDisplayTextLength),
+      publicSummary: boundedText(selectedIdentity.publicSummary, maxDisplayTextLength),
     };
   }
 
   function syncDraftFromForm() {
     state.draft = {
-      avatarUri: fieldValue(elements.profileForm, "avatarUri"),
-      bio: fieldValue(elements.profileForm, "bio"),
-      contactUri: fieldValue(elements.profileForm, "contactUri"),
-      displayName: fieldValue(elements.profileForm, "displayName"),
+      avatarUri: optionalCryptaContentUri(rawFieldValue(elements.profileForm, "avatarUri")),
+      bio: boundedText(fieldValue(elements.profileForm, "bio"), maxProfileBioLength),
+      contactUri: optionalCryptaContentUri(rawFieldValue(elements.profileForm, "contactUri")),
+      displayName: boundedText(fieldValue(elements.profileForm, "displayName"), maxProfileTextLength),
       tags: commaValues(fieldValue(elements.profileForm, "tags")),
-      website: fieldValue(elements.profileForm, "website"),
+      website: optionalProfileWebsite(rawFieldValue(elements.profileForm, "website")),
     };
   }
 
@@ -391,10 +397,13 @@
   function durableStateValue() {
     return {
       schemaVersion: dataSchemaVersion,
-      draft: state.draft,
-      selectedIdentityId: state.selectedIdentityId,
-      lastPublishedProfileUri: state.lastPublishedProfileUri,
-      recentActions: state.recentActions.slice(0, maxRecentActions),
+      draft: normalizeStoredDraft(state.draft),
+      selectedIdentityId: boundedText(state.selectedIdentityId, maxProfileTextLength),
+      lastPublishedProfileUri: optionalCryptaContentUri(state.lastPublishedProfileUri),
+      recentActions: state.recentActions
+        .slice(0, maxRecentActions)
+        .map(normalizeRecentAction)
+        .filter(Boolean),
     };
   }
 
@@ -409,12 +418,14 @@
 
   function normalizeStoredDraft(draft) {
     return {
-      avatarUri: stringValue(draft.avatarUri),
-      bio: stringValue(draft.bio),
-      contactUri: stringValue(draft.contactUri),
-      displayName: stringValue(draft.displayName),
-      tags: Array.isArray(draft.tags) ? draft.tags.map(stringValue).filter(Boolean) : [],
-      website: stringValue(draft.website),
+      avatarUri: optionalCryptaContentUri(draft.avatarUri),
+      bio: boundedText(draft.bio, maxProfileBioLength),
+      contactUri: optionalCryptaContentUri(draft.contactUri),
+      displayName: boundedText(draft.displayName, maxProfileTextLength),
+      tags: Array.isArray(draft.tags)
+        ? draft.tags.map((tag) => boundedText(tag, 32)).filter(Boolean).slice(0, 12)
+        : [],
+      website: optionalProfileWebsite(draft.website),
     };
   }
 
@@ -423,10 +434,10 @@
       return null;
     }
     return {
-      at: stringValue(action.at),
-      kind: stringValue(action.kind),
-      outcome: stringValue(action.outcome),
-      subject: stringValue(action.subject),
+      at: boundedText(action.at, maxDisplayTextLength),
+      kind: boundedText(action.kind, maxDisplayTextLength),
+      outcome: boundedText(action.outcome, maxDisplayTextLength),
+      subject: boundedText(action.subject, maxDisplayTextLength),
     };
   }
 
@@ -531,22 +542,29 @@
   }
 
   function renderDocumentPreview(documentData) {
-    elements.documentPreview.textContent = JSON.stringify(documentData, null, 2);
+    elements.documentPreview.textContent = boundedText(
+      JSON.stringify(documentData, null, 2),
+      maxDocumentPreviewLength,
+    );
   }
 
   function renderPublishResult(data) {
-    state.lastPublishedProfileUri = stringValue(
+    state.lastPublishedProfileUri = optionalCryptaContentUri(
       data && (data.profileUri || data.finalUri || data.uri || data.targetUri || data.requestUri),
     );
-    recordRecentAction("Publish", data.identifier, data.outcome || data.status || "queued");
+    recordRecentAction(
+      "Publish",
+      boundedText(data && data.identifier, maxDisplayTextLength),
+      data && (data.outcome || data.status) || "queued",
+    );
   }
 
   function recordRecentAction(kind, subject, outcome) {
     state.recentActions.unshift({
       at: new Date().toLocaleTimeString(),
-      kind: stringValue(kind),
-      outcome: stringValue(outcome),
-      subject: stringValue(subject),
+      kind: boundedText(kind, maxDisplayTextLength),
+      outcome: boundedText(outcome, maxDisplayTextLength),
+      subject: boundedText(subject, maxDisplayTextLength),
     });
     state.recentActions = state.recentActions.slice(0, maxRecentActions);
     renderRecentActions();
@@ -578,14 +596,183 @@
 
   function renderQueue(contentHtml) {
     const container = document.createElement("div");
-    container.className = "legacy-fragment";
-    if (typeof contentHtml !== "string" || !contentHtml) {
+    container.className = "queue-content";
+    const queueModel = queueModelFromHtml(contentHtml);
+    const sortControls = renderQueueSortControls(queueModel.sortLinks);
+    if (sortControls) {
+      container.append(sortControls);
+    }
+    const rows = queueModel.rows.slice(0, maxQueueRows);
+    if (rows.length === 0) {
       container.append(text("p", "cr-empty", "No upload queue content was returned."));
       elements.queuePreview.replaceChildren(container);
       return;
     }
-    container.replaceChildren(CryptaPlatform.dom.sanitizeFragment(contentHtml));
+    for (const row of rows) {
+      const item = document.createElement("div");
+      item.className = "queue-item";
+      item.append(summaryRow("Item", row.label), summaryRow("Status", row.detail));
+      container.append(item);
+    }
     elements.queuePreview.replaceChildren(container);
+  }
+
+  function queueModelFromHtml(contentHtml) {
+    const html = typeof contentHtml === "string" ? contentHtml : "";
+    if (!html.trim()) {
+      return { rows: [], sortLinks: [] };
+    }
+    const documentValue = new DOMParser().parseFromString(html, "text/html");
+    removeUnsafeParsedNodes(documentValue);
+    return {
+      rows: queueRowsFromDocument(documentValue),
+      sortLinks: queueSortLinksFromDocument(documentValue),
+    };
+  }
+
+  function queueRowsFromHtml(contentHtml) {
+    return queueModelFromHtml(contentHtml).rows;
+  }
+
+  function queueRowsFromDocument(documentValue) {
+    if (!documentValue || !documentValue.body) {
+      return [];
+    }
+    const tableRows = Array.from(documentValue.querySelectorAll("tr"))
+      .map(queueRowFromTableRow)
+      .filter(Boolean);
+    if (tableRows.length > 0) {
+      return tableRows;
+    }
+    const listRows = queueRowsFromNodes(documentValue.querySelectorAll("li"), "Queue item");
+    if (listRows.length > 0) {
+      return listRows;
+    }
+    const paragraphRows = queueRowsFromNodes(documentValue.querySelectorAll("p"), "Queue status");
+    if (paragraphRows.length > 0) {
+      return paragraphRows;
+    }
+    const bodyText = compactQueueText(documentValue.body && documentValue.body.textContent);
+    return bodyText ? [{ label: "Queue snapshot", detail: bodyText }] : [];
+  }
+
+  function queueSortLinksFromDocument(documentValue) {
+    const seen = new Set();
+    return Array.from(documentValue.querySelectorAll("a[href]"))
+      .map(queueSortLinkFromAnchor)
+      .filter(Boolean)
+      .filter((link) => {
+        if (seen.has(link.href)) {
+          return false;
+        }
+        seen.add(link.href);
+        return true;
+      })
+      .slice(0, 8);
+  }
+
+  function queueSortLinkFromAnchor(anchor) {
+    const sortLink = safeQueueSortLink(anchor.getAttribute("href") || "");
+    if (!sortLink) {
+      return null;
+    }
+    return {
+      href: sortLink.href,
+      label:
+        boundedText(anchor.textContent, 48) ||
+        queueSortLabel(sortLink.sortBy, sortLink.reversed),
+      reversed: sortLink.reversed,
+      sortBy: sortLink.sortBy,
+    };
+  }
+
+  function safeQueueSortLink(rawHref) {
+    if (typeof rawHref !== "string" || !rawHref.startsWith("?")) {
+      return null;
+    }
+    const params = new URLSearchParams(rawHref.slice(1));
+    const sortBy = params.get("sortBy");
+    if (!isSafeQueueSortKey(sortBy)) {
+      return null;
+    }
+    const reversed = params.get("reversed") === "true" || params.has("reversed");
+    const next = new URLSearchParams();
+    next.set("sortBy", sortBy);
+    if (reversed) {
+      next.set("reversed", "true");
+    }
+    return { href: `?${next.toString()}`, reversed, sortBy };
+  }
+
+  function isSafeQueueSortKey(value) {
+    return typeof value === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(value);
+  }
+
+  function queueSortLabel(sortBy, reversed) {
+    const label = boundedText(sortBy.replace(/[_.-]+/g, " "), 48) || "queue";
+    return `Sort by ${label}${reversed ? " descending" : ""}`;
+  }
+
+  function renderQueueSortControls(sortLinks) {
+    if (!Array.isArray(sortLinks) || sortLinks.length === 0) {
+      return null;
+    }
+    const controls = document.createElement("div");
+    controls.className = "queue-sort-controls";
+    controls.append(text("span", "cr-label", "Sort"));
+    for (const link of sortLinks) {
+      const anchor = document.createElement("a");
+      anchor.className = "queue-sort-link";
+      anchor.setAttribute("href", link.href);
+      anchor.textContent = link.label;
+      if (
+        state.uploadQueueSortBy === link.sortBy &&
+        state.uploadQueueReversed === link.reversed
+      ) {
+        anchor.setAttribute("aria-current", "true");
+      }
+      controls.append(anchor);
+    }
+    return controls;
+  }
+
+  function queueRowFromTableRow(row) {
+    const cells = Array.from(row.querySelectorAll("td")).map((cell) =>
+      compactQueueText(cell.textContent),
+    );
+    const visibleCells = cells.filter(Boolean);
+    if (visibleCells.length === 0) {
+      return null;
+    }
+    return {
+      label: visibleCells[0] || "Queue item",
+      detail: visibleCells.slice(1).join(" | ") || visibleCells[0],
+    };
+  }
+
+  function queueRowsFromNodes(nodes, label) {
+    return Array.from(nodes)
+      .map((node) => compactQueueText(node.textContent))
+      .filter(Boolean)
+      .map((detail) => ({ label, detail }));
+  }
+
+  function removeUnsafeParsedNodes(documentValue) {
+    documentValue
+      .querySelectorAll(unsafeParsedElementSelector())
+      .forEach((node) => node.remove());
+    documentValue.querySelectorAll("*").forEach((element) => {
+      Array.from(element.attributes).forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith("on") || name === "style" || name === "srcdoc") {
+          element.removeAttribute(attribute.name);
+        }
+      });
+    });
+  }
+
+  function unsafeParsedElementSelector() {
+    return "script, style, template, noscript, iframe, frame, frameset, object, embed, link, meta, base, svg, math";
   }
 
   function interceptQueueClick(event) {
@@ -655,11 +842,15 @@
   }
 
   function identityId(identity) {
-    return stringValue(identity.identityId || identity.id);
+    return boundedText(identity.identityId || identity.id, maxProfileTextLength);
   }
 
   function identityLabel(identity) {
-    return stringValue(identity.label || identity.displayName || identityId(identity) || "Profile identity");
+    return (
+      boundedText(identity.label || identity.displayName, maxDisplayTextLength) ||
+      identityId(identity) ||
+      "Profile identity"
+    );
   }
 
   function uploadQueueStatusMessage() {
@@ -678,16 +869,25 @@
   }
 
   function fieldValue(form, name) {
+    const value = rawFieldValue(form, name);
     const field = form.querySelector(`[name="${name}"]`);
     return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
-      ? field.value.trim()
+      ? boundedText(
+          value,
+          field instanceof HTMLTextAreaElement ? maxProfileBioLength : maxProfileTextLength,
+        )
       : "";
+  }
+
+  function rawFieldValue(form, name) {
+    const field = form.querySelector(`[name="${name}"]`);
+    return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value : "";
   }
 
   function commaValues(value) {
     return stringValue(value)
       .split(",")
-      .map((item) => item.trim())
+      .map((item) => boundedText(item, 32))
       .filter(Boolean);
   }
 
@@ -701,14 +901,15 @@
     const row = document.createElement("p");
     const key = document.createElement("strong");
     key.textContent = `${label}: `;
-    row.append(key, document.createTextNode(value == null || value === "" ? "Unavailable" : String(value)));
+    const safeValue = boundedText(value, maxDisplayTextLength);
+    row.append(key, document.createTextNode(safeValue || "Unavailable"));
     return row;
   }
 
   function text(tagName, className, value) {
     const node = document.createElement(tagName);
     node.className = className;
-    node.textContent = value;
+    node.textContent = boundedText(value, maxDisplayTextLength);
     return node;
   }
 
@@ -716,8 +917,67 @@
     return value == null ? "" : String(value);
   }
 
+  function boundedText(value, maxLength) {
+    const textValue = stringValue(value).trim().replace(unsafeControlPattern(), " ");
+    if (textValue.length <= maxLength) {
+      return textValue;
+    }
+    return `${textValue.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
+  function optionalCryptaContentUri(value) {
+    const uri = stringValue(value).trim();
+    if (!uri) {
+      return "";
+    }
+    if (uri.length > maxContentUriLength) {
+      return "";
+    }
+    if (unsafeControlPattern().test(uri) || /[\s\\]/.test(uri) || uri.includes("?") || uri.includes("#")) {
+      return "";
+    }
+    const runtimeUri = uri.toLowerCase().startsWith("crypta:") ? uri.slice(7).trim() : uri;
+    if (!runtimeUri || runtimeUri.startsWith("/") || runtimeUri.startsWith("\\")) {
+      return "";
+    }
+    const colon = runtimeUri.indexOf(":");
+    const at = runtimeUri.indexOf("@");
+    if (colon >= 0 && (at < 0 || colon < at)) {
+      return "";
+    }
+    const upper = runtimeUri.toUpperCase();
+    return ["CHK", "SSK", "USK", "KSK"].some(
+      (kind) => upper.startsWith(`${kind}@`) && runtimeUri.length > kind.length + 1,
+    )
+      ? uri
+      : "";
+  }
+
+  function optionalProfileWebsite(value) {
+    const website = stringValue(value).trim();
+    if (!website) {
+      return "";
+    }
+    if (website.length > maxContentUriLength) {
+      return "";
+    }
+    return unsafeSingleLineControlPattern().test(website) ? "" : website;
+  }
+
+  function compactQueueText(value) {
+    return boundedText(stringValue(value).replace(/\s+/g, " "), maxDisplayTextLength);
+  }
+
+  function unsafeControlPattern() {
+    return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+  }
+
+  function unsafeSingleLineControlPattern() {
+    return /[\u0000-\u001f\u007f]/;
+  }
+
   function setStatus(message, tone) {
-    elements.status.textContent = message || "";
+    elements.status.textContent = boundedText(message, maxDisplayTextLength);
     elements.status.className = statusClassName(tone);
   }
 

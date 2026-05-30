@@ -21,6 +21,9 @@
   const maxRecipientFingerprintLength = 128;
   const maxAuthorLabelLength = 80;
   const maxProfileUriLength = 512;
+  const maxDisplayTextLength = 240;
+  const maxSourceLabelLength = 80;
+  const maxSourceSummaryLength = 96;
   const maxTagCount = 12;
   const maxTagLength = 32;
   const maxImportedBodyPreviewLength = 700;
@@ -160,7 +163,13 @@
       return;
     }
     const formData = new FormData(elements.profileForm);
-    const displayName = textValue(formData, "displayName") || textValue(formData, "authorLabel");
+    const profileUri = optionalCryptaContentUri(textValue(formData, "profileUri"));
+    if (textValue(formData, "profileUri") && !profileUri) {
+      setStatus("Profile URI must be a Crypta content key.", "error");
+      return;
+    }
+    const displayName =
+      boundedPreview(textValue(formData, "displayName") || textValue(formData, "authorLabel"), 160);
     if (!displayName) {
       setStatus("Profile document display name is required.", "error");
       return;
@@ -170,14 +179,17 @@
         identityId(identity),
         {
           displayName,
-          website: textValue(formData, "profileUri"),
-          contactUri: textValue(formData, "profileUri"),
+          website: profileUri,
+          contactUri: profileUri,
           tags: ["social-inbox", "preview"],
         }
       );
-      elements.profilePreview.textContent = JSON.stringify(profileDocument, null, 2);
-      state.drafts.profileUri = textValue(formData, "profileUri");
-      state.drafts.authorLabel = textValue(formData, "authorLabel");
+      elements.profilePreview.textContent = boundedPreview(
+        JSON.stringify(profileDocument, null, 2),
+        maxFetchedDocumentChars,
+      );
+      state.drafts.profileUri = profileUri;
+      state.drafts.authorLabel = boundedPreview(textValue(formData, "authorLabel"), maxAuthorLabelLength);
       await persistDrafts();
       setStatus("Signed profile document prepared.");
     } catch (error) {
@@ -200,6 +212,10 @@
     }
     if (message.body.length > maxDraftBodyLength) {
       setStatus("Message body is too large for the preview signer.", "error");
+      return;
+    }
+    if (fieldValue(elements.profileForm, "profileUri") && !message.profileUri) {
+      setStatus("Profile URI must be a Crypta content key.", "error");
       return;
     }
     try {
@@ -235,8 +251,15 @@
     const formData = new FormData(elements.publishForm);
     const insertUri = textValue(formData, "insertUri");
     const identifier = textValue(formData, "identifier") || generatedId("social-outbox");
-    const publicSourceUri = textValue(formData, "publicSourceUri");
-    const sourceLabel = textValue(formData, "sourceLabel") || "Social Inbox Preview";
+    const rawPublicSourceUri = textValue(formData, "publicSourceUri");
+    const publicSourceUri = optionalCryptaContentUri(rawPublicSourceUri, ["USK"]);
+    if (rawPublicSourceUri && !publicSourceUri) {
+      setStatus("Public source URI summary must be a USK@ or crypta:USK@ content key.", "error");
+      return;
+    }
+    const sourceLabel =
+      boundedPreview(textValue(formData, "sourceLabel"), maxSourceLabelLength) ||
+      "Social Inbox Preview";
     const document = {
       type: socialOutboxType,
       appId,
@@ -286,15 +309,15 @@
       return;
     }
     const formData = new FormData(elements.sourceForm);
-    const uri = textValue(formData, "uri");
-    if (!isSocialSourceUri(uri)) {
+    const uri = normalizedCryptaContentUri(textValue(formData, "uri"), ["USK"]);
+    if (!uri) {
       setStatus("Social sources must start with USK@ or crypta:USK@.", "error");
       return;
     }
     const uriHash = await sha256Hex(uri);
     const source = {
       id: generatedId("source"),
-      label: textValue(formData, "label") || "Social source",
+      label: boundedPreview(textValue(formData, "label"), maxSourceLabelLength) || "Social source",
       uriHash,
       uriSummary: redactedPublicUri(uri),
       subscriptionId: "",
@@ -375,7 +398,7 @@
       renderSources();
       const fetchUri = sourceFetchUri(source);
       if (!fetchUri) {
-        throw new Error("Refresh subscriptions before fetching this source.");
+        throw new Error("Refresh subscriptions before fetching this source, and use a valid USK URI.");
       }
       const response = await CryptaPlatform.content.fetchText({
         uri: fetchUri,
@@ -459,17 +482,17 @@
     const messageId = rawString(message.messageId);
     return {
       messageId,
-      authorFingerprint: stringValue(message.authorFingerprint),
-      authorLabel: stringValue(message.authorLabel),
-      profileUri: stringValue(message.profileUri),
-      channel: stringValue(message.channel) || "general",
+      authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
+      authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
+      profileUri: optionalCryptaContentUri(message.profileUri),
+      channel: boundedPreview(message.channel, maxImportedChannelLength) || "general",
       subject: boundedPreview(stringValue(message.subject), 180),
       bodyPreview: boundedPreview(body, maxImportedBodyPreviewLength),
       bodySha256: await sha256Hex(body),
-      createdAt: stringValue(message.createdAt),
-      replyTo: stringValue(message.replyTo),
+      createdAt: boundedPreview(message.createdAt, 64),
+      replyTo: boundedPreview(message.replyTo, maxMessageReferenceLength),
       sourceId: source.id,
-      sourceLabel: source.label,
+      sourceLabel: boundedPreview(source.label, maxSourceLabelLength),
       sourceUriHash: source.uriHash || (await sha256Hex(source.subscriptionId || source.id)),
       resolvedUri: redactedPublicUri(stringField(response, "resolvedUri", "requestedUri")),
       signatureSha256: await sha256Hex(stringValue(signature.signatureBase64)),
@@ -551,6 +574,9 @@
     requireBoundedText(message.subject, maxImportedSubjectLength, "subject");
     requireBoundedText(message.authorLabel, maxAuthorLabelLength, "authorLabel");
     requireBoundedText(message.profileUri, maxProfileUriLength, "profileUri");
+    if (rawString(message.profileUri) && !optionalCryptaContentUri(message.profileUri)) {
+      throw new Error("Social message profile URI is malformed.");
+    }
     requireBoundedText(message.replyTo, maxMessageReferenceLength, "replyTo");
     requireBoundedText(message.recipientFingerprint, maxRecipientFingerprintLength, "recipientFingerprint");
     if (message.format !== "text/plain") {
@@ -1115,7 +1141,7 @@
         summaryRow("Status", stringField(subscription, "status", "state")),
         summaryRow("Last check", stringField(subscription, "lastCheckedAt", "lastCheckAt")),
         summaryRow("Last seen edition", stringField(subscription, "lastSeenEdition")),
-        summaryRow("Resolved URI", stringField(subscription, "lastSeenResolvedUri")),
+        summaryRow("Resolved URI", redactedPublicUri(stringField(subscription, "lastSeenResolvedUri"))),
         summaryRow("Updates", String(numberField(subscription, "updateCount"))),
         summaryRow(
           "Backoff or error",
@@ -1380,7 +1406,11 @@
   }
 
   function identityLabel(identity) {
-    return stringField(identity, "label", "name") || identityId(identity) || "Identity";
+    return (
+      boundedPreview(stringField(identity, "label", "name"), maxAuthorLabelLength) ||
+      boundedPreview(identityId(identity), maxAuthorLabelLength) ||
+      "Identity"
+    );
   }
 
   function subscriptionId(subscription) {
@@ -1393,7 +1423,10 @@
 
   function sourceFetchUri(source) {
     const subscription = subscriptionForSource(source);
-    return stringField(subscription, "lastSeenResolvedUri", "resolvedUri", "sourceUri", "uri");
+    return normalizedCryptaContentUri(
+      stringField(subscription, "lastSeenResolvedUri", "resolvedUri", "sourceUri", "uri"),
+      ["USK"],
+    );
   }
 
   function readState(message) {
@@ -1409,8 +1442,8 @@
       channel: textValue(formData, "channel") || "general",
       subject: boundedPreview(textValue(formData, "subject"), 160),
       body: textValue(formData, "body"),
-      authorLabel: fieldValue(elements.profileForm, "authorLabel"),
-      profileUri: fieldValue(elements.profileForm, "profileUri"),
+      authorLabel: boundedPreview(fieldValue(elements.profileForm, "authorLabel"), maxAuthorLabelLength),
+      profileUri: optionalCryptaContentUri(fieldValue(elements.profileForm, "profileUri")),
       replyTo: textValue(formData, "replyTo"),
       recipientFingerprint: textValue(formData, "recipientFingerprint"),
       tags: tagsFromText(textValue(formData, "tags")),
@@ -1447,14 +1480,18 @@
   function boundedSources(sources) {
     return boundedArray(sources, maxSources).map((source) => ({
       id: boundedPreview(source.id, 80),
-      label: boundedPreview(source.label, 80) || "Social source",
+      label: boundedPreview(source.label, maxSourceLabelLength) || "Social source",
       uriHash: boundedPreview(source.uriHash, 64),
-      uriSummary: boundedPreview(source.uriSummary, 96) || "USK social source URI redacted",
+      uriSummary:
+        boundedPreview(source.uriSummary, maxSourceSummaryLength) || "USK social source URI redacted",
       subscriptionId: boundedPreview(source.subscriptionId, 120),
       lastCheckedAt: boundedPreview(source.lastCheckedAt, 64),
       lastStatus: boundedPreview(source.lastStatus, 80),
       lastSeenEdition: boundedPreview(source.lastSeenEdition, 40),
-      lastSeenResolvedUriSummary: boundedPreview(source.lastSeenResolvedUriSummary, 96),
+      lastSeenResolvedUriSummary: boundedPreview(
+        source.lastSeenResolvedUriSummary,
+        maxSourceSummaryLength,
+      ),
       updateCount: Math.max(0, numberField(source, "updateCount")),
       lastError: boundedPreview(source.lastError, 160),
     }));
@@ -1472,9 +1509,31 @@
   }
 
   function boundedImportedMessages(value, limit) {
-    return boundedArray(value, limit).filter((message) =>
-      isSafeMessageId(message && message.messageId)
-    );
+    return boundedArray(value, limit).map(boundedImportedMessage).filter(Boolean);
+  }
+
+  function boundedImportedMessage(message) {
+    if (!message || typeof message !== "object" || !isSafeMessageId(message.messageId)) {
+      return null;
+    }
+    return {
+      messageId: message.messageId,
+      authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
+      authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
+      profileUri: optionalCryptaContentUri(message.profileUri),
+      channel: boundedPreview(message.channel, maxImportedChannelLength) || "general",
+      subject: boundedPreview(message.subject, maxImportedSubjectLength) || "(no subject)",
+      bodyPreview: boundedPreview(message.bodyPreview, maxImportedBodyPreviewLength),
+      bodySha256: boundedPreview(message.bodySha256, 64),
+      createdAt: boundedPreview(message.createdAt, 64),
+      replyTo: boundedPreview(message.replyTo, maxMessageReferenceLength),
+      sourceId: boundedPreview(message.sourceId, 80),
+      sourceLabel: boundedPreview(message.sourceLabel, maxSourceLabelLength),
+      sourceUriHash: boundedPreview(message.sourceUriHash, 64),
+      resolvedUri: boundedPreview(message.resolvedUri, maxSourceSummaryLength),
+      signatureSha256: boundedPreview(message.signatureSha256, 64),
+      importedAt: boundedPreview(message.importedAt, 64),
+    };
   }
 
   function boundedReadState(value, limit) {
@@ -1554,8 +1613,43 @@
   }
 
   function isSocialSourceUri(uri) {
-    const value = stringValue(uri);
-    return value.startsWith("USK@") || value.startsWith("crypta:USK@");
+    return !!normalizedCryptaContentUri(uri, ["USK"]);
+  }
+
+  function optionalCryptaContentUri(value, allowedKinds) {
+    const text = stringValue(value);
+    if (!text) {
+      return "";
+    }
+    return normalizedCryptaContentUri(text, allowedKinds || ["CHK", "SSK", "USK", "KSK"]);
+  }
+
+  function normalizedCryptaContentUri(value, allowedKinds) {
+    const uri = stringValue(value);
+    if (
+      !uri ||
+      uri.length > maxProfileUriLength ||
+      /[\s\\\u0000]/.test(uri) ||
+      uri.includes("?") ||
+      uri.includes("#")
+    ) {
+      return "";
+    }
+    const runtimeUri = uri.toLowerCase().startsWith("crypta:") ? uri.slice(7).trim() : uri;
+    if (!runtimeUri || runtimeUri.startsWith("/") || runtimeUri.startsWith("\\")) {
+      return "";
+    }
+    const colon = runtimeUri.indexOf(":");
+    const at = runtimeUri.indexOf("@");
+    if (colon >= 0 && (at < 0 || colon < at)) {
+      return "";
+    }
+    const upper = runtimeUri.toUpperCase();
+    return allowedKinds.some(
+      (kind) => upper.startsWith(`${kind}@`) && runtimeUri.length > kind.length + 1,
+    )
+      ? uri
+      : "";
   }
 
   function redactedInsertUri(uri) {
@@ -1571,10 +1665,10 @@
     if (!value) {
       return "";
     }
-    if (value.startsWith("USK@") || value.startsWith("crypta:USK@")) {
+    if (normalizedCryptaContentUri(value, ["USK"])) {
       return "USK social source URI redacted";
     }
-    if (value.startsWith("CHK@") || value.startsWith("crypta:CHK@")) {
+    if (normalizedCryptaContentUri(value, ["CHK"])) {
       return "CHK content URI redacted";
     }
     return "content URI redacted";
@@ -1586,21 +1680,24 @@
     const strong = document.createElement("strong");
     strong.textContent = `${label}: `;
     const span = document.createElement("span");
-    span.textContent = stringValue(value) || "not available";
+    span.textContent = boundedPreview(value, maxDisplayTextLength) || "not available";
     row.append(strong, span);
     return row;
   }
 
   function headingText(value, level) {
     const heading = document.createElement(level);
-    heading.textContent = stringValue(value) || "Untitled";
+    heading.textContent = boundedPreview(value, maxImportedSubjectLength) || "Untitled";
     return heading;
   }
 
   function paragraph(className, value) {
     const node = document.createElement("p");
     node.className = className;
-    node.textContent = stringValue(value);
+    node.textContent = boundedPreview(
+      value,
+      className === "message-body" ? maxImportedBodyPreviewLength : maxDisplayTextLength,
+    );
     return node;
   }
 
@@ -1610,7 +1707,7 @@
     for (const value of values.filter((item) => stringValue(item))) {
       const badge = document.createElement("span");
       badge.className = `badge badge--${mode || "neutral"}`;
-      badge.textContent = stringValue(value);
+      badge.textContent = boundedPreview(value, maxDisplayTextLength);
       container.append(badge);
     }
     return container;
@@ -1628,7 +1725,7 @@
   function empty(text) {
     const node = document.createElement("p");
     node.className = "cr-empty";
-    node.textContent = text;
+    node.textContent = boundedPreview(text, maxDisplayTextLength);
     return node;
   }
 
@@ -1708,11 +1805,15 @@
   }
 
   function boundedPreview(value, maxLength) {
-    const text = stringValue(value);
+    const text = stringValue(value).replace(unsafeControlPattern(), " ");
     if (text.length <= maxLength) {
       return text;
     }
     return text.slice(0, Math.max(0, maxLength - 3)) + "...";
+  }
+
+  function unsafeControlPattern() {
+    return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
   }
 
   function generatedId(prefix) {
@@ -1735,7 +1836,7 @@
   }
 
   function setStatus(message, tone) {
-    elements.status.textContent = message || "";
+    elements.status.textContent = boundedPreview(message, maxDisplayTextLength);
     elements.status.dataset.tone = tone || "default";
   }
 })();

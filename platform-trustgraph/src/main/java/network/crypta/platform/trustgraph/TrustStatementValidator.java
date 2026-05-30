@@ -185,7 +185,7 @@ public final class TrustStatementValidator {
   private static boolean containsUnsafeControl(String value) {
     for (int index = 0; index < value.length(); index++) {
       char ch = value.charAt(index);
-      if (ch < 0x20) {
+      if (Character.isISOControl(ch)) {
         return true;
       }
     }

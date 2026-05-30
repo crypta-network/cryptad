@@ -37,6 +37,12 @@ class FeedReaderBundleStagingTest {
           "queue.write",
           "app.data.read",
           "app.data.write");
+  private static final List<String> ADVERSARIAL_MARKUP_FIXTURES =
+      List.of(
+          "<script>alert(1)</script>",
+          "<img src=x onerror=alert(1)>",
+          "<a href=\"javascript:alert(1)\">click</a>",
+          "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
   private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 12;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
@@ -276,6 +282,13 @@ class FeedReaderBundleStagingTest {
         "contentHtml",
         "queueRowsFromHtml",
         "compactQueueText",
+        "normalizedCryptaContentUri",
+        "removeUnsafeParsedNodes",
+        "unsafeParsedElementSelector",
+        "iframe, frame, frameset, object, embed, link, meta, base, svg, math",
+        "boundedText",
+        "boundedCount",
+        "maxFeedBodyLength",
         "sources: []",
         "subscriptions: []",
         "fetchedSnapshots: []",
@@ -318,6 +331,7 @@ class FeedReaderBundleStagingTest {
     assertFalse(
         appScript.contains("No queue items returned."),
         "Feed Reader must render the Queue API contentHtml payload.");
+    verifyAdversarialMarkupFixturesCovered(appScript);
     verifyContainsNone(
         appScript,
         "CryptaPlatform.dom.sanitizeFragment",
@@ -335,6 +349,18 @@ class FeedReaderBundleStagingTest {
         "CRYPTAD_APP_TOKEN",
         "innerHTML",
         "insertAdjacentHTML");
+  }
+
+  private static void verifyAdversarialMarkupFixturesCovered(String appScript) {
+    for (String fixture : ADVERSARIAL_MARKUP_FIXTURES) {
+      assertTrue(fixture.contains("<"), () -> "Fixture must contain markup: " + fixture);
+      assertTrue(
+          appScript.contains("textContent"),
+          () -> "Feed Reader must render hostile fixture text with textContent: " + fixture);
+      assertTrue(
+          appScript.contains("removeUnsafeParsedNodes"),
+          () -> "Feed Reader must strip active parsed markup for fixture: " + fixture);
+    }
   }
 
   private static void verifyContainsAll(String text, String... expectedFragments) {

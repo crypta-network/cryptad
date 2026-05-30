@@ -134,6 +134,13 @@ AppHost does not inject daemon datastore paths, trusted-key files, catalog roots
 or the daemon's current working directory. The child process working directory is the installed app
 bundle root.
 
+Public-beta certification treats the environment allow-list as a release boundary. POSIX launches
+must not inherit `HOME`, `USER`, `LOGNAME`, Java option variables, `LD_*` or `DYLD_*` preload
+variables, cloud credentials, GitHub/OpenAI tokens, SSH agent sockets, proxy variables, generic
+`SECRET`, `TOKEN`, `PASSWORD`, or `PRIVATE_KEY` variables, host `PATH`, or `CRYPTAD_APPHOST_*`
+configuration. Windows launches may keep only the documented system root, command interpreter,
+safe base `PATH`, and temporary-directory variables required for process startup.
+
 ## Runtime files
 
 The layout keeps app state separated by purpose:

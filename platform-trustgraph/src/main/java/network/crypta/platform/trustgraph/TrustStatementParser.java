@@ -185,6 +185,9 @@ public final class TrustStatementParser {
 
   private static String string(Object value, String fieldName) {
     if (value instanceof String text) {
+      if (containsUnsafeControl(text)) {
+        throw invalid(fieldMessage(fieldName, "' must not contain control characters."));
+      }
       return text;
     }
     throw invalid(fieldMessage(fieldName, "' must be a string."));
@@ -224,5 +227,14 @@ public final class TrustStatementParser {
 
   private static TrustGraphException invalid(String message) {
     return new TrustGraphException("invalid_trust_statement", message);
+  }
+
+  private static boolean containsUnsafeControl(String value) {
+    for (int index = 0; index < value.length(); index++) {
+      if (Character.isISOControl(value.charAt(index))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

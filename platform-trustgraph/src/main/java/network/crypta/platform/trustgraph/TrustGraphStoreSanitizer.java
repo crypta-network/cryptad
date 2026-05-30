@@ -386,7 +386,7 @@ final class TrustGraphStoreSanitizer {
   }
 
   /**
-   * Detects ASCII control characters that are unsafe for persisted summaries.
+   * Detects ISO control characters that are unsafe for persisted summaries.
    *
    * @param value text value to inspect
    * @return {@code true} when the value contains a control character or delete character
@@ -394,7 +394,7 @@ final class TrustGraphStoreSanitizer {
   private static boolean containsUnsafeControl(String value) {
     for (int index = 0; index < value.length(); index++) {
       char ch = value.charAt(index);
-      if (ch < 0x20 || ch == 0x7f) {
+      if (Character.isISOControl(ch)) {
         return true;
       }
     }

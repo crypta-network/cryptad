@@ -43,6 +43,12 @@ class SocialInboxBundleStagingTest {
           "app.data.write",
           "app.services.read",
           "app.services.call");
+  private static final List<String> ADVERSARIAL_MARKUP_FIXTURES =
+      List.of(
+          "<script>alert(1)</script>",
+          "<img src=x onerror=alert(1)>",
+          "<a href=\"javascript:alert(1)\">click</a>",
+          "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 12;
   private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 12;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
@@ -356,13 +362,17 @@ class SocialInboxBundleStagingTest {
         "const publicKeyBytes = decodeBase64(signature.publicKeyBase64, \"publicKeyBase64\")",
         "const publicKeyFingerprint = await sha256Hex(publicKeyBytes)",
         "isSocialSourceUri",
-        "startsWith(\"USK@\")",
-        "startsWith(\"crypta:USK@\")",
+        "normalizedCryptaContentUri",
+        "optionalCryptaContentUri",
+        "boundedImportedMessage",
+        "maxImportedBodyPreviewLength",
+        "maxSourceLabelLength",
         "textContent",
         "replaceChildren",
         "FormData",
         "application/vnd.crypta.social.outbox+json",
         "social-outbox.json");
+    verifyAdversarialMarkupFixturesCovered(appScript);
     verifyContainsNone(
         appScript,
         "CryptaPlatform.dom.sanitizeFragment",
@@ -382,6 +392,18 @@ class SocialInboxBundleStagingTest {
         "insertAdjacentHTML",
         "persistOutboxSummary(await localOutboxSummary())",
         "function localOutboxSummary");
+  }
+
+  private static void verifyAdversarialMarkupFixturesCovered(String appScript) {
+    for (String fixture : ADVERSARIAL_MARKUP_FIXTURES) {
+      assertTrue(fixture.contains("<"), () -> "Fixture must contain markup: " + fixture);
+      assertTrue(
+          appScript.contains("textContent"),
+          () -> "Social Inbox must render hostile fixture text with textContent: " + fixture);
+      assertTrue(
+          appScript.contains("boundedImportedMessage"),
+          () -> "Social Inbox must normalize hostile imported messages for fixture: " + fixture);
+    }
   }
 
   private static void verifyContainsAll(String text, String... expectedFragments) {
