@@ -13,13 +13,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class WebShellBootstrapTest {
+  private static final String CONFIGURED_SECURITY_LEVELS_PATH = "/security-custom/";
+
   @Test
-  void nodeManagement_whenLegacyLinksProvided_expectStableDefaultRoutesAndProvidedLinks() {
+  void nodeManagement_whenLegacyLinksAndSecurityPathProvided_expectStableRoutesAndProvidedLinks() {
     List<WebShellBootstrap.LegacyLink> legacyLinks =
         List.of(
             new WebShellBootstrap.LegacyLink("/friends-custom/", "Friends"),
             new WebShellBootstrap.LegacyLink("/downloads-custom/", "Downloads"));
-    WebShellBootstrap bootstrap = WebShellBootstrap.nodeManagement(legacyLinks);
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(CONFIGURED_SECURITY_LEVELS_PATH, legacyLinks);
 
     assertEquals(WebShellBootstrap.DEFAULT_SHELL_TITLE, bootstrap.shellTitle());
     assertEquals(WebShellPaths.SHELL_ROOT, bootstrap.shellRoot());
@@ -27,7 +30,27 @@ class WebShellBootstrapTest {
     assertEquals(WebShellBootstrap.DEFAULT_PLATFORM_API_ROOT, bootstrap.platformApiRoot());
     assertNull(bootstrap.formPassword());
     assertEquals(WebShellBootstrap.DEFAULT_LEGACY_ROOT, bootstrap.legacyRoot());
+    assertEquals(CONFIGURED_SECURITY_LEVELS_PATH, bootstrap.legacySecurityLevelsPath());
     assertEquals(legacyLinks, bootstrap.legacyLinks());
+  }
+
+  @Test
+  void nodeManagement_whenSecurityPathProvided_expectConfiguredLegacyFallbackPath() {
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(
+            CONFIGURED_SECURITY_LEVELS_PATH,
+            List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
+
+    assertEquals(CONFIGURED_SECURITY_LEVELS_PATH, bootstrap.legacySecurityLevelsPath());
+  }
+
+  @Test
+  void nodeManagement_whenSlashlessSecurityPathProvided_expectConfiguredPathPreserved() {
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(
+            "/security-custom", List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
+
+    assertEquals("/security-custom", bootstrap.legacySecurityLevelsPath());
   }
 
   @Test
@@ -41,6 +64,7 @@ class WebShellBootstrapTest {
             "/api/v1/",
             "secret<token>",
             "/",
+            "/security-custom/",
             List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends & Allies")));
 
     assertEquals(
@@ -51,6 +75,7 @@ class WebShellBootstrapTest {
             + "\"platformApiRoot\":\"/api/v1/\","
             + "\"formPassword\":\"secret\\u003ctoken\\u003e\","
             + "\"legacyRoot\":\"/\","
+            + "\"legacySecurityLevelsPath\":\"/security-custom/\","
             + "\"legacyLinks\":[{\"path\":\"/friends/\",\"label\":\"Friends \\u0026 Allies\"}]}",
         WebShellBootstrapJson.serialize(bootstrap));
   }
@@ -59,6 +84,7 @@ class WebShellBootstrapTest {
   void withFormPassword_whenBlank_expectMutationTokenCleared() {
     WebShellBootstrap bootstrap =
         WebShellBootstrap.nodeManagement(
+                CONFIGURED_SECURITY_LEVELS_PATH,
                 List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")))
             .withFormPassword("");
 
@@ -76,11 +102,17 @@ class WebShellBootstrapTest {
 
   @Test
   void legacyLink_whenPathIsSchemeRelativeOrContainsQuery_expectRejected() {
+    List<WebShellBootstrap.LegacyLink> validLegacyLinks =
+        List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends"));
+
     assertThrows(
         IllegalArgumentException.class,
         () -> new WebShellBootstrap.LegacyLink("//evil.example/", "External"));
     assertThrows(
         IllegalArgumentException.class,
         () -> new WebShellBootstrap.LegacyLink("/friends/?tab=all", "Friends"));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> WebShellBootstrap.nodeManagement("/seclevels/?tab=legacy", validLegacyLinks));
   }
 }

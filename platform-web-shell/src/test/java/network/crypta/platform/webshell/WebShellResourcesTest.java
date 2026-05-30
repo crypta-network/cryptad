@@ -111,7 +111,8 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".metadata-link-list {"));
     assertTrue(stylesheet.contains(".permission-review-list {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
-    assertTrue(stylesheet.contains(".publisher-result-actions {"));
+    assertTrue(stylesheet.contains(".publisher-result-actions,"));
+    assertTrue(stylesheet.contains(".security-fallback-actions {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
   }
 
@@ -132,6 +133,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const apiRootUrl = new URL(apiRoot, window.location.origin);"));
     assertTrue(script.contains("const shellRootUrl = new URL(shellRoot, window.location.origin);"));
     assertTrue(script.contains("function normalizeLocalRootPath(value, fallback)"));
+    assertTrue(script.contains("function normalizeLocalPath(value, fallback)"));
     assertTrue(script.contains("function queuePriorityFieldName(submitterName)"));
     assertTrue(script.contains("function renderQueueHtmlFragment(html, className)"));
     assertTrue(script.contains("function sanitizeQueueNode(root)"));
@@ -204,7 +206,9 @@ class WebShellResourcesTest {
     assertTrue(loadOptionalJsonIndex >= 0);
     assertTrue(loadBestEffortOptionalJsonIndex > loadOptionalJsonIndex);
     assertTrue(script.contains("optionalStatuses.includes(response.status)"));
-    assertTrue(script.contains("throw new Error(extractApiError(data, response));"));
+    assertTrue(script.contains("function createApiError(data, response)"));
+    assertTrue(script.contains("error.apiErrorCode = data.error.code;"));
+    assertTrue(script.contains("throw createApiError(data, response);"));
     assertTrue(script.contains("return await loadOptionalJson(url);"));
     assertTrue(snapshotAwaitIndex > queueLoadIndex);
     assertTrue(optionalAwaitIndex > snapshotAwaitIndex);
@@ -803,6 +807,21 @@ class WebShellResourcesTest {
     assertTrue(script.contains("async function loadConfigSection()"));
     assertTrue(script.contains("async function loadWizardSection()"));
     assertTrue(script.contains("async function submitSecurityForm(event)"));
+    assertTrue(script.contains("const legacySecurityLevelsPath = normalizeLocalPath("));
+    assertTrue(script.contains("bootstrap.legacySecurityLevelsPath,"));
+    assertTrue(script.contains("const legacySecurityLevelsFallbackPath ="));
+    assertTrue(script.contains("legacySecurityLevelsPath + \"?legacyFallback=security-levels\""));
+    assertFalse(script.contains("\"/seclevels/?legacyFallback=security-levels\""));
+    assertTrue(script.contains("function securityLegacyFallbackLink(label)"));
+    assertTrue(script.contains("function setSecurityLegacyFallbackStatus(message)"));
+    assertTrue(script.contains("function renderSecurityLegacyFallbackAction()"));
+    assertTrue(script.contains("sections.security.append(renderSecurityLegacyFallbackAction())"));
+    assertTrue(script.contains("Open legacy password and recovery forms"));
+    assertTrue(script.contains("function securityErrorRequiresLegacyFallback(error)"));
+    assertTrue(script.contains("physical_threat_level_password_required"));
+    assertTrue(script.contains("physical_threat_level_master_password_cleanup_failed"));
+    assertTrue(script.contains("if (securityErrorRequiresLegacyFallback(error))"));
+    assertTrue(script.contains("Open the legacy security page."));
     assertTrue(script.contains("async function submitConfigForm(event)"));
     assertTrue(script.contains("async function triggerCoreDownload()"));
     assertTrue(script.contains("async function submitWizardForm(event)"));

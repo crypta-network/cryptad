@@ -31,6 +31,10 @@ final class LegacyAdminRemovalPolicy {
   /** Stable first-party app id for the Publisher static UI replacement. */
   private static final String PUBLISHER_APP_ID = "publisher";
 
+  /** Exact static query used by Web Shell when it deliberately opens legacy security fallback. */
+  private static final String SECURITY_LEVELS_LEGACY_FALLBACK_QUERY =
+      "legacyFallback=security-levels";
+
   /** Prevents construction because the policy is stateless and entirely function-based. */
   private LegacyAdminRemovalPolicy() {}
 
@@ -71,6 +75,9 @@ final class LegacyAdminRemovalPolicy {
       return Optional.empty();
     }
     LegacyAdminSurface legacyAdminSurface = surface.orElseThrow();
+    if (isExplicitSecurityLevelsLegacyFallback(method, uri, legacyAdminSurface)) {
+      return Optional.empty();
+    }
     if (!replacementAvailable(legacyAdminSurface, ctx)) {
       return Optional.empty();
     }
@@ -138,6 +145,13 @@ final class LegacyAdminRemovalPolicy {
     return !"GET".equals(method) && !"HEAD".equals(method);
   }
 
+  private static boolean isExplicitSecurityLevelsLegacyFallback(
+      String method, URI uri, LegacyAdminSurface surface) {
+    return "security-levels".equals(surface.id())
+        && !isMutatingRequestMethod(method)
+        && SECURITY_LEVELS_LEGACY_FALLBACK_QUERY.equals(uri.getRawQuery());
+  }
+
   /**
    * Checks whether the mapped replacement can be used for this request.
    *
@@ -164,6 +178,7 @@ final class LegacyAdminRemovalPolicy {
           "connectivity",
           "alerts",
           "config",
+          "security-levels",
           "core-update",
           "statistics" ->
           webShellReplacementAvailable(ctx);

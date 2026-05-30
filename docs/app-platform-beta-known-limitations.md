@@ -49,6 +49,9 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - Trust Graph Preview has durable local backend storage for anchors and imported public
   statements, but it remains a local preview. It is not full Web of Trust, old plugin
   compatibility, global moderation, routing policy, peer selection, or a background crawler.
+- The [legacy plugin migration guide](legacy-plugin-migration-guide.md) documents app-platform
+  migration patterns, but it does not restore old plugin ABI compatibility or old FCP plugin
+  command compatibility.
 - Social Inbox Preview is a social/mail-like migration spike outside daemon core and legacy plugin
   APIs. Its `crypta.social.message.v1` route is bounded social-message signing only; it is not a
   generic browser signing API, full WoT, Freetalk, Sone, Freemail, encrypted mail transport,
@@ -121,7 +124,8 @@ app ids, capability names, evidence ids, and redacted summaries instead of raw p
 ## Non-goals
 
 The beta does not introduce a live public app store, live public-network test dependency, global
-transparency log, full Web of Trust, generic crawling, arbitrary HTTP/HTTPS fetching, a generic
-filesystem or database API for apps, Freetalk/Sone/Freemail compatibility, encrypted mail
-delivery, daemon-core social or mail protocols, new sandbox provider, new update scheduler policy,
-legacy route removal wave 3, or any FNP/FCP/wire protocol change.
+transparency log, full Web of Trust, old plugin ABI compatibility, old FCP plugin command
+compatibility, generic crawling, arbitrary HTTP/HTTPS fetching, a generic filesystem or database
+API for apps, Freetalk/Sone/Freemail compatibility, encrypted mail delivery, daemon-core social or
+mail protocols, new sandbox provider, new update scheduler policy, or any FNP/FCP/wire protocol
+change.

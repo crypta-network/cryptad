@@ -14,6 +14,7 @@ class WebShellPageRendererTest {
     String html =
         WebShellPageRenderer.render(
             WebShellBootstrap.nodeManagement(
+                "/security-custom/",
                 java.util.List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends"))));
 
     assertTrue(html.contains("Web Shell v1"));

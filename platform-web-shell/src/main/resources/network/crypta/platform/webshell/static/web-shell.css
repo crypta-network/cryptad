@@ -338,7 +338,8 @@ a {
   height: 100%;
 }
 
-.publisher-result-actions {
+.publisher-result-actions,
+.security-fallback-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;

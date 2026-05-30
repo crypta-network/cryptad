@@ -41,6 +41,7 @@ REQUIRED_DOCS = (
     "docs/feed-reader-reference-app.md",
     "docs/social-inbox-reference-app.md",
     "docs/trust-graph-preview.md",
+    "docs/legacy-plugin-migration-guide.md",
     "docs/release-certification.md",
     "docs/SECURITY.md",
 )

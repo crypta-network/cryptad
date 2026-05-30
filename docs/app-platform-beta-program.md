@@ -154,12 +154,15 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 
 6. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
    local transparency log, review-history API, and first-party review chain.
-7. Confirm legacy retirement evidence passes and FProxy browse remains retained.
-8. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
+7. Confirm the legacy plugin migration guide evidence passes:
+   `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike`.
+8. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`, and FProxy
+   browse remains retained.
+9. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
    templates, internal links, and redaction checks.
-9. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program` and no
+10. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program` and no
    active blocker remains unless a release manager recorded an explicit waiver.
-10. Publish release notes with the known beta limitations and any accepted waivers or residual
+11. Publish release notes with the known beta limitations and any accepted waivers or residual
     risks.
 
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver
@@ -171,7 +174,7 @@ The Phase 7 closeout story is:
 
 ```text
 first-party catalog + developer toolkit + reference apps + trust graph preview
-+ review governance + legacy wave 2 + ecosystem certification matrix
++ review governance + legacy plugin migration guide + legacy wave 3 + ecosystem certification matrix
 -> documented and certified as Ecosystem Beta readiness
 ```
 

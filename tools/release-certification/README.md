@@ -117,12 +117,15 @@ reference-app.social-inbox-subscriptions
 reference-app.social-inbox-app-data
 reference-app.social-inbox-trust-annotations
 migration.social-mail-preview
+legacy-plugin.migration-guide
+legacy-plugin.social-inbox-spike
 reference-app.feed-reader
 reference-app.feed-reader-subscriptions
 reference-app.trust-graph
 legacy.retirement
 legacy-admin.removal-wave-1
 legacy-admin.removal-wave-2
+legacy-admin.removal-wave-3
 apphost.sandbox-provider
 app-update.lifecycle
 app-update.scheduler
@@ -231,9 +234,13 @@ blocker row becomes `warn`, never a silent `pass`.
 
 Required evidence that regresses from `pass` to `fail`, `missing`, or `skip` blocks
 release-candidate promotion unless a visible waiver applies. `pass` to `warn` is a warning.
-`legacy-admin.removal-wave-2` is required release-candidate evidence and remains deterministic:
-it verifies the wave-2 route ids, route-scope expansion metadata, retained browse safety, raw
-diagnostic export retention, and redacted diagnostics counters without a live node.
+`legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike`, and
+`legacy-admin.removal-wave-3` are required release-candidate evidence. The migration evidence
+verifies that legacy plugin categories have a documented app-platform migration path without old
+plugin ABI or FCP command compatibility, and that Social Inbox remains the executable
+social/mail-like migration spike. Wave 3 verifies only the `security-levels` route, safe-read
+redirect behavior, mutating legacy fallback, retained browse/filter/diagnostic/wizard surfaces,
+and redacted diagnostics counters without a live node.
 Platform API contract version rollback, stable endpoint/capability removal, first-party app
 disappearance, missing Site Publisher evidence, strict first-party UI lint failure, review receipt
 regression, update rollback regression, vault capability/redaction regression, required enforced

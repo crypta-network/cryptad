@@ -10,15 +10,15 @@ class LegacyAdminRetirementNoticeTest {
   @Test
   void render_whenSurfacePrimaryReplaced_expectFallbackNoticeWithReplacementLink() {
     String html =
-        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("security-levels"))
+        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("diagnostic"))
             .orElseThrow()
             .generate();
 
     assertTrue(html.contains("Legacy fallback page"));
     assertTrue(html.contains("This legacy page remains available as a fallback and debug view."));
     assertTrue(html.contains("The primary flow is now in"));
-    assertTrue(html.contains("href=\"/app/node/#security\""));
-    assertTrue(html.contains("Web Shell security"));
+    assertTrue(html.contains("href=\"/app/node/#diagnostics\""));
+    assertTrue(html.contains("Web Shell diagnostics"));
   }
 
   @Test

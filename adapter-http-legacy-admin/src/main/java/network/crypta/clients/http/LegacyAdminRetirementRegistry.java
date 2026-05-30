@@ -54,8 +54,10 @@ public final class LegacyAdminRetirementRegistry {
   private static final int NO_REMOVAL_WAVE = 0;
   private static final int REMOVAL_WAVE_1 = 1;
   private static final int REMOVAL_WAVE_2 = 2;
+  private static final int REMOVAL_WAVE_3 = 3;
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_1 = "phase-6-pr-8";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_2 = "phase-7-pr-230";
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_3 = "phase-8-pr-244";
   private static final String FALLBACK_POLICY_NONE = "none";
   private static final String FALLBACK_POLICY_RENDER_LEGACY = "render-legacy";
   private static final String FALLBACK_POLICY_MUTATING_LEGACY = "mutating-legacy-fallback";
@@ -168,13 +170,7 @@ public final class LegacyAdminRetirementRegistry {
                   + " persistence actions.",
               scopedCoveredRemoval(
                   LegacyAdminRemovalScope.PREFIX_FAMILY, List.of(), REMOVAL_WAVE_2)),
-          replaced(
-              "security-levels",
-              "Security levels",
-              SecurityLevelsToadlet.PATH,
-              SHELL_SECURITY_URL,
-              "Web Shell security",
-              "Web Shell owns the primary security-level view and common mutations."),
+          securityLevelsWave3Redirect(),
           wave2Redirect(
               "core-update",
               "Core update actions",
@@ -195,13 +191,7 @@ public final class LegacyAdminRetirementRegistry {
                   LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
                   List.of(StatisticsToadlet.TOADLET_URL + "requesters.html"),
                   REMOVAL_WAVE_2)),
-          replaced(
-              "diagnostic",
-              "Diagnostic report",
-              DiagnosticToadlet.TOADLET_URL,
-              SHELL_DIAGNOSTICS_URL,
-              "Web Shell diagnostics",
-              "The plain-text export remains useful as fallback and debug output."),
+          diagnosticFallbackReplacement(),
           pendingWizard(
               "first-time-wizard",
               "First-time wizard",
@@ -468,21 +458,15 @@ public final class LegacyAdminRetirementRegistry {
         MutatingRequestReplacement.PARTIAL_LEGACY_FALLBACK);
   }
 
-  private static LegacyAdminSurface replaced(
-      String id,
-      String title,
-      String legacyPath,
-      String replacementUrl,
-      String replacementLabel,
-      String notes) {
+  private static LegacyAdminSurface diagnosticFallbackReplacement() {
     return new LegacyAdminSurface(
-        id,
-        title,
-        legacyPath,
+        "diagnostic",
+        "Diagnostic report",
+        DiagnosticToadlet.TOADLET_URL,
         LegacyAdminRetirementState.PRIMARY_REPLACED,
-        replacementUrl,
-        replacementLabel,
-        notes,
+        SHELL_DIAGNOSTICS_URL,
+        "Web Shell diagnostics",
+        "The plain-text export remains useful as fallback and debug output.",
         LegacyAdminRemovalMode.RENDER_LEGACY,
         NO_REMOVAL_WAVE,
         null,
@@ -554,6 +538,30 @@ public final class LegacyAdminRetirementRegistry {
         LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
         REMOVAL_WAVE_2,
         REMOVED_BY_DEFAULT_SINCE_WAVE_2,
+        mutatingReplacement.fallbackPolicy,
+        removalExecution.scope(),
+        removalExecution.scopeExpandedInWave(),
+        removalExecution.explicitChildPaths(),
+        mutatingReplacement.blockLegacyRequests,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface securityLevelsWave3Redirect() {
+    RemovalExecution removalExecution = canonicalMutationFallback();
+    MutatingRequestReplacement mutatingReplacement = removalExecution.mutatingRequestReplacement();
+    return new LegacyAdminSurface(
+        "security-levels",
+        "Security levels",
+        SecurityLevelsToadlet.PATH,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        SHELL_SECURITY_URL,
+        "Web Shell security",
+        "Web Shell owns the primary security-level view and common mutations; master-password"
+            + " and high-physical-security flows remain legacy fallback.",
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        REMOVAL_WAVE_3,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_3,
         mutatingReplacement.fallbackPolicy,
         removalExecution.scope(),
         removalExecution.scopeExpandedInWave(),

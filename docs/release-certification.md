@@ -150,6 +150,8 @@ Release-candidate mode requires these evidence ids:
 | `reference-app.social-inbox-app-data` | App-platform smoke summary. | Social Inbox uses app data for sources, outbox summaries, imported-message summaries, read state, and explicit drafts while excluding private insert URIs, browser-session tokens, private identity material, raw fetched documents, and raw signatures. |
 | `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Preview's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as annotations, and keeps unscored or ungranted messages visible. |
 | `migration.social-mail-preview` | App-platform smoke summary. | The migration spike evidence proves the social/mail-like layer composes AppVault, content insert/fetch/subscriptions, durable app data, and the mediated Trust Graph score service outside daemon core and legacy plugin APIs. |
+| `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
+| `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox is certified as the executable social/mail-like migration spike with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
 | `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires at least API v9, is tested through v12, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
 | `reference-app.feed-reader-app-data` | App-platform smoke summary. | Feed Reader requires at least contract v9, is tested through v12, declares `app.data.*`, uses SDK JSON record helpers for bounded feed sources, selected source, read/render metadata, and safe publisher draft state, and keeps evidence free of raw feed bodies and app-data values. |
@@ -159,6 +161,7 @@ Release-candidate mode requires these evidence ids:
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
+| `legacy-admin.removal-wave-3` | App-platform smoke summary. | The third removal wave records `security-levels` safe-read redirects to Web Shell security, mutating legacy fallback for incomplete security flows, stable wave 1/2 route sets, retained browse/filter/diagnostic/wizard surfaces, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
 | `app-update.scheduler` | App-platform smoke summary. | Offline source and test evidence proves background catalog refresh, installed-app update checks through `AppUpdateService.check(...)`, durable path-free scheduler summaries, failure backoff, and the manual default policy. |
@@ -185,6 +188,16 @@ and core-update installer and package-store actions that remain fallback. It als
 FProxy browse remains retained, content filter remains retained, pending wizard and node-to-node
 message routes remain out of scope, the raw diagnostic export remains retained, and the new
 diagnostics scope metadata stays bounded and redacted.
+
+`legacy-admin.removal-wave-3` is deterministic offline evidence for `/seclevels/` only. It proves
+that safe reads redirect to `/app/node/#security` when Web Shell security is reachable, that POST
+and other mutating requests remain legacy fallback for master-password, password-file, high
+physical security, and recovery flows, and that the route scope is limited to the canonical path
+and slashless alias. It also proves that FProxy browse and content rendering remain retained, the
+content filter remains retained, raw diagnostic export remains retained, startup wizard and
+emergency fallback remain pending, node-to-node messages remain pending, and evidence excludes
+query strings, form passwords, tokens, private insert URIs, raw bodies, raw signatures, and local
+paths.
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
@@ -294,6 +307,8 @@ Social Inbox Preview supplies the social/mail migration reference path. Release 
 `reference-app.social-inbox-service-grant`, `app-services.registry`, `app-services.grants`,
 `app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`, and
 `migration.social-mail-preview` before a release claims social/mail migration preview support.
+`legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike` certify the broader legacy
+plugin-to-app migration guidance and the executable Social Inbox spike.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
 raw request bodies, raw signature values, private insert URIs, private identity material, app
 process tokens, browser-session tokens, form passwords, private keys, absolute staging paths, or
@@ -438,8 +453,8 @@ evidence disappears, Trust Graph Preview evidence disappears, generated document
 disappears, content-fetch evidence disappears, trust-statement signing evidence disappears, or a
 reference app no longer proves its required helper usage. Legacy
 retirement gates block missing removal-wave evidence, including
-`legacy-admin.removal-wave-2`, or failed retained browse safety evidence and warn on removed-route
-count changes without update-note metadata.
+`legacy-admin.removal-wave-2` and `legacy-admin.removal-wave-3`, or failed retained browse safety
+evidence and warn on removed-route count changes without update-note metadata.
 
 ## Waivers
 

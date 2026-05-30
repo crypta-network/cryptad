@@ -8,8 +8,14 @@
 
   const apiRoot = normalizeLocalRootPath(bootstrap.platformApiRoot, "/api/v1/");
   const shellRoot = normalizeLocalRootPath(bootstrap.shellRoot, "/app/node/");
+  const legacySecurityLevelsPath = normalizeLocalPath(
+    bootstrap.legacySecurityLevelsPath,
+    "/seclevels/",
+  );
   const apiRootUrl = new URL(apiRoot, window.location.origin);
   const shellRootUrl = new URL(shellRoot, window.location.origin);
+  const legacySecurityLevelsFallbackPath =
+    legacySecurityLevelsPath + "?legacyFallback=security-levels";
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const shellState = {
@@ -188,6 +194,21 @@
     }
   }
 
+  function normalizeLocalPath(value, fallback) {
+    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+      return fallback;
+    }
+    try {
+      const url = new URL(value, window.location.origin);
+      if (url.origin !== window.location.origin || url.search !== "" || url.hash !== "") {
+        return fallback;
+      }
+      return url.pathname;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
   function clear(node) {
     node.replaceChildren();
   }
@@ -239,6 +260,41 @@
 
   function setSecurityStatus(message, tone) {
     setSectionStatus(sections.securityStatus, message, tone);
+  }
+
+  function securityLegacyFallbackLink(label) {
+    const fallbackLink = document.createElement("a");
+    fallbackLink.href = legacySecurityLevelsFallbackPath;
+    fallbackLink.textContent = label;
+    return fallbackLink;
+  }
+
+  function setSecurityLegacyFallbackStatus(message) {
+    clear(sections.securityStatus);
+    const paragraph = text("p", "status-message is-error", `${message} `);
+    paragraph.append(securityLegacyFallbackLink("Open the legacy security page."));
+    sections.securityStatus.append(paragraph);
+  }
+
+  function renderSecurityLegacyFallbackAction() {
+    const actions = document.createElement("div");
+    actions.className = "security-fallback-actions";
+    const fallbackLink = securityLegacyFallbackLink("Open legacy password and recovery forms");
+    fallbackLink.className = "button button-secondary";
+    actions.append(fallbackLink);
+    return actions;
+  }
+
+  function securityErrorRequiresLegacyFallback(error) {
+    if (
+      error instanceof Error &&
+      (error.apiErrorCode === "physical_threat_level_password_required" ||
+        error.apiErrorCode === "physical_threat_level_master_password_cleanup_failed")
+    ) {
+      return true;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("Use the legacy security page");
   }
 
   function setUpdatesStatus(message, tone) {
@@ -672,6 +728,7 @@
         ["Password file path", data.masterPasswordFilePath || "Unavailable"],
       ]),
     );
+    sections.security.append(renderSecurityLegacyFallbackAction());
     if (securityControls.networkLevel) {
       securityControls.networkLevel.value = data.networkThreatLevel || "NORMAL";
     }
@@ -4113,6 +4170,14 @@
     return `${response.status} ${response.statusText}`;
   }
 
+  function createApiError(data, response) {
+    const error = new Error(extractApiError(data, response));
+    if (data && data.error && typeof data.error.code === "string") {
+      error.apiErrorCode = data.error.code;
+    }
+    return error;
+  }
+
   function renderError(node, label, error) {
     clear(node);
     const message =
@@ -4124,7 +4189,7 @@
     const response = await fetch(url, { headers: { Accept: "application/json" } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(extractApiError(data, response));
+      throw createApiError(data, response);
     }
     return data;
   }
@@ -4138,7 +4203,7 @@
     if (optionalStatuses.includes(response.status)) {
       return null;
     }
-    throw new Error(extractApiError(data, response));
+    throw createApiError(data, response);
   }
 
   async function loadBestEffortOptionalJson(url) {
@@ -4183,7 +4248,7 @@
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(extractApiError(data, response));
+      throw createApiError(data, response);
     }
     return data;
   }
@@ -4946,9 +5011,8 @@
         (currentSnapshot.physicalThreatLevel === "HIGH" &&
           (requestedPhysical === "LOW" || requestedPhysical === "NORMAL")))
     ) {
-      setSecurityStatus(
+      setSecurityLegacyFallbackStatus(
         "Changing to or from physical HIGH still requires the legacy security page because it updates master-password state.",
-        "is-error",
       );
       return;
     }
@@ -5004,7 +5068,12 @@
       updateWizardToolbar();
       await Promise.all([loadSecuritySection(), loadWizardSection()]);
     } catch (error) {
-      setSecurityStatus(error instanceof Error ? error.message : String(error), "is-error");
+      const message = error instanceof Error ? error.message : String(error);
+      if (securityErrorRequiresLegacyFallback(error)) {
+        setSecurityLegacyFallbackStatus(message);
+        return;
+      }
+      setSecurityStatus(message, "is-error");
     }
   }
 

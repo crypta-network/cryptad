@@ -12,6 +12,7 @@ final class LegacyAdminRetirementRegistry {
           wave1Redirect("strangers", "Strangers", "/strangers/", "/app/node/#peers", "Peers", "Done."),
           wave1Redirect("connectivity", "Connectivity", "/connectivity/", "/app/node/#connectivity", "Connectivity", "Done."),
           wave2Redirect("config", "Configuration", "/config/", "/app/node/#config", "Shell config", "Done.", LegacyAdminRemovalScope.PREFIX_FAMILY, List.of(), REMOVAL_WAVE_2, true),
+          securityLevelsWave3Redirect(),
           wave2Redirect("core-update", "Core update", "/core-update/", "/app/node/#updates", "Shell updates", "Done.", false),
           wave2Redirect("statistics", "Statistics", "/stats/", "/app/node/#diagnostics", "Shell diagnostics", "Done.", LegacyAdminRemovalScope.EXPLICIT_CHILDREN, List.of("/stats/requesters.html"), REMOVAL_WAVE_2, false),
           pendingWizard("first-time-wizard", "First-time wizard", "/wizard/", "Pending."),
@@ -20,6 +21,7 @@ final class LegacyAdminRetirementRegistry {
 
   private static final Map<String, LegacyAdminSurface> SURFACES_BY_ID = surfacesById();
   private static final int REMOVAL_WAVE_2 = 2;
+  private static final int REMOVAL_WAVE_3 = 3;
 
   public static List<LegacyAdminSurface> webShellFallbackSurfaces() {
     return SURFACES.stream().filter(LegacyAdminSurface::includeInWebShellFallbackLinks).toList();
@@ -31,25 +33,40 @@ final class LegacyAdminRetirementRegistry {
         .orElse(true);
   }
 
-  private static LegacyAdminSurface replaced(
-      String id,
-      String title,
-      String legacyPath,
-      String replacementUrl,
-      String replacementLabel,
-      String notes) {
+  private static LegacyAdminSurface diagnosticFallbackReplacement() {
     return new LegacyAdminSurface(
-        id,
-        title,
-        legacyPath,
+        "diagnostic",
+        "Diagnostic report",
+        "/diagnostic/",
         LegacyAdminRetirementState.PRIMARY_REPLACED,
-        replacementUrl,
-        replacementLabel,
-        notes,
+        "/app/node/#diagnostics",
+        "Shell diagnostics",
+        "Done.",
         LegacyAdminRemovalMode.RENDER_LEGACY,
         0,
         null,
         FALLBACK_POLICY_RENDER_LEGACY,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface securityLevelsWave3Redirect() {
+    return new LegacyAdminSurface(
+        "security-levels",
+        "Security levels",
+        "/seclevels/",
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        "/app/node/#security",
+        "Shell security",
+        "Done.",
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        3,
+        "phase-8-pr-244",
+        "mutating-legacy-fallback",
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        0,
+        List.of(),
+        false,
         true,
         false);
   }
@@ -124,6 +141,34 @@ final class LegacyAdminRetirementRegistry {
         removalScope,
         scopeExpandedInWave,
         explicitRemovalChildPaths,
+        blockMutatingRequests,
+        true,
+        false);
+  }
+
+  private static LegacyAdminSurface wave3Redirect(
+      String id,
+      String title,
+      String legacyPath,
+      String replacementUrl,
+      String replacementLabel,
+      String notes,
+      boolean blockMutatingRequests) {
+    return new LegacyAdminSurface(
+        id,
+        title,
+        legacyPath,
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        replacementUrl,
+        replacementLabel,
+        notes,
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        3,
+        "phase-8-pr-244",
+        blockMutatingRequests ? "none" : "mutating-legacy-fallback",
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        0,
+        List.of(),
         blockMutatingRequests,
         true,
         false);

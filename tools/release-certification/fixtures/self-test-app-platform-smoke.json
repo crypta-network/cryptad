@@ -1272,6 +1272,52 @@
     },
     {
       "details": {
+        "checks": {
+          "appData": true,
+          "appServiceGrants": true,
+          "appVault": true,
+          "contentSubscriptions": true,
+          "developerOrBetaDocsLinkGuide": true,
+          "freemailMigration": true,
+          "freetalkSoneMigration": true,
+          "guideExists": true,
+          "noFcpPluginCommandCompatibility": true,
+          "noOldPluginAbiCompatibility": true,
+          "oldRuntimeRemoved": true,
+          "pluginSystemLinksGuide": true,
+          "reviewGovernance": true,
+          "signedCatalog": true,
+          "socialInboxPreview": true,
+          "trustGraphPreview": true,
+          "webOfTrustMigration": true
+        }
+      },
+      "id": "legacy-plugin.migration-guide",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy plugin migration guide evidence passed."
+    },
+    {
+      "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "appExists": true,
+          "docsFrameSpikeNonGoals": true,
+          "manifestDeclaresExpectedCapabilities": true,
+          "manifestPresent": true,
+          "manifestRequestsTrustScoreService": true,
+          "usesPlatformMediatedServiceGrant": true
+        }
+      },
+      "id": "legacy-plugin.social-inbox-spike",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy plugin Social Inbox migration spike evidence passed."
+    },
+    {
+      "details": {
         "appId": "trust-graph",
         "checks": {
           "docsDescribePreviewLimits": true,
@@ -1425,6 +1471,22 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Legacy-admin removal wave 2 replacement behavior is documented and observable."
+    },
+    {
+      "details": {
+        "removedByDefaultRouteIds": [
+          "security-levels"
+        ],
+        "statusBehavior": {
+          "mutating": "legacy fallback remains for partial master-password, recovery, and high-physical-security flows",
+          "safeRead": "303 See Other when Web Shell security is available; legacy fallback when unavailable"
+        }
+      },
+      "id": "legacy-admin.removal-wave-3",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin removal wave 3 replacement behavior is documented and observable."
     },
     {
       "details": {
