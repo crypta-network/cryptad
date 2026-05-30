@@ -117,12 +117,13 @@ Query strings, form fields, option values, master passwords, password-file paths
 tokens, node references, and Freenet/Crypta URIs are never included in replacement pages,
 diagnostics, or release-certification evidence.
 
-Web Shell security keeps a bootstrap-resolved explicit fallback link for physical `HIGH`,
-master-password, and recovery workflows that still need the legacy GET page to render their forms.
-The fallback URL uses the configured `security-levels` legacy route from the retirement registry,
-then appends the fixed `legacyFallback=security-levels` marker. Only that marker bypasses the
-safe-read redirect; arbitrary query strings still receive the normal replacement redirect and are
-not reflected into responses or evidence.
+Web Shell security keeps a bootstrap-resolved explicit fallback link in the Security panel and in
+legacy-required error states for physical `HIGH`, master-password, and recovery workflows that
+still need the legacy GET page to render their forms. The fallback URL uses the configured
+`security-levels` legacy route from the retirement registry, then appends the fixed
+`legacyFallback=security-levels` marker. Only that marker bypasses the safe-read redirect;
+arbitrary query strings still receive the normal replacement redirect and are not reflected into
+responses or evidence.
 
 | Legacy route scope | Surface id | Safe read behavior | Mutating behavior | Replacement |
 | --- | --- | --- | --- | --- |

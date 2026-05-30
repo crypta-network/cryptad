@@ -247,14 +247,27 @@
     setSectionStatus(sections.securityStatus, message, tone);
   }
 
+  function securityLegacyFallbackLink(label) {
+    const fallbackLink = document.createElement("a");
+    fallbackLink.href = legacySecurityLevelsFallbackPath;
+    fallbackLink.textContent = label;
+    return fallbackLink;
+  }
+
   function setSecurityLegacyFallbackStatus(message) {
     clear(sections.securityStatus);
     const paragraph = text("p", "status-message is-error", `${message} `);
-    const fallbackLink = document.createElement("a");
-    fallbackLink.href = legacySecurityLevelsFallbackPath;
-    fallbackLink.textContent = "Open the legacy security page.";
-    paragraph.append(fallbackLink);
+    paragraph.append(securityLegacyFallbackLink("Open the legacy security page."));
     sections.securityStatus.append(paragraph);
+  }
+
+  function renderSecurityLegacyFallbackAction() {
+    const actions = document.createElement("div");
+    actions.className = "security-fallback-actions";
+    const fallbackLink = securityLegacyFallbackLink("Open legacy password and recovery forms");
+    fallbackLink.className = "button button-secondary";
+    actions.append(fallbackLink);
+    return actions;
   }
 
   function securityErrorRequiresLegacyFallback(error) {
@@ -700,6 +713,7 @@
         ["Password file path", data.masterPasswordFilePath || "Unavailable"],
       ]),
     );
+    sections.security.append(renderSecurityLegacyFallbackAction());
     if (securityControls.networkLevel) {
       securityControls.networkLevel.value = data.networkThreatLevel || "NORMAL";
     }

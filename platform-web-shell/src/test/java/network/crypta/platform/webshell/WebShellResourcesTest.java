@@ -111,7 +111,8 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".metadata-link-list {"));
     assertTrue(stylesheet.contains(".permission-review-list {"));
     assertTrue(stylesheet.contains(".publisher-forms {"));
-    assertTrue(stylesheet.contains(".publisher-result-actions {"));
+    assertTrue(stylesheet.contains(".publisher-result-actions,"));
+    assertTrue(stylesheet.contains(".security-fallback-actions {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
   }
 
@@ -810,7 +811,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const legacySecurityLevelsFallbackPath ="));
     assertTrue(script.contains("legacySecurityLevelsPath + \"?legacyFallback=security-levels\""));
     assertFalse(script.contains("\"/seclevels/?legacyFallback=security-levels\""));
+    assertTrue(script.contains("function securityLegacyFallbackLink(label)"));
     assertTrue(script.contains("function setSecurityLegacyFallbackStatus(message)"));
+    assertTrue(script.contains("function renderSecurityLegacyFallbackAction()"));
+    assertTrue(script.contains("sections.security.append(renderSecurityLegacyFallbackAction())"));
+    assertTrue(script.contains("Open legacy password and recovery forms"));
     assertTrue(script.contains("function securityErrorRequiresLegacyFallback(error)"));
     assertTrue(script.contains("physical_threat_level_password_required"));
     assertTrue(script.contains("physical_threat_level_master_password_cleanup_failed"));

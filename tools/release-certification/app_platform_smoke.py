@@ -7624,6 +7624,10 @@ def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceIt
         "securityLegacyFallbackMarkerDeclared": "legacyFallback=security-levels" in text["policy"]
         and "legacyFallback=security-levels" in text["webshell"]
         and "Open the legacy security page" in text["webshell"],
+        "securityFallbackLinkDiscoverable": "function renderSecurityLegacyFallbackAction()" in text["webshell"]
+        and "sections.security.append(renderSecurityLegacyFallbackAction())" in text["webshell"]
+        and "Open legacy password and recovery forms" in text["webshell"]
+        and "Security panel" in text["docs"],
         "securityFallbackPathFromBootstrap": "bootstrap.legacySecurityLevelsPath" in text["webshell"]
         and 'legacySecurityLevelsPath + "?legacyFallback=security-levels"' in text["webshell"]
         and "legacySecurityLevelsPath" in text["bootstrap"]
@@ -10774,6 +10778,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "const action = 'addRecommended';\n"
         "function appServiceGrantPath(){}\n"
         "function setSecurityLegacyFallbackStatus(){ return 'Open the legacy security page'; }\n"
+        "function renderSecurityLegacyFallbackAction(){ return 'Open legacy password and recovery forms'; }\n"
+        "sections.security.append(renderSecurityLegacyFallbackAction());\n"
         "const grants = 'App-service grants'; const approve = 'Approve'; const revoke = 'Revoke';\n"
         "apiUrl(\"app-services\"); apiUrl(\"app-services/grants\"); apiUrl(\"app-services/audit?limit=12\");\n",
         encoding="utf-8",
@@ -10919,8 +10925,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "available. Security-level mutating requests keep legacy fallback; legacy fallback remains "
         "for master-password, "
         "database/password-file, high physical security, and recovery flows. Wave 3 does not use "
-        "prefix-family matching for security routes. A bootstrap-resolved explicit fallback link remains for "
-        "legacy security forms, and arbitrary query strings still receive replacement redirects. "
+        "prefix-family matching for security routes. A bootstrap-resolved explicit fallback link remains in "
+        "the Security panel for legacy security forms, and arbitrary query strings still receive replacement redirects. "
         "Startup wizard and emergency fallback remain "
         "pending. Node-to-node messages remain pending. "
         "FProxy browse remains retained, FProxy browse and content rendering remain retained, "
@@ -11526,6 +11532,8 @@ const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";
 function appServiceGrantPath(){}
 function setSecurityLegacyFallbackStatus(){ return "Open the legacy security page"; }
+function renderSecurityLegacyFallbackAction(){ return "Open legacy password and recovery forms"; }
+sections.security.append(renderSecurityLegacyFallbackAction());
 const appServiceTitle = "App-service grants";
 const approve = "Approve";
 const revoke = "Revoke";
