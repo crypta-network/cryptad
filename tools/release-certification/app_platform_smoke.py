@@ -7632,6 +7632,9 @@ def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceIt
         and 'legacySecurityLevelsPath + "?legacyFallback=security-levels"' in text["webshell"]
         and "legacySecurityLevelsPath" in text["bootstrap"]
         and '"legacySecurityLevelsPath"' in text["bootstrapJson"],
+        "securityFallbackAllowsSlashlessPath": "normalizeLocalPath(" in text["webshell"]
+        and "bootstrap.legacySecurityLevelsPath" in text["webshell"]
+        and "requireLegacySecurityLevelsPath(legacySecurityLevelsPath" in text["bootstrap"],
         "securityFallbackPathFromRegistry": 'LegacyAdminRetirementRegistry.require("security-levels").legacyPath()'
         in text["webshellToadlet"]
         and "WebShellBootstrap.nodeManagement(legacySecurityLevelsPath" in text["webshellToadlet"],
@@ -10770,7 +10773,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
     shell.parent.mkdir(parents=True, exist_ok=True)
     shell.write_text(
-        'const legacySecurityLevelsPath = normalizeLocalRootPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");\n'
+        'const legacySecurityLevelsPath = normalizeLocalPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");\n'
         'const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";\n'
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
@@ -10789,7 +10792,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     web_shell_bootstrap_dir.mkdir(parents=True, exist_ok=True)
     (web_shell_bootstrap_dir / "WebShellBootstrap.java").write_text(
-        "record WebShellBootstrap(String legacySecurityLevelsPath) {}\n",
+        "record WebShellBootstrap(String legacySecurityLevelsPath) { "
+        "void compact(){ requireLegacySecurityLevelsPath(legacySecurityLevelsPath); } }\n",
         encoding="utf-8",
     )
     (web_shell_bootstrap_dir / "WebShellBootstrapJson.java").write_text(
@@ -11526,7 +11530,7 @@ class CoreHttpShellRuntimeSupport {
         """
 function renderRecommendedCatalogs(){}
 function renderRecommendedCatalogCard(){}
-const legacySecurityLevelsPath = normalizeLocalRootPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");
+const legacySecurityLevelsPath = normalizeLocalPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");
 const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";
 const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";

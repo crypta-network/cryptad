@@ -45,6 +45,15 @@ class WebShellBootstrapTest {
   }
 
   @Test
+  void nodeManagement_whenSlashlessSecurityPathProvided_expectConfiguredPathPreserved() {
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(
+            "/security-custom", List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
+
+    assertEquals("/security-custom", bootstrap.legacySecurityLevelsPath());
+  }
+
+  @Test
   void toJson_whenValuesContainJsonSensitiveCharacters_expectEscapedPayload() {
     WebShellBootstrap bootstrap =
         new WebShellBootstrap(

@@ -117,8 +117,8 @@ public record WebShellBootstrap(
    * @param value root path to validate
    * @param label logical field name used in validation messages
    * @throws NullPointerException if {@code value} is {@code null}
-   * @throws IllegalArgumentException if the path is blank or is not wrapped in leading and trailing
-   *     slashes
+   * @throws IllegalArgumentException if the path is blank, does not start with {@code /}, or does
+   *     not end with {@code /}
    */
   private static void requireRootPath(String value, String label) {
     requireText(value, label);
@@ -139,6 +139,40 @@ public record WebShellBootstrap(
   }
 
   /**
+   * Requires one same-origin absolute path for a legacy route that may be registered slashless.
+   *
+   * <p>Most Web Shell fields are route roots and therefore require a trailing slash. The legacy
+   * security route is different: it mirrors the configured legacy toadlet path exactly, including
+   * installations that set {@code network.crypta.seclevels.path} to a slashless route. The value is
+   * still constrained to a local path with no query or fragment so browser bootstrap data cannot
+   * become an open redirect or leak request metadata.
+   *
+   * @param value path value to validate
+   * @throws NullPointerException if {@code value} is {@code null}
+   * @throws IllegalArgumentException if the path is blank, is not a single-leading-slash local
+   *     path, or contains query/fragment data
+   */
+  private static void requireLegacySecurityLevelsPath(String value) {
+    requireText(value, "legacySecurityLevelsPath");
+    if (value.charAt(0) != '/' || value.startsWith("//")) {
+      throw new IllegalArgumentException(
+          "legacySecurityLevelsPath must start with a single leading '/'");
+    }
+    try {
+      URI uri = URI.create("http://localhost" + value);
+      if (!value.equals(uri.getRawPath())
+          || uri.getRawQuery() != null
+          || uri.getRawFragment() != null) {
+        throw new IllegalArgumentException(
+            "legacySecurityLevelsPath must be a valid absolute local path");
+      }
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "legacySecurityLevelsPath must be a valid absolute local path", e);
+    }
+  }
+
+  /**
    * Creates an immutable shell bootstrap payload.
    *
    * <p>The constructor keeps the data deliberately narrow: route roots, a short descriptive title,
@@ -146,8 +180,8 @@ public record WebShellBootstrap(
    * first shell while keeping the adapter bridge free to remain a thin transport layer.
    *
    * @throws NullPointerException if any required field is {@code null}
-   * @throws IllegalArgumentException if any root path is blank, does not start with {@code /}, or
-   *     does not end with {@code /}
+   * @throws IllegalArgumentException if any route path is blank, is not local, or contains query or
+   *     fragment data
    */
   public WebShellBootstrap {
     requireText(shellTitle, "shellTitle");
@@ -159,7 +193,7 @@ public record WebShellBootstrap(
       requireText(formPassword, "formPassword");
     }
     requireRootPath(legacyRoot, "legacyRoot");
-    requireRootPath(legacySecurityLevelsPath, "legacySecurityLevelsPath");
+    requireLegacySecurityLevelsPath(legacySecurityLevelsPath);
     legacyLinks = List.copyOf(Objects.requireNonNull(legacyLinks, "legacyLinks"));
     if (legacyLinks.isEmpty()) {
       throw new IllegalArgumentException("legacyLinks must not be empty");

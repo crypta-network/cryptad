@@ -8,7 +8,7 @@
 
   const apiRoot = normalizeLocalRootPath(bootstrap.platformApiRoot, "/api/v1/");
   const shellRoot = normalizeLocalRootPath(bootstrap.shellRoot, "/app/node/");
-  const legacySecurityLevelsPath = normalizeLocalRootPath(
+  const legacySecurityLevelsPath = normalizeLocalPath(
     bootstrap.legacySecurityLevelsPath,
     "/seclevels/",
   );
@@ -189,6 +189,21 @@
         return fallback;
       }
       return url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function normalizeLocalPath(value, fallback) {
+    if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+      return fallback;
+    }
+    try {
+      const url = new URL(value, window.location.origin);
+      if (url.origin !== window.location.origin || url.search !== "" || url.hash !== "") {
+        return fallback;
+      }
+      return url.pathname;
     } catch (error) {
       return fallback;
     }

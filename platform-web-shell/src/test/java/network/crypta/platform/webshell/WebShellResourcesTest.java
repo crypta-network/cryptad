@@ -133,6 +133,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const apiRootUrl = new URL(apiRoot, window.location.origin);"));
     assertTrue(script.contains("const shellRootUrl = new URL(shellRoot, window.location.origin);"));
     assertTrue(script.contains("function normalizeLocalRootPath(value, fallback)"));
+    assertTrue(script.contains("function normalizeLocalPath(value, fallback)"));
     assertTrue(script.contains("function queuePriorityFieldName(submitterName)"));
     assertTrue(script.contains("function renderQueueHtmlFragment(html, className)"));
     assertTrue(script.contains("function sanitizeQueueNode(root)"));
@@ -806,7 +807,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("async function loadConfigSection()"));
     assertTrue(script.contains("async function loadWizardSection()"));
     assertTrue(script.contains("async function submitSecurityForm(event)"));
-    assertTrue(script.contains("const legacySecurityLevelsPath = normalizeLocalRootPath("));
+    assertTrue(script.contains("const legacySecurityLevelsPath = normalizeLocalPath("));
     assertTrue(script.contains("bootstrap.legacySecurityLevelsPath,"));
     assertTrue(script.contains("const legacySecurityLevelsFallbackPath ="));
     assertTrue(script.contains("legacySecurityLevelsPath + \"?legacyFallback=security-levels\""));

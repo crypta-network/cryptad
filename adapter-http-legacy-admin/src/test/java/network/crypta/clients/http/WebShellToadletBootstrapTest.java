@@ -51,6 +51,15 @@ class WebShellToadletBootstrapTest {
   }
 
   @Test
+  void createNodeManagementBootstrap_whenSlashlessSecurityPathProvided_preservesConfiguredPath() {
+    WebShellBootstrap bootstrap =
+        WebShellToadlet.createNodeManagementBootstrap(
+            "/security-custom", WebShellToadlet.defaultLegacyLinks());
+
+    assertEquals("/security-custom", bootstrap.legacySecurityLevelsPath());
+  }
+
+  @Test
   void defaultLegacyLinks_whenBuilt_expectOnlyPendingOrRetainedFallbackPages() {
     List<WebShellBootstrap.LegacyLink> links = WebShellToadlet.defaultLegacyLinks();
 
