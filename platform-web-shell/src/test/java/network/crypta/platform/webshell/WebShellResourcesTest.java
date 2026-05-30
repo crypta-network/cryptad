@@ -271,6 +271,7 @@ class WebShellResourcesTest {
         script,
         "function registeredAppUiOrigin(app)",
         "function safeSameOriginAppUiHref(url, allowIsolatedLaunchParameter)",
+        "function safeShellPanelAppUiHref(url)",
         "function normalizeLaunchFallbackHref(value)",
         "function normalizeIsolatedLaunchHref(value)",
         "function normalizeIsolatedProbeHref(value, expectedOrigin)",
@@ -295,6 +296,8 @@ class WebShellResourcesTest {
         "url.username ||",
         "url.password ||",
         "!url.pathname.startsWith(\"/apps/\")",
+        "app && app.uiMode === \"shell-panel\"",
+        "url.pathname !== shellRootUrl.pathname",
         "url.searchParams.get(isolatedLaunchParameter) !== \"1\"");
     assertFalse(script.contains("javascript:"));
     assertFalse(script.contains("data:"));
@@ -376,7 +379,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function normalizeAppUiEntryHref(value, app)"));
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
     assertTrue(script.contains("allowedAppUiOrigin(url, app)"));
-    assertTrue(script.contains("return safeSameOriginAppUiHref(url, false);"));
+    assertTrue(script.contains("? safeShellPanelAppUiHref(url)"));
+    assertTrue(script.contains(": safeSameOriginAppUiHref(url, false);"));
     assertTrue(script.contains("return url.href;"));
     assertFalse(appUiEntryHelper.contains("const url = new URL(value, window.location.origin);"));
     assertTrue(script.contains("function appUiHref(app)"));

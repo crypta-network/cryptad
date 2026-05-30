@@ -456,7 +456,9 @@
         return null;
       }
       if (url.origin === window.location.origin) {
-        return safeSameOriginAppUiHref(url, false);
+        return app && app.uiMode === "shell-panel"
+          ? safeShellPanelAppUiHref(url)
+          : safeSameOriginAppUiHref(url, false);
       }
       if (!allowedAppUiOrigin(url, app) || url.search !== "" || url.hash !== "") {
         return null;
@@ -490,6 +492,19 @@
       return null;
     }
     return url.pathname;
+  }
+
+  function safeShellPanelAppUiHref(url) {
+    if (
+      url.origin !== window.location.origin ||
+      url.username ||
+      url.password ||
+      url.pathname !== shellRootUrl.pathname ||
+      url.search !== ""
+    ) {
+      return null;
+    }
+    return `${url.pathname}${url.hash}`;
   }
 
   function registeredAppUiOrigin(app) {
