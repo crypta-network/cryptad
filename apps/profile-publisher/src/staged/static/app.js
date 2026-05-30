@@ -226,12 +226,16 @@
   function buildPublishOptions(documentData) {
     const identifierField = elements.publishForm.querySelector('input[name="identifier"]');
     const identifier = fieldValue(elements.publishForm, "identifier") || generatedIdentifier("publish");
+    const insertUri = publishInsertUriValue(elements.publishForm, "insertUri");
+    if (!insertUri) {
+      throw new Error("Insert URI must be a nonblank single-line value.");
+    }
     if (identifierField instanceof HTMLInputElement) {
       identifierField.value = identifier;
     }
     return {
       document: documentData,
-      insertUri: fieldValue(elements.publishForm, "insertUri"),
+      insertUri,
       identifier,
       contentType: fieldValue(elements.publishForm, "contentType") || defaultProfileContentType,
       targetFilename: fieldValue(elements.publishForm, "targetFilename") || "profile.json",
@@ -884,6 +888,14 @@
     return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value : "";
   }
 
+  function publishInsertUriValue(form, name) {
+    const uri = rawFieldValue(form, name).trim();
+    if (!uri) {
+      return "";
+    }
+    return unsafePublishUriPattern().test(uri) ? "" : uri;
+  }
+
   function commaValues(value) {
     return stringValue(value)
       .split(",")
@@ -974,6 +986,10 @@
 
   function unsafeSingleLineControlPattern() {
     return /[\u0000-\u001f\u007f]/;
+  }
+
+  function unsafePublishUriPattern() {
+    return /[\s\\\u0000-\u001f\u007f]/;
   }
 
   function setStatus(message, tone) {
