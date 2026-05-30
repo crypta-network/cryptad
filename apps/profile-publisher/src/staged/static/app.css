@@ -128,6 +128,25 @@ textarea.cr-input {
   color: var(--cr-color-accent);
 }
 
+.queue-content,
+.queue-sort-controls {
+  display: grid;
+  gap: var(--cr-space-2);
+}
+
+.queue-sort-controls {
+  align-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
+}
+
+.queue-sort-link {
+  color: var(--cr-color-accent);
+}
+
+.queue-sort-link[aria-current="true"] {
+  font-weight: 700;
+}
+
 .legacy-fragment input,
 .legacy-fragment select {
   max-width: 100%;

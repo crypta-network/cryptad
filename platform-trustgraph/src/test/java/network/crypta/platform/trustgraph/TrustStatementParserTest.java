@@ -49,6 +49,16 @@ class TrustStatementParserTest {
   }
 
   @Test
+  void parse_whenOversizedMalformedJson_expectRejectedBeforeParsing() {
+    String document = "{" + " ".repeat(TrustStatementValidator.MAX_DOCUMENT_BYTES + 1);
+
+    TrustGraphException exception =
+        assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(document));
+
+    assertEquals("trust_statement_too_large", exception.errorCode());
+  }
+
+  @Test
   void parse_whenDuplicateObjectMemberPresent_expectRejectionBeforeCanonicalization() {
     String duplicateRoot = validStatement().replace("\"type\":", "\"type\":\"wrong\",\"type\":");
     String duplicatePayload =
@@ -72,10 +82,47 @@ class TrustStatementParserTest {
     String invalidScoreDocument = validStatement().replace("\"score\": 50", "\"score\": 101");
     String invalidConfidenceDocument =
         validStatement().replace("\"confidence\": 80", "\"confidence\": -1");
+    String stringScoreDocument = validStatement().replace("\"score\": 50", "\"score\": \"50\"");
+    String decimalScoreDocument = validStatement().replace("\"score\": 50", "\"score\": 50.5");
 
     assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(invalidScoreDocument));
     assertThrows(
         TrustGraphException.class, () -> TrustStatementParser.parse(invalidConfidenceDocument));
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(stringScoreDocument));
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(decimalScoreDocument));
+  }
+
+  @Test
+  void parse_whenPublicTextContainsIsoControl_expectRejection() {
+    String nulSubject =
+        validStatement().replace("USK@example/subject/profile.json", "USK@example/subject\\u0000");
+    String c1Issuer = validStatement().replace("fingerprint-1", "fingerprint-1\\u0085");
+
+    for (String document : List.of(nulSubject, c1Issuer)) {
+      TrustGraphException exception =
+          assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(document));
+
+      assertEquals("invalid_trust_statement", exception.errorCode());
+      assertTrue(exception.getMessage().contains("control characters"));
+    }
+  }
+
+  @Test
+  void parse_whenTagsAreMalformedOrOversized_expectRejection() {
+    String blankTag = validStatement().replace("\"tags\": [\"example\"]", "\"tags\": [\"\"]");
+    String longTag =
+        validStatement()
+            .replace("\"tags\": [\"example\"]", "\"tags\": [\"" + "a".repeat(64) + "\"]");
+    String manyTags =
+        validStatement()
+            .replace(
+                "\"tags\": [\"example\"]",
+                "\"tags\": [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\","
+                    + "\"11\",\"12\",\"13\",\"14\",\"15\",\"16\",\"17\"]");
+
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(blankTag));
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(longTag));
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(manyTags));
   }
 
   @Test

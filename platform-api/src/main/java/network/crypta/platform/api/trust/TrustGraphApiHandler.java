@@ -552,8 +552,8 @@ public final class TrustGraphApiHandler {
             null,
             null,
             "rejected",
-            hashText(sourceUri),
-            redactedUriSummary(sourceUri),
+            null,
+            redactedRejectedUriSummary(sourceUri),
             null,
             statusCode));
   }
@@ -572,6 +572,35 @@ public final class TrustGraphApiHandler {
     String trimmed = uri.trim();
     String type = redactedUriSummaryType(trimmed);
     return type + ":sha256:" + hashText(trimmed).substring(0, 16);
+  }
+
+  private static String redactedRejectedUriSummary(String uri) {
+    if (uri == null || uri.isBlank()) {
+      return null;
+    }
+    String trimmed = uri.trim();
+    String type = redactedRejectedUriSummaryType(trimmed);
+    return type + ":redacted";
+  }
+
+  private static String redactedRejectedUriSummaryType(String trimmed) {
+    if (containsUnsafeUriText(trimmed)) {
+      return "uri";
+    }
+    String directType = knownContentKeyFamily(trimmed);
+    if (directType != null) {
+      return directType;
+    }
+    if (trimmed.regionMatches(true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
+      String runtime = trimmed.substring(CRYPTA_SCHEME_PREFIX.length());
+      if (!containsUnsafeUriText(runtime)) {
+        String nestedType = knownContentKeyFamily(runtime);
+        if (nestedType != null) {
+          return "crypta_" + nestedType;
+        }
+      }
+    }
+    return "uri";
   }
 
   private static String redactedUriSummaryType(String trimmed) {
@@ -608,6 +637,25 @@ public final class TrustGraphApiHandler {
       return prefix.substring(0, prefix.length() - 1);
     }
     return null;
+  }
+
+  private static boolean containsUnsafeUriText(String value) {
+    return value.isEmpty()
+        || value.indexOf('?') >= 0
+        || value.indexOf('#') >= 0
+        || value.indexOf('\\') >= 0
+        || value.startsWith("/")
+        || hasWhitespaceOrControl(value);
+  }
+
+  private static boolean hasWhitespaceOrControl(String value) {
+    for (int index = 0; index < value.length(); index++) {
+      char ch = value.charAt(index);
+      if (Character.isWhitespace(ch) || Character.isISOControl(ch)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final class UnavailableTrustGraphStore implements TrustGraphStore {

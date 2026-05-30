@@ -6,6 +6,11 @@
   const maxEntriesPerSnapshot = 20;
   const maxRememberedSnapshots = 12;
   const maxPublishResults = 5;
+  const maxDisplayLabelLength = 80;
+  const maxFeedTitleLength = 160;
+  const maxFeedBodyLength = 1000;
+  const maxContentUriLength = 512;
+  const maxTagLength = 32;
   const subscriptionPollIntervalSeconds = 5 * 60;
   const dataNamespace = "ui-state";
   const dataStateKey = "reader-state";
@@ -75,6 +80,10 @@
       uri: fieldValue(elements.sourceForm, "uri"),
       followUsk: checkboxValue(elements.sourceForm, "followUsk"),
     };
+    if (!normalizedCryptaContentUri(source.uri, ["CHK", "SSK", "USK", "KSK"])) {
+      setStatus("Feed sources must be CHK@, SSK@, USK@, KSK@, or crypta: content keys.", "error");
+      return;
+    }
     const added = addSourceToState(source);
     elements.sourceForm.reset();
     if (added.followUsk) {
@@ -90,8 +99,8 @@
     const id = generatedId("source");
     const added = {
       id,
-      label: stringValue(source.label) || "Untitled feed",
-      uri: stringValue(source.uri),
+      label: boundedText(source.label, maxDisplayLabelLength) || "Untitled feed",
+      uri: normalizedCryptaContentUri(source.uri, ["CHK", "SSK", "USK", "KSK"]),
       followUsk: !!source.followUsk,
       subscriptionId: "",
       lastFetchedAt: "",
@@ -131,8 +140,15 @@
 
   async function fetchSourceSnapshot(source, options) {
     const subscriptionSummary = options.subscriptionSummary || subscriptionForSource(source);
+    const fetchUri = normalizedCryptaContentUri(
+      stringValue(subscriptionSummary && subscriptionSummary.lastSeenResolvedUri) || source.uri,
+      ["CHK", "SSK", "USK", "KSK"],
+    );
+    if (!fetchUri) {
+      throw new Error("Feed source URI is malformed or unsupported.");
+    }
     const request = {
-      uri: stringValue(subscriptionSummary && subscriptionSummary.lastSeenResolvedUri) || source.uri,
+      uri: fetchUri,
       maxBytes: 262144,
       timeoutMillis: 30000,
       purpose: options.follow && isUskUri(source.uri) ? "feed-subscription" : "feed-preview",
@@ -660,7 +676,7 @@
       return [];
     }
     const documentValue = new DOMParser().parseFromString(html, "text/html");
-    documentValue.querySelectorAll("script, style, template, noscript").forEach((node) => node.remove());
+    removeUnsafeParsedNodes(documentValue);
     const tableRows = Array.from(documentValue.querySelectorAll("tr"))
       .map(queueRowFromTableRow)
       .filter(Boolean);
@@ -698,24 +714,24 @@
     }
     return {
       subscriptionId,
-      appId: stringValue(subscription.appId),
-      label: stringValue(subscription.label),
-      sourceUri: stringValue(subscription.sourceUri),
+      appId: boundedText(subscription.appId, maxDisplayLabelLength),
+      label: boundedText(subscription.label, maxDisplayLabelLength),
+      sourceUri: normalizedCryptaContentUri(subscription.sourceUri, ["USK"]),
       enabled: subscription.enabled !== false,
       paused: !!subscription.paused,
-      status: stringValue(subscription.status) || "scheduled",
-      lastCheckAt: stringValue(subscription.lastCheckAt),
-      nextCheckAt: stringValue(subscription.nextCheckAt),
-      lastSuccessAt: stringValue(subscription.lastSuccessAt),
-      lastFailureAt: stringValue(subscription.lastFailureAt),
-      failureCount: numberValue(subscription.failureCount),
-      lastErrorCode: stringValue(subscription.lastErrorCode),
-      lastSeenResolvedUri: stringValue(subscription.lastSeenResolvedUri),
-      lastSeenEdition: stringValue(subscription.lastSeenEdition),
-      contentSha256: stringValue(subscription.contentSha256),
-      bytesLength: stringValue(subscription.bytesLength),
-      updateCount: numberValue(subscription.updateCount),
-      message: stringValue(subscription.message),
+      status: boundedText(subscription.status, maxDisplayLabelLength) || "scheduled",
+      lastCheckAt: boundedText(subscription.lastCheckAt, maxDisplayLabelLength),
+      nextCheckAt: boundedText(subscription.nextCheckAt, maxDisplayLabelLength),
+      lastSuccessAt: boundedText(subscription.lastSuccessAt, maxDisplayLabelLength),
+      lastFailureAt: boundedText(subscription.lastFailureAt, maxDisplayLabelLength),
+      failureCount: boundedCount(subscription.failureCount, maxEntriesPerSnapshot),
+      lastErrorCode: boundedText(subscription.lastErrorCode, maxDisplayLabelLength),
+      lastSeenResolvedUri: normalizedCryptaContentUri(subscription.lastSeenResolvedUri, ["USK"]),
+      lastSeenEdition: boundedCount(subscription.lastSeenEdition, 1_000_000_000),
+      contentSha256: boundedText(subscription.contentSha256, 64),
+      bytesLength: boundedCount(subscription.bytesLength, 1_048_576),
+      updateCount: boundedCount(subscription.updateCount, 1_000_000),
+      message: boundedText(subscription.message, maxDisplayLabelLength),
     };
   }
 
@@ -826,12 +842,17 @@
     const items = itemsFromSnapshot(feedSnapshot).slice(0, maxEntriesPerSnapshot);
     return {
       sourceId: source.id,
-      sourceLabel: source.label,
-      sourceUri: source.uri,
-      resolvedUri: stringValue(feedSource.resolvedUri || response.resolvedUri),
-      bytesLength: stringValue(response.bytesLength),
-      title: stringValue(feedSnapshot && feedSnapshot.title) || source.label,
-      updatedAt: stringValue(feedSnapshot && feedSnapshot.updatedAt),
+      sourceLabel: boundedText(source.label, maxDisplayLabelLength),
+      sourceUri: normalizedCryptaContentUri(source.uri, ["CHK", "SSK", "USK", "KSK"]),
+      resolvedUri: normalizedCryptaContentUri(feedSource.resolvedUri || response.resolvedUri, [
+        "CHK",
+        "SSK",
+        "USK",
+        "KSK",
+      ]),
+      bytesLength: boundedCount(response.bytesLength, 1_048_576),
+      title: boundedText(feedSnapshot && feedSnapshot.title, maxFeedTitleLength) || source.label,
+      updatedAt: boundedText(feedSnapshot && feedSnapshot.updatedAt, maxDisplayLabelLength),
       fetchedAt: new Date().toLocaleTimeString(),
       itemCount: items.length,
       items,
@@ -873,7 +894,7 @@
       {
         title: "Fetched text",
         publishedAt: new Date().toISOString(),
-        summary: sourceText,
+        summary: boundedText(sourceText, maxFeedBodyLength),
         uri: "",
         tags: [],
       },
@@ -886,12 +907,19 @@
     if (documentValue.querySelector("parsererror")) {
       return [];
     }
+    removeUnsafeParsedNodes(documentValue, { keepFeedLinks: true });
     const items = Array.from(documentValue.querySelectorAll("item, entry"));
     return items.slice(0, maxEntriesPerSnapshot).map((item) => ({
-      title: childText(item, "title") || "Untitled entry",
+      title: boundedText(childText(item, "title"), maxFeedTitleLength) || "Untitled entry",
       publishedAt:
-        childText(item, "updated") || childText(item, "published") || childText(item, "pubDate"),
-      summary: childText(item, "summary") || childText(item, "description") || childText(item, "content"),
+        boundedText(
+          childText(item, "updated") || childText(item, "published") || childText(item, "pubDate"),
+          maxDisplayLabelLength,
+        ),
+      summary: boundedText(
+        childText(item, "summary") || childText(item, "description") || childText(item, "content"),
+        maxFeedBodyLength,
+      ),
       uri: entryLink(item),
       tags: [],
     }));
@@ -942,26 +970,26 @@
 
   function durableSource(source) {
     return {
-      id: stringValue(source.id),
-      label: stringValue(source.label),
-      uri: stringValue(source.uri),
+      id: boundedText(source.id, maxDisplayLabelLength),
+      label: boundedText(source.label, maxDisplayLabelLength),
+      uri: normalizedCryptaContentUri(source.uri, ["CHK", "SSK", "USK", "KSK"]),
       followUsk: !!source.followUsk,
-      subscriptionId: stringValue(source.subscriptionId),
-      lastFetchedAt: stringValue(source.lastFetchedAt),
-      lastStatus: stringValue(source.lastStatus),
+      subscriptionId: boundedText(source.subscriptionId, maxDisplayLabelLength),
+      lastFetchedAt: boundedText(source.lastFetchedAt, maxDisplayLabelLength),
+      lastStatus: boundedText(source.lastStatus, maxDisplayLabelLength),
     };
   }
 
   function durableSnapshot(snapshot) {
     return {
-      sourceId: stringValue(snapshot.sourceId),
-      sourceLabel: stringValue(snapshot.sourceLabel),
-      sourceUri: stringValue(snapshot.sourceUri),
-      resolvedUri: stringValue(snapshot.resolvedUri),
-      bytesLength: stringValue(snapshot.bytesLength),
-      title: stringValue(snapshot.title),
-      updatedAt: stringValue(snapshot.updatedAt),
-      fetchedAt: stringValue(snapshot.fetchedAt),
+      sourceId: boundedText(snapshot.sourceId, maxDisplayLabelLength),
+      sourceLabel: boundedText(snapshot.sourceLabel, maxDisplayLabelLength),
+      sourceUri: normalizedCryptaContentUri(snapshot.sourceUri, ["CHK", "SSK", "USK", "KSK"]),
+      resolvedUri: normalizedCryptaContentUri(snapshot.resolvedUri, ["CHK", "SSK", "USK", "KSK"]),
+      bytesLength: boundedCount(snapshot.bytesLength, 1_048_576),
+      title: boundedText(snapshot.title, maxFeedTitleLength),
+      updatedAt: boundedText(snapshot.updatedAt, maxDisplayLabelLength),
+      fetchedAt: boundedText(snapshot.fetchedAt, maxDisplayLabelLength),
       itemCount: snapshotItemCount(snapshot),
     };
   }
@@ -971,18 +999,18 @@
       return null;
     }
     const id = stringValue(source.id);
-    const uri = stringValue(source.uri);
+    const uri = normalizedCryptaContentUri(source.uri, ["CHK", "SSK", "USK", "KSK"]);
     if (!id || !uri) {
       return null;
     }
     return {
-      id,
-      label: stringValue(source.label) || "Untitled feed",
+      id: boundedText(id, maxDisplayLabelLength),
+      label: boundedText(source.label, maxDisplayLabelLength) || "Untitled feed",
       uri,
       followUsk: !!source.followUsk,
-      subscriptionId: stringValue(source.subscriptionId),
-      lastFetchedAt: stringValue(source.lastFetchedAt),
-      lastStatus: stringValue(source.lastStatus) || "Not fetched",
+      subscriptionId: boundedText(source.subscriptionId, maxDisplayLabelLength),
+      lastFetchedAt: boundedText(source.lastFetchedAt, maxDisplayLabelLength),
+      lastStatus: boundedText(source.lastStatus, maxDisplayLabelLength) || "Not fetched",
     };
   }
 
@@ -995,14 +1023,14 @@
       return null;
     }
     return {
-      sourceId,
-      sourceLabel: stringValue(snapshot.sourceLabel),
-      sourceUri: stringValue(snapshot.sourceUri),
-      resolvedUri: stringValue(snapshot.resolvedUri),
-      bytesLength: stringValue(snapshot.bytesLength),
-      title: stringValue(snapshot.title),
-      updatedAt: stringValue(snapshot.updatedAt),
-      fetchedAt: stringValue(snapshot.fetchedAt),
+      sourceId: boundedText(sourceId, maxDisplayLabelLength),
+      sourceLabel: boundedText(snapshot.sourceLabel, maxDisplayLabelLength),
+      sourceUri: normalizedCryptaContentUri(snapshot.sourceUri, ["CHK", "SSK", "USK", "KSK"]),
+      resolvedUri: normalizedCryptaContentUri(snapshot.resolvedUri, ["CHK", "SSK", "USK", "KSK"]),
+      bytesLength: boundedCount(snapshot.bytesLength, 1_048_576),
+      title: boundedText(snapshot.title, maxFeedTitleLength),
+      updatedAt: boundedText(snapshot.updatedAt, maxDisplayLabelLength),
+      fetchedAt: boundedText(snapshot.fetchedAt, maxDisplayLabelLength),
       itemCount: snapshotItemCount(snapshot),
       items: [],
     };
@@ -1023,14 +1051,24 @@
 
   function publisherDraft(form) {
     return {
-      authorName: fieldValue(form, "authorName"),
-      authorProfileUri: fieldValue(form, "authorProfileUri"),
-      entryBody: fieldValue(form, "entryBody"),
-      entryTags: fieldValue(form, "entryTags"),
-      entryTitle: fieldValue(form, "entryTitle"),
-      entryUri: fieldValue(form, "entryUri"),
-      feedTitle: fieldValue(form, "feedTitle"),
-      identifier: fieldValue(form, "identifier"),
+      authorName: boundedText(fieldValue(form, "authorName"), maxDisplayLabelLength),
+      authorProfileUri: normalizedCryptaContentUri(fieldValue(form, "authorProfileUri"), [
+        "CHK",
+        "SSK",
+        "USK",
+        "KSK",
+      ]),
+      entryBody: boundedText(fieldValue(form, "entryBody"), maxFeedBodyLength),
+      entryTags: boundedText(fieldValue(form, "entryTags"), maxFeedTitleLength),
+      entryTitle: boundedText(fieldValue(form, "entryTitle"), maxFeedTitleLength),
+      entryUri: normalizedCryptaContentUri(fieldValue(form, "entryUri"), [
+        "CHK",
+        "SSK",
+        "USK",
+        "KSK",
+      ]),
+      feedTitle: boundedText(fieldValue(form, "feedTitle"), maxFeedTitleLength),
+      identifier: boundedText(fieldValue(form, "identifier"), maxDisplayLabelLength),
     };
   }
 
@@ -1051,9 +1089,9 @@
   function buildDraftEntry(form) {
     return {
       id: generatedId("entry"),
-      title: fieldValue(form, "entryTitle"),
-      summary: fieldValue(form, "entryBody"),
-      uri: fieldValue(form, "entryUri"),
+      title: boundedText(fieldValue(form, "entryTitle"), maxFeedTitleLength),
+      summary: boundedText(fieldValue(form, "entryBody"), maxFeedBodyLength),
+      uri: normalizedCryptaContentUri(fieldValue(form, "entryUri"), ["CHK", "SSK", "USK", "KSK"]),
       publishedAt: new Date().toISOString(),
       tags: tagsFromField(fieldValue(form, "entryTags")),
     };
@@ -1064,15 +1102,22 @@
     const snapshot = selectedSnapshot();
     return {
       type: "crypta.feed.snapshot.v1",
-      title: fieldValue(form, "feedTitle") || (source ? source.label : "Feed snapshot"),
+      title:
+        boundedText(fieldValue(form, "feedTitle"), maxFeedTitleLength) ||
+        (source ? source.label : "Feed snapshot"),
       updatedAt: new Date().toISOString(),
       source: {
         uri: source ? source.uri : "",
         resolvedUri: snapshot ? snapshot.resolvedUri : "",
       },
       author: {
-        name: fieldValue(form, "authorName"),
-        profileUri: fieldValue(form, "authorProfileUri"),
+        name: boundedText(fieldValue(form, "authorName"), maxDisplayLabelLength),
+        profileUri: normalizedCryptaContentUri(fieldValue(form, "authorProfileUri"), [
+          "CHK",
+          "SSK",
+          "USK",
+          "KSK",
+        ]),
       },
       items: [entry].concat(snapshot ? snapshot.items : []).slice(0, maxEntriesPerSnapshot),
     };
@@ -1120,12 +1165,18 @@
 
   function normalizeEntry(entry) {
     return {
-      title: stringValue(entry && entry.title) || "Untitled entry",
-      publishedAt: stringValue(entry && (entry.publishedAt || entry.date || entry.updated || entry.published)),
-      summary: stringValue(entry && (entry.summary || entry.body || entry.content || entry.text)),
-      uri: stringValue(entry && entry.uri),
+      title: boundedText(entry && entry.title, maxFeedTitleLength) || "Untitled entry",
+      publishedAt: boundedText(
+        entry && (entry.publishedAt || entry.date || entry.updated || entry.published),
+        maxDisplayLabelLength,
+      ),
+      summary: boundedText(
+        entry && (entry.summary || entry.body || entry.content || entry.text),
+        maxFeedBodyLength,
+      ),
+      uri: normalizedCryptaContentUri(entry && entry.uri, ["CHK", "SSK", "USK", "KSK"]),
       tags: Array.isArray(entry && entry.tags)
-        ? entry.tags.map(stringValue).filter(Boolean).slice(0, 12)
+        ? entry.tags.map((tag) => boundedText(tag, maxTagLength)).filter(Boolean).slice(0, 12)
         : [],
     };
   }
@@ -1140,7 +1191,12 @@
     if (!link) {
       return "";
     }
-    return stringValue(link.getAttribute("href")) || stringValue(link.textContent);
+    return normalizedCryptaContentUri(link.getAttribute("href") || link.textContent, [
+      "CHK",
+      "SSK",
+      "USK",
+      "KSK",
+    ]);
   }
 
   function fieldValue(form, name) {
@@ -1154,15 +1210,13 @@
   }
 
   function isUskUri(value) {
-    const uri = stringValue(value);
-    const withoutScheme = uri.toLowerCase().startsWith("crypta:") ? uri.slice(7) : uri;
-    return withoutScheme.toUpperCase().startsWith("USK@");
+    return !!normalizedCryptaContentUri(value, ["USK"]);
   }
 
   function tagsFromField(value) {
     return stringValue(value)
       .split(",")
-      .map(stringValue)
+      .map((tag) => boundedText(tag, maxTagLength))
       .filter(Boolean)
       .slice(0, 12);
   }
@@ -1171,13 +1225,87 @@
     return typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
   }
 
+  function boundedText(value, maxLength) {
+    const textValue = stringValue(value).replace(unsafeControlPattern(), " ");
+    if (textValue.length <= maxLength) {
+      return textValue;
+    }
+    return `${textValue.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
   function numberValue(value) {
-    return Number.isFinite(value) ? value : 0;
+    if (Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && /^[0-9]+$/.test(value.trim())) {
+      return Number.parseInt(value.trim(), 10);
+    }
+    return 0;
+  }
+
+  function boundedCount(value, maxValue) {
+    const count = Math.floor(numberValue(value));
+    if (!Number.isFinite(count) || count < 0) {
+      return 0;
+    }
+    return Math.min(count, maxValue);
+  }
+
+  function normalizedCryptaContentUri(value, allowedKinds) {
+    const uri = stringValue(value);
+    if (
+      !uri ||
+      uri.length > maxContentUriLength ||
+      /[\s\\\u0000]/.test(uri) ||
+      uri.includes("?") ||
+      uri.includes("#")
+    ) {
+      return "";
+    }
+    const runtimeUri = uri.toLowerCase().startsWith("crypta:") ? uri.slice(7).trim() : uri;
+    if (!runtimeUri || runtimeUri.startsWith("/") || runtimeUri.startsWith("\\")) {
+      return "";
+    }
+    const colon = runtimeUri.indexOf(":");
+    const at = runtimeUri.indexOf("@");
+    if (colon >= 0 && (at < 0 || colon < at)) {
+      return "";
+    }
+    const upper = runtimeUri.toUpperCase();
+    return allowedKinds.some(
+      (kind) => upper.startsWith(`${kind}@`) && runtimeUri.length > kind.length + 1,
+    )
+      ? uri
+      : "";
+  }
+
+  function removeUnsafeParsedNodes(documentValue, options) {
+    documentValue
+      .querySelectorAll(unsafeParsedElementSelector(options))
+      .forEach((node) => node.remove());
+    documentValue.querySelectorAll("*").forEach((element) => {
+      Array.from(element.attributes).forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith("on") || name === "style" || name === "srcdoc") {
+          element.removeAttribute(attribute.name);
+        }
+      });
+    });
+  }
+
+  function unsafeParsedElementSelector(options) {
+    if (options && options.keepFeedLinks) {
+      return "script, style, template, noscript, iframe, frame, frameset, object, embed, meta, base, svg, math";
+    }
+    return "script, style, template, noscript, iframe, frame, frameset, object, embed, link, meta, base, svg, math";
+  }
+
+  function unsafeControlPattern() {
+    return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
   }
 
   function compactQueueText(value) {
-    const textValue = stringValue(value).replace(/\s+/g, " ");
-    return textValue.length > 260 ? `${textValue.slice(0, 257)}...` : textValue;
+    return boundedText(stringValue(value).replace(/\s+/g, " "), 260);
   }
 
   function generatedId(prefix) {

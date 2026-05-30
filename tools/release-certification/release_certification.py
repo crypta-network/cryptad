@@ -42,19 +42,50 @@ CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
 REDACTION_FINDING_EVIDENCE_IDS = frozenset({"app-platform.docs-redaction"})
+PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
+    "public-beta-security.app-ui-csp",
+    "public-beta-security.app-origin-policy",
+    "public-beta-security.content-fetch-bounds",
+    "public-beta-security.feed-sanitization",
+    "public-beta-security.social-inbox-sanitization",
+    "public-beta-security.profile-sanitization",
+    "public-beta-security.trust-statement-hardening",
+    "public-beta-security.apphost-env-minimization",
+    "public-beta-security.sandbox-host-checks",
+    "public-beta-security.audit-redaction-fuzz",
+    "public-beta-security.transparency-log-privacy",
+)
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
     r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
     r"identity[-_ ]?seed|recovery[-_ ]?phrase|mnemonic|"
     r"raw[-_ ]?request[-_ ]?bod(?:y|ies)|request[-_ ]?bod(?:y|ies)|"
-    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)"
+    r"raw[-_ ]?feed[-_ ]?bod(?:y|ies)|feed[-_ ]?bod(?:y|ies)|"
+    r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
 )
 SENSITIVE_KEY_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
     re.IGNORECASE,
 )
 SENSITIVE_HEADER_RE = re.compile(
-    r"(?P<prefix>\b(?:Authorization|Cookie|Set-Cookie|X-Crypta-App-Session)\s*:\s*)"
+    r"(?P<prefix>\b(?:Authorization|Cookie|Set-Cookie|X-Crypta-App-Session|X-Crypta-Form-Password)\s*:\s*)"
+    r"(?P<value>[^\r\n]*)",
+    re.IGNORECASE,
+)
+SENSITIVE_TEXT_LABEL_RE = re.compile(
+    r"(?P<prefix>\b(?:"
+    r"raw[-_ ]+request[-_ ]+bod(?:y|ies)|request[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+feed[-_ ]+bod(?:y|ies)|feed[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
+    r"trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+message[-_ ]+bod(?:y|ies)|message[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+fetched[-_ ]+bod(?:y|ies)|fetched[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+trust[-_ ]+signature|trust[-_ ]+signature|"
+    r"raw[-_ ]+signature[-_ ]+valu(?:e|es)|signature[-_ ]+valu(?:e|es)"
+    r")\s*:\s*)"
     r"(?P<value>[^\r\n]*)",
     re.IGNORECASE,
 )
@@ -64,6 +95,11 @@ SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?P=key_quote)\s*[:=]\s*)"
     r"(?:(?P<value_quote>[\"'])(?P<quoted_value>[^\"'\r\n]*)(?P=value_quote)|"
     r"(?P<value>(?:(?:Bearer|Basic|Digest)\s+)?[^\s,;&}\]]+))",
+    re.IGNORECASE,
+)
+PRIVATE_KEY_BLOCK_RE = re.compile(
+    r"-----BEGIN (?P<key_type>[A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END (?P=key_type)-----"
+    r"|-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?=\r?\n-----BEGIN [A-Z0-9 ]+-----|\Z)",
     re.IGNORECASE,
 )
 URI_KEY_RE = re.compile(r"\b(?:CHK|SSK|USK)@[^\s\])},;\"']+")
@@ -400,6 +436,8 @@ def normalize_redacted_separators(text: str) -> str:
 def scrub_text(text: str, workspace_root: Path, out_dir: Path | None = None) -> str:
     redacted = URL_USERINFO_RE.sub(r"\1<redacted>@", text)
     redacted = SENSITIVE_HEADER_RE.sub(lambda match: match.group("prefix") + "<redacted>", redacted)
+    redacted = SENSITIVE_TEXT_LABEL_RE.sub(lambda match: match.group("prefix") + "<redacted>", redacted)
+    redacted = PRIVATE_KEY_BLOCK_RE.sub("<redacted-private-key>", redacted)
     redacted = SENSITIVE_ASSIGNMENT_RE.sub(scrub_sensitive_assignment_match, redacted)
     redacted = URI_KEY_RE.sub("<redacted-uri>", redacted)
     redacted = FILE_URI_PATH_RE.sub(scrub_file_uri_match, redacted)
@@ -1003,6 +1041,7 @@ def app_platform_evidence(
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
         "apphost.sandbox-provider",
+        *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
         "app-update.lifecycle",
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
@@ -1613,6 +1652,28 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             optional_evidence_ids=("apphost.live",),
             gate_ids=("ecosystem.sandbox-provider",),
             docs=("docs/apphost-runtime-hardening.md", "docs/release-certification.md"),
+        ),
+        MatrixRowSpec(
+            id="public-beta-security-hardening",
+            category="security-redaction",
+            title="Public beta security hardening",
+            required_evidence_ids=PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
+            gate_ids=(
+                "ecosystem.app-ui-quality",
+                "ecosystem.reference-content-apps",
+                "ecosystem.sandbox-provider",
+                "ecosystem.app-review-trust",
+            ),
+            docs=(
+                "docs/SECURITY.md",
+                "docs/app-owned-ui.md",
+                "docs/feed-reader-reference-app.md",
+                "docs/social-inbox-reference-app.md",
+                "docs/trust-graph-preview.md",
+                "docs/apphost-runtime-hardening.md",
+                "docs/release-certification.md",
+            ),
+            phase="phase-8",
         ),
         MatrixRowSpec(
             id="app-update",
@@ -4552,6 +4613,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "legacy-plugin.migration-guide",
         "legacy-plugin.social-inbox-spike",
         "apphost.sandbox-provider",
+        *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
         "app-update.lifecycle",
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
@@ -5230,6 +5292,7 @@ def run_self_test(repo_root: Path) -> None:
             "social-inbox-preview",
             "legacy-plugin-migration",
             "apphost-sandbox-provider",
+            "public-beta-security-hardening",
             "platform-api-contract",
             "interop-smoke",
             "performance-smoke",
@@ -7054,6 +7117,53 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "raw-signature" not in signature_scrubbed, signature_scrubbed
         assert "Ed25519" in signature_scrubbed, signature_scrubbed
+        body_label_scrubbed = scrub_text(
+            "raw trust statement body: signed-trust-document\n"
+            "raw message body: private-social-body\n"
+            "request body: form-password=secret\n"
+            "raw feed body: <script>alert(1)</script>",
+            workspace,
+            out_dir,
+        )
+        for forbidden in (
+            "signed-trust-document",
+            "private-social-body",
+            "form-password=secret",
+            "<script>alert(1)</script>",
+        ):
+            assert forbidden not in body_label_scrubbed, body_label_scrubbed
+        assert "raw trust statement body: <redacted>" in body_label_scrubbed, body_label_scrubbed
+        assert "raw message body: <redacted>" in body_label_scrubbed, body_label_scrubbed
+        pem_scrubbed = scrub_text(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+            "openssh-private-key-body\n"
+            "-----END OPENSSH PRIVATE KEY-----\n"
+            "public reviewer key id remains",
+            workspace,
+            out_dir,
+        )
+        for forbidden in (
+            "BEGIN OPENSSH PRIVATE KEY",
+            "openssh-private-key-body",
+            "END OPENSSH PRIVATE KEY",
+        ):
+            assert forbidden not in pem_scrubbed, pem_scrubbed
+        assert "public reviewer key id remains" in pem_scrubbed, pem_scrubbed
+        truncated_pem_scrubbed = scrub_text(
+            "before\n"
+            "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+            "truncated-openssh-private-key-body\n"
+            "more-private-key-body",
+            workspace,
+            out_dir,
+        )
+        for forbidden in (
+            "BEGIN OPENSSH PRIVATE KEY",
+            "truncated-openssh-private-key-body",
+            "more-private-key-body",
+        ):
+            assert forbidden not in truncated_pem_scrubbed, truncated_pem_scrubbed
+        assert "before" in truncated_pem_scrubbed, truncated_pem_scrubbed
         credential_scrubbed = scrub_text(
             'Authorization: Bearer report-secret\n'
             'Cookie: session=abc; csrf=def\n'

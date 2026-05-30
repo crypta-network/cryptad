@@ -67,9 +67,21 @@ class BubblewrapSandboxProviderTest {
     assertEquals(context.command(), plan.command().subList(separator + 1, plan.command().size()));
     assertEquals(context.environment(), plan.environment());
     assertEquals(context.workingDirectory(), plan.workingDirectory());
+    assertTrue(plan.command().contains("--die-with-parent"));
+    assertTrue(plan.command().contains("--new-session"));
+    assertTrue(plan.command().contains("--unshare-pid"));
+    assertTrue(plan.command().contains("--unshare-ipc"));
+    assertTrue(plan.command().contains("--ro-bind"));
+    assertTrue(plan.command().contains("--bind"));
+    assertFalse(plan.command().contains("--unshare-net"));
     assertEquals(AppSandboxSupportLevel.ENFORCED, plan.sandboxStatus().supportLevel());
     assertEquals(BubblewrapSandboxProvider.PROVIDER_NAME, plan.sandboxStatus().providerName());
     assertTrue(plan.sandboxStatus().active());
+    String publicStatusText = plan.sandboxStatus().toString().toLowerCase(java.util.Locale.ROOT);
+    assertTrue(publicStatusText.contains("not enforced"));
+    assertFalse(publicStatusText.contains("cpu isolation"));
+    assertFalse(publicStatusText.contains("memory isolation"));
+    assertFalse(publicStatusText.contains("network isolation"));
   }
 
   @Test

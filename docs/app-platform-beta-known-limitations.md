@@ -21,7 +21,11 @@ This page records conservative limits and safety boundaries for the Crypta app e
 ## Security boundaries
 
 - App UI origin isolation is based on app-owned origins and browser sessions. It is not permission
-  to bypass server-side Platform API capability checks.
+  to bypass server-side Platform API capability checks, and it is not an AppHost child-process
+  sandbox.
+- Static app UI CSP is a browser defense for local bundled assets. It does not replace process
+  sandboxing, signed bundle verification, AppHost launch-token checks, or Platform API
+  authorization.
 - Browser app sessions are local browser credentials for static UI calls. Do not treat them as
   long-lived secrets, do not persist them in app local storage, and do not confuse them with
   AppHost process tokens.
@@ -60,7 +64,9 @@ This page records conservative limits and safety boundaries for the Crypta app e
   It is not a global public transparency log.
 - Sandbox provider support depends on platform and provider availability. Linux bubblewrap support
   can provide an enforced provider on supported systems, but the docs and evidence must not claim
-  hard isolation beyond the implemented provider status, tests, quotas, and runtime checks.
+  hard isolation beyond the implemented provider status, tests, quotas, and runtime checks. The
+  current bubblewrap provider enforces filesystem containment for the installed bundle and
+  AppHost-managed mutable directories; it does not enforce CPU, memory, or network isolation.
 
 ## Update and rollback limits
 

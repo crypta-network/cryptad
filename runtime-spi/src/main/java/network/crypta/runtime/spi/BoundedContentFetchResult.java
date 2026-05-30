@@ -17,8 +17,6 @@ import java.util.Objects;
  * is a trust signal for catalog or bundle verification.
  */
 public final class BoundedContentFetchResult {
-  private static final String REQUESTED_URI_FIELD = "requestedUri";
-
   private final byte[] bytes;
   private final String requestedUri;
   private final String resolvedUri;
@@ -133,22 +131,22 @@ public final class BoundedContentFetchResult {
   }
 
   /**
-   * Returns a diagnostic representation without embedding the fetched payload.
+   * Returns a diagnostic representation without embedding the fetched payload or raw URI fields.
    *
-   * @return string containing the payload length and diagnostic fields
+   * <p>Runtime adapters may populate URI/status fields from user-controlled fetch requests. The raw
+   * values stay available through accessors for policy-aware callers, but {@code toString()} avoids
+   * echoing paths, tokens, query-like text, or status details into generic logs.
+   *
+   * @return string containing payload length and presence/length metadata
    */
   @Override
   public String toString() {
     return "BoundedContentFetchResult[bytesLength="
         + bytesLength
-        + ", "
-        + REQUESTED_URI_FIELD
-        + "="
-        + requestedUri
-        + ", resolvedUri="
-        + resolvedUri
-        + ", statusMessage="
-        + statusMessage
+        + ", requestedUri=<redacted>, resolvedUriPresent="
+        + (resolvedUri != null)
+        + ", statusMessageLength="
+        + (statusMessage == null ? 0 : statusMessage.length())
         + ']';
   }
 
@@ -158,12 +156,12 @@ public final class BoundedContentFetchResult {
    * @param value raw requested URI text to validate
    */
   private static void requireRequestedUri(String value) {
-    Objects.requireNonNull(value, REQUESTED_URI_FIELD);
+    Objects.requireNonNull(value, "requestedUri");
     if (value.isBlank()) {
-      throw new IllegalArgumentException(REQUESTED_URI_FIELD + " must be nonblank");
+      throw new IllegalArgumentException("requestedUri must be nonblank");
     }
     if (value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
-      throw new IllegalArgumentException(REQUESTED_URI_FIELD + " must be single-line");
+      throw new IllegalArgumentException("requestedUri must be single-line");
     }
   }
 

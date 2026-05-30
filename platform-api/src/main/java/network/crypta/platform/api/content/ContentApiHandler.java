@@ -44,15 +44,6 @@ import network.crypta.runtime.spi.ContentFetchPort;
  * </ul>
  */
 public final class ContentApiHandler {
-  private static final long DEFAULT_MAX_BYTES = 262_144L;
-  private static final long HARD_MAX_BYTES = 1_048_576L;
-  private static final long DEFAULT_TIMEOUT_MILLIS = 30_000L;
-  private static final long HARD_TIMEOUT_MILLIS = 60_000L;
-  private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
-  private static final String CHK_PREFIX = "CHK@";
-  private static final String SSK_PREFIX = "SSK@";
-  private static final String USK_PREFIX = "USK@";
-  private static final String KSK_PREFIX = "KSK@";
   private static final String DEFAULT_PURPOSE = "reference-app";
   private static final String FORMAT_PARAMETER = "format";
   private static final String FORMAT_TEXT = "text";
@@ -101,18 +92,25 @@ public final class ContentApiHandler {
   }
 
   private FetchRequest parseRequest(Map<String, List<String>> parameters) {
-    String requestedUri =
-        normalizeRequestedUri(PlatformApiParameters.requireString(parameters, "uri"));
-    String runtimeUri = runtimeFetchUri(requestedUri);
-    if (isUnsupportedContentKey(runtimeUri)) {
-      throw invalidContentSource();
-    }
-    long maxBytes = readPositiveLong(parameters, "maxBytes", DEFAULT_MAX_BYTES, HARD_MAX_BYTES);
+    ContentFetchPolicy.NormalizedContentSource source =
+        ContentFetchPolicy.normalizeForegroundSource(
+            PlatformApiParameters.requireString(parameters, "uri"));
+    long maxBytes =
+        readPositiveLong(
+            parameters,
+            "maxBytes",
+            ContentFetchPolicy.DEFAULT_APP_FETCH_MAX_BYTES,
+            ContentFetchPolicy.HARD_APP_FETCH_MAX_BYTES);
     long timeoutMillis =
-        readPositiveLong(parameters, "timeoutMillis", DEFAULT_TIMEOUT_MILLIS, HARD_TIMEOUT_MILLIS);
+        readPositiveLong(
+            parameters,
+            "timeoutMillis",
+            ContentFetchPolicy.DEFAULT_APP_FETCH_TIMEOUT_MILLIS,
+            ContentFetchPolicy.HARD_APP_FETCH_TIMEOUT_MILLIS);
     String format = readFormat(parameters);
     String purpose = readPurpose(parameters);
-    return new FetchRequest(requestedUri, runtimeUri, maxBytes, timeoutMillis, format, purpose);
+    return new FetchRequest(
+        source.requestedUri(), source.runtimeUri(), maxBytes, timeoutMillis, format, purpose);
   }
 
   private BoundedContentFetchResult fetchContent(FetchRequest request) {
@@ -125,6 +123,8 @@ public final class ContentApiHandler {
               request.purpose()));
     } catch (ContentFetchException exception) {
       throw mappedFetchException(exception);
+    } catch (RuntimeException _) {
+      throw new PlatformApiException(502, "content_fetch_failed", "Content fetch failed.");
     }
   }
 
@@ -148,7 +148,7 @@ public final class ContentApiHandler {
       FetchRequest request, BoundedContentFetchResult result, byte[] bytes) {
     LinkedHashMap<String, Object> body = LinkedHashMap.newLinkedHashMap(7);
     body.put("requestedUri", request.requestedUri());
-    body.put("resolvedUri", sanitizeContentDiagnostic(result.resolvedUri()));
+    body.put("resolvedUri", ContentFetchPolicy.sanitizeForegroundResolvedUri(result.resolvedUri()));
     body.put("bytesLength", bytes.length);
     if (FORMAT_TEXT.equals(request.format())) {
       body.put(FORMAT_PARAMETER, FORMAT_TEXT);
@@ -236,86 +236,6 @@ public final class ContentApiHandler {
         400,
         "invalid_query_parameter",
         "Query parameter '" + name + "' must be a positive integer.");
-  }
-
-  private static String normalizeRequestedUri(String rawUri) {
-    if (rawUri.indexOf('\n') >= 0 || rawUri.indexOf('\r') >= 0 || rawUri.indexOf('\u0000') >= 0) {
-      throw invalidContentSource();
-    }
-    String uri = rawUri.trim();
-    if (uri.isEmpty()
-        || containsWhitespace(uri)
-        || uri.indexOf('?') >= 0
-        || uri.indexOf('#') >= 0) {
-      throw invalidContentSource();
-    }
-    String runtimeUri = runtimeFetchUri(uri);
-    if (runtimeUri.startsWith("/")
-        || runtimeUri.startsWith("\\")
-        || hasDisallowedScheme(runtimeUri)) {
-      throw invalidContentSource();
-    }
-    return uri;
-  }
-
-  private static String runtimeFetchUri(String requestedUri) {
-    if (requestedUri.regionMatches(
-        true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length())) {
-      return requestedUri.substring(CRYPTA_SCHEME_PREFIX.length()).trim();
-    }
-    return requestedUri;
-  }
-
-  private static boolean hasDisallowedScheme(String uri) {
-    int colon = uri.indexOf(':');
-    int at = uri.indexOf('@');
-    return colon >= 0 && (at < 0 || colon < at);
-  }
-
-  private static boolean isUnsupportedContentKey(String uri) {
-    return !(startsWithContentKeyPrefix(uri, CHK_PREFIX)
-        || startsWithContentKeyPrefix(uri, SSK_PREFIX)
-        || startsWithContentKeyPrefix(uri, USK_PREFIX)
-        || startsWithContentKeyPrefix(uri, KSK_PREFIX));
-  }
-
-  private static boolean startsWithContentKeyPrefix(String uri, String prefix) {
-    return uri.regionMatches(true, 0, prefix, 0, prefix.length());
-  }
-
-  private static PlatformApiException invalidContentSource() {
-    return new PlatformApiException(
-        400,
-        "unsupported_content_source",
-        "Content fetch URI must be a CHK@, SSK@, USK@, KSK@, or crypta: content key.");
-  }
-
-  private static String sanitizeContentDiagnostic(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    if (value.indexOf('\n') >= 0
-        || value.indexOf('\r') >= 0
-        || value.indexOf('\u0000') >= 0
-        || containsWhitespace(value)
-        || value.indexOf('?') >= 0
-        || value.indexOf('#') >= 0) {
-      return null;
-    }
-    String sanitized = value.trim();
-    if (isUnsupportedContentKey(runtimeFetchUri(sanitized))) {
-      return null;
-    }
-    return sanitized;
-  }
-
-  private static boolean containsWhitespace(String value) {
-    for (int index = 0; index < value.length(); index++) {
-      if (Character.isWhitespace(value.charAt(index))) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private record FetchRequest(

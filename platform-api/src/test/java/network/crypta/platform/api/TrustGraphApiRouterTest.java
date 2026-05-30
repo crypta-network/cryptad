@@ -237,7 +237,8 @@ class TrustGraphApiRouterTest {
     assertTrue(imported.body().contains("invalid_trust_statement"));
     assertEquals(200, audit.statusCode());
     assertTrue(audit.body().contains("\"eventType\":\"statement_import_rejected\""));
-    assertTrue(audit.body().contains("\"sourceSummary\":\"uri:sha256:"));
+    assertTrue(audit.body().contains("\"sourceSummary\":\"uri:redacted\""));
+    assertFalse(audit.body().contains("\"sourceUriHash\""));
     assertFalse(audit.body().contains("\"sourceSummary\":\"token:sha256:"));
     assertFalse(audit.body().contains(unsafeSourceUri));
     assertFalse(audit.body().contains("secret-material"));
@@ -268,9 +269,48 @@ class TrustGraphApiRouterTest {
 
     assertEquals(400, imported.statusCode());
     assertEquals(200, audit.statusCode());
-    assertTrue(audit.body().contains("\"sourceSummary\":\"crypta_USK:sha256:"));
+    assertTrue(audit.body().contains("\"sourceSummary\":\"crypta_USK:redacted\""));
+    assertFalse(audit.body().contains("\"sourceUriHash\""));
     assertFalse(audit.body().contains(wrappedSourceUri));
     assertFalse(audit.body().contains("USK@statement"));
+  }
+
+  @Test
+  void route_whenRejectedImportSourceUriLooksSensitive_expectAuditUsesUriRedactedSummary() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.read"));
+
+    for (String sourceUri :
+        List.of(
+            "USK@statement?token=form-secret",
+            "/home/alice/.crypta/apps/social-inbox/data",
+            "C:\\Users\\Alice\\Crypta\\apps\\social-inbox\\data",
+            "X-Crypta-Form-Password=form-secret",
+            "CRYPTAD_APP_TOKEN=0123456789abcdef0123456789abcdef")) {
+      PlatformApiResponse imported =
+          router.route(
+              request(
+                  "POST",
+                  List.of("trust-graph", "import"),
+                  Map.of(
+                      "document", List.of("{\"type\":\"wrong\"}"), "sourceUri", List.of(sourceUri)),
+                  writer));
+
+      assertEquals(400, imported.statusCode(), sourceUri);
+    }
+
+    PlatformApiResponse audit =
+        router.route(request("GET", List.of("trust-graph", "audit"), Map.of(), reader));
+
+    assertEquals(200, audit.statusCode());
+    assertTrue(audit.body().contains("\"sourceSummary\":\"uri:redacted\""));
+    assertFalse(audit.body().contains("form-secret"));
+    assertFalse(audit.body().contains("0123456789abcdef"));
+    assertFalse(audit.body().contains("/home/alice"));
+    assertFalse(audit.body().contains("C:\\\\Users"));
   }
 
   @Test

@@ -452,29 +452,102 @@
     }
     try {
       const url = new URL(value, shellRootUrl);
-      if (url.origin !== window.location.origin && !allowedAppUiOrigin(url, app)) {
+      if (url.username || url.password) {
         return null;
       }
-      return url.origin === window.location.origin
-        ? `${url.pathname}${url.search}${url.hash}`
-        : url.href;
+      if (url.origin === window.location.origin) {
+        return app && app.uiMode === "shell-panel"
+          ? safeShellPanelAppUiHref(url)
+          : safeSameOriginAppUiHref(url, false);
+      }
+      if (!allowedAppUiOrigin(url, app) || url.search !== "" || url.hash !== "") {
+        return null;
+      }
+      return url.href;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function safeSameOriginAppUiHref(url, allowIsolatedLaunchParameter) {
+    if (
+      url.origin !== window.location.origin ||
+      url.username ||
+      url.password ||
+      !url.pathname.startsWith("/apps/")
+    ) {
+      return null;
+    }
+    if (allowIsolatedLaunchParameter) {
+      if (
+        url.hash !== "" ||
+        url.searchParams.size !== 1 ||
+        url.searchParams.get(isolatedLaunchParameter) !== "1"
+      ) {
+        return null;
+      }
+      return `${url.pathname}?${isolatedLaunchParameter}=1`;
+    }
+    if (url.search !== "" || url.hash !== "") {
+      return null;
+    }
+    return url.pathname;
+  }
+
+  function safeShellPanelAppUiHref(url) {
+    if (
+      url.origin !== window.location.origin ||
+      url.username ||
+      url.password ||
+      url.pathname !== shellRootUrl.pathname ||
+      url.search !== ""
+    ) {
+      return null;
+    }
+    return `${url.pathname}${url.hash}`;
+  }
+
+  function registeredAppUiOrigin(app) {
+    if (!app || app.uiOriginMode !== "isolated-loopback" || app.uiOriginStatus !== "active") {
+      return null;
+    }
+    if (typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+      return null;
+    }
+    try {
+      const origin = new URL(app.uiOrigin);
+      if (
+        origin.protocol !== "http:" ||
+        origin.hostname.toLowerCase() !== "127.0.0.1" ||
+        origin.port === "" ||
+        origin.username ||
+        origin.password ||
+        origin.search !== "" ||
+        origin.hash !== "" ||
+        origin.pathname !== "/"
+      ) {
+        return null;
+      }
+      return origin.origin;
     } catch (error) {
       return null;
     }
   }
 
   function allowedAppUiOrigin(url, app) {
-    if (!app || app.uiOriginMode !== "isolated-loopback" || app.uiOriginStatus !== "active") {
+    const registeredOrigin = registeredAppUiOrigin(app);
+    if (!registeredOrigin) {
       return false;
     }
-    if (typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+    if (url.username || url.password) {
       return false;
     }
     const hostname = url.hostname.toLowerCase();
     return (
-      url.origin === app.uiOrigin &&
+      url.origin === registeredOrigin &&
       url.protocol === "http:" &&
-      hostname === "127.0.0.1"
+      hostname === "127.0.0.1" &&
+      url.port !== ""
     );
   }
 
@@ -1080,12 +1153,16 @@
   }
 
   function isolatedAppUiProbeHref(app) {
-    if (!isolatedAppUiActive(app) || typeof app.uiOrigin !== "string" || app.uiOrigin.length === 0) {
+    const registeredOrigin = registeredAppUiOrigin(app);
+    if (!registeredOrigin) {
       return null;
     }
     try {
-      const url = new URL(isolatedOriginProbePath, app.uiOrigin);
+      const url = new URL(isolatedOriginProbePath, registeredOrigin);
       if (!allowedAppUiOrigin(url, app)) {
+        return null;
+      }
+      if (url.pathname !== isolatedOriginProbePath || url.search !== "" || url.hash !== "") {
         return null;
       }
       return url.href;
@@ -1114,12 +1191,14 @@
     if (
       isolatedLaunchHref &&
       isolatedProbeHref &&
+      registeredAppUiOrigin(app) &&
       typeof app.appId === "string" &&
       app.appId.length > 0
     ) {
       link.dataset.isolatedLaunchHref = isolatedLaunchHref;
       link.dataset.isolatedProbeHref = isolatedProbeHref;
       link.dataset.isolatedAppId = app.appId;
+      link.dataset.isolatedUiOrigin = registeredAppUiOrigin(app);
     }
     container.append(link);
     return container;
@@ -1147,18 +1226,81 @@
     const isolatedLaunchHref = link.dataset.isolatedLaunchHref || "";
     const probeHref = link.dataset.isolatedProbeHref || "";
     const expectedAppId = link.dataset.isolatedAppId || "";
+    const expectedOrigin = link.dataset.isolatedUiOrigin || "";
+    const safeFallbackHref = normalizeLaunchFallbackHref(fallbackHref);
+    const safeIsolatedLaunchHref = normalizeIsolatedLaunchHref(isolatedLaunchHref);
+    const safeProbeHref = normalizeIsolatedProbeHref(probeHref, expectedOrigin);
     if (
-      isolatedLaunchHref &&
-      await isolatedAppOriginReachable(probeHref, expectedAppId)
+      safeIsolatedLaunchHref &&
+      safeProbeHref &&
+      await isolatedAppOriginReachable(safeProbeHref, expectedAppId, expectedOrigin)
     ) {
-      window.location.assign(isolatedLaunchHref);
+      window.location.assign(safeIsolatedLaunchHref);
       return;
     }
-    window.location.assign(fallbackHref);
+    if (safeFallbackHref) {
+      window.location.assign(safeFallbackHref);
+    }
   }
 
-  async function isolatedAppOriginReachable(probeHref, expectedAppId) {
-    if (!probeHref || !expectedAppId) {
+  function normalizeLaunchFallbackHref(value) {
+    if (!value) {
+      return null;
+    }
+    try {
+      return safeSameOriginAppUiHref(new URL(value, window.location.origin), false);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function normalizeIsolatedLaunchHref(value) {
+    if (!value) {
+      return null;
+    }
+    try {
+      return safeSameOriginAppUiHref(new URL(value, window.location.origin), true);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function normalizeIsolatedProbeHref(value, expectedOrigin) {
+    if (!value || !expectedOrigin) {
+      return null;
+    }
+    try {
+      const expected = new URL(expectedOrigin);
+      const url = new URL(value);
+      if (
+        expected.protocol !== "http:" ||
+        expected.hostname.toLowerCase() !== "127.0.0.1" ||
+        expected.port === "" ||
+        expected.username ||
+        expected.password ||
+        expected.search !== "" ||
+        expected.hash !== "" ||
+        expected.pathname !== "/" ||
+        url.origin !== expected.origin ||
+        url.protocol !== "http:" ||
+        url.hostname.toLowerCase() !== "127.0.0.1" ||
+        url.port === "" ||
+        url.username ||
+        url.password ||
+        url.pathname !== isolatedOriginProbePath ||
+        url.search !== "" ||
+        url.hash !== ""
+      ) {
+        return null;
+      }
+      return url.href;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function isolatedAppOriginReachable(probeHref, expectedAppId, expectedOrigin) {
+    if (!probeHref || !expectedAppId || !expectedOrigin) {
       return false;
     }
     const controller = typeof AbortController === "function" ? new AbortController() : null;
@@ -1167,6 +1309,9 @@
       : null;
     try {
       const probeOrigin = new URL(probeHref).origin;
+      if (probeOrigin !== expectedOrigin) {
+        return false;
+      }
       const response = await fetch(probeHref, {
         headers: { Accept: "application/json" },
         cache: "no-store",

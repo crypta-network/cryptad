@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.trustgraph.TrustDocumentTypes;
@@ -47,6 +48,18 @@ record TrustStatementRequest(String appId, String identityId, TrustStatementPayl
   private static final String PARAM_SUBJECT_URI = "subjectUri";
   private static final String PARAM_TAGS = "tags";
   private static final int MAX_UNSIGNED_PAYLOAD_BYTES = 32 * 1024;
+  private static final Set<String> SUPPORTED_PARAMETERS =
+      Set.of(
+          PARAM_CONFIDENCE,
+          PARAM_CONTEXT,
+          PARAM_EXPIRES_AT,
+          PARAM_PROFILE_URI,
+          PARAM_REASON,
+          PARAM_SCORE,
+          PARAM_SUBJECT_FINGERPRINT,
+          PARAM_SUBJECT_KIND,
+          PARAM_SUBJECT_URI,
+          PARAM_TAGS);
 
   /**
    * Creates a request after confirming the caller-bound ids and payload are present.
@@ -85,6 +98,7 @@ record TrustStatementRequest(String appId, String identityId, TrustStatementPayl
       String issuerPublicKeyBase64,
       Map<String, List<String>> queryParameters,
       Clock clock) {
+    rejectUnsupportedParameters(queryParameters);
     Instant issuedAt = clock.instant();
     Instant expiresAt = readOptionalExpiresAt(queryParameters);
     TrustStatementPayload payload =
@@ -163,6 +177,14 @@ record TrustStatementRequest(String appId, String identityId, TrustStatementPayl
       tags.add(tag);
     }
     return List.copyOf(tags);
+  }
+
+  private static void rejectUnsupportedParameters(Map<String, List<String>> queryParameters) {
+    for (String name : queryParameters.keySet()) {
+      if (!SUPPORTED_PARAMETERS.contains(name)) {
+        throw invalidQuery("Unsupported trust statement signing parameter.");
+      }
+    }
   }
 
   private static PlatformApiException invalidQuery(String message) {

@@ -2832,9 +2832,33 @@ class LocalProcessAppHostTest {
     Map<String, String> environment = new HashMap<>();
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
 
-    environment.put("GITHUB_TOKEN", "secret");
-    environment.put("AWS_SECRET_ACCESS_KEY", "top-secret");
-    environment.put("CRYPTAD_NODE_DATASTORE_DIR", "/srv/cryptad/datastore");
+    for (String name :
+        List.of(
+            "HOME",
+            "USER",
+            "LOGNAME",
+            "JAVA_TOOL_OPTIONS",
+            "_JAVA_OPTIONS",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "AWS_SECRET_ACCESS_KEY",
+            "GITHUB_TOKEN",
+            "OPENAI_API_KEY",
+            "SSH_AUTH_SOCK",
+            "SSH_AGENT_PID",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "SECRET",
+            "TOKEN",
+            "PASSWORD",
+            "PRIVATE_KEY",
+            "CRYPTAD_NODE_DATASTORE_DIR",
+            "CRYPTAD_APPHOST_BWRAP",
+            "PATH")) {
+      environment.put(name, "secret-" + name);
+    }
 
     LocalProcessAppHost.populateEnvironment(
         environment,
@@ -2843,9 +2867,20 @@ class LocalProcessAppHostTest {
         DEFAULT_TOKEN,
         new AppEnv(Map.of(), LINUX_OS_NAME));
 
-    assertFalse(environment.containsKey("GITHUB_TOKEN"));
-    assertFalse(environment.containsKey("AWS_SECRET_ACCESS_KEY"));
-    assertFalse(environment.containsKey("CRYPTAD_NODE_DATASTORE_DIR"));
+    assertEquals(
+        Set.of(
+            "PATH",
+            "CRYPTAD_APP_ID",
+            "CRYPTAD_APP_NAME",
+            "CRYPTAD_APP_VERSION",
+            "CRYPTAD_APP_DATA_DIR",
+            "CRYPTAD_APP_CACHE_DIR",
+            "CRYPTAD_APP_RUN_DIR",
+            APP_TOKEN_ENV_NAME,
+            "CRYPTAD_APP_PERMISSIONS",
+            "CRYPTAD_APP_UI_MODE",
+            "CRYPTAD_APP_UI_ENTRY"),
+        environment.keySet());
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin",

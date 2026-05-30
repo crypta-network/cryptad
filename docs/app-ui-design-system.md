@@ -84,6 +84,13 @@ App-owned UI responses are designed for a restrictive local CSP. Static apps sho
 Remote links and images may be blocked by CSP or operator policy. Keep critical UI assets local to
 the signed bundle.
 
+First-party reference apps must treat fetched, imported, subscribed, and service-returned content
+as untrusted display data. Render feed titles, social message fields, profile text, trust-score
+annotations, source labels, and URI summaries with text nodes or `textContent`, not HTML string
+interpolation. Import helpers should bound counts and field lengths before app data storage and
+must reject or neutralize active markup such as `<script>`, event-handler attributes,
+`javascript:` links, SVG script payloads, `srcdoc`, `<base>`, and `<iframe>`.
+
 ## Permission disclosure
 
 If `app.permissions` is non-empty, the static UI should show a visible permission summary. The

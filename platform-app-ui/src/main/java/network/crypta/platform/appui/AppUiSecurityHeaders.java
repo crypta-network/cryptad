@@ -1,6 +1,8 @@
 package network.crypta.platform.appui;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -18,6 +20,13 @@ import java.util.Map;
  */
 public final class AppUiSecurityHeaders {
   private static final String SELF_SOURCE = "'self'";
+  private static final String NONE_SOURCE = "'none'";
+  private static final String LOOPBACK_ADMIN_HOST = "127.0.0.1";
+  private static final String LOCALHOST_ADMIN_HOST = "localhost";
+  private static final String IPV6_LOOPBACK_ADMIN_HOST = "::1";
+  private static final String EXPANDED_IPV6_LOOPBACK_ADMIN_HOST = "0:0:0:0:0:0:0:1";
+  private static final String HTTP_SCHEME = "http";
+  private static final String HTTPS_SCHEME = "https";
 
   /**
    * Content Security Policy applied to static app UI responses when JavaScript is enabled.
@@ -82,13 +91,19 @@ public final class AppUiSecurityHeaders {
    */
   public static Map<String, String> headers(
       boolean javascriptEnabled, String platformApiRoot, String shellRoot) {
-    LinkedHashMap<String, String> headers = LinkedHashMap.newLinkedHashMap(4);
-    String frameAncestor = originSource(shellRoot);
+    LinkedHashMap<String, String> headers = LinkedHashMap.newLinkedHashMap(6);
+    String frameAncestor = localAdminOriginSource(shellRoot);
     headers.put(
         "content-security-policy",
-        contentSecurityPolicy(javascriptEnabled, originSource(platformApiRoot), frameAncestor));
+        contentSecurityPolicy(
+            javascriptEnabled, localAdminOriginSource(platformApiRoot), frameAncestor));
     headers.put("x-content-type-options", "nosniff");
     headers.put("referrer-policy", "no-referrer");
+    headers.put(
+        "permissions-policy",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(),"
+            + " bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=()");
+    headers.put("cross-origin-resource-policy", "same-origin");
     if (frameAncestor == null) {
       headers.put("x-frame-options", "SAMEORIGIN");
     }
@@ -101,41 +116,99 @@ public final class AppUiSecurityHeaders {
 
   private static String contentSecurityPolicy(
       boolean javascriptEnabled, String platformApiOrigin, String frameAncestor) {
-    String scriptSource = javascriptEnabled ? SELF_SOURCE : "'none'";
+    String scriptSource = javascriptEnabled ? SELF_SOURCE : NONE_SOURCE;
     String connectSource =
         platformApiOrigin == null ? SELF_SOURCE : SELF_SOURCE + " " + platformApiOrigin;
     String frameAncestors = frameAncestor == null ? SELF_SOURCE : SELF_SOURCE + " " + frameAncestor;
     return "default-src "
-        + SELF_SOURCE
+        + NONE_SOURCE
         + "; script-src "
         + scriptSource
+        + "; style-src "
+        + SELF_SOURCE
+        + "; img-src "
+        + SELF_SOURCE
+        + " data:"
+        + "; font-src "
+        + SELF_SOURCE
         + "; connect-src "
         + connectSource
-        + "; base-uri 'none'; object-src 'none'; form-action "
+        + "; media-src "
+        + NONE_SOURCE
+        + "; frame-src "
+        + NONE_SOURCE
+        + "; worker-src "
+        + NONE_SOURCE
+        + "; object-src "
+        + NONE_SOURCE
+        + "; base-uri "
+        + NONE_SOURCE
+        + "; form-action "
         + SELF_SOURCE
         + "; frame-ancestors "
-        + frameAncestors;
+        + frameAncestors
+        + "; manifest-src "
+        + SELF_SOURCE;
   }
 
-  private static String originSource(String rootUrl) {
+  private static String localAdminOriginSource(String rootUrl) {
     if (rootUrl == null || rootUrl.startsWith("/")) {
       return null;
     }
     try {
-      java.net.URI uri = java.net.URI.create(rootUrl);
-      if (uri.getScheme() == null || uri.getHost() == null) {
+      URI uri = URI.create(rootUrl);
+      if (!isSafeLocalAdminOrigin(uri)) {
         return null;
       }
-      StringBuilder out = new StringBuilder();
-      out.append(uri.getScheme().toLowerCase(java.util.Locale.ROOT));
-      out.append("://");
-      out.append(uri.getHost().toLowerCase(java.util.Locale.ROOT));
-      if (uri.getPort() > 0) {
-        out.append(':').append(uri.getPort());
-      }
-      return out.toString();
+      return uri.getScheme().toLowerCase(Locale.ROOT)
+          + "://"
+          + cspHostSource(uri.getHost())
+          + ':'
+          + uri.getPort();
     } catch (IllegalArgumentException _) {
       return null;
     }
+  }
+
+  private static boolean isSafeLocalAdminOrigin(URI uri) {
+    String scheme = uri.getScheme();
+    if (scheme == null) {
+      return false;
+    }
+    String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
+    if (!HTTP_SCHEME.equals(normalizedScheme) && !HTTPS_SCHEME.equals(normalizedScheme)) {
+      return false;
+    }
+    if (!isSupportedLoopbackAdminHost(uri.getHost())) {
+      return false;
+    }
+    return uri.getPort() > 0
+        && uri.getRawUserInfo() == null
+        && uri.getRawQuery() == null
+        && uri.getRawFragment() == null;
+  }
+
+  private static boolean isSupportedLoopbackAdminHost(String host) {
+    if (host == null) {
+      return false;
+    }
+    String normalized = normalizedHost(host);
+    return LOOPBACK_ADMIN_HOST.equals(normalized)
+        || LOCALHOST_ADMIN_HOST.equals(normalized)
+        || IPV6_LOOPBACK_ADMIN_HOST.equals(normalized)
+        || EXPANDED_IPV6_LOOPBACK_ADMIN_HOST.equals(normalized);
+  }
+
+  private static String cspHostSource(String host) {
+    String normalized = normalizedHost(host);
+    return normalized.indexOf(':') >= 0 ? "[" + normalized + "]" : normalized;
+  }
+
+  private static String normalizedHost(String host) {
+    String normalized = host.toLowerCase(Locale.ROOT);
+    if (normalized.startsWith("[") && normalized.endsWith("]")) {
+      return normalized.substring(1, normalized.length() - 1);
+    }
+    return normalized;
   }
 }

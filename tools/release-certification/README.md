@@ -127,6 +127,17 @@ legacy-admin.removal-wave-1
 legacy-admin.removal-wave-2
 legacy-admin.removal-wave-3
 apphost.sandbox-provider
+public-beta-security.app-ui-csp
+public-beta-security.app-origin-policy
+public-beta-security.content-fetch-bounds
+public-beta-security.feed-sanitization
+public-beta-security.social-inbox-sanitization
+public-beta-security.profile-sanitization
+public-beta-security.trust-statement-hardening
+public-beta-security.apphost-env-minimization
+public-beta-security.sandbox-host-checks
+public-beta-security.audit-redaction-fuzz
+public-beta-security.transparency-log-privacy
 app-update.lifecycle
 app-update.scheduler
 app-update.rollback
@@ -141,9 +152,12 @@ app-review.first-party-review-chain
 release-certification.ecosystem-matrix
 ```
 
-The app-platform, app-review, reference-app, legacy-retirement, and matrix evidence ids above use
-deterministic source checks, fixtures, and fake/offline tests; they do not require a live node or
-host-installed bubblewrap in normal CI. `app-platform.docs-portal`,
+The app-platform, app-review, reference-app, public-beta security, legacy-retirement, and matrix
+evidence ids above use deterministic source checks, fixtures, and fake/offline tests; they do not
+require a live node or host-installed bubblewrap in normal CI. The `public-beta-security.*` rows
+prove hardened local boundaries and redaction behavior without committing secrets, private insert
+URIs, private keys, live fetched bodies, raw trust statements, or app/session tokens.
+`app-platform.docs-portal`,
 `app-platform.beta-program`, `app-platform.beta-tutorials`, and
 `app-platform.docs-redaction` run a deterministic local docs check for required docs, concept
 coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.

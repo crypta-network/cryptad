@@ -50,6 +50,27 @@ public record BoundedContentFetchRequest(
   }
 
   /**
+   * Returns a diagnostic representation without echoing the content URI.
+   *
+   * <p>App-facing callers may receive user-supplied Crypta keys through this SPI. Logging the raw
+   * URI or purpose can leak request paths, query-like tokens, or private local test fixtures, so
+   * this representation keeps only bounds and diagnostic label length metadata.
+   *
+   * @return redacted request summary suitable for generic diagnostics
+   */
+  @SuppressWarnings("NullableProblems")
+  @Override
+  public String toString() {
+    return "BoundedContentFetchRequest[uri=<redacted>, maxBytes="
+        + maxBytes
+        + ", timeout="
+        + timeout
+        + ", purposeLength="
+        + purpose.length()
+        + ']';
+  }
+
+  /**
    * Validates a request text field that may be copied into diagnostics.
    *
    * @param value raw text value to validate
