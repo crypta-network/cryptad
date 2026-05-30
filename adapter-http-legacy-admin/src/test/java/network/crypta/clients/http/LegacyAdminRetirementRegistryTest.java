@@ -73,6 +73,20 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
+  void removalWaveSurfaces_whenWaveThreeRequested_expectSecurityLevelsOnly() {
+    List<String> waveThreeIds =
+        LegacyAdminRetirementRegistry.removalWaveSurfaces(3).stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(List.of("security-levels"), waveThreeIds);
+    assertFalse(waveThreeIds.contains("queue-downloads"));
+    assertFalse(waveThreeIds.contains("alerts"));
+    assertFalse(waveThreeIds.contains("diagnostic"));
+    assertFalse(waveThreeIds.contains("content-filter"));
+  }
+
+  @Test
   void scopeExpandedInWaveSurfaces_whenWaveTwoRequested_expectExpandedScopeSurfaces() {
     List<String> expandedIds =
         LegacyAdminRetirementRegistry.scopeExpandedInWaveSurfaces(2).stream()
@@ -98,6 +112,23 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
+  void require_whenSecurityLevelsRequested_expectWaveThreeSafeReadRedirectWithMutationFallback() {
+    LegacyAdminSurface surface = LegacyAdminRetirementRegistry.require("security-levels");
+
+    assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT, surface.removalMode());
+    assertEquals(3, surface.removalWave());
+    assertEquals("phase-8-pr-244", surface.removedByDefaultSince());
+    assertEquals("mutating-legacy-fallback", surface.fallbackPolicy());
+    assertEquals(LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS, surface.removalScope());
+    assertEquals(0, surface.scopeExpandedInWave());
+    assertEquals(List.of(), surface.explicitRemovalChildPaths());
+    assertFalse(surface.blockMutatingRequests());
+    assertEquals(SecurityLevelsToadlet.PATH, surface.legacyPath());
+    assertEquals(WebShellPaths.SHELL_ROOT + "#security", surface.replacementUrl());
+  }
+
+  @Test
   void require_whenDiagnosticRequested_expectPlainTextExportRetainedAsLegacyFallback() {
     LegacyAdminSurface surface = LegacyAdminRetirementRegistry.require("diagnostic");
 
@@ -105,6 +136,32 @@ class LegacyAdminRetirementRegistryTest {
     assertEquals(LegacyAdminRemovalMode.RENDER_LEGACY, surface.removalMode());
     assertEquals(0, surface.removalWave());
     assertEquals(WebShellPaths.SHELL_ROOT + "#diagnostics", surface.replacementUrl());
+  }
+
+  @Test
+  void require_whenRetainedOrPendingSurfacesRequested_expectNotRemovedByDefault() {
+    for (String id :
+        List.of(
+            "content-filter",
+            "chat",
+            "translation",
+            "help",
+            "first-time-wizard",
+            "first-time-wizard-js")) {
+      LegacyAdminSurface surface = LegacyAdminRetirementRegistry.require(id);
+
+      assertEquals(0, surface.removalWave(), id);
+      assertTrue(
+          surface.state() == LegacyAdminRetirementState.RETAINED
+              || surface.state() == LegacyAdminRetirementState.PENDING,
+          id);
+    }
+  }
+
+  @Test
+  void findByLegacyPath_whenFProxyBrowseRouteRequested_expectNoRetirementSurface() {
+    assertFalse(LegacyAdminRetirementRegistry.findByLegacyPath("/").isPresent());
+    assertFalse(LegacyAdminRetirementRegistry.findByLegacyPath("/CHK@abc").isPresent());
   }
 
   @Test

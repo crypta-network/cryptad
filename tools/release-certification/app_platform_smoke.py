@@ -64,6 +64,9 @@ LEGACY_REMOVAL_WAVE_TWO_IDS = (
     "core-update",
     "statistics",
 )
+LEGACY_REMOVAL_WAVE_THREE_IDS = (
+    "security-levels",
+)
 LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -616,6 +619,43 @@ def sanitize_value(value: Any, workspace_root: Path, key_hint: str = "") -> Any:
 
 def is_local_live_host(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
+
+
+DIRECT_LOCAL_ENDPOINT_RE = re.compile(
+    r"(?i)(?:"
+    r"\blocalhost\b|"
+    r"\b127(?:\.\d{1,3}){3}\b|"
+    r"\b0\.0\.0\.0\b|"
+    r"\[::1\]|"
+    r"(?<![0-9a-f:])::1(?![0-9a-f:])|"
+    r"\b0:0:0:0:0:0:0:1\b"
+    r")"
+)
+
+
+def has_direct_local_endpoint_reference(text: str) -> bool:
+    return DIRECT_LOCAL_ENDPOINT_RE.search(text) is not None
+
+
+def social_inbox_docs_frame_spike_non_goals(docs_text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", docs_text.lower())
+    wot_non_goal = bool(
+        re.search(
+            r"\bnot\s+(?:a\s+)?(?:[^.]{0,160}\b)?full\s+(?:wot|web of trust)\b",
+            normalized,
+        )
+    )
+    daemon_store_non_goal = (
+        "daemon-core message store" in normalized or "daemon message store" in normalized
+    )
+    return (
+        wot_non_goal
+        and "freetalk" in normalized
+        and "sone" in normalized
+        and "freemail" in normalized
+        and "encrypted mail" in normalized
+        and daemon_store_non_goal
+    )
 
 
 def live_base_url_details(base_url: str) -> dict[str, Any]:
@@ -7029,12 +7069,165 @@ def collect_social_mail_migration_preview_evidence(settings: Settings) -> Eviden
     )
 
 
+def collect_legacy_plugin_migration_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    guide_path = workspace / "docs/legacy-plugin-migration-guide.md"
+    plugin_status_path = workspace / "docs/plugin-system.md"
+    portal_path = workspace / "docs/app-platform-developer-portal.md"
+    beta_limits_path = workspace / "docs/app-platform-beta-known-limitations.md"
+    guide_text = read_source(guide_path)
+    guide_lower = guide_text.lower()
+    developer_docs_text = read_source(portal_path) + "\n" + read_source(beta_limits_path)
+    checks = {
+        "guideExists": guide_path.is_file(),
+        "oldRuntimeRemoved": "old plugin runtime" in guide_lower and "removed" in guide_lower,
+        "noOldPluginAbiCompatibility": "old plugin ABI compatibility" in guide_text,
+        "noFcpPluginCommandCompatibility": "old FCP plugin command compatibility" in guide_text,
+        "webOfTrustMigration": "WebOfTrust-like" in guide_text or "WoT-like" in guide_text,
+        "freetalkSoneMigration": "Freetalk/Sone-like" in guide_text,
+        "freemailMigration": "Freemail-like" in guide_text,
+        "trustGraphPreview": "Trust Graph Preview" in guide_text,
+        "socialInboxPreview": "Social Inbox Preview" in guide_text,
+        "appVault": "app vault" in guide_lower or "AppVault" in guide_text,
+        "appData": "app data" in guide_lower or "app-data" in guide_lower,
+        "contentSubscriptions": "content subscriptions" in guide_lower,
+        "appServiceGrants": "app-service grant" in guide_lower,
+        "signedCatalog": "signed catalog" in guide_lower,
+        "reviewGovernance": "review receipt" in guide_lower
+        or "review governance" in guide_lower,
+        "pluginSystemLinksGuide": "legacy-plugin-migration-guide.md" in read_source(plugin_status_path),
+        "developerOrBetaDocsLinkGuide": "legacy-plugin-migration-guide.md" in developer_docs_text,
+    }
+    details = {
+        "guide": display_path(guide_path, workspace),
+        "linkedDocs": [
+            display_path(plugin_status_path, workspace),
+            display_path(portal_path, workspace),
+            display_path(beta_limits_path, workspace),
+        ],
+        "checks": checks,
+        "redaction": {
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "rawBodiesExcluded": True,
+            "rawSignaturesExcluded": True,
+            "localPathsExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "legacy-plugin.migration-guide",
+            root_consequence(settings, "fail"),
+            True,
+            "Legacy plugin migration guide evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-plugin.migration-guide",
+        "pass",
+        True,
+        "Legacy plugin migration guide evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_plugin_social_inbox_spike_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    app_dir = workspace / "apps/social-inbox"
+    manifest_path = app_dir / "src/staged/cryptad-app.properties.template"
+    if not manifest_path.is_file():
+        manifest_path = app_dir / "build/cryptad-app/social-inbox/cryptad-app.properties"
+    manifest: dict[str, str] = {}
+    manifest_permissions: set[str] = set()
+    errors: list[str] = []
+    if manifest_path.is_file():
+        try:
+            manifest = parse_properties(manifest_path)
+            manifest_permissions = parse_permission_set(manifest.get("app.permissions", ""))
+        except ValueError as exc:
+            errors.append(str(exc))
+    social_app_js = read_source(app_dir / "src/staged/static/app.js")
+    social_readme = read_source(app_dir / "README.md")
+    social_doc = read_source(workspace / "docs/social-inbox-reference-app.md")
+    docs_text = social_readme + "\n" + social_doc
+    direct_local_endpoint_reference = has_direct_local_endpoint_reference(social_app_js)
+    checks = {
+        "appExists": app_dir.is_dir(),
+        "manifestPresent": manifest_path.is_file(),
+        "manifestDeclaresExpectedCapabilities": SOCIAL_INBOX_PERMISSIONS.issubset(
+            manifest_permissions
+        ),
+        "manifestRequestsTrustScoreService": (
+            manifest.get("app.services.requests") == "trust-score"
+            and manifest.get("app.service-request.trust-score.provider") == "trust-graph"
+            and manifest.get("app.service-request.trust-score.service") == "trust.score"
+            and manifest.get("app.service-request.trust-score.scopes") == "score.read"
+            and manifest.get("app.service-request.trust-score.contexts") == "message-author"
+        ),
+        "usesPlatformMediatedServiceGrant": (
+            "CryptaPlatform.services.get" in social_app_js
+            and "CryptaPlatform.services.grants.request" in social_app_js
+            and "CryptaPlatform.services.invoke" in social_app_js
+            and "trustScoreProviderAppId = \"trust-graph\"" in social_app_js
+            and "trustScoreServiceId = \"trust.score\"" in social_app_js
+            and "CryptaPlatform.trust.score" not in social_app_js
+            and not direct_local_endpoint_reference
+        ),
+        "noDirectLocalEndpointReference": not direct_local_endpoint_reference,
+        "docsFrameSpikeNonGoals": social_inbox_docs_frame_spike_non_goals(docs_text),
+    }
+    details = {
+        "appId": "social-inbox",
+        "manifest": display_path(manifest_path, workspace),
+        "expectedPermissions": sorted(SOCIAL_INBOX_PERMISSIONS),
+        "declaredPermissions": sorted(manifest_permissions),
+        "checks": checks,
+        "redaction": {
+            "ambientLocalhostTrustExcluded": not direct_local_endpoint_reference,
+            "rawMessageBodiesExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawSignaturesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "localPathsExcluded": True,
+        },
+    }
+    errors.extend(name for name, passed in checks.items() if not passed)
+    if errors:
+        return EvidenceItem(
+            "legacy-plugin.social-inbox-spike",
+            root_consequence(settings, "fail"),
+            True,
+            "Legacy plugin Social Inbox migration spike evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-plugin.social-inbox-spike",
+        "pass",
+        True,
+        "Legacy plugin Social Inbox migration spike evidence passed.",
+        source,
+        details,
+    )
+
+
 def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
     start = text.index("List.of(")
     end = text.index("private static final Map", start)
     block = text[start:end]
     return {
-        "PRIMARY_REPLACED": len(re.findall(r"\n\s+(?:replaced|wave\d+Redirect)\(", block)),
+        "PRIMARY_REPLACED": len(
+            re.findall(
+                r"\n\s+(?:diagnosticFallbackReplacement|securityLevelsWave3Redirect|replaced|wave\d+Redirect)\(",
+                block,
+            )
+        ),
         "PENDING": len(re.findall(r"\n\s+pendingWizard\(", block)) + len(re.findall(r"\n\s+pending\(", block)),
         "RETAINED": len(re.findall(r"\n\s+retained\(", block)),
         "INFRASTRUCTURE": len(re.findall(r"\n\s+infrastructure\(", block)),
@@ -7066,7 +7259,9 @@ def java_method_body(text: str, method_name: str) -> str:
 
 def legacy_fallback_link_checks(text: str) -> dict[str, bool]:
     fallback_body = java_method_body(text, "webShellFallbackSurfaces")
-    replaced_body = java_method_body(text, "replaced")
+    replaced_body = java_method_body(text, "diagnosticFallbackReplacement") or java_method_body(
+        text, "replaced"
+    )
     navigation_body = java_method_body(text, "shouldPromoteInLegacyNavigation")
     replaced_marks_no_fallback = "FALLBACK_POLICY_RENDER_LEGACY" in replaced_body and bool(
         re.search(r",\s*true\s*,\s*false\s*\)\s*;", replaced_body, re.DOTALL)
@@ -7141,6 +7336,13 @@ def legacy_removal_wave_one_ids(registry_text: str) -> list[str]:
 
 def legacy_removal_wave_two_ids(registry_text: str) -> list[str]:
     return re.findall(r"\n\s+wave2Redirect\(\s*\"([^\"]+)\"", registry_text)
+
+
+def legacy_removal_wave_three_ids(registry_text: str) -> list[str]:
+    ids = re.findall(r"\n\s+wave3Redirect\(\s*\"([^\"]+)\"", registry_text)
+    if re.search(r"\n\s+securityLevelsWave3Redirect\(\s*\)", registry_text):
+        ids.insert(0, "security-levels")
+    return ids
 
 
 def legacy_scope_expansion_wave_two_ids(registry_text: str) -> list[str]:
@@ -7370,6 +7572,140 @@ def collect_legacy_removal_wave_two_evidence(settings: Settings) -> EvidenceItem
         "pass",
         True,
         "Legacy-admin removal wave 2 replacement behavior is documented and observable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "response": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminReplacementResponse.java",
+        "webshellToadlet": root
+        / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/WebShellToadlet.java",
+        "bootstrap": root
+        / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap/WebShellBootstrap.java",
+        "bootstrapJson": root
+        / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap/WebShellBootstrapJson.java",
+        "webshell": root
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+        "docs": root / "docs/legacy-retirement-plan.md",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    wave_ids = legacy_removal_wave_three_ids(text["registry"])
+    docs_lower = text["docs"].lower()
+    checks = {
+        "waveThreeIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_THREE_IDS),
+        "waveOneIdsStable": legacy_removal_wave_one_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "waveTwoIdsStable": legacy_removal_wave_two_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_TWO_IDS),
+        "waveThreeConstantPresent": "REMOVAL_WAVE_3" in text["registry"],
+        "removedSinceMarkerPresent": "phase-8-pr-244" in text["registry"],
+        "securityReplacementUrl": (
+            "SHELL_SECURITY_URL" in text["registry"]
+            or "/app/node/#security" in text["registry"]
+        )
+        and "/app/node/#security" in text["docs"],
+        "securityMutatingFallbackDeclared": "security-levels" in text["registry"]
+        and (
+            "canonicalMutationFallback()" in text["registry"]
+            or "mutating-legacy-fallback" in text["registry"]
+        ),
+        "securityLegacyFallbackMarkerDeclared": "legacyFallback=security-levels" in text["policy"]
+        and "legacyFallback=security-levels" in text["webshell"]
+        and "Open the legacy security page" in text["webshell"],
+        "securityFallbackPathFromBootstrap": "bootstrap.legacySecurityLevelsPath" in text["webshell"]
+        and 'legacySecurityLevelsPath + "?legacyFallback=security-levels"' in text["webshell"]
+        and "legacySecurityLevelsPath" in text["bootstrap"]
+        and '"legacySecurityLevelsPath"' in text["bootstrapJson"],
+        "securityFallbackPathFromRegistry": 'LegacyAdminRetirementRegistry.require("security-levels").legacyPath()'
+        in text["webshellToadlet"]
+        and "WebShellBootstrap.nodeManagement(legacySecurityLevelsPath" in text["webshellToadlet"],
+        "securityFallbackPathNotHardCoded": '"/seclevels/?legacyFallback=security-levels"'
+        not in text["webshell"],
+        "securityCanonicalScopeOnly": "CANONICAL_AND_SLASHLESS_ALIAS" in text["registry"]
+        and "prefix-family matching" in docs_lower,
+        "policyRoutesSecurityThroughWebShell": '"security-levels"' in text["policy"]
+        and "webShellReplacementAvailable" in text["policy"],
+        "safeReadReplacementResponses": "GET" in text["policy"]
+        and "HEAD" in text["policy"]
+        and "redirect(" in text["policy"],
+        "mutatingFallbackDocumented": "master-password" in docs_lower
+        and "high physical security" in docs_lower
+        and "recovery" in docs_lower
+        and "legacy fallback remains" in docs_lower,
+        "safeReadFallbackDocumented": "bootstrap-resolved explicit fallback link" in docs_lower
+        and "arbitrary query strings still receive" in docs_lower,
+        "docsDescribeWave": "legacy-admin.removal-wave-3" in text["docs"],
+        "docsRetainBrowse": "FProxy browse" in text["docs"]
+        and "content rendering" in text["docs"],
+        "docsRetainContentFilter": "Content filter" in text["docs"]
+        or "content filter" in docs_lower,
+        "docsRetainDiagnosticExport": "raw diagnostic export" in docs_lower,
+        "docsRetainStartupWizard": "Startup wizard" in text["docs"]
+        and "emergency fallback" in docs_lower,
+        "docsLeaveNodeToNodePending": "Node-to-node messages" in text["docs"],
+        "liveNodeNotRequired": True,
+    }
+    retained_browse_safety = {
+        "fproxyBrowseRootOutOfScope": "/" not in wave_ids,
+        "contentFilterOutOfScope": "content-filter" not in wave_ids,
+        "wizardOutOfScope": "first-time-wizard" not in wave_ids,
+        "nodeToNodeMessageOutOfScope": "node-to-node-message" not in wave_ids,
+        "diagnosticPlainTextRetained": "diagnostic" not in wave_ids,
+    }
+    redaction = {
+        "queryStringsExcluded": True,
+        "formPasswordsExcluded": True,
+        "tokensExcluded": True,
+        "privateUrisExcluded": True,
+        "requestBodiesExcluded": True,
+        "rawFetchedBodiesExcluded": True,
+        "rawSignaturesExcluded": True,
+        "localPathsExcluded": True,
+    }
+    details = {
+        "removedByDefaultRouteIds": wave_ids,
+        "expectedRouteIds": list(LEGACY_REMOVAL_WAVE_THREE_IDS),
+        "replacementUrls": {"security-levels": "/app/node/#security"},
+        "fallbackUrlSource": "Web Shell bootstrap legacySecurityLevelsPath from the registry security-levels legacy path",
+        "statusBehavior": {
+            "safeRead": "303 See Other when Web Shell security is available; legacy fallback when unavailable",
+            "mutating": "legacy fallback remains for partial master-password, recovery, and high-physical-security flows",
+        },
+        "retainedBrowseSafety": retained_browse_safety,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"retainedBrowseSafety.{name}" for name, passed in retained_browse_safety.items() if not passed)
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.removal-wave-3",
+            "fail",
+            True,
+            "Legacy-admin removal wave 3 evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.removal-wave-3",
+        "pass",
+        True,
+        "Legacy-admin removal wave 3 replacement behavior is documented and observable.",
         source,
         details,
     )
@@ -8304,6 +8640,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_social_inbox_app_data_evidence(settings),
         collect_social_inbox_trust_annotation_evidence(settings),
         collect_social_mail_migration_preview_evidence(settings),
+        collect_legacy_plugin_migration_evidence(settings),
+        collect_legacy_plugin_social_inbox_spike_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
         collect_feed_reader_subscription_evidence(settings),
         collect_feed_reader_app_data_evidence(settings),
@@ -8313,6 +8651,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_evidence(settings),
         collect_legacy_removal_wave_one_evidence(settings),
         collect_legacy_removal_wave_two_evidence(settings),
+        collect_legacy_removal_wave_three_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
@@ -8412,11 +8751,21 @@ def run_self_test(repo_root: Path) -> None:
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
-        "PRIMARY_REPLACED": 12,
+        "PRIMARY_REPLACED": 13,
         "PENDING": 2,
         "RETAINED": 1,
         "INFRASTRUCTURE": 1,
     }, counts
+    assert legacy_removal_wave_three_ids(registry_text) == ["security-levels"]
+    extra_wave_three_text = registry_text.replace(
+        "securityLevelsWave3Redirect()",
+        'securityLevelsWave3Redirect(),\n'
+        '          wave3Redirect("diagnostic", "Diagnostic", "/diagnostic/", '
+        '"/app/node/#diagnostics", "Shell diagnostics", "Wrong.", false)',
+    )
+    assert legacy_removal_wave_three_ids(extra_wave_three_text) != list(
+        LEGACY_REMOVAL_WAVE_THREE_IDS
+    )
     fallback_checks = legacy_fallback_link_checks(registry_text)
     assert fallback_checks["primaryReplacedExcludedFromFallbackLinks"] is True, fallback_checks
     assert fallback_checks["primaryReplacedAbsentFromPrimaryNavigation"] is True, fallback_checks
@@ -8425,6 +8774,19 @@ def run_self_test(repo_root: Path) -> None:
     assert unsafe_fallback_checks["primaryReplacedExcludedFromFallbackLinks"] is False, unsafe_fallback_checks
     assert legacy_scope_expansion_wave_two_ids("") == []
     assert legacy_scope_expansion_wave_two_ids("final class LegacyAdminRetirementRegistry {}") == []
+    assert social_inbox_docs_frame_spike_non_goals(
+        "This is a migration spike, not a production social network, mail protocol, "
+        "full WoT implementation, Freetalk/Sone/Freemail compatibility layer, "
+        "encrypted mail transport, and daemon-core message store."
+    )
+    assert social_inbox_docs_frame_spike_non_goals(
+        "This is a migration spike, not a full Web of Trust, not Freetalk, not Sone, "
+        "not Freemail, not encrypted mail, and not a daemon message store."
+    )
+    assert not social_inbox_docs_frame_spike_non_goals(
+        "This is a migration spike with Freetalk, Sone, Freemail, encrypted mail, "
+        "and daemon-core message store non-goals but no WoT limitation."
+    )
     parser_options = {
         option
         for action in build_parser()._actions
@@ -8851,6 +9213,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass"
         assert evidence_by_id["legacy-admin.removal-wave-2"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-3"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-3"]["requiredForReleaseCandidate"] is True
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
         vault_item = evidence_by_id["app-vault.capabilities"]
@@ -8926,6 +9290,25 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.social-inbox-app-data"]["status"] == "pass"
         assert evidence_by_id["reference-app.social-inbox-trust-annotations"]["status"] == "pass"
         assert evidence_by_id["migration.social-mail-preview"]["status"] == "pass"
+        assert evidence_by_id["legacy-plugin.migration-guide"]["status"] == "pass"
+        assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
+        social_inbox_app_js = workspace / "apps/social-inbox/src/staged/static/app.js"
+        original_social_inbox_js = social_inbox_app_js.read_text(encoding="utf-8")
+        try:
+            social_inbox_app_js.write_text(
+                original_social_inbox_js
+                + "\nfetch('http://127.0.0.1:8888/api/v1/app-services');\n",
+                encoding="utf-8",
+            )
+            direct_local_endpoint_item = collect_legacy_plugin_social_inbox_spike_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            social_inbox_app_js.write_text(original_social_inbox_js, encoding="utf-8")
+        assert direct_local_endpoint_item.status == "fail", direct_local_endpoint_item
+        assert "noDirectLocalEndpointReference" in direct_local_endpoint_item.details["errors"], (
+            direct_local_endpoint_item
+        )
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
@@ -8937,6 +9320,41 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.trust-graph-exchange"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
         assert evidence_by_id["app-platform.social-message-signing"]["status"] == "pass"
+        migration_guide = workspace / "docs/legacy-plugin-migration-guide.md"
+        migration_guide_text = migration_guide.read_text(encoding="utf-8")
+        try:
+            migration_guide.unlink()
+            missing_guide_item = collect_legacy_plugin_migration_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            migration_guide.write_text(migration_guide_text, encoding="utf-8")
+        assert missing_guide_item.status == "fail", missing_guide_item
+        assert "guideExists" in missing_guide_item.details["errors"], missing_guide_item
+        registry_source = (
+            workspace
+            / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java"
+        )
+        registry_source_text = registry_source.read_text(encoding="utf-8")
+        try:
+            registry_source.write_text(
+                registry_source_text.replace(
+                    "securityLevelsWave3Redirect(),",
+                    'securityLevelsWave3Redirect(),\n'
+                    '          wave3Redirect("diagnostic", "Diagnostic", "/diagnostic/", '
+                    '"/app/node/#diagnostics", "Shell diagnostics", "Wrong.", false),',
+                ),
+                encoding="utf-8",
+            )
+            extra_wave_three_item = collect_legacy_removal_wave_three_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            registry_source.write_text(registry_source_text, encoding="utf-8")
+        assert extra_wave_three_item.status == "fail", extra_wave_three_item
+        assert "waveThreeIdsMatch" in extra_wave_three_item.details["errors"], (
+            extra_wave_three_item
+        )
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
         try:
@@ -9752,7 +10170,8 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "It uses AppVault identities, profile-document metadata, bounded crypta.social.message.v1 "
                 "domain-separated signing, generated app-document outbox publication, content.subscribe "
                 "USK source metadata, durable app-data records, and Trust Graph Preview annotations. "
-                "It is not full WoT, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message store, "
+                "It is not a production social network, mail protocol, full WoT implementation, "
+                "Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, daemon-core message store, "
                 "or a network protocol change, and it avoids private insert URIs, browser-session tokens, "
                 "raw fetched documents, and private identity material.\n",
                 encoding="utf-8",
@@ -10347,13 +10766,28 @@ def make_self_test_workspace(workspace: Path) -> None:
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
     shell.parent.mkdir(parents=True, exist_ok=True)
     shell.write_text(
+        'const legacySecurityLevelsPath = normalizeLocalRootPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");\n'
+        'const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";\n'
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
         "const path = 'app-catalogs/recommended';\n"
         "const action = 'addRecommended';\n"
         "function appServiceGrantPath(){}\n"
+        "function setSecurityLegacyFallbackStatus(){ return 'Open the legacy security page'; }\n"
         "const grants = 'App-service grants'; const approve = 'Approve'; const revoke = 'Revoke';\n"
         "apiUrl(\"app-services\"); apiUrl(\"app-services/grants\"); apiUrl(\"app-services/audit?limit=12\");\n",
+        encoding="utf-8",
+    )
+    web_shell_bootstrap_dir = (
+        workspace / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap"
+    )
+    web_shell_bootstrap_dir.mkdir(parents=True, exist_ok=True)
+    (web_shell_bootstrap_dir / "WebShellBootstrap.java").write_text(
+        "record WebShellBootstrap(String legacySecurityLevelsPath) {}\n",
+        encoding="utf-8",
+    )
+    (web_shell_bootstrap_dir / "WebShellBootstrapJson.java").write_text(
+        'class WebShellBootstrapJson { String key = "legacySecurityLevelsPath"; }\n',
         encoding="utf-8",
     )
     web_shell_test = (
@@ -10419,6 +10853,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.social-inbox, reference-app.social-inbox-signed-message, "
         "reference-app.social-inbox-subscriptions, reference-app.social-inbox-app-data, "
         "reference-app.social-inbox-trust-annotations, migration.social-mail-preview, "
+        "legacy-plugin.migration-guide, legacy-plugin.social-inbox-spike, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
         "network-content.subscription-scheduler, "
@@ -10429,6 +10864,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-platform.trust-graph-exchange, "
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
+        "Developers can find legacy-plugin-migration-guide.md from the app-platform portal. "
         "It excludes raw request bodies, private keys, private key material, raw signatures, private insert URIs, raw source URIs, and "
         "absolute staging paths. It also excludes raw feed bodies, raw message bodies, raw fetched content, raw fetched documents, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
@@ -10451,6 +10887,23 @@ def make_self_test_workspace(workspace: Path) -> None:
         "release-certification.md",
     ):
         (docs / doc_name).write_text(first_party_docs, encoding="utf-8")
+    (docs / "legacy-plugin-migration-guide.md").write_text(
+        "The old plugin runtime removed status is intentional. There is no old plugin ABI "
+        "compatibility and no old FCP plugin command compatibility. WebOfTrust-like and WoT-like "
+        "migration maps to Trust Graph Preview, durable trust graph storage, content subscriptions, "
+        "app vault identity grants, app data, and app-service grants for trust.score. "
+        "Freetalk/Sone-like migration maps to Social Inbox Preview, Profile Publisher, Feed Reader, "
+        "content subscriptions, app data, and Trust Graph annotations. Freemail-like migration uses "
+        "Social Inbox as a bounded spike and is not encrypted mail transport or Freemail protocol "
+        "compatibility. Distribution uses signed catalog entries, signed bundles, review receipt "
+        "evidence, and review governance. The guide links to social-inbox-reference-app.md.\n",
+        encoding="utf-8",
+    )
+    (docs / "plugin-system.md").write_text(
+        "The plugin runtime has been removed. Legacy plugin migrations should use "
+        "legacy-plugin-migration-guide.md and must not restore old plugin ABI compatibility.\n",
+        encoding="utf-8",
+    )
     registry = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java"
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text((Path(__file__).parent / "fixtures" / "self-test-legacy-registry.java-fragment").read_text(encoding="utf-8"), encoding="utf-8")
@@ -10461,8 +10914,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "when the replacement is reachable and render legacy fallback when the replacement is unavailable. "
         "legacy-admin.removal-wave-2 documents that safe reads redirect when the replacement is reachable, "
         "mutating legacy alert bulk actions and core-update installer and package-store actions remain fallback, "
-        "and raw diagnostic export remains retained. "
-        "FProxy browse remains retained, and retained and pending legacy routes remain reachable.\n",
+        "and raw diagnostic export remains retained. legacy-admin.removal-wave-3 documents that "
+        "/seclevels/ safe reads redirect to /app/node/#security when Web Shell security is "
+        "available. Security-level mutating requests keep legacy fallback; legacy fallback remains "
+        "for master-password, "
+        "database/password-file, high physical security, and recovery flows. Wave 3 does not use "
+        "prefix-family matching for security routes. A bootstrap-resolved explicit fallback link remains for "
+        "legacy security forms, and arbitrary query strings still receive replacement redirects. "
+        "Startup wizard and emergency fallback remain "
+        "pending. Node-to-node messages remain pending. "
+        "FProxy browse remains retained, FProxy browse and content rendering remain retained, "
+        "content filter remains retained, "
+        "and retained and pending legacy routes remain reachable.\n",
         encoding="utf-8",
     )
     legacy_admin_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
@@ -10471,6 +10934,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         'boolean matchesRemovalScope; boolean explicitRemovalChildPaths; '
         'boolean blockMutatingRequests; boolean replacementAvailable; '
         'boolean isStaticAppUiAvailable; boolean primaryUiRoot; '
+        'String legacyFallback = "legacyFallback=security-levels"; '
+        'String security = "security-levels"; boolean webShellReplacementAvailable; '
         'String s = "LegacyAdminRemovalScope EXPLICIT_CHILDREN PREFIX_FAMILY"; '
         'String m = "GET HEAD"; Object d = LegacyAdminRemovalDecision.redirect(null); '
         'Object b = LegacyAdminRemovalDecision.blockedMutation(null); }\n',
@@ -10478,6 +10943,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (legacy_admin_dir / "LegacyAdminReplacementResponse.java").write_text(
         'class LegacyAdminReplacementResponse { String link = "replacementUrl"; }\n',
+        encoding="utf-8",
+    )
+    (legacy_admin_dir / "WebShellToadlet.java").write_text(
+        'class WebShellToadlet { Object create(Object links) { String legacySecurityLevelsPath = '
+        'LegacyAdminRetirementRegistry.require("security-levels").legacyPath(); '
+        'return WebShellBootstrap.nodeManagement(legacySecurityLevelsPath, links); } }\n',
         encoding="utf-8",
     )
     (legacy_admin_dir / "LegacyAdminUsageRecorder.java").write_text(
@@ -11049,9 +11520,12 @@ class CoreHttpShellRuntimeSupport {
         """
 function renderRecommendedCatalogs(){}
 function renderRecommendedCatalogCard(){}
+const legacySecurityLevelsPath = normalizeLocalRootPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");
+const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";
 const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";
 function appServiceGrantPath(){}
+function setSecurityLegacyFallbackStatus(){ return "Open the legacy security page"; }
 const appServiceTitle = "App-service grants";
 const approve = "Approve";
 const revoke = "Revoke";

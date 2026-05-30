@@ -8,5 +8,7 @@ What this means:
 - The `network.crypta.pluginmanager` package and plugin toadlets/FCP plugin commands are no longer implemented.
 - Legacy FCP plugin command names are rejected with a deterministic unsupported-message response.
 - Core update behavior remains package-based (`CoreUpdater`).
+- Legacy plugin-style functionality should migrate to the app platform using
+  [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
 
 This document is intentionally short to avoid preserving outdated plugin-architecture guidance.

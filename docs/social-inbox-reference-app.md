@@ -20,6 +20,9 @@ implementation, old plugin ABI compatibility, WebOfTrust plugin compatibility la
 Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation system,
 daemon-core message store, daemon-core message protocol, or network protocol changes.
 
+For broader legacy plugin categories and migration recipes, see
+[legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
+
 ## App metadata
 
 ```text

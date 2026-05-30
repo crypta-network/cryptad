@@ -22,6 +22,7 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
  * @param formPassword legacy mutation token used by the current Platform API bridge, or {@code
  *     null} when the shell should stay read-only
  * @param legacyRoot legacy HTTP root used for deep links back to existing pages
+ * @param legacySecurityLevelsPath legacy security page path used for explicit fallback flows
  * @param legacyLinks user-visible deep links back to the legacy admin pages
  */
 public record WebShellBootstrap(
@@ -32,6 +33,7 @@ public record WebShellBootstrap(
     String platformApiRoot,
     String formPassword,
     String legacyRoot,
+    String legacySecurityLevelsPath,
     List<LegacyLink> legacyLinks) {
   /** Default shell title used by the node-management UI. */
   public static final String DEFAULT_SHELL_TITLE = "Cryptad Web Shell";
@@ -47,12 +49,20 @@ public record WebShellBootstrap(
   public static final String DEFAULT_LEGACY_ROOT = "/";
 
   /**
-   * Creates the current shell bootstrap payload with the default node-management layout.
+   * Creates the current shell bootstrap payload with an adapter-resolved legacy security path.
    *
+   * <p>The platform shell does not own the legacy security-levels route. The serving adapter must
+   * pass the route it registered for the legacy security toadlet, including deployments that
+   * customize that path through local configuration. Keeping the value as an explicit parameter
+   * prevents the browser bootstrap from drifting away from the route map that actually handles the
+   * fallback forms.
+   *
+   * @param legacySecurityLevelsPath configured path for the legacy security-levels page
    * @param legacyLinks user-visible deep links back to the legacy admin pages
    * @return bootstrap payload suitable for the first-party shell
    */
-  public static WebShellBootstrap nodeManagement(List<LegacyLink> legacyLinks) {
+  public static WebShellBootstrap nodeManagement(
+      String legacySecurityLevelsPath, List<LegacyLink> legacyLinks) {
     return new WebShellBootstrap(
         DEFAULT_SHELL_TITLE,
         DEFAULT_SHELL_DESCRIPTION,
@@ -61,6 +71,7 @@ public record WebShellBootstrap(
         DEFAULT_PLATFORM_API_ROOT,
         null,
         DEFAULT_LEGACY_ROOT,
+        legacySecurityLevelsPath,
         legacyLinks);
   }
 
@@ -81,6 +92,7 @@ public record WebShellBootstrap(
         platformApiRoot,
         normalizedFormPassword,
         legacyRoot,
+        legacySecurityLevelsPath,
         legacyLinks);
   }
 
@@ -147,6 +159,7 @@ public record WebShellBootstrap(
       requireText(formPassword, "formPassword");
     }
     requireRootPath(legacyRoot, "legacyRoot");
+    requireRootPath(legacySecurityLevelsPath, "legacySecurityLevelsPath");
     legacyLinks = List.copyOf(Objects.requireNonNull(legacyLinks, "legacyLinks"));
     if (legacyLinks.isEmpty()) {
       throw new IllegalArgumentException("legacyLinks must not be empty");

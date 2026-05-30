@@ -100,7 +100,23 @@ public final class WebShellToadlet extends Toadlet {
    */
   static WebShellBootstrap createNodeManagementBootstrap(
       List<WebShellBootstrap.LegacyLink> legacyLinks) {
-    return WebShellBootstrap.nodeManagement(legacyLinks);
+    return createNodeManagementBootstrap(legacySecurityLevelsPath(), legacyLinks);
+  }
+
+  /**
+   * Creates the node-management bootstrap model with an explicit security-levels fallback path.
+   *
+   * @param legacySecurityLevelsPath configured legacy security route for explicit fallback flows
+   * @param legacyLinks ordered legacy deep links to surface in the shell footer area
+   * @return immutable bootstrap model for the first-party node-management shell
+   */
+  static WebShellBootstrap createNodeManagementBootstrap(
+      String legacySecurityLevelsPath, List<WebShellBootstrap.LegacyLink> legacyLinks) {
+    return WebShellBootstrap.nodeManagement(legacySecurityLevelsPath, legacyLinks);
+  }
+
+  private static String legacySecurityLevelsPath() {
+    return LegacyAdminRetirementRegistry.require("security-levels").legacyPath();
   }
 
   /**

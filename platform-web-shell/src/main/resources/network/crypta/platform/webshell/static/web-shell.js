@@ -8,8 +8,14 @@
 
   const apiRoot = normalizeLocalRootPath(bootstrap.platformApiRoot, "/api/v1/");
   const shellRoot = normalizeLocalRootPath(bootstrap.shellRoot, "/app/node/");
+  const legacySecurityLevelsPath = normalizeLocalRootPath(
+    bootstrap.legacySecurityLevelsPath,
+    "/seclevels/",
+  );
   const apiRootUrl = new URL(apiRoot, window.location.origin);
   const shellRootUrl = new URL(shellRoot, window.location.origin);
+  const legacySecurityLevelsFallbackPath =
+    legacySecurityLevelsPath + "?legacyFallback=security-levels";
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const shellState = {
@@ -239,6 +245,28 @@
 
   function setSecurityStatus(message, tone) {
     setSectionStatus(sections.securityStatus, message, tone);
+  }
+
+  function setSecurityLegacyFallbackStatus(message) {
+    clear(sections.securityStatus);
+    const paragraph = text("p", "status-message is-error", `${message} `);
+    const fallbackLink = document.createElement("a");
+    fallbackLink.href = legacySecurityLevelsFallbackPath;
+    fallbackLink.textContent = "Open the legacy security page.";
+    paragraph.append(fallbackLink);
+    sections.securityStatus.append(paragraph);
+  }
+
+  function securityErrorRequiresLegacyFallback(error) {
+    if (
+      error instanceof Error &&
+      (error.apiErrorCode === "physical_threat_level_password_required" ||
+        error.apiErrorCode === "physical_threat_level_master_password_cleanup_failed")
+    ) {
+      return true;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("Use the legacy security page");
   }
 
   function setUpdatesStatus(message, tone) {
@@ -4113,6 +4141,14 @@
     return `${response.status} ${response.statusText}`;
   }
 
+  function createApiError(data, response) {
+    const error = new Error(extractApiError(data, response));
+    if (data && data.error && typeof data.error.code === "string") {
+      error.apiErrorCode = data.error.code;
+    }
+    return error;
+  }
+
   function renderError(node, label, error) {
     clear(node);
     const message =
@@ -4124,7 +4160,7 @@
     const response = await fetch(url, { headers: { Accept: "application/json" } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(extractApiError(data, response));
+      throw createApiError(data, response);
     }
     return data;
   }
@@ -4138,7 +4174,7 @@
     if (optionalStatuses.includes(response.status)) {
       return null;
     }
-    throw new Error(extractApiError(data, response));
+    throw createApiError(data, response);
   }
 
   async function loadBestEffortOptionalJson(url) {
@@ -4183,7 +4219,7 @@
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(extractApiError(data, response));
+      throw createApiError(data, response);
     }
     return data;
   }
@@ -4946,9 +4982,8 @@
         (currentSnapshot.physicalThreatLevel === "HIGH" &&
           (requestedPhysical === "LOW" || requestedPhysical === "NORMAL")))
     ) {
-      setSecurityStatus(
+      setSecurityLegacyFallbackStatus(
         "Changing to or from physical HIGH still requires the legacy security page because it updates master-password state.",
-        "is-error",
       );
       return;
     }
@@ -5004,7 +5039,12 @@
       updateWizardToolbar();
       await Promise.all([loadSecuritySection(), loadWizardSection()]);
     } catch (error) {
-      setSecurityStatus(error instanceof Error ? error.message : String(error), "is-error");
+      const message = error instanceof Error ? error.message : String(error);
+      if (securityErrorRequiresLegacyFallback(error)) {
+        setSecurityLegacyFallbackStatus(message);
+        return;
+      }
+      setSecurityStatus(message, "is-error");
     }
   }
 

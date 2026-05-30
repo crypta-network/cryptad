@@ -12,7 +12,8 @@ replaced legacy admin page routes no longer render the old page by default. They
 replacement redirect for safe reads or a gone-with-replacement response for mutating requests.
 Phase 7 PR-230, tracked as `legacy-admin.removal-wave-2`, expands that execution policy to the
 next bounded set of admin/control-plane pages only when the replacement is reachable for the
-current request.
+current request. Phase 8 PR-244, tracked as `legacy-admin.removal-wave-3`, applies the same
+policy to the safe-read security-levels route only.
 
 FProxy browse remains retained. FProxy browse and content-rendering surfaces are explicitly
 retained. The browse split under
@@ -95,12 +96,48 @@ replacement pages, diagnostics, or release-certification evidence.
 The raw diagnostic export remains retained. `/diagnostic/` still renders the legacy plain-text
 diagnostic report because release, interop, and support workflows use that export and this PR does
 not add an equivalent explicit Platform API or Web Shell export. Security-level recovery and
-confirmation flows also remain later-wave work; `/seclevels/` continues to render legacy fallback.
+confirmation flows remain legacy fallback and are not covered by wave 2.
 
 Wave 2 does not remove FProxy browse, key/content rendering, content filter, startup wizard,
 node-to-node messages, translation, help, chat/forum discovery, Platform API routes, Web Shell
 routes, app-owned UI routes, directory chooser/helper flows, or local file-browser helpers outside
 the explicit queue helper paths above.
+
+## Removal wave 3
+
+Wave 3 is tracked in release certification as `legacy-admin.removal-wave-3`. It applies
+removal-by-default only to the security-levels canonical route and its slashless alias when Web
+Shell security is reachable for the current request. Web Shell security requires full operator
+access and Web Shell as the advertised primary UI. If that replacement is unavailable, direct
+legacy fallback remains available and diagnostics count a fallback render.
+
+Wave 3 intentionally does not use prefix-family matching for security routes. It does not remove
+`/seclevels/` child or recovery flows unless a later audit proves complete replacement coverage.
+Query strings, form fields, option values, master passwords, password-file paths, recovery inputs,
+tokens, node references, and Freenet/Crypta URIs are never included in replacement pages,
+diagnostics, or release-certification evidence.
+
+Web Shell security keeps a bootstrap-resolved explicit fallback link for physical `HIGH`,
+master-password, and recovery workflows that still need the legacy GET page to render their forms.
+The fallback URL uses the configured `security-levels` legacy route from the retirement registry,
+then appends the fixed `legacyFallback=security-levels` marker. Only that marker bypasses the
+safe-read redirect; arbitrary query strings still receive the normal replacement redirect and are
+not reflected into responses or evidence.
+
+| Legacy route scope | Surface id | Safe read behavior | Mutating behavior | Replacement |
+| --- | --- | --- | --- | --- |
+| Configured security-levels canonical path and slashless alias | `security-levels` | `303 See Other` when Web Shell security is available; otherwise legacy fallback; Web Shell can open the exact bootstrap-resolved fallback marker for HIGH/master-password forms | Legacy fallback remains for master-password, database/password-file, high physical security, and recovery flows unless Web Shell/API coverage explicitly covers the action | `/app/node/#security` |
+
+Wave 3 explicitly retains or leaves pending:
+
+- FProxy browse and key/content rendering.
+- Content filter.
+- Raw diagnostic export.
+- Startup wizard and emergency fallback.
+- Node-to-node messages.
+- Retained chat/forum discovery.
+- Translation and help.
+- Local directory/file helper infrastructure outside already-reviewed explicit queue helper paths.
 
 ## Current map
 
@@ -146,21 +183,24 @@ but it is a content reference app rather than a legacy admin replacement target.
 
 Primary-replaced legacy admin pages that are not removed by default still render a non-blocking
 notice that links to the Web Shell or first-party app replacement. Wave-1 and wave-2 removed
-routes do not render that notice by default when their replacements are reachable because the
-central request gate returns the replacement response before the legacy toadlet is invoked.
+routes, plus the wave-3 `security-levels` safe-read route, do not render that notice by default
+when their replacements are reachable because the central request gate returns the replacement
+response before the legacy toadlet is invoked.
 
 `PRIMARY_REPLACED` pages are omitted from the Web Shell legacy-link panel and from legacy
 page-chrome entry points when a Web Shell or first-party app path is now primary. Wave-1 canonical
 URLs now return replacement responses instead of rendering the old page. Wave-2 URLs for alerts,
 config, core-update status, statistics, and selected queue helpers do the same under their explicit
-route scopes. Later-wave primary-replaced URLs still render the legacy page and replacement notice
-until a future removal wave changes their execution mode.
+route scopes. Wave-3 safe reads for `/seclevels/` redirect to Web Shell security under the
+canonical route scope while mutating requests remain legacy fallback. Later-wave primary-replaced
+URLs still render the legacy page and replacement notice until a future removal wave changes their
+execution mode.
 
 The legacy top-level Queue and Friends category roots no longer fall back to `/downloads/` or
 `/friends/` as normal navigation. Queue is shown only when Queue Manager is installed, static, and
 usable for the current full-access browser session. Friends is shown only while Web Shell is the
-advertised primary UI. Status and Config retain their later-wave fallbacks in this batch because
-`/alerts/`, `/seclevels/`, and related flows are not part of wave 1.
+advertised primary UI. Status and Config retain their documented fallbacks for any route or action
+not covered by the current removal scope.
 
 Retained browse/FProxy surfaces and `PENDING` admin routes are unchanged by this batch. They remain
 available as legacy entry points until a later PR proves a complete replacement and documents the

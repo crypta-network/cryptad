@@ -281,21 +281,21 @@ class PageMakerTest {
   }
 
   @Test
-  void getPageNode_whenActiveToadletMissingAndRequestUriIsReplaced_rendersNotice() {
+  void getPageNode_whenActiveToadletMissingAndRequestUriRendersLegacyNotice_expectNotice() {
     PageMaker maker = newPageMaker();
     stubPageRenderingContext(false);
-    when(context.getUri()).thenReturn(URI.create(SecurityLevelsToadlet.PATH));
+    when(context.getUri()).thenReturn(URI.create(DiagnosticToadlet.TOADLET_URL));
 
     PageNode page =
         maker.getPageNode(
-            "Security",
+            "Diagnostic",
             context,
             new PageMaker.RenderParameters().renderNavigationLinks(false).renderModeSwitch(false));
 
     String html = page.generate();
 
     assertTrue(html.contains("legacy-admin-retirement-notice"));
-    assertTrue(html.contains("Web Shell security"));
+    assertTrue(html.contains("Web Shell diagnostics"));
   }
 
   @Test

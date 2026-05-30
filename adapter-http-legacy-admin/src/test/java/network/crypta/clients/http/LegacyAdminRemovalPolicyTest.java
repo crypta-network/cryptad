@@ -53,9 +53,7 @@ class LegacyAdminRemovalPolicyTest {
   }
 
   @Test
-  void decide_whenRetainedLaterWavePrimaryReplacedRequested_expectNoDecision() {
-    assertFalse(
-        LegacyAdminRemovalPolicy.decide("GET", URI.create(SecurityLevelsToadlet.PATH)).isPresent());
+  void decide_whenDiagnosticPrimaryReplacedRequested_expectNoDecision() {
     assertFalse(
         LegacyAdminRemovalPolicy.decide("GET", URI.create(DiagnosticToadlet.TOADLET_URL))
             .isPresent());
@@ -82,6 +80,85 @@ class LegacyAdminRemovalPolicyTest {
   @Test
   void decide_whenWaveTwoAlertsPostRequested_expectLegacyFallbackForBulkActions() {
     assertFalse(LegacyAdminRemovalPolicy.decide("POST", URI.create("/alerts/")).isPresent());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsGetRequested_expectWebShellRedirect() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide("GET", URI.create(SecurityLevelsToadlet.PATH))
+            .orElseThrow();
+
+    assertEquals("security-levels", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertTrue(decision.redirect());
+    assertEquals("/app/node/#security", decision.replacementUrl());
+    assertEquals(LegacyAdminUsageEvent.REPLACEMENT_RESPONSE, decision.usageEvent());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsExplicitLegacyFallbackRequested_expectLegacyPage() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide(
+                "GET", URI.create(SecurityLevelsToadlet.PATH + "?legacyFallback=security-levels"))
+            .isPresent());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsExplicitLegacyFallbackHeadRequested_expectLegacyPage() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide(
+                "HEAD", URI.create(SecurityLevelsToadlet.PATH + "?legacyFallback=security-levels"))
+            .isPresent());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsLegacyFallbackHasExtraQuery_expectWebShellRedirect() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide(
+                "GET",
+                URI.create(
+                    SecurityLevelsToadlet.PATH + "?legacyFallback=security-levels&token=secret"))
+            .orElseThrow();
+
+    assertEquals("security-levels", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertEquals("/app/node/#security", decision.replacementUrl());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsUnknownQueryRequested_expectWebShellRedirect() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide(
+                "GET", URI.create(SecurityLevelsToadlet.PATH + "?legacyFallback=unexpected"))
+            .orElseThrow();
+
+    assertEquals("security-levels", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertEquals("/app/node/#security", decision.replacementUrl());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsSlashlessHeadRequested_expectWebShellRedirect() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide("HEAD", URI.create("/seclevels")).orElseThrow();
+
+    assertEquals("security-levels", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertTrue(decision.redirect());
+    assertEquals("/app/node/#security", decision.replacementUrl());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsPostRequested_expectLegacyFallbackForPartialCoverage() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("POST", URI.create(SecurityLevelsToadlet.PATH))
+            .isPresent());
+  }
+
+  @Test
+  void decide_whenWaveThreeSecurityLevelsChildRequested_expectNoPrefixFamilyRemoval() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("GET", URI.create("/seclevels/network")).isPresent());
   }
 
   @Test
@@ -157,6 +234,7 @@ class LegacyAdminRemovalPolicyTest {
     assertFalse(LegacyAdminRemovalPolicy.isRemovedMutatingPath(URI.create("/alerts/")));
     assertFalse(LegacyAdminRemovalPolicy.isRemovedMutatingPath(URI.create("/core-update/")));
     assertFalse(LegacyAdminRemovalPolicy.isRemovedMutatingPath(URI.create("/stats/")));
+    assertFalse(LegacyAdminRemovalPolicy.isRemovedMutatingPath(URI.create("/seclevels/")));
   }
 
   @Test
@@ -207,6 +285,9 @@ class LegacyAdminRemovalPolicyTest {
     assertFalse(
         LegacyAdminRemovalPolicy.decide(
                 "GET", URI.create(LegacyHttpPaths.CONFIG_PATH + "node"), ctx)
+            .isPresent());
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("GET", URI.create(SecurityLevelsToadlet.PATH), ctx)
             .isPresent());
   }
 
