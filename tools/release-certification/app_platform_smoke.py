@@ -8958,6 +8958,10 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
         workspace
         / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
     )
+    redactor_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java"
+    )
     toadlet_source = (
         workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java"
     )
@@ -8985,6 +8989,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
     redactor_text = read_source(redactor_source)
     subscription_service_text = read_source(subscription_service_source)
     operator_routes_test_text = read_source(operator_routes_test_source)
+    redactor_test_text = read_source(redactor_test_source)
     toadlet_text = read_source(toadlet_source)
     toadlet_test_text = read_source(toadlet_test_source)
     web_shell_text = read_source(web_shell_source)
@@ -9005,6 +9010,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
             "redactor": display_path(redactor_source, workspace),
             "subscriptionService": display_path(subscription_service_source, workspace),
             "operatorRoutesTest": display_path(operator_routes_test_source, workspace),
+            "redactorTest": display_path(redactor_test_source, workspace),
             "toadlet": display_path(toadlet_source, workspace),
             "toadletTest": display_path(toadlet_test_source, workspace),
             "webShell": display_path(web_shell_source, workspace),
@@ -9026,7 +9032,8 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                 "hostOperatorOnly": (
                     "requireHostOperator(request)" in routes_text
                     and "host_operator_required" in routes_text
-                    and "dashboard_whenAppPrincipalRequested_expectForbidden" in operator_routes_test_text
+                    and "route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch"
+                    in operator_routes_test_text
                 ),
                 "dashboardSections": all(
                     fragment in service_text
@@ -9109,7 +9116,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                     and "/operator/subscriptions/feed-reader/sub-123/refresh" in toadlet_test_text
                 ),
                 "appPrincipalDenied": (
-                    "subscriptionAction_whenAppPrincipalRequested_expectForbiddenAndNoFetch"
+                    "route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden"
                     in operator_routes_test_text
                 ),
                 "docs": "operator-beta.subscription-recovery" in docs_text,
@@ -9170,18 +9177,23 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                 "sensitiveFieldsOmitted": all(
                     fragment in redactor_text
                     for fragment in (
-                        '"formPassword"',
-                        '"browserSession"',
-                        '"requestBody"',
-                        '"rawBody"',
-                        '"sourcePath"',
-                        '"rollbackPath"',
+                        '"formpassword"',
+                        '"browsersession"',
+                        '"requestbody"',
+                        '"rawbody"',
+                        '"sourcepath"',
+                        '"rollbackpath"',
                     )
                 ),
                 "redactionTests": (
-                    "supportBundle_whenDiagnosticsContainSecrets_expectRedacted" in operator_routes_test_text
+                    "route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput"
+                    in operator_routes_test_text
                     and "/work/private/catalog" in operator_routes_test_text
                     and "formPassword=secret-value" in operator_routes_test_text
+                    and "redact_whenNestedSecretsPathsAndContentUrisPresent_expectUnsafeValuesRemoved"
+                    in redactor_test_text
+                    and "/work/cryptad/private.txt" in redactor_test_text
+                    and "query-secret" in redactor_test_text
                 ),
                 "docs": (
                     "operator-beta.support-bundle-redaction" in docs_text
@@ -12727,8 +12739,8 @@ final class OperatorBetaDashboardService {
         encoding="utf-8",
     )
     (operator_dir / "OperatorSupportRedactor.java").write_text(
-        'final class OperatorSupportRedactor { String[] fields = {"formPassword", '
-        '"browserSession", "requestBody", "rawBody", "sourcePath", "rollbackPath"}; }\n',
+        'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
+        '"browsersession", "requestbody", "rawbody", "sourcepath", "rollbackpath"}; }\n',
         encoding="utf-8",
     )
     (api_dir / "PlatformApiOperatorRoutes.java").write_text(
@@ -12763,11 +12775,24 @@ final class PlatformApiOperatorRoutes {
     (platform_api_tests / "PlatformApiOperatorRoutesTest.java").write_text(
         """
 class PlatformApiOperatorRoutesTest {
-  void dashboard_whenAppPrincipalRequested_expectForbidden() {}
-  void subscriptionAction_whenAppPrincipalRequested_expectForbiddenAndNoFetch() {}
-  void supportBundle_whenDiagnosticsContainSecrets_expectRedacted() {
+  void route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch() {}
+  void route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden() {}
+  void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
     String path = "/work/private/catalog";
     String secret = "formPassword=secret-value";
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    redactor_test_dir = platform_api_tests / "operator"
+    redactor_test_dir.mkdir(parents=True, exist_ok=True)
+    (redactor_test_dir / "OperatorSupportRedactorTest.java").write_text(
+        """
+class OperatorSupportRedactorTest {
+  void redact_whenNestedSecretsPathsAndContentUrisPresent_expectUnsafeValuesRemoved() {
+    String path = "/work/cryptad/private.txt";
+    String secret = "query-secret";
   }
 }
 """,
