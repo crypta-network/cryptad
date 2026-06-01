@@ -17,10 +17,17 @@ class OperatorSupportRedactorTest {
   private static final String CRYPTAD_DIRECTORY = "Cryptad";
   private static final String CRYPTAD_PATH_ELEMENT = "cryptad";
   private static final String DIAGNOSTIC_FIELD = "diagnostic";
+  private static final String EXPECTED_KEYS_OMITTED = "Expected keys to be omitted: ";
+  private static final String EXPECTED_OMITTED_FIELDS = "Expected omitted fields: ";
+  private static final String EXPECTED_VALUES_REDACTED = "Expected values to be redacted: ";
+  private static final String EXPECTED_VALUES_REMAIN = "Expected values to remain: ";
   private static final String FORM_SECRET_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
+  private static final String MNEMONIC_FIELD = "mnemonic";
+  private static final String MNEMONIC_PHRASE_FIELD = "mnemonicPhrase";
   private static final String OPERATOR_PATH_ELEMENT = "operator";
   private static final String RAW_SIGNATURE_VALUE_FIELD = "rawSignatureValue";
   private static final String REDACTED = "<redacted>";
+  private static final String SEED_PHRASE_FIELD = "seedPhrase";
   private static final String SIGNATURE_BASE64_FIELD = "signatureBase64";
   private static final String SIGNATURE_DOCUMENT_FIELD = "signatureDocument";
   private static final String SIGNATURE_PAYLOAD_FIELD = "signaturePayload";
@@ -227,10 +234,24 @@ class OperatorSupportRedactorTest {
     assertRawSignatureFieldsRecorded(result);
   }
 
+  @Test
+  void redact_whenSeedOrMnemonicFieldsPresent_expectSeedValuesRemoved() {
+    Map<String, Object> input = seedOrMnemonicInput();
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    String rendered = redacted.toString();
+    assertSeedOrMnemonicMapFieldsOmitted(redacted);
+    assertSeedOrMnemonicValuesRedacted(rendered);
+    assertSeedOrMnemonicRedactionsPresent(rendered);
+    assertSeedOrMnemonicFieldsRecorded(result);
+  }
+
   private static void assertCredentialMapFieldsOmitted(Map<?, ?> redacted) {
     List<String> presentKeys =
         Stream.of(AUTHORIZATION_FIELD, COOKIE_FIELD).filter(redacted::containsKey).toList();
-    assertTrue(presentKeys.isEmpty(), () -> "Expected keys to be omitted: " + presentKeys);
+    assertTrue(presentKeys.isEmpty(), () -> EXPECTED_KEYS_OMITTED + presentKeys);
   }
 
   private static void assertCredentialValuesRedacted(String rendered) {
@@ -254,7 +275,7 @@ class OperatorSupportRedactorTest {
                 "signature-secret")
             .filter(rendered::contains)
             .toList();
-    assertTrue(leakedValues.isEmpty(), () -> "Expected values to be redacted: " + leakedValues);
+    assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
   }
 
   private static void assertCredentialRedactionsPresent(String rendered) {
@@ -273,7 +294,7 @@ class OperatorSupportRedactorTest {
                 "\"privateKeyPresent\":false")
             .filter(value -> !rendered.contains(value))
             .toList();
-    assertTrue(missingValues.isEmpty(), () -> "Expected values to remain: " + missingValues);
+    assertTrue(missingValues.isEmpty(), () -> EXPECTED_VALUES_REMAIN + missingValues);
   }
 
   private static void assertCredentialFieldsRecorded(
@@ -282,12 +303,12 @@ class OperatorSupportRedactorTest {
         Stream.of(AUTHORIZATION_FIELD, COOKIE_FIELD, "apiKey", "signature")
             .filter(fieldName -> !result.omittedFields().contains(fieldName))
             .toList();
-    assertTrue(missingFields.isEmpty(), () -> "Expected omitted fields: " + missingFields);
+    assertTrue(missingFields.isEmpty(), () -> EXPECTED_OMITTED_FIELDS + missingFields);
   }
 
   private static void assertRawSignatureMapFieldsOmitted(Map<?, ?> redacted) {
     List<String> presentKeys = rawSignatureFieldNames().filter(redacted::containsKey).toList();
-    assertTrue(presentKeys.isEmpty(), () -> "Expected keys to be omitted: " + presentKeys);
+    assertTrue(presentKeys.isEmpty(), () -> EXPECTED_KEYS_OMITTED + presentKeys);
   }
 
   private static void assertRawSignatureValuesRedacted(String rendered) {
@@ -306,7 +327,7 @@ class OperatorSupportRedactorTest {
                 "query-signature-base64")
             .filter(rendered::contains)
             .toList();
-    assertTrue(leakedValues.isEmpty(), () -> "Expected values to be redacted: " + leakedValues);
+    assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
   }
 
   private static void assertRawSignatureRedactionsPresent(String rendered) {
@@ -319,7 +340,7 @@ class OperatorSupportRedactorTest {
                 SIGNATURE_DOCUMENT_FIELD + "=" + REDACTED)
             .filter(value -> !rendered.contains(value))
             .toList();
-    assertTrue(missingValues.isEmpty(), () -> "Expected values to remain: " + missingValues);
+    assertTrue(missingValues.isEmpty(), () -> EXPECTED_VALUES_REMAIN + missingValues);
   }
 
   private static void assertRawSignatureFieldsRecorded(
@@ -328,7 +349,7 @@ class OperatorSupportRedactorTest {
         rawSignatureFieldNames()
             .filter(fieldName -> !result.omittedFields().contains(fieldName))
             .toList();
-    assertTrue(missingFields.isEmpty(), () -> "Expected omitted fields: " + missingFields);
+    assertTrue(missingFields.isEmpty(), () -> EXPECTED_OMITTED_FIELDS + missingFields);
   }
 
   private static Stream<String> rawSignatureFieldNames() {
@@ -338,6 +359,50 @@ class OperatorSupportRedactorTest {
         RAW_SIGNATURE_VALUE_FIELD,
         SIGNATURE_PAYLOAD_FIELD,
         SIGNATURE_DOCUMENT_FIELD);
+  }
+
+  private static void assertSeedOrMnemonicMapFieldsOmitted(Map<?, ?> redacted) {
+    List<String> presentKeys = seedOrMnemonicFieldNames().filter(redacted::containsKey).toList();
+    assertTrue(presentKeys.isEmpty(), () -> EXPECTED_KEYS_OMITTED + presentKeys);
+  }
+
+  private static void assertSeedOrMnemonicValuesRedacted(String rendered) {
+    List<String> leakedValues =
+        Stream.of(
+                "map-seed-phrase",
+                "map-mnemonic",
+                "map-mnemonic-phrase",
+                "inline-seed-phrase",
+                "inline-mnemonic",
+                "inline-mnemonic-phrase",
+                "query-seed-phrase")
+            .filter(rendered::contains)
+            .toList();
+    assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
+  }
+
+  private static void assertSeedOrMnemonicRedactionsPresent(String rendered) {
+    List<String> missingValues =
+        Stream.of(
+                SEED_PHRASE_FIELD + "=" + REDACTED,
+                MNEMONIC_FIELD + "=" + REDACTED,
+                MNEMONIC_PHRASE_FIELD + ": " + REDACTED)
+            .filter(value -> !rendered.contains(value))
+            .toList();
+    assertTrue(missingValues.isEmpty(), () -> EXPECTED_VALUES_REMAIN + missingValues);
+  }
+
+  private static void assertSeedOrMnemonicFieldsRecorded(
+      OperatorSupportRedactor.RedactionResult result) {
+    List<String> missingFields =
+        seedOrMnemonicFieldNames()
+            .filter(fieldName -> !result.omittedFields().contains(fieldName))
+            .toList();
+    assertTrue(missingFields.isEmpty(), () -> EXPECTED_OMITTED_FIELDS + missingFields);
+  }
+
+  private static Stream<String> seedOrMnemonicFieldNames() {
+    return Stream.of(SEED_PHRASE_FIELD, MNEMONIC_FIELD, MNEMONIC_PHRASE_FIELD);
   }
 
   private static Map<String, Object> authorizationStyleCredentialInput() {
@@ -375,6 +440,22 @@ class OperatorSupportRedactorTest {
             SIGNATURE_PAYLOAD_FIELD + "=inline-signature-payload",
             SIGNATURE_DOCUMENT_FIELD + "=inline-signature-document",
             "url https://example.invalid/?" + SIGNATURE_BASE64_FIELD + "=query-signature-base64"));
+    return input;
+  }
+
+  private static Map<String, Object> seedOrMnemonicInput() {
+    LinkedHashMap<String, Object> input = new LinkedHashMap<>();
+    input.put(SEED_PHRASE_FIELD, "map-seed-phrase");
+    input.put(MNEMONIC_FIELD, "map-mnemonic");
+    input.put(MNEMONIC_PHRASE_FIELD, "map-mnemonic-phrase");
+    input.put(
+        DIAGNOSTIC_FIELD,
+        String.join(
+            " ",
+            SEED_PHRASE_FIELD + "=inline-seed-phrase",
+            MNEMONIC_FIELD + "=inline-mnemonic",
+            MNEMONIC_PHRASE_FIELD + ": inline-mnemonic-phrase",
+            "url https://example.invalid/?" + SEED_PHRASE_FIELD + "=query-seed-phrase"));
     return input;
   }
 }

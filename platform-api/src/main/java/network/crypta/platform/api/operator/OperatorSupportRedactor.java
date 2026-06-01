@@ -606,9 +606,15 @@ public final class OperatorSupportRedactor {
         || normalized.endsWith("passwd")
         || normalized.endsWith("secret")
         || normalized.endsWith("credential")
-        || normalized.endsWith("seed")
-        || normalized.endsWith("recoveryphrase")
+        || isSensitiveSeedOrMnemonicKey(normalized)
         || (normalized.contains("privatekey") && !normalized.endsWith("present"));
+  }
+
+  private static boolean isSensitiveSeedOrMnemonicKey(String normalized) {
+    return normalized.endsWith("seed")
+        || normalized.contains("seedphrase")
+        || normalized.contains("recoveryphrase")
+        || normalized.contains("mnemonic");
   }
 
   private static boolean isSensitiveSignatureKey(String normalized) {
