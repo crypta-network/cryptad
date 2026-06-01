@@ -66,6 +66,7 @@ public final class OperatorBetaDashboardService {
   private static final String UNKNOWN = "unknown";
   private static final String STATUS_FIELD = "status";
   private static final String AVAILABLE_FIELD = "available";
+  private static final String AVAILABLE_STATUS = "available";
   private static final String WARNINGS_FIELD = "warnings";
   private static final String APP_ID_FIELD = "appId";
   private static final String APPS_ROUTE_PREFIX = "apps/";
@@ -398,7 +399,8 @@ public final class OperatorBetaDashboardService {
     json.put(WARNINGS_FIELD, List.copyOf(new LinkedHashSet<>(warnings)));
     json.put(
         RECOVERY_ACTIONS_FIELD,
-        appRecoveryActions(appId, booleanValue(app.get(RUNNING_FIELD)), update));
+        appRecoveryActions(
+            appId, booleanValue(app.get(RUNNING_FIELD)), update, appUpdateService != null));
     return json;
   }
 
@@ -587,11 +589,7 @@ public final class OperatorBetaDashboardService {
         apps.stream().filter(app -> RUNNING_FIELD.equals(app.get(STATE_FIELD))).count();
     long pendingUpdates =
         apps.stream()
-            .filter(
-                app ->
-                    booleanValue(
-                        mapValue(mapValue(app.get(UPDATE_FIELD)).get(CANDIDATE_FIELD))
-                            .get(AVAILABLE_FIELD)))
+            .filter(app -> hasAvailableUpdateCandidate(mapValue(app.get(UPDATE_FIELD))))
             .count();
     long stagedUpdates =
         apps.stream()
@@ -743,7 +741,7 @@ public final class OperatorBetaDashboardService {
   }
 
   private static List<Map<String, Object>> appRecoveryActions(
-      String appId, boolean running, Map<String, Object> update) {
+      String appId, boolean running, Map<String, Object> update, boolean updateRoutesAvailable) {
     if (appId == null) {
       return List.of();
     }
@@ -762,28 +760,30 @@ public final class OperatorBetaDashboardService {
             "Check update",
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/check",
-            true));
+            updateRoutesAvailable));
     actions.add(
         action(
             "stage-app-update",
             "Stage update",
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/stage",
-            booleanValue(mapValue(update.get(CANDIDATE_FIELD)).get(AVAILABLE_FIELD))));
+            updateRoutesAvailable && hasAvailableUpdateCandidate(update)));
     actions.add(
         action(
             "apply-app-update",
             "Apply staged update",
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/apply",
-            booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))));
+            updateRoutesAvailable
+                && booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))));
     actions.add(
         action(
             "rollback-app",
             "Rollback app bundle",
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/rollback",
-            booleanValue(mapValue(update.get("rollback")).get(AVAILABLE_FIELD))));
+            updateRoutesAvailable
+                && booleanValue(mapValue(update.get("rollback")).get(AVAILABLE_FIELD))));
     actions.add(
         action(
             "open-app-logs",
@@ -890,6 +890,12 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> reviewTrust = updateReviewTrust(update);
     return booleanValue(reviewTrust.get("blocksUpdate"))
         || booleanValue(reviewTrust.get("blocksPolicyApply"));
+  }
+
+  private static boolean hasAvailableUpdateCandidate(Map<String, Object> update) {
+    Map<String, Object> candidate = mapValue(update.get(CANDIDATE_FIELD));
+    return AVAILABLE_STATUS.equals(candidate.get(STATUS_FIELD))
+        || booleanValue(candidate.get("autoStageAllowed"));
   }
 
   private static Map<String, Object> legacySurfaceSummary(Map<String, Object> surface) {
