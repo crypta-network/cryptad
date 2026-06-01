@@ -16,23 +16,19 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
 
-Generate a quick local report without running expensive Gradle or node gates:
+Run the offline wrapper modes from a clean release workspace:
 
 ```bash
-tools/release-certification/run-release-certification.sh
+tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
+tools/release-certification/run-release-certification.sh --mode nightly --out-dir build/release-certification
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --out-dir build/release-certification
 ```
 
 The wrapper can be run from any working directory. Relative `--out-dir` values are resolved under
 the repository root before shell cleanup, app-platform smoke generation, and certification
 aggregation run.
-
-Generate release-candidate evidence under the standard output directory:
-
-```bash
-tools/release-certification/run-release-certification.sh \
-  --mode release-candidate \
-  --out-dir build/release-certification
-```
 
 The wrapper runs the app-platform smoke collector, then aggregates existing interop and
 performance summaries when they are present.  In `pr` mode it skips Gradle by default so local and
@@ -370,13 +366,83 @@ Optional live-node AppHost lifecycle smoke is enabled only when requested:
 
 ```bash
 CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
-CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:8888 \
+CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
 CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
 tools/release-certification/run-release-certification.sh --mode nightly
 ```
 
-The live smoke only records localhost node metadata.  It redacts the form password and does not
-write raw request bodies.
+The live smoke only records localhost node metadata. It redacts the form password and does not
+write raw request bodies. The wrapper also accepts `--live`, but it does not accept
+`--form-password`; set `CRYPTAD_CERT_FORM_PASSWORD` in the environment.
+
+## Live-network beta certification
+
+PR-246 live-network beta certification is an explicit release-manager mode in the certification
+wrapper. Run it only against a prepared localhost node and disposable live fixtures, unless the
+release manager is intentionally publishing the candidate first-party beta catalog.
+
+```bash
+CRYPTAD_CERT_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:8888 \
+CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+CRYPTAD_CERT_LIVE_CATALOG_SOURCE=crypta:USK@<catalog-key>/cryptad-app-catalog.properties \
+CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
+CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
+CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
+CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --live-network-beta \
+  --require-live-network-beta \
+  --node-base-url http://127.0.0.1:8888
+```
+
+Use fixture public URIs such as `crypta:USK@<catalog-key>/cryptad-app-catalog.properties` and
+`crypta:CHK@<artifact-key>` in docs and reports. The matching private insert URI is a bare private
+USK directory insert URI for the same catalog parent and must never appear in docs, reports, shell
+history, issue comments, or release artifacts. Prefer `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE` for
+copyable one-shot commands. If you use `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV`, export the private
+URI from a protected channel before running the wrapper and put only the environment-variable name
+in the command. If both `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV` and
+`CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE` are present, the environment-name indirection wins
+deterministically; the summary records only that a private fixture was present.
+`CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID` is required in required live-network beta mode. The
+smoke compares it with the public `signatureKeyId` returned by the node after catalog signature
+verification; an unset, missing, or mismatched key id fails the catalog evidence.
+Set `CRYPTAD_CERT_LIVE_PROFILE_PUBLIC_URI` and `CRYPTAD_CERT_LIVE_TRUST_PUBLIC_URI` when the run
+should fetch back the synthetic profile and trust statement after publish. Timing knobs are
+`CRYPTAD_CERT_LIVE_TIMEOUT_SECONDS`, `CRYPTAD_CERT_LIVE_POLL_INTERVAL_SECONDS`,
+`CRYPTAD_CERT_LIVE_MAX_POLL_ATTEMPTS`, `CRYPTAD_CERT_LIVE_MAX_DURATION_SECONDS`, and
+`CRYPTAD_CERT_LIVE_MAX_STEP_DURATION_SECONDS`.
+
+App-facing live steps authenticate as app principals. The runner fetches each required static app
+bootstrap from `/apps/{appId}/.well-known/cryptad-bootstrap.json`, keeps the
+`browserSessionToken` in memory, and sends it as `X-Crypta-App-Session`; the token is never written
+to summary, report, matrix, or logs. Required mode fails if the configured app cannot mint a
+browser session. The default app ids are `site-publisher` for lifecycle, `feed-reader` for content
+and subscriptions, `profile-publisher` for profile publish, `trust-graph` for trust publish/import,
+and `social-inbox` for optional score invocation. Override them with
+`CRYPTAD_CERT_LIVE_APP_ID`, `CRYPTAD_CERT_LIVE_CONTENT_APP_ID`,
+`CRYPTAD_CERT_LIVE_FEED_APP_ID`, `CRYPTAD_CERT_LIVE_PROFILE_APP_ID`,
+`CRYPTAD_CERT_LIVE_TRUST_APP_ID`, and `CRYPTAD_CERT_LIVE_APP_SERVICE_CALLER_APP_ID` when using
+disposable certification apps.
+
+The runner validates localhost-only node access, live USK catalog fetch/verification, app
+install/update/rollback, content fetch, feed subscription metadata, synthetic profile publish,
+synthetic trust statement publish/import, interop/performance timing, and artifact redaction. It
+can also invoke the Trust Graph `trust.score` app-service when
+`CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise
+`live-network-beta.app-service-score` is reported as optional skipped evidence, not a false pass.
+Aggregation records these results under the `ecosystem.live-network-beta` gate and the
+`live-network-beta-certification` matrix row.
+Lifecycle cleanup deletes only an app that was absent before the smoke and installed successfully
+by this run. Use a disposable app id when the prepared node already has first-party apps installed.
+It does not prove global network propagation, app safety beyond signature/review policy, catalog
+trust beyond the configured expected key, or deletion of published bytes. Keep local fixture outputs
+only until cleanup is verified, preserve the sanitized certification summary and report, and assume
+live synthetic content may remain retrievable and may not be deletable from the network. Do not use
+real keys, production secrets, or user content in fixture certification runs.
 
 ## Redaction
 

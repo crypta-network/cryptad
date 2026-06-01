@@ -61,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class AppCatalogManagerTest {
   private static final String KEY_ID = "catalog-test";
+  private static final String ROTATED_KEY_ID = "catalog-rotated";
   private static final String CATALOG_ID = "core";
   private static final String STAGING_CATALOG_ID = "staging";
   private static final String APP_ID = "queue-manager";
@@ -116,6 +117,22 @@ class AppCatalogManagerTest {
           Files.isRegularFile(
               plan.stagedBundleDirectory().resolve(AppBundleManifestParser.MANIFEST_FILE_NAME)));
     }
+  }
+
+  @Test
+  void addSource_whenCatalogIsSigned_expectSnapshotIncludesSignatureKeyId() throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys);
+
+    AppCatalogSourceSnapshot snapshot = manager.addSource(catalog.toString());
+    AppCatalogSourceSnapshot listedSnapshot = manager.listCatalogs().getFirst();
+
+    assertEquals(Optional.of(KEY_ID), snapshot.signatureKeyId());
+    assertEquals(Optional.of(KEY_ID), listedSnapshot.signatureKeyId());
   }
 
   @Test
@@ -694,6 +711,64 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void refresh_whenCatalogSignatureKeyRotates_expectSnapshotIncludesRefreshedSignatureKeyId()
+      throws Exception {
+    KeyPair initialKeyPair = keyPair();
+    KeyPair rotatedKeyPair = keyPair();
+    Path bundle = signedBundle(initialKeyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            initialKeyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact));
+    byte[] initialCatalogBytes = Files.readAllBytes(catalog);
+    byte[] initialSignatureBytes =
+        Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    Path refreshedCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            rotatedKeyPair,
+            ROTATED_KEY_ID,
+            sha256(artifact),
+            Files.size(artifact));
+    byte[] refreshedCatalogBytes = Files.readAllBytes(refreshedCatalog);
+    byte[] refreshedSignatureBytes =
+        Files.readAllBytes(
+            refreshedCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                initialCatalogBytes,
+                CRYPTA_SIGNATURE_KEY,
+                initialSignatureBytes));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+            trustedKey(KEY_ID, initialKeyPair), trustedKey(ROTATED_KEY_ID, rotatedKeyPair));
+    AppCatalogManager manager = manager(trustedKeys, contentFetchPort);
+    AppCatalogSourceSnapshot added = manager.addSource(CRYPTA_CATALOG_SOURCE);
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            refreshedCatalogBytes,
+            CRYPTA_SIGNATURE_KEY,
+            refreshedSignatureBytes),
+        Map.of());
+
+    AppCatalogSourceSnapshot refreshed = manager.refresh(CATALOG_ID);
+    AppCatalogSourceSnapshot listedSnapshot = manager.listCatalogs().getFirst();
+
+    assertEquals(Optional.of(KEY_ID), added.signatureKeyId());
+    assertEquals(Optional.of(ROTATED_KEY_ID), refreshed.signatureKeyId());
+    assertEquals(Optional.of(ROTATED_KEY_ID), listedSnapshot.signatureKeyId());
+  }
+
+  @Test
   void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri()
       throws Exception {
     KeyPair keyPair = keyPair();
@@ -1213,6 +1288,17 @@ class AppCatalogManagerTest {
   private Path signedCatalog(
       String catalogId, URI artifactUri, KeyPair keyPair, String artifactSha256, long artifactSize)
       throws IOException {
+    return signedCatalog(catalogId, artifactUri, keyPair, KEY_ID, artifactSha256, artifactSize);
+  }
+
+  private Path signedCatalog(
+      String catalogId,
+      URI artifactUri,
+      KeyPair keyPair,
+      String keyId,
+      String artifactSha256,
+      long artifactSize)
+      throws IOException {
     Path catalogDir = Files.createDirectories(tempDir.resolve("catalog-" + catalogId));
     Path catalog = catalogDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -1256,7 +1342,7 @@ class AppCatalogManagerTest {
                 QUEUE_READ_PERMISSION,
                 QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
-    AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
+    AppCatalogSigner.sign(catalog, keyId, keyPair.getPrivate());
     return catalog;
   }
 
@@ -1486,8 +1572,11 @@ class AppCatalogManagerTest {
   }
 
   private static TrustedAppKeys trustedKeys(KeyPair keyPair) {
-    return TrustedAppKeys.of(
-        new TrustedAppKey(KEY_ID, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic()));
+    return TrustedAppKeys.of(trustedKey(KEY_ID, keyPair));
+  }
+
+  private static TrustedAppKey trustedKey(String keyId, KeyPair keyPair) {
+    return new TrustedAppKey(keyId, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic());
   }
 
   private static final class FakeContentFetchPort implements ContentFetchPort {

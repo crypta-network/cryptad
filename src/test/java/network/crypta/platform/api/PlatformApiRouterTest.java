@@ -3811,7 +3811,8 @@ class PlatformApiRouterTest {
         AppCatalogFetchStatus.SUCCESS,
         Optional.empty(),
         Optional.empty(),
-        Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
+        Optional.of("https://example.invalid/cryptad-app-catalog.properties"),
+        Optional.empty());
   }
 
   private AppCatalogSourceSnapshot recommendedCatalogSourceSnapshot(String source) {
@@ -3828,7 +3829,8 @@ class PlatformApiRouterTest {
         AppCatalogFetchStatus.SUCCESS,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(source));
+        Optional.of(source),
+        Optional.of(FIRST_PARTY_TRUSTED_KEY_ID));
   }
 
   private static void withFirstPartyCatalogProperties(String source, ThrowingRunnable action)

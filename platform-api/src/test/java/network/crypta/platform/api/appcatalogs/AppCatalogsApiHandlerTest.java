@@ -54,6 +54,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -101,7 +102,8 @@ class AppCatalogsApiHandlerTest {
             AppCatalogFetchStatus.SUCCESS,
             Optional.empty(),
             Optional.empty(),
-            Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
+            Optional.of("https://example.invalid/cryptad-app-catalog.properties"),
+            Optional.of("core-catalog-key"));
     when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
 
     Map<String, Object> catalog = handler.listCatalogs().getFirst();
@@ -122,6 +124,7 @@ class AppCatalogsApiHandlerTest {
     assertNull(catalog.get("lastFetchErrorMessage"));
     assertEquals(
         "https://example.invalid/cryptad-app-catalog.properties", catalog.get("lastResolvedUri"));
+    assertEquals("core-catalog-key", catalog.get("signatureKeyId"));
   }
 
   @Test
@@ -531,7 +534,7 @@ class AppCatalogsApiHandlerTest {
     assertEquals(true, transparency.get("configured"));
     assertEquals(1L, transparency.get("recordCount"));
     assertEquals(true, transparency.get("verified"));
-    assertTrue(transparency.get("latestRecordHash") instanceof String);
+    assertInstanceOf(String.class, transparency.get("latestRecordHash"));
     assertRedactsReviewerPublicKey(governance, reviewerKeyPair);
   }
 
@@ -589,11 +592,11 @@ class AppCatalogsApiHandlerTest {
 
     List<Map<String, Object>> records = (List<Map<String, Object>>) page.get("records");
     assertEquals(1, records.size());
-    Map<String, Object> record = records.getFirst();
-    assertEquals("review_gate_install", record.get("kind"));
-    assertEquals(APP_ID, record.get("appId"));
-    assertEquals("core", record.get("catalogId"));
-    assertEquals("trusted_reviewed", record.get("trustStatus"));
+    Map<String, Object> transparencyRecord = records.getFirst();
+    assertEquals("review_gate_install", transparencyRecord.get("kind"));
+    assertEquals(APP_ID, transparencyRecord.get("appId"));
+    assertEquals("core", transparencyRecord.get("catalogId"));
+    assertEquals("trusted_reviewed", transparencyRecord.get("trustStatus"));
     assertFalse(page.toString().contains(tempDir.toString()));
   }
 
@@ -606,11 +609,10 @@ class AppCatalogsApiHandlerTest {
             () -> null,
             AppReviewPolicy.DEFAULT,
             TrustedReviewerKeys::empty);
+    Map<String, List<String>> invalidKindQuery = Map.of("kind", List.of("not-a-kind"));
 
     PlatformApiException exception =
-        assertThrows(
-            PlatformApiException.class,
-            () -> handler.transparencyLog(Map.of("kind", List.of("not-a-kind"))));
+        assertThrows(PlatformApiException.class, () -> handler.transparencyLog(invalidKindQuery));
 
     assertEquals(400, exception.statusCode());
     assertEquals("invalid_query_parameter", exception.errorCode());
@@ -956,7 +958,8 @@ class AppCatalogsApiHandlerTest {
         AppCatalogFetchStatus.SUCCESS,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(source.toString()));
+        Optional.of(source.toString()),
+        Optional.of(FIRST_PARTY_TRUSTED_KEY_ID));
   }
 
   private void assertCatalogFailureStatus(String code, int statusCode) throws Exception {

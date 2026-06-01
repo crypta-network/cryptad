@@ -30,6 +30,7 @@ import java.util.Optional;
  * @param lastFetchErrorCode stable error code from the most recent failed refresh attempt
  * @param lastFetchErrorMessage diagnostic message from the most recent failed refresh attempt
  * @param lastResolvedUri source URI or Crypta key used by the last fetch attempt
+ * @param signatureKeyId public trusted-key identifier from the verified catalog signature sidecar
  */
 public record AppCatalogSourceSnapshot(
     String catalogId,
@@ -44,7 +45,8 @@ public record AppCatalogSourceSnapshot(
     AppCatalogFetchStatus lastFetchStatus,
     Optional<String> lastFetchErrorCode,
     Optional<String> lastFetchErrorMessage,
-    Optional<String> lastResolvedUri) {
+    Optional<String> lastResolvedUri,
+    Optional<String> signatureKeyId) {
   /**
    * Creates a validated source snapshot.
    *
@@ -65,6 +67,7 @@ public record AppCatalogSourceSnapshot(
    * @param lastFetchErrorCode stable error code from the most recent failed refresh attempt
    * @param lastFetchErrorMessage diagnostic message from the most recent failed refresh attempt
    * @param lastResolvedUri source URI or Crypta key used by the last fetch attempt
+   * @param signatureKeyId public trusted-key identifier from the verified catalog signature sidecar
    */
   public AppCatalogSourceSnapshot {
     catalogId = AppCatalog.normalizeCatalogId(catalogId);
@@ -84,6 +87,7 @@ public record AppCatalogSourceSnapshot(
     Objects.requireNonNull(lastFetchErrorCode, "lastFetchErrorCode");
     Objects.requireNonNull(lastFetchErrorMessage, "lastFetchErrorMessage");
     Objects.requireNonNull(lastResolvedUri, "lastResolvedUri");
+    Objects.requireNonNull(signatureKeyId, "signatureKeyId");
   }
 
   static AppCatalogSourceSnapshot of(
@@ -91,7 +95,8 @@ public record AppCatalogSourceSnapshot(
       AppCatalogSource source,
       Instant addedAt,
       Instant refreshedAt,
-      AppCatalogSourceRefreshMetadata refreshMetadata) {
+      AppCatalogSourceRefreshMetadata refreshMetadata,
+      FetchedCatalog fetchedCatalog) {
     return new AppCatalogSourceSnapshot(
         catalog.catalogId(),
         catalog.name(),
@@ -105,7 +110,15 @@ public record AppCatalogSourceSnapshot(
         refreshMetadata.lastFetchStatus(),
         refreshMetadata.lastFetchErrorCode(),
         refreshMetadata.lastFetchErrorMessage(),
-        refreshMetadata.lastResolvedUri());
+        refreshMetadata.lastResolvedUri(),
+        signatureKeyId(fetchedCatalog));
+  }
+
+  private static Optional<String> signatureKeyId(FetchedCatalog fetchedCatalog) {
+    if (fetchedCatalog == null) {
+      return Optional.empty();
+    }
+    return Optional.of(AppCatalogVerifier.readSignature(fetchedCatalog.signatureBytes()).keyId());
   }
 
   /**

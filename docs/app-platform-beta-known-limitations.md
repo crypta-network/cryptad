@@ -14,6 +14,14 @@ This page records conservative limits and safety boundaries for the Crypta app e
   the public Crypta network.
 - The beta does not require Docker, Node.js, npm, external network access, signing secrets, or
   public Crypta network access for its offline tests.
+- PR-246 live-network beta certification is an explicit release-manager step. It is not part of
+  normal PR or nightly evidence, and it should use disposable fixture catalog keys unless the
+  release manager is intentionally publishing the candidate first-party beta catalog.
+- Required live-network beta certification fails unless the configured expected catalog signing
+  key id matches the public `signatureKeyId` observed from the node's verified catalog summary.
+- Live-network beta app-facing steps authenticate with per-app browser sessions minted from the
+  configured static app bootstraps. A missing or stale bootstrap session fails required mode rather
+  than falling back to host/operator authority.
 - The beta does not modify FNP, FCP, wire protocol, or Hyphanet/Freenet network compatibility
   behavior.
 - FProxy browse remains retained.
@@ -99,6 +107,16 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - `crypta:` catalog transport is not a trust boundary. Catalog bytes, catalog signatures, app
   artifacts, artifact digests, bundle signatures, review receipts, reviewer key lifecycle state,
   and permission/API compatibility still need their own checks.
+- Live-network beta certification proves only that signed catalog sidecars can be validated,
+  queued through a localhost node, and optionally fetched back from the configured public source.
+  It does not prove global propagation, public reputation, app safety beyond the signed
+  catalog/bundle/review gates, or deletion of published bytes.
+- Live synthetic content may remain retrievable and may not be deletable once inserted. Use fixture
+  catalog sources such as `crypta:USK@<catalog-key>/cryptad-app-catalog.properties`, immutable
+  artifact placeholders such as `crypta:CHK@<artifact-key>`, and a private insert URI supplied
+  only through environment-variable or protected-file indirection.
+- Lifecycle cleanup deletes only apps installed by that certification run. Prepared nodes with
+  existing first-party apps should use disposable certification app ids for lifecycle rehearsals.
 
 ## Data handling and redaction
 
@@ -113,6 +131,8 @@ Do not paste or commit:
   from real users, raw profile documents, raw signatures, or raw receipt signatures.
 - Local absolute paths, catalog scratch paths, staging paths, rollback backup paths, or host private
   configuration paths unless they are already redacted.
+- Real keys, production secrets, or user content in fixture certification examples, issue reports,
+  or release evidence.
 
 Safe placeholders include:
 
@@ -125,12 +145,13 @@ crypta:USK@<catalog-key>/cryptad-app-catalog.properties
 ```
 
 Release certification and issue templates should record statuses, relative repo paths, digests,
-app ids, capability names, evidence ids, and redacted summaries instead of raw payloads.
+app ids, capability names, evidence ids, public fixture URIs, and redacted summaries instead of
+raw payloads.
 
 ## Non-goals
 
-The beta does not introduce a live public app store, live public-network test dependency, global
-transparency log, full Web of Trust, old plugin ABI compatibility, old FCP plugin command
+The beta does not introduce a live public app store, a normal PR/nightly live-network dependency,
+global transparency log, full Web of Trust, old plugin ABI compatibility, old FCP plugin command
 compatibility, generic crawling, arbitrary HTTP/HTTPS fetching, a generic filesystem or database
 API for apps, Freetalk/Sone/Freemail compatibility, encrypted mail delivery, daemon-core social or
 mail protocols, new sandbox provider, new update scheduler policy, or any FNP/FCP/wire protocol

@@ -1037,7 +1037,7 @@ public final class AppCatalogsApiHandler {
     String refreshedAt = snapshot.refreshedAt().toString();
     String lastSuccessfulRefreshAt =
         timestampField(snapshot, LAST_SUCCESSFUL_REFRESH_AT_FIELD, refreshedAt);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(16);
     json.put(CATALOG_ID_FIELD, snapshot.catalogId());
     json.put("name", snapshot.name());
     json.put(SOURCE_FIELD, snapshot.sourceUri().toString());
@@ -1057,6 +1057,7 @@ public final class AppCatalogsApiHandler {
     json.put(
         LAST_RESOLVED_URI_FIELD,
         stringField(snapshot, LAST_RESOLVED_URI_FIELD, snapshot.sourceUri().toString()));
+    json.put("signatureKeyId", snapshot.signatureKeyId().orElse(null));
     return json;
   }
 

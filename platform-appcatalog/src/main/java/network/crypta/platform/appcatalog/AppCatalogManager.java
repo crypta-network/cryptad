@@ -218,7 +218,8 @@ public final class AppCatalogManager {
         source,
         now,
         now,
-        AppCatalogSourceRefreshMetadata.success(now, resolvedCatalogUri(fetched, source)));
+        AppCatalogSourceRefreshMetadata.success(now, resolvedCatalogUri(fetched, source)),
+        fetched);
   }
 
   /**
@@ -260,7 +261,8 @@ public final class AppCatalogManager {
         stored.addedAt(),
         attemptedAt,
         AppCatalogSourceRefreshMetadata.success(
-            attemptedAt, resolvedCatalogUri(fetched, stored.source())));
+            attemptedAt, resolvedCatalogUri(fetched, stored.source())),
+        fetched);
   }
 
   private FetchedCatalog fetchForRefresh(
@@ -399,7 +401,12 @@ public final class AppCatalogManager {
       StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
     AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
     return AppCatalogSourceSnapshot.of(
-        catalog, stored.source(), stored.addedAt(), stored.refreshedAt(), stored.refreshMetadata());
+        catalog,
+        stored.source(),
+        stored.addedAt(),
+        stored.refreshedAt(),
+        stored.refreshMetadata(),
+        stored.fetchedCatalog());
   }
 
   private void recordRefreshFailure(

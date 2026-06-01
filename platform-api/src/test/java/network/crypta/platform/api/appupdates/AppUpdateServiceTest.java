@@ -1525,7 +1525,8 @@ class AppUpdateServiceTest {
         AppCatalogFetchStatus.SUCCESS,
         Optional.empty(),
         Optional.empty(),
-        Optional.of("https://example.invalid/cryptad-app-catalog.properties"));
+        Optional.of("https://example.invalid/cryptad-app-catalog.properties"),
+        Optional.empty());
   }
 
   private static AppCatalogEntry entry(String version, AppCatalogReviewStatus reviewStatus) {

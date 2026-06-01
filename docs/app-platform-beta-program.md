@@ -109,6 +109,68 @@ crypta:CHK@<artifact-key>
 crypta:USK@<catalog-key>/cryptad-app-catalog.properties
 ```
 
+## Optional live AppHost smoke
+
+Optional live AppHost lifecycle smoke exercises the generated sample app through localhost Platform
+API routes. It is useful release-manager evidence, but normal PR and nightly evidence remain
+offline-safe.
+
+```bash
+CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
+CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
+CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+tools/release-certification/run-release-certification.sh --mode nightly
+```
+
+The smoke installs, reads runtime status, starts, stops, updates, uninstalls, and reads diagnostics
+for `cert-smoke`. It records only localhost metadata, status codes, and redacted response summaries;
+it does not prove live network publication. If it fails after install, verify the stop/delete
+cleanup before reusing the node.
+
+## Live-network beta certification
+
+Live-network beta certification is for release managers, not normal PR or nightly evidence. It
+validates the app ecosystem against a localhost Crypta node and operator-provided live fixtures.
+
+```bash
+CRYPTAD_CERT_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:8888 \
+CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+CRYPTAD_CERT_LIVE_CATALOG_SOURCE=crypta:USK@<catalog-key>/cryptad-app-catalog.properties \
+CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
+CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
+CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
+CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --live-network-beta \
+  --require-live-network-beta
+```
+
+Use disposable fixture catalog keys for rehearsals. Public fixture URIs may use
+`crypta:USK@<catalog-key>/cryptad-app-catalog.properties` for the catalog source and
+`crypta:CHK@<artifact-key>` for immutable bundle artifacts. The matching private insert URI is a
+bare private USK directory insert URI for the same catalog parent and must be loaded indirectly
+through `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV` or `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE`. If
+both are present, env-name indirection takes precedence and the summary records only fixture
+presence.
+Required live-network beta certification also requires
+`CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID`. The runner compares that configured public key id with
+the `signatureKeyId` observed from the node's verified catalog summary and fails catalog evidence
+when it is unset, unavailable, or mismatched.
+
+The runner does not prove global propagation, public reputation, app safety beyond the signed
+catalog/bundle/review gates, or deletion of published bytes. Preserve only the sanitized summary,
+report, and matrix. Assume live synthetic content may remain retrievable and may not be deletable.
+The Trust Graph `trust.score` app-service invocation runs only when
+`CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise it is reported as optional skipped
+evidence. App-facing workflow steps use app browser sessions minted from each configured static app
+bootstrap and never write those session tokens to artifacts. Required mode fails if an app-only
+route cannot authenticate as the app principal. Cleanup deletes only an app that was absent before
+the run and installed successfully by the smoke. Do not use real keys, production secrets, or user
+content in fixture certification runs.
+
 ## Maintainer closeout runbook
 
 Use this runbook to decide whether the ecosystem beta is ready for a release candidate.
@@ -141,7 +203,11 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
    ```
 
-5. Inspect the release summary and report.
+5. Run live-network beta certification when the release will claim public first-party beta catalog
+   readiness. Use the command above with disposable fixture keys unless the release manager is
+   intentionally publishing the candidate catalog.
+
+6. Inspect the release summary and report.
 
    ```text
    build/release-certification/release-certification-summary.json
@@ -152,17 +218,17 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    build/release-certification/app-platform-smoke/app-platform-smoke-report.md
    ```
 
-6. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
+7. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
    local transparency log, review-history API, and first-party review chain.
-7. Confirm the legacy plugin migration guide evidence passes:
+8. Confirm the legacy plugin migration guide evidence passes:
    `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike`.
-8. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`, and FProxy
+9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`, and FProxy
    browse remains retained.
-9. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
+10. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
    templates, internal links, and redaction checks.
-10. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program` and no
+11. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program` and no
    active blocker remains unless a release manager recorded an explicit waiver.
-11. Publish release notes with the known beta limitations and any accepted waivers or residual
+12. Publish release notes with the known beta limitations and any accepted waivers or residual
     risks.
 
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver

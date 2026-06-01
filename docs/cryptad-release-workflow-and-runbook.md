@@ -85,6 +85,41 @@ Treat these as release blockers, in order:
    `cryptad-app-catalog.signature` is the sibling at the same USK edition. The catalog contract is
    documented in
    [app-catalogs.md](app-catalogs.md).
+   PR-246 live-network beta certification is an explicit release-manager wrapper mode. Run it only
+   with a localhost node, redacted environment variables, and disposable live fixtures unless the
+   release manager is intentionally publishing the candidate first-party beta catalog:
+   ```bash
+   CRYPTAD_CERT_LIVE_NETWORK_BETA=1 \
+   CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1 \
+   CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:8888 \
+   CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+   CRYPTAD_CERT_LIVE_CATALOG_SOURCE=crypta:USK@<catalog-key>/cryptad-app-catalog.properties \
+   CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
+   CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
+   CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
+   CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
+   tools/release-certification/run-release-certification.sh \
+     --mode release-candidate \
+     --live-network-beta \
+     --require-live-network-beta
+   ```
+   The private insert URI must be the bare private USK directory insert URI for the same catalog
+   parent as the public `crypta:USK@<catalog-key>/cryptad-app-catalog.properties` fixture source.
+   Load it through `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV` or
+   `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE`, never as an inline shell assignment. Use env-name
+   indirection only when a protected channel already exported the private URI and the command names
+   that variable without showing its value; if both are present, env-name indirection wins
+   deterministically. In required mode `CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID` must match the
+   node-observed public `signatureKeyId` from the verified catalog summary, otherwise catalog
+   evidence fails.
+   Preserve only the sanitized summary, report, and matrix, and assume live
+   synthetic content may remain retrievable and may not be deletable. Do not use real keys,
+   production secrets, or user content in fixture runs.
+   The live workflow mints app browser sessions from each configured static app bootstrap and keeps
+   those tokens in memory only. If a required app cannot provide a bootstrap session, required mode
+   fails instead of retrying as the host operator. Cleanup deletes only an app that was absent
+   before the run and installed successfully by the smoke; use disposable app ids when certifying
+   on a node that already has first-party apps installed.
 6. **Developer app CLI smoke, when `:platform-devtools` changes** - run
    `./gradlew :platform-devtools:test` and `./gradlew :platform-devtools:installDist`, then verify
    `platform-devtools/build/install/crypta-app/bin/crypta-app --help`. The CLI contract is
@@ -326,6 +361,16 @@ Treat these as release blockers, in order:
   unsanitized local paths to the release record. CI uploads contain sanitized certification
   artifacts only; preserve raw local or CI gate failure directories separately when deeper
   diagnostics are needed.
+- Run optional live AppHost lifecycle smoke only when a localhost node is prepared:
+  ```bash
+  CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
+  CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
+  CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+  tools/release-certification/run-release-certification.sh --mode nightly
+  ```
+  This proves local install/start/status/stop/update/uninstall paths for the generated sample app;
+  it does not prove live network publication or global app safety. The smoke attempts stop/delete
+  cleanup for `cert-smoke` after failures.
 
 ## Production Rollout
 - Publish descriptor and artifacts to the production USK.
