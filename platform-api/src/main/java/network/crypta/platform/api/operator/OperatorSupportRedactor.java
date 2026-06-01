@@ -515,11 +515,13 @@ public final class OperatorSupportRedactor {
   }
 
   private static boolean isSensitiveQueryParameterKey(String normalized) {
-    return isSensitiveCredentialKey(normalized) || normalized.endsWith("key");
+    return isSensitiveCredentialKey(normalized);
   }
 
   private static boolean isSensitiveCredentialKey(String normalized) {
     return SENSITIVE_FIELD_NAMES.contains(normalized)
+        || normalized.endsWith("key")
+        || normalized.endsWith("signature")
         || normalized.endsWith("token")
         || normalized.endsWith("password")
         || normalized.endsWith("passwd")
