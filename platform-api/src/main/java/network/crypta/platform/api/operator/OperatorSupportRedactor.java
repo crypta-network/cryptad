@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -24,22 +25,31 @@ import java.util.regex.Pattern;
  * treat this pass as defense in depth before an operator exports a support bundle.
  */
 public final class OperatorSupportRedactor {
+  private static final String REDACTED = "<redacted>";
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
   private static final Pattern UNIX_ABSOLUTE_PATH =
       Pattern.compile(
           "(?<![A-Za-z0-9])/(?:home|root|work|tmp|var|etc|opt|Users|private|mnt|srv|run|build)/[^\\s\"'<>]*");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("[A-Za-z]:\\\\[^\\s\"'<>]+");
-  private static final Pattern SECRET_ASSIGNMENT =
+  private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
       Pattern.compile(
-          "(?i)\\b(token|password|formPassword|secret|private[-_ ]?key|seed|recovery[-_"
-              + " ]?phrase)\\s*[:=]\\s*[^\\s,;]+");
-  private static final Pattern SENSITIVE_QUERY =
-      Pattern.compile("(?i)([?&](?:token|password|formPassword|secret|key)=)[^&#\\s]+");
+          "(?i)\\b((?:authorization|proxy-authorization|cookie|set-cookie|x-crypta-app-session|"
+              + "x-crypta-form-password)\\s*:\\s*)[^\\r\\n]*");
+  private static final Pattern SECRET_ASSIGNMENT_PREFIX =
+      Pattern.compile("(?i)(?<!\\w)([\"']?)(\\w[-.\\w]*)(\\1\\s*[:=]\\s*)");
+  private static final Pattern QUERY_PARAMETER = Pattern.compile("([?&])([^=&#\\s]+)=([^&#\\s]+)");
   private static final Set<String> SENSITIVE_FIELD_NAMES =
       Set.of(
+          "authorization",
+          "proxyauthorization",
+          "cookie",
+          "setcookie",
           "token",
           "apptoken",
+          "cryptadapptoken",
+          "xcryptaappsession",
+          "xcryptaformpassword",
           "sessiontoken",
           "browsersession",
           "formpassword",
@@ -71,6 +81,7 @@ public final class OperatorSupportRedactor {
           "crypta_or_freenet_content_uri",
           "unix_absolute_path",
           "windows_absolute_path",
+          "authorization_or_cookie_header",
           "secret_assignment",
           "sensitive_query_parameter",
           "sensitive_field_name");
@@ -97,8 +108,8 @@ public final class OperatorSupportRedactor {
    * <p>The input may be a nested combination of maps, lists, strings, numbers, booleans, and {@code
    * null}. Map entries with sensitive field names are omitted entirely and their original keys are
    * recorded in the result. String values that remain in the tree are pattern-scrubbed for content
-   * URIs, local paths, secret assignments, and sensitive query parameters. The input object is not
-   * mutated.
+   * URIs, local paths, credential headers, secret assignments, and sensitive query parameters. The
+   * input object is not mutated.
    *
    * @param value JSON-compatible value to sanitize before export
    * @return redacted value plus the structural field names omitted during traversal
@@ -135,8 +146,8 @@ public final class OperatorSupportRedactor {
   }
 
   private static boolean isSensitiveFieldName(String fieldName) {
-    String normalized = fieldName.replaceAll("[^A-Za-z0-9]", "").toLowerCase(java.util.Locale.ROOT);
-    return SENSITIVE_FIELD_NAMES.contains(normalized);
+    String normalized = normalizeFieldName(fieldName);
+    return isSensitiveCredentialKey(normalized);
   }
 
   private static String redactString(String input) {
@@ -144,9 +155,158 @@ public final class OperatorSupportRedactor {
     redacted = CONTENT_URI.matcher(redacted).replaceAll("<redacted-content-uri>");
     redacted = UNIX_ABSOLUTE_PATH.matcher(redacted).replaceAll("<redacted-path>");
     redacted = WINDOWS_ABSOLUTE_PATH.matcher(redacted).replaceAll("<redacted-path>");
-    redacted = SECRET_ASSIGNMENT.matcher(redacted).replaceAll("$1=<redacted>");
-    redacted = SENSITIVE_QUERY.matcher(redacted).replaceAll("$1<redacted>");
+    redacted = AUTHORIZATION_OR_COOKIE_HEADER.matcher(redacted).replaceAll("$1" + REDACTED);
+    redacted = redactAssignments(redacted);
+    redacted = redactQueryParameters(redacted);
     return redacted;
+  }
+
+  private static String redactAssignments(String input) {
+    Matcher matcher = SECRET_ASSIGNMENT_PREFIX.matcher(input);
+    StringBuilder redacted = null;
+    int appendFrom = 0;
+    while (matcher.find()) {
+      int valueStart = matcher.end();
+      int valueEnd = assignmentValueEnd(input, valueStart);
+      if (matcher.start() >= appendFrom
+          && valueEnd > valueStart
+          && isSensitiveCredentialKey(normalizeFieldName(matcher.group(2)))) {
+        if (redacted == null) {
+          redacted = new StringBuilder(input.length());
+        }
+        redacted.append(input, appendFrom, valueStart);
+        redacted.append(redactedAssignmentValue(input, valueStart, valueEnd));
+        appendFrom = valueEnd;
+      }
+    }
+    if (redacted == null) {
+      return input;
+    }
+    return redacted.append(input, appendFrom, input.length()).toString();
+  }
+
+  private static String redactQueryParameters(String input) {
+    Matcher matcher = QUERY_PARAMETER.matcher(input);
+    StringBuilder redacted = null;
+    int appendFrom = 0;
+    while (matcher.find()) {
+      if (!isSensitiveQueryParameterKey(normalizeFieldName(matcher.group(2)))) {
+        continue;
+      }
+      if (redacted == null) {
+        redacted = new StringBuilder(input.length());
+      }
+      redacted.append(input, appendFrom, matcher.start());
+      redacted.append(matcher.group(1)).append(matcher.group(2)).append('=').append(REDACTED);
+      appendFrom = matcher.end();
+    }
+    if (redacted == null) {
+      return input;
+    }
+    return redacted.append(input, appendFrom, input.length()).toString();
+  }
+
+  private static int assignmentValueEnd(String input, int valueStart) {
+    if (valueStart >= input.length()) {
+      return valueStart;
+    }
+    char first = input.charAt(valueStart);
+    if (isQuote(first)) {
+      return quotedAssignmentValueEnd(input, valueStart, first);
+    }
+    int firstTokenEnd = unquotedAssignmentTokenEnd(input, valueStart);
+    if (isAuthScheme(input, valueStart, firstTokenEnd)) {
+      int nextTokenStart = skipHorizontalWhitespace(input, firstTokenEnd);
+      if (nextTokenStart > firstTokenEnd) {
+        int secondTokenEnd = unquotedAssignmentTokenEnd(input, nextTokenStart);
+        if (secondTokenEnd > nextTokenStart) {
+          return secondTokenEnd;
+        }
+      }
+    }
+    return firstTokenEnd;
+  }
+
+  private static int quotedAssignmentValueEnd(String input, int valueStart, char quote) {
+    for (int index = valueStart + 1; index < input.length(); index++) {
+      char current = input.charAt(index);
+      if (current == quote) {
+        return index + 1;
+      }
+      if (current == '\r' || current == '\n') {
+        return index;
+      }
+    }
+    return input.length();
+  }
+
+  private static int unquotedAssignmentTokenEnd(String input, int valueStart) {
+    int index = valueStart;
+    while (index < input.length() && !isUnquotedAssignmentDelimiter(input.charAt(index))) {
+      index++;
+    }
+    return index;
+  }
+
+  private static int skipHorizontalWhitespace(String input, int valueStart) {
+    int index = valueStart;
+    while (index < input.length()) {
+      char current = input.charAt(index);
+      if (current != ' ' && current != '\t') {
+        break;
+      }
+      index++;
+    }
+    return index;
+  }
+
+  private static String redactedAssignmentValue(String input, int valueStart, int valueEnd) {
+    char first = input.charAt(valueStart);
+    if (!isQuote(first)) {
+      return REDACTED;
+    }
+    boolean closed = valueEnd > valueStart && input.charAt(valueEnd - 1) == first;
+    return closed ? first + REDACTED + first : first + REDACTED;
+  }
+
+  private static boolean isQuote(char value) {
+    return value == '"' || value == '\'';
+  }
+
+  private static boolean isUnquotedAssignmentDelimiter(char value) {
+    return Character.isWhitespace(value)
+        || value == ','
+        || value == ';'
+        || value == '&'
+        || value == '}'
+        || value == ']';
+  }
+
+  private static boolean isAuthScheme(String input, int startInclusive, int endExclusive) {
+    int length = endExclusive - startInclusive;
+    return (length == 6 && input.regionMatches(true, startInclusive, "Bearer", 0, length))
+        || (length == 5 && input.regionMatches(true, startInclusive, "Basic", 0, length))
+        || (length == 6 && input.regionMatches(true, startInclusive, "Digest", 0, length));
+  }
+
+  private static boolean isSensitiveQueryParameterKey(String normalized) {
+    return isSensitiveCredentialKey(normalized) || normalized.endsWith("key");
+  }
+
+  private static boolean isSensitiveCredentialKey(String normalized) {
+    return SENSITIVE_FIELD_NAMES.contains(normalized)
+        || normalized.endsWith("token")
+        || normalized.endsWith("password")
+        || normalized.endsWith("passwd")
+        || normalized.endsWith("secret")
+        || normalized.endsWith("credential")
+        || normalized.endsWith("seed")
+        || normalized.endsWith("recoveryphrase")
+        || (normalized.contains("privatekey") && !normalized.endsWith("present"));
+  }
+
+  private static String normalizeFieldName(String fieldName) {
+    return fieldName.replaceAll("[^A-Za-z0-9]", "").toLowerCase(java.util.Locale.ROOT);
   }
 
   /**

@@ -767,7 +767,7 @@ public final class OperatorBetaDashboardService {
             "Stage update",
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/stage",
-            updateRoutesAvailable && hasAvailableUpdateCandidate(update)));
+            updateRoutesAvailable && stageUpdateActionAvailable(update)));
     actions.add(
         action(
             "apply-app-update",
@@ -775,6 +775,7 @@ public final class OperatorBetaDashboardService {
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/apply",
             updateRoutesAvailable
+                && !running
                 && booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))));
     actions.add(
         action(
@@ -783,6 +784,7 @@ public final class OperatorBetaDashboardService {
             "POST",
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/rollback",
             updateRoutesAvailable
+                && !running
                 && booleanValue(mapValue(update.get("rollback")).get(AVAILABLE_FIELD))));
     actions.add(
         action(
@@ -796,7 +798,7 @@ public final class OperatorBetaDashboardService {
             "preserve-data-uninstall",
             "Uninstall preserving data",
             "DELETE",
-            APPS_ROUTE_PREFIX + encodedAppId,
+            APPS_ROUTE_PREFIX + encodedAppId + "?preserveData=true",
             true));
     return List.copyOf(actions);
   }
@@ -896,6 +898,14 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> candidate = mapValue(update.get(CANDIDATE_FIELD));
     return AVAILABLE_STATUS.equals(candidate.get(STATUS_FIELD))
         || booleanValue(candidate.get("autoStageAllowed"));
+  }
+
+  private static boolean stageUpdateActionAvailable(Map<String, Object> update) {
+    Map<String, Object> candidate = mapValue(update.get(CANDIDATE_FIELD));
+    Map<String, Object> reviewTrust = mapValue(candidate.get(REVIEW_TRUST_FIELD));
+    return hasAvailableUpdateCandidate(update)
+        && !booleanValue(reviewTrust.get("blocksUpdate"))
+        && !booleanValue(reviewTrust.get("requiresAcknowledgement"));
   }
 
   private static Map<String, Object> legacySurfaceSummary(Map<String, Object> surface) {
