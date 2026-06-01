@@ -14,9 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OperatorSupportRedactorTest {
   private static final String AUTHORIZATION_FIELD = "Authorization";
   private static final String COOKIE_FIELD = "Cookie";
+  private static final String CRYPTAD_DIRECTORY = "Cryptad";
+  private static final String CRYPTAD_PATH_ELEMENT = "cryptad";
   private static final String FORM_SECRET_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
+  private static final String OPERATOR_PATH_ELEMENT = "operator";
   private static final String REDACTED = "<redacted>";
   private static final String TOKEN_FIELD = "token";
+  private static final String USERS_PATH_ELEMENT = "Users";
 
   @Test
   void redact_whenNestedSecretsPathsAndContentUrisPresent_expectUnsafeValuesRemoved() {
@@ -58,7 +62,10 @@ class OperatorSupportRedactorTest {
   @Test
   void redact_whenArbitraryAbsolutePathsPresent_expectUnsafePathsRemoved() {
     String posixPath = posixAppPath();
+    String macSupportPath = macSupportAppPath();
+    String posixFileWithSpace = posixFileWithSpacePath();
     String windowsDrivePath = windowsDriveRollbackPath();
+    String windowsDrivePathWithSpace = windowsDriveRollbackPathWithSpace();
     String windowsUncPath = windowsUncCatalogPath();
     String fileUriPath = fileUriCatalogPath();
     Map<String, Object> input =
@@ -66,11 +73,17 @@ class OperatorSupportRedactorTest {
             "diagnostic",
             "paths "
                 + posixPath
-                + " "
+                + ", "
+                + macSupportPath
+                + "; "
+                + posixFileWithSpace
+                + ", "
                 + windowsDrivePath
-                + " "
+                + "; "
+                + windowsDrivePathWithSpace
+                + ", "
                 + windowsUncPath
-                + " "
+                + "; "
                 + fileUriPath
                 + " routes /api/v1/operator/support-bundle /app/node/#beta-dashboard");
 
@@ -78,22 +91,63 @@ class OperatorSupportRedactorTest {
 
     String rendered = result.value().toString();
     assertFalse(rendered.contains(posixPath));
+    assertFalse(rendered.contains(macSupportPath));
+    assertFalse(rendered.contains(posixFileWithSpace));
     assertFalse(rendered.contains(windowsDrivePath));
+    assertFalse(rendered.contains(windowsDrivePathWithSpace));
     assertFalse(rendered.contains(windowsUncPath));
     assertFalse(rendered.contains(fileUriPath));
+    assertFalse(rendered.contains("Application Support"));
+    assertFalse(rendered.contains("AppData Local"));
+    assertFalse(rendered.contains("My Report.txt"));
     assertTrue(rendered.contains("<redacted-path>"));
     assertTrue(rendered.contains("/api/v1/operator/support-bundle"));
     assertTrue(rendered.contains("/app/node/#beta-dashboard"));
   }
 
   private static String posixAppPath() {
-    return '/' + String.join("/", "data", "cryptad", "apps", "feed-reader");
+    return '/' + String.join("/", "data", CRYPTAD_PATH_ELEMENT, "apps", "feed-reader");
+  }
+
+  private static String macSupportAppPath() {
+    return '/'
+        + String.join(
+            "/",
+            USERS_PATH_ELEMENT,
+            OPERATOR_PATH_ELEMENT,
+            "Library",
+            "Application Support",
+            CRYPTAD_DIRECTORY,
+            "apps");
+  }
+
+  private static String posixFileWithSpacePath() {
+    return '/' + String.join("/", "tmp", CRYPTAD_PATH_ELEMENT, "My Report.txt");
   }
 
   private static String windowsDriveRollbackPath() {
     return "C:"
         + '/'
-        + String.join("/", "Users", "operator", "AppData", "Local", "Cryptad", "rollback");
+        + String.join(
+            "/",
+            USERS_PATH_ELEMENT,
+            OPERATOR_PATH_ELEMENT,
+            "AppData",
+            "Local",
+            CRYPTAD_DIRECTORY,
+            "rollback");
+  }
+
+  private static String windowsDriveRollbackPathWithSpace() {
+    return "C:"
+        + '\\'
+        + String.join(
+            "\\",
+            USERS_PATH_ELEMENT,
+            OPERATOR_PATH_ELEMENT,
+            "AppData Local",
+            CRYPTAD_DIRECTORY,
+            "rollback");
   }
 
   private static String windowsUncCatalogPath() {
@@ -102,7 +156,7 @@ class OperatorSupportRedactorTest {
   }
 
   private static String fileUriCatalogPath() {
-    return "file:" + '/' + String.join("/", "srv", "cryptad", "catalog.properties");
+    return "file:" + '/' + String.join("/", "srv", CRYPTAD_PATH_ELEMENT, "catalog.properties");
   }
 
   @Test

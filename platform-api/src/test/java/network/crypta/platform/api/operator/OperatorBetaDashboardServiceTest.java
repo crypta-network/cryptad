@@ -24,8 +24,10 @@ class OperatorBetaDashboardServiceTest {
   private static final String AVAILABLE = "available";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
   private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
+  private static final String SUMMARY_FIELD = "summary";
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
       "FILE:///home/operator/private/cryptad-app-catalog.properties";
+  private static final String WARNINGS_FIELD = "warnings";
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-05-24T12:00:00Z"), ZoneOffset.UTC);
 
@@ -36,7 +38,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
 
-    Map<String, Object> summary = mapValue(dashboard.get("summary"));
+    Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertEquals(1L, summary.get("pendingUpdateCount"));
     assertTrue(actionAvailable(actions, "check-app-update"));
@@ -51,7 +53,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
 
-    Map<String, Object> summary = mapValue(dashboard.get("summary"));
+    Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertEquals(1L, summary.get("pendingUpdateCount"));
     assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
@@ -117,6 +119,28 @@ class OperatorBetaDashboardServiceTest {
     assertEquals("file:<redacted>", catalog.get("sourceDisplay"));
   }
 
+  @Test
+  void dashboard_whenUpdateBlockedByReviewTrust_expectQuotaWarningCountIgnoresAppWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(updateSummary(availableCandidate(Map.of("blocksUpdate", true))));
+
+    Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
+
+    Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
+    assertEquals(0L, summary.get("quotaWarningCount"));
+    assertTrue(warningsForFirstApp(dashboard).contains("app_update_blocked"));
+  }
+
+  @Test
+  void dashboard_whenAppHostQuotaWarningPresent_expectQuotaWarningCountIncludesApp() {
+    Map<String, Object> dashboard =
+        service(appsHandler(installedAppWithQuotaWarning()), null).dashboard();
+
+    Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
+    assertEquals(1L, summary.get("quotaWarningCount"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);
@@ -138,8 +162,12 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static AppsApiHandler appsHandler(boolean running) {
+    return appsHandler(installedApp(running));
+  }
+
+  private static AppsApiHandler appsHandler(Map<String, Object> app) {
     AppsApiHandler appsApiHandler = mock(AppsApiHandler.class);
-    when(appsApiHandler.list(false)).thenReturn(List.of(installedApp(running)));
+    when(appsApiHandler.list(false)).thenReturn(List.of(app));
     return appsApiHandler;
   }
 
@@ -150,9 +178,24 @@ class OperatorBetaDashboardServiceTest {
     app.put("version", "1.0.0");
     app.put("running", running);
     app.put(
-        "quota", Map.of("warnings", List.of(), "dataOverLimit", false, "cacheOverLimit", false));
-    app.put("sandbox", Map.of("warnings", List.of()));
+        "quota",
+        Map.of(WARNINGS_FIELD, List.of(), "dataOverLimit", false, "cacheOverLimit", false));
+    app.put("sandbox", Map.of(WARNINGS_FIELD, List.of()));
     app.put("apiCompatibility", Map.of("status", "compatible"));
+    return app;
+  }
+
+  private static Map<String, Object> installedAppWithQuotaWarning() {
+    Map<String, Object> app = installedApp(false);
+    app.put(
+        "quota",
+        Map.of(
+            WARNINGS_FIELD,
+            List.of("Cache usage exceeds the configured app limit."),
+            "dataOverLimit",
+            false,
+            "cacheOverLimit",
+            false));
     return app;
   }
 
@@ -205,6 +248,10 @@ class OperatorBetaDashboardServiceTest {
     return listOfMaps(listOfMaps(dashboard.get("apps")).getFirst().get("recoveryActions"));
   }
 
+  private static List<String> warningsForFirstApp(Map<String, Object> dashboard) {
+    return stringList(listOfMaps(dashboard.get("apps")).getFirst().get(WARNINGS_FIELD));
+  }
+
   private static boolean actionAvailable(List<Map<String, Object>> actions, String actionId) {
     return Boolean.TRUE.equals(action(actions, actionId).get(AVAILABLE));
   }
@@ -222,5 +269,12 @@ class OperatorBetaDashboardServiceTest {
 
   private static List<Map<String, Object>> listOfMaps(Object value) {
     return value instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
+  }
+
+  private static List<String> stringList(Object value) {
+    if (value instanceof List<?> list) {
+      return list.stream().map(String.class::cast).toList();
+    }
+    return List.of();
   }
 }

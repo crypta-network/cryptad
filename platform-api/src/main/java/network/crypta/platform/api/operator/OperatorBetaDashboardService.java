@@ -612,7 +612,7 @@ public final class OperatorBetaDashboardService {
             .filter(subscription -> STALE.equals(subscription.get(STATUS_FIELD)))
             .count();
     long quotaWarnings =
-        apps.stream().filter(app -> !stringList(app.get(WARNINGS_FIELD)).isEmpty()).count();
+        apps.stream().filter(OperatorBetaDashboardService::hasQuotaWarning).count();
 
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put("catalogCount", catalogs.size());
@@ -626,6 +626,22 @@ public final class OperatorBetaDashboardService {
     json.put("quotaWarningCount", quotaWarnings);
     json.put("supportWarningCount", supportWarningCount);
     return json;
+  }
+
+  private static boolean hasQuotaWarning(Map<String, Object> app) {
+    Map<String, Object> appHostQuota = mapValue(app.get(QUOTA_FIELD));
+    Map<String, Object> appData = mapValue(app.get("appData"));
+    return !stringList(appHostQuota.get(WARNINGS_FIELD)).isEmpty()
+        || booleanValue(appHostQuota.get("dataOverLimit"))
+        || booleanValue(appHostQuota.get("cacheOverLimit"))
+        || hasAppDataQuotaWarning(appData);
+  }
+
+  private static boolean hasAppDataQuotaWarning(Map<String, Object> appData) {
+    Map<String, Object> appDataQuota = mapValue(appData.get(QUOTA_FIELD));
+    return appData.containsKey(QUOTA_FIELD)
+        && (!stringList(appData.get(WARNINGS_FIELD)).isEmpty()
+            || !booleanValue(appDataQuota.get("dataQuotaAvailable")));
   }
 
   private static String overallStatus(Map<String, Object> summary, List<String> warnings) {

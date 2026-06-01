@@ -324,6 +324,70 @@ public final class OperatorSupportRedactor {
   }
 
   private static int pathTokenEnd(String input, int start) {
+    int quotedEnd = quotedPathTokenEnd(input, start);
+    if (quotedEnd > start) {
+      return quotedEnd;
+    }
+    int index = start;
+    while (index < input.length()) {
+      char current = input.charAt(index);
+      if (isPathTokenCharacter(current)) {
+        index++;
+      } else if (isHorizontalWhitespace(current) && isPathWhitespaceContinuation(input, index)) {
+        index = skipHorizontalWhitespace(input, index);
+      } else {
+        break;
+      }
+    }
+    return index;
+  }
+
+  private static int quotedPathTokenEnd(String input, int start) {
+    if (start == 0 || !isQuote(input.charAt(start - 1))) {
+      return -1;
+    }
+    char quote = input.charAt(start - 1);
+    int index = start;
+    while (index < input.length()) {
+      char current = input.charAt(index);
+      if (current == quote) {
+        return index;
+      }
+      if (current == '\r' || current == '\n') {
+        return -1;
+      }
+      index++;
+    }
+    return -1;
+  }
+
+  private static boolean isPathWhitespaceContinuation(String input, int whitespaceIndex) {
+    int next = skipHorizontalWhitespace(input, whitespaceIndex);
+    return next > whitespaceIndex
+        && next < input.length()
+        && isPathTokenCharacter(input.charAt(next))
+        && (pathTokenSegmentContainsSeparator(input, next)
+            || pathTokenSegmentLooksLikeFilename(input, next));
+  }
+
+  private static boolean pathTokenSegmentContainsSeparator(String input, int start) {
+    int index = start;
+    while (index < input.length() && isPathTokenCharacter(input.charAt(index))) {
+      if (isPathSeparator(input.charAt(index))) {
+        return true;
+      }
+      index++;
+    }
+    return false;
+  }
+
+  private static boolean pathTokenSegmentLooksLikeFilename(String input, int start) {
+    int end = pathTokenSegmentEnd(input, start);
+    int dot = input.lastIndexOf('.', end - 1);
+    return dot > start && dot + 1 < end;
+  }
+
+  private static int pathTokenSegmentEnd(String input, int start) {
     int index = start;
     while (index < input.length() && isPathTokenCharacter(input.charAt(index))) {
       index++;
@@ -384,6 +448,10 @@ public final class OperatorSupportRedactor {
 
   private static boolean isPathSeparator(char value) {
     return value == '/' || value == '\\';
+  }
+
+  private static boolean isHorizontalWhitespace(char value) {
+    return value == ' ' || value == '\t';
   }
 
   private static String redactAssignments(String input) {
@@ -477,7 +545,7 @@ public final class OperatorSupportRedactor {
     int index = valueStart;
     while (index < input.length()) {
       char current = input.charAt(index);
-      if (current != ' ' && current != '\t') {
+      if (!isHorizontalWhitespace(current)) {
         break;
       }
       index++;
