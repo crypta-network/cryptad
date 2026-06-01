@@ -93,8 +93,9 @@ Use this skill when you need to:
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
-  app capability/audit decisions, app-vault route handlers, and app-update lifecycle service. Its
-  focused leaf tests now live under `platform-api/src/test/java`.
+  app capability/audit decisions, app-vault route handlers, content/app-data/subscription/service
+  routes, app-update lifecycle service, and host/operator-only beta dashboard/support-bundle
+  routes. Its focused leaf tests now live under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
   data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.
@@ -122,8 +123,8 @@ Use this skill when you need to:
   under `platform-devtools/src/test/java`.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
-- `:platform-web-shell` owns the browser-facing Web Shell leaf and its focused leaf tests under
-  `platform-web-shell/src/test/java`.
+- `:platform-web-shell` owns the browser-facing Web Shell leaf, including the operator beta
+  dashboard panel, and its focused leaf tests under `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
   subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level

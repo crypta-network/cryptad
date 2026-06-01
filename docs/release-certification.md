@@ -1,8 +1,9 @@
 # Release certification
 
-Release certification is the reproducible evidence bundle for a Cryptad release candidate.  It
-aggregates compatibility, performance, app-platform, catalog, app-owned UI, legacy-admin
-retirement, and CI metadata into one redacted report.
+Release certification is the reproducible evidence bundle for a Cryptad release candidate. It
+aggregates compatibility, performance, app-platform, catalog, app-owned UI, operator beta recovery,
+optional live-network beta certification, legacy-admin retirement, and CI metadata into one
+redacted report.
 
 The generated artifacts are:
 
@@ -17,10 +18,14 @@ build/release-certification/artifacts/
 build/release-certification/app-platform-smoke/summary.json
 build/release-certification/app-platform-smoke/app-platform-smoke-report.md
 build/release-certification/app-platform-smoke/artifacts/
+build/release-certification/live-network-beta-smoke/summary.json
+build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
 
 The Markdown report and ecosystem matrix are intended for human release review. The JSON summary
-is the stable machine-readable companion for later automation and report comparison.
+is the stable machine-readable companion for later automation and report comparison. The
+`live-network-beta-smoke/` files are written only when live-network beta certification is explicitly
+enabled.
 
 ## Modes
 
@@ -41,6 +46,7 @@ Run self-tests first:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
 Run the offline wrapper modes from a clean release workspace:
@@ -78,6 +84,7 @@ build/interop-extended/summary.json
 build/perf-smoke/summary.json
 build/perf-smoke/artifacts/perf-report.md
 build/release-certification/app-platform-smoke/summary.json
+build/release-certification/live-network-beta-smoke/summary.json
 ```
 
 Run the source gates before the release-candidate aggregation when their evidence is required:

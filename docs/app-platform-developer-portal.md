@@ -40,6 +40,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Legacy plugin migration guide | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) |
 | Legacy HTTP boundary | [legacy-http-boundary.md](legacy-http-boundary.md) |
 | Legacy retirement plan | [legacy-retirement-plan.md](legacy-retirement-plan.md) |
+| Operator beta dashboard and support bundle | [operator-beta-dashboard.md](operator-beta-dashboard.md) |
 | Release certification | [release-certification.md](release-certification.md) |
 | Security reporting and data handling | [SECURITY.md](SECURITY.md) |
 
@@ -117,7 +118,7 @@ the app, fetch catalogs, talk to the public Crypta network, or prove live-node p
 
 ## Release manager path
 
-Phase 7 closeout treats these workstreams as one ecosystem beta readiness story:
+Public beta readiness treats these workstreams as one ecosystem beta release story:
 
 | Readiness area | Evidence and docs |
 | --- | --- |
@@ -126,8 +127,11 @@ Phase 7 closeout treats these workstreams as one ecosystem beta readiness story:
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), `background update scheduler`, `rollback` evidence |
+| Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
 | Legacy plugin migration | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md), `legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike` |
 | Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`; FProxy browse remains retained |
+| Operator recovery and support | [operator-beta-dashboard.md](operator-beta-dashboard.md), `operator-beta.*` evidence, `operator-beta-ux-and-recovery` matrix row |
+| Live-network beta certification | [release-certification.md](release-certification.md), `live-network-beta.*` evidence, `live-network-beta-certification` matrix row when explicitly required |
 | Ecosystem matrix | [release-certification.md](release-certification.md), `ecosystem certification matrix` |
 | Docs and beta program | This portal, [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md), [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), [app-platform-beta-program.md](app-platform-beta-program.md) |
 
@@ -137,11 +141,15 @@ Release candidates should run the normal build/test gates plus release certifica
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```
 
 The generated release summary, release report, app-platform smoke report, review transparency-log
-evidence, legacy retirement evidence, and ecosystem certification matrix are the closeout record.
+evidence, legacy retirement evidence, optional live-network beta evidence, and ecosystem
+certification matrix are the closeout record. Live-network beta mode remains opt-in and should use
+only a localhost node with disposable fixtures unless the release manager is intentionally
+publishing the candidate first-party beta catalog.
 
 ## Security entry points
 
@@ -164,6 +172,8 @@ Start here:
   signed catalogs, trusted reviewer keys, local review transparency logs, and review policy modes.
 - [app-update-lifecycle.md](app-update-lifecycle.md) for manual, stage, and apply-when-stopped
   update behavior plus rollback scope.
+- [operator-beta-dashboard.md](operator-beta-dashboard.md) for host/operator-only recovery,
+  support-bundle redaction, and Web Shell dashboard boundaries.
 - [SECURITY.md](SECURITY.md) for security reporting.
 
 ## Feedback and submissions

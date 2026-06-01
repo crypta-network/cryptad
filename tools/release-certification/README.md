@@ -14,6 +14,7 @@ Run the Python-only self-tests:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
 Run the offline wrapper modes from a clean release workspace:
@@ -52,7 +53,14 @@ build/release-certification/
     summary.json
     app-platform-smoke-report.md
     artifacts/
+  live-network-beta-smoke/
+    summary.json
+    live-network-beta-smoke-report.md
 ```
+
+The `live-network-beta-smoke/` directory is present only when `--live-network-beta` or
+`CRYPTAD_CERT_LIVE_NETWORK_BETA=1` is set. Normal PR, nightly, and offline release-candidate runs
+must not consume stale live summaries when live-network beta mode is disabled.
 
 The summary uses stable evidence ids and status values:
 
