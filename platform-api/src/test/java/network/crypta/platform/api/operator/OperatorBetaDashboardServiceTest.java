@@ -22,7 +22,9 @@ class OperatorBetaDashboardServiceTest {
   private static final String APP_ID = "feed-reader";
   private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
   private static final String AVAILABLE = "available";
+  private static final String MANUAL_SOURCE_KIND = "manual";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
+  private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
   private static final String SUMMARY_FIELD = "summary";
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
@@ -115,8 +117,23 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
 
     Map<String, Object> catalog = listOfMaps(dashboard.get("catalogs")).getFirst();
-    assertEquals("manual", catalog.get("sourceKind"));
+    assertEquals(MANUAL_SOURCE_KIND, catalog.get(SOURCE_KIND_FIELD));
     assertEquals("file:<redacted>", catalog.get("sourceDisplay"));
+  }
+
+  @Test
+  void dashboard_whenCatalogSourceUsesRemoteUri_expectSourceDisplayRedactedAndDigestRetained() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of(remoteCatalog()));
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+
+    Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
+
+    Map<String, Object> catalog = listOfMaps(dashboard.get("catalogs")).getFirst();
+    assertEquals(MANUAL_SOURCE_KIND, catalog.get(SOURCE_KIND_FIELD));
+    assertEquals("https:<redacted>", catalog.get("sourceDisplay"));
+    assertTrue(
+        catalog.get("sourceDigest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
   }
 
   @Test
@@ -204,7 +221,18 @@ class OperatorBetaDashboardServiceTest {
     catalog.put("catalogId", "local-catalog");
     catalog.put("name", "Local Catalog");
     catalog.put("source", UPPERCASE_FILE_CATALOG_SOURCE);
-    catalog.put("sourceKind", "file");
+    catalog.put(SOURCE_KIND_FIELD, "file");
+    catalog.put("lastFetchStatus", "success");
+    catalog.put("appCount", 0);
+    return catalog;
+  }
+
+  private static Map<String, Object> remoteCatalog() {
+    LinkedHashMap<String, Object> catalog = new LinkedHashMap<>();
+    catalog.put("catalogId", "private-beta");
+    catalog.put("name", "Private Beta");
+    catalog.put("source", "https://staging.example.invalid/private/catalog.json");
+    catalog.put(SOURCE_KIND_FIELD, MANUAL_SOURCE_KIND);
     catalog.put("lastFetchStatus", "success");
     catalog.put("appCount", 0);
     return catalog;

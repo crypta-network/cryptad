@@ -91,11 +91,14 @@ final class PlatformApiOperatorRoutes {
    * @param dependencies route-composition inputs owned by the top-level router
    * @param appServices optional shared services used by schedulers and request handlers
    * @param appRoutes app route collaborator that owns the shared app-update service
+   * @param trustGraphApiHandler Trust Graph handler already used by the top-level Trust Graph
+   *     routes
    */
   PlatformApiOperatorRoutes(
       RouteDependencies dependencies,
       PlatformApiSharedAppServices appServices,
-      PlatformApiAppRoutes appRoutes) {
+      PlatformApiAppRoutes appRoutes,
+      TrustGraphApiHandler trustGraphApiHandler) {
     AppVaultService appVaultService = appServices.vaultService();
     AppsApiHandler appsApiHandler =
         dependencies.appHost() == null
@@ -118,10 +121,6 @@ final class PlatformApiOperatorRoutes {
             ? null
             : new DiagnosticsApiHandler(
                 dependencies.runtimePorts().diagnostic(), dependencies.legacyAdminUsage());
-    TrustGraphApiHandler trustGraphApiHandler =
-        appServices.trustGraphApiHandler() == null
-            ? new TrustGraphApiHandler()
-            : appServices.trustGraphApiHandler();
     contentSubscriptionService = appServices.contentSubscriptionService();
     dashboardService =
         new OperatorBetaDashboardService(
@@ -185,9 +184,9 @@ final class PlatformApiOperatorRoutes {
    * Routes operator-triggered recovery actions for durable content subscriptions.
    *
    * <p>These actions intentionally reuse {@link ContentSubscriptionService} rather than duplicating
-   * subscription state handling in the dashboard layer. The response wraps the updated subscription
-   * summary in a stable envelope, and the service remains responsible for validating app and
-   * subscription identifiers.
+   * subscription state handling in the dashboard layer. The response wraps the updated
+   * operator-safe subscription summary in a stable envelope, and the service remains responsible
+   * for validating app and subscription identifiers.
    *
    * @param segments decoded route segments for {@code /operator/subscriptions/{app}/{id}/{action}}
    * @param request full request metadata used to validate the HTTP method
@@ -211,7 +210,7 @@ final class PlatformApiOperatorRoutes {
     String appId = segments.get(2);
     String subscriptionId = segments.get(3);
     String action = segments.get(4);
-    Object subscription =
+    Map<String, Object> subscription =
         switch (action) {
           case "refresh" -> contentSubscriptionService.refresh(appId, subscriptionId);
           case "pause" -> contentSubscriptionService.pause(appId, subscriptionId);
@@ -219,7 +218,7 @@ final class PlatformApiOperatorRoutes {
           default -> throw notFound();
         };
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
-    envelope.put("subscription", subscription);
+    envelope.put("subscription", dashboardService.operatorSubscriptionSummary(subscription));
     return PlatformApiResponse.ok(envelope);
   }
 

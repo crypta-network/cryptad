@@ -320,7 +320,8 @@ public final class PlatformApiRouter {
                 appUiOriginRegistry,
                 operationalRoutes::currentCryptaVersion),
             checkedAppServices,
-            appRoutes);
+            appRoutes,
+            trustGraphRoutes.trustGraphApiHandler());
     contentRoutes =
         new PlatformApiContentRoutes(
             checkedRuntimePorts, checkedAppServices.contentSubscriptionService());

@@ -434,7 +434,7 @@ public final class OperatorBetaDashboardService {
     }
     try {
       return contentSubscriptionService.listAllForOperator().stream()
-          .map(this::subscriptionSummary)
+          .map(this::operatorSubscriptionSummary)
           .toList();
     } catch (RuntimeException exception) {
       warnings.add("Content subscriptions could not be inspected: " + safeReason(exception));
@@ -442,7 +442,20 @@ public final class OperatorBetaDashboardService {
     }
   }
 
-  private Map<String, Object> subscriptionSummary(Map<String, Object> subscription) {
+  /**
+   * Projects an app-facing content-subscription summary into the host/operator-safe dashboard
+   * shape.
+   *
+   * <p>The app-facing summary includes the raw app-owned source URI and resolved runtime URI. The
+   * operator dashboard and recovery-action responses must instead expose only a bounded display
+   * placeholder plus a digest for correlation, while preserving status, timing, and recovery action
+   * fields useful to the local Web Shell.
+   *
+   * @param subscription app-facing subscription summary returned by {@link
+   *     ContentSubscriptionService}
+   * @return redacted operator-safe subscription summary
+   */
+  public Map<String, Object> operatorSubscriptionSummary(Map<String, Object> subscription) {
     String appId = stringValue(subscription.get(APP_ID_FIELD));
     String subscriptionId = stringValue(subscription.get("subscriptionId"));
     String sourceUri = stringValue(subscription.get("sourceUri"));
@@ -1007,6 +1020,10 @@ public final class OperatorBetaDashboardService {
       URI uri = new URI(source);
       if (uri.getScheme() == null) {
         return "source:<redacted>";
+      }
+      String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+      if ("http".equals(scheme) || "https".equals(scheme)) {
+        return scheme + ":<redacted>";
       }
       if (uri.getQuery() == null) {
         return uri.toString();
