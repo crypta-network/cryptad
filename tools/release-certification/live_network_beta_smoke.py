@@ -2082,6 +2082,35 @@ def smoke_exit_code(settings: Settings, summary: dict[str, Any]) -> int:
     return 0
 
 
+def redaction_failure_artifacts(
+    settings: Settings,
+    started: str,
+    duration_ms: int,
+    validation: UrlValidation,
+    redaction_evidence: dict[str, Any],
+    private_insert_source: str,
+) -> tuple[dict[str, Any], str, int]:
+    details = redaction_evidence.get("details", {})
+    safe_redaction_evidence = {
+        **redaction_evidence,
+        "details": {
+            **(details if isinstance(details, dict) else {}),
+            "unsafeArtifactDetailsSuppressed": True,
+        },
+    }
+    summary = build_summary(
+        settings,
+        started,
+        duration_ms,
+        validation,
+        [safe_redaction_evidence],
+        private_insert_source,
+    )
+    summary["redaction"]["unsafeArtifactDetailsSuppressed"] = True
+    report = render_report(summary)
+    return summary, report, smoke_exit_code(settings, summary)
+
+
 def catalog_blocked_mutation_evidence(evidence_id: str, settings: Settings, catalog_status: str) -> dict[str, Any]:
     required = settings.required and evidence_id in REQUIRED_EVIDENCE_IDS
     return evidence(
@@ -2167,6 +2196,16 @@ def run_smoke(settings: Settings, transport: Transport | None = None) -> tuple[d
     report = render_report(summary)
     app_session_values = client.app_session_values() if client is not None else []
     redaction_evidence = collect_redaction(settings, summary, report, private_insert_value, app_session_values)
+    if redaction_evidence["status"] == "fail":
+        total_duration_ms = max(0, monotonic_ms() - start_ms)
+        return redaction_failure_artifacts(
+            settings,
+            started,
+            total_duration_ms,
+            validation,
+            redaction_evidence,
+            private_insert_source,
+        )
     evidence_items.append(redaction_evidence)
     total_duration_ms = max(0, monotonic_ms() - start_ms)
     summary = build_summary(settings, started, total_duration_ms, validation, evidence_items, private_insert_source)
@@ -2773,6 +2812,21 @@ def run_self_test() -> None:
     assert optional_redaction["requiredForReleaseCandidate"] is True, optional_redaction
     assert optional_redaction_summary["status"] == "fail", optional_redaction_summary
     assert smoke_exit_code(optional_redaction_settings, optional_redaction_summary) == 1
+
+    safe_summary, safe_report, safe_exit = redaction_failure_artifacts(
+        optional_redaction_settings,
+        "2026-01-01T00:00:00Z",
+        1,
+        validate_local_node_url(optional_redaction_settings.node_base_url),
+        optional_redaction,
+        "missing",
+    )
+    safe_artifact_text = json.dumps(safe_summary, sort_keys=True) + safe_report
+    assert safe_exit == 1, safe_summary
+    assert "optional-redaction-password" not in safe_artifact_text, safe_summary
+    assert safe_summary["status"] == "fail", safe_summary
+    assert safe_summary["redaction"]["unsafeArtifactDetailsSuppressed"] is True, safe_summary
+    assert [item["id"] for item in safe_summary["evidence"]] == ["live-network-beta.redaction"], safe_summary
 
     settings = settings_from_args(self_test_settings(), base_env)
 
