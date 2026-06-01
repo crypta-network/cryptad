@@ -16,9 +16,15 @@ class OperatorSupportRedactorTest {
   private static final String COOKIE_FIELD = "Cookie";
   private static final String CRYPTAD_DIRECTORY = "Cryptad";
   private static final String CRYPTAD_PATH_ELEMENT = "cryptad";
+  private static final String DIAGNOSTIC_FIELD = "diagnostic";
   private static final String FORM_SECRET_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
   private static final String OPERATOR_PATH_ELEMENT = "operator";
+  private static final String RAW_SIGNATURE_VALUE_FIELD = "rawSignatureValue";
   private static final String REDACTED = "<redacted>";
+  private static final String SIGNATURE_BASE64_FIELD = "signatureBase64";
+  private static final String SIGNATURE_DOCUMENT_FIELD = "signatureDocument";
+  private static final String SIGNATURE_PAYLOAD_FIELD = "signaturePayload";
+  private static final String SIGNATURE_VALUE_FIELD = "signatureValue";
   private static final String TOKEN_FIELD = "token";
   private static final String USERS_PATH_ELEMENT = "Users";
 
@@ -70,7 +76,7 @@ class OperatorSupportRedactorTest {
     String fileUriPath = fileUriCatalogPath();
     Map<String, Object> input =
         Map.of(
-            "diagnostic",
+            DIAGNOSTIC_FIELD,
             "paths "
                 + posixPath
                 + ", "
@@ -207,6 +213,20 @@ class OperatorSupportRedactorTest {
     assertCredentialFieldsRecorded(result);
   }
 
+  @Test
+  void redact_whenRawSignatureFieldsPresent_expectSignatureValuesRemoved() {
+    Map<String, Object> input = rawSignatureInput();
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    String rendered = redacted.toString();
+    assertRawSignatureMapFieldsOmitted(redacted);
+    assertRawSignatureValuesRedacted(rendered);
+    assertRawSignatureRedactionsPresent(rendered);
+    assertRawSignatureFieldsRecorded(result);
+  }
+
   private static void assertCredentialMapFieldsOmitted(Map<?, ?> redacted) {
     List<String> presentKeys =
         Stream.of(AUTHORIZATION_FIELD, COOKIE_FIELD).filter(redacted::containsKey).toList();
@@ -265,6 +285,61 @@ class OperatorSupportRedactorTest {
     assertTrue(missingFields.isEmpty(), () -> "Expected omitted fields: " + missingFields);
   }
 
+  private static void assertRawSignatureMapFieldsOmitted(Map<?, ?> redacted) {
+    List<String> presentKeys = rawSignatureFieldNames().filter(redacted::containsKey).toList();
+    assertTrue(presentKeys.isEmpty(), () -> "Expected keys to be omitted: " + presentKeys);
+  }
+
+  private static void assertRawSignatureValuesRedacted(String rendered) {
+    List<String> leakedValues =
+        Stream.of(
+                "map-signature-base64",
+                "map-signature-value",
+                "map-raw-signature-value",
+                "map-signature-payload",
+                "map-signature-document",
+                "inline-signature-base64",
+                "inline-signature-value",
+                "inline-raw-signature-value",
+                "inline-signature-payload",
+                "inline-signature-document",
+                "query-signature-base64")
+            .filter(rendered::contains)
+            .toList();
+    assertTrue(leakedValues.isEmpty(), () -> "Expected values to be redacted: " + leakedValues);
+  }
+
+  private static void assertRawSignatureRedactionsPresent(String rendered) {
+    List<String> missingValues =
+        Stream.of(
+                SIGNATURE_BASE64_FIELD + "=" + REDACTED,
+                SIGNATURE_VALUE_FIELD + ": " + REDACTED,
+                RAW_SIGNATURE_VALUE_FIELD + "=" + REDACTED,
+                SIGNATURE_PAYLOAD_FIELD + "=" + REDACTED,
+                SIGNATURE_DOCUMENT_FIELD + "=" + REDACTED)
+            .filter(value -> !rendered.contains(value))
+            .toList();
+    assertTrue(missingValues.isEmpty(), () -> "Expected values to remain: " + missingValues);
+  }
+
+  private static void assertRawSignatureFieldsRecorded(
+      OperatorSupportRedactor.RedactionResult result) {
+    List<String> missingFields =
+        rawSignatureFieldNames()
+            .filter(fieldName -> !result.omittedFields().contains(fieldName))
+            .toList();
+    assertTrue(missingFields.isEmpty(), () -> "Expected omitted fields: " + missingFields);
+  }
+
+  private static Stream<String> rawSignatureFieldNames() {
+    return Stream.of(
+        SIGNATURE_BASE64_FIELD,
+        SIGNATURE_VALUE_FIELD,
+        RAW_SIGNATURE_VALUE_FIELD,
+        SIGNATURE_PAYLOAD_FIELD,
+        SIGNATURE_DOCUMENT_FIELD);
+  }
+
   private static Map<String, Object> authorizationStyleCredentialInput() {
     LinkedHashMap<String, Object> input = new LinkedHashMap<>();
     input.put(AUTHORIZATION_FIELD, "Bearer map-secret");
@@ -272,7 +347,7 @@ class OperatorSupportRedactorTest {
     input.put("apiKey", "map-api-key-secret");
     input.put("signature", "map-signature-secret");
     input.put(
-        "diagnostic",
+        DIAGNOSTIC_FIELD,
         """
         Authorization: Bearer header-secret
         Cookie: session=cookie-secret; csrf=csrf-secret
@@ -280,6 +355,26 @@ class OperatorSupportRedactorTest {
         apiKey=api-key-secret secretKey=secret-key-secret signingKey=signing-key-secret signature: signature-secret
         {"authorization":"Bearer json-secret","clientSecret":"client-secret","api_password":"api-secret","privateKeyPresent":false}
         """);
+    return input;
+  }
+
+  private static Map<String, Object> rawSignatureInput() {
+    LinkedHashMap<String, Object> input = new LinkedHashMap<>();
+    input.put(SIGNATURE_BASE64_FIELD, "map-signature-base64");
+    input.put(SIGNATURE_VALUE_FIELD, "map-signature-value");
+    input.put(RAW_SIGNATURE_VALUE_FIELD, "map-raw-signature-value");
+    input.put(SIGNATURE_PAYLOAD_FIELD, "map-signature-payload");
+    input.put(SIGNATURE_DOCUMENT_FIELD, "map-signature-document");
+    input.put(
+        DIAGNOSTIC_FIELD,
+        String.join(
+            " ",
+            SIGNATURE_BASE64_FIELD + "=inline-signature-base64",
+            SIGNATURE_VALUE_FIELD + ": inline-signature-value",
+            RAW_SIGNATURE_VALUE_FIELD + "=inline-raw-signature-value",
+            SIGNATURE_PAYLOAD_FIELD + "=inline-signature-payload",
+            SIGNATURE_DOCUMENT_FIELD + "=inline-signature-document",
+            "url https://example.invalid/?" + SIGNATURE_BASE64_FIELD + "=query-signature-base64"));
     return input;
   }
 }

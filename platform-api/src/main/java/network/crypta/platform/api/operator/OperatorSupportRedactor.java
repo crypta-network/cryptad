@@ -33,6 +33,7 @@ public final class OperatorSupportRedactor {
   private static final String PEM_BEGIN_PREFIX = "-----BEGIN ";
   private static final String PEM_END_PREFIX = "-----END ";
   private static final String PEM_LINE_SUFFIX = "-----";
+  private static final String SIGNATURE_FIELD_NAME = "signature";
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
   private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
@@ -79,6 +80,16 @@ public final class OperatorSupportRedactor {
           "directory",
           "dir",
           "file");
+  private static final List<String> SENSITIVE_SIGNATURE_SUFFIXES =
+      List.of(
+          "",
+          "base64",
+          "value",
+          "valuebase64",
+          "payload",
+          "payloadbase64",
+          "document",
+          "documentbase64");
   private static final List<String> PATTERNS_CHECKED =
       List.of(
           "crypta_or_freenet_content_uri",
@@ -589,7 +600,7 @@ public final class OperatorSupportRedactor {
   private static boolean isSensitiveCredentialKey(String normalized) {
     return SENSITIVE_FIELD_NAMES.contains(normalized)
         || normalized.endsWith("key")
-        || normalized.endsWith("signature")
+        || isSensitiveSignatureKey(normalized)
         || normalized.endsWith("token")
         || normalized.endsWith("password")
         || normalized.endsWith("passwd")
@@ -598,6 +609,15 @@ public final class OperatorSupportRedactor {
         || normalized.endsWith("seed")
         || normalized.endsWith("recoveryphrase")
         || (normalized.contains("privatekey") && !normalized.endsWith("present"));
+  }
+
+  private static boolean isSensitiveSignatureKey(String normalized) {
+    int signatureIndex = normalized.lastIndexOf(SIGNATURE_FIELD_NAME);
+    if (signatureIndex < 0) {
+      return false;
+    }
+    String suffix = normalized.substring(signatureIndex + SIGNATURE_FIELD_NAME.length());
+    return SENSITIVE_SIGNATURE_SUFFIXES.contains(suffix);
   }
 
   private static String normalizeFieldName(String fieldName) {
