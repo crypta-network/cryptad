@@ -2,8 +2,11 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -19,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "NullableProblems"})
 class AdapterFcpBoundaryTest {
   private static final String MODULE_NAME = "adapter-fcp";
   private static final Path ROOT_FCP_MAIN_JAVA =
@@ -933,13 +936,28 @@ class AdapterFcpBoundaryTest {
   }
 
   private static List<Path> findMainJavaSources(Path repoRoot) throws IOException {
-    try (Stream<Path> walk = Files.walk(repoRoot)) {
-      return walk.filter(Files::isRegularFile)
-          .filter(AdapterFcpBoundaryTest::isTrackedJavaSource)
-          .filter(path -> isMainJavaSource(repoRoot.relativize(path)))
-          .sorted(Comparator.comparing(path -> repoRoot.relativize(path).toString()))
-          .toList();
-    }
+    List<Path> sources = new ArrayList<>();
+    Files.walkFileTree(
+        repoRoot,
+        new SimpleFileVisitor<>() {
+          @Override
+          public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (isIgnoredRepositoryTree(repoRoot.relativize(dir))) {
+              return FileVisitResult.SKIP_SUBTREE;
+            }
+            return FileVisitResult.CONTINUE;
+          }
+
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (isTrackedJavaSource(file) && isMainJavaSource(repoRoot.relativize(file))) {
+              sources.add(file);
+            }
+            return FileVisitResult.CONTINUE;
+          }
+        });
+    sources.sort(Comparator.comparing(path -> repoRoot.relativize(path).toString()));
+    return sources;
   }
 
   private static boolean isTrackedJavaSource(Path path) {
@@ -948,14 +966,30 @@ class AdapterFcpBoundaryTest {
   }
 
   private static boolean isMainJavaSource(Path relativePath) {
-    String normalized = relativePath.toString().replace(File.separatorChar, '/');
-    return !normalized.startsWith("build/")
-        && !normalized.contains("/build/")
-        && !normalized.startsWith(".gradle/")
-        && !normalized.contains("/.gradle/")
-        && !normalized.startsWith(".git/")
-        && !normalized.contains("/.git/")
+    String normalized = normalizedPath(relativePath);
+    return !isIgnoredRepositoryPath(normalized)
         && (normalized.startsWith("src/main/java/") || normalized.contains("/src/main/java/"));
+  }
+
+  private static boolean isIgnoredRepositoryTree(Path relativePath) {
+    return isIgnoredRepositoryPath(normalizedPath(relativePath));
+  }
+
+  private static boolean isIgnoredRepositoryPath(String normalized) {
+    return containsPathSegment(normalized, "build")
+        || containsPathSegment(normalized, ".gradle")
+        || containsPathSegment(normalized, ".git");
+  }
+
+  private static boolean containsPathSegment(String normalized, String segment) {
+    return normalized.equals(segment)
+        || normalized.startsWith(segment + '/')
+        || normalized.endsWith('/' + segment)
+        || normalized.contains('/' + segment + '/');
+  }
+
+  private static String normalizedPath(Path path) {
+    return path.toString().replace(File.separatorChar, '/');
   }
 
   private static Set<String> readFcpImports(Path file) throws IOException {

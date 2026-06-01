@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -26,12 +27,14 @@ import java.util.regex.Pattern;
  */
 public final class OperatorSupportRedactor {
   private static final String REDACTED = "<redacted>";
+  private static final String REDACTED_PATH = "<redacted-path>";
+  private static final String REDACTED_PRIVATE_KEY = "<redacted-private-key>";
+  private static final String FILE_URI_PREFIX = "file:";
+  private static final String PEM_BEGIN_PREFIX = "-----BEGIN ";
+  private static final String PEM_END_PREFIX = "-----END ";
+  private static final String PEM_LINE_SUFFIX = "-----";
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
-  private static final Pattern UNIX_ABSOLUTE_PATH =
-      Pattern.compile(
-          "(?<![A-Za-z0-9])/(?:home|root|work|tmp|var|etc|opt|Users|private|mnt|srv|run|build)/[^\\s\"'<>]*");
-  private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("[A-Za-z]:\\\\[^\\s\"'<>]+");
   private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
       Pattern.compile(
           "(?i)\\b((?:authorization|proxy-authorization|cookie|set-cookie|x-crypta-app-session|"
@@ -79,8 +82,11 @@ public final class OperatorSupportRedactor {
   private static final List<String> PATTERNS_CHECKED =
       List.of(
           "crypta_or_freenet_content_uri",
+          "pem_private_key_block",
+          "file_uri_absolute_path",
           "unix_absolute_path",
           "windows_absolute_path",
+          "windows_unc_path",
           "authorization_or_cookie_header",
           "secret_assignment",
           "sensitive_query_parameter",
@@ -108,8 +114,8 @@ public final class OperatorSupportRedactor {
    * <p>The input may be a nested combination of maps, lists, strings, numbers, booleans, and {@code
    * null}. Map entries with sensitive field names are omitted entirely and their original keys are
    * recorded in the result. String values that remain in the tree are pattern-scrubbed for content
-   * URIs, local paths, credential headers, secret assignments, and sensitive query parameters. The
-   * input object is not mutated.
+   * URIs, PEM private-key blocks, local paths, credential headers, secret assignments, and
+   * sensitive query parameters. The input object is not mutated.
    *
    * @param value JSON-compatible value to sanitize before export
    * @return redacted value plus the structural field names omitted during traversal
@@ -152,13 +158,232 @@ public final class OperatorSupportRedactor {
 
   private static String redactString(String input) {
     String redacted = Objects.requireNonNull(input, "input");
+    redacted = redactPrivateKeyBlocks(redacted);
     redacted = CONTENT_URI.matcher(redacted).replaceAll("<redacted-content-uri>");
-    redacted = UNIX_ABSOLUTE_PATH.matcher(redacted).replaceAll("<redacted-path>");
-    redacted = WINDOWS_ABSOLUTE_PATH.matcher(redacted).replaceAll("<redacted-path>");
+    redacted = redactAbsolutePaths(redacted);
     redacted = AUTHORIZATION_OR_COOKIE_HEADER.matcher(redacted).replaceAll("$1" + REDACTED);
     redacted = redactAssignments(redacted);
     redacted = redactQueryParameters(redacted);
     return redacted;
+  }
+
+  private static String redactPrivateKeyBlocks(String input) {
+    StringBuilder redacted = null;
+    int appendFrom = 0;
+    int searchFrom = 0;
+    int beginStart = indexOfIgnoreCase(input, PEM_BEGIN_PREFIX, searchFrom);
+    while (beginStart >= 0) {
+      String keyType = privateKeyType(input, beginStart);
+      if (keyType == null) {
+        searchFrom = beginStart + PEM_BEGIN_PREFIX.length();
+      } else {
+        int blockEnd = privateKeyBlockEnd(input, beginStart, keyType);
+        if (redacted == null) {
+          redacted = new StringBuilder(input.length());
+        }
+        redacted.append(input, appendFrom, beginStart);
+        redacted.append(REDACTED_PRIVATE_KEY);
+        appendFrom = blockEnd;
+        searchFrom = blockEnd;
+      }
+      beginStart = indexOfIgnoreCase(input, PEM_BEGIN_PREFIX, searchFrom);
+    }
+    if (redacted == null) {
+      return input;
+    }
+    return redacted.append(input, appendFrom, input.length()).toString();
+  }
+
+  private static String privateKeyType(String input, int beginStart) {
+    int typeStart = beginStart + PEM_BEGIN_PREFIX.length();
+    int lineEnd = lineEnd(input, typeStart);
+    int markerEnd = input.indexOf(PEM_LINE_SUFFIX, typeStart);
+    if (markerEnd < 0 || markerEnd > lineEnd) {
+      return null;
+    }
+    String keyType = input.substring(typeStart, markerEnd);
+    return isPrivateKeyPemType(keyType) ? keyType : null;
+  }
+
+  private static boolean isPrivateKeyPemType(String keyType) {
+    String normalized = keyType.toUpperCase(Locale.ROOT);
+    if (!normalized.endsWith("PRIVATE KEY")) {
+      return false;
+    }
+    for (int index = 0; index < normalized.length(); index++) {
+      char current = normalized.charAt(index);
+      if (!(current == ' ' || Character.isDigit(current) || (current >= 'A' && current <= 'Z'))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static int privateKeyBlockEnd(String input, int beginStart, String keyType) {
+    int bodyStart = lineEnd(input, beginStart) + 1;
+    String endMarker = PEM_END_PREFIX + keyType + PEM_LINE_SUFFIX;
+    int endStart = indexOfIgnoreCase(input, endMarker, bodyStart);
+    if (endStart >= 0) {
+      return endStart + endMarker.length();
+    }
+    int nextPemBegin = indexOfIgnoreCase(input, "\n" + PEM_BEGIN_PREFIX, bodyStart);
+    if (nextPemBegin < 0) {
+      return input.length();
+    }
+    return nextPemBegin > 0 && input.charAt(nextPemBegin - 1) == '\r'
+        ? nextPemBegin - 1
+        : nextPemBegin;
+  }
+
+  private static int lineEnd(String input, int start) {
+    int index = start;
+    while (index < input.length()) {
+      char current = input.charAt(index);
+      if (current == '\r' || current == '\n') {
+        break;
+      }
+      index++;
+    }
+    return index;
+  }
+
+  private static int indexOfIgnoreCase(String input, String needle, int fromIndex) {
+    int lastStart = input.length() - needle.length();
+    for (int index = Math.max(0, fromIndex); index <= lastStart; index++) {
+      if (input.regionMatches(true, index, needle, 0, needle.length())) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private static String redactAbsolutePaths(String input) {
+    StringBuilder redacted = null;
+    int appendFrom = 0;
+    int index = 0;
+    while (index < input.length()) {
+      int pathEnd = absolutePathEnd(input, index);
+      if (pathEnd <= index) {
+        index++;
+        continue;
+      }
+      if (redacted == null) {
+        redacted = new StringBuilder(input.length());
+      }
+      redacted.append(input, appendFrom, index);
+      redacted.append(REDACTED_PATH);
+      appendFrom = pathEnd;
+      index = pathEnd;
+    }
+    if (redacted == null) {
+      return input;
+    }
+    return redacted.append(input, appendFrom, input.length()).toString();
+  }
+
+  private static int absolutePathEnd(String input, int index) {
+    if (!isPathStartBoundary(input, index)) {
+      return -1;
+    }
+    if (startsWithFileUriPrefix(input, index)) {
+      int pathStart = index + FILE_URI_PREFIX.length();
+      int pathEnd = pathTokenEnd(input, pathStart);
+      return pathEnd > pathStart ? pathEnd : -1;
+    }
+    if (startsWithWindowsDrivePath(input, index) || startsWithUncPath(input, index)) {
+      return pathTokenEnd(input, index);
+    }
+    if (startsWithUnixPath(input, index)) {
+      return pathTokenEnd(input, index);
+    }
+    return -1;
+  }
+
+  private static boolean startsWithUnixPath(String input, int index) {
+    return input.charAt(index) == '/'
+        && index + 1 < input.length()
+        && isPathTokenCharacter(input.charAt(index + 1))
+        && !isSafeRoutePath(input, index);
+  }
+
+  private static boolean startsWithWindowsDrivePath(String input, int index) {
+    return index + 2 < input.length()
+        && Character.isLetter(input.charAt(index))
+        && input.charAt(index + 1) == ':'
+        && isPathSeparator(input.charAt(index + 2));
+  }
+
+  private static boolean startsWithUncPath(String input, int index) {
+    if (index + 3 >= input.length()
+        || input.charAt(index) != '\\'
+        || input.charAt(index + 1) != '\\') {
+      return false;
+    }
+    int tokenEnd = pathTokenEnd(input, index);
+    return input.indexOf('\\', index + 2) > 0 && input.indexOf('\\', index + 2) < tokenEnd;
+  }
+
+  private static int pathTokenEnd(String input, int start) {
+    int index = start;
+    while (index < input.length() && isPathTokenCharacter(input.charAt(index))) {
+      index++;
+    }
+    return index;
+  }
+
+  private static boolean isPathTokenCharacter(char value) {
+    return !Character.isWhitespace(value)
+        && value != ']'
+        && value != ')'
+        && value != '}'
+        && value != ','
+        && value != ';'
+        && value != '"'
+        && value != '\''
+        && value != '<'
+        && value != '>';
+  }
+
+  private static boolean isPathStartBoundary(String input, int index) {
+    if (index == 0) {
+      return true;
+    }
+    char previous = input.charAt(index - 1);
+    return !(Character.isLetterOrDigit(previous)
+        || previous == '_'
+        || previous == ':'
+        || previous == '/'
+        || previous == '.'
+        || previous == '-');
+  }
+
+  private static boolean isSafeRoutePath(String input, int index) {
+    return startsWithRoutePrefix(input, index, "/api/v1")
+        || startsWithRoutePrefix(input, index, "/apps")
+        || startsWithRoutePrefix(input, index, "/app/node")
+        || startsWithRoutePrefix(input, index, "/.well-known")
+        || startsWithRoutePrefix(input, index, "/platform/contract");
+  }
+
+  private static boolean startsWithRoutePrefix(String input, int index, String prefix) {
+    if (!input.startsWith(prefix, index)) {
+      return false;
+    }
+    int afterPrefix = index + prefix.length();
+    return afterPrefix == input.length() || !isRouteIdentifierChar(input.charAt(afterPrefix));
+  }
+
+  private static boolean isRouteIdentifierChar(char value) {
+    return Character.isLetterOrDigit(value) || value == '_' || value == '-';
+  }
+
+  private static boolean startsWithFileUriPrefix(String input, int index) {
+    return index + FILE_URI_PREFIX.length() <= input.length()
+        && input.regionMatches(true, index, FILE_URI_PREFIX, 0, FILE_URI_PREFIX.length());
+  }
+
+  private static boolean isPathSeparator(char value) {
+    return value == '/' || value == '\\';
   }
 
   private static String redactAssignments(String input) {

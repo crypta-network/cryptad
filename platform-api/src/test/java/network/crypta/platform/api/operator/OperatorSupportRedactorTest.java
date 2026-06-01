@@ -55,6 +55,71 @@ class OperatorSupportRedactorTest {
   }
 
   @Test
+  void redact_whenArbitraryAbsolutePathsPresent_expectUnsafePathsRemoved() {
+    String posixPath = "/data/cryptad/apps/feed-reader";
+    String windowsDrivePath = "C:/Users/operator/AppData/Local/Cryptad/rollback";
+    String windowsUncPath = "\\\\builder\\share\\certs\\catalog.pem";
+    String fileUriPath = "file:///srv/cryptad/catalog.properties";
+    Map<String, Object> input =
+        Map.of(
+            "diagnostic",
+            "paths "
+                + posixPath
+                + " "
+                + windowsDrivePath
+                + " "
+                + windowsUncPath
+                + " "
+                + fileUriPath
+                + " routes /api/v1/operator/support-bundle /app/node/#beta-dashboard");
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains(posixPath));
+    assertFalse(rendered.contains(windowsDrivePath));
+    assertFalse(rendered.contains(windowsUncPath));
+    assertFalse(rendered.contains(fileUriPath));
+    assertTrue(rendered.contains("<redacted-path>"));
+    assertTrue(rendered.contains("/api/v1/operator/support-bundle"));
+    assertTrue(rendered.contains("/app/node/#beta-dashboard"));
+  }
+
+  @Test
+  void redact_whenPemPrivateKeyBlocksPresent_expectBlocksRemoved() {
+    Map<String, Object> input =
+        Map.of(
+            "closedPem",
+            """
+            before
+            -----BEGIN PRIVATE KEY-----
+            pem-private-key-body
+            -----END PRIVATE KEY-----
+            public reviewer key id remains
+            """,
+            "truncatedPem",
+            """
+            prefix
+            -----BEGIN OPENSSH PRIVATE KEY-----
+            openssh-private-key-body
+            """);
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains("BEGIN PRIVATE KEY"));
+    assertFalse(rendered.contains("pem-private-key-body"));
+    assertFalse(rendered.contains("END PRIVATE KEY"));
+    assertFalse(rendered.contains("BEGIN OPENSSH PRIVATE KEY"));
+    assertFalse(rendered.contains("openssh-private-key-body"));
+    assertTrue(rendered.contains("<redacted-private-key>"));
+    assertTrue(rendered.contains("before"));
+    assertTrue(rendered.contains("public reviewer key id remains"));
+    assertTrue(rendered.contains("prefix"));
+    assertTrue(OperatorSupportRedactor.patternsChecked().contains("pem_private_key_block"));
+  }
+
+  @Test
   void redact_whenAuthorizationStyleCredentialsPresent_expectCredentialValuesRemoved() {
     Map<String, Object> input = authorizationStyleCredentialInput();
 

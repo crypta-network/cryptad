@@ -979,7 +979,7 @@ public final class OperatorBetaDashboardService {
     if (source == null || source.isBlank()) {
       return UNAVAILABLE;
     }
-    if ("file".equals(sourceKind) || source.startsWith("file:") || source.startsWith("/")) {
+    if (isFileSource(source, sourceKind)) {
       return "file:<redacted>";
     }
     if ("crypta".equals(sourceKind)
@@ -1000,6 +1000,12 @@ public final class OperatorBetaDashboardService {
     } catch (URISyntaxException _) {
       return "source:<redacted>";
     }
+  }
+
+  private static boolean isFileSource(String source, String sourceKind) {
+    return "file".equalsIgnoreCase(sourceKind)
+        || source.regionMatches(true, 0, "file:", 0, "file:".length())
+        || source.startsWith("/");
   }
 
   private static String digestOrNull(String value) {

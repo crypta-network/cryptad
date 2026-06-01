@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,12 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "unchecked"})
 class OperatorBetaDashboardServiceTest {
   private static final String APP_ID = "feed-reader";
+  private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
+  private static final String AVAILABLE = "available";
+  private static final String ROLLBACK_APP_ACTION = "rollback-app";
+  private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
+  private static final String UPPERCASE_FILE_CATALOG_SOURCE =
+      "FILE:///home/operator/private/cryptad-app-catalog.properties";
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-05-24T12:00:00Z"), ZoneOffset.UTC);
 
@@ -33,7 +40,7 @@ class OperatorBetaDashboardServiceTest {
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertEquals(1L, summary.get("pendingUpdateCount"));
     assertTrue(actionAvailable(actions, "check-app-update"));
-    assertTrue(actionAvailable(actions, "stage-app-update"));
+    assertTrue(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
   }
 
   @Test
@@ -47,7 +54,7 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> summary = mapValue(dashboard.get("summary"));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertEquals(1L, summary.get("pendingUpdateCount"));
-    assertFalse(actionAvailable(actions, "stage-app-update"));
+    assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
   }
 
   @Test
@@ -59,8 +66,8 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> dashboard = service(appsHandler(true), updateService).dashboard();
 
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
-    assertFalse(actionAvailable(actions, "apply-app-update"));
-    assertFalse(actionAvailable(actions, "rollback-app"));
+    assertFalse(actionAvailable(actions, APPLY_APP_UPDATE_ACTION));
+    assertFalse(actionAvailable(actions, ROLLBACK_APP_ACTION));
   }
 
   @Test
@@ -72,8 +79,8 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
 
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
-    assertTrue(actionAvailable(actions, "apply-app-update"));
-    assertTrue(actionAvailable(actions, "rollback-app"));
+    assertTrue(actionAvailable(actions, APPLY_APP_UPDATE_ACTION));
+    assertTrue(actionAvailable(actions, ROLLBACK_APP_ACTION));
   }
 
   @Test
@@ -82,9 +89,9 @@ class OperatorBetaDashboardServiceTest {
 
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertFalse(actionAvailable(actions, "check-app-update"));
-    assertFalse(actionAvailable(actions, "stage-app-update"));
-    assertFalse(actionAvailable(actions, "apply-app-update"));
-    assertFalse(actionAvailable(actions, "rollback-app"));
+    assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
+    assertFalse(actionAvailable(actions, APPLY_APP_UPDATE_ACTION));
+    assertFalse(actionAvailable(actions, ROLLBACK_APP_ACTION));
   }
 
   @Test
@@ -97,11 +104,31 @@ class OperatorBetaDashboardServiceTest {
     assertEquals("apps/feed-reader?preserveData=true", action.get("path"));
   }
 
+  @Test
+  void dashboard_whenCatalogSourceUsesUppercaseFileUri_expectSourceDisplayRedacted() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+
+    Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
+
+    Map<String, Object> catalog = listOfMaps(dashboard.get("catalogs")).getFirst();
+    assertEquals("manual", catalog.get("sourceKind"));
+    assertEquals("file:<redacted>", catalog.get("sourceDisplay"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
+    return service(appsApiHandler, null, appUpdateService);
+  }
+
+  private static OperatorBetaDashboardService service(
+      AppsApiHandler appsApiHandler,
+      AppCatalogsApiHandler appCatalogsApiHandler,
+      AppUpdateService appUpdateService) {
     return new OperatorBetaDashboardService(
         new OperatorBetaDashboardService.HandlerSources(
-            appsApiHandler, null, appUpdateService, null),
+            appsApiHandler, appCatalogsApiHandler, appUpdateService, null),
         new OperatorBetaDashboardService.AppStateSources(null, null, null, null),
         CLOCK);
   }
@@ -129,8 +156,19 @@ class OperatorBetaDashboardServiceTest {
     return app;
   }
 
+  private static Map<String, Object> catalog() {
+    LinkedHashMap<String, Object> catalog = new LinkedHashMap<>();
+    catalog.put("catalogId", "local-catalog");
+    catalog.put("name", "Local Catalog");
+    catalog.put("source", UPPERCASE_FILE_CATALOG_SOURCE);
+    catalog.put("sourceKind", "file");
+    catalog.put("lastFetchStatus", "success");
+    catalog.put("appCount", 0);
+    return catalog;
+  }
+
   private static Map<String, Object> updateSummary(Map<String, Object> candidate) {
-    return updateSummary(candidate, Map.of("available", false), Map.of("available", false));
+    return updateSummary(candidate, Map.of(AVAILABLE, false), Map.of(AVAILABLE, false));
   }
 
   private static Map<String, Object> updateSummary(
@@ -145,7 +183,7 @@ class OperatorBetaDashboardServiceTest {
   private static Map<String, Object> availableCandidate(Map<String, Object> reviewTrust) {
     return Map.of(
         "status",
-        "available",
+        AVAILABLE,
         "autoStageAllowed",
         true,
         "operatorActionRequired",
@@ -155,11 +193,11 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static Map<String, Object> stagedUpdate() {
-    return Map.of("available", true, "reviewTrust", Map.of());
+    return Map.of(AVAILABLE, true, "reviewTrust", Map.of());
   }
 
   private static Map<String, Object> rollbackAvailable() {
-    return Map.of("available", true);
+    return Map.of(AVAILABLE, true);
   }
 
   private static List<Map<String, Object>> recoveryActionsForFirstApp(
@@ -168,7 +206,7 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static boolean actionAvailable(List<Map<String, Object>> actions, String actionId) {
-    return Boolean.TRUE.equals(action(actions, actionId).get("available"));
+    return Boolean.TRUE.equals(action(actions, actionId).get(AVAILABLE));
   }
 
   private static Map<String, Object> action(List<Map<String, Object>> actions, String actionId) {
