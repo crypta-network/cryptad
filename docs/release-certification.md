@@ -43,23 +43,19 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 ```
 
-Generate a lightweight local report:
+Run the offline wrapper modes from a clean release workspace:
 
 ```bash
-tools/release-certification/run-release-certification.sh
+tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
+tools/release-certification/run-release-certification.sh --mode nightly --out-dir build/release-certification
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --out-dir build/release-certification
 ```
 
 The wrapper may be invoked from outside the repository. Relative `--out-dir` values are resolved
 under the repository root so shell cleanup, app-platform smoke output, and aggregation read the same
 evidence directory.
-
-Generate a release-candidate report:
-
-```bash
-tools/release-certification/run-release-certification.sh \
-  --mode release-candidate \
-  --out-dir build/release-certification
-```
 
 Compare a release candidate with the previous certified release:
 
@@ -216,8 +212,8 @@ host-installed bubblewrap in normal CI; it uses source checks and fake/offline p
 The `public-beta-security.*` rows are deterministic public-beta hardening evidence. They inspect
 source files, focused tests, staged first-party app bundles, redaction helpers, and docs. They do
 not require a live network, private keys, private insert URIs, raw fetched bodies, raw trust
-statements, or app/session tokens, and they do not claim live-network beta certification. PR-246
-owns live-network beta certification.
+statements, or app/session tokens, and they do not claim live-network beta certification. Use the
+PR-246 live-network beta certification command below for that release-manager evidence.
 `app-update.lifecycle`, `app-update.scheduler`, `app-update.live-catalog-refresh`, and
 `app-update.rollback` do not require a live node; missing update evidence blocks
 release-candidate mode unless a release-manager waiver is recorded. `apphost.live` is optional
@@ -537,6 +533,86 @@ API routes to install, read runtime status, start, stop, update, uninstall, and 
 The live smoke only records localhost metadata, status codes, and redacted JSON response summaries.
 It does not write the form password, raw request bodies, app process tokens, or browser-session
 tokens.
+
+The wrapper can also receive `--live`, but it deliberately rejects `--form-password`. Supply the
+form password through `CRYPTAD_CERT_FORM_PASSWORD` only. If the smoke fails after installing the
+sample app, the runner attempts `POST /apps/cert-smoke/stop` and `DELETE /apps/cert-smoke`; verify
+cleanup manually before reusing the node.
+
+## Live-network beta certification
+
+Live-network beta certification is required before a release claims first-party beta catalog
+readiness on the public network. It is an explicit release-manager mode in the certification
+wrapper, separate from optional AppHost lifecycle smoke and disabled for normal PR/nightly runs.
+
+```bash
+CRYPTAD_CERT_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1 \
+CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:8888 \
+CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
+CRYPTAD_CERT_LIVE_CATALOG_SOURCE=crypta:USK@<catalog-key>/cryptad-app-catalog.properties \
+CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
+CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
+CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
+CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --live-network-beta \
+  --require-live-network-beta \
+  --node-base-url http://127.0.0.1:8888
+```
+
+Use disposable fixture catalog keys for certification rehearsals. Public fixture references may be
+recorded as `crypta:USK@<catalog-key>/cryptad-app-catalog.properties` and
+`crypta:CHK@<artifact-key>`. The matching private insert URI is a bare private USK directory insert
+URI for the same public source parent; load it through `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV` or
+`CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE`, never as a command-line value or inline shell
+assignment. Use `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV` only when the private URI has already been
+exported through a protected channel and the command names that variable without showing its value.
+If both indirections are present, the environment-name source wins deterministically. The report
+records only fixture presence, not the value, hash, length, environment variable name, or file path.
+`CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID` is mandatory when live-network beta certification is
+required. The smoke compares it with the node-observed public `signatureKeyId` from the verified
+catalog summary; unset, unavailable, or mismatched signing-key metadata fails the catalog evidence.
+Set `CRYPTAD_CERT_LIVE_PROFILE_PUBLIC_URI` and `CRYPTAD_CERT_LIVE_TRUST_PUBLIC_URI` when the run
+should fetch back the synthetic profile and trust statement after publish. Timing knobs are
+`CRYPTAD_CERT_LIVE_TIMEOUT_SECONDS`, `CRYPTAD_CERT_LIVE_POLL_INTERVAL_SECONDS`,
+`CRYPTAD_CERT_LIVE_MAX_POLL_ATTEMPTS`, `CRYPTAD_CERT_LIVE_MAX_DURATION_SECONDS`, and
+`CRYPTAD_CERT_LIVE_MAX_STEP_DURATION_SECONDS`.
+
+App-facing live workflow calls use app principals, not host/operator form-password authority. The
+runner fetches each app's static bootstrap from
+`/apps/{appId}/.well-known/cryptad-bootstrap.json`, keeps the returned `browserSessionToken` in
+memory, sends it as `X-Crypta-App-Session`, and excludes the token value and response body from
+all artifacts. Required mode fails when a configured app cannot mint a browser session. Defaults
+are `site-publisher` for lifecycle, `feed-reader` for content and feed subscriptions,
+`profile-publisher` for profile publish, `trust-graph` for trust publish/import, and
+`social-inbox` for optional app-service scoring. Release managers can override those ids with
+`CRYPTAD_CERT_LIVE_APP_ID`, `CRYPTAD_CERT_LIVE_CONTENT_APP_ID`,
+`CRYPTAD_CERT_LIVE_FEED_APP_ID`, `CRYPTAD_CERT_LIVE_PROFILE_APP_ID`,
+`CRYPTAD_CERT_LIVE_TRUST_APP_ID`, and `CRYPTAD_CERT_LIVE_APP_SERVICE_CALLER_APP_ID`.
+
+The runner proves localhost preflight, live catalog fetch/verification, app
+install/update/rollback, bounded content fetch, feed subscription metadata, synthetic profile
+publish, synthetic trust statement publish/import, interop/performance timing, and redaction guard
+results. It can also invoke the Trust Graph `trust.score` app-service when
+`CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise
+`live-network-beta.app-service-score` is optional skipped evidence, not a pass claim. It does not
+prove global propagation, user adoption, app safety beyond the signed catalog/bundle/review gates,
+or deletion of published bytes. Preserve only the sanitized summary, report, and ecosystem matrix.
+Lifecycle cleanup deletes only an app that was absent before the smoke and installed successfully
+by this run; use disposable app ids for rehearsals on nodes that already have first-party apps
+installed.
+Assume live synthetic content may not be deletable once published. Do not use real keys, production
+secrets, or user content in fixture certification runs.
+
+The aggregator records the live evidence under `ecosystem.live-network-beta` and the
+`live-network-beta-certification` matrix row. Required mode expects
+`live-network-beta.preflight`, `live-network-beta.catalog-usk-fetch`,
+`live-network-beta.app-install-update-rollback`, `live-network-beta.content-fetch`,
+`live-network-beta.feed-subscription`, `live-network-beta.profile-publish`,
+`live-network-beta.trust-statement-publish-import`,
+`live-network-beta.interop-perf-budget`, and `live-network-beta.redaction` to pass.
 
 ## Redaction
 

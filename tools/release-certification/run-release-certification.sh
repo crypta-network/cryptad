@@ -5,9 +5,25 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MODE="${CRYPTAD_CERT_MODE:-pr}"
 OUT_DIR="${CRYPTAD_CERT_OUT_DIR:-$ROOT_DIR/build/release-certification}"
 SKIP_APP_SMOKE="${CRYPTAD_CERT_SKIP_APP_SMOKE:-0}"
+LIVE_NETWORK_BETA="${CRYPTAD_CERT_LIVE_NETWORK_BETA:-0}"
+REQUIRE_LIVE_NETWORK_BETA="${CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA:-0}"
+NODE_BASE_URL="${CRYPTAD_CERT_NODE_BASE_URL:-}"
 SKIP_GRADLE_ARG=()
 LIVE_ARGS=()
+LIVE_NETWORK_ARGS=()
+CERT_LIVE_ARGS=()
 CERT_ARGS=()
+
+normalize_flag() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      printf '1'
+      ;;
+    *)
+      printf '0'
+      ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,12 +55,21 @@ while [[ $# -gt 0 ]]; do
       LIVE_ARGS+=(--live)
       shift
       ;;
+    --live-network-beta)
+      LIVE_NETWORK_BETA=1
+      shift
+      ;;
+    --require-live-network-beta)
+      LIVE_NETWORK_BETA=1
+      REQUIRE_LIVE_NETWORK_BETA=1
+      shift
+      ;;
     --node-base-url)
-      LIVE_ARGS+=(--node-base-url "$2")
+      NODE_BASE_URL="$2"
       shift 2
       ;;
     --node-base-url=*)
-      LIVE_ARGS+=(--node-base-url "${1#--node-base-url=}")
+      NODE_BASE_URL="${1#--node-base-url=}"
       shift
       ;;
     --form-password)
@@ -107,12 +132,32 @@ fi
 mkdir -p "$OUT_DIR"
 APP_SMOKE_OUT_DIR="$OUT_DIR/app-platform-smoke"
 APP_SMOKE_SUMMARY="$APP_SMOKE_OUT_DIR/summary.json"
+LIVE_NETWORK_OUT_DIR="$OUT_DIR/live-network-beta-smoke"
+LIVE_NETWORK_SUMMARY="$LIVE_NETWORK_OUT_DIR/summary.json"
 
 if [[ ${#SKIP_GRADLE_ARG[@]} -eq 0 && "$MODE" == "pr" && "${CRYPTAD_CERT_RUN_GRADLE:-0}" != "1" ]]; then
   SKIP_GRADLE_ARG=(--skip-gradle)
 fi
 
+if [[ -n "$NODE_BASE_URL" ]]; then
+  LIVE_ARGS+=(--node-base-url "$NODE_BASE_URL")
+  LIVE_NETWORK_ARGS+=(--node-base-url "$NODE_BASE_URL")
+fi
+LIVE_NETWORK_BETA="$(normalize_flag "$LIVE_NETWORK_BETA")"
+REQUIRE_LIVE_NETWORK_BETA="$(normalize_flag "$REQUIRE_LIVE_NETWORK_BETA")"
+if [[ "$REQUIRE_LIVE_NETWORK_BETA" == "1" ]]; then
+  LIVE_NETWORK_BETA=1
+  LIVE_NETWORK_ARGS+=(--require)
+fi
+if [[ "$LIVE_NETWORK_BETA" == "1" ]]; then
+  CERT_LIVE_ARGS+=(--live-network-beta)
+fi
+if [[ "$REQUIRE_LIVE_NETWORK_BETA" == "1" ]]; then
+  CERT_LIVE_ARGS+=(--require-live-network-beta)
+fi
+
 rm -f "$APP_SMOKE_SUMMARY" "$APP_SMOKE_OUT_DIR/app-platform-smoke-report.md"
+rm -f "$LIVE_NETWORK_SUMMARY" "$LIVE_NETWORK_OUT_DIR/live-network-beta-smoke-report.md"
 
 if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
   set +e
@@ -131,9 +176,25 @@ else
   rm -rf "$APP_SMOKE_OUT_DIR/artifacts"
 fi
 
+if [[ "$LIVE_NETWORK_BETA" == "1" ]]; then
+  set +e
+  python3 "$ROOT_DIR/tools/release-certification/live_network_beta_smoke.py" \
+    --workspace-root "$ROOT_DIR" \
+    --out-dir "$LIVE_NETWORK_OUT_DIR" \
+    --mode "$MODE" \
+    "${LIVE_NETWORK_ARGS[@]}"
+  LIVE_NETWORK_EXIT=$?
+  set -e
+  if [[ "$LIVE_NETWORK_EXIT" -ne 0 ]]; then
+    echo "Live-network beta smoke exited with $LIVE_NETWORK_EXIT; certification aggregation will record the evidence state." >&2
+  fi
+fi
+
 exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --workspace-root "$ROOT_DIR" \
   --out-dir "$OUT_DIR" \
   --mode "$MODE" \
   --app-platform-summary "$APP_SMOKE_SUMMARY" \
+  --live-network-summary "$LIVE_NETWORK_SUMMARY" \
+  "${CERT_LIVE_ARGS[@]}" \
   "${CERT_ARGS[@]}"

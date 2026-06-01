@@ -41,7 +41,9 @@ ECOSYSTEM_MATRIX_SCHEMA_VERSION = 1
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
-REDACTION_FINDING_EVIDENCE_IDS = frozenset({"app-platform.docs-redaction"})
+REDACTION_FINDING_EVIDENCE_IDS = frozenset(
+    {"app-platform.docs-redaction", "live-network-beta.redaction"}
+)
 PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.app-ui-csp",
     "public-beta-security.app-origin-policy",
@@ -54,6 +56,23 @@ PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.sandbox-host-checks",
     "public-beta-security.audit-redaction-fuzz",
     "public-beta-security.transparency-log-privacy",
+)
+LIVE_NETWORK_BETA_EVIDENCE_IDS = (
+    "live-network-beta.preflight",
+    "live-network-beta.catalog-usk-fetch",
+    "live-network-beta.app-install-update-rollback",
+    "live-network-beta.content-fetch",
+    "live-network-beta.feed-subscription",
+    "live-network-beta.profile-publish",
+    "live-network-beta.trust-statement-publish-import",
+    "live-network-beta.app-service-score",
+    "live-network-beta.interop-perf-budget",
+    "live-network-beta.redaction",
+)
+LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS = tuple(
+    evidence_id
+    for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+    if evidence_id != "live-network-beta.app-service-score"
 )
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
@@ -295,6 +314,9 @@ class Settings:
     interop_extended_summary: Path
     perf_smoke_summary: Path
     app_platform_summary: Path
+    live_network_summary: Path
+    live_network_beta_enabled: bool
+    live_network_beta_required: bool
     waivers: dict[str, str]
     metadata: dict[str, str]
     skip_git_metadata: bool
@@ -1129,6 +1151,156 @@ def app_platform_evidence(
     return items
 
 
+def live_network_beta_evidence(
+    path: Path,
+    workspace_root: Path,
+    out_dir: Path,
+    expected_mode: str,
+    enabled: bool,
+    required: bool,
+) -> list[EvidenceItem]:
+    source = display_path(path, workspace_root, out_dir)
+    default_status = "missing" if enabled or required else "skip"
+    default_required = required
+    default_details = {"enabled": enabled, "required": required}
+    if not enabled and not required:
+        return [
+            EvidenceItem(
+                evidence_id,
+                default_status,
+                False,
+                "Live-network beta certification was not requested.",
+                source,
+                default_details,
+            )
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+        ]
+
+    summary = read_json(path)
+    if summary is None:
+        default_summary = (
+            "Live-network beta certification summary is missing."
+            if enabled or required
+            else "Live-network beta certification was not requested."
+        )
+        return [
+            EvidenceItem(
+                evidence_id,
+                default_status,
+                default_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS,
+                default_summary,
+                source,
+                default_details,
+            )
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+        ]
+
+    sanitized_summary = dict(sanitize_value(summary, workspace_root, out_dir))
+    summary_mode = str(sanitized_summary.get("mode", "missing"))
+    summary_enabled = bool(sanitized_summary.get("enabled", enabled))
+    summary_required = bool(sanitized_summary.get("required", required)) or required
+    mode_matches = summary_mode == expected_mode
+    kind_matches = sanitized_summary.get("kind") == "live-network-beta-smoke"
+    summary_status = normalize_evidence_status(str(sanitized_summary.get("status", "missing")))
+    summary_details = {
+        "enabled": summary_enabled,
+        "required": summary_required,
+        "summaryStatus": summary_status,
+        "mode": summary_mode,
+        "modeMatches": mode_matches,
+        "kind": sanitized_summary.get("kind"),
+        "node": sanitized_summary.get("node", {}),
+        "redaction": sanitized_summary.get("redaction", {}),
+    }
+    if not kind_matches:
+        status = "fail" if summary_required else "warn"
+        return [
+            EvidenceItem(
+                evidence_id,
+                status,
+                summary_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS,
+                "Live-network beta summary has the wrong kind.",
+                source,
+                summary_details,
+            )
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+        ]
+    if expected_mode == "release-candidate" and not mode_matches:
+        status = "fail" if summary_required else "warn"
+        return [
+            EvidenceItem(
+                evidence_id,
+                status,
+                summary_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS,
+                "Live-network beta summary has wrong mode.",
+                source,
+                summary_details,
+            )
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+        ]
+
+    raw_evidence = sanitized_summary.get("evidence", [])
+    if not isinstance(raw_evidence, list):
+        status = "fail" if summary_required else "warn"
+        return [
+            EvidenceItem(
+                evidence_id,
+                status,
+                summary_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS,
+                "Live-network beta summary has no evidence list.",
+                source,
+                summary_details,
+            )
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+        ]
+
+    items: list[EvidenceItem] = []
+    seen: set[str] = set()
+    for value in raw_evidence:
+        if not isinstance(value, dict):
+            continue
+        evidence_id = str(value.get("id", "live-network-beta.unknown"))
+        seen.add(evidence_id)
+        item_required = bool(value.get("requiredForReleaseCandidate", False))
+        if summary_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS:
+            item_required = True
+        details = value.get("details", {})
+        safe_details = details if isinstance(details, dict) else {}
+        safe_details = {
+            **summary_details,
+            **dict(sanitize_value(safe_details, workspace_root, out_dir)),
+        }
+        items.append(
+            EvidenceItem(
+                id=evidence_id,
+                status=normalize_evidence_status(str(value.get("status", "missing"))),
+                required_for_release_candidate=item_required,
+                summary=str(
+                    sanitize_value(value.get("summary", "No summary provided"), workspace_root, out_dir)
+                ),
+                source=str(sanitize_value(value.get("source", source), workspace_root, out_dir)),
+                details=safe_details,
+            )
+        )
+
+    missing_status = "missing" if summary_enabled or summary_required else "skip"
+    for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:
+        if evidence_id in seen:
+            continue
+        item_required = summary_required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
+        items.append(
+            EvidenceItem(
+                evidence_id,
+                missing_status,
+                item_required,
+                f"{evidence_id} was not reported by live-network beta smoke.",
+                source,
+                summary_details,
+            )
+        )
+    return items
+
+
 def app_platform_docs_evidence(workspace_root: Path, out_dir: Path) -> list[EvidenceItem]:
     source = display_path(
         workspace_root / "tools/release-certification/app_platform_docs_check.py",
@@ -1541,6 +1713,21 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             title="Performance regression smoke certification",
             required_evidence_ids=("performance.smoke",),
             docs=("docs/release-certification.md", "tools/perf/README.md"),
+        ),
+        MatrixRowSpec(
+            id="live-network-beta-certification",
+            category="network-compatibility",
+            title="Live-network beta certification",
+            optional_evidence_ids=LIVE_NETWORK_BETA_EVIDENCE_IDS,
+            gate_ids=("ecosystem.live-network-beta",),
+            docs=(
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+                "docs/cryptad-release-workflow-and-runbook.md",
+                "docs/app-platform-beta-program.md",
+                "docs/app-platform-beta-known-limitations.md",
+            ),
+            phase="phase-8",
         ),
         MatrixRowSpec(
             id="platform-api-contract",
@@ -2143,11 +2330,25 @@ def evaluate_matrix_row(
     required_warn = [
         evidence_id for evidence_id, status in required_statuses.items() if status == "warn"
     ]
-    optional_warn = [
-        evidence_id
-        for evidence_id, status in optional_statuses.items()
-        if status in {"fail", "warn", "missing", "skip"}
-    ]
+    optional_warn: list[str] = []
+    for evidence_id, status in optional_statuses.items():
+        if status in {"fail", "warn", "missing"}:
+            optional_warn.append(evidence_id)
+        elif status == "skip":
+            evidence_details_value = evidence_details(evidence_entries.get(evidence_id))
+            live_beta_disabled_skip = (
+                evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+                and not settings.live_network_beta_enabled
+                and not settings.live_network_beta_required
+                and not bool(evidence_details_value.get("enabled"))
+            )
+            if live_beta_disabled_skip:
+                continue
+            if evidence_id == "live-network-beta.app-service-score" and not bool(
+                evidence_details_value.get("enabled")
+            ):
+                continue
+            optional_warn.append(evidence_id)
     if required_bad:
         issue_ids.extend(f"evidence.{evidence_id}" for evidence_id in required_bad)
     if required_warn:
@@ -3267,6 +3468,117 @@ def evaluate_app_update_rollback_gate(
     )
 
 
+def evaluate_live_network_beta_gate(
+    current: dict[str, dict[str, Any]],
+    settings: Settings,
+) -> GateResult:
+    entries = {
+        evidence_id: current.get(evidence_id)
+        for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
+    }
+    details_by_id = {
+        evidence_id: evidence_details(entry)
+        for evidence_id, entry in entries.items()
+    }
+    enabled = settings.live_network_beta_enabled or any(
+        bool(details.get("enabled")) for details in details_by_id.values()
+    )
+    required = settings.live_network_beta_required
+    statuses = {
+        evidence_id: evidence_status(entry)
+        for evidence_id, entry in entries.items()
+    }
+    required_ids = [
+        evidence_id
+        for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
+        if required or evidence_required(entries.get(evidence_id))
+    ]
+    failures: list[str] = []
+    warnings: list[str] = []
+    failure_evidence_ids: list[str] = []
+    warning_evidence_ids: list[str] = []
+    if not enabled and not required:
+        return GateResult(
+            "ecosystem.live-network-beta",
+            "pass",
+            False,
+            "Live-network beta certification was not requested.",
+            {
+                "enabled": False,
+                "required": False,
+                "statuses": statuses,
+                "requiredEvidenceIds": [],
+                "optionalEvidenceIds": ["live-network-beta.app-service-score"],
+                "node": {},
+                "redaction": {},
+                "stepCounts": {},
+                "artifactPaths": [],
+            },
+        )
+    for evidence_id in required_ids:
+        status = statuses[evidence_id]
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is {status}")
+            add_evidence_issue(details_by_id.setdefault(evidence_id, {}), "failureEvidenceIds", evidence_id)
+            failure_evidence_ids.append(evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details_by_id.setdefault(evidence_id, {}), "warningEvidenceIds", evidence_id)
+            warning_evidence_ids.append(evidence_id)
+    if enabled and not required:
+        for evidence_id, status in statuses.items():
+            if status in {"fail", "missing", "warn"}:
+                warnings.append(f"{evidence_id} evidence is {status}")
+                add_evidence_issue(details_by_id.setdefault(evidence_id, {}), "warningEvidenceIds", evidence_id)
+                warning_evidence_ids.append(evidence_id)
+    optional_service_status = statuses.get("live-network-beta.app-service-score", "missing")
+    optional_service_details = details_by_id.get("live-network-beta.app-service-score", {})
+    optional_service_requested = bool(optional_service_details.get("enabled"))
+    if enabled and optional_service_status in {"fail", "missing", "warn"}:
+        warnings.append(
+            f"live-network-beta.app-service-score evidence is {optional_service_status}; app-service score invocation remains optional"
+        )
+        warning_evidence_ids.append("live-network-beta.app-service-score")
+    elif enabled and optional_service_status == "skip" and optional_service_requested:
+        warnings.append(
+            "live-network-beta.app-service-score evidence is skip after score invocation was requested; app-service score invocation remains optional"
+        )
+        warning_evidence_ids.append("live-network-beta.app-service-score")
+    redaction_status = statuses.get("live-network-beta.redaction", "missing")
+    if redaction_status in {"fail", "missing", "skip"} and required:
+        add_evidence_issue(details_by_id.setdefault("live-network-beta.redaction", {}), "failureEvidenceIds", "live-network-beta.redaction")
+        failure_evidence_ids.append("live-network-beta.redaction")
+
+    representative_details = next(
+        (details for details in details_by_id.values() if details),
+        {},
+    )
+    failures = sorted(dict.fromkeys(failures))
+    warnings = sorted(dict.fromkeys(warnings))
+    compact_details: dict[str, Any] = {
+        "enabled": enabled,
+        "required": required,
+        "statuses": statuses,
+        "requiredEvidenceIds": required_ids,
+        "optionalEvidenceIds": ["live-network-beta.app-service-score"],
+        "node": representative_details.get("node", {}),
+        "redaction": representative_details.get("redaction", {}),
+        "stepCounts": representative_details.get("stepCounts", {}),
+        "artifactPaths": representative_details.get("artifactPaths", []),
+    }
+    if failures:
+        compact_details["failureEvidenceIds"] = sorted(dict.fromkeys(failure_evidence_ids))
+    if warnings:
+        compact_details["warningEvidenceIds"] = sorted(dict.fromkeys(warning_evidence_ids))
+    return gate_from_issues(
+        "ecosystem.live-network-beta",
+        "Live-network beta certification evidence is complete.",
+        failures,
+        warnings,
+        compact_details,
+    )
+
+
 def evaluate_app_vault_gate(
     current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
 ) -> GateResult:
@@ -4320,6 +4632,7 @@ def evaluate_ecosystem_gates(
         evaluate_app_ui_quality_gate(current, previous),
         evaluate_app_review_trust_gate(current, previous, metadata, settings.mode),
         evaluate_app_update_rollback_gate(current, previous),
+        evaluate_live_network_beta_gate(current, settings),
         evaluate_app_vault_gate(current, previous),
         evaluate_sandbox_provider_gate(current, previous, settings.mode, metadata),
         evaluate_reference_content_gate(current, previous),
@@ -4404,6 +4717,14 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
         "performance-smoke-report.md": settings.perf_smoke_summary.parent / "artifacts" / "perf-report.md",
         "app-platform-smoke-report.md": settings.app_platform_summary.parent / "app-platform-smoke-report.md",
     }
+    if settings.live_network_beta_enabled or settings.live_network_beta_required:
+        source_map.update(
+            {
+                "live-network-beta-smoke-summary.json": settings.live_network_summary,
+                "live-network-beta-smoke-report.md": settings.live_network_summary.parent
+                / "live-network-beta-smoke-report.md",
+            }
+        )
     copied: list[str] = []
     for target_name, source_path in source_map.items():
         if not source_path.is_file():
@@ -4556,6 +4877,9 @@ def render_report(summary: dict[str, Any]) -> str:
     append_detail(lines, summary, "interop.extended")
     lines.extend(["", "## Performance Regression", ""])
     append_detail(lines, summary, "performance.smoke")
+    lines.extend(["", "## Live Network Beta", ""])
+    for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:
+        append_detail(lines, summary, evidence_id)
     lines.extend(["", "## App Platform", ""])
     for evidence_id in (
         "app-platform.first-party",
@@ -4933,6 +5257,16 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             settings.mode,
         )
     )
+    evidence.extend(
+        live_network_beta_evidence(
+            settings.live_network_summary,
+            settings.workspace_root,
+            settings.out_dir,
+            settings.mode,
+            settings.live_network_beta_enabled,
+            settings.live_network_beta_required,
+        )
+    )
     evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
@@ -5143,6 +5477,10 @@ def parse_key_value(values: list[str]) -> dict[str, str]:
     return result
 
 
+def env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def settings_from_args(args: argparse.Namespace) -> Settings:
     workspace_root = args.workspace_root.resolve()
     out_dir = (workspace_root / args.out_dir).resolve() if not args.out_dir.is_absolute() else args.out_dir.resolve()
@@ -5152,6 +5490,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     mode = args.mode or os.environ.get("CRYPTAD_CERT_MODE", "pr")
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
+    live_network_beta_enabled = args.live_network_beta or env_flag("CRYPTAD_CERT_LIVE_NETWORK_BETA")
+    live_network_beta_required = args.require_live_network_beta or env_flag("CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA")
+    if live_network_beta_required:
+        live_network_beta_enabled = True
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -5160,6 +5502,9 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         interop_extended_summary=resolve_path(workspace_root, args.interop_extended_summary),
         perf_smoke_summary=resolve_path(workspace_root, args.perf_smoke_summary),
         app_platform_summary=resolve_path(workspace_root, args.app_platform_summary),
+        live_network_summary=resolve_path(workspace_root, args.live_network_summary),
+        live_network_beta_enabled=live_network_beta_enabled,
+        live_network_beta_required=live_network_beta_required,
         waivers=parse_key_value(args.waive),
         metadata=parse_key_value(args.metadata),
         skip_git_metadata=args.skip_git_metadata,
@@ -5189,6 +5534,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--app-platform-summary",
         type=Path,
         default=DEFAULT_OUT_DIR / "app-platform-smoke" / "summary.json",
+    )
+    parser.add_argument(
+        "--live-network-summary",
+        type=Path,
+        default=DEFAULT_OUT_DIR / "live-network-beta-smoke" / "summary.json",
+    )
+    parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
+    parser.add_argument(
+        "--require-live-network-beta",
+        action="store_true",
+        help="Treat missing or failing live-network beta evidence as release-blocking.",
     )
     parser.add_argument("--waive", action="append", default=[], metavar="ID=REASON")
     parser.add_argument("--waiver-file", action="append", default=[], type=Path)
@@ -5252,16 +5608,51 @@ def run_self_test(repo_root: Path) -> None:
             interop_extended_summary=workspace / "build/interop-extended/summary.json",
             perf_smoke_summary=workspace / "build/perf-smoke/summary.json",
             app_platform_summary=out_dir / "app-platform-smoke/summary.json",
+            live_network_summary=out_dir / "live-network-beta-smoke/summary.json",
+            live_network_beta_enabled=False,
+            live_network_beta_required=False,
             waivers={},
             metadata={"selfTest": "true"},
             skip_git_metadata=True,
             history_dir=workspace / "build/no-auto-history",
+        )
+        write_json(
+            settings.live_network_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "live-network-beta-smoke",
+                "mode": "release-candidate",
+                "enabled": True,
+                "required": True,
+                "status": "fail",
+                "node": {"baseUrlShape": "http://127.0.0.1:<port>", "localhostOnly": True},
+                "evidence": [
+                    {
+                        "id": "live-network-beta.preflight",
+                        "status": "fail",
+                        "requiredForReleaseCandidate": True,
+                        "summary": "stale live summary should be ignored when live beta is disabled.",
+                        "source": "live-network-beta-self-test",
+                        "details": {"enabled": True, "required": True},
+                    }
+                ],
+                "redaction": {"status": "fail"},
+            },
+        )
+        write_text(
+            settings.live_network_summary.parent / "live-network-beta-smoke-report.md",
+            "# stale live report\n\nThis stale report should not be copied when live-network beta is disabled.\n",
         )
         summary, exit_code = run(settings)
         assert exit_code == 0, summary
         assert summary["status"] == "warn", summary
         assert summary["promotionDecision"] == "PASS WITH WARNINGS", summary
         assert summary["releaseCandidatePassed"] is True, summary
+        assert not any("live-network-beta" in artifact for artifact in summary["copiedArtifacts"]), summary[
+            "copiedArtifacts"
+        ]
+        assert not (out_dir / "artifacts/live-network-beta-smoke-summary.json").exists(), summary["copiedArtifacts"]
+        assert not (out_dir / "artifacts/live-network-beta-smoke-report.md").exists(), summary["copiedArtifacts"]
         assert summary["waivers"] == {}, summary
         assert summary["waiverRecords"] == [], summary
         assert summary["historyComparison"]["status"] == "warn", summary
@@ -5296,10 +5687,18 @@ def run_self_test(repo_root: Path) -> None:
             "platform-api-contract",
             "interop-smoke",
             "performance-smoke",
+            "live-network-beta-certification",
             "legacy-retirement",
             "ecosystem-certification-matrix",
         ):
             assert row_id in matrix_rows_by_id, row_id
+        disabled_live_row = matrix_rows_by_id["live-network-beta-certification"]
+        assert disabled_live_row["status"] == "pass", disabled_live_row
+        assert disabled_live_row["releaseBlocker"] is False, disabled_live_row
+        assert not any(
+            issue_id.startswith("evidence.live-network-beta.")
+            for issue_id in disabled_live_row.get("issueIds", [])
+        ), disabled_live_row
         covered_evidence_ids = {
             evidence_id
             for row in matrix["rows"]
@@ -5633,6 +6032,203 @@ def run_self_test(repo_root: Path) -> None:
                 if isinstance(row, dict) and row.get("id") == row_id:
                     return row
             raise AssertionError(f"missing matrix row {row_id}")
+
+        def write_live_network_summary(
+            name: str,
+            *,
+            enabled: bool,
+            required: bool,
+            statuses: dict[str, str],
+            mode: str = "release-candidate",
+            kind: str = "live-network-beta-smoke",
+        ) -> Path:
+            evidence = []
+            evidence_statuses = []
+            for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:
+                status = statuses.get(evidence_id, "pass")
+                evidence_statuses.append(status)
+                evidence_enabled = enabled
+                if evidence_id == "live-network-beta.app-service-score" and status == "skip":
+                    evidence_enabled = False
+                evidence.append(
+                    {
+                        "id": evidence_id,
+                        "status": status,
+                        "requiredForReleaseCandidate": (
+                            required and evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
+                        )
+                        or evidence_id == "live-network-beta.redaction",
+                        "summary": f"{evidence_id} self-test status is {status}.",
+                        "source": "live-network-beta-self-test",
+                        "details": {
+                            "enabled": evidence_enabled,
+                            "required": required,
+                            "node": {
+                                "baseUrlShape": "http://127.0.0.1:<port>",
+                                "localhostOnly": True,
+                            },
+                            "redaction": {
+                                "status": "pass",
+                                "forbiddenPatternsChecked": True,
+                                "rawBodiesStored": False,
+                                "privateInsertUrisStored": False,
+                                "localPathsStored": False,
+                            },
+                            "stepCounts": {"total": len(LIVE_NETWORK_BETA_EVIDENCE_IDS), "passed": 9},
+                            "artifactPaths": ["<repo>/build/release-certification/live-network-beta-smoke/summary.json"],
+                        },
+                    }
+                )
+            path = workspace / f"build/{name}/summary.json"
+            write_json(
+                path,
+                {
+                    "schemaVersion": 1,
+                    "kind": kind,
+                    "mode": mode,
+                    "enabled": enabled,
+                    "required": required,
+                    "status": aggregate_status_values(evidence_statuses),
+                    "node": {
+                        "baseUrlShape": "http://127.0.0.1:<port>",
+                        "localhostOnly": True,
+                        "version": "redacted",
+                        "build": "redacted",
+                    },
+                    "evidence": evidence,
+                    "redaction": {
+                        "status": "pass",
+                        "forbiddenPatternsChecked": True,
+                        "rawBodiesStored": False,
+                        "privateInsertUrisStored": False,
+                        "localPathsStored": False,
+                    },
+                },
+            )
+            return path
+
+        live_disabled_evidence = {item["id"]: item for item in summary["evidence"]}
+        for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:
+            assert live_disabled_evidence[evidence_id]["status"] == "skip", live_disabled_evidence
+            assert live_disabled_evidence[evidence_id]["requiredForReleaseCandidate"] is False, (
+                live_disabled_evidence
+            )
+        disabled_live_gate = gate_by_id(summary, "ecosystem.live-network-beta")
+        assert disabled_live_gate["status"] == "pass", disabled_live_gate
+        assert disabled_live_gate["releaseBlocker"] is False, disabled_live_gate
+
+        optional_live_path = write_live_network_summary(
+            "live-network-optional-failing",
+            enabled=True,
+            required=False,
+            statuses={"live-network-beta.content-fetch": "fail"},
+        )
+        optional_live_summary, optional_live_exit_code = run_with_previous(
+            "live-network-optional-failing-cert",
+            live_network_summary=optional_live_path,
+            live_network_beta_enabled=True,
+        )
+        assert optional_live_exit_code == 0, optional_live_summary
+        optional_live_gate = gate_by_id(optional_live_summary, "ecosystem.live-network-beta")
+        assert optional_live_gate["status"] == "warn", optional_live_gate
+        assert optional_live_gate["releaseBlocker"] is False, optional_live_gate
+        optional_live_row = matrix_row_by_id(
+            workspace / "build/live-network-optional-failing-cert",
+            "live-network-beta-certification",
+        )
+        assert optional_live_row["status"] == "warn", optional_live_row
+        assert optional_live_row["releaseBlocker"] is False, optional_live_row
+
+        required_missing_summary, required_missing_exit_code = run_with_previous(
+            "live-network-required-missing-cert",
+            live_network_summary=workspace / "build/missing-live-network/summary.json",
+            live_network_beta_enabled=True,
+            live_network_beta_required=True,
+        )
+        assert required_missing_exit_code == 1, required_missing_summary
+        required_missing_gate = gate_by_id(required_missing_summary, "ecosystem.live-network-beta")
+        assert required_missing_gate["status"] == "fail", required_missing_gate
+        assert required_missing_gate["releaseBlocker"] is True, required_missing_gate
+        required_missing_evidence = {item["id"]: item for item in required_missing_summary["evidence"]}
+        for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS:
+            assert required_missing_evidence[evidence_id]["status"] == "missing", required_missing_evidence
+            assert required_missing_evidence[evidence_id]["requiredForReleaseCandidate"] is True, (
+                required_missing_evidence
+            )
+
+        required_failing_path = write_live_network_summary(
+            "live-network-required-failing",
+            enabled=True,
+            required=True,
+            statuses={"live-network-beta.catalog-usk-fetch": "fail"},
+        )
+        required_failing_summary, required_failing_exit_code = run_with_previous(
+            "live-network-required-failing-cert",
+            live_network_summary=required_failing_path,
+            live_network_beta_enabled=True,
+            live_network_beta_required=True,
+        )
+        assert required_failing_exit_code == 1, required_failing_summary
+        required_failing_gate = gate_by_id(required_failing_summary, "ecosystem.live-network-beta")
+        assert required_failing_gate["status"] == "fail", required_failing_gate
+        assert required_failing_gate["details"]["failureEvidenceIds"] == [
+            "live-network-beta.catalog-usk-fetch"
+        ], required_failing_gate
+        required_failing_row = matrix_row_by_id(
+            workspace / "build/live-network-required-failing-cert",
+            "live-network-beta-certification",
+        )
+        assert required_failing_row["status"] == "fail", required_failing_row
+        assert required_failing_row["releaseBlocker"] is True, required_failing_row
+
+        required_passing_path = write_live_network_summary(
+            "live-network-required-passing",
+            enabled=True,
+            required=True,
+            statuses={},
+        )
+        required_passing_summary, required_passing_exit_code = run_with_previous(
+            "live-network-required-passing-cert",
+            live_network_summary=required_passing_path,
+            live_network_beta_enabled=True,
+            live_network_beta_required=True,
+        )
+        assert required_passing_exit_code == 0, required_passing_summary
+        required_passing_gate = gate_by_id(required_passing_summary, "ecosystem.live-network-beta")
+        assert required_passing_gate["status"] == "pass", required_passing_gate
+        required_passing_evidence = {item["id"]: item for item in required_passing_summary["evidence"]}
+        for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS:
+            assert required_passing_evidence[evidence_id]["requiredForReleaseCandidate"] is True, (
+                required_passing_evidence
+            )
+        required_passing_row = matrix_row_by_id(
+            workspace / "build/live-network-required-passing-cert",
+            "live-network-beta-certification",
+        )
+        assert required_passing_row["releaseBlocker"] is False, required_passing_row
+
+        required_without_score_path = write_live_network_summary(
+            "live-network-required-without-score",
+            enabled=True,
+            required=True,
+            statuses={"live-network-beta.app-service-score": "skip"},
+        )
+        required_without_score_summary, required_without_score_exit_code = run_with_previous(
+            "live-network-required-without-score-cert",
+            live_network_summary=required_without_score_path,
+            live_network_beta_enabled=True,
+            live_network_beta_required=True,
+        )
+        assert required_without_score_exit_code == 0, required_without_score_summary
+        required_without_score_gate = gate_by_id(required_without_score_summary, "ecosystem.live-network-beta")
+        assert required_without_score_gate["status"] == "pass", required_without_score_gate
+        assert "warningEvidenceIds" not in required_without_score_gate["details"], required_without_score_gate
+        required_without_score_row = matrix_row_by_id(
+            workspace / "build/live-network-required-without-score-cert",
+            "live-network-beta-certification",
+        )
+        assert required_without_score_row["status"] == "pass", required_without_score_row
+        assert required_without_score_row["releaseBlocker"] is False, required_without_score_row
 
         portal_linked_doc = workspace / "docs/app-owned-ui.md"
         original_portal_linked_doc = portal_linked_doc.read_text(encoding="utf-8")
