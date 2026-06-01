@@ -22,11 +22,13 @@
     alertsSnapshot: null,
     appCatalogsSnapshot: null,
     appsSnapshot: null,
+    betaDashboardSnapshot: null,
     identityVaultSnapshot: null,
     recommendedCatalogsSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
     securitySnapshot: null,
+    supportBundleSnapshot: null,
     updatesSnapshot: null,
     wizardSnapshot: null,
   };
@@ -51,6 +53,7 @@
   };
   let peerLoadGeneration = 0;
   let queueLoadGeneration = 0;
+  let betaDashboardLoadGeneration = 0;
   let alertsLoadGeneration = 0;
   let appsLoadGeneration = 0;
   let diagnosticsLoadGeneration = 0;
@@ -63,6 +66,9 @@
   const sections = {
     overview: document.getElementById("overview-body"),
     connectivity: document.getElementById("connectivity-body"),
+    betaDashboard: document.getElementById("beta-dashboard-body"),
+    betaDashboardStatus: document.getElementById("beta-dashboard-status"),
+    betaDashboardReadonlyHint: document.getElementById("beta-dashboard-readonly-hint"),
     alerts: document.getElementById("alerts-body"),
     alertsStatus: document.getElementById("alerts-status"),
     alertsReadonlyHint: document.getElementById("alerts-readonly-hint"),
@@ -103,6 +109,12 @@
   };
   const alertsControls = {
     refreshButton: document.getElementById("alerts-refresh-button"),
+  };
+  const betaDashboardControls = {
+    refreshButton: document.getElementById("beta-dashboard-refresh-button"),
+    supportRefreshButton: document.getElementById("support-bundle-refresh-button"),
+    supportDownloadButton: document.getElementById("support-bundle-download-button"),
+    supportCopyButton: document.getElementById("support-bundle-copy-button"),
   };
   const appsControls = {
     refreshButton: document.getElementById("apps-refresh-button"),
@@ -236,6 +248,10 @@
 
   function setAlertsStatus(message, tone) {
     setSectionStatus(sections.alertsStatus, message, tone);
+  }
+
+  function setBetaDashboardStatus(message, tone) {
+    setSectionStatus(sections.betaDashboardStatus, message, tone);
   }
 
   function setAppsStatus(message, tone) {
@@ -608,6 +624,346 @@
         ], "is-warning"),
       );
     }
+  }
+
+  function renderBetaDashboard(data) {
+    shellState.betaDashboardSnapshot = data;
+    updateBetaDashboardToolbar();
+    clear(sections.betaDashboard);
+
+    const summary = recordValue(data.summary);
+    const warnings = stringList(data.warnings);
+    const catalogs = arrayValue(data.catalogs);
+    const apps = arrayValue(data.apps);
+    const subscriptions = arrayValue(data.subscriptions);
+    const appServices = recordValue(data.appServices);
+    const trustGraph = recordValue(data.trustGraph);
+
+    const summaryCards = document.createElement("div");
+    summaryCards.className = "app-card-list";
+    summaryCards.append(
+      summaryCard(
+        normalizedStatus(data.overallStatus, "Unavailable"),
+        [
+          ["Catalogs", scalar(summary.catalogCount)],
+          ["Apps", `${scalar(summary.installedAppCount)} installed / ${scalar(summary.runningAppCount)} running`],
+          ["Updates", `${scalar(summary.pendingUpdateCount)} pending / ${scalar(summary.stagedUpdateCount)} staged`],
+          ["Rollback", scalar(summary.rollbackAvailableCount)],
+          ["Stale subscriptions", scalar(summary.staleSubscriptionCount)],
+          ["Pending grants", scalar(summary.pendingGrantCount)],
+          ["Quota warnings", scalar(summary.quotaWarningCount)],
+        ],
+        operatorStatusTone(data.overallStatus),
+      ),
+      summaryCard(
+        "Support bundle",
+        [
+          ["Warnings", scalar(summary.supportWarningCount)],
+          ["Last dashboard refresh", formatTimestampMillis(data.generatedAtEpochMillis)],
+          [
+            "Support report",
+            shellState.supportBundleSnapshot
+              ? formatTimestampMillis(shellState.supportBundleSnapshot.generatedAtEpochMillis)
+              : "Not generated",
+          ],
+        ],
+        warnings.length ? "is-warning" : "",
+      ),
+    );
+    sections.betaDashboard.append(summaryCards);
+
+    if (warnings.length) {
+      sections.betaDashboard.append(renderBetaWarningList(warnings));
+    }
+
+    sections.betaDashboard.append(
+      renderBetaCatalogs(catalogs),
+      renderBetaApps(apps),
+      renderBetaSubscriptions(subscriptions),
+      renderBetaTrustAndServices(trustGraph, appServices),
+      renderBetaRecoveryActions(arrayValue(data.recoveryActions)),
+    );
+  }
+
+  function renderBetaWarningList(warnings) {
+    const card = document.createElement("section");
+    card.className = "alert-card";
+    card.append(text("h3", "alert-card-title", "Operator warnings"));
+    const list = document.createElement("ul");
+    list.className = "permission-list";
+    warnings.forEach((warning) => {
+      const item = document.createElement("li");
+      item.textContent = warning;
+      list.append(item);
+    });
+    card.append(list);
+    return card;
+  }
+
+  function renderBetaCatalogs(catalogs) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Catalog health"));
+    if (!catalogs.length) {
+      group.append(text("p", "empty-state", "No catalog health entries were returned."));
+      return group;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    catalogs.forEach((catalog) => {
+      const card = document.createElement("article");
+      card.className = "app-card";
+      const warnings = stringList(catalog.warnings);
+      card.append(
+        betaCardHeader(
+          catalog.name || catalog.catalogId || "Catalog",
+          catalog.sourceKind || "unknown",
+          warnings.length ? "is-warning" : operatorStatusTone(catalog.lastFetchStatus),
+        ),
+        definitionList([
+          ["Catalog ID", catalog.catalogId],
+          ["Source", catalog.sourceDisplay],
+          ["Trusted key", normalizedStatus(catalog.trustedCatalogKeyStatus, "Unknown")],
+          ["Last status", normalizedStatus(catalog.lastFetchStatus, "Unknown")],
+          ["Last success", formatIsoTimestamp(catalog.lastSuccessfulRefreshAt)],
+          ["Entries", scalar(catalog.entryCount)],
+        ]),
+        renderBetaActionList(arrayValue(catalog.recoveryActions), 2),
+      );
+      list.append(card);
+    });
+    group.append(list);
+    return group;
+  }
+
+  function renderBetaApps(apps) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "App health and recovery"));
+    if (!apps.length) {
+      group.append(text("p", "empty-state", "No installed app health entries were returned."));
+      return group;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    apps.forEach((app) => {
+      const update = recordValue(app.update);
+      const warnings = stringList(app.warnings);
+      const quota = recordValue(app.quota);
+      const sandbox = recordValue(app.sandbox);
+      const card = document.createElement("article");
+      card.className = warnings.length ? "app-card is-warning" : "app-card";
+      card.append(
+        betaCardHeader(
+          app.name || app.appId || "App",
+          app.running ? "running" : "stopped",
+          warnings.length ? "is-warning" : app.running ? "is-success" : "",
+        ),
+        definitionList([
+          ["App ID", app.appId],
+          ["Version", app.version],
+          ["Signed bundle", normalizedStatus(app.signedBundleStatus, "Unknown")],
+          ["Sandbox", `${normalizedStatus(sandbox.provider, "Unknown")} / ${normalizedStatus(sandbox.supportLevel, "Unknown")}`],
+          ["Update", normalizedStatus(appUpdateStatus(update), "Unavailable")],
+          ["Staged", stagedUpdateAvailable(update) ? "Available" : "None"],
+          ["Rollback", recordValue(update.rollback).available ? "Available" : "None"],
+          ["Data quota", quota.dataOverLimit || quota.cacheOverLimit ? "Over limit" : "Within current limits"],
+        ]),
+        renderBetaActionList(arrayValue(app.recoveryActions), 5),
+      );
+      if (warnings.length) {
+        card.append(renderCompactWarningText(warnings));
+      }
+      list.append(card);
+    });
+    group.append(list);
+    return group;
+  }
+
+  function renderBetaSubscriptions(subscriptions) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Content subscriptions"));
+    if (!subscriptions.length) {
+      group.append(text("p", "empty-state", "No content subscription summaries were returned."));
+      return group;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    subscriptions.forEach((subscription) => {
+      const warnings = stringList(subscription.warnings);
+      const card = document.createElement("article");
+      card.className = warnings.length ? "app-card is-warning" : "app-card";
+      card.append(
+        betaCardHeader(
+          subscription.label || subscription.subscriptionId || "Subscription",
+          subscription.status || "unknown",
+          warnings.length ? "is-warning" : operatorStatusTone(subscription.status),
+        ),
+        definitionList([
+          ["App", subscription.appId],
+          ["Subscription ID", subscription.subscriptionId],
+          ["Source", subscription.sourceDisplay],
+          ["Last success", formatIsoTimestamp(subscription.lastSuccessAt)],
+          ["Last failure", formatIsoTimestamp(subscription.lastFailureAt)],
+          ["Next due", formatIsoTimestamp(subscription.nextCheckAt)],
+          ["Failures", scalar(subscription.failureCount)],
+          ["Last edition", scalar(subscription.lastSeenEdition)],
+        ]),
+        renderBetaActionList(arrayValue(subscription.recoveryActions), 3),
+      );
+      if (warnings.length) {
+        card.append(renderCompactWarningText(warnings));
+      }
+      list.append(card);
+    });
+    group.append(list);
+    return group;
+  }
+
+  function renderBetaTrustAndServices(trustGraph, appServices) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Trust preview and app-service grants"));
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    const trustCard = document.createElement("article");
+    trustCard.className = "app-card";
+    trustCard.append(
+      betaCardHeader("Trust Graph Preview", "local preview", "is-warning"),
+      definitionList([
+        ["Preview only", trustGraph.previewOnly ? "Yes" : "Unavailable"],
+        ["Complete WoT", trustGraph.completeWot ? "Yes" : "No"],
+        ["Durable", scalar(trustGraph.durable)],
+        ["Anchors", scalar(trustGraph.anchorCount)],
+        ["Statements", scalar(trustGraph.statementCount)],
+        ["Audit entries", scalar(trustGraph.auditCount)],
+      ]),
+      renderCompactWarningText(stringList(trustGraph.warnings)),
+    );
+    const servicesCard = document.createElement("article");
+    servicesCard.className = "app-card";
+    servicesCard.append(
+      betaCardHeader(
+        "App-service grants",
+        `${scalar(appServices.pendingGrantCount)} pending`,
+        appServices.pendingGrantCount ? "is-warning" : "",
+      ),
+      definitionList([
+        ["Services", scalar(appServices.serviceCount)],
+        ["Requests", scalar(appServices.requestCount)],
+        ["Pending grants", scalar(appServices.pendingGrantCount)],
+        ["Active grants", scalar(appServices.activeGrantCount)],
+        ["Revoked/inactive", scalar(appServices.revokedOrInactiveGrantCount)],
+      ]),
+    );
+    const grantsLink = document.createElement("a");
+    grantsLink.className = "button button-secondary";
+    grantsLink.href = "#apps";
+    grantsLink.textContent = "Review grants";
+    servicesCard.append(grantsLink);
+    list.append(trustCard, servicesCard);
+    group.append(list);
+    return group;
+  }
+
+  function renderBetaRecoveryActions(actions) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Safe recovery actions"));
+    const rendered = renderBetaActionList(actions, 18);
+    if (!rendered.childElementCount) {
+      group.append(text("p", "empty-state", "No recovery actions are currently available."));
+      return group;
+    }
+    group.append(rendered);
+    return group;
+  }
+
+  function betaCardHeader(title, subtitle, tone) {
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(text("h3", "app-card-title", title), text("p", "app-card-subtitle", subtitle));
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(subtitle, tone));
+    header.append(heading, pills);
+    return header;
+  }
+
+  function renderCompactWarningText(warnings) {
+    const textNode = text("p", "error-state", warnings.join(" • "));
+    if (!warnings.length) {
+      textNode.hidden = true;
+    }
+    return textNode;
+  }
+
+  function renderBetaActionList(actions, limit) {
+    const container = document.createElement("div");
+    container.className = "app-card-actions";
+    actions
+      .filter((action) => operatorRecoveryActionVisible(action))
+      .slice(0, limit)
+      .forEach((action) => {
+        const node = buildOperatorRecoveryAction(action);
+        if (node) {
+          container.append(node);
+        }
+      });
+    return container;
+  }
+
+  function operatorRecoveryActionVisible(action) {
+    const actionId = typeof action?.id === "string" ? action.id : "";
+    return actionId !== "preserve-data-uninstall";
+  }
+
+  function buildOperatorRecoveryAction(action) {
+    if (!action || typeof action.path !== "string" || typeof action.method !== "string") {
+      return null;
+    }
+    const method = action.method.toUpperCase();
+    const label = typeof action.label === "string" && action.label ? action.label : action.id || method;
+    if (method === "GET") {
+      const link = document.createElement("a");
+      link.className = "button button-secondary";
+      link.href = apiUrl(action.path);
+      link.textContent = label;
+      return link;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.operatorRecoveryMethod = method;
+    form.dataset.operatorRecoveryPath = action.path;
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    submit.disabled = !formPassword || action.available === false;
+    form.append(submit);
+    return form;
+  }
+
+  function operatorStatusTone(status) {
+    const normalized = typeof status === "string" ? status.toLowerCase() : "";
+    if (normalized.includes("healthy") || normalized.includes("success") || normalized.includes("active")) {
+      return "is-success";
+    }
+    if (
+      normalized.includes("warning") ||
+      normalized.includes("stale") ||
+      normalized.includes("backoff") ||
+      normalized.includes("pending")
+    ) {
+      return "is-warning";
+    }
+    if (normalized.includes("required") || normalized.includes("unavailable") || normalized.includes("failed")) {
+      return "is-error";
+    }
+    return "";
   }
 
   function alertDismissPath(alertId) {
@@ -1651,6 +2007,10 @@
 
   function recordValue(value) {
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function arrayValue(value) {
+    return Array.isArray(value) ? value : [];
   }
 
   function normalizedStatus(value, fallback) {
@@ -3806,6 +4166,15 @@
     }
   }
 
+  function updateBetaDashboardToolbar() {
+    if (sections.betaDashboardReadonlyHint) {
+      sections.betaDashboardReadonlyHint.hidden = !!formPassword;
+    }
+    const hasSupportBundle = !!shellState.supportBundleSnapshot;
+    betaDashboardControls.supportDownloadButton.disabled = !hasSupportBundle;
+    betaDashboardControls.supportCopyButton.disabled = !hasSupportBundle;
+  }
+
   function updateAppsToolbar() {
     if (appsControls.catalogSourceForm) {
       appsControls.catalogSourceForm.hidden = !formPassword;
@@ -4200,6 +4569,7 @@
     const nextBootstrap = JSON.parse(nextBootstrapElement.textContent || "{}");
     formPassword = typeof nextBootstrap.formPassword === "string" ? nextBootstrap.formPassword : "";
     updateSecurityToolbar();
+    updateBetaDashboardToolbar();
     updateAppsToolbar();
     updatePublisherToolbar();
     updateUpdatesToolbar();
@@ -4524,6 +4894,29 @@
         return;
       }
       renderError(sections.alerts, "alerts", error);
+    }
+  }
+
+  async function loadBetaDashboardSection() {
+    const loadGeneration = ++betaDashboardLoadGeneration;
+    shellState.betaDashboardSnapshot = null;
+    clear(sections.betaDashboard);
+    sections.betaDashboard.append(text("p", "loading", "Loading operator beta dashboard..."));
+    updateBetaDashboardToolbar();
+
+    try {
+      const snapshot = await loadJson(apiUrl("operator/beta-dashboard"));
+      if (loadGeneration !== betaDashboardLoadGeneration) {
+        return;
+      }
+      renderBetaDashboard(snapshot);
+      setBetaDashboardStatus("Beta dashboard refreshed.", "is-success");
+    } catch (error) {
+      if (loadGeneration !== betaDashboardLoadGeneration) {
+        return;
+      }
+      renderError(sections.betaDashboard, "beta dashboard", error);
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
     }
   }
 
@@ -4949,6 +5342,112 @@
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function loadSupportBundle() {
+    try {
+      const bundle = await loadJson(apiUrl("operator/support-bundle"));
+      shellState.supportBundleSnapshot = bundle;
+      updateBetaDashboardToolbar();
+      if (shellState.betaDashboardSnapshot) {
+        renderBetaDashboard(shellState.betaDashboardSnapshot);
+      }
+      setBetaDashboardStatus("Support bundle generated.", "is-success");
+    } catch (error) {
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function supportSummaryText(bundle) {
+    const dashboard = recordValue(bundle && bundle.dashboard);
+    const summary = recordValue(dashboard.summary);
+    const redaction = recordValue(bundle && bundle.redaction);
+    const warnings = stringList(bundle && bundle.warnings);
+    const lines = [
+      "Cryptad operator support summary",
+      `Generated: ${formatTimestampMillis(bundle && bundle.generatedAtEpochMillis)}`,
+      `Overall status: ${normalizedStatus(dashboard.overallStatus, "Unavailable")}`,
+      `Catalogs: ${scalar(summary.catalogCount)}`,
+      `Apps: ${scalar(summary.installedAppCount)} installed / ${scalar(summary.runningAppCount)} running`,
+      `Updates: ${scalar(summary.pendingUpdateCount)} pending / ${scalar(summary.stagedUpdateCount)} staged`,
+      `Stale subscriptions: ${scalar(summary.staleSubscriptionCount)}`,
+      `Pending app-service grants: ${scalar(summary.pendingGrantCount)}`,
+      `Quota warnings: ${scalar(summary.quotaWarningCount)}`,
+      `Redaction: ${scalar(redaction.status)}`,
+    ];
+    if (warnings.length) {
+      lines.push("Warnings:", ...warnings.map((warning) => `- ${warning}`));
+    }
+    return lines.join("\n");
+  }
+
+  function supportBundleFileName(bundle) {
+    const timestamp =
+      bundle && typeof bundle.generatedAtEpochMillis === "number"
+        ? new Date(bundle.generatedAtEpochMillis)
+        : new Date();
+    const safeTimestamp = Number.isNaN(timestamp.getTime())
+      ? "unknown"
+      : timestamp.toISOString().replace(/[:.]/g, "-");
+    return `cryptad-support-bundle-${safeTimestamp}.json`;
+  }
+
+  function downloadSupportBundle() {
+    const bundle = shellState.supportBundleSnapshot;
+    if (!bundle) {
+      setBetaDashboardStatus("Generate a support bundle before downloading it.", "is-error");
+      return;
+    }
+    const blob = new Blob([`${formatJson(bundle)}\n`], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = supportBundleFileName(bundle);
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+    setBetaDashboardStatus("Support bundle download prepared.", "is-success");
+  }
+
+  async function copySupportSummary() {
+    const bundle = shellState.supportBundleSnapshot;
+    if (!bundle) {
+      setBetaDashboardStatus("Generate a support bundle before copying its summary.", "is-error");
+      return;
+    }
+    const summary = supportSummaryText(bundle);
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      setBetaDashboardStatus("Clipboard access is unavailable in this browser.", "is-error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(summary);
+      setBetaDashboardStatus("Support summary copied.", "is-success");
+    } catch (error) {
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitOperatorRecoveryAction(form) {
+    const method = form.dataset.operatorRecoveryMethod || "POST";
+    const path = form.dataset.operatorRecoveryPath || "";
+    if (!path) {
+      setBetaDashboardStatus("Recovery action path is unavailable.", "is-error");
+      return;
+    }
+    try {
+      await submitFormMutation(
+        method,
+        path,
+        new FormData(),
+        "Operator recovery actions unavailable in read-only mode.",
+      );
+      setBetaDashboardStatus("Recovery action completed.", "is-success");
+      await Promise.all([loadBetaDashboardSection(), loadAppsSection()]);
+    } catch (error) {
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
     }
   }
 
@@ -5550,6 +6049,32 @@
     });
   }
 
+  function bindBetaDashboardInteractions() {
+    betaDashboardControls.refreshButton.addEventListener("click", () => {
+      setBetaDashboardStatus("Refreshing beta dashboard.");
+      loadBetaDashboardSection();
+    });
+    betaDashboardControls.supportRefreshButton.addEventListener("click", () => {
+      setBetaDashboardStatus("Generating support bundle.");
+      loadSupportBundle();
+    });
+    betaDashboardControls.supportDownloadButton.addEventListener("click", downloadSupportBundle);
+    betaDashboardControls.supportCopyButton.addEventListener("click", () => {
+      copySupportSummary();
+    });
+    sections.betaDashboard.addEventListener("submit", async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (!form.dataset.operatorRecoveryPath) {
+        return;
+      }
+      event.preventDefault();
+      await submitOperatorRecoveryAction(form);
+    });
+  }
+
   function bindDiagnosticsInteractions() {
     diagnosticsControls.refreshButton.addEventListener("click", () => {
       setDiagnosticsStatus("Refreshing diagnostics.");
@@ -5694,6 +6219,7 @@
   initializePublisherForm(publisherControls.directoryForm);
   renderLegacyLinks();
   bindAlertsInteractions();
+  bindBetaDashboardInteractions();
   bindAppsInteractions();
   bindPublisherInteractions();
   bindSecurityInteractions();
@@ -5704,6 +6230,7 @@
   bindDiagnosticsInteractions();
   bindQueueInteractions();
   updateAlertsToolbar();
+  updateBetaDashboardToolbar();
   updateAppsToolbar();
   updatePublisherToolbar();
   updateDiagnosticsToolbar();
@@ -5721,6 +6248,9 @@
   });
   loadAlertsSection().catch((error) => {
     renderError(sections.alerts, "alerts", error);
+  });
+  loadBetaDashboardSection().catch((error) => {
+    renderError(sections.betaDashboard, "beta dashboard", error);
   });
   loadAppsSection().catch((error) => {
     renderError(sections.apps, "apps", error);

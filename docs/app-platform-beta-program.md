@@ -224,11 +224,15 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike`.
 9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`, and FProxy
    browse remains retained.
-10. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
+10. Confirm the [Operator beta dashboard](operator-beta-dashboard.md) evidence passes, including
+   `operator-beta.dashboard`, `operator-beta.subscription-recovery`,
+   `operator-beta.support-bundle-redaction`, and `operator-beta.web-shell`.
+11. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
    templates, internal links, and redaction checks.
-11. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program` and no
-   active blocker remains unless a release manager recorded an explicit waiver.
-12. Publish release notes with the known beta limitations and any accepted waivers or residual
+12. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program`,
+   `operator-beta-ux-and-recovery`, and no active blocker remains unless a release manager recorded
+   an explicit waiver.
+13. Publish release notes with the known beta limitations and any accepted waivers or residual
     risks.
 
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver

@@ -1721,6 +1721,86 @@
     },
     {
       "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.dashboard",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta dashboard route, auth, and section evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.catalog-health",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta catalog health evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.app-update-recovery",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta app-update recovery evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.subscription-recovery",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta subscription recovery evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.trust-review-warnings",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta trust and review-warning evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.app-data-quota-warnings",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta app-data and quota-warning evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.support-bundle-redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta support-bundle redaction evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-beta.web-shell",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta Web Shell evidence passed."
+    },
+    {
+      "details": {
         "enabled": false
       },
       "id": "apphost.live",

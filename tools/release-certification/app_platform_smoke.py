@@ -8906,6 +8906,341 @@ def collect_app_update_rollback_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+OPERATOR_BETA_EVIDENCE_IDS = (
+    "operator-beta.dashboard",
+    "operator-beta.catalog-health",
+    "operator-beta.app-update-recovery",
+    "operator-beta.subscription-recovery",
+    "operator-beta.trust-review-warnings",
+    "operator-beta.app-data-quota-warnings",
+    "operator-beta.support-bundle-redaction",
+    "operator-beta.web-shell",
+)
+
+
+def operator_beta_evidence_item(
+    settings: Settings,
+    evidence_id: str,
+    checks: dict[str, bool],
+    pass_summary: str,
+    details: dict[str, Any],
+) -> EvidenceItem:
+    errors = [key for key, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            evidence_id,
+            root_consequence(settings, "fail"),
+            True,
+            f"{evidence_id} evidence is incomplete.",
+            summary_source(settings),
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(evidence_id, "pass", True, pass_summary, summary_source(settings), details)
+
+
+def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
+    workspace = settings.workspace_root
+    service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorBetaDashboardService.java"
+    )
+    routes_source = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java"
+    router_source = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    redactor_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java"
+    )
+    subscription_service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
+    )
+    operator_routes_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
+    )
+    toadlet_source = (
+        workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java"
+    )
+    toadlet_test_source = workspace / "src/test/java/network/crypta/clients/http/PlatformApiToadletTest.java"
+    web_shell_source = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    web_shell_index_source = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html"
+    )
+    web_shell_test_source = (
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    docs_source = workspace / "docs/operator-beta-dashboard.md"
+    beta_program_doc = workspace / "docs/app-platform-beta-program.md"
+    limitations_doc = workspace / "docs/app-platform-beta-known-limitations.md"
+    api_surface_doc = workspace / "docs/platform-api-surface.md"
+
+    service_text = read_source(service_source)
+    routes_text = read_source(routes_source)
+    router_text = read_source(router_source)
+    redactor_text = read_source(redactor_source)
+    subscription_service_text = read_source(subscription_service_source)
+    operator_routes_test_text = read_source(operator_routes_test_source)
+    toadlet_text = read_source(toadlet_source)
+    toadlet_test_text = read_source(toadlet_test_source)
+    web_shell_text = read_source(web_shell_source)
+    web_shell_index_text = read_source(web_shell_index_source)
+    web_shell_test_text = read_source(web_shell_test_source)
+    docs_text = read_source(docs_source)
+    beta_program_text = read_source(beta_program_doc)
+    limitations_text = read_source(limitations_doc)
+    api_surface_text = read_source(api_surface_doc)
+    shared_details = {
+        "liveNodeRequired": False,
+        "hostOperatorOnly": True,
+        "operatorRoutesExcludedFromAppContract": True,
+        "sources": {
+            "service": display_path(service_source, workspace),
+            "routes": display_path(routes_source, workspace),
+            "router": display_path(router_source, workspace),
+            "redactor": display_path(redactor_source, workspace),
+            "subscriptionService": display_path(subscription_service_source, workspace),
+            "operatorRoutesTest": display_path(operator_routes_test_source, workspace),
+            "toadlet": display_path(toadlet_source, workspace),
+            "toadletTest": display_path(toadlet_test_source, workspace),
+            "webShell": display_path(web_shell_source, workspace),
+            "webShellIndex": display_path(web_shell_index_source, workspace),
+            "webShellTest": display_path(web_shell_test_source, workspace),
+            "docs": display_path(docs_source, workspace),
+        },
+    }
+
+    evidence_specs = [
+        (
+            "operator-beta.dashboard",
+            {
+                "dashboardRoute": (
+                    '"beta-dashboard".equals(resource)' in routes_text
+                    and "dashboardService.dashboard()" in routes_text
+                    and 'case "operator" -> operatorRoutes.route(segments, request);' in router_text
+                ),
+                "hostOperatorOnly": (
+                    "requireHostOperator(request)" in routes_text
+                    and "host_operator_required" in routes_text
+                    and "dashboard_whenAppPrincipalRequested_expectForbidden" in operator_routes_test_text
+                ),
+                "dashboardSections": all(
+                    fragment in service_text
+                    for fragment in (
+                        '"overallStatus"',
+                        '"summary"',
+                        '"catalogs"',
+                        '"apps"',
+                        '"subscriptions"',
+                        '"trustGraph"',
+                        '"appServices"',
+                        '"legacyAdmin"',
+                        '"diagnostics"',
+                        '"recoveryActions"',
+                    )
+                ),
+                "docs": "operator-beta.dashboard" in docs_text and "host/operator-only" in docs_text,
+            },
+            "Operator beta dashboard route, auth, and section evidence passed.",
+        ),
+        (
+            "operator-beta.catalog-health",
+            {
+                "catalogSummary": (
+                    "catalogSummary(Map<String, Object> catalog)" in service_text
+                    and '"trustedCatalogKeyStatus"' in service_text
+                    and '"lastFetchStatus"' in service_text
+                    and '"recommendedFirstPartyPresent"' in service_text
+                    and "safeSourceDisplay(source, sourceKind)" in service_text
+                ),
+                "catalogRecoveryAction": (
+                    '"refresh-catalog"' in service_text
+                    and '"app-catalogs/" + encodePathSegment(catalogId) + "/refresh"' in service_text
+                ),
+                "catalogUi": "function renderBetaCatalogs(catalogs)" in web_shell_text,
+                "docs": "operator-beta.catalog-health" in docs_text,
+            },
+            "Operator beta catalog health evidence passed.",
+        ),
+        (
+            "operator-beta.app-update-recovery",
+            {
+                "appRecoveryActions": all(
+                    fragment in service_text
+                    for fragment in (
+                        '"check-app-update"',
+                        '"stage-app-update"',
+                        '"apply-app-update"',
+                        '"rollback-app"',
+                        '"open-app-logs"',
+                    )
+                ),
+                "noPreserveUninstallInUi": (
+                    "operatorRecoveryActionVisible(action)" in web_shell_text
+                    and 'actionId !== "preserve-data-uninstall"' in web_shell_text
+                ),
+                "appRecoveryUi": "function renderBetaApps(apps)" in web_shell_text,
+                "docs": "operator-beta.app-update-recovery" in docs_text,
+            },
+            "Operator beta app-update recovery evidence passed.",
+        ),
+        (
+            "operator-beta.subscription-recovery",
+            {
+                "operatorList": "listAllForOperator()" in subscription_service_text,
+                "subscriptionRoutes": all(
+                    fragment in routes_text for fragment in ('case "refresh"', 'case "pause"', 'case "resume"')
+                ),
+                "subscriptionActions": all(
+                    fragment in service_text
+                    for fragment in (
+                        '"refresh-subscription"',
+                        '"pause-subscription"',
+                        '"resume-subscription"',
+                        '"operator/subscriptions/"',
+                    )
+                ),
+                "formPasswordGuard": (
+                    "requiresOperatorFormPassword" in toadlet_text
+                    and "/operator/subscriptions/feed-reader/sub-123/refresh" in toadlet_test_text
+                ),
+                "appPrincipalDenied": (
+                    "subscriptionAction_whenAppPrincipalRequested_expectForbiddenAndNoFetch"
+                    in operator_routes_test_text
+                ),
+                "docs": "operator-beta.subscription-recovery" in docs_text,
+            },
+            "Operator beta subscription recovery evidence passed.",
+        ),
+        (
+            "operator-beta.trust-review-warnings",
+            {
+                "trustPreviewWarning": (
+                    "Trust Graph Preview is local preview state only, not complete Web of Trust."
+                    in service_text
+                    and '"previewOnly"' in service_text
+                    and '"completeWot"' in service_text
+                ),
+                "appReviewSurface": (
+                    '"reviewTrust"' in service_text
+                    and "renderBetaTrustAndServices(trustGraph, appServices)" in web_shell_text
+                    and "Trust Graph Preview" in web_shell_text
+                ),
+                "docs": (
+                    "operator-beta.trust-review-warnings" in docs_text
+                    and "not complete Web of Trust" in docs_text
+                ),
+            },
+            "Operator beta trust and review-warning evidence passed.",
+        ),
+        (
+            "operator-beta.app-data-quota-warnings",
+            {
+                "appDataSummary": "appDataSummary(appId)" in service_text and '"appData"' in service_text,
+                "quotaWarnings": (
+                    "app_data_quota_unavailable" in service_text
+                    and "apphost_quota_over_limit" in service_text
+                    and '"quotaWarningCount"' in service_text
+                ),
+                "quotaUi": (
+                    '"Quota warnings"' in web_shell_text
+                    and '"Data quota"' in web_shell_text
+                    and "quota.dataOverLimit || quota.cacheOverLimit" in web_shell_text
+                ),
+                "docs": "operator-beta.app-data-quota-warnings" in docs_text,
+            },
+            "Operator beta app-data and quota-warning evidence passed.",
+        ),
+        (
+            "operator-beta.support-bundle-redaction",
+            {
+                "supportBundleRoute": (
+                    '"support-bundle".equals(resource)' in routes_text
+                    and "dashboardService.supportBundle()" in routes_text
+                ),
+                "redactorApplied": (
+                    "OperatorSupportRedactor.redact(dashboard)" in service_text
+                    and "OperatorSupportRedactor.redact(diagnostics)" in service_text
+                    and "OperatorSupportRedactor.redact(recentAudit)" in service_text
+                ),
+                "sensitiveFieldsOmitted": all(
+                    fragment in redactor_text
+                    for fragment in (
+                        '"formPassword"',
+                        '"browserSession"',
+                        '"requestBody"',
+                        '"rawBody"',
+                        '"sourcePath"',
+                        '"rollbackPath"',
+                    )
+                ),
+                "redactionTests": (
+                    "supportBundle_whenDiagnosticsContainSecrets_expectRedacted" in operator_routes_test_text
+                    and "/work/private/catalog" in operator_routes_test_text
+                    and "formPassword=secret-value" in operator_routes_test_text
+                ),
+                "docs": (
+                    "operator-beta.support-bundle-redaction" in docs_text
+                    and "reviewed by the operator before sharing" in docs_text
+                    and "raw request bodies" in limitations_text
+                ),
+            },
+            "Operator beta support-bundle redaction evidence passed.",
+        ),
+        (
+            "operator-beta.web-shell",
+            {
+                "panelMarkup": (
+                    'id="beta-dashboard"' in web_shell_index_text
+                    and 'id="beta-dashboard-body"' in web_shell_index_text
+                    and 'id="support-bundle-download-button"' in web_shell_index_text
+                ),
+                "loadsOperatorEndpoints": (
+                    'loadJson(apiUrl("operator/beta-dashboard"))' in web_shell_text
+                    and 'loadJson(apiUrl("operator/support-bundle"))' in web_shell_text
+                ),
+                "supportControls": all(
+                    fragment in web_shell_text
+                    for fragment in (
+                        "downloadSupportBundle()",
+                        "copySupportSummary()",
+                        "supportBundleSnapshot",
+                    )
+                ),
+                "recoverySubmitHandler": (
+                    "submitOperatorRecoveryAction(form)" in web_shell_text
+                    and 'sections.betaDashboard.addEventListener("submit"' in web_shell_text
+                ),
+                "resourceTests": (
+                    "assertBetaDashboardMarkersPresent(script)" in web_shell_test_text
+                    and "assertBetaDashboardLoadSequencing(script)" in web_shell_test_text
+                ),
+                "docs": (
+                    "operator-beta.web-shell" in docs_text
+                    and "Operator beta dashboard" in beta_program_text
+                    and "Operator" in api_surface_text
+                ),
+            },
+            "Operator beta Web Shell evidence passed.",
+        ),
+    ]
+
+    return [
+        operator_beta_evidence_item(
+            settings,
+            evidence_id,
+            checks,
+            pass_summary,
+            {**shared_details, "checks": checks},
+        )
+        for evidence_id, checks, pass_summary in evidence_specs
+    ]
+
+
 def build_http_request(
     method: str, url: str, form_password: str = "", data: dict[str, str] | None = None
 ) -> urllib.request.Request:
@@ -9191,6 +9526,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_update_scheduler_evidence(settings),
         collect_app_update_live_catalog_refresh_evidence(settings),
         collect_app_update_rollback_evidence(settings),
+        *collect_operator_beta_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
     sanitized_evidence = [
@@ -10127,6 +10463,19 @@ def run_self_test(repo_root: Path) -> None:
         assert rollback_checks["restorePreviousBundleOnReplacementFailure"] is True, rollback_checks
         assert rollback_checks["mutableDirectoriesPreservedByUpdate"] is True, rollback_checks
         assert rollback_checks["mutableDirectoriesPreservedByRollback"] is True, rollback_checks
+        for evidence_id in OPERATOR_BETA_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
+        assert (
+            evidence_by_id["operator-beta.support-bundle-redaction"]["details"]["checks"][
+                "redactorApplied"
+            ]
+            is True
+        )
+        assert (
+            evidence_by_id["operator-beta.web-shell"]["details"]["checks"]["loadsOperatorEndpoints"]
+            is True
+        )
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
@@ -12271,6 +12620,186 @@ definitionList([
   ["Last scheduler error", scheduler.lastErrorCode],
 ]);
 """,
+        encoding="utf-8",
+    )
+    web_shell.write_text(
+        web_shell.read_text(encoding="utf-8")
+        + """
+let betaDashboardLoadGeneration = 0;
+let supportBundleSnapshot = null;
+function renderBetaDashboard(data){}
+function renderBetaCatalogs(catalogs){}
+function renderBetaApps(apps){}
+function renderBetaSubscriptions(subscriptions){}
+function renderBetaTrustAndServices(trustGraph, appServices){}
+const trustPreviewTitle = "Trust Graph Preview";
+function renderBetaRecoveryActions(actions){}
+function operatorRecoveryActionVisible(action){ const actionId = "preserve-data-uninstall"; return actionId !== "preserve-data-uninstall"; }
+function loadBetaDashboardSection(){ loadJson(apiUrl("operator/beta-dashboard")); }
+function loadSupportBundle(){ loadJson(apiUrl("operator/support-bundle")); supportBundleSnapshot = {}; }
+function downloadSupportBundle(){}
+function copySupportSummary(){}
+function submitOperatorRecoveryAction(form){}
+sections.betaDashboard.addEventListener("submit", async () => submitOperatorRecoveryAction(form));
+const quotaText = ["Quota warnings", "Data quota"];
+const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
+""",
+        encoding="utf-8",
+    )
+    web_shell_index = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html"
+    )
+    web_shell_index.write_text(
+        '<article id="beta-dashboard"><div id="beta-dashboard-body"></div>'
+        '<button id="support-bundle-download-button">Download support JSON</button></article>\n',
+        encoding="utf-8",
+    )
+    web_shell_test.write_text(
+        web_shell_test.read_text(encoding="utf-8")
+        + "void assertBetaDashboardMarkersPresent(String script) {} "
+        "void assertBetaDashboardLoadSequencing(String script) {} "
+        "void calls() { assertBetaDashboardMarkersPresent(script); "
+        "assertBetaDashboardLoadSequencing(script); }\n",
+        encoding="utf-8",
+    )
+    operator_dir = api_dir / "operator"
+    operator_dir.mkdir(parents=True, exist_ok=True)
+    (operator_dir / "OperatorBetaDashboardService.java").write_text(
+        """
+final class OperatorBetaDashboardService {
+  Map<String, Object> dashboard() {
+    dashboard.put("overallStatus", status);
+    dashboard.put("summary", summary);
+    dashboard.put("catalogs", catalogs);
+    dashboard.put("apps", apps);
+    dashboard.put("subscriptions", subscriptions);
+    dashboard.put("trustGraph", trustGraph);
+    dashboard.put("appServices", appServices);
+    dashboard.put("legacyAdmin", legacyAdmin);
+    dashboard.put("diagnostics", diagnostics);
+    dashboard.put("recoveryActions", actions);
+    return dashboard;
+  }
+  Map<String, Object> supportBundle() {
+    OperatorSupportRedactor.redact(dashboard);
+    OperatorSupportRedactor.redact(diagnostics);
+    OperatorSupportRedactor.redact(recentAudit);
+    return Map.of();
+  }
+  Map<String, Object> catalogSummary(Map<String, Object> catalog) {
+    json.put("trustedCatalogKeyStatus", "configured");
+    json.put("lastFetchStatus", status);
+    json.put("recommendedFirstPartyPresent", true);
+    safeSourceDisplay(source, sourceKind);
+    action("refresh-catalog", "Refresh catalog", "POST", "app-catalogs/" + encodePathSegment(catalogId) + "/refresh", true);
+    return json;
+  }
+  void appRecoveryActions() {
+    action("check-app-update", "", "POST", "", true);
+    action("stage-app-update", "", "POST", "", true);
+    action("apply-app-update", "", "POST", "", true);
+    action("rollback-app", "", "POST", "", true);
+    action("open-app-logs", "", "GET", "", true);
+    action("preserve-data-uninstall", "", "DELETE", "", true);
+  }
+  void subscriptionRecoveryActions() {
+    String base = "operator/subscriptions/";
+    action("refresh-subscription", "", "POST", base + "/refresh", true);
+    action("pause-subscription", "", "POST", base + "/pause", true);
+    action("resume-subscription", "", "POST", base + "/resume", true);
+  }
+  void trustGraphSummary() {
+    json.put("previewOnly", true);
+    json.put("completeWot", false);
+    String warning = "Trust Graph Preview is local preview state only, not complete Web of Trust.";
+  }
+  void appSummary(String appId) {
+    appDataSummary(appId);
+    json.put("appData", appData);
+    String apphost = "apphost_quota_over_limit";
+    String appData = "app_data_quota_unavailable";
+    json.put("quotaWarningCount", 1);
+    json.put("reviewTrust", reviewTrust);
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (operator_dir / "OperatorSupportRedactor.java").write_text(
+        'final class OperatorSupportRedactor { String[] fields = {"formPassword", '
+        '"browserSession", "requestBody", "rawBody", "sourcePath", "rollbackPath"}; }\n',
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiOperatorRoutes.java").write_text(
+        """
+final class PlatformApiOperatorRoutes {
+  Object route(Object segments, Object request) {
+    requireHostOperator(request);
+    if ("beta-dashboard".equals(resource)) return dashboardService.dashboard();
+    if ("support-bundle".equals(resource)) return dashboardService.supportBundle();
+    switch (action) { case "refresh": break; case "pause": break; case "resume": break; }
+    String error = "host_operator_required";
+    return null;
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiRouter.java").write_text(
+        read_source(api_dir / "PlatformApiRouter.java")
+        + ' case "operator" -> operatorRoutes.route(segments, request);\n',
+        encoding="utf-8",
+    )
+    subscription_service_path = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
+    )
+    subscription_service_path.write_text(
+        subscription_service_path.read_text(encoding="utf-8")
+        + "List<Map<String, Object>> listAllForOperator() { return listAllForScheduler(); }\n",
+        encoding="utf-8",
+    )
+    (platform_api_tests / "PlatformApiOperatorRoutesTest.java").write_text(
+        """
+class PlatformApiOperatorRoutesTest {
+  void dashboard_whenAppPrincipalRequested_expectForbidden() {}
+  void subscriptionAction_whenAppPrincipalRequested_expectForbiddenAndNoFetch() {}
+  void supportBundle_whenDiagnosticsContainSecrets_expectRedacted() {
+    String path = "/work/private/catalog";
+    String secret = "formPassword=secret-value";
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    legacy_http_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
+    legacy_http_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_http_dir / "PlatformApiToadlet.java").write_text(
+        "final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return true; } }\n",
+        encoding="utf-8",
+    )
+    legacy_http_test_dir = workspace / "src/test/java/network/crypta/clients/http"
+    legacy_http_test_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_http_test_dir / "PlatformApiToadletTest.java").write_text(
+        'class PlatformApiToadletTest { String path = "/operator/subscriptions/feed-reader/sub-123/refresh"; }\n',
+        encoding="utf-8",
+    )
+    operator_doc_text = (
+        "The host/operator-only Operator beta dashboard documents operator-beta.dashboard, "
+        "operator-beta.catalog-health, operator-beta.app-update-recovery, "
+        "operator-beta.subscription-recovery, operator-beta.trust-review-warnings, "
+        "operator-beta.app-data-quota-warnings, operator-beta.support-bundle-redaction, and "
+        "operator-beta.web-shell. Trust Graph Preview is not complete Web of Trust. "
+        "Support bundles are reviewed by the operator before sharing and exclude raw request bodies."
+    )
+    (docs / "operator-beta-dashboard.md").write_text(operator_doc_text, encoding="utf-8")
+    (docs / "app-platform-beta-program.md").write_text(
+        "Operator beta dashboard operator-beta-ux-and-recovery\n",
+        encoding="utf-8",
+    )
+    (docs / "platform-api-surface.md").write_text(
+        read_source(docs / "platform-api-surface.md") + "\nOperator routes are host/operator-only.\n",
         encoding="utf-8",
     )
     router_test = workspace / "src/test/java/network/crypta/platform/api/PlatformApiRouterTest.java"

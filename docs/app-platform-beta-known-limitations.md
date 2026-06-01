@@ -148,6 +148,18 @@ Release certification and issue templates should record statuses, relative repo 
 app ids, capability names, evidence ids, public fixture URIs, and redacted summaries instead of
 raw payloads.
 
+## Operator dashboard limitations
+
+The [Operator beta dashboard](operator-beta-dashboard.md) is a local recovery and support surface,
+not an app-facing Platform API contract. Apps cannot use the operator routes, and compatibility
+checks must continue to use the app-facing contract snapshot. Recovery buttons delegate to existing
+catalog, app-update, app lifecycle, and content-subscription services; they do not bypass review
+policy, running-app update guards, app ownership boundaries, or form-password checks.
+
+Support bundles are redacted release/support summaries. They still need operator review before
+sharing, and they must not include raw request bodies, raw fetched content, private insert URIs,
+tokens, local paths, app-private values, or Trust Graph document bodies.
+
 ## Non-goals
 
 The beta does not introduce a live public app store, a normal PR/nightly live-network dependency,

@@ -89,6 +89,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final String GRANTS_SEGMENT = "grants";
   private static final String IDENTITY_VAULT_SEGMENT = "identity-vault";
+  private static final String OPERATOR_SEGMENT = "operator";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
   private static final String CONTENT_SEGMENT = "content";
@@ -635,6 +636,7 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
         || requiresAppServicesFormPassword(method, pathSegments)
+        || requiresOperatorFormPassword(method, pathSegments)
         || requiresIdentityVaultFormPassword(method, pathSegments)
         || requiresTrustGraphFormPassword(method, pathSegments)
         || requiresAlertsFormPassword(method, pathSegments)
@@ -672,6 +674,16 @@ public final class PlatformApiToadlet extends Toadlet {
         && APP_SERVICES_SEGMENT.equals(pathSegments.getFirst())
         && GRANTS_SEGMENT.equals(pathSegments.get(1))
         && ("approve".equals(pathSegments.get(3)) || "revoke".equals(pathSegments.get(3)));
+  }
+
+  private static boolean requiresOperatorFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 5
+        && OPERATOR_SEGMENT.equals(pathSegments.getFirst())
+        && "subscriptions".equals(pathSegments.get(1))
+        && ("refresh".equals(pathSegments.get(4))
+            || "pause".equals(pathSegments.get(4))
+            || "resume".equals(pathSegments.get(4)));
   }
 
   private static boolean requiresTrustGraphFormPassword(String method, List<String> pathSegments) {

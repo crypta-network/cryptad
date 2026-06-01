@@ -329,6 +329,10 @@ final class PlatformApiAppRoutes {
     }
   }
 
+  AppUpdateService appUpdateService() {
+    return appUpdateService;
+  }
+
   private static String cleanupFailureReason(RuntimeException exception) {
     if (exception instanceof PlatformApiException platformApiException) {
       return platformApiException.errorCode();
