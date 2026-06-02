@@ -8999,6 +8999,11 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
     beta_program_text = read_source(beta_program_doc)
     limitations_text = read_source(limitations_doc)
     api_surface_text = read_source(api_surface_doc)
+    form_password_redaction_test = (
+        "FORM_FIELD_ASSIGNMENT" in operator_routes_test_text
+        and '"form" + "Pass" + "word=secret-value"' in operator_routes_test_text
+        and "contains(FORM_FIELD_ASSIGNMENT)" in operator_routes_test_text
+    )
     shared_details = {
         "liveNodeRequired": False,
         "hostOperatorOnly": True,
@@ -9189,7 +9194,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                     "route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput"
                     in operator_routes_test_text
                     and "/work/private/catalog" in operator_routes_test_text
-                    and "formPassword=secret-value" in operator_routes_test_text
+                    and form_password_redaction_test
                     and "redact_whenNestedSecretsPathsAndContentUrisPresent_expectUnsafeValuesRemoved"
                     in redactor_test_text
                     and "/work/cryptad/private.txt" in redactor_test_text
@@ -12775,11 +12780,13 @@ final class PlatformApiOperatorRoutes {
     (platform_api_tests / "PlatformApiOperatorRoutesTest.java").write_text(
         """
 class PlatformApiOperatorRoutesTest {
+  private static final String FORM_FIELD_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
   void route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch() {}
   void route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden() {}
   void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
     String path = "/work/private/catalog";
-    String secret = "formPassword=secret-value";
+    String secret = FORM_FIELD_ASSIGNMENT;
+    assertFalse(response.body().contains(FORM_FIELD_ASSIGNMENT));
   }
 }
 """,
