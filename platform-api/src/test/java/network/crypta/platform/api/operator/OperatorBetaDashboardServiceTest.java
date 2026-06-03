@@ -8,12 +8,18 @@ import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.apps.AppsApiHandler;
+import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
+import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
+import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -158,6 +164,18 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(1L, summary.get("quotaWarningCount"));
   }
 
+  @Test
+  void dashboard_whenDiagnosticsOmitLegacyAdminCounters_expectUnavailableWarning() {
+    Map<String, Object> dashboard = serviceWithDiagnosticsWithoutLegacyAdmin().dashboard();
+
+    Map<String, Object> legacyAdmin = mapValue(dashboard.get("legacyAdmin"));
+    assertEquals("unavailable", dashboard.get("overallStatus"));
+    assertFalse((Boolean) legacyAdmin.get(AVAILABLE));
+    assertEquals(
+        List.of("Legacy-admin usage counters are unavailable."),
+        stringList(dashboard.get(WARNINGS_FIELD)));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);
@@ -174,6 +192,43 @@ class OperatorBetaDashboardServiceTest {
         CLOCK);
   }
 
+  private static OperatorBetaDashboardService serviceWithDiagnosticsWithoutLegacyAdmin() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    ContentSubscriptionService contentSubscriptionService = mock(ContentSubscriptionService.class);
+    when(contentSubscriptionService.listAllForOperator()).thenReturn(List.of());
+    TrustGraphApiHandler trustGraphApiHandler = mock(TrustGraphApiHandler.class);
+    when(trustGraphApiHandler.status())
+        .thenReturn(
+            Map.of(
+                AVAILABLE,
+                true,
+                "durable",
+                false,
+                "storeType",
+                "memory",
+                "anchorCount",
+                0,
+                "statementCount",
+                0,
+                "auditCount",
+                0));
+    AppServiceCoordinator appServiceCoordinator = mock(AppServiceCoordinator.class);
+    when(appServiceCoordinator.listGrants(any())).thenReturn(List.of());
+    when(appServiceCoordinator.audit(any(), any())).thenReturn(List.of());
+    when(appServiceCoordinator.listServices()).thenReturn(List.of());
+    when(appServiceCoordinator.listRequests(any())).thenReturn(List.of());
+    DiagnosticsApiHandler diagnosticsApiHandler =
+        new DiagnosticsApiHandler(() -> new DiagnosticReportSnapshot(List.of()));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), catalogsApiHandler, null, diagnosticsApiHandler),
+        new OperatorBetaDashboardService.AppStateSources(
+            contentSubscriptionService, null, trustGraphApiHandler, appServiceCoordinator),
+        CLOCK);
+  }
+
   private static AppsApiHandler appsHandler() {
     return appsHandler(false);
   }
@@ -185,6 +240,12 @@ class OperatorBetaDashboardServiceTest {
   private static AppsApiHandler appsHandler(Map<String, Object> app) {
     AppsApiHandler appsApiHandler = mock(AppsApiHandler.class);
     when(appsApiHandler.list(false)).thenReturn(List.of(app));
+    return appsApiHandler;
+  }
+
+  private static AppsApiHandler emptyAppsHandler() {
+    AppsApiHandler appsApiHandler = mock(AppsApiHandler.class);
+    when(appsApiHandler.list(false)).thenReturn(List.of());
     return appsApiHandler;
   }
 

@@ -63,6 +63,8 @@ public final class OperatorBetaDashboardService {
   private static final String PENDING = "pending";
   private static final String STAGED_FIELD = "staged";
   private static final String STALE = "stale";
+  private static final String LEGACY_ADMIN_USAGE_UNAVAILABLE =
+      "Legacy-admin usage counters are unavailable.";
   private static final String UNKNOWN = "unknown";
   private static final String STATUS_FIELD = "status";
   private static final String AVAILABLE_FIELD = "available";
@@ -567,7 +569,10 @@ public final class OperatorBetaDashboardService {
       Map<String, Object> diagnostics, List<String> warnings) {
     Map<String, Object> legacy = mapValue(diagnostics.get(LEGACY_ADMIN_FIELD));
     if (legacy.isEmpty()) {
-      return unavailableBlock("Legacy-admin usage counters are unavailable.");
+      if (booleanValue(diagnostics.get(AVAILABLE_FIELD))) {
+        warnings.add(LEGACY_ADMIN_USAGE_UNAVAILABLE);
+      }
+      return unavailableBlock(LEGACY_ADMIN_USAGE_UNAVAILABLE);
     }
     List<Map<String, Object>> surfaces = listOfMaps(legacy.get("surfaces"));
     long retained =
