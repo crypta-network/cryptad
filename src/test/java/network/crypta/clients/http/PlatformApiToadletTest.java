@@ -948,6 +948,7 @@ End
         "http://localhost/api/v1/alerts/42/dismiss",
         "http://localhost/api/v1/wizard/first-time/apply",
         "http://localhost/api/v1/app-catalogs/recommended/crypta-first-party-beta/add",
+        "http://localhost/api/v1/operator/subscriptions/feed-reader/sub-123/refresh",
       })
   void handleMethodPOST_whenProtectedMutationPasswordMissing_expectJson403WithoutRouting(
       String requestUri) throws Exception {

@@ -76,6 +76,19 @@ final class PlatformApiTrustGraphRoutes {
   }
 
   /**
+   * Returns the handler backing this route family.
+   *
+   * <p>Reduced router embeddings create a process-local fallback handler when no shared Trust Graph
+   * service is supplied. Operator dashboard routes must inspect that same handler so imported
+   * statements and anchors remain visible across both route families.
+   *
+   * @return Trust Graph handler used by {@code /trust-graph} routes
+   */
+  TrustGraphApiHandler trustGraphApiHandler() {
+    return trustGraphApiHandler;
+  }
+
+  /**
    * Routes one request whose first path segment is {@code trust-graph}.
    *
    * @param segments decoded path segments relative to the Platform API mount point

@@ -57,6 +57,16 @@ PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.audit-redaction-fuzz",
     "public-beta-security.transparency-log-privacy",
 )
+OPERATOR_BETA_EVIDENCE_IDS = (
+    "operator-beta.dashboard",
+    "operator-beta.catalog-health",
+    "operator-beta.app-update-recovery",
+    "operator-beta.subscription-recovery",
+    "operator-beta.trust-review-warnings",
+    "operator-beta.app-data-quota-warnings",
+    "operator-beta.support-bundle-redaction",
+    "operator-beta.web-shell",
+)
 LIVE_NETWORK_BETA_EVIDENCE_IDS = (
     "live-network-beta.preflight",
     "live-network-beta.catalog-usk-fetch",
@@ -1068,6 +1078,7 @@ def app_platform_evidence(
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
         "app-update.rollback",
+        *OPERATOR_BETA_EVIDENCE_IDS,
         "apphost.live",
     ]
     if summary is None:
@@ -1874,6 +1885,20 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             ),
             gate_ids=("ecosystem.app-update-rollback",),
             docs=("docs/app-update-lifecycle.md", "docs/release-certification.md"),
+        ),
+        MatrixRowSpec(
+            id="operator-beta-ux-and-recovery",
+            category="app-platform",
+            title="Operator beta dashboard, recovery, and support bundle",
+            required_evidence_ids=OPERATOR_BETA_EVIDENCE_IDS,
+            docs=(
+                "docs/operator-beta-dashboard.md",
+                "docs/platform-api-surface.md",
+                "docs/app-platform-beta-program.md",
+                "docs/app-platform-beta-known-limitations.md",
+                "docs/release-certification.md",
+            ),
+            phase="phase-8",
         ),
         MatrixRowSpec(
             id="first-party-beta-catalog",
@@ -4942,6 +4967,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
         "app-update.rollback",
+        *OPERATOR_BETA_EVIDENCE_IDS,
         "apphost.live",
     ):
         append_detail(lines, summary, evidence_id)
@@ -5684,6 +5710,7 @@ def run_self_test(repo_root: Path) -> None:
             "legacy-plugin-migration",
             "apphost-sandbox-provider",
             "public-beta-security-hardening",
+            "operator-beta-ux-and-recovery",
             "platform-api-contract",
             "interop-smoke",
             "performance-smoke",

@@ -67,7 +67,8 @@ Use this skill when you need to:
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
     compatibility contract, app capabilities/audit, app-vault routes, app-generated document
     inserts, bounded content fetch, durable content subscriptions, durable app data,
-    local app-service discovery/grants, and app-update lifecycle/scheduler)
+    local app-service discovery/grants, app-update lifecycle/scheduler, and host/operator-only
+    beta dashboard/support-bundle/recovery routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -93,7 +94,8 @@ Use this skill when you need to:
     keys, publication plans, explicit live USK catalog publication, API snapshot, and compatibility
     verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
-    including Apps, catalog, update, review, and app-service grant operator surfaces)
+    including Apps, catalog, update, review, operator beta dashboard/support-bundle, subscription
+    recovery, and app-service grant operator surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -167,8 +169,8 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
   handlers, social-message signing, app-generated document inserts, bounded content fetch,
-  durable content subscriptions, durable app data, local app-service discovery/grants, and
-  app-update scheduling,
+  durable content subscriptions, durable app data, local app-service discovery/grants, app-update
+  scheduling, and host/operator-only beta dashboard/support-bundle/recovery routes,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
@@ -177,8 +179,8 @@ Use this skill when you need to:
   `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
   staging, `:platform-trustgraph` owns local trust statement parsing and deterministic preview
   scoring, `:platform-devtools` owns the standalone app developer CLI and offline UI linter,
-  `:platform-web-shell` owns the browser-facing
-  node-management shell, `:runtime-alerts` owns the extracted alert/feed model subset,
+  `:platform-web-shell` owns the browser-facing node-management shell and operator beta
+  dashboard, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
   `:bridge-fcp-runtime` owns the concrete FCP bridge implementations,

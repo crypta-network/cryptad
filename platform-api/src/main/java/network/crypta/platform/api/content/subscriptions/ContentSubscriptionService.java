@@ -280,6 +280,22 @@ public final class ContentSubscriptionService {
     }
   }
 
+  /**
+   * Lists all durable subscription summaries for a trusted local operator view.
+   *
+   * <p>The app-facing route family intentionally scopes reads to the authenticated app principal.
+   * The Web Shell beta dashboard needs a host/operator inventory across installed apps, so this
+   * method exposes the same safe summary projection for every durable record in deterministic
+   * app/subscription order. It still omits runtime fetch URIs, raw fetched content, store paths,
+   * queue output, and daemon exception text.
+   *
+   * @return safe summaries for all durable subscriptions
+   * @throws PlatformApiException if the store cannot be read
+   */
+  public synchronized List<Map<String, Object>> listAllForOperator() {
+    return listAllForScheduler().stream().map(ContentSubscriptionService::summaryValues).toList();
+  }
+
   synchronized List<ContentSubscription> listAllForScheduler() {
     try {
       return store.listAll().stream()

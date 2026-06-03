@@ -46,6 +46,9 @@ public final class PlatformApiRouter {
   /** Routes daemon-operational endpoint families. */
   private final PlatformApiOperationalRoutes operationalRoutes;
 
+  /** Routes host/operator-only beta dashboard and recovery endpoint families. */
+  private final PlatformApiOperatorRoutes operatorRoutes;
+
   /** Routes local Trust Graph Preview endpoint families. */
   private final PlatformApiTrustGraphRoutes trustGraphRoutes;
 
@@ -306,6 +309,19 @@ public final class PlatformApiRouter {
                 checkedAppServices.contentSubscriptionService(),
                 checkedAppServices.appDataService(),
                 checkedAppServices.appServiceCoordinator()));
+    operatorRoutes =
+        new PlatformApiOperatorRoutes(
+            new PlatformApiOperatorRoutes.RouteDependencies(
+                checkedRuntimePorts,
+                appHost,
+                appCatalogManager,
+                legacyAdminUsage,
+                this.appAuditLog,
+                appUiOriginRegistry,
+                operationalRoutes::currentCryptaVersion),
+            checkedAppServices,
+            appRoutes,
+            trustGraphRoutes.trustGraphApiHandler());
     contentRoutes =
         new PlatformApiContentRoutes(
             checkedRuntimePorts, checkedAppServices.contentSubscriptionService());
@@ -427,6 +443,7 @@ public final class PlatformApiRouter {
       case "content" -> contentRoutes.route(segments, request);
       case "app-data" -> appDataRoutes.route(segments, request);
       case "app-services" -> appServiceRoutes.route(segments, request);
+      case "operator" -> operatorRoutes.route(segments, request);
       case "trust-graph" -> trustGraphRoutes.route(segments, request);
       case "node", "connectivity", "diagnostics", "updates", "wizard", "alerts" ->
           operationalRoutes.route(segments, request);

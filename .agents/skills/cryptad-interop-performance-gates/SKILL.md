@@ -63,12 +63,17 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 ## Release certification gate
 
 - `tools/release-certification/release_certification.py` aggregates interop, performance,
-  app-platform, catalog, app-owned UI, legacy-admin retirement, and CI metadata into:
+  app-platform, catalog, app-owned UI, operator beta recovery, optional live-network beta
+  certification, legacy-admin retirement, and CI metadata into:
 
 ```text
 build/release-certification/release-certification-summary.json
 build/release-certification/release-certification-report.md
+build/release-certification/ecosystem-certification-matrix.json
+build/release-certification/ecosystem-certification-matrix.md
 build/release-certification/artifacts/
+build/release-certification/live-network-beta-smoke/summary.json
+build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
 
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
@@ -79,8 +84,15 @@ build/release-certification/artifacts/
   coverage, Feed Reader content-fetch/subscription/app-data coverage, Social Inbox migration
   coverage, Trust Graph Preview durable exchange coverage, app-service registry/grant/redaction
   coverage, generated document insert/content-fetch and trust redaction coverage, app-review
-  governance/reviewer-key/transparency-log evidence, legacy-admin retirement/removal evidence,
-  sandbox provider selection, and app-update lifecycle/scheduler/rollback.
+  governance/reviewer-key/transparency-log evidence, public-beta security hardening evidence,
+  operator beta dashboard/recovery/support-bundle evidence, legacy-admin retirement/removal
+  evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
+- `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager live
+  network collector. Its self-test is offline and deterministic, but normal runs may call only a
+  validated localhost node and use env/protected-file fixtures for form passwords, catalog expected
+  key ids, content/feed/profile/trust URIs, and private insert material. Required mode must fail
+  closed for missing fixtures, failed required evidence, stale app principals, cleanup failures, or
+  redaction findings.
 - `tools/release-certification/app_platform_docs_check.py` produces deterministic app-platform
   beta docs evidence for the developer portal, tutorials, beta program, issue templates, relative
   Markdown links, and docs redaction checks.
@@ -92,6 +104,7 @@ build/release-certification/artifacts/
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```
@@ -120,12 +133,22 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `migration.social-mail-preview`, `reference-app.trust-graph`,
   `reference-app.trust-graph-durable-exchange`, `reference-app.trust-graph-app-data-preview`,
   `legacy.retirement`, `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`,
-  `apphost.sandbox-provider`, `app-update.lifecycle`, `app-update.scheduler`,
-  `app-update.rollback`, `app-update.live-catalog-refresh`, `app-review.trusted-receipts`,
+  `legacy-admin.removal-wave-3`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+  `app-update.scheduler`, `app-update.rollback`, `app-update.live-catalog-refresh`,
+  `public-beta-security.*`, `operator-beta.*`, `app-review.trusted-receipts`,
   `app-review.policy`, `app-review.governance`, `app-review.reviewer-key-lifecycle`,
   `app-review.transparency-log`, `app-review.review-history-api`,
   `app-review.first-party-catalog`, `app-review.first-party-review-chain`, and
   `release-certification.ecosystem-matrix`.
+- `live-network-beta.*` evidence is release-blocking only when `--require-live-network-beta` or
+  `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` is set. When live-network beta is disabled, the
+  aggregator must ignore stale live summaries and must not copy stale live artifacts into the
+  release record.
+- Live-network beta runs must use only `http://127.0.0.1:<port>`,
+  `http://localhost:<port>`, or `http://[::1]:<port>` node URLs without credentials, query
+  strings, fragments, redirects, or proxy forwarding. Form passwords, app browser sessions,
+  private insert URIs, and app-service grants must not leak into artifacts, shell history, or
+  proxy traffic.
 - Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw
   reviewer keys, raw trusted reviewer public key bytes, raw request bodies, raw feed bodies, raw
   trust documents from real users, raw social message bodies, raw fetched social documents, raw

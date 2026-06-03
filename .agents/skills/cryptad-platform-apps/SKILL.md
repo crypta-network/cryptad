@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, durable app data, content subscriptions, local app-service grants, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, beta docs evidence, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, durable app data, content subscriptions, local app-service grants, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -33,6 +33,7 @@ Load only the docs needed for the change:
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
+- Operator beta dashboard and redacted support bundle: `docs/operator-beta-dashboard.md`
 - App-platform release evidence: `docs/release-certification.md`
 
 ## Ownership map
@@ -43,7 +44,8 @@ Load only the docs needed for the change:
   staging, bounded content fetch routing, durable content subscriptions, durable app data,
   local Trust Graph Preview route handlers, local app-service discovery/grants and adapters,
   bounded app audit logs, and the local app-update lifecycle service plus scheduler above
-  AppHost/catalog/vault/app-data/content/trust/runtime primitives.
+  AppHost/catalog/vault/app-data/content/trust/runtime primitives, plus the host/operator-only
+  beta dashboard, subscription recovery wrappers, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -78,10 +80,12 @@ Load only the docs needed for the change:
   or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
   lint` and review receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
-  operator views, and app-service grant approval/revocation UI.
+  operator views, the operator beta dashboard/support-bundle panel, subscription recovery controls,
+  and app-service grant approval/revocation UI.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
-  and legacy admin retirement notices and diagnostics counters.
+  operator subscription-recovery form-password guard, and legacy admin retirement notices and
+  diagnostics counters.
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
@@ -159,6 +163,11 @@ Load only the docs needed for the change:
   `apps.manage` alone trigger catalog refresh or artifact staging.
 - Rollback restores only the immutable installed bundle. It must preserve AppHost-managed
   data/cache/run ownership boundaries and must not claim to roll back mutable app data.
+- Operator routes under `/api/v1/operator` are host/operator-only local management and support
+  routes. They are not part of the app-facing Platform API compatibility contract, must deny app
+  principals, and should not bump the integer contract version. Support bundles and dashboard
+  summaries must exclude raw bodies, private insert URIs, app/session/process tokens, form
+  passwords, local paths, command lines, and app-private values.
 - Positive AppHost data/cache quotas must block launch or restart when usage is over limit or an
   enforced area cannot be measured completely. Quotas and current sandbox providers are operational
   controls, not hard OS isolation.
@@ -171,7 +180,9 @@ Load only the docs needed for the change:
   browser-session tokens, form passwords, raw request bodies, raw feed bodies, raw trust documents,
   private insert URIs, non-localhost endpoint metadata, or unsanitized local paths. Optional live
   AppHost smoke reads the form password from `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a
-  command-line argument.
+  command-line argument. Dedicated live-network beta certification must stay localhost-only,
+  env/protected-file driven for secrets, and disabled for normal PR/nightly/offline
+  release-candidate runs unless explicitly requested.
 
 ## Release certification smoke
 
@@ -184,8 +195,14 @@ Load only the docs needed for the change:
   app-review receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback
   evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Preview
   reference-app evidence, app-service registry/grant/redaction evidence, app-review governance and
-  local transparency-log evidence, legacy-admin retirement state, and optional localhost-only live
-  AppHost lifecycle evidence.
+  local transparency-log evidence, public-beta security hardening evidence, operator beta
+  dashboard/recovery/support-bundle evidence, legacy-admin retirement state, and optional
+  localhost-only live AppHost lifecycle evidence.
+- `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
+  live-network beta evidence collector. It validates a prepared localhost node, live catalog
+  source/key metadata, app-principal browser-session workflows, content/feed/profile/trust
+  fixtures, optional app-service scoring, timing metadata, cleanup, and redaction without leaking
+  secrets or becoming a normal CI dependency.
 - `tools/release-certification/app_platform_docs_check.py` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.
@@ -223,6 +240,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew stageFirstPartyApps
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -236,11 +254,13 @@ When changing signed bundle/catalog, live USK publication, app-review receipts, 
 design-system assets, UI lint, SDK, Platform API contract, AppHost lifecycle, app-vault
 capabilities, generated document inserts, content fetch/subscriptions, durable app data,
 app-service grants/adapters, Trust Graph Preview, Social Inbox Preview, app-update
-lifecycle/scheduler/rollback, sandbox-provider evidence, reference content/profile/social/feed/trust
+lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
+behavior, live-network beta certification behavior, reference content/profile/social/feed/trust
 apps, app platform beta docs evidence, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
 ```

@@ -1,7 +1,8 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated May 23, 2026, to cover the release certification report that aggregates interop,
-> performance, app-platform, beta documentation, app-review governance, catalog, app-owned UI,
+> Updated June 1, 2026, to cover the release certification report that aggregates interop,
+> performance, app-platform, beta documentation, public-beta hardening, operator beta recovery,
+> live-network beta certification, app-review governance, catalog, app-owned UI,
 > legacy-admin retirement, and CI evidence for a release candidate.
 
 ## Overview
@@ -75,6 +76,11 @@ Treat these as release blockers, in order:
    `app-platform.beta-tutorials`, `app-platform.docs-redaction`, and the
    `app-platform-beta-docs-and-program` matrix row are present. Docs-only gaps require an explicit
    release-manager waiver; redaction findings must remain blockers.
+   Also confirm the deterministic `public-beta-security.*` evidence ids, `operator-beta.*`
+   evidence ids, `operator-beta-ux-and-recovery` matrix row, and disabled-or-passing
+   `live-network-beta-certification` row match the release plan. Live-network beta evidence is
+   release-blocking only when the release manager explicitly enables required live-network beta
+   mode.
 3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
 5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,

@@ -1,8 +1,9 @@
 # Release certification
 
-Release certification is the reproducible evidence bundle for a Cryptad release candidate.  It
-aggregates compatibility, performance, app-platform, catalog, app-owned UI, legacy-admin
-retirement, and CI metadata into one redacted report.
+Release certification is the reproducible evidence bundle for a Cryptad release candidate. It
+aggregates compatibility, performance, app-platform, catalog, app-owned UI, operator beta recovery,
+optional live-network beta certification, legacy-admin retirement, and CI metadata into one
+redacted report.
 
 The generated artifacts are:
 
@@ -17,10 +18,14 @@ build/release-certification/artifacts/
 build/release-certification/app-platform-smoke/summary.json
 build/release-certification/app-platform-smoke/app-platform-smoke-report.md
 build/release-certification/app-platform-smoke/artifacts/
+build/release-certification/live-network-beta-smoke/summary.json
+build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
 
 The Markdown report and ecosystem matrix are intended for human release review. The JSON summary
-is the stable machine-readable companion for later automation and report comparison.
+is the stable machine-readable companion for later automation and report comparison. The
+`live-network-beta-smoke/` files are written only when live-network beta certification is explicitly
+enabled.
 
 ## Modes
 
@@ -41,6 +46,7 @@ Run self-tests first:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
 Run the offline wrapper modes from a clean release workspace:
@@ -78,6 +84,7 @@ build/interop-extended/summary.json
 build/perf-smoke/summary.json
 build/perf-smoke/artifacts/perf-report.md
 build/release-certification/app-platform-smoke/summary.json
+build/release-certification/live-network-beta-smoke/summary.json
 ```
 
 Run the source gates before the release-candidate aggregation when their evidence is required:
@@ -173,6 +180,14 @@ Release-candidate mode requires these evidence ids:
 | `app-update.lifecycle` | App-platform smoke summary. | Offline source and test evidence proves manual/stage/apply-when-stopped update policy, candidate detection semantics, compatibility/review/permission gates, and process health-gated apply behavior. |
 | `app-update.scheduler` | App-platform smoke summary. | Offline source and test evidence proves background catalog refresh, installed-app update checks through `AppUpdateService.check(...)`, durable path-free scheduler summaries, failure backoff, and the manual default policy. |
 | `app-update.rollback` | App-platform smoke summary. | Offline source and test evidence proves durable installed-bundle backup/restore behavior and confirms rollback is scoped to the immutable bundle, not app data/cache/run state. |
+| `operator-beta.dashboard` | App-platform smoke summary. | Host/operator-only beta dashboard route, app-principal denial, route wiring, section shape, and docs evidence are present. |
+| `operator-beta.catalog-health` | App-platform smoke summary. | The dashboard shows catalog health, trusted-key state, last fetch state, redacted source display, first-party recommendation warnings, and refresh recovery. |
+| `operator-beta.app-update-recovery` | App-platform smoke summary. | The dashboard exposes safe app lifecycle/update recovery actions while preserving existing review policy, running-app guards, and uninstall restrictions. |
+| `operator-beta.subscription-recovery` | App-platform smoke summary. | Host/operator subscription recovery wrappers list all subscriptions safely and provide refresh/pause/resume without granting app principals cross-app authority. |
+| `operator-beta.trust-review-warnings` | App-platform smoke summary. | Trust Graph Preview and app-review warnings are surfaced as local preview/review state, not complete Web of Trust. |
+| `operator-beta.app-data-quota-warnings` | App-platform smoke summary. | App-data and AppHost quota warnings are summarized as counts, booleans, and status labels without raw app data values. |
+| `operator-beta.support-bundle-redaction` | App-platform smoke summary. | The support bundle route, redactor, and tests exclude tokens, form passwords, raw bodies, private insert URIs, local paths, command lines, and app-private values. |
+| `operator-beta.web-shell` | App-platform smoke summary. | Web Shell renders the operator beta panel, refresh controls, support-bundle export/copy actions, read-only hints, and recovery submit handling. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
 | `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
 | `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence packs every staged first-party app, then signs, verifies, and embeds an independent review receipt for each catalog entry with configured reviewer inputs, without private reviewer key material in the report. |
@@ -216,7 +231,10 @@ statements, or app/session tokens, and they do not claim live-network beta certi
 PR-246 live-network beta certification command below for that release-manager evidence.
 `app-update.lifecycle`, `app-update.scheduler`, `app-update.live-catalog-refresh`, and
 `app-update.rollback` do not require a live node; missing update evidence blocks
-release-candidate mode unless a release-manager waiver is recorded. `apphost.live` is optional
+release-candidate mode unless a release-manager waiver is recorded. The `operator-beta.*` evidence
+ids are deterministic checks for the local dashboard, support bundle redaction, and recovery
+wiring; missing operator beta evidence blocks release-candidate mode unless a release-manager
+waiver is recorded. `apphost.live` is optional
 stronger evidence because normal PR and scheduled CI must not require a live local node or operator
 form password.
 

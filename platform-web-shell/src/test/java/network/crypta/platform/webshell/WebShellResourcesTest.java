@@ -27,6 +27,10 @@ class WebShellResourcesTest {
         "Operator subset",
         "First-time setup",
         "Installed apps",
+        "Operator beta dashboard",
+        "Generate support bundle",
+        "Download support JSON",
+        "Copy support summary",
         "Publisher fallback panel",
         "Retained and pending legacy tools",
         "Installed apps JSON",
@@ -37,6 +41,15 @@ class WebShellResourcesTest {
     assertContainsAll(
         html,
         "id=\"apps\"",
+        "href=\"#beta-dashboard\"",
+        "id=\"beta-dashboard\"",
+        "id=\"beta-dashboard-body\"",
+        "id=\"beta-dashboard-status\"",
+        "id=\"beta-dashboard-refresh-button\"",
+        "id=\"support-bundle-refresh-button\"",
+        "id=\"support-bundle-download-button\"",
+        "id=\"support-bundle-copy-button\"",
+        "id=\"beta-dashboard-readonly-hint\"",
         "id=\"apps-body\"",
         "id=\"apps-status\"",
         "id=\"catalog-source-form\"",
@@ -81,6 +94,8 @@ class WebShellResourcesTest {
     assertPeerMutationMarkersPresent(script);
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
+    assertBetaDashboardMarkersPresent(script);
+    assertBetaDashboardLoadSequencing(script);
     assertAppsMarkersPresent(script);
     assertAppUpdateLifecycleMarkersPresent(script);
     assertAppStoreMetadataMarkersPresent(script);
@@ -356,6 +371,81 @@ class WebShellResourcesTest {
     assertTrue(errorGuardIndex > renderPeersIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(loadPeersCatchIndex > renderErrorIndex);
+  }
+
+  private static void assertBetaDashboardMarkersPresent(String script) {
+    assertContainsAll(
+        script,
+        "betaDashboardSnapshot: null",
+        "supportBundleSnapshot: null",
+        "let betaDashboardLoadGeneration = 0;",
+        "betaDashboard: document.getElementById(\"beta-dashboard-body\")",
+        "betaDashboardStatus: document.getElementById(\"beta-dashboard-status\")",
+        "betaDashboardReadonlyHint: document.getElementById(\"beta-dashboard-readonly-hint\")",
+        "const betaDashboardControls = {",
+        "supportRefreshButton: document.getElementById(\"support-bundle-refresh-button\")",
+        "supportDownloadButton: document.getElementById(\"support-bundle-download-button\")",
+        "supportCopyButton: document.getElementById(\"support-bundle-copy-button\")",
+        "function setBetaDashboardStatus(message, tone)",
+        "function updateBetaDashboardToolbar()",
+        "function renderBetaDashboard(data)",
+        "function renderBetaWarningList(warnings)",
+        "function renderBetaCatalogs(catalogs)",
+        "function renderBetaApps(apps)",
+        "function renderBetaSubscriptions(subscriptions)",
+        "function renderBetaTrustAndServices(trustGraph, appServices)",
+        "function renderBetaRecoveryActions(actions)",
+        "function buildOperatorRecoveryAction(action)",
+        "function loadBetaDashboardSection()",
+        "function loadSupportBundle()",
+        "function supportSummaryText(bundle)",
+        "function downloadSupportBundle()",
+        "function copySupportSummary()",
+        "function submitOperatorRecoveryAction(form)",
+        "function bindBetaDashboardInteractions()",
+        "loadJson(apiUrl(\"operator/beta-dashboard\"))",
+        "loadJson(apiUrl(\"operator/support-bundle\"))",
+        "submitFormMutation(",
+        "new FormData(),",
+        "Operator recovery actions unavailable in read-only mode.",
+        "sections.betaDashboard.addEventListener(\"submit\"",
+        "bindBetaDashboardInteractions();",
+        "updateBetaDashboardToolbar();",
+        "loadBetaDashboardSection().catch((error) => {");
+  }
+
+  private static void assertBetaDashboardLoadSequencing(String script) {
+    int loadIndex = script.indexOf("async function loadBetaDashboardSection()");
+    int generationIndex =
+        script.indexOf("const loadGeneration = ++betaDashboardLoadGeneration;", loadIndex);
+    int resetIndex = script.indexOf("shellState.betaDashboardSnapshot = null;", generationIndex);
+    int fetchIndex = script.indexOf("loadJson(apiUrl(\"operator/beta-dashboard\"))", resetIndex);
+    int successGuardIndex =
+        script.indexOf("if (loadGeneration !== betaDashboardLoadGeneration) {", fetchIndex);
+    int renderIndex = script.indexOf("renderBetaDashboard(snapshot);", successGuardIndex);
+    int errorGuardIndex =
+        script.indexOf("if (loadGeneration !== betaDashboardLoadGeneration) {", renderIndex);
+    int renderErrorIndex =
+        script.indexOf(
+            "renderError(sections.betaDashboard, \"beta dashboard\", error);", errorGuardIndex);
+    int bindIndex = script.indexOf("function bindBetaDashboardInteractions()");
+    int actionPathIndex = script.indexOf("if (!form.dataset.operatorRecoveryPath) {", bindIndex);
+    int preventDefaultIndex = script.indexOf(EVENT_PREVENT_DEFAULT, actionPathIndex);
+    int mutationIndex =
+        script.indexOf("await submitOperatorRecoveryAction(form);", preventDefaultIndex);
+
+    assertTrue(loadIndex >= 0);
+    assertTrue(generationIndex > loadIndex);
+    assertTrue(resetIndex > generationIndex);
+    assertTrue(fetchIndex > resetIndex);
+    assertTrue(successGuardIndex > fetchIndex);
+    assertTrue(renderIndex > successGuardIndex);
+    assertTrue(errorGuardIndex > renderIndex);
+    assertTrue(renderErrorIndex > errorGuardIndex);
+    assertTrue(bindIndex > renderErrorIndex);
+    assertTrue(actionPathIndex > bindIndex);
+    assertTrue(preventDefaultIndex > actionPathIndex);
+    assertTrue(mutationIndex > preventDefaultIndex);
   }
 
   private static void assertAppsMarkersPresent(String script) {

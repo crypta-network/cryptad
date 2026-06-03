@@ -14,6 +14,7 @@ Run the Python-only self-tests:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
 Run the offline wrapper modes from a clean release workspace:
@@ -52,7 +53,14 @@ build/release-certification/
     summary.json
     app-platform-smoke-report.md
     artifacts/
+  live-network-beta-smoke/
+    summary.json
+    live-network-beta-smoke-report.md
 ```
+
+The `live-network-beta-smoke/` directory is present only when `--live-network-beta` or
+`CRYPTAD_CERT_LIVE_NETWORK_BETA=1` is set. Normal PR, nightly, and offline release-candidate runs
+must not consume stale live summaries when live-network beta mode is disabled.
 
 The summary uses stable evidence ids and status values:
 
@@ -136,7 +144,16 @@ public-beta-security.audit-redaction-fuzz
 public-beta-security.transparency-log-privacy
 app-update.lifecycle
 app-update.scheduler
+app-update.live-catalog-refresh
 app-update.rollback
+operator-beta.dashboard
+operator-beta.catalog-health
+operator-beta.app-update-recovery
+operator-beta.subscription-recovery
+operator-beta.trust-review-warnings
+operator-beta.app-data-quota-warnings
+operator-beta.support-bundle-redaction
+operator-beta.web-shell
 app-review.trusted-receipts
 app-review.policy
 app-review.governance
@@ -324,8 +341,9 @@ coherence, canonical design-system asset staging, strict `crypta-app ui lint` JS
 `crypta-app` developer CLI, Platform API contract snapshots and compatibility verification,
 app-vault capability documentation and redaction evidence, signed bundle evidence when signing
 inputs are present, signed catalog authoring/verification, AppHost
-sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, independent
-app-review receipt evidence, Profile Publisher identity-profile publishing evidence,
+sandbox-provider evidence, app-update lifecycle/scheduler/rollback evidence, operator beta
+dashboard/recovery/support-bundle evidence, independent app-review receipt evidence,
+Profile Publisher identity-profile publishing evidence,
 app-generated document insert evidence, content-fetch evidence, content-subscription scheduler
 evidence, Feed Reader reference-app and subscription evidence,
 Trust Graph Preview evidence, app-review governance evidence, and the legacy-admin retirement map.
