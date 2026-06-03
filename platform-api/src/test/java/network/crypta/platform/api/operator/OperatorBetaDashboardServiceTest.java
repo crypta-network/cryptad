@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
+import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
@@ -14,6 +15,7 @@ import network.crypta.platform.api.content.subscriptions.ContentSubscriptionServ
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
+import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,13 +28,21 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings({"java:S100", "unchecked"})
 class OperatorBetaDashboardServiceTest {
   private static final String APP_ID = "feed-reader";
+  private static final String APP_NEEDS_REVIEW_WARNING =
+      "App " + APP_ID + " needs operator review.";
+  private static final String APP_UPDATE_UNAVAILABLE =
+      "App-update lifecycle service is unavailable.";
+  private static final String APP_UPDATE_UNAVAILABLE_DASHBOARD_WARNING =
+      "App " + APP_ID + " update state is unavailable.";
   private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
   private static final String AVAILABLE = "available";
   private static final String MANUAL_SOURCE_KIND = "manual";
+  private static final String QUOTA_FIELD = "quota";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
   private static final String SUMMARY_FIELD = "summary";
+  private static final String UNAVAILABLE = "unavailable";
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
       "FILE:///home/operator/private/cryptad-app-catalog.properties";
   private static final String WARNINGS_FIELD = "warnings";
@@ -105,6 +115,17 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void dashboard_whenUpdateServiceUnavailableWithOtherServicesAvailable_expectUnavailableWarning() {
+    Map<String, Object> dashboard = serviceWithMissingUpdateServiceOnly().dashboard();
+
+    assertEquals(UNAVAILABLE, dashboard.get("overallStatus"));
+    assertEquals(
+        List.of(APP_UPDATE_UNAVAILABLE_DASHBOARD_WARNING, APP_NEEDS_REVIEW_WARNING),
+        stringList(dashboard.get(WARNINGS_FIELD)));
+    assertEquals(List.of(APP_UPDATE_UNAVAILABLE), warningsForFirstApp(dashboard));
+  }
+
+  @Test
   void dashboard_whenBuildingUninstallRecoveryAction_expectPreserveDataQueryParameter() {
     Map<String, Object> dashboard = service(appsHandler(), null).dashboard();
 
@@ -169,7 +190,7 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> dashboard = serviceWithDiagnosticsWithoutLegacyAdmin().dashboard();
 
     Map<String, Object> legacyAdmin = mapValue(dashboard.get("legacyAdmin"));
-    assertEquals("unavailable", dashboard.get("overallStatus"));
+    assertEquals(UNAVAILABLE, dashboard.get("overallStatus"));
     assertFalse((Boolean) legacyAdmin.get(AVAILABLE));
     assertEquals(
         List.of("Legacy-admin usage counters are unavailable."),
@@ -193,11 +214,45 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static OperatorBetaDashboardService serviceWithDiagnosticsWithoutLegacyAdmin() {
+    DiagnosticsApiHandler diagnosticsApiHandler =
+        new DiagnosticsApiHandler(() -> new DiagnosticReportSnapshot(List.of()));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsApiHandler),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            null,
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithMissingUpdateServiceOnly() {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            appsHandler(), emptyCatalogsApiHandler(), null, diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
+  private static AppCatalogsApiHandler emptyCatalogsApiHandler() {
     AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
     when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
     when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    return catalogsApiHandler;
+  }
+
+  private static ContentSubscriptionService emptyContentSubscriptionService() {
     ContentSubscriptionService contentSubscriptionService = mock(ContentSubscriptionService.class);
     when(contentSubscriptionService.listAllForOperator()).thenReturn(List.of());
+    return contentSubscriptionService;
+  }
+
+  private static TrustGraphApiHandler availableTrustGraphApiHandler() {
     TrustGraphApiHandler trustGraphApiHandler = mock(TrustGraphApiHandler.class);
     when(trustGraphApiHandler.status())
         .thenReturn(
@@ -214,19 +269,30 @@ class OperatorBetaDashboardServiceTest {
                 0,
                 "auditCount",
                 0));
+    return trustGraphApiHandler;
+  }
+
+  private static AppServiceCoordinator emptyAppServiceCoordinator() {
     AppServiceCoordinator appServiceCoordinator = mock(AppServiceCoordinator.class);
     when(appServiceCoordinator.listGrants(any())).thenReturn(List.of());
     when(appServiceCoordinator.audit(any(), any())).thenReturn(List.of());
     when(appServiceCoordinator.listServices()).thenReturn(List.of());
     when(appServiceCoordinator.listRequests(any())).thenReturn(List.of());
-    DiagnosticsApiHandler diagnosticsApiHandler =
-        new DiagnosticsApiHandler(() -> new DiagnosticReportSnapshot(List.of()));
-    return new OperatorBetaDashboardService(
-        new OperatorBetaDashboardService.HandlerSources(
-            emptyAppsHandler(), catalogsApiHandler, null, diagnosticsApiHandler),
-        new OperatorBetaDashboardService.AppStateSources(
-            contentSubscriptionService, null, trustGraphApiHandler, appServiceCoordinator),
-        CLOCK);
+    return appServiceCoordinator;
+  }
+
+  private static AppDataService availableAppDataService() {
+    AppDataService appDataService = mock(AppDataService.class);
+    when(appDataService.status(APP_ID))
+        .thenReturn(
+            Map.of(QUOTA_FIELD, Map.of("dataQuotaAvailable", true), WARNINGS_FIELD, List.of()));
+    return appDataService;
+  }
+
+  private static DiagnosticsApiHandler diagnosticsWithLegacyAdmin() {
+    return new DiagnosticsApiHandler(
+        () -> new DiagnosticReportSnapshot(List.of()),
+        () -> new LegacyAdminUsageSnapshot(List.of()));
   }
 
   private static AppsApiHandler appsHandler() {
@@ -256,7 +322,7 @@ class OperatorBetaDashboardServiceTest {
     app.put("version", "1.0.0");
     app.put("running", running);
     app.put(
-        "quota",
+        QUOTA_FIELD,
         Map.of(WARNINGS_FIELD, List.of(), "dataOverLimit", false, "cacheOverLimit", false));
     app.put("sandbox", Map.of(WARNINGS_FIELD, List.of()));
     app.put("apiCompatibility", Map.of("status", "compatible"));
@@ -266,7 +332,7 @@ class OperatorBetaDashboardServiceTest {
   private static Map<String, Object> installedAppWithQuotaWarning() {
     Map<String, Object> app = installedApp(false);
     app.put(
-        "quota",
+        QUOTA_FIELD,
         Map.of(
             WARNINGS_FIELD,
             List.of("Cache usage exceeds the configured app limit."),

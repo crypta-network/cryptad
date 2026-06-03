@@ -93,6 +93,8 @@ public final class OperatorBetaDashboardService {
   private static final String UPDATE_FIELD = "update";
   private static final String CATALOGS_UNAVAILABLE = "Catalog service is unavailable.";
   private static final String APPS_UNAVAILABLE = "AppHost service is unavailable.";
+  private static final String APP_UPDATE_UNAVAILABLE =
+      "App-update lifecycle service is unavailable.";
   private static final HexFormat HEX = HexFormat.of();
 
   /**
@@ -366,6 +368,7 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> appData = appDataSummary(appId);
     Map<String, Object> grantSummary = grantsForApp(appId, grants);
     ArrayList<String> warnings = new ArrayList<>();
+    warnings.addAll(stringList(update.get(WARNINGS_FIELD)));
     warnings.addAll(stringList(mapValue(app.get(QUOTA_FIELD)).get(WARNINGS_FIELD)));
     warnings.addAll(stringList(mapValue(app.get(SANDBOX_FIELD)).get(WARNINGS_FIELD)));
     warnings.addAll(stringList(appData.get(WARNINGS_FIELD)));
@@ -379,6 +382,9 @@ public final class OperatorBetaDashboardService {
     }
     if (isUpdateBlocked(update)) {
       warnings.add("app_update_blocked");
+    }
+    if (isUnavailable(update) && appId != null) {
+      dashboardWarnings.add("App " + appId + " update state is unavailable.");
     }
     if (!warnings.isEmpty() && appId != null) {
       dashboardWarnings.add("App " + appId + " needs operator review.");
@@ -408,7 +414,7 @@ public final class OperatorBetaDashboardService {
 
   private Map<String, Object> updateSummary(String appId) {
     if (appId == null || appUpdateService == null) {
-      return unavailableBlock("App-update lifecycle service is unavailable.");
+      return unavailableBlock(APP_UPDATE_UNAVAILABLE);
     }
     try {
       return appUpdateService.summary(appId);
@@ -926,6 +932,10 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> reviewTrust = updateReviewTrust(update);
     return booleanValue(reviewTrust.get("blocksUpdate"))
         || booleanValue(reviewTrust.get("blocksPolicyApply"));
+  }
+
+  private static boolean isUnavailable(Map<String, Object> section) {
+    return UNAVAILABLE.equals(section.get(STATUS_FIELD));
   }
 
   private static boolean hasAvailableUpdateCandidate(Map<String, Object> update) {
