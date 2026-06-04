@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=12
+contractVersion=13
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 12,
+    "contractVersion": 13,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -313,6 +313,16 @@ Recommended catalog onboarding follows the catalog capability boundary. Reading 
 requires `catalogs.read`; adding a recommendation through
 `/app-catalogs/recommended/{catalogId}/add` requires `catalogs.manage` and still uses the verified
 signed-catalog add path.
+
+Contract version 13 adds production first-party catalog channel metadata to existing catalog and
+app-update response summaries. Catalog app listing/detail responses include `channel`,
+`supportStatus`, `maximumCryptaVersion`, `deprecation`, and `securityAdvisories`. Recommended
+catalog responses include a production-safe `defaultEntryChannel` of `stable` and the available
+entry channels `stable`, `beta`, `nightly`, and `deprecated`. App-update candidate summaries
+include the same channel/support/deprecation/advisory fields plus `channelPolicyAllowed` and
+`policyBlockReason`; policy summaries include `allowedChannels` and
+`deprecatedAutoUpdatesBlocked`. These fields are app-facing metadata and are path-free,
+token-free, and secret-free.
 
 App-update summaries also include scheduler metadata for background catalog refresh and app update
 checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and

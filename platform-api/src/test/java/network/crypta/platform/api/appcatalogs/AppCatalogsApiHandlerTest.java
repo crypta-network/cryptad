@@ -8,21 +8,27 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
+import network.crypta.platform.appcatalog.AppCatalogDeprecationStatus;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewPolicyMode;
 import network.crypta.platform.appcatalog.AppReviewReceipt;
@@ -313,34 +319,97 @@ class AppCatalogsApiHandlerTest {
       throws Exception {
     Map<String, Object> app = listRichInstalledCatalogApp();
 
-    assertEquals(APP_ID, app.get("appId"));
-    assertEquals("1.2.0", app.get("version"));
-    assertEquals("1.1.0", app.get("installedVersion"));
-    assertEquals(true, app.get("installed"));
-    assertEquals(true, app.get("versionDifferent"));
-    assertEquals(true, app.get("updateAvailable"));
-    assertEquals("different", app.get("versionStatus"));
-    assertEquals(List.of("productivity", "network"), app.get("categories"));
-    assertEquals("https://example.invalid/app", app.get("homepage"));
-    assertEquals("https://example.invalid/repo", app.get("source"));
-    assertEquals("MIT", app.get("license"));
+    assertEquals(
+        Map.of(
+            "appId",
+            APP_ID,
+            "version",
+            "1.2.0",
+            "installedVersion",
+            "1.1.0",
+            "installed",
+            true,
+            "versionDifferent",
+            true,
+            "updateAvailable",
+            true,
+            "versionStatus",
+            "different"),
+        fields(
+            app,
+            "appId",
+            "version",
+            "installedVersion",
+            "installed",
+            "versionDifferent",
+            "updateAvailable",
+            "versionStatus"));
+    assertEquals(
+        Map.of(
+            "categories",
+            List.of("productivity", "network"),
+            "homepage",
+            "https://example.invalid/app",
+            "source",
+            "https://example.invalid/repo",
+            "license",
+            "MIT",
+            "channel",
+            "beta",
+            "supportStatus",
+            "experimental"),
+        fields(app, "categories", "homepage", "source", "license", "channel", "supportStatus"));
+    Map<String, Object> deprecation = (Map<String, Object>) app.get("deprecation");
+    assertEquals(
+        Map.of(
+            "status",
+            "deprecated",
+            "message",
+            "Use Queue Manager stable.",
+            "replacementAppId",
+            "queue-manager-stable"),
+        deprecation);
+    List<Map<String, Object>> advisories =
+        (List<Map<String, Object>>) app.get("securityAdvisories");
+    assertEquals(
+        List.of(
+            Map.of(
+                "id",
+                "CRYPTA-2026-0001",
+                "uri",
+                "https://example.invalid/advisories/CRYPTA-2026-0001")),
+        advisories);
 
     Map<String, Object> review = (Map<String, Object>) app.get("review");
-    assertEquals("reviewed", review.get("status"));
-    assertEquals("Reviewed for local operator safety.", review.get("note"));
-    assertEquals(true, review.get("advisory"));
+    assertEquals(
+        Map.of(
+            "status", "reviewed", "note", "Reviewed for local operator safety.", "advisory", true),
+        review);
 
     Map<String, Object> reviewTrust = (Map<String, Object>) app.get("reviewTrust");
-    assertEquals("publisher_claim_only", reviewTrust.get("status"));
-    assertEquals(false, reviewTrust.get("trusted"));
-    assertEquals(false, reviewTrust.get("positive"));
-    assertEquals(false, reviewTrust.get("blocksInstall"));
-    assertEquals(false, reviewTrust.get("blocksUpdate"));
+    assertEquals(
+        Map.of(
+            "status",
+            "publisher_claim_only",
+            "trusted",
+            false,
+            "positive",
+            false,
+            "blocksInstall",
+            false,
+            "blocksUpdate",
+            false),
+        fields(reviewTrust, "status", "trusted", "positive", "blocksInstall", "blocksUpdate"));
     assertFalse(app.toString().contains("PUBLIC KEY"));
 
     Map<String, Object> rationales = (Map<String, Object>) app.get("permissionRationales");
-    assertEquals("Reads the local transfer queue.", rationales.get("queue.read"));
-    assertEquals("Lets the app manage queue entries.", rationales.get("queue.write"));
+    assertEquals(
+        Map.of(
+            "queue.read",
+            "Reads the local transfer queue.",
+            "queue.write",
+            "Lets the app manage queue entries."),
+        rationales);
   }
 
   @Test
@@ -350,6 +419,7 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
     assertEquals("0.1.0", compatibility.get("minimumCryptaVersion"));
+    assertEquals("0.9.99", compatibility.get("maximumCryptaVersion"));
     assertEquals("0.2.0", compatibility.get("currentCryptaVersion"));
     assertEquals(true, compatibility.get("satisfied"));
     assertEquals(true, compatibility.get("advisory"));
@@ -385,6 +455,10 @@ class AppCatalogsApiHandlerTest {
     assertNull(app.get("source"));
     assertNull(app.get("license"));
     assertEquals(List.of(), app.get("categories"));
+    assertEquals("stable", app.get("channel"));
+    assertEquals("supported", app.get("supportStatus"));
+    assertEquals("none", ((Map<?, ?>) app.get("deprecation")).get("status"));
+    assertEquals(List.of(), app.get("securityAdvisories"));
     assertFalse((Boolean) app.get("installed"));
     assertEquals(false, app.get("versionDifferent"));
     assertEquals(false, app.get("updateAvailable"));
@@ -401,6 +475,7 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
     assertNull(compatibility.get("minimumCryptaVersion"));
+    assertNull(compatibility.get("maximumCryptaVersion"));
     assertNull(compatibility.get("currentCryptaVersion"));
     assertEquals(true, compatibility.get("satisfied"));
     assertEquals("not_declared", compatibility.get("status"));
@@ -918,6 +993,14 @@ class AppCatalogsApiHandlerTest {
     return handler.listApps("core").getFirst();
   }
 
+  private static Map<String, Object> fields(Map<String, Object> source, String... keys) {
+    Map<String, Object> selected = new LinkedHashMap<>();
+    for (String key : keys) {
+      selected.put(key, source.get(key));
+    }
+    return selected;
+  }
+
   private AppCatalogsApiHandler handlerWithRecommended(List<RecommendedAppCatalog> recommended) {
     return new AppCatalogsApiHandler(
         catalogManager,
@@ -985,13 +1068,14 @@ class AppCatalogsApiHandlerTest {
         URI.create("https://example.invalid/repo"),
         "MIT",
         List.of("productivity", "network"),
-        new AppCatalogCompatibilityMetadata("0.1.0"),
+        new AppCatalogCompatibilityMetadata("0.1.0", "0.9.99"),
         new AppCatalogReviewMetadata(
             AppCatalogReviewStatus.REVIEWED, Optional.of("Reviewed for local operator safety.")),
         new AppCatalogChangelog(
             Optional.of("Adds queue retry controls."),
             Optional.of(URI.create("https://example.invalid/changelog.txt"))),
         List.of(URI.create("https://example.invalid/shot-1.png")),
+        productionMetadata(),
         URI.create("https://example.invalid/apps/queue-manager.zip"),
         "0".repeat(64),
         0L,
@@ -1018,21 +1102,36 @@ class AppCatalogsApiHandlerTest {
         entry.name(),
         entry.version(),
         entry.summary(),
-        entry.homepage(),
-        entry.source(),
-        entry.license(),
+        entry.homepage().orElse(null),
+        entry.source().orElse(null),
+        entry.license().orElse(null),
         entry.categories(),
         entry.compatibility(),
         entry.review(),
-        Optional.of(receipt),
+        receipt,
         entry.changelog(),
         entry.screenshots(),
+        entry.productionMetadata(),
         entry.bundleUri(),
         entry.bundleSha256(),
         entry.bundleSizeBytes(),
         entry.bundleType(),
         entry.permissions(),
         entry.permissionRationales());
+  }
+
+  private static AppCatalogProductionMetadata productionMetadata() {
+    return new AppCatalogProductionMetadata(
+        AppCatalogChannel.BETA,
+        AppCatalogSupportStatus.EXPERIMENTAL,
+        AppCatalogDeprecationStatus.DEPRECATED,
+        Optional.of("Use Queue Manager stable."),
+        Optional.of("queue-manager-stable"),
+        List.of(
+            new AppCatalogSecurityAdvisory(
+                "CRYPTA-2026-0001",
+                URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"))),
+        true);
   }
 
   private static AppReviewReceiptPayload reviewPayload(

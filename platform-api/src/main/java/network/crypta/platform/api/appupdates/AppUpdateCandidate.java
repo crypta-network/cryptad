@@ -30,6 +30,12 @@ import java.util.Objects;
  * @param status stable lifecycle status for the candidate
  * @param versionComparison comparison label such as {@code newer}, {@code equal}, or {@code
  *     ambiguous}
+ * @param channel signed catalog channel for the candidate
+ * @param supportStatus signed catalog support status for the candidate
+ * @param deprecation signed catalog deprecation metadata for the candidate
+ * @param securityAdvisories signed catalog security-advisory references for the candidate
+ * @param channelPolicyAllowed whether automatic policy may process this channel
+ * @param policyBlockReason stable reason automatic policy would skip the candidate
  * @param bundleSha256 expected SHA-256 digest of the catalog bundle artifact
  * @param bundleSizeBytes expected bundle artifact size in bytes
  * @param bundleType catalog artifact type used by the verified staging path
@@ -49,6 +55,12 @@ public record AppUpdateCandidate(
     String targetVersion,
     AppUpdateCandidateStatus status,
     String versionComparison,
+    String channel,
+    String supportStatus,
+    Map<String, Object> deprecation,
+    List<Map<String, Object>> securityAdvisories,
+    boolean channelPolicyAllowed,
+    String policyBlockReason,
     String bundleSha256,
     long bundleSizeBytes,
     String bundleType,
@@ -63,6 +75,7 @@ public record AppUpdateCandidate(
   private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
   private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
   private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
+  private static final String JSON_SECURITY_ADVISORIES = "securityAdvisories";
   private static final String API_STATUS_COMPATIBLE = "compatible";
   private static final String REVIEW_STATUS_REVIEWED = "reviewed";
   private static final String REVIEW_TRUST_STATUS_PUBLISHER_CLAIM_ONLY = "publisher_claim_only";
@@ -83,6 +96,12 @@ public record AppUpdateCandidate(
    * @param targetVersion candidate version from the signed catalog entry
    * @param status candidate lifecycle status at detection time
    * @param versionComparison deterministic version comparison label
+   * @param channel signed catalog channel for the candidate
+   * @param supportStatus signed catalog support status for the candidate
+   * @param deprecation signed catalog deprecation metadata for the candidate
+   * @param securityAdvisories signed catalog security-advisory references for the candidate
+   * @param channelPolicyAllowed whether automatic policy may process this channel
+   * @param policyBlockReason stable reason automatic policy would skip the candidate
    * @param bundleSha256 expected SHA-256 digest of the candidate bundle
    * @param bundleSizeBytes expected artifact size in bytes, never negative
    * @param bundleType catalog artifact type, for example a signed bundle archive
@@ -101,6 +120,14 @@ public record AppUpdateCandidate(
     targetVersion = requireText(targetVersion, "targetVersion");
     Objects.requireNonNull(status, JSON_STATUS);
     versionComparison = requireText(versionComparison, "versionComparison");
+    channel = requireText(channel, "channel");
+    supportStatus = requireText(supportStatus, "supportStatus");
+    deprecation = copyInOrder(deprecation, "deprecation");
+    securityAdvisories = copySecurityAdvisories(securityAdvisories);
+    if (policyBlockReason != null && policyBlockReason.isBlank()) {
+      throw new IllegalArgumentException("policyBlockReason must not be blank");
+    }
+    policyBlockReason = policyBlockReason == null ? null : policyBlockReason.trim();
     bundleSha256 = requireText(bundleSha256, "bundleSha256");
     if (bundleSizeBytes < 0L) {
       throw new IllegalArgumentException("bundleSizeBytes must be >= 0");
@@ -128,6 +155,15 @@ public record AppUpdateCandidate(
   }
 
   /**
+   * Returns whether policy-driven staging may use this candidate.
+   *
+   * @return {@code true} when the candidate is available and channel policy allows automation
+   */
+  public boolean eligibleForAutomaticStage() {
+    return eligibleByDefault() && channelPolicyAllowed && policyBlockReason == null;
+  }
+
+  /**
    * Returns whether policy-driven apply may use this candidate without another operator decision.
    *
    * <p>Automatic apply is stricter than staging. The candidate must already be eligible by default,
@@ -141,7 +177,7 @@ public record AppUpdateCandidate(
    * @return {@code true} when the candidate is safely newer, compatible, and reviewed
    */
   public boolean eligibleForAutomaticApply() {
-    return eligibleByDefault()
+    return eligibleForAutomaticStage()
         && reviewTrustAllowsAutomaticApply()
         && apiCompatibilityAllowsAutomaticApply();
   }
@@ -165,7 +201,7 @@ public record AppUpdateCandidate(
    * @return path-free candidate summary for API responses
    */
   public Map<String, Object> toJsonValue() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(17);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(23);
     json.put("appId", appId);
     json.put("catalogId", catalogId);
     json.put("catalogSourceId", catalogSourceId);
@@ -173,6 +209,12 @@ public record AppUpdateCandidate(
     json.put("targetVersion", targetVersion);
     json.put(JSON_STATUS, status.jsonValue());
     json.put("versionComparison", versionComparison);
+    json.put("channel", channel);
+    json.put("supportStatus", supportStatus);
+    json.put("deprecation", deprecation);
+    json.put(JSON_SECURITY_ADVISORIES, securityAdvisories);
+    json.put("channelPolicyAllowed", channelPolicyAllowed);
+    json.put("policyBlockReason", policyBlockReason);
     json.put("bundle", bundleSummary());
     json.put("review", review);
     json.put("reviewTrust", reviewTrust);
@@ -180,13 +222,16 @@ public record AppUpdateCandidate(
     json.put("permissionDelta", permissionDelta);
     json.put("running", running);
     json.put("detectedAt", detectedAt.toString());
-    json.put("autoStageAllowed", eligibleByDefault());
+    json.put("autoStageAllowed", eligibleForAutomaticStage());
     json.put("autoApplyAllowed", eligibleForAutomaticApply());
     json.put("operatorActionRequired", operatorActionRequired());
     return json;
   }
 
   private boolean operatorActionRequired() {
+    if (status == AppUpdateCandidateStatus.AVAILABLE && policyBlockReason != null) {
+      return true;
+    }
     if (status == AppUpdateCandidateStatus.AVAILABLE
         && (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
             || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE)))) {
@@ -273,5 +318,12 @@ public record AppUpdateCandidate(
   private static Map<String, Object> copyInOrder(Map<String, Object> value, String fieldName) {
     Objects.requireNonNull(value, fieldName);
     return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(value));
+  }
+
+  private static List<Map<String, Object>> copySecurityAdvisories(List<Map<String, Object>> value) {
+    Objects.requireNonNull(value, JSON_SECURITY_ADVISORIES);
+    return value.stream()
+        .map(item -> copyInOrder(item, JSON_SECURITY_ADVISORIES + " item"))
+        .toList();
   }
 }

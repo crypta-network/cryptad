@@ -152,6 +152,75 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                """
+                catalog.version=3
+                catalog.id=core
+                catalog.name=Crypta Core Apps
+                catalog.generatedAt=%s
+                catalog.entries=queue-manager
+                app.queue-manager.id=queue-manager
+                app.queue-manager.name=Queue Manager
+                app.queue-manager.version=1.2.0
+                app.queue-manager.summary=Manage transfer queues.
+                app.queue-manager.channel=nightly
+                app.queue-manager.minimumCryptaVersion=0.1.0
+                app.queue-manager.maximumCryptaVersion=0.9.99
+                app.queue-manager.support.status=experimental
+                app.queue-manager.deprecation.status=deprecated
+                app.queue-manager.deprecation.message=Use Queue Manager stable.
+                app.queue-manager.replacementAppId=Queue-Manager-Stable
+                app.queue-manager.securityAdvisories=CRYPTA-2026-0001
+                app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+                app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+                app.queue-manager.bundle.sha256=%s
+                app.queue-manager.bundle.size.bytes=0
+                app.queue-manager.bundle.type=zip
+                app.queue-manager.permissions=queue.read
+                """
+                    .formatted(GENERATED_AT, SHA256)));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+
+    assertEquals(AppCatalog.VERSION_PRODUCTION_CHANNELS, catalog.version());
+    assertEquals(AppCatalogChannel.NIGHTLY, entry.productionMetadata().channel());
+    assertEquals(AppCatalogSupportStatus.EXPERIMENTAL, entry.productionMetadata().supportStatus());
+    assertEquals(
+        AppCatalogDeprecationStatus.DEPRECATED, entry.productionMetadata().deprecationStatus());
+    assertEquals("0.9.99", entry.compatibility().maximumCryptaVersion());
+    assertEquals(
+        "Use Queue Manager stable.", entry.productionMetadata().deprecationMessage().orElseThrow());
+    assertEquals(
+        "queue-manager-stable", entry.productionMetadata().replacementAppId().orElseThrow());
+    assertEquals(
+        "CRYPTA-2026-0001", entry.productionMetadata().securityAdvisories().getFirst().id());
+  }
+
+  @Test
+  void parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(validStoreMetadataCatalog()));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+
+    assertEquals(AppCatalogChannel.STABLE, entry.productionMetadata().channel());
+    assertEquals(AppCatalogSupportStatus.SUPPORTED, entry.productionMetadata().supportStatus());
+    assertEquals(AppCatalogDeprecationStatus.NONE, entry.productionMetadata().deprecationStatus());
+    assertTrue(entry.productionMetadata().securityAdvisories().isEmpty());
+  }
+
+  @Test
+  void parse_whenVersionTwoCatalogDeclaresProductionMetadata_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validStoreMetadataCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
   void parse_whenVersionOneCatalogDeclaresStoreMetadata_expectInvalidCatalogEntry() {
     assertInvalidEntry(
         validSingleEntryCatalog()
@@ -228,6 +297,35 @@ class AppCatalogParserTest {
             .replace(
                 "app.queue-manager.bundle.uri=",
                 "app.queue-manager.review.status=trusted\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenProductionChannelIsMalformed_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validProductionCatalog()
+            .replace("app.queue-manager.channel=beta", "app.queue-manager.channel=preview"));
+  }
+
+  @Test
+  void parse_whenReplacementAppIdIsMalformed_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validProductionCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.replacementAppId=bad id\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
+  void parse_whenSecurityAdvisoryUriUsesUnsafeScheme_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validProductionCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                """
+                app.queue-manager.securityAdvisories=CRYPTA-2026-0001
+                app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=file:///tmp/advisory
+                app.queue-manager.bundle.uri=\
+                """));
   }
 
   @Test
@@ -358,6 +456,14 @@ class AppCatalogParserTest {
 
   private static String validStoreMetadataCatalog() {
     return validSingleEntryCatalog().replace("catalog.version=1", "catalog.version=2");
+  }
+
+  private static String validProductionCatalog() {
+    return validSingleEntryCatalog()
+        .replace("catalog.version=1", "catalog.version=3")
+        .replace(
+            "app.queue-manager.bundle.uri=",
+            "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri=");
   }
 
   private static byte[] bytes(String value) {

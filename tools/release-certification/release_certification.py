@@ -1039,6 +1039,7 @@ def app_platform_evidence(
         "catalog.live-usk-publication",
         "catalog.live-usk-source-verification",
         "app-catalog.first-party-beta",
+        "catalog.production-channels",
         "app-review.trusted-receipts",
         "app-review.policy",
         "app-review.governance",
@@ -1912,6 +1913,19 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "app-platform.signed-bundles",
             ),
             docs=("docs/first-party-beta-catalog.md", "docs/app-catalogs.md"),
+        ),
+        MatrixRowSpec(
+            id="production-catalog-channels",
+            category="app-distribution",
+            title="Production first-party catalog channels",
+            required_evidence_ids=("catalog.production-channels",),
+            docs=(
+                "docs/production-first-party-catalog-channels.md",
+                "docs/app-catalogs.md",
+                "docs/app-update-lifecycle.md",
+                "docs/platform-api-surface.md",
+            ),
+            phase="phase-9",
         ),
         MatrixRowSpec(
             id="review-trusted-receipts",
@@ -4932,6 +4946,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "catalog.live-usk-publication",
         "catalog.live-usk-source-verification",
         "app-catalog.first-party-beta",
+        "catalog.production-channels",
         "app-review.trusted-receipts",
         "app-review.policy",
         "app-review.governance",
@@ -5700,6 +5715,7 @@ def run_self_test(repo_root: Path) -> None:
         for row_id in (
             "app-update",
             "first-party-beta-catalog",
+            "production-catalog-channels",
             "developer-beta-toolkit",
             "app-platform-beta-docs-and-program",
             "review-governance-transparency",

@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 12,
+        "contractVersion": 13,
         "endpointCount": 61,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -595,6 +595,54 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "First-party beta catalog onboarding evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "channels": [
+          "stable",
+          "beta",
+          "nightly",
+          "deprecated"
+        ],
+        "checks": {
+          "apiExposurePresent": true,
+          "channelEnumPresent": true,
+          "devtoolsDescriptorSupportPresent": true,
+          "documentationPresent": true,
+          "parserWriterTestsPresent": true,
+          "productionMetadataDefaultsSafe": true,
+          "schemaV3ParserWriterPresent": true,
+          "signatureAndReviewSemanticsRetained": true,
+          "updatePolicyBlocksNonStableAutomation": true,
+          "webShellChannelControlsPresent": true
+        },
+        "defaultAutomaticChannels": [
+          "stable"
+        ],
+        "deprecatedAutomaticUpdatesBlocked": true,
+        "redactionGuarantees": [
+          "private insert URIs excluded",
+          "tokens redacted",
+          "private keys redacted",
+          "raw fetched content excluded",
+          "raw app data excluded",
+          "absolute staging paths sanitized"
+        ],
+        "sources": {
+          "apiHandler": "<repo>/platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java",
+          "catalogChannel": "<repo>/platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogChannel.java",
+          "catalogParser": "<repo>/platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogParser.java",
+          "catalogWriter": "<repo>/platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogWriter.java",
+          "docs": "<repo>/docs/production-first-party-catalog-channels.md",
+          "updatePolicy": "<repo>/platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdatePolicy.java",
+          "webShell": "<repo>/platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+        }
+      },
+      "id": "catalog.production-channels",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Production first-party catalog channel evidence passed deterministic checks."
     },
     {
       "details": {

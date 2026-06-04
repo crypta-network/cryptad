@@ -9,6 +9,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.List;
 import network.crypta.platform.api.PlatformApiContract;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -1496,6 +1497,14 @@ class CryptaAppCliTest {
             "license=MIT",
             "categories=Productivity,network",
             "minimumCryptaVersion=0.1.0",
+            "maximumCryptaVersion=0.9.99",
+            "channel=beta",
+            "support.status=experimental",
+            "deprecation.status=deprecated",
+            "deprecation.message=Use Sample App stable.",
+            "replacementAppId=sample-app-stable",
+            "securityAdvisories=CRYPTA-2026-0001",
+            "securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001",
             "review.status=reviewed",
             "review.note=Reviewed for local operator safety.",
             "permissions.rationale.queue.read=Reads the local transfer queue.",
@@ -1520,44 +1529,44 @@ class CryptaAppCliTest {
             descriptor.toString());
 
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
-    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
-    assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
-    assertTrue(catalog.contains("catalog.version=2\n"));
-    assertTrue(catalog.contains("catalog.generatedAt=2026-04-29T00:00:00Z\n"));
-    assertTrue(catalog.contains("app.sample-app.id=sample-app\n"));
-    assertTrue(catalog.contains("app.sample-app.homepage=https://example.invalid/sample-app\n"));
-    assertTrue(
-        catalog.contains("app.sample-app.source=https://example.invalid/sample-app/source\n"));
-    assertTrue(catalog.contains("app.sample-app.license=MIT\n"));
-    assertTrue(catalog.contains("app.sample-app.categories=productivity,network\n"));
-    assertTrue(catalog.contains("app.sample-app.minimumCryptaVersion=0.1.0\n"));
-    assertTrue(
-        catalog.contains(
+    List<String> expectedCatalogFragments =
+        List.of(
+            "catalog.version=3\n",
+            "catalog.generatedAt=2026-04-29T00:00:00Z\n",
+            "app.sample-app.id=sample-app\n",
+            "app.sample-app.homepage=https://example.invalid/sample-app\n",
+            "app.sample-app.source=https://example.invalid/sample-app/source\n",
+            "app.sample-app.license=MIT\n",
+            "app.sample-app.categories=productivity,network\n",
+            "app.sample-app.minimumCryptaVersion=0.1.0\n",
+            "app.sample-app.maximumCryptaVersion=0.9.99\n",
+            "app.sample-app.channel=beta\n",
+            "app.sample-app.support.status=experimental\n",
+            "app.sample-app.deprecation.status=deprecated\n",
+            "app.sample-app.replacementAppId=sample-app-stable\n",
+            "app.sample-app.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001\n",
             "app.sample-app.api.minimumVersion="
                 + PlatformApiContract.CURRENT_CONTRACT_VERSION
-                + "\n"));
-    assertTrue(
-        catalog.contains(
+                + "\n",
             "app.sample-app.api.maximumTestedVersion="
                 + PlatformApiContract.CURRENT_CONTRACT_VERSION
-                + "\n"));
-    assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
-    assertTrue(catalog.contains("app.sample-app.review.status=reviewed\n"));
-    assertTrue(
-        catalog.contains("app.sample-app.review.note=Reviewed for local operator safety.\n"));
-    assertTrue(
-        catalog.contains(
-            "app.sample-app.permissions.rationale.queue.read=Reads the local transfer queue.\n"));
-    assertTrue(
-        catalog.contains(
-            "app.sample-app.screenshot.1=https://example.invalid/sample-app/shot-1.png\n"));
-    assertTrue(catalog.contains("app.sample-app.changelog.summary=Adds queue retry controls.\n"));
-    assertTrue(
-        catalog.contains(
-            "app.sample-app.changelog.uri=https://example.invalid/sample-app/changelog.txt\n"));
-    assertTrue(catalog.contains("app.sample-app.permissions=queue.read\n"));
-    assertTrue(catalog.contains("app.sample-app.bundle.size.bytes=" + Files.size(outputZip)));
-    assertTrue(catalog.contains("app.sample-app.bundle.sha256=" + sha256Hex(outputZip)));
+                + "\n",
+            "app.sample-app.api.experimentalCapabilitiesAccepted=false\n",
+            "app.sample-app.review.status=reviewed\n",
+            "app.sample-app.review.note=Reviewed for local operator safety.\n",
+            "app.sample-app.permissions.rationale.queue.read=Reads the local transfer queue.\n",
+            "app.sample-app.screenshot.1=https://example.invalid/sample-app/shot-1.png\n",
+            "app.sample-app.changelog.summary=Adds queue retry controls.\n",
+            "app.sample-app.changelog.uri=https://example.invalid/sample-app/changelog.txt\n",
+            "app.sample-app.permissions=queue.read\n",
+            "app.sample-app.bundle.size.bytes=" + Files.size(outputZip),
+            "app.sample-app.bundle.sha256=" + sha256Hex(outputZip));
+    List<String> missingCatalogFragments =
+        expectedCatalogFragments.stream().filter(fragment -> !catalog.contains(fragment)).toList();
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
+    assertEquals(List.of(), missingCatalogFragments);
   }
 
   @Test

@@ -140,6 +140,15 @@
             <button class="button button-secondary" id="apps-refresh-button" type="button">
               Refresh apps
             </button>
+            <label class="queue-field compact-field" for="catalog-channel-select">
+              <span>Catalog channel</span>
+              <select id="catalog-channel-select" name="catalogChannel">
+                <option value="stable" selected>Stable</option>
+                <option value="beta">Beta</option>
+                <option value="nightly">Nightly</option>
+                <option value="deprecated">Deprecated</option>
+              </select>
+            </label>
           </div>
           <div class="queue-status" id="apps-status" aria-live="polite"></div>
           <p class="panel-description" hidden id="apps-readonly-hint">

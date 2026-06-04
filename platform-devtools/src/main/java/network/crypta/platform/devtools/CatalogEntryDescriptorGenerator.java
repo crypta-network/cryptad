@@ -218,6 +218,13 @@ final class CatalogEntryDescriptorGenerator {
     appendOptional(builder, "license", request.license().orElse(null));
     appendOptional(builder, "categories", request.category().orElse(null));
     appendOptional(builder, "minimumCryptaVersion", request.minimumCryptaVersion().orElse(null));
+    appendOptional(builder, "maximumCryptaVersion", request.maximumCryptaVersion().orElse(null));
+    appendOptional(builder, "channel", request.channel().orElse(null));
+    appendOptional(builder, "support.status", request.supportStatus().orElse(null));
+    appendOptional(builder, "deprecation.status", request.deprecationStatus().orElse(null));
+    appendOptional(builder, "deprecation.message", request.deprecationMessage().orElse(null));
+    appendOptional(builder, "replacementAppId", request.replacementAppId().orElse(null));
+    appendSecurityAdvisories(builder, request.securityAdvisories());
     if (!manifest.permissions().isEmpty()) {
       append(builder, "permissions", String.join(",", manifest.permissions()));
     }
@@ -299,6 +306,27 @@ final class CatalogEntryDescriptorGenerator {
       AppReviewReceipt receipt = AppReviewReceiptIO.read(reviewReceipt);
       append(builder, "review.status", receipt.payload().status().catalogValue());
       appendOptional(builder, "review.note", receipt.payload().note().orElse(null));
+    }
+  }
+
+  /**
+   * Appends security advisory metadata in descriptor order.
+   *
+   * @param builder descriptor builder receiving advisory fields
+   * @param advisories insertion-ordered advisory id to URI mappings
+   * @throws AppDistributionException if a generated advisory value contains a line break
+   */
+  private static void appendSecurityAdvisories(StringBuilder builder, Map<String, URI> advisories)
+      throws AppDistributionException {
+    if (advisories.isEmpty()) {
+      return;
+    }
+    append(builder, "securityAdvisories", String.join(",", advisories.keySet()));
+    for (Map.Entry<String, URI> advisory : advisories.entrySet()) {
+      append(
+          builder,
+          "securityAdvisory." + advisory.getKey() + ".uri",
+          advisory.getValue().toString());
     }
   }
 
@@ -388,6 +416,23 @@ final class CatalogEntryDescriptorGenerator {
     return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(rationales));
   }
 
+  static Map<String, URI> normalizeSecurityAdvisories(List<String> values)
+      throws AppDistributionException {
+    Map<String, URI> advisories = new LinkedHashMap<>();
+    for (String value : values) {
+      int separator = value.indexOf('=');
+      if (separator <= 0 || separator == value.length() - 1) {
+        throw new AppDistributionException("--security-advisory must use id=uri syntax");
+      }
+      String advisoryId = value.substring(0, separator).trim();
+      URI advisoryUri = URI.create(value.substring(separator + 1).trim());
+      if (advisories.putIfAbsent(advisoryId, advisoryUri) != null) {
+        throw new AppDistributionException("duplicate security advisory: " + advisoryId);
+      }
+    }
+    return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(advisories));
+  }
+
   /**
    * Input for catalog entry descriptor generation.
    *
@@ -408,6 +453,13 @@ final class CatalogEntryDescriptorGenerator {
    * @param license optional license label or identifier copied into the descriptor
    * @param category optional catalog category value copied into the descriptor
    * @param minimumCryptaVersion optional minimum daemon version advertised by the catalog entry
+   * @param maximumCryptaVersion optional maximum daemon version advertised by the catalog entry
+   * @param channel optional production release channel copied into the descriptor
+   * @param supportStatus optional production support status copied into the descriptor
+   * @param deprecationStatus optional deprecation status copied into the descriptor
+   * @param deprecationMessage optional deprecation message copied into the descriptor
+   * @param replacementAppId optional replacement app id copied into the descriptor
+   * @param securityAdvisories insertion-ordered advisory references keyed by advisory id
    * @param reviewReceipt optional trusted review receipt whose status and note are copied
    * @param changelogSummary optional short changelog text for this app release
    * @param permissionRationales insertion-ordered rationales keyed by manifest permission id
@@ -426,6 +478,13 @@ final class CatalogEntryDescriptorGenerator {
       Optional<String> license,
       Optional<String> category,
       Optional<String> minimumCryptaVersion,
+      Optional<String> maximumCryptaVersion,
+      Optional<String> channel,
+      Optional<String> supportStatus,
+      Optional<String> deprecationStatus,
+      Optional<String> deprecationMessage,
+      Optional<String> replacementAppId,
+      Map<String, URI> securityAdvisories,
       Path reviewReceipt,
       Optional<String> changelogSummary,
       Map<String, String> permissionRationales,
@@ -450,6 +509,14 @@ final class CatalogEntryDescriptorGenerator {
       Objects.requireNonNull(license, "license");
       Objects.requireNonNull(category, "category");
       Objects.requireNonNull(minimumCryptaVersion, "minimumCryptaVersion");
+      Objects.requireNonNull(maximumCryptaVersion, "maximumCryptaVersion");
+      Objects.requireNonNull(channel, "channel");
+      Objects.requireNonNull(supportStatus, "supportStatus");
+      Objects.requireNonNull(deprecationStatus, "deprecationStatus");
+      Objects.requireNonNull(deprecationMessage, "deprecationMessage");
+      Objects.requireNonNull(replacementAppId, "replacementAppId");
+      securityAdvisories =
+          java.util.Collections.unmodifiableMap(new LinkedHashMap<>(securityAdvisories));
       Objects.requireNonNull(changelogSummary, "changelogSummary");
       permissionRationales =
           java.util.Collections.unmodifiableMap(new LinkedHashMap<>(permissionRationales));
@@ -473,6 +540,13 @@ final class CatalogEntryDescriptorGenerator {
           license,
           category,
           minimumCryptaVersion,
+          maximumCryptaVersion,
+          channel,
+          supportStatus,
+          deprecationStatus,
+          deprecationMessage,
+          replacementAppId,
+          securityAdvisories,
           reviewReceipt == null ? null : reviewReceipt.toAbsolutePath().normalize(),
           changelogSummary,
           permissionRationales,

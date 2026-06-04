@@ -8,7 +8,8 @@ Signed app catalogs are a Phase 5 app-platform control plane. They do not change
 wire formats, application sandboxing, or AppHost process launching. A catalog tells the local node
 where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect. It
 can also carry optional app-store display metadata for review, compatibility, source, license,
-permissions, screenshots, and changelog links.
+permissions, screenshots, changelog links, production catalog channels, support status,
+deprecation/replacement hints, and security advisory references.
 
 The runtime verifies data in this order:
 
@@ -41,7 +42,7 @@ the sibling file `cryptad-app-catalog.signature`.
 Catalog properties use a deterministic `key=value` text sidecar:
 
 ```properties
-catalog.version=2
+catalog.version=3
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
@@ -60,7 +61,13 @@ app.queue-manager.homepage=https://example.invalid/apps/queue-manager
 app.queue-manager.source=https://example.invalid/src/queue-manager
 app.queue-manager.license=MIT
 app.queue-manager.categories=productivity,network
+app.queue-manager.channel=stable
 app.queue-manager.minimumCryptaVersion=1481
+app.queue-manager.maximumCryptaVersion=1499
+app.queue-manager.support.status=supported
+app.queue-manager.deprecation.status=none
+app.queue-manager.securityAdvisories=CRYPTA-2026-0001
+app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
 app.queue-manager.review.status=reviewed
 app.queue-manager.review.note=Reviewed for local operator safety.
 app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.
@@ -93,7 +100,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=12
+app.site-publisher.api.maximumTestedVersion=13
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -120,7 +127,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=12
+app.profile-publisher.api.maximumTestedVersion=13
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
 app.social-inbox.id=social-inbox
@@ -158,7 +165,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
 app.social-inbox.changelog.summary=Adds the social/mail migration preview reference app.
 app.social-inbox.api.minimumVersion=12
-app.social-inbox.api.maximumTestedVersion=12
+app.social-inbox.api.maximumTestedVersion=13
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader
@@ -185,7 +192,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=12
+app.feed-reader.api.maximumTestedVersion=13
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
 app.trust-graph.id=trust-graph
@@ -225,7 +232,7 @@ app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Preview reference app.
 app.trust-graph.api.minimumVersion=10
-app.trust-graph.api.maximumTestedVersion=12
+app.trust-graph.api.maximumTestedVersion=13
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
@@ -250,11 +257,47 @@ unsafe artifact URIs, duplicate entries, and unknown properties.
 
 `catalog.version=1` is the minimal signed-catalog schema and contains only the required app,
 artifact, and permission fields. `catalog.version=2` adds the optional app-store and API
-compatibility metadata fields shown above. Current Cryptad nodes parse both versions. Older strict
-v1 nodes reject v2 catalogs rather than silently accepting unknown metadata fields.
+compatibility metadata fields shown above. `catalog.version=3` adds production catalog channels,
+maximum Cryptad compatibility, support/deprecation metadata, replacement app hints, and security
+advisory references. Current Cryptad nodes parse all three versions. Older strict v1/v2 nodes
+reject newer catalogs rather than silently accepting unknown metadata fields.
 
 Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
-app-store metadata fields remain optional within the v2 schema.
+app-store metadata fields remain optional within the v2 schema. V1 and v2 catalogs that omit
+production channel metadata default to `stable`, `supported`, `deprecation.status=none`, no
+replacement app id, and no security advisories.
+
+## Production channel metadata
+
+Production catalog channels are signed catalog metadata. They do not replace catalog signature
+verification, artifact digest checks, bundle signature verification, manifest id/version checks, or
+review receipt verification.
+
+| Channel | Meaning |
+| --- | --- |
+| `stable` | Production-safe default. Stable entries are the only entries eligible for automatic staging/apply under the default app-update policy. |
+| `beta` | Operator-selected preview channel. Beta entries are visible only when the operator selects beta browsing or an update policy explicitly allows beta automation. |
+| `nightly` | High-churn preview channel for release jobs and testers. Nightly is never mixed into stable browsing or stable-only automation. |
+| `deprecated` | Retired or replacement-directed entry. Deprecated entries remain visible signed metadata, but they are not ordinary automatic update candidates. |
+
+The v3 property set is:
+
+```properties
+app.<id>.channel=stable|beta|nightly|deprecated
+app.<id>.minimumCryptaVersion=<semver-or-build-version>
+app.<id>.maximumCryptaVersion=<semver-or-build-version>
+app.<id>.support.status=supported|maintenance|experimental|deprecated|unsupported
+app.<id>.deprecation.status=none|deprecated|retired
+app.<id>.deprecation.message=<single-line operator-facing text>
+app.<id>.replacementAppId=<normalized-app-id>
+app.<id>.securityAdvisories=<comma-separated advisory ids>
+app.<id>.securityAdvisory.<advisoryId>.uri=<safe metadata URI>
+```
+
+`replacementAppId` uses the same normalized app-id validation as catalog entries. Advisory URIs use
+the same safe metadata URI policy as homepage, source, changelog, and screenshot links. The
+`deprecated` channel and deprecation metadata are visible to API clients and the Web Shell; they
+are not a signature bypass or artifact-verification bypass.
 
 ## App-store metadata
 
@@ -266,7 +309,14 @@ Catalog entries can include these optional fields:
 | `app.<id>.source` | Source repository or source archive URI. |
 | `app.<id>.license` | Single-line license label, such as `MIT` or `GPL-3.0-or-later`. |
 | `app.<id>.categories` | Comma-separated category labels, normalized and deduplicated for display. |
+| `app.<id>.channel` | Production channel: `stable`, `beta`, `nightly`, or `deprecated`. |
 | `app.<id>.minimumCryptaVersion` | Advisory minimum Cryptad build/version string. Integer build numbers are the comparable form used by Platform API responses. |
+| `app.<id>.maximumCryptaVersion` | Advisory maximum supported Cryptad build/version string. |
+| `app.<id>.support.status` | Operator-facing support state: `supported`, `maintenance`, `experimental`, `deprecated`, or `unsupported`. |
+| `app.<id>.deprecation.status` | Deprecation lifecycle state: `none`, `deprecated`, or `retired`. |
+| `app.<id>.deprecation.message` | Single-line deprecation note shown to operators. |
+| `app.<id>.replacementAppId` | Normalized replacement app id for deprecated or retired entries. |
+| `app.<id>.securityAdvisories` | Comma-separated advisory identifiers with matching `securityAdvisory.<id>.uri` metadata links. |
 | `app.<id>.review.status` | Advisory human review state. Supported values are `unreviewed`, `reviewed`, `caution`, and `rejected`. |
 | `app.<id>.review.note` | Single-line advisory review note for operators. |
 | `app.<id>.permissions.rationale.<permission>` | Explanation for a declared permission, keyed by the normalized permission name. |
@@ -694,7 +744,9 @@ enforced only for AppHost-managed app data/cache directories. See
 
 Catalog app listing and detail responses expose optional store metadata, installed/running state,
 installed version, catalog version, advisory version-difference/update information, API
-compatibility summaries, permission rationales, and permission deltas for install/update review.
+compatibility summaries, production channel, support status, deprecation status/message,
+replacement app id, security advisory references, permission rationales, and permission deltas for
+install/update review.
 Responses include both the legacy advisory `review` object and the locally evaluated
 `reviewTrust` object. `reviewTrust.status` records the stable receipt decision, `trusted` records
 whether the receipt signature verified with a configured reviewer key, and `positive` is true only
@@ -708,9 +760,12 @@ The Web Shell Apps section uses the same API to show catalog details before inst
 catalog signature/source state, artifact digest and bundle verification status when available,
 publisher advisory review status and note, trusted review receipt status, reviewer key/display
 metadata, policy id/version, evidence metadata, expiry, warnings, source/homepage/license/category
-metadata, permission explanations, installed-vs-catalog version difference, advisory compatibility
-hints, and changelog metadata when present. Web Shell wording must distinguish "signed by catalog
-publisher" from "reviewed by trusted reviewer". See
+metadata, channel badges, support/deprecation metadata, replacement app ids, security advisory
+links, permission explanations, installed-vs-catalog version difference, advisory compatibility
+hints, and changelog metadata when present. The channel selector defaults to `stable`; beta,
+nightly, and deprecated entries are shown only when the operator selects that channel. Deprecated
+entries do not render as ordinary install/update candidates in the shell. Web Shell wording must
+distinguish "signed by catalog publisher" from "reviewed by trusted reviewer". See
 [app-update-lifecycle.md](app-update-lifecycle.md) for candidate detection, manual apply,
 permission-delta review, and rollback scope.
 
@@ -718,6 +773,6 @@ permission-delta review, and rollback scope.
 
 Manifest permissions are enforced for app-process Platform API calls as described in
 [app-permissions-and-audit.md](app-permissions-and-audit.md). Public app-store governance,
-silent automatic update policy, Crypta artifact fetching, and remote screenshot proxying remain
-future work. Catalog-backed candidate detection and explicit apply are implemented; silent
-auto-update is not the default.
+security-advisory denylist enforcement, app-data migration, backup/restore, and remote screenshot
+proxying remain future work. Catalog-backed candidate detection, explicit apply, and stable-only
+default automation are implemented; silent broad-channel auto-update is not the default.

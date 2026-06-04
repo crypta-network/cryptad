@@ -261,6 +261,33 @@ entry descriptors. A descriptor is CLI input, not the installed app manifest and
 catalog entry. It points at a local ZIP artifact so the catalog writer can compute the public
 catalog size and SHA-256 fields from the exact bytes:
 
+```bash
+crypta-app catalog entry \
+  --bundle-dir build/dev-apps/hello-queue \
+  --artifact dist/apps/hello-queue-0.1.0.zip \
+  --bundle-uri https://example.invalid/apps/hello-queue-0.1.0.zip \
+  --output catalog-entry.properties \
+  --summary "Example static UI that reads the local queue." \
+  --channel stable \
+  --minimum-crypta-version 1481 \
+  --maximum-crypta-version 1499 \
+  --support-status supported \
+  --deprecation-status none \
+  --security-advisory CRYPTA-2026-0001=https://example.invalid/advisories/CRYPTA-2026-0001 \
+  --permission-rationale queue.read="Reads the local transfer queue." \
+  --permission-rationale queue.write="Lets the app cancel or reprioritize requests." \
+  --overwrite
+```
+
+Use `--channel stable|beta|nightly|deprecated` to place the entry in a production catalog channel.
+Use `--support-status supported|maintenance|experimental|deprecated|unsupported` and
+`--deprecation-status none|deprecated|retired` for operator-facing support state. Deprecated
+entries can also use `--deprecation-message` and `--replacement-app-id`; repeat
+`--security-advisory id=uri` for advisory references. The command validates these options through
+the same descriptor parser used by `catalog create`, so generated descriptors with channel,
+maximum-version, support, deprecation, replacement, or advisory metadata produce
+`catalog.version=3` when written into a catalog.
+
 ```properties
 # catalog-entry.properties
 artifact.path=/abs/path/to/dist/apps/hello-queue-0.1.0.zip
@@ -274,7 +301,13 @@ homepage=https://example.invalid/apps/hello-queue
 source=https://example.invalid/src/hello-queue
 license=MIT
 categories=productivity,network
+channel=stable
 minimumCryptaVersion=1481
+maximumCryptaVersion=1499
+support.status=supported
+deprecation.status=none
+securityAdvisories=CRYPTA-2026-0001
+securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
 review.status=reviewed
 review.note=Reviewed for local operator safety.
 permissions.rationale.queue.read=Reads the local transfer queue.
@@ -309,7 +342,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -340,7 +373,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -375,7 +408,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -420,7 +453,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
 changelog.summary=Adds the social/mail migration preview reference app.
 api.minimumVersion=12
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -442,7 +475,15 @@ Descriptors can also author optional app-store metadata:
 | `source` | `app.<id>.source` |
 | `license` | `app.<id>.license` |
 | `categories` | `app.<id>.categories` |
+| `channel` | `app.<id>.channel` |
 | `minimumCryptaVersion` | `app.<id>.minimumCryptaVersion` |
+| `maximumCryptaVersion` | `app.<id>.maximumCryptaVersion` |
+| `support.status` | `app.<id>.support.status` |
+| `deprecation.status` | `app.<id>.deprecation.status` |
+| `deprecation.message` | `app.<id>.deprecation.message` |
+| `replacementAppId` | `app.<id>.replacementAppId` |
+| `securityAdvisories` | `app.<id>.securityAdvisories` |
+| `securityAdvisory.<id>.uri` | `app.<id>.securityAdvisory.<id>.uri` |
 | `review.status` | `app.<id>.review.status` |
 | `review.note` | `app.<id>.review.note` |
 | `permissions.rationale.<permission>` | `app.<id>.permissions.rationale.<permission>` |
@@ -462,12 +503,24 @@ These fields are optional. A descriptor and artifact with no app-store metadata 
 compatibility metadata generate a minimal `catalog.version=1` catalog. Descriptors that include
 any app-store metadata, or descriptors/artifacts that declare API compatibility metadata, generate
 `catalog.version=2` so strict v1 catalog consumers reject the expanded schema cleanly instead of
-accepting unknown fields.
+accepting unknown fields. Descriptors that declare production channel metadata, maximum Cryptad
+compatibility, support status, deprecation metadata, replacement app ids, or security advisory
+references generate `catalog.version=3`.
 `homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
 `review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
 integer Cryptad build labels are the comparable form used by Platform API responses. Permission
 rationales explain declared permissions; they do not grant capabilities.
+
+Production channel metadata is strict and deterministic. `channel` must be one of `stable`,
+`beta`, `nightly`, or `deprecated`; omitted descriptors default to stable when read by the runtime.
+`support.status` must be one of `supported`, `maintenance`, `experimental`, `deprecated`, or
+`unsupported`. `deprecation.status` must be `none`, `deprecated`, or `retired`; deprecated entries
+can also set a single-line `deprecation.message` and a validated `replacementAppId`. Advisory ids
+listed in `securityAdvisories` must have matching `securityAdvisory.<id>.uri` metadata and use the
+same safe URI policy as homepage, source, screenshot, and changelog URIs. These fields are
+operator-visible metadata only: they do not bypass catalog signatures, bundle signatures, review
+receipts, artifact digests, or update review gates.
 
 API compatibility metadata is advisory. The signed bundle manifest remains authoritative for the
 app artifact, and catalog-vs-bundle mismatches are reported by `crypta-app compat verify`.
@@ -678,6 +731,9 @@ review keys outside the repository.
    summary=Manage local Crypta transfer queues.
    name=Queue Manager
    permissions=queue.read,queue.write
+   channel=beta
+   support.status=experimental
+   deprecation.status=none
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
    api.maximumTestedVersion=10
@@ -703,7 +759,9 @@ review keys outside the repository.
    until the operator confirms an install/update for each entry.
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md) for the full maintainer and
-operator flow.
+operator flow. See [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md)
+for the stable, beta, nightly, and deprecated channel policy used by production catalog selectors
+and automatic update scheduling.
 
 ## Related docs
 
@@ -716,6 +774,9 @@ operator flow.
   and dry-run USK publication.
 - [first-party-beta-catalog.md](first-party-beta-catalog.md) covers first-party catalog publication
   and Web Shell onboarding.
+- [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) covers
+  catalog schema v3, production channel semantics, deprecation metadata, and update policy
+  defaults.
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
 - [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and

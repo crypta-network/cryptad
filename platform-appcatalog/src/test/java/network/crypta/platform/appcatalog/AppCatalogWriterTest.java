@@ -68,6 +68,14 @@ class AppCatalogWriterTest {
             license=MIT
             categories=Productivity,network,productivity
             minimumCryptaVersion=0.1.0
+            maximumCryptaVersion=0.9.99
+            channel=beta
+            support.status=experimental
+            deprecation.status=deprecated
+            deprecation.message=Use Queue Manager stable.
+            replacementAppId=queue-manager-stable
+            securityAdvisories=CRYPTA-2026-0001
+            securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
             api.minimumVersion=1
             api.maximumTestedVersion=1
             api.optionalCapabilities=alerts.read,diagnostics.read
@@ -88,7 +96,7 @@ class AppCatalogWriterTest {
 
     String expected =
         lines(
-            "catalog.version=2",
+            "catalog.version=3",
             "catalog.id=core",
             "catalog.name=Crypta Core Apps",
             "catalog.generatedAt=2026-04-21T18:22:40Z",
@@ -102,10 +110,18 @@ class AppCatalogWriterTest {
             "app.queue-manager.license=MIT",
             "app.queue-manager.categories=productivity,network",
             "app.queue-manager.minimumCryptaVersion=0.1.0",
+            "app.queue-manager.maximumCryptaVersion=0.9.99",
             "app.queue-manager.api.minimumVersion=1",
             "app.queue-manager.api.maximumTestedVersion=1",
             "app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read",
             "app.queue-manager.api.experimentalCapabilitiesAccepted=true",
+            "app.queue-manager.channel=beta",
+            "app.queue-manager.support.status=experimental",
+            "app.queue-manager.deprecation.status=deprecated",
+            "app.queue-manager.deprecation.message=Use Queue Manager stable.",
+            "app.queue-manager.replacementAppId=queue-manager-stable",
+            "app.queue-manager.securityAdvisories=CRYPTA-2026-0001",
+            "app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001",
             "app.queue-manager.review.status=reviewed",
             "app.queue-manager.review.note=Reviewed for local operator safety.",
             "app.queue-manager.permissions.rationale.queue.inspect=Inspects queue metadata.",
@@ -119,7 +135,7 @@ class AppCatalogWriterTest {
             "app.queue-manager.bundle.type=zip",
             "app.queue-manager.permissions=queue.inspect,queue.read");
 
-    assertEquals(AppCatalog.VERSION_STORE_METADATA, result.catalog().version());
+    assertEquals(AppCatalog.VERSION_PRODUCTION_CHANNELS, result.catalog().version());
     assertEquals(expected, new String(result.catalogBytes(), StandardCharsets.UTF_8));
     assertEquals(expected, Files.readString(outputFile));
     assertEquals(outputFile.toAbsolutePath().normalize(), result.catalogFile().orElseThrow());
@@ -166,6 +182,22 @@ class AppCatalogWriterTest {
     AppCatalogException exception = captureInvalidEntry(() -> AppCatalogWriter.serialize(catalog));
 
     assertTrue(exception.getMessage().contains("catalog.version 2 is required"));
+  }
+
+  @Test
+  void serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry() {
+    AppCatalogEntry entry = directEntryWithProductionMetadata();
+    AppCatalog catalog =
+        new AppCatalog(
+            AppCatalog.VERSION_STORE_METADATA,
+            CATALOG_ID,
+            CATALOG_NAME,
+            GENERATED_AT,
+            List.of(entry));
+
+    AppCatalogException exception = captureInvalidEntry(() -> AppCatalogWriter.serialize(catalog));
+
+    assertTrue(exception.getMessage().contains("catalog.version 3 is required"));
   }
 
   @Test
@@ -358,6 +390,36 @@ class AppCatalogWriterTest {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of(QUEUE_READ_PERMISSION, "queue.write"),
         rationales);
+  }
+
+  private static AppCatalogEntry directEntryWithProductionMetadata() {
+    return new AppCatalogEntry(
+        QUEUE_APP_ID,
+        QUEUE_APP_NAME,
+        QUEUE_APP_VERSION,
+        LOCAL_QUEUE_SUMMARY,
+        null,
+        null,
+        null,
+        List.of(),
+        AppCatalogCompatibilityMetadata.EMPTY,
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
+        new AppCatalogProductionMetadata(
+            AppCatalogChannel.BETA,
+            AppCatalogSupportStatus.EXPERIMENTAL,
+            AppCatalogDeprecationStatus.NONE,
+            java.util.Optional.empty(),
+            java.util.Optional.empty(),
+            List.of(),
+            true),
+        URI.create(QUEUE_BUNDLE_URI),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION),
+        Map.of());
   }
 
   private Path descriptor(

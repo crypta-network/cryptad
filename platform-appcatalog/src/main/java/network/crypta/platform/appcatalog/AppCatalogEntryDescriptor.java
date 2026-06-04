@@ -43,6 +43,14 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * license=MIT
  * categories=productivity,network
  * minimumCryptaVersion=0.1.0
+ * maximumCryptaVersion=0.9.99
+ * channel=stable
+ * support.status=supported
+ * deprecation.status=none
+ * deprecation.message=Use the maintained replacement.
+ * replacementAppId=queue-manager
+ * securityAdvisories=CRYPTA-2026-0001
+ * securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
  * api.minimumVersion=1
  * api.maximumTestedVersion=1
  * api.optionalCapabilities=alerts.read,diagnostics.read
@@ -77,6 +85,7 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * @param review advisory human-review metadata
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
+ * @param productionMetadata production channel, support, deprecation, and advisory metadata
  * @param permissionsOverride optional permission list override; an empty list means no permissions
  * @param permissionRationales permission-keyed rationale text for install/update review
  * @see AppCatalogWriter
@@ -96,6 +105,7 @@ public record AppCatalogEntryDescriptor(
     AppCatalogReviewMetadata review,
     AppCatalogChangelog changelog,
     List<URI> screenshots,
+    AppCatalogProductionMetadata productionMetadata,
     Optional<List<String>> permissionsOverride,
     Map<String, String> permissionRationales) {
   private static final String ARTIFACT_PATH = "artifact.path";
@@ -108,7 +118,16 @@ public record AppCatalogEntryDescriptor(
   private static final String SOURCE_PROPERTY = "source";
   private static final String LICENSE_PROPERTY = "license";
   private static final String CATEGORIES_PROPERTY = "categories";
+  private static final String CHANNEL_PROPERTY = "channel";
   private static final String MINIMUM_CRYPTA_VERSION = "minimumCryptaVersion";
+  private static final String MAXIMUM_CRYPTA_VERSION = "maximumCryptaVersion";
+  private static final String SUPPORT_STATUS = "support.status";
+  private static final String DEPRECATION_STATUS = "deprecation.status";
+  private static final String DEPRECATION_MESSAGE = "deprecation.message";
+  private static final String REPLACEMENT_APP_ID = "replacementAppId";
+  private static final String SECURITY_ADVISORIES = "securityAdvisories";
+  private static final String SECURITY_ADVISORY_PREFIX = "securityAdvisory.";
+  private static final String SECURITY_ADVISORY_URI_SUFFIX = ".uri";
   private static final String API_MINIMUM_VERSION = "api.minimumVersion";
   private static final String API_MAXIMUM_TESTED_VERSION = "api.maximumTestedVersion";
   private static final String API_OPTIONAL_CAPABILITIES = "api.optionalCapabilities";
@@ -148,6 +167,7 @@ public record AppCatalogEntryDescriptor(
    * @param review advisory human-review metadata
    * @param changelog optional change metadata for this catalog version
    * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
    * @param permissionsOverride optional permission override list copied into immutable state
    * @param permissionRationales permission-keyed rationale text for install/update review
    * @throws AppCatalogException if descriptor metadata is malformed
@@ -175,6 +195,7 @@ public record AppCatalogEntryDescriptor(
     Objects.requireNonNull(review, "review");
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots);
+    Objects.requireNonNull(productionMetadata, "productionMetadata");
     Objects.requireNonNull(permissionsOverride, PERMISSIONS);
     permissionsOverride = permissionsOverride.map(List::copyOf);
     permissionRationales = normalizePermissionRationales(permissionRationales);
@@ -222,6 +243,7 @@ public record AppCatalogEntryDescriptor(
             parseCategories(removeOptional(properties, CATEGORIES_PROPERTY).orElse(null)),
             new AppCatalogCompatibilityMetadata(
                 removeOptional(properties, MINIMUM_CRYPTA_VERSION).orElse(null),
+                removeOptional(properties, MAXIMUM_CRYPTA_VERSION).orElse(null),
                 parseApiCompatibility(properties)),
             parseReview(properties),
             new AppCatalogChangelog(
@@ -229,6 +251,7 @@ public record AppCatalogEntryDescriptor(
                 removeOptional(properties, CHANGELOG_URI)
                     .map(value -> parseUri(value, CHANGELOG_URI))),
             parseScreenshots(properties),
+            parseProductionMetadata(properties),
             removeOptionalPermissions(properties),
             parsePermissionRationales(properties));
     if (!properties.isEmpty()) {
@@ -418,6 +441,52 @@ public record AppCatalogEntryDescriptor(
             .map(value -> AppCatalogReviewStatus.parse(value, REVIEW_STATUS))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
     return new AppCatalogReviewMetadata(status, removeOptional(properties, REVIEW_NOTE));
+  }
+
+  private static AppCatalogProductionMetadata parseProductionMetadata(
+      Map<String, String> properties) {
+    Optional<String> channelText = removeOptional(properties, CHANNEL_PROPERTY);
+    Optional<String> supportStatusText = removeOptional(properties, SUPPORT_STATUS);
+    Optional<String> deprecationStatusText = removeOptional(properties, DEPRECATION_STATUS);
+    Optional<String> deprecationMessage = removeOptional(properties, DEPRECATION_MESSAGE);
+    Optional<String> replacementAppId = removeOptional(properties, REPLACEMENT_APP_ID);
+    List<AppCatalogSecurityAdvisory> advisories = parseSecurityAdvisories(properties);
+    boolean declared =
+        channelText.isPresent()
+            || supportStatusText.isPresent()
+            || deprecationStatusText.isPresent()
+            || deprecationMessage.isPresent()
+            || replacementAppId.isPresent()
+            || !advisories.isEmpty();
+    return new AppCatalogProductionMetadata(
+        channelText.map(value -> AppCatalogChannel.parse(value, CHANNEL_PROPERTY)).orElse(null),
+        supportStatusText
+            .map(value -> AppCatalogSupportStatus.parse(value, SUPPORT_STATUS))
+            .orElse(null),
+        deprecationStatusText
+            .map(value -> AppCatalogDeprecationStatus.parse(value, DEPRECATION_STATUS))
+            .orElse(null),
+        deprecationMessage,
+        replacementAppId,
+        advisories,
+        declared);
+  }
+
+  private static List<AppCatalogSecurityAdvisory> parseSecurityAdvisories(
+      Map<String, String> properties) {
+    Optional<String> rawIds = removeOptional(properties, SECURITY_ADVISORIES);
+    if (rawIds.isEmpty() || rawIds.orElseThrow().isBlank()) {
+      return List.of();
+    }
+    List<AppCatalogSecurityAdvisory> advisories = new ArrayList<>();
+    for (String rawId : rawIds.orElseThrow().split(",", -1)) {
+      String advisoryId = AppCatalogSecurityAdvisory.normalizeId(rawId.trim(), SECURITY_ADVISORIES);
+      String uriKey = SECURITY_ADVISORY_PREFIX + advisoryId + SECURITY_ADVISORY_URI_SUFFIX;
+      advisories.add(
+          new AppCatalogSecurityAdvisory(
+              advisoryId, parseUri(removeRequired(properties, uriKey), uriKey)));
+    }
+    return List.copyOf(advisories);
   }
 
   private static List<URI> parseScreenshots(Map<String, String> properties) {

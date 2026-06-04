@@ -18,6 +18,8 @@
     legacySecurityLevelsPath + "?legacyFallback=security-levels";
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
+  const catalogChannels = ["stable", "beta", "nightly", "deprecated"];
+  const catalogChannelStorageKey = "crypta.webShell.catalogChannel";
   const shellState = {
     alertsSnapshot: null,
     appCatalogsSnapshot: null,
@@ -31,6 +33,7 @@
     supportBundleSnapshot: null,
     updatesSnapshot: null,
     wizardSnapshot: null,
+    catalogChannel: readStoredCatalogChannel(),
   };
   const directDownloadOperation = "create_direct_download";
   const isolatedLaunchParameter = "cryptadIsolatedLaunch";
@@ -118,6 +121,7 @@
   };
   const appsControls = {
     refreshButton: document.getElementById("apps-refresh-button"),
+    catalogChannelSelect: document.getElementById("catalog-channel-select"),
     catalogSourceForm: document.getElementById("catalog-source-form"),
     catalogSourceInput: document.getElementById("catalog-source-input"),
   };
@@ -223,6 +227,30 @@
 
   function clear(node) {
     node.replaceChildren();
+  }
+
+  function normalizeCatalogChannel(value) {
+    if (typeof value !== "string") {
+      return "stable";
+    }
+    const normalized = value.trim().toLowerCase();
+    return catalogChannels.includes(normalized) ? normalized : "stable";
+  }
+
+  function readStoredCatalogChannel() {
+    try {
+      return normalizeCatalogChannel(window.localStorage.getItem(catalogChannelStorageKey));
+    } catch (error) {
+      return "stable";
+    }
+  }
+
+  function storeCatalogChannel(value) {
+    try {
+      window.localStorage.setItem(catalogChannelStorageKey, normalizeCatalogChannel(value));
+    } catch (error) {
+      // Storage can be disabled; the in-memory state remains authoritative for this page load.
+    }
   }
 
   function text(tagName, className, value) {
@@ -2342,9 +2370,20 @@
     }
     const value = recordValue(policy);
     const mode = typeof value.mode === "string" && value.mode ? normalizedStatus(value.mode) : "";
+    const allowedChannels = stringList(value.allowedChannels)
+      .map((channel) => catalogChannelLabel(channel))
+      .join(", ");
     const requireManualApply = value.requireManualApply === true ? "manual apply" : "";
     const allowPrerelease = value.allowPrerelease === true ? "prerelease allowed" : "";
-    const entries = [mode, requireManualApply, allowPrerelease].filter((entry) => entry);
+    const deprecatedBlocked =
+      value.deprecatedAutoUpdatesBlocked === true ? "deprecated blocked" : "";
+    const entries = [
+      mode,
+      allowedChannels ? `channels: ${allowedChannels}` : "",
+      requireManualApply,
+      allowPrerelease,
+      deprecatedBlocked,
+    ].filter((entry) => entry);
     return entries.length ? entries.join("; ") : "Unavailable";
   }
 
@@ -2428,9 +2467,6 @@
 
   function stageableUpdateCandidate(updateState) {
     const candidate = recordValue(updateState.candidate);
-    if (typeof candidate.autoStageAllowed === "boolean") {
-      return candidate.autoStageAllowed;
-    }
     const status =
       typeof candidate.status === "string" && candidate.status
         ? candidate.status
@@ -3444,7 +3480,11 @@
   }
 
   function renderCatalogs(catalogs, catalogError) {
+    const selectedChannel = normalizeCatalogChannel(shellState.catalogChannel);
     sections.apps.append(text("h3", "app-card-title", "Catalog apps"));
+    sections.apps.append(
+      text("p", "panel-description", `Showing ${catalogChannelLabel(selectedChannel)} channel apps.`),
+    );
     if (catalogError) {
       sections.apps.append(text("p", "error-state", `Catalogs unavailable: ${catalogError}`));
       return;
@@ -3456,7 +3496,9 @@
     const list = document.createElement("div");
     list.className = "app-card-list";
     catalogs.forEach((catalog) => {
-      list.append(renderCatalogCard(catalog && typeof catalog === "object" ? catalog : {}));
+      list.append(
+        renderCatalogCard(catalog && typeof catalog === "object" ? catalog : {}, selectedChannel),
+      );
     });
     sections.apps.append(list);
   }
@@ -3576,6 +3618,83 @@
     return card;
   }
 
+  function catalogAppChannel(app) {
+    return normalizeCatalogChannel(app && typeof app.channel === "string" ? app.channel : "stable");
+  }
+
+  function catalogChannelLabel(channel) {
+    return normalizedStatus(normalizeCatalogChannel(channel), "Stable");
+  }
+
+  function catalogChannelTone(channel) {
+    const normalized = normalizeCatalogChannel(channel);
+    if (normalized === "stable") {
+      return "is-success";
+    }
+    if (normalized === "deprecated") {
+      return "is-error";
+    }
+    if (normalized === "nightly") {
+      return "is-warning";
+    }
+    return "is-info";
+  }
+
+  function catalogAppDeprecation(app) {
+    return recordValue(app && app.deprecation);
+  }
+
+  function catalogAppDeprecated(app) {
+    const deprecation = catalogAppDeprecation(app);
+    const deprecationStatus =
+      typeof deprecation.status === "string" ? deprecation.status.toLowerCase() : "none";
+    const supportStatus =
+      app && typeof app.supportStatus === "string" ? app.supportStatus.toLowerCase() : "";
+    return (
+      catalogAppChannel(app) === "deprecated" ||
+      (deprecationStatus && deprecationStatus !== "none") ||
+      supportStatus === "deprecated" ||
+      supportStatus === "unsupported"
+    );
+  }
+
+  function securityAdvisoryListNode(values) {
+    const advisories = Array.isArray(values) ? values : [];
+    if (!advisories.length) {
+      return "None";
+    }
+    const list = document.createElement("ul");
+    list.className = "metadata-link-list";
+    advisories.forEach((value) => {
+      const advisory = recordValue(value);
+      const id = typeof advisory.id === "string" && advisory.id ? advisory.id : "Advisory";
+      const item = document.createElement("li");
+      if (typeof advisory.uri === "string" && advisory.uri) {
+        item.append(metadataLinkNode(advisory.uri, id));
+      } else {
+        item.textContent = id;
+      }
+      list.append(item);
+    });
+    return list;
+  }
+
+  function deprecationNoticeNode(app) {
+    const deprecation = catalogAppDeprecation(app);
+    const replacement =
+      typeof deprecation.replacementAppId === "string" && deprecation.replacementAppId
+        ? deprecation.replacementAppId
+        : "";
+    const message =
+      typeof deprecation.message === "string" && deprecation.message ? deprecation.message : "";
+    const suffix = replacement ? ` Replacement: ${replacement}.` : "";
+    return text(
+      "p",
+      "status-message is-warning",
+      `${message || "This catalog entry is deprecated and is not shown as a normal install or update candidate."}${suffix}`,
+    );
+  }
+
   function catalogSourceKind(catalog) {
     const rawKind =
       typeof catalog.sourceKind === "string" && catalog.sourceKind
@@ -3643,11 +3762,13 @@
     );
   }
 
-  function renderCatalogCard(catalog) {
+  function renderCatalogCard(catalog, selectedChannel) {
     const card = document.createElement("article");
     card.className = "app-card";
     const title = typeof catalog.name === "string" && catalog.name ? catalog.name : scalar(catalog.catalogId);
     const sourceKind = catalogSourceKind(catalog);
+    const apps = Array.isArray(catalog.apps) ? catalog.apps : [];
+    const visibleApps = apps.filter((app) => catalogAppChannel(app) === selectedChannel);
     const header = document.createElement("div");
     header.className = "app-card-header";
     const heading = document.createElement("div");
@@ -3660,7 +3781,12 @@
     if (catalogFetchFailed(catalog)) {
       pills.append(createPill("refresh failed", "is-warning"));
     }
-    pills.append(createPill(`${Array.isArray(catalog.apps) ? catalog.apps.length : 0} apps`));
+    pills.append(
+      createPill(
+        `${visibleApps.length}/${apps.length} ${catalogChannelLabel(selectedChannel)} apps`,
+        catalogChannelTone(selectedChannel),
+      ),
+    );
     header.append(heading, pills);
     card.append(header);
     card.append(
@@ -3696,14 +3822,19 @@
       }
     }
 
-    const apps = Array.isArray(catalog.apps) ? catalog.apps : [];
     if (!apps.length) {
       card.append(text("p", "empty-state", "No apps were returned for this catalog."));
       return card;
     }
+    if (!visibleApps.length) {
+      card.append(
+        text("p", "empty-state", `No ${catalogChannelLabel(selectedChannel)} apps were returned for this catalog.`),
+      );
+      return card;
+    }
     const appList = document.createElement("div");
     appList.className = "catalog-app-list";
-    apps.forEach((app) => {
+    visibleApps.forEach((app) => {
       appList.append(renderCatalogAppCard(catalog, app && typeof app === "object" ? app : {}));
     });
     card.append(appList);
@@ -3763,6 +3894,7 @@
     details.append(
       definitionList([
         ["Minimum Crypta version", scalar(compatibility.minimumCryptaVersion)],
+        ["Maximum Crypta version", scalar(compatibility.maximumCryptaVersion)],
         ["Current Crypta version", scalar(compatibility.currentCryptaVersion)],
         ["Satisfied", compatibility.satisfied == null ? "Advisory" : compatibility.satisfied ? "Yes" : "No"],
         ["Status", normalizedStatus(compatibility.status, "Advisory")],
@@ -3865,6 +3997,15 @@
     if (app.updateAvailable) {
       card.className += " is-update-available";
     }
+    const channel = catalogAppChannel(app);
+    const deprecation = catalogAppDeprecation(app);
+    const deprecated = catalogAppDeprecated(app);
+    if (channel !== "stable") {
+      card.className += " is-preview-channel";
+    }
+    if (deprecated) {
+      card.className += " is-deprecated-channel";
+    }
 
     const review = recordValue(app.review);
     const reviewTrust = recordValue(app.reviewTrust);
@@ -3881,6 +4022,16 @@
     const pills = document.createElement("div");
     pills.className = "app-card-pills";
     pills.append(createPill("Signed catalog"));
+    pills.append(createPill(catalogChannelLabel(channel), catalogChannelTone(channel)));
+    pills.append(
+      createPill(
+        normalizedStatus(app.supportStatus, "Supported"),
+        deprecated ? "is-warning" : "is-info",
+      ),
+    );
+    if (deprecated) {
+      pills.append(createPill(normalizedStatus(deprecation.status, "Deprecated"), "is-error"));
+    }
     pills.append(createPill(`Advisory: ${normalizedStatus(review.status, "Unreviewed")}`, reviewTone(review.status)));
     pills.append(createPill(reviewTrustLabel(reviewTrust), reviewTrustTone(reviewTrust)));
     pills.append(createPill(versionLabel(app), versionTone(app)));
@@ -3894,6 +4045,12 @@
         ["Catalog version", scalar(app.version)],
         ["Installed version", scalar(app.installedVersion)],
         ["Version change", versionSummary(app)],
+        ["Channel", catalogChannelLabel(channel)],
+        ["Support status", normalizedStatus(app.supportStatus, "Supported")],
+        ["Deprecation status", normalizedStatus(deprecation.status, "None")],
+        ["Replacement app", scalar(deprecation.replacementAppId)],
+        ["Deprecation message", scalar(deprecation.message)],
+        ["Security advisories", securityAdvisoryListNode(app.securityAdvisories)],
         ["Summary", scalar(app.summary)],
         ["Homepage", metadataLinkNode(app.homepage)],
         ["Source", metadataLinkNode(app.source)],
@@ -3907,6 +4064,7 @@
         ["Permission changes", `+${stringList(recordValue(app.permissionDelta).added).length} / -${stringList(recordValue(app.permissionDelta).removed).length}`],
         ["Compatibility", compatibilityLabel(compatibility)],
         ["Minimum Crypta version", scalar(compatibility.minimumCryptaVersion)],
+        ["Maximum Crypta version", scalar(compatibility.maximumCryptaVersion)],
         ["API contract", apiCompatibilityLabel(apiCompatibility)],
         ["Minimum API contract version", scalar(apiCompatibility.minimumVersion)],
         ["Maximum tested API contract version", scalar(apiCompatibility.maximumTestedVersion)],
@@ -3916,11 +4074,14 @@
       ]),
     );
     card.append(catalogReviewDetailsNode(app));
+    if (deprecated) {
+      card.append(deprecationNoticeNode(app));
+    }
     card.append(catalogCompatibilityDetailsNode(app));
     card.append(apiCompatibilityDetailsNode(app));
     card.append(catalogPermissionReviewDetailsNode(app));
     card.append(catalogReleaseDetailsNode(app));
-    if (formPassword) {
+    if (formPassword && !deprecated) {
       const actions = document.createElement("div");
       actions.className = "app-card-actions";
       const action = app.installed ? "update" : "install";
@@ -4178,6 +4339,9 @@
   function updateAppsToolbar() {
     if (appsControls.catalogSourceForm) {
       appsControls.catalogSourceForm.hidden = !formPassword;
+    }
+    if (appsControls.catalogChannelSelect) {
+      appsControls.catalogChannelSelect.value = normalizeCatalogChannel(shellState.catalogChannel);
     }
     if (sections.appsReadonlyHint) {
       sections.appsReadonlyHint.hidden = !!formPassword;
@@ -6087,6 +6251,16 @@
       setAppsStatus("Refreshing installed apps and catalogs.");
       loadAppsSection();
     });
+    if (appsControls.catalogChannelSelect) {
+      appsControls.catalogChannelSelect.addEventListener("change", () => {
+        shellState.catalogChannel = normalizeCatalogChannel(appsControls.catalogChannelSelect.value);
+        storeCatalogChannel(shellState.catalogChannel);
+        if (shellState.appsSnapshot) {
+          renderApps(shellState.appsSnapshot);
+        }
+        setAppsStatus(`Showing ${catalogChannelLabel(shellState.catalogChannel)} catalog channel.`);
+      });
+    }
     sections.apps.addEventListener("click", async (event) => {
       const link = appUiLaunchClickTarget(event);
       if (!link) {

@@ -1,7 +1,8 @@
 # First-party beta app catalog
 
 This guide describes how Cryptad maintainers publish and operators onboard the first-party beta app
-catalog.
+catalog. The beta catalog remains available as the preview channel under the production first-party
+catalog channel model; stable remains the default production-safe selector.
 
 ## Scope
 
@@ -11,6 +12,13 @@ The first-party beta catalog is a signed catalog for the current first-party app
 weaken any existing gates. Catalog signatures, bundle signatures, review receipts, artifact
 SHA-256 checks, Platform API compatibility metadata, sandbox metadata, and permission review remain
 separate layers.
+
+Beta entries should declare `channel=beta`, `support.status=experimental`, and explicit
+`minimumCryptaVersion` / `maximumCryptaVersion` bounds when release jobs know the supported daemon
+range. Operators can browse beta entries in Web Shell by selecting the beta catalog channel, but
+automatic update staging/apply remains stable-only unless local app-update policy explicitly
+allows beta. Deprecated entries should use the production-channel deprecation and replacement
+metadata documented in [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
 
 The third-party developer beta toolkit extends the standalone CLI with scaffold templates, a mock
 dev server, offline app tests, catalog entry generation, a dry-run USK publication checklist, and
@@ -72,7 +80,9 @@ POST /api/v1/app-catalogs/recommended/crypta-first-party-beta/add
 That route delegates to the same verified `AppCatalogManager.addSource(...)` path as manual catalog
 add. The signed catalog id must match `crypta-first-party-beta`, the catalog signature must verify
 against the configured trusted key registry, and no apps are installed automatically. Operators
-still inspect entries and confirm install/update actions per app.
+still inspect entries and confirm install/update actions per app. The Web Shell catalog-channel
+selector defaults to stable; operators must select beta to see beta entries from a mixed
+production catalog.
 
 ## Maintainer publication flow
 
@@ -100,7 +110,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -116,7 +126,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -136,7 +146,7 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -169,7 +179,7 @@ categories=social,identity,preview
 review.status=reviewed
 review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
 api.minimumVersion=12
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -200,10 +210,13 @@ service.trust-score.scopes=score.read
 service.trust-score.contexts=message-author,profile
 service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.
 categories=identity,trust,preview
+channel=beta
+support.status=experimental
+deprecation.status=none
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=12
+api.maximumTestedVersion=13
 api.experimentalCapabilitiesAccepted=true
 ```
 

@@ -47,7 +47,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 12
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 13
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -1956,7 +1956,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 12" in contract_text
+            "CURRENT_CONTRACT_VERSION = 13" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
             and "APP_SERVICES_CALL" in capabilities_text
@@ -2079,7 +2079,8 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
             {"app.services.read", "app.services.call"}.issubset(social_permissions)
             and "trust.read" not in social_permissions
             and social_manifest.get("api.minimumVersion") == "12"
-            and social_manifest.get("api.maximumTestedVersion") == "12"
+            and social_manifest.get("api.maximumTestedVersion")
+            == str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         ),
         "socialUsesSdkServicesNamespace": (
             "CryptaPlatform.services.get" in social_app_js
@@ -2777,6 +2778,172 @@ def collect_first_party_beta_catalog_evidence(settings: Settings) -> EvidenceIte
         "pass",
         True,
         "First-party beta catalog onboarding evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
+def collect_production_catalog_channels_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    api_updates_dir = api_dir / "appupdates"
+    devtools_dir = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    shell_dir = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static"
+    channel_text = read_source(appcatalog_dir / "AppCatalogChannel.java")
+    production_metadata_text = read_source(appcatalog_dir / "AppCatalogProductionMetadata.java")
+    parser_writer_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_dir / "AppCatalog.java",
+            appcatalog_dir / "AppCatalogParser.java",
+            appcatalog_dir / "AppCatalogWriter.java",
+            appcatalog_dir / "AppCatalogEntryDescriptor.java",
+            appcatalog_dir / "AppCatalogSecurityAdvisory.java",
+        )
+    )
+    appcatalog_test_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_tests / "AppCatalogParserTest.java",
+            appcatalog_tests / "AppCatalogWriterTest.java",
+            appcatalog_tests / "AppCatalogEntryDescriptorTest.java",
+            appcatalog_tests / "AppCatalogMetadataTest.java",
+        )
+    )
+    api_text = "\n".join(
+        read_source(path)
+        for path in (
+            api_dir / "appcatalogs/AppCatalogsApiHandler.java",
+            api_updates_dir / "AppUpdatePolicy.java",
+            api_updates_dir / "AppUpdateService.java",
+            api_updates_dir / "AppUpdateCandidate.java",
+            api_updates_dir / "AppUpdatesApiHandler.java",
+            api_dir / "PlatformApiContract.java",
+        )
+    )
+    devtools_text = "\n".join(
+        read_source(path)
+        for path in (
+            devtools_dir / "CatalogEntryDescriptorGenerator.java",
+            devtools_dir / "CryptaAppCli.java",
+        )
+    )
+    shell_text = "\n".join(
+        read_source(path) for path in (shell_dir / "web-shell.js", shell_dir / "index.html")
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-catalogs.md",
+            "docs/app-update-lifecycle.md",
+            "docs/platform-api-surface.md",
+            "docs/production-first-party-catalog-channels.md",
+            "docs/first-party-beta-catalog.md",
+        )
+    )
+    checks = {
+        "channelEnumPresent": all(
+            token in channel_text for token in ("stable", "beta", "nightly", "deprecated")
+        ),
+        "schemaV3ParserWriterPresent": (
+            "VERSION_PRODUCTION_CHANNELS = 3" in parser_writer_text
+            and "maximumCryptaVersion" in parser_writer_text
+            and "securityAdvisory" in parser_writer_text
+            and "replacementAppId" in parser_writer_text
+        ),
+        "productionMetadataDefaultsSafe": (
+            "AppCatalogChannel.STABLE" in production_metadata_text
+            and "AppCatalogSupportStatus.SUPPORTED" in production_metadata_text
+            and "deprecatedForAutomaticUpdates" in production_metadata_text
+        ),
+        "parserWriterTestsPresent": (
+            "parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized"
+            in appcatalog_test_text
+            and "serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry"
+            in appcatalog_test_text
+            and "parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults"
+            in appcatalog_test_text
+        ),
+        "apiExposurePresent": (
+            '"channel"' in api_text
+            and '"supportStatus"' in api_text
+            and '"securityAdvisories"' in api_text
+            and '"defaultEntryChannel"' in api_text
+            and '"allowedChannels"' in api_text
+        ),
+        "updatePolicyBlocksNonStableAutomation": (
+            "DEFAULT_ALLOWED_CHANNELS" in api_text
+            and "channel_policy_blocked" in api_text
+            and "allowsAutomaticChannel" in api_text
+            and "deprecatedForAutomaticUpdates" in api_text
+        ),
+        "devtoolsDescriptorSupportPresent": (
+            "--channel" in devtools_text
+            and "--support-status" in devtools_text
+            and "--security-advisory" in devtools_text
+            and "maximumCryptaVersion" in devtools_text
+        ),
+        "webShellChannelControlsPresent": (
+            "catalog-channel-select" in shell_text
+            and "catalogAppChannel" in shell_text
+            and "securityAdvisoryListNode" in shell_text
+            and "is-deprecated-channel" in shell_text
+        ),
+        "signatureAndReviewSemanticsRetained": (
+            "AppCatalogVerifier.verify" in read_source(appcatalog_dir / "AppCatalogManager.java")
+            and "AppReviewReceiptVerifier.evaluate" in api_text
+        ),
+        "documentationPresent": (
+            "catalog.version=3" in docs_text
+            and "stable" in docs_text
+            and "nightly" in docs_text
+            and "channel_policy_blocked" in docs_text
+            and "deprecated entries" in docs_text.lower()
+        ),
+    }
+    details = {
+        "channels": ["stable", "beta", "nightly", "deprecated"],
+        "defaultAutomaticChannels": ["stable"],
+        "deprecatedAutomaticUpdatesBlocked": True,
+        "checks": checks,
+        "redactionGuarantees": [
+            "private insert URIs excluded",
+            "tokens redacted",
+            "private keys redacted",
+            "raw fetched content excluded",
+            "raw app data excluded",
+            "absolute staging paths sanitized",
+        ],
+        "sources": {
+            "catalogChannel": display_path(appcatalog_dir / "AppCatalogChannel.java", workspace),
+            "catalogParser": display_path(appcatalog_dir / "AppCatalogParser.java", workspace),
+            "catalogWriter": display_path(appcatalog_dir / "AppCatalogWriter.java", workspace),
+            "apiHandler": display_path(api_dir / "appcatalogs/AppCatalogsApiHandler.java", workspace),
+            "updatePolicy": display_path(api_updates_dir / "AppUpdatePolicy.java", workspace),
+            "webShell": display_path(shell_dir / "web-shell.js", workspace),
+            "docs": display_path(
+                workspace / "docs/production-first-party-catalog-channels.md", workspace
+            ),
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "catalog.production-channels",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Production catalog channel evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "catalog.production-channels",
+        "pass",
+        True,
+        "Production catalog channel evidence passed deterministic checks.",
         source,
         details,
     )
@@ -4181,6 +4348,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 10" in contract_text
             or "CURRENT_CONTRACT_VERSION = 11" in contract_text
             or "CURRENT_CONTRACT_VERSION = 12" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 13" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4541,6 +4709,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 10" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 11" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 12" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -6043,7 +6212,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     docs_text_compact = " ".join(docs_text_lower.split())
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 12" in contract_text
+            "CURRENT_CONTRACT_VERSION = 13" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -6387,7 +6556,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 12" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 13" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -9503,6 +9672,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_catalog_evidence(settings, sample_paths),
         collect_live_usk_catalog_publication_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
+        collect_production_catalog_channels_evidence(settings),
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
@@ -10204,6 +10374,14 @@ def run_self_test(repo_root: Path) -> None:
         assert first_party_beta_item["status"] == "pass", first_party_beta_item
         assert first_party_beta_item["details"]["catalogId"] == "crypta-first-party-beta"
         assert first_party_beta_item["details"]["requiredFirstPartyApps"] == list(APP_IDS)
+        production_channels_item = evidence_by_id["catalog.production-channels"]
+        assert production_channels_item["status"] == "pass", production_channels_item
+        assert production_channels_item["details"]["channels"] == [
+            "stable",
+            "beta",
+            "nightly",
+            "deprecated",
+        ]
         assert evidence_by_id["catalog.live-usk-source-verification"]["status"] == "pass"
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
@@ -11196,6 +11374,40 @@ def make_self_test_workspace(workspace: Path) -> None:
         "CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID\"; }\n",
         encoding="utf-8",
     )
+    (appcatalog_dir / "AppCatalogChannel.java").write_text(
+        'enum AppCatalogChannel { STABLE("stable"), BETA("beta"), NIGHTLY("nightly"), '
+        'DEPRECATED("deprecated"); AppCatalogChannel(String value) {} }\n',
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogProductionMetadata.java").write_text(
+        "record AppCatalogProductionMetadata() { "
+        "static final String defaults = \"AppCatalogChannel.STABLE AppCatalogSupportStatus.SUPPORTED\"; "
+        "boolean deprecatedForAutomaticUpdates(){ return true; } }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalog.java").write_text(
+        "final class AppCatalog { static final int VERSION_PRODUCTION_CHANNELS = 3; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogParser.java").write_text(
+        "final class AppCatalogParser { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
+        "maximumCryptaVersion securityAdvisory replacementAppId\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogWriter.java").write_text(
+        "final class AppCatalogWriter { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
+        "maximumCryptaVersion securityAdvisory replacementAppId\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogEntryDescriptor.java").write_text(
+        "record AppCatalogEntryDescriptor() { String fields = \"maximumCryptaVersion "
+        "securityAdvisory replacementAppId\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityAdvisory.java").write_text(
+        "record AppCatalogSecurityAdvisory(String id, java.net.URI uri) { }\n",
+        encoding="utf-8",
+    )
     (appcatalog_dir / "AppCatalogSource.java").write_text(
         "final class AppCatalogSource { Object source = CryptaCatalogUri.parse(\"crypta:USK@example/cryptad-app-catalog.properties\"); }\n",
         encoding="utf-8",
@@ -11237,13 +11449,34 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri() {}\n",
         encoding="utf-8",
     )
-    for test_name in ("AppCatalogParserTest.java", "AppCatalogEntryDescriptorTest.java", "RecommendedAppCatalogsTest.java"):
-        (appcatalog_tests / test_name).write_text("// first-party beta fixture\n", encoding="utf-8")
+    (appcatalog_tests / "AppCatalogParserTest.java").write_text(
+        "void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {}\n"
+        "void parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "AppCatalogWriterTest.java").write_text(
+        "void serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "AppCatalogEntryDescriptorTest.java").write_text(
+        "void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "AppCatalogMetadataTest.java").write_text(
+        "void productionMetadata_whenParsed_expectStableBetaNightlyDeprecated() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "RecommendedAppCatalogsTest.java").write_text(
+        "// first-party beta fixture\n", encoding="utf-8"
+    )
     api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
     catalog_api_dir = api_dir / "appcatalogs"
     catalog_api_dir.mkdir(parents=True, exist_ok=True)
     (catalog_api_dir / "AppCatalogsApiHandler.java").write_text(
         "final class AppCatalogsApiHandler { void listRecommendedCatalogs() {} void addRecommended() {} "
+        "void summarize() { json.put(\"channel\", channel); json.put(\"supportStatus\", supportStatus); "
+        "json.put(\"securityAdvisories\", securityAdvisories); json.put(\"defaultEntryChannel\", \"stable\"); "
+        "json.put(\"allowedChannels\", allowedChannels); } "
         "String e = \"recommended_catalog_trusted_key_missing\"; }\n",
         encoding="utf-8",
     )
@@ -11253,13 +11486,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 12; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 13; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
         "static final int APP_SERVICES_CONTRACT_VERSION = 12; "
+        "static final int PRODUCTION_CATALOG_CHANNELS_CONTRACT_VERSION = 13; "
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
@@ -11807,6 +12041,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "fetch('/.well-known/cryptad-origin.json', { credentials: \"omit\", mode: \"cors\" });\n"
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
+        "function catalogAppChannel(){}\n"
+        "function securityAdvisoryListNode(){}\n"
+        "const catalogChannelSelect = 'catalog-channel-select'; const deprecatedCard = 'is-deprecated-channel';\n"
         "const path = 'app-catalogs/recommended';\n"
         "const action = 'addRecommended';\n"
         "function appServiceGrantPath(){}\n"
@@ -11901,6 +12138,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app values. "
         "Contract v12 adds GET /api/v1/app-services, app.services.read, app.services.call, "
         "operator-approved app-service grants, and mediated trust.score invocation through Trust Score Service grants. "
+        "Contract v13 adds catalog.version=3 production catalog channels: stable, beta, nightly, and deprecated. "
+        "Stable is the default automatic update channel, beta and nightly require explicit policy, "
+        "channel_policy_blocked records excluded automation candidates, and deprecated entries expose "
+        "replacement metadata without bypassing signed catalog verification. "
         "It is not generic RPC, not a localhost proxy, and does not give apps ambient access to provider ports or data. "
         "Social Inbox uses a Trust Score Service grant for message-author annotations; revoked grants fail, and it must not fall back to\n"
         "`CryptaPlatform.trust.score`. "
@@ -12062,7 +12303,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         '@Command(name = "dev") class DevCommand {}\n'
         '@Command(name = "test") class AppTestCommand {}\n'
         '@Command(name = "generate") class KeysGenerateCommand {}\n'
-        '@Command(name = "entry") class CatalogEntryCommand {}\n'
+        '@Command(name = "entry") class CatalogEntryCommand { String options = '
+        '"--channel --support-status --security-advisory --maximum-crypta-version"; }\n'
         '@Command(name = "publish-usk") class PublishUskCommand { String dry = "--dry-run"; '
         'String live = "--live"; String insertEnv = "--private-insert-uri-env"; '
         'String insertFile = "--private-insert-uri-file"; String passwordEnv = "--form-password-env"; '
@@ -12087,7 +12329,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (devtools_dir / "CatalogEntryDescriptorGenerator.java").write_text(
-        "class CatalogEntryDescriptorGenerator { String s = \"artifact.path permissions.rationale.\"; }\n",
+        "class CatalogEntryDescriptorGenerator { String s = \"artifact.path permissions.rationale. "
+        "--channel --support-status --security-advisory maximumCryptaVersion\"; }\n",
         encoding="utf-8",
     )
     (devtools_dir / "PublicationPlanWriter.java").write_text(
@@ -12376,6 +12619,10 @@ enum AppUpdateCandidateStatus {
         """
 record AppUpdateCandidate() {
   Map<String, Object> toJsonValue() {
+    json.put("channel", channel);
+    json.put("supportStatus", supportStatus);
+    json.put("securityAdvisories", securityAdvisories);
+    json.put("allowedChannels", allowedChannels);
     json.put("review", review);
     json.put("apiCompatibility", apiCompatibility);
     json.put("permissionDelta", permissionDelta(candidatePermissions, installedPermissions));
@@ -12387,9 +12634,20 @@ record AppUpdateCandidate() {
 """,
         encoding="utf-8",
     )
+    (appupdates_dir / "AppUpdatePolicy.java").write_text(
+        """
+class AppUpdatePolicy {
+  static final Set<AppCatalogChannel> DEFAULT_ALLOWED_CHANNELS = Set.of(AppCatalogChannel.STABLE);
+  boolean allowsAutomaticChannel(AppCatalogChannel channel) { return channel != AppCatalogChannel.DEPRECATED; }
+  Map<String, Object> toJsonValue() { json.put("allowedChannels", DEFAULT_ALLOWED_CHANNELS); return json; }
+}
+""",
+        encoding="utf-8",
+    )
     (appupdates_dir / "AppUpdateService.java").write_text(
         """
 class AppUpdateService {
+  static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
   AppUpdateService.SchedulerSummaryProvider schedulerSummaryProvider;
 
   public synchronized Map<String, Object> check(String appId, boolean includeStaged) {
@@ -12415,6 +12673,10 @@ class AppUpdateService {
 
   Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
     json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId));
+    if (productionMetadata.deprecatedForAutomaticUpdates()) {
+      throw new PlatformApiException(409, ERROR_CHANNEL_POLICY_BLOCKED, "blocked");
+    }
+    AppReviewReceiptVerifier.evaluate(entry, keys, policy, now);
     return json;
   }
 }
@@ -12614,6 +12876,10 @@ const legacySecurityLevelsPath = normalizeLocalPath(bootstrap.legacySecurityLeve
 const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";
 const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";
+const catalogChannelSelect = "catalog-channel-select";
+function catalogAppChannel(app){}
+function securityAdvisoryListNode(values){}
+const deprecatedCatalogClass = "is-deprecated-channel";
 function appServiceGrantPath(){}
 function setSecurityLegacyFallbackStatus(){ return "Open the legacy security page"; }
 function renderSecurityLegacyFallbackAction(){ return "Open legacy password and recovery forms"; }
@@ -12863,6 +13129,10 @@ class AppCatalogsApiHandler {
   void addRecommended() {}
   void refresh(String catalogId) { refresh(catalogId); }
   void summarize() {
+    json.put("channel", channel);
+    json.put("supportStatus", supportStatus);
+    json.put("securityAdvisories", securityAdvisories);
+    json.put("defaultEntryChannel", "stable");
     json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put("updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
     json.put("review", summarizeReview(entry.review()));
@@ -12943,7 +13213,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=12",
+                "api.maximumTestedVersion=13",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -13092,7 +13362,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 12,
+                    "contractVersion": 13,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -13314,7 +13584,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=12' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=13' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -13491,7 +13761,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 12,
+    "contractVersion": 13,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
