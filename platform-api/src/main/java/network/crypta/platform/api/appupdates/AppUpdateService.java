@@ -14,12 +14,15 @@ import java.util.Optional;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
@@ -81,6 +84,7 @@ public final class AppUpdateService {
   private static final String ERROR_UPDATE_NOT_STAGED = "update_not_staged";
   private static final String ERROR_UPDATE_INCOMPATIBLE = "update_incompatible";
   private static final String ERROR_UPDATE_POLICY_BLOCKED = "update_policy_blocked";
+  private static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
   private static final String ERROR_UPDATE_CANDIDATE_CHANGED = "update_candidate_changed";
   private static final String ERROR_ROLLBACK_NOT_AVAILABLE = "rollback_not_available";
   private static final String ERROR_ROLLBACK_APP_RUNNING = "rollback_app_running";
@@ -810,13 +814,26 @@ public final class AppUpdateService {
    *
    * @param appId app id from the request path
    * @param mode new policy mode selected by the operator
+   */
+  public synchronized void setPolicy(String appId, AppUpdatePolicyMode mode) {
+    setPolicy(appId, mode, AppUpdatePolicy.DEFAULT_ALLOWED_CHANNELS);
+  }
+
+  /**
+   * Updates the policy and automatic channel selection for one app.
+   *
+   * @param appId app id from the request path
+   * @param mode new policy mode selected by the operator
+   * @param allowedChannels catalog channels eligible for automatic staging/apply
    * @return path-free policy summary after the policy is stored
    */
-  public synchronized Map<String, Object> setPolicy(String appId, AppUpdatePolicyMode mode) {
+  public synchronized Map<String, Object> setPolicy(
+      String appId, AppUpdatePolicyMode mode, java.util.Set<AppCatalogChannel> allowedChannels) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     requireInstalled(normalizedAppId);
-    AppUpdatePolicy policy = new AppUpdatePolicy(mode);
+    AppUpdatePolicy policy = new AppUpdatePolicy(mode, allowedChannels);
     policies.put(normalizedAppId, policy);
+    candidates.remove(normalizedAppId);
     return policy.toJsonValue();
   }
 
@@ -824,6 +841,10 @@ public final class AppUpdateService {
       String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
     AppUpdatePolicy policy = policyFor(appId);
     if (policy.mode() == AppUpdatePolicyMode.MANUAL || !candidate.eligibleByDefault()) {
+      return;
+    }
+    if (!candidate.eligibleForAutomaticStage()) {
+      appendChannelPolicyHistory(appId, policy.mode(), candidate);
       return;
     }
     if (policy.mode() == AppUpdatePolicyMode.STAGE) {
@@ -964,7 +985,7 @@ public final class AppUpdateService {
     for (AppCatalogSourceSnapshot catalog : catalogs) {
       for (AppCatalogEntry entry : listCatalogApps(catalog.catalogId())) {
         if (appId.equals(entry.appId())) {
-          matches.add(candidateFor(catalog.catalogId(), entry, installed));
+          matches.add(candidateFor(catalog.catalogId(), entry, installed, policyFor(appId)));
         }
       }
     }
@@ -1018,6 +1039,11 @@ public final class AppUpdateService {
     if (rankComparison != 0) {
       return rankComparison;
     }
+    int channelPolicyComparison =
+        Integer.compare(channelPolicyRank(left), channelPolicyRank(right));
+    if (channelPolicyComparison != 0) {
+      return channelPolicyComparison;
+    }
     int stageabilityComparison = Integer.compare(stageabilityRank(left), stageabilityRank(right));
     if (stageabilityComparison != 0) {
       return stageabilityComparison;
@@ -1048,6 +1074,10 @@ public final class AppUpdateService {
       case NONE -> 10;
       case STAGED, BLOCKED, APPLIED, ROLLBACK_AVAILABLE, ROLLBACK_IN_PROGRESS, FAILED -> 0;
     };
+  }
+
+  private static int channelPolicyRank(AppUpdateCandidate candidate) {
+    return candidate.channelPolicyAllowed() && candidate.policyBlockReason() == null ? 1 : 0;
   }
 
   private static int stageabilityRank(AppUpdateCandidate candidate) {
@@ -1096,7 +1126,10 @@ public final class AppUpdateService {
   }
 
   private AppUpdateCandidate candidateFor(
-      String catalogId, AppCatalogEntry entry, InstalledAppSnapshot installed) {
+      String catalogId,
+      AppCatalogEntry entry,
+      InstalledAppSnapshot installed,
+      AppUpdatePolicy policy) {
     String installedVersion = installed.manifest().appVersion();
     VersionDecision decision = versionDecision(entry.version(), installedVersion);
     Map<String, Object> apiCompatibility =
@@ -1107,6 +1140,8 @@ public final class AppUpdateService {
     AppUpdateCandidateStatus status = statusFor(decision, apiCompatibility);
     AppCatalogReviewMetadata review = entry.review();
     Map<String, Object> reviewTrust = reviewTrust(entry).toJsonValue();
+    AppCatalogProductionMetadata productionMetadata = entry.productionMetadata();
+    boolean channelPolicyAllowed = policyAllowsAutomaticCandidate(policy, productionMetadata);
     return new AppUpdateCandidate(
         installed.appId(),
         catalogId,
@@ -1115,6 +1150,12 @@ public final class AppUpdateService {
         entry.version(),
         status,
         decision.label(),
+        productionMetadata.channel().catalogValue(),
+        productionMetadata.supportStatus().catalogValue(),
+        deprecationSummary(productionMetadata),
+        securityAdvisoriesSummary(productionMetadata),
+        channelPolicyAllowed,
+        channelPolicyAllowed ? null : ERROR_CHANNEL_POLICY_BLOCKED,
         entry.bundleSha256(),
         entry.bundleSizeBytes(),
         entry.bundleType(),
@@ -1125,6 +1166,34 @@ public final class AppUpdateService {
         AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions()),
         appHost.status(installed.appId()).isPresent(),
         Instant.now());
+  }
+
+  private static boolean policyAllowsAutomaticCandidate(
+      AppUpdatePolicy policy, AppCatalogProductionMetadata metadata) {
+    return policy.allowsAutomaticChannel(metadata.channel())
+        && !metadata.deprecatedForAutomaticUpdates();
+  }
+
+  private static Map<String, Object> deprecationSummary(AppCatalogProductionMetadata metadata) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put(JSON_STATUS, metadata.deprecationStatus().catalogValue());
+    json.put(JSON_MESSAGE, metadata.deprecationMessage().orElse(null));
+    json.put("replacementAppId", metadata.replacementAppId().orElse(null));
+    return json;
+  }
+
+  private static List<Map<String, Object>> securityAdvisoriesSummary(
+      AppCatalogProductionMetadata metadata) {
+    return metadata.securityAdvisories().stream()
+        .map(AppUpdateService::securityAdvisorySummary)
+        .toList();
+  }
+
+  private static Map<String, Object> securityAdvisorySummary(AppCatalogSecurityAdvisory advisory) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("id", advisory.id());
+    json.put("uri", advisory.uri().toString());
+    return json;
   }
 
   private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
@@ -1169,6 +1238,12 @@ public final class AppUpdateService {
         installed.manifest().appVersion(),
         AppUpdateCandidateStatus.NONE,
         VERSION_EQUAL,
+        "stable",
+        "supported",
+        deprecationSummary(AppCatalogProductionMetadata.DEFAULT),
+        List.of(),
+        true,
+        null,
         "not_applicable",
         0L,
         "not_applicable",
@@ -1310,6 +1385,25 @@ public final class AppUpdateService {
         "policy_" + action + "_blocked:" + reviewGateFailureCode(candidate.reviewTrust()));
   }
 
+  private void appendChannelPolicyHistory(
+      String appId, AppUpdatePolicyMode mode, AppUpdateCandidate candidate) {
+    String action = mode == AppUpdatePolicyMode.APPLY_WHEN_STOPPED ? ACTION_APPLY : ACTION_STAGE;
+    appendHistory(
+        appId,
+        action,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        ERROR_CHANNEL_POLICY_BLOCKED,
+        "Policy skipped update because the catalog channel is not allowed.");
+    recordUpdateReviewGate(
+        ACTION_STAGE.equals(action)
+            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
+            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        candidate,
+        "policy_" + action + "_blocked:" + ERROR_CHANNEL_POLICY_BLOCKED);
+  }
+
   private void appendCompatibilityGateHistory(String appId, AppUpdateCandidate candidate) {
     appendHistory(
         appId,
@@ -1378,6 +1472,10 @@ public final class AppUpdateService {
     json.put("catalogId", candidate.catalogId());
     json.put("catalogSourceId", candidate.catalogSourceId());
     json.put("targetVersion", candidate.targetVersion());
+    json.put("channel", candidate.channel());
+    json.put("supportStatus", candidate.supportStatus());
+    json.put("deprecation", candidate.deprecation());
+    json.put("securityAdvisories", candidate.securityAdvisories());
     json.put("bundleSha256", candidate.bundleSha256());
     json.put("bundleSizeBytes", candidate.bundleSizeBytes());
     json.put("review", candidate.review());
@@ -1470,6 +1568,12 @@ public final class AppUpdateService {
         updated.manifest().appVersion(),
         AppUpdateCandidateStatus.APPLIED,
         candidate.versionComparison(),
+        candidate.channel(),
+        candidate.supportStatus(),
+        candidate.deprecation(),
+        candidate.securityAdvisories(),
+        candidate.channelPolicyAllowed(),
+        candidate.policyBlockReason(),
         candidate.bundleSha256(),
         candidate.bundleSizeBytes(),
         candidate.bundleType(),
@@ -1493,6 +1597,7 @@ public final class AppUpdateService {
       return true;
     }
     AppCatalogReviewMetadata review = entry.review();
+    AppCatalogProductionMetadata productionMetadata = entry.productionMetadata();
     Map<String, Object> reviewSummary =
         AppUpdateCandidate.reviewSummary(
             review.status().catalogValue(), review.note().orElse(null));
@@ -1504,6 +1609,10 @@ public final class AppUpdateService {
     Map<String, Object> permissionDelta =
         AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions());
     return !candidate.review().equals(reviewSummary)
+        || !candidate.channel().equals(productionMetadata.channel().catalogValue())
+        || !candidate.supportStatus().equals(productionMetadata.supportStatus().catalogValue())
+        || !candidate.deprecation().equals(deprecationSummary(productionMetadata))
+        || !candidate.securityAdvisories().equals(securityAdvisoriesSummary(productionMetadata))
         || !candidate.reviewTrust().equals(reviewTrust(entry).toJsonValue())
         || !candidate.apiCompatibility().equals(apiCompatibility)
         || !candidate.permissionDelta().equals(permissionDelta);
@@ -1695,6 +1804,10 @@ public final class AppUpdateService {
         && stagedCandidate.targetVersion().equals(currentCandidate.targetVersion())
         && stagedCandidate.status() == currentCandidate.status()
         && stagedCandidate.versionComparison().equals(currentCandidate.versionComparison())
+        && stagedCandidate.channel().equals(currentCandidate.channel())
+        && stagedCandidate.supportStatus().equals(currentCandidate.supportStatus())
+        && stagedCandidate.deprecation().equals(currentCandidate.deprecation())
+        && stagedCandidate.securityAdvisories().equals(currentCandidate.securityAdvisories())
         && stagedCandidate.bundleSha256().equals(currentCandidate.bundleSha256())
         && stagedCandidate.bundleSizeBytes() == currentCandidate.bundleSizeBytes()
         && stagedCandidate.bundleType().equals(currentCandidate.bundleType())

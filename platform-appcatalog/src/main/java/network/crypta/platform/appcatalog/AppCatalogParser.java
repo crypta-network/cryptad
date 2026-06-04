@@ -30,6 +30,17 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * authenticated by {@link AppCatalogVerifier}.
  */
 public final class AppCatalogParser {
+  private static final String CHANNEL_PROPERTY = "channel";
+  private static final String MINIMUM_CRYPTA_VERSION = "minimumCryptaVersion";
+  private static final String MAXIMUM_CRYPTA_VERSION = "maximumCryptaVersion";
+  private static final String SUPPORT_STATUS = "support.status";
+  private static final String DEPRECATION_STATUS = "deprecation.status";
+  private static final String DEPRECATION_MESSAGE = "deprecation.message";
+  private static final String REPLACEMENT_APP_ID = "replacementAppId";
+  private static final String SECURITY_ADVISORIES = "securityAdvisories";
+  private static final String SECURITY_ADVISORY_PREFIX = "securityAdvisory.";
+  private static final String SECURITY_ADVISORY_URI_SUFFIX = ".uri";
+
   private AppCatalogParser() {}
 
   /**
@@ -66,7 +77,7 @@ public final class AppCatalogParser {
   private static int parseVersion(String versionText) throws AppCatalogException {
     try {
       int version = Integer.parseInt(versionText);
-      if (!AppCatalog.isSupportedVersion(version)) {
+      if (AppCatalog.isUnsupportedVersion(version)) {
         throw AppCatalogSidecars.invalidEntry("unsupported catalog.version: " + version);
       }
       return version;
@@ -113,27 +124,36 @@ public final class AppCatalogParser {
           "catalog.entries id does not match app." + appId + ".id");
     }
     List<String> permissions = parsePermissions(removeRequired(properties, prefix + "permissions"));
-    boolean storeMetadataAllowed = version == AppCatalog.VERSION_STORE_METADATA;
+    boolean storeMetadataAllowed = version >= AppCatalog.VERSION_STORE_METADATA;
+    boolean productionMetadataAllowed = version >= AppCatalog.VERSION_PRODUCTION_CHANNELS;
+    String maximumCryptaVersion =
+        productionMetadataAllowed
+            ? removeOptional(properties, prefix + MAXIMUM_CRYPTA_VERSION).orElse(null)
+            : null;
     return new AppCatalogEntry(
         declaredId,
         removeRequired(properties, prefix + "name"),
         removeRequired(properties, prefix + "version"),
         removeRequired(properties, prefix + "summary"),
-        parseStoreMetadataUri(properties, prefix + "homepage", storeMetadataAllowed),
-        parseStoreMetadataUri(properties, prefix + "source", storeMetadataAllowed),
-        storeMetadataAllowed ? removeOptional(properties, prefix + "license") : Optional.empty(),
+        parseStoreMetadataUri(properties, prefix + "homepage", storeMetadataAllowed).orElse(null),
+        parseStoreMetadataUri(properties, prefix + "source", storeMetadataAllowed).orElse(null),
+        storeMetadataAllowed ? removeOptional(properties, prefix + "license").orElse(null) : null,
         storeMetadataAllowed
             ? parseCategories(removeOptional(properties, prefix + "categories").orElse(null))
             : List.of(),
         storeMetadataAllowed
             ? new AppCatalogCompatibilityMetadata(
-                removeOptional(properties, prefix + "minimumCryptaVersion").orElse(null),
+                removeOptional(properties, prefix + MINIMUM_CRYPTA_VERSION).orElse(null),
+                maximumCryptaVersion,
                 parseApiCompatibility(properties, prefix))
             : AppCatalogCompatibilityMetadata.EMPTY,
         storeMetadataAllowed ? parseReview(properties, prefix) : AppCatalogReviewMetadata.EMPTY,
-        storeMetadataAllowed ? parseReviewReceipt(properties, prefix) : Optional.empty(),
+        storeMetadataAllowed ? parseReviewReceipt(properties, prefix).orElse(null) : null,
         storeMetadataAllowed ? parseChangelog(properties, prefix) : AppCatalogChangelog.EMPTY,
         storeMetadataAllowed ? parseScreenshots(properties, prefix) : List.of(),
+        productionMetadataAllowed
+            ? parseProductionMetadata(properties, prefix)
+            : AppCatalogProductionMetadata.DEFAULT,
         parseUri(removeRequired(properties, prefix + "bundle.uri"), prefix + "bundle.uri"),
         removeRequired(properties, prefix + "bundle.sha256"),
         parseSize(removeRequired(properties, prefix + "bundle.size.bytes"), appId),
@@ -273,6 +293,56 @@ public final class AppCatalogParser {
             .map(value -> AppCatalogReviewStatus.parse(value, prefix + "review.status"))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
     return new AppCatalogReviewMetadata(status, removeOptional(properties, prefix + "review.note"));
+  }
+
+  private static AppCatalogProductionMetadata parseProductionMetadata(
+      Map<String, String> properties, String prefix) {
+    Optional<String> channelText = removeOptional(properties, prefix + CHANNEL_PROPERTY);
+    Optional<String> supportStatusText = removeOptional(properties, prefix + SUPPORT_STATUS);
+    Optional<String> deprecationStatusText =
+        removeOptional(properties, prefix + DEPRECATION_STATUS);
+    Optional<String> deprecationMessage = removeOptional(properties, prefix + DEPRECATION_MESSAGE);
+    Optional<String> replacementAppId = removeOptional(properties, prefix + REPLACEMENT_APP_ID);
+    List<AppCatalogSecurityAdvisory> advisories = parseSecurityAdvisories(properties, prefix);
+    boolean declared =
+        channelText.isPresent()
+            || supportStatusText.isPresent()
+            || deprecationStatusText.isPresent()
+            || deprecationMessage.isPresent()
+            || replacementAppId.isPresent()
+            || !advisories.isEmpty();
+    return new AppCatalogProductionMetadata(
+        channelText
+            .map(value -> AppCatalogChannel.parse(value, prefix + CHANNEL_PROPERTY))
+            .orElse(null),
+        supportStatusText
+            .map(value -> AppCatalogSupportStatus.parse(value, prefix + SUPPORT_STATUS))
+            .orElse(null),
+        deprecationStatusText
+            .map(value -> AppCatalogDeprecationStatus.parse(value, prefix + DEPRECATION_STATUS))
+            .orElse(null),
+        deprecationMessage,
+        replacementAppId,
+        advisories,
+        declared);
+  }
+
+  private static List<AppCatalogSecurityAdvisory> parseSecurityAdvisories(
+      Map<String, String> properties, String prefix) {
+    Optional<String> rawIds = removeOptional(properties, prefix + SECURITY_ADVISORIES);
+    if (rawIds.isEmpty() || rawIds.orElseThrow().isBlank()) {
+      return List.of();
+    }
+    List<AppCatalogSecurityAdvisory> advisories = new ArrayList<>();
+    for (String rawId : rawIds.orElseThrow().split(",", -1)) {
+      String advisoryId =
+          AppCatalogSecurityAdvisory.normalizeId(rawId.trim(), prefix + SECURITY_ADVISORIES);
+      String uriKey = prefix + SECURITY_ADVISORY_PREFIX + advisoryId + SECURITY_ADVISORY_URI_SUFFIX;
+      advisories.add(
+          new AppCatalogSecurityAdvisory(
+              advisoryId, parseUri(removeRequired(properties, uriKey), uriKey)));
+    }
+    return List.copyOf(advisories);
   }
 
   private static Optional<AppReviewReceipt> parseReviewReceipt(

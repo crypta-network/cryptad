@@ -43,6 +43,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param reviewReceipt optional independently signed review receipt
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
+ * @param productionMetadata production channel, support, deprecation, and advisory metadata
  * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
  * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
  * @param bundleSizeBytes exact artifact size in bytes
@@ -64,6 +65,7 @@ public record AppCatalogEntry(
     Optional<AppReviewReceipt> reviewReceipt,
     AppCatalogChangelog changelog,
     List<URI> screenshots,
+    AppCatalogProductionMetadata productionMetadata,
     URI bundleUri,
     String bundleSha256,
     long bundleSizeBytes,
@@ -100,6 +102,7 @@ public record AppCatalogEntry(
    * @param reviewReceipt optional independently signed review receipt
    * @param changelog optional change metadata for this catalog version
    * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
    * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
    * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
    * @param bundleSizeBytes exact artifact size in bytes
@@ -132,6 +135,7 @@ public record AppCatalogEntry(
     Objects.requireNonNull(reviewReceipt, "reviewReceipt");
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots, appId);
+    Objects.requireNonNull(productionMetadata, "productionMetadata");
     bundleUri = AppCatalogSidecars.requireSafeArtifactUri(Objects.requireNonNull(bundleUri));
     bundleSha256 =
         AppCatalogSidecars.requireLowercaseSha256(bundleSha256, "app." + appId + ".bundle.sha256");
@@ -155,10 +159,224 @@ public record AppCatalogEntry(
   }
 
   /**
+   * Creates a catalog entry with advisory store metadata and an optional review receipt.
+   *
+   * <p>This overload preserves existing callers that predate production-channel metadata. Entries
+   * created this way use the backward-compatible {@code stable}/{@code supported} defaults.
+   * Nullable store metadata parameters are converted to absent optional values before the canonical
+   * constructor validates and normalizes them.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param reviewReceipt nullable independently signed review receipt
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppReviewReceipt reviewReceipt,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        homepage,
+        source,
+        license,
+        categories,
+        compatibility,
+        review,
+        reviewReceipt,
+        changelog,
+        screenshots,
+        AppCatalogProductionMetadata.DEFAULT,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
+  }
+
+  /**
+   * Creates a catalog entry with advisory store metadata and an optional review receipt.
+   *
+   * <p>Use this overload when controlled parser or writer code has already resolved optional
+   * catalog fields to nullable values and may need to attach an independently signed review
+   * receipt. All nullable metadata parameters are converted to absent optional values before
+   * validation.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param reviewReceipt nullable independently signed review receipt
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppReviewReceipt reviewReceipt,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      AppCatalogProductionMetadata productionMetadata,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        Optional.ofNullable(homepage),
+        Optional.ofNullable(source),
+        Optional.ofNullable(license),
+        categories,
+        compatibility,
+        review,
+        Optional.ofNullable(reviewReceipt),
+        changelog,
+        screenshots,
+        productionMetadata,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
+  }
+
+  /**
    * Creates a catalog entry with advisory store metadata and no signed review receipt.
    *
    * <p>This overload preserves existing controlled callers that construct rich catalog entries
    * before independent review receipts were added. Nullable store metadata parameters are converted
+   * to absent optional values before the canonical constructor validates and normalizes them.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      AppCatalogProductionMetadata productionMetadata,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        homepage,
+        source,
+        license,
+        categories,
+        compatibility,
+        review,
+        null,
+        changelog,
+        screenshots,
+        productionMetadata,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
+  }
+
+  /**
+   * Creates a catalog entry with advisory store metadata and no signed review receipt.
+   *
+   * <p>This overload preserves existing controlled callers that construct rich catalog entries
+   * before production-channel metadata was added. Nullable store metadata parameters are converted
    * to absent optional values before the canonical constructor validates and normalizes them.
    *
    * @param appId normalized AppHost-compatible application identifier
@@ -213,6 +431,7 @@ public record AppCatalogEntry(
         Optional.empty(),
         changelog,
         screenshots,
+        AppCatalogProductionMetadata.DEFAULT,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -262,6 +481,7 @@ public record AppCatalogEntry(
         Optional.empty(),
         AppCatalogChangelog.EMPTY,
         List.of(),
+        AppCatalogProductionMetadata.DEFAULT,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -282,6 +502,10 @@ public record AppCatalogEntry(
         || !changelog.isEmpty()
         || !screenshots.isEmpty()
         || !permissionRationales.isEmpty();
+  }
+
+  boolean hasProductionMetadata() {
+    return compatibility.maximumCryptaVersion() != null || productionMetadata.hasCatalogFields();
   }
 
   /**

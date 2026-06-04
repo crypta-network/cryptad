@@ -1300,6 +1300,36 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--minimum-crypta-version", description = "Minimum Crypta build/version.")
     private String minimumCryptaVersion;
 
+    @Option(names = "--maximum-crypta-version", description = "Maximum Crypta build/version.")
+    private String maximumCryptaVersion;
+
+    @Option(
+        names = "--channel",
+        description = "Catalog channel: stable, beta, nightly, deprecated.")
+    private String channel;
+
+    @Option(
+        names = "--support-status",
+        description =
+            "Support status: supported, maintenance, experimental, deprecated, unsupported.")
+    private String supportStatus;
+
+    @Option(
+        names = "--deprecation-status",
+        description = "Deprecation status: none, deprecated, retired.")
+    private String deprecationStatus;
+
+    @Option(names = "--deprecation-message", description = "Short deprecation message.")
+    private String deprecationMessage;
+
+    @Option(names = "--replacement-app-id", description = "Replacement app id for deprecated apps.")
+    private String replacementAppId;
+
+    @Option(
+        names = "--security-advisory",
+        description = "Security advisory reference in id=uri form; repeatable.")
+    private List<String> securityAdvisories = new ArrayList<>();
+
     @Option(
         names = "--review-receipt",
         description = "Review receipt to copy advisory metadata from.")
@@ -1337,6 +1367,13 @@ public final class CryptaAppCli implements Runnable {
                   Optional.ofNullable(license),
                   Optional.ofNullable(category),
                   Optional.ofNullable(minimumCryptaVersion),
+                  Optional.ofNullable(maximumCryptaVersion),
+                  Optional.ofNullable(channel),
+                  Optional.ofNullable(supportStatus),
+                  Optional.ofNullable(deprecationStatus),
+                  Optional.ofNullable(deprecationMessage),
+                  Optional.ofNullable(replacementAppId),
+                  CatalogEntryDescriptorGenerator.normalizeSecurityAdvisories(securityAdvisories),
                   reviewReceipt,
                   Optional.ofNullable(changelogSummary),
                   CatalogEntryDescriptorGenerator.normalizeRationales(permissionRationales),

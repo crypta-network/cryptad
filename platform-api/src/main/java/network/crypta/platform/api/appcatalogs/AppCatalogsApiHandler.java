@@ -24,7 +24,9 @@ import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
@@ -447,6 +449,8 @@ public final class AppCatalogsApiHandler {
     json.put("name", recommended.name());
     json.put("description", recommended.description());
     json.put("channel", recommended.channel());
+    json.put("defaultEntryChannel", "stable");
+    json.put("availableEntryChannels", List.of("stable", "beta", "nightly", "deprecated"));
     json.put(SOURCE_KIND_FIELD, recommended.sourceKind().orElse(null));
     json.put(SOURCE_FIELD, redactedRecommendedSource(recommended));
     json.put("sourceConfigured", recommended.configured());
@@ -1128,6 +1132,10 @@ public final class AppCatalogsApiHandler {
     json.put(SOURCE_FIELD, entry.source().map(URI::toString).orElse(null));
     json.put("license", entry.license().orElse(null));
     json.put("categories", entry.categories());
+    json.put("channel", entry.productionMetadata().channel().catalogValue());
+    json.put("supportStatus", entry.productionMetadata().supportStatus().catalogValue());
+    json.put("deprecation", summarizeDeprecation(entry.productionMetadata()));
+    json.put("securityAdvisories", summarizeSecurityAdvisories(entry.productionMetadata()));
     json.put("review", summarizeReview(entry.review()));
     json.put(REVIEW_TRUST_FIELD, reviewTrust(entry).toJsonValue());
     json.put("permissions", entry.permissions());
@@ -1182,14 +1190,40 @@ public final class AppCatalogsApiHandler {
   private Map<String, Object> summarizeCompatibility(
       AppCatalogCompatibilityMetadata compatibility) {
     String minimumVersion = compatibility.minimumCryptaVersion();
+    String maximumVersion = compatibility.maximumCryptaVersion();
     String currentVersion = currentCryptaVersion();
-    CompatibilityResult result = compatibilityResult(minimumVersion, currentVersion);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    CompatibilityResult result =
+        compatibilityResult(minimumVersion, maximumVersion, currentVersion);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
     json.put("minimumCryptaVersion", minimumVersion);
+    json.put("maximumCryptaVersion", maximumVersion);
     json.put("currentCryptaVersion", currentVersion);
     json.put(COMPATIBILITY_SATISFIED, result.satisfied());
     json.put("advisory", true);
     json.put(STATUS_FIELD, result.status());
+    return json;
+  }
+
+  private static Map<String, Object> summarizeDeprecation(AppCatalogProductionMetadata metadata) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+    json.put(STATUS_FIELD, metadata.deprecationStatus().catalogValue());
+    json.put("message", metadata.deprecationMessage().orElse(null));
+    json.put("replacementAppId", metadata.replacementAppId().orElse(null));
+    return json;
+  }
+
+  private static List<Map<String, Object>> summarizeSecurityAdvisories(
+      AppCatalogProductionMetadata metadata) {
+    return metadata.securityAdvisories().stream()
+        .map(AppCatalogsApiHandler::summarizeSecurityAdvisory)
+        .toList();
+  }
+
+  private static Map<String, Object> summarizeSecurityAdvisory(
+      AppCatalogSecurityAdvisory advisory) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("id", advisory.id());
+    json.put("uri", advisory.uri().toString());
     return json;
   }
 
@@ -1276,18 +1310,25 @@ public final class AppCatalogsApiHandler {
   }
 
   private static CompatibilityResult compatibilityResult(
-      String minimumVersion, String currentVersion) {
-    if (minimumVersion == null) {
+      String minimumVersion, String maximumVersion, String currentVersion) {
+    if (minimumVersion == null && maximumVersion == null) {
       return new CompatibilityResult(true, COMPATIBILITY_NOT_DECLARED);
     }
     if (currentVersion == null) {
       return new CompatibilityResult(null, COMPATIBILITY_UNKNOWN);
     }
-    Integer comparison = compareDottedNumericVersions(currentVersion, minimumVersion);
-    if (comparison == null) {
+    Integer minimumComparison =
+        minimumVersion == null
+            ? Integer.valueOf(0)
+            : compareDottedNumericVersions(currentVersion, minimumVersion);
+    Integer maximumComparison =
+        maximumVersion == null
+            ? Integer.valueOf(0)
+            : compareDottedNumericVersions(currentVersion, maximumVersion);
+    if (minimumComparison == null || maximumComparison == null) {
       return new CompatibilityResult(null, COMPATIBILITY_UNKNOWN);
     }
-    boolean satisfied = comparison >= 0;
+    boolean satisfied = minimumComparison >= 0 && maximumComparison <= 0;
     return new CompatibilityResult(
         satisfied, satisfied ? COMPATIBILITY_SATISFIED : COMPATIBILITY_NOT_SATISFIED);
   }

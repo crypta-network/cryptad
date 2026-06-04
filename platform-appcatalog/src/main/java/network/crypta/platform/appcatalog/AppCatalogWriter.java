@@ -158,15 +158,16 @@ public final class AppCatalogWriter {
         entry.name(),
         entry.version(),
         entry.summary(),
-        entry.homepage(),
-        entry.source(),
-        entry.license(),
+        entry.homepage().orElse(null),
+        entry.source().orElse(null),
+        entry.license().orElse(null),
         entry.categories(),
         entry.compatibility(),
         entry.review(),
-        Optional.of(receipt),
+        receipt,
         entry.changelog(),
         entry.screenshots(),
+        entry.productionMetadata(),
         entry.bundleUri(),
         entry.bundleSha256(),
         entry.bundleSizeBytes(),
@@ -197,6 +198,11 @@ public final class AppCatalogWriter {
 
   private static int catalogVersion(List<AppCatalogEntry> entries) {
     for (AppCatalogEntry entry : entries) {
+      if (entry.hasProductionMetadata()) {
+        return AppCatalog.VERSION_PRODUCTION_CHANNELS;
+      }
+    }
+    for (AppCatalogEntry entry : entries) {
       if (entry.hasStoreMetadata()) {
         return AppCatalog.VERSION_STORE_METADATA;
       }
@@ -205,6 +211,15 @@ public final class AppCatalogWriter {
   }
 
   private static void requireCatalogVersionMatchesEntries(AppCatalog catalog) {
+    if (catalog.version() == AppCatalog.VERSION_PRODUCTION_CHANNELS) {
+      return;
+    }
+    for (AppCatalogEntry entry : catalog.entries()) {
+      if (entry.hasProductionMetadata()) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 3 is required when production channel metadata is present");
+      }
+    }
     if (catalog.version() == AppCatalog.VERSION_STORE_METADATA) {
       return;
     }
@@ -236,6 +251,7 @@ public final class AppCatalogWriter {
         descriptor.review(),
         descriptor.changelog(),
         descriptor.screenshots(),
+        descriptor.productionMetadata(),
         descriptor.bundleUri(),
         artifact.sha256(),
         artifact.sizeBytes(),
@@ -252,7 +268,9 @@ public final class AppCatalogWriter {
             ? descriptorCompatibility.apiCompatibility()
             : manifest.apiCompatibility();
     return new AppCatalogCompatibilityMetadata(
-        descriptorCompatibility.minimumCryptaVersion(), apiCompatibility);
+        descriptorCompatibility.minimumCryptaVersion(),
+        descriptorCompatibility.maximumCryptaVersion(),
+        apiCompatibility);
   }
 
   private static void requireManifestAppIdMatch(
@@ -519,7 +537,12 @@ public final class AppCatalogWriter {
     if (minimumCryptaVersion != null) {
       appendProperty(builder, prefix + "minimumCryptaVersion", minimumCryptaVersion);
     }
+    String maximumCryptaVersion = entry.compatibility().maximumCryptaVersion();
+    if (maximumCryptaVersion != null) {
+      appendProperty(builder, prefix + "maximumCryptaVersion", maximumCryptaVersion);
+    }
     appendApiCompatibility(builder, prefix, entry.compatibility());
+    appendProductionMetadata(builder, prefix, entry.productionMetadata());
     if (entry.review().hasCatalogFields()) {
       appendProperty(builder, prefix + "review.status", entry.review().status().catalogValue());
       entry
@@ -584,6 +607,37 @@ public final class AppCatalogWriter {
           builder,
           prefix + "api.experimentalCapabilitiesAccepted",
           Boolean.toString(api.experimentalCapabilitiesAccepted()));
+    }
+  }
+
+  private static void appendProductionMetadata(
+      StringBuilder builder, String prefix, AppCatalogProductionMetadata metadata) {
+    if (!metadata.hasCatalogFields()) {
+      return;
+    }
+    appendProperty(builder, prefix + "channel", metadata.channel().catalogValue());
+    appendProperty(builder, prefix + "support.status", metadata.supportStatus().catalogValue());
+    appendProperty(
+        builder, prefix + "deprecation.status", metadata.deprecationStatus().catalogValue());
+    metadata
+        .deprecationMessage()
+        .ifPresent(value -> appendProperty(builder, prefix + "deprecation.message", value));
+    metadata
+        .replacementAppId()
+        .ifPresent(value -> appendProperty(builder, prefix + "replacementAppId", value));
+    if (metadata.securityAdvisories().isEmpty()) {
+      return;
+    }
+    appendProperty(
+        builder,
+        prefix + "securityAdvisories",
+        joinValues(
+            metadata.securityAdvisories().stream().map(AppCatalogSecurityAdvisory::id).toList()));
+    for (AppCatalogSecurityAdvisory advisory : metadata.securityAdvisories()) {
+      appendProperty(
+          builder,
+          prefix + "securityAdvisory." + advisory.id() + ".uri",
+          advisory.uri().toString());
     }
   }
 

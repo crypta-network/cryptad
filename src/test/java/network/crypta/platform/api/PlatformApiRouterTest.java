@@ -2603,7 +2603,9 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals(
-        "{\"policy\":{\"mode\":\"stage\",\"automaticStaging\":true,\"automaticApply\":false}}",
+        "{\"policy\":{\"mode\":\"stage\",\"allowedChannels\":[\"stable\"],"
+            + "\"automaticStaging\":true,\"automaticApply\":false,"
+            + "\"deprecatedAutoUpdatesBlocked\":true}}",
         response.body());
   }
 

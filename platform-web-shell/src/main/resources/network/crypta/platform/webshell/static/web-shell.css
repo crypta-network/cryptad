@@ -409,6 +409,11 @@ a {
   gap: 6px;
 }
 
+.queue-field.compact-field {
+  min-width: 180px;
+  max-width: 220px;
+}
+
 .queue-field span {
   color: var(--shell-muted);
   font-size: 0.9rem;
@@ -593,6 +598,15 @@ a {
 .catalog-app-card.is-update-available {
   border-color: rgba(255, 209, 125, 0.36);
   background: rgba(255, 209, 125, 0.055);
+}
+
+.catalog-app-card.is-preview-channel {
+  border-color: rgba(123, 220, 255, 0.22);
+}
+
+.catalog-app-card.is-deprecated-channel {
+  border-color: rgba(255, 143, 143, 0.34);
+  background: rgba(255, 143, 143, 0.055);
 }
 
 .catalog-app-header {

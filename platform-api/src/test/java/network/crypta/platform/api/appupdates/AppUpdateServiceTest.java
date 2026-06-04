@@ -10,18 +10,23 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
+import network.crypta.platform.appcatalog.AppCatalogDeprecationStatus;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewPolicyMode;
 import network.crypta.platform.appcatalog.AppReviewReceipt;
@@ -54,6 +59,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -149,6 +155,31 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenEqualBetaBlockedByStableOnlyPolicy_expectNoOperatorActionRequired()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(
+            List.of(
+                entry(
+                    INSTALLED_VERSION,
+                    AppCatalogReviewStatus.REVIEWED,
+                    compatibleApiMetadata(),
+                    productionMetadata(AppCatalogChannel.BETA))));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals("none", candidate.get(STATUS));
+    assertEquals("equal", candidate.get(VERSION_COMPARISON));
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
+    assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
   void check_whenEqualCatalogVersionRequiresFuturePlatformApi_expectNoUpdateCandidate()
       throws Exception {
     AppUpdateService service =
@@ -200,6 +231,30 @@ class AppUpdateServiceTest {
 
     assertEquals("not_newer", candidate.get(STATUS));
     assertEquals("lower", candidate.get(VERSION_COMPARISON));
+    assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
+  void check_whenLowerBetaBlockedByStableOnlyPolicy_expectNoOperatorActionRequired()
+      throws Exception {
+    AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(
+            List.of(
+                entry(
+                    INSTALLED_VERSION,
+                    AppCatalogReviewStatus.REVIEWED,
+                    compatibleApiMetadata(),
+                    productionMetadata(AppCatalogChannel.BETA))));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals("not_newer", candidate.get(STATUS));
+    assertEquals("lower", candidate.get(VERSION_COMPARISON));
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
     assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
   }
 
@@ -479,6 +534,203 @@ class AppUpdateServiceTest {
     assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
     assertFalse(staged.toString().contains(tempDir.toString()));
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenPolicyIsStageAndCandidateIsBeta_expectAutomaticStageBlocked() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("beta", candidate.get("channel"));
+    assertEquals(false, candidate.get("channelPolicyAllowed"));
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("channel_policy_blocked", historyEntry.get(ERROR_CODE));
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenStableOnlyPolicySeesStableAndNewerBeta_expectStableCandidateAutoStaged()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry stableEntry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogEntry betaEntry =
+        entry(
+            EXTERNAL_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(stableEntry, betaEntry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(stableEntry));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(UPDATE_VERSION, candidate.get(TARGET_VERSION));
+    assertEquals("stable", candidate.get("channel"));
+    assertEquals(true, candidate.get("channelPolicyAllowed"));
+    assertNull(candidate.get("policyBlockReason"));
+    assertEquals(true, candidate.get("autoStageAllowed"));
+    assertEquals(true, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+  }
+
+  @Test
+  void check_whenPolicyAllowsBeta_expectBetaCandidateAutoStaged() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
+    service.setPolicy(
+        APP_ID,
+        AppUpdatePolicyMode.STAGE,
+        Set.of(AppCatalogChannel.STABLE, AppCatalogChannel.BETA));
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(true, candidate.get("channelPolicyAllowed"));
+    assertNull(candidate.get("policyBlockReason"));
+    assertEquals(true, candidate.get("autoStageAllowed"));
+    assertEquals(true, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+  }
+
+  @Test
+  void check_whenStagedBetaPolicyLaterBecomesStableOnly_expectStagedUpdatePreserved()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry), List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.setPolicy(
+        APP_ID,
+        AppUpdatePolicyMode.STAGE,
+        Set.of(AppCatalogChannel.STABLE, AppCatalogChannel.BETA));
+    service.check(APP_ID, false);
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> staged = (Map<String, Object>) summary.get(STAGED);
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
+    assertEquals(true, staged.get(AVAILABLE));
+    assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
+    assertTrue(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void stage_whenCandidateIsBetaAndPolicyIsStableOnly_expectExplicitStageSucceeds()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
+
+    Map<String, Object> summary = service.stage(APP_ID);
+
+    assertEquals(true, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("beta", ((Map<?, ?>) summary.get(CANDIDATE)).get("channel"));
+  }
+
+  @Test
+  void apply_whenExplicitBetaAppliedUnderStableOnlyPolicy_expectNoOperatorActionRequired()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.BETA));
+    AppCatalogInstallPlan plan = plan(entry);
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    service.stage(APP_ID);
+
+    Map<String, Object> summary = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(APPLIED, candidate.get(STATUS));
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
+    assertEquals(false, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
+  void check_whenPolicyAllowsDeprecatedChannel_expectDeprecatedCandidateStillBlocked()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry =
+        entry(
+            UPDATE_VERSION,
+            AppCatalogReviewStatus.REVIEWED,
+            compatibleApiMetadata(),
+            productionMetadata(AppCatalogChannel.DEPRECATED));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    service.setPolicy(
+        APP_ID,
+        AppUpdatePolicyMode.STAGE,
+        Set.of(AppCatalogChannel.STABLE, AppCatalogChannel.DEPRECATED));
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals("deprecated", candidate.get("channel"));
+    assertEquals(false, candidate.get("channelPolicyAllowed"));
+    assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    verifyNoInstallPlanPreparation();
   }
 
   @Test
@@ -1546,6 +1798,14 @@ class AppUpdateServiceTest {
 
   private static AppCatalogEntry entry(
       String version, AppCatalogReviewStatus reviewStatus, AppApiCompatibilityMetadata metadata) {
+    return entry(version, reviewStatus, metadata, AppCatalogProductionMetadata.DEFAULT);
+  }
+
+  private static AppCatalogEntry entry(
+      String version,
+      AppCatalogReviewStatus reviewStatus,
+      AppApiCompatibilityMetadata metadata,
+      AppCatalogProductionMetadata productionMetadata) {
     return new AppCatalogEntry(
         APP_ID,
         APP_NAME,
@@ -1559,6 +1819,7 @@ class AppUpdateServiceTest {
         new AppCatalogReviewMetadata(reviewStatus, Optional.empty()),
         AppCatalogChangelog.EMPTY,
         List.of(),
+        productionMetadata,
         URI.create("file:///tmp/queue-manager-" + version + ".zip"),
         DIGEST,
         1234L,
@@ -1578,21 +1839,41 @@ class AppUpdateServiceTest {
         unsignedEntry.name(),
         unsignedEntry.version(),
         unsignedEntry.summary(),
-        unsignedEntry.homepage(),
-        unsignedEntry.source(),
-        unsignedEntry.license(),
+        unsignedEntry.homepage().orElse(null),
+        unsignedEntry.source().orElse(null),
+        unsignedEntry.license().orElse(null),
         unsignedEntry.categories(),
         unsignedEntry.compatibility(),
         unsignedEntry.review(),
-        Optional.of(receipt),
+        receipt,
         unsignedEntry.changelog(),
         unsignedEntry.screenshots(),
+        unsignedEntry.productionMetadata(),
         unsignedEntry.bundleUri(),
         unsignedEntry.bundleSha256(),
         unsignedEntry.bundleSizeBytes(),
         unsignedEntry.bundleType(),
         unsignedEntry.permissions(),
         unsignedEntry.permissionRationales());
+  }
+
+  private static AppCatalogProductionMetadata productionMetadata(AppCatalogChannel channel) {
+    AppCatalogSupportStatus supportStatus =
+        channel == AppCatalogChannel.DEPRECATED
+            ? AppCatalogSupportStatus.DEPRECATED
+            : AppCatalogSupportStatus.SUPPORTED;
+    AppCatalogDeprecationStatus deprecationStatus =
+        channel == AppCatalogChannel.DEPRECATED
+            ? AppCatalogDeprecationStatus.DEPRECATED
+            : AppCatalogDeprecationStatus.NONE;
+    return new AppCatalogProductionMetadata(
+        channel,
+        supportStatus,
+        deprecationStatus,
+        Optional.empty(),
+        Optional.empty(),
+        List.of(),
+        true);
   }
 
   private static AppReviewReceiptPayload reviewPayload(AppCatalogEntry entry) {

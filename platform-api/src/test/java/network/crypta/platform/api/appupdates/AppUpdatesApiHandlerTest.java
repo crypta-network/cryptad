@@ -2,7 +2,9 @@ package network.crypta.platform.api.appupdates;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -110,14 +112,51 @@ class AppUpdatesApiHandlerTest {
   @Test
   void setPolicy_whenModeUsesMixedCaseAndWhitespace_expectDelegatesParsedPolicy() {
     Map<String, Object> expected = Map.of("mode", "apply_when_stopped");
-    when(updateService.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED))
+    when(updateService.setPolicy(
+            APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED, Set.of(AppCatalogChannel.STABLE)))
         .thenReturn(expected);
 
     Map<String, Object> result =
         handler.setPolicy(APP_ID, Map.of("mode", List.of(" APPLY_WHEN_STOPPED ")));
 
     assertSame(expected, result);
-    verify(updateService).setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+    verify(updateService)
+        .setPolicy(
+            APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED, Set.of(AppCatalogChannel.STABLE));
+  }
+
+  @Test
+  void setPolicy_whenChannelsAreProvided_expectDelegatesParsedChannels() {
+    Map<String, Object> expected = Map.of("mode", "stage");
+    when(updateService.setPolicy(
+            APP_ID,
+            AppUpdatePolicyMode.STAGE,
+            Set.of(AppCatalogChannel.STABLE, AppCatalogChannel.BETA)))
+        .thenReturn(expected);
+
+    Map<String, Object> result =
+        handler.setPolicy(
+            APP_ID, Map.of("mode", List.of("stage"), "channels", List.of("stable,beta")));
+
+    assertSame(expected, result);
+    verify(updateService)
+        .setPolicy(
+            APP_ID,
+            AppUpdatePolicyMode.STAGE,
+            Set.of(AppCatalogChannel.STABLE, AppCatalogChannel.BETA));
+  }
+
+  @Test
+  void setPolicy_whenChannelIsUnsupported_expectStableInvalidOption() {
+    Map<String, List<String>> queryParameters =
+        Map.of("mode", List.of("stage"), "channels", List.of("stable,preview"));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.setPolicy(APP_ID, queryParameters));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("invalid_update_option", exception.errorCode());
+    verifyNoInteractions(updateService);
   }
 
   @Test

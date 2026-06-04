@@ -158,6 +158,9 @@ immutable artifact URI returned by a reviewed insertion workflow:
   --source "https://example.invalid/src/queue-dashboard" \
   --license "MIT" \
   --category productivity \
+  --channel beta \
+  --support-status experimental \
+  --deprecation-status none \
   --minimum-crypta-version 1481 \
   --permission-rationale "queue.read=Reads local queue state." \
   --permission-rationale "queue.write=Cancels or reprioritizes selected queue entries." \
@@ -278,11 +281,15 @@ These checks still apply:
 - Platform API compatibility and permission-delta gates still apply.
 - The background update scheduler policy governs check, stage, and apply behavior.
 - Manual policy detects candidates but does not stage or apply updates automatically.
+- Production catalog channels default to stable browsing and stable-only automation; beta, nightly,
+  and deprecated entries require explicit operator selection and deprecated entries are not ordinary
+  automatic update candidates.
 - Rollback is a bounded safety mechanism after an update is staged or applied; it is not a promise
   that every app state can be restored.
 - The ecosystem certification matrix records this docs/tutorial evidence for release managers.
 - FProxy browse remains retained; Web Shell catalog onboarding does not remove legacy browse routes.
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
+[production-first-party-catalog-channels.md](production-first-party-catalog-channels.md),
 [app-catalogs.md](app-catalogs.md), [app-review-governance.md](app-review-governance.md), and
 [app-update-lifecycle.md](app-update-lifecycle.md).

@@ -22,6 +22,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Signed app bundles | [app-distribution.md](app-distribution.md) |
 | Signed catalogs and catalog sources | [app-catalogs.md](app-catalogs.md) |
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
+| Production catalog channels | [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) |
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
@@ -54,13 +55,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 12
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 13
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=12` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=13` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -82,6 +83,7 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Trust Graph Preview | `trust-graph` | Durable local trust backend, URI import, scoring, signing, publication, subscription, redacted audit, and UI-local state. |
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
+[production-first-party-catalog-channels.md](production-first-party-catalog-channels.md),
 [social-inbox-reference-app.md](social-inbox-reference-app.md),
 [feed-reader-reference-app.md](feed-reader-reference-app.md), and
 [trust-graph-preview.md](trust-graph-preview.md) for app-specific notes.
@@ -122,7 +124,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 
 | Readiness area | Evidence and docs |
 | --- | --- |
-| First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), `app-catalog.first-party-beta`, `catalog.smoke` |
+| First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |

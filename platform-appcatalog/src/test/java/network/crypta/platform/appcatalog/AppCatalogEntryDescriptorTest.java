@@ -41,6 +41,14 @@ class AppCatalogEntryDescriptorTest {
                 "license= MIT ",
                 "categories=Productivity,network,productivity",
                 "minimumCryptaVersion= 0.1.0 ",
+                "maximumCryptaVersion= 0.9.99 ",
+                "channel= nightly ",
+                "support.status= experimental ",
+                "deprecation.status= deprecated ",
+                "deprecation.message= Use Sample App Stable. ",
+                "replacementAppId= Sample-App-Stable ",
+                "securityAdvisories= CRYPTA-2026-0001 ",
+                "securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001",
                 "api.minimumVersion=1",
                 "api.maximumTestedVersion=2",
                 "api.optionalCapabilities=alerts.read,diagnostics.read",
@@ -67,6 +75,16 @@ class AppCatalogEntryDescriptorTest {
     assertEquals(Optional.of("MIT"), parsed.license());
     assertEquals(List.of("productivity", "network"), parsed.categories());
     assertEquals("0.1.0", parsed.compatibility().minimumCryptaVersion());
+    assertEquals("0.9.99", parsed.compatibility().maximumCryptaVersion());
+    assertEquals(AppCatalogChannel.NIGHTLY, parsed.productionMetadata().channel());
+    assertEquals(AppCatalogSupportStatus.EXPERIMENTAL, parsed.productionMetadata().supportStatus());
+    assertEquals(
+        AppCatalogDeprecationStatus.DEPRECATED, parsed.productionMetadata().deprecationStatus());
+    assertEquals(
+        "Use Sample App Stable.", parsed.productionMetadata().deprecationMessage().orElseThrow());
+    assertEquals("sample-app-stable", parsed.productionMetadata().replacementAppId().orElseThrow());
+    assertEquals(
+        "CRYPTA-2026-0001", parsed.productionMetadata().securityAdvisories().getFirst().id());
     assertEquals(Integer.valueOf(1), parsed.compatibility().apiCompatibility().minimumVersion());
     assertEquals(
         Integer.valueOf(2), parsed.compatibility().apiCompatibility().maximumTestedVersion());
@@ -103,7 +121,9 @@ class AppCatalogEntryDescriptorTest {
     assertEquals(Optional.empty(), parsed.license());
     assertEquals(List.of(), parsed.categories());
     assertNull(parsed.compatibility().minimumCryptaVersion());
+    assertNull(parsed.compatibility().maximumCryptaVersion());
     assertFalse(parsed.compatibility().apiCompatibility().declared());
+    assertEquals(AppCatalogProductionMetadata.DEFAULT, parsed.productionMetadata());
     assertEquals(AppCatalogReviewMetadata.EMPTY, parsed.review());
     assertEquals(AppCatalogChangelog.EMPTY, parsed.changelog());
     assertEquals(List.of(), parsed.screenshots());
@@ -171,6 +191,37 @@ class AppCatalogEntryDescriptorTest {
             "bundle.uri=https://example.invalid/apps/sample-app.zip",
             "summary=Sample app catalog entry",
             "homepage=file:///tmp/sample-app");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void parse_whenDescriptorChannelIsUnsupported_expectInvalidCatalogEntry() throws Exception {
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath().normalize(),
+            "bundle.uri=https://example.invalid/apps/sample-app.zip",
+            "summary=Sample app catalog entry",
+            "channel=preview");
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void parse_whenDescriptorSecurityAdvisoryUriIsMissing_expectInvalidCatalogEntry()
+      throws Exception {
+    Path descriptor =
+        descriptor(
+            "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath().normalize(),
+            "bundle.uri=https://example.invalid/apps/sample-app.zip",
+            "summary=Sample app catalog entry",
+            "securityAdvisories=CRYPTA-2026-0001");
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> AppCatalogEntryDescriptor.parse(descriptor));

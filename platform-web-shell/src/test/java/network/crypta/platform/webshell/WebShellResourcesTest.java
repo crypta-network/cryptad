@@ -568,7 +568,24 @@ class WebShellResourcesTest {
     assertTrue(script.contains("Catalog onboarding is waiting for"));
     assertTrue(script.contains("Identity vault"));
     assertTrue(script.contains("Vault summary"));
-    assertTrue(script.contains("function renderCatalogCard(catalog)"));
+    assertTrue(
+        script.contains(
+            "catalogChannelSelect: document.getElementById(\"catalog-channel-select\")"));
+    assertTrue(script.contains("function renderCatalogCard(catalog, selectedChannel)"));
+    assertTrue(script.contains("function catalogAppChannel(app)"));
+    assertTrue(script.contains("function catalogChannelLabel(channel)"));
+    assertTrue(script.contains("function catalogChannelTone(channel)"));
+    assertTrue(script.contains("function catalogAppDeprecation(app)"));
+    assertTrue(script.contains("function catalogAppDeprecated(app)"));
+    assertTrue(script.contains("function securityAdvisoryListNode(values)"));
+    assertTrue(script.contains("function deprecationNoticeNode(app)"));
+    assertTrue(
+        script.contains(
+            "const visibleApps = apps.filter((app) => catalogAppChannel(app) ==="
+                + " selectedChannel);"));
+    assertTrue(
+        script.contains(
+            "No ${catalogChannelLabel(selectedChannel)} apps were returned for this catalog."));
     assertTrue(script.contains("function renderCatalogAppCard(catalog, app)"));
     assertTrue(script.contains("async function loadCatalogApps(catalog)"));
     assertTrue(script.contains("function appMutationPath(appId, action)"));
@@ -659,7 +676,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function updateApiRiskSummary(source)"));
     assertTrue(script.contains("function rollbackAvailable(updateState)"));
     assertTrue(script.contains("function stageableUpdateCandidate(updateState)"));
-    assertTrue(script.contains("candidate.autoStageAllowed"));
+    assertFalse(script.contains("candidate.autoStageAllowed"));
     assertTrue(script.contains("status === \"available\""));
     assertTrue(
         script.contains("Stage is unavailable until a newer update candidate is available."));

@@ -115,6 +115,7 @@ Release-candidate mode requires these evidence ids:
 | `catalog.live-usk-publication` | App-platform smoke summary. | `crypta-app publish-usk --live` validates and verifies signed catalog sidecars, reads the private insert URI and form password only from secure sources, enqueues real localhost live insertion, and writes sanitized evidence. |
 | `catalog.live-usk-source-verification` | App-platform smoke summary. | `crypta:USK@.../cryptad-app-catalog.properties` refresh resolves matching editions, fetches `cryptad-app-catalog.signature` from the same USK edition, and stores replacements only after signed catalog verification. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
+| `catalog.production-channels` | App-platform smoke summary. | Catalog schema v3, stable/beta/nightly/deprecated metadata, stable-only default automation, deprecated replacement metadata, API/Web Shell exposure, signed catalog/review verification, and redaction guarantees are present. |
 | `app-review.governance` | App-platform smoke summary. | Reviewer-key lifecycle statuses, policy-version constraints, governance API routes, and Web Shell governance rendering are present and redacted. |
 | `app-review.reviewer-key-lifecycle` | App-platform smoke summary. | Trusted reviewer registry v2 parsing, active/retired/revoked semantics, duplicate-id fail-closed behavior, strict instants, and lifecycle verifier tests are present. |
 | `app-review.transparency-log` | App-platform smoke summary. | A local hash-chained review transparency log exists, can be verified, deduplicates receipt observation, and has tamper/redaction tests. |
@@ -242,6 +243,13 @@ form password.
 catalog key hints are configured in the certification environment, but it does not fetch a public
 Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic
 `platform-appcatalog` tests for `crypta:CHK@` artifact support.
+
+`catalog.production-channels` is the Phase 9 production first-party catalog channel gate. It is
+offline and deterministic: it checks catalog schema v3 parser/writer/descriptor support, stable
+default channel policy, `channel_policy_blocked` handling, deprecated-entry replacement metadata,
+API and Web Shell exposure, and redaction of private insert URIs, tokens, private keys, raw fetched
+content, raw app data, catalog scratch paths, staged bundle paths, and absolute local paths. See
+[production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
 
 `catalog.live-usk-publication` and `catalog.live-usk-source-verification` are offline source
 evidence by default. They prove live publication support, redaction behavior, same USK sibling

@@ -84,9 +84,41 @@ class AppCatalogMetadataTest {
 
   @Test
   void compatibilityMetadata_whenVersionIsTooLong_expectInvalidCatalogEntry() {
+    String oversizedVersion = "1".repeat(97);
+
     AppCatalogException exception =
         assertThrows(
-            AppCatalogException.class, () -> new AppCatalogCompatibilityMetadata("1".repeat(97)));
+            AppCatalogException.class, () -> new AppCatalogCompatibilityMetadata(oversizedVersion));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+  }
+
+  @Test
+  void parse_whenProductionMetadataUsesMixedCase_expectNormalizedEnums() {
+    AppCatalogProductionMetadata metadata =
+        new AppCatalogProductionMetadata(
+            AppCatalogChannel.parse(" Beta ", "channel"),
+            AppCatalogSupportStatus.parse(" Maintenance ", "support.status"),
+            AppCatalogDeprecationStatus.parse(" None ", "deprecation.status"),
+            Optional.empty(),
+            Optional.empty(),
+            java.util.List.of(),
+            true);
+
+    assertEquals(AppCatalogChannel.BETA, metadata.channel());
+    assertEquals(AppCatalogSupportStatus.MAINTENANCE, metadata.supportStatus());
+    assertEquals(AppCatalogDeprecationStatus.NONE, metadata.deprecationStatus());
+    assertTrue(metadata.hasCatalogFields());
+  }
+
+  @Test
+  void securityAdvisory_whenIdContainsSpaces_expectInvalidCatalogEntry() {
+    URI advisoryUri = URI.create("https://example.invalid/advisory");
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> new AppCatalogSecurityAdvisory("CRYPTA 2026 0001", advisoryUri));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
   }

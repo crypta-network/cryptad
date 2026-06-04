@@ -1,10 +1,14 @@
 package network.crypta.platform.api.appupdates;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
+import network.crypta.platform.appcatalog.AppCatalogException;
 
 /**
  * Platform API adapter for the installed-app update lifecycle routes.
@@ -22,6 +26,7 @@ import network.crypta.platform.api.PlatformApiParameters;
  */
 public final class AppUpdatesApiHandler {
   private static final String PARAM_HEALTH_CHECK = "healthCheck";
+  private static final String PARAM_CHANNELS = "channels";
   private static final String PARAM_MODE = "mode";
   private static final String PARAM_REFRESH_CATALOGS = "refreshCatalogs";
   private static final String PARAM_RESTART = "restart";
@@ -152,7 +157,29 @@ public final class AppUpdatesApiHandler {
    */
   public Map<String, Object> setPolicy(String appId, Map<String, List<String>> queryParameters) {
     String mode = PlatformApiParameters.requireString(queryParameters, PARAM_MODE);
-    return updateService.setPolicy(appId, AppUpdatePolicyMode.parse(mode));
+    return updateService.setPolicy(
+        appId, AppUpdatePolicyMode.parse(mode), allowedChannels(queryParameters));
+  }
+
+  private static Set<AppCatalogChannel> allowedChannels(Map<String, List<String>> queryParameters) {
+    String value = PlatformApiParameters.readOptionalString(queryParameters, PARAM_CHANNELS);
+    if (value == null || value.isBlank()) {
+      return AppUpdatePolicy.DEFAULT_ALLOWED_CHANNELS;
+    }
+    LinkedHashSet<AppCatalogChannel> channels = new LinkedHashSet<>();
+    for (String token : value.split(",", -1)) {
+      try {
+        channels.add(AppCatalogChannel.parse(token, PARAM_CHANNELS));
+      } catch (AppCatalogException | IllegalArgumentException _) {
+        throw new PlatformApiException(
+            400, "invalid_update_option", "channels contains an unsupported catalog channel.");
+      }
+    }
+    if (channels.isEmpty()) {
+      throw new PlatformApiException(
+          400, "invalid_update_option", "channels must include at least one catalog channel.");
+    }
+    return Set.copyOf(channels);
   }
 
   private static AppUpdateService.ApplyOptions applyOptions(

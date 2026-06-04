@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.devtools.devserver.CryptaAppDevServer;
 import network.crypta.platform.devtools.devserver.DevServerConfig;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import picocli.CommandLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -463,6 +465,14 @@ class DeveloperBetaToolkitCliTest {
             "MIT",
             "--category",
             "Productivity",
+            "--channel",
+            "beta",
+            "--support-status",
+            "experimental",
+            "--maximum-crypta-version",
+            "0.9.99",
+            "--security-advisory",
+            "CRYPTA-2026-0001=https://example.invalid/advisories/CRYPTA-2026-0001",
             "--permission-rationale",
             "queue.read=Reads mock transfer queue state.",
             "--permission-rationale",
@@ -605,6 +615,12 @@ class DeveloperBetaToolkitCliTest {
   private static void assertCatalogEntryDescriptor(CliResult entryResult, String descriptor) {
     assertEquals(CommandLine.ExitCode.OK, entryResult.exitCode());
     assertTrue(descriptor.contains("bundle.uri=crypta:CHK@catalog-app-bundle\n"));
+    assertTrue(descriptor.contains("channel=beta\n"));
+    assertTrue(descriptor.contains("support.status=experimental\n"));
+    assertTrue(descriptor.contains("maximumCryptaVersion=0.9.99\n"));
+    assertTrue(
+        descriptor.contains(
+            "securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001\n"));
     assertTrue(
         descriptor.contains("permissions.rationale.queue.read=Reads mock transfer queue state.\n"));
   }
@@ -664,6 +680,50 @@ class DeveloperBetaToolkitCliTest {
             java.util.List.of("queue.write=Mutates queue.", "queue.read=Reads queue."));
 
     assertEquals("queue.write,queue.read", String.join(",", rationales.keySet()));
+  }
+
+  @Test
+  void catalogEntrySecurityAdvisories_whenNormalized_expectInsertionOrderPreserved()
+      throws Exception {
+    var advisories =
+        CatalogEntryDescriptorGenerator.normalizeSecurityAdvisories(
+            java.util.List.of(
+                "CRYPTA-2026-0002=https://example.invalid/advisories/2",
+                "CRYPTA-2026-0001=https://example.invalid/advisories/1"));
+
+    assertEquals("CRYPTA-2026-0002,CRYPTA-2026-0001", String.join(",", advisories.keySet()));
+    assertEquals(
+        URI.create("https://example.invalid/advisories/2"), advisories.get("CRYPTA-2026-0002"));
+    var advisoryIterator = advisories.entrySet().iterator();
+    advisoryIterator.next();
+
+    assertThrows(UnsupportedOperationException.class, advisoryIterator::remove);
+  }
+
+  @Test
+  void catalogEntrySecurityAdvisories_whenSyntaxInvalid_expectClearFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                CatalogEntryDescriptorGenerator.normalizeSecurityAdvisories(
+                    java.util.List.of("CRYPTA-2026-0001")));
+
+    assertTrue(exception.getMessage().contains("--security-advisory must use id=uri syntax"));
+  }
+
+  @Test
+  void catalogEntrySecurityAdvisories_whenDuplicateIdProvided_expectClearFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                CatalogEntryDescriptorGenerator.normalizeSecurityAdvisories(
+                    java.util.List.of(
+                        "CRYPTA-2026-0001=https://example.invalid/advisories/1",
+                        "CRYPTA-2026-0001=https://example.invalid/advisories/duplicate")));
+
+    assertTrue(exception.getMessage().contains("duplicate security advisory: CRYPTA-2026-0001"));
   }
 
   @Test

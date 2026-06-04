@@ -40,6 +40,9 @@ public record AppCatalog(
   /** Signed-catalog schema that can carry optional app-store metadata. */
   public static final int VERSION_STORE_METADATA = 2;
 
+  /** Signed-catalog schema that can carry production channel and support metadata. */
+  public static final int VERSION_PRODUCTION_CHANNELS = 3;
+
   /**
    * Creates a validated immutable catalog.
    *
@@ -56,7 +59,7 @@ public record AppCatalog(
    * @throws AppCatalogException if the catalog header or entry set is invalid
    */
   public AppCatalog {
-    if (!isSupportedVersion(version)) {
+    if (isUnsupportedVersion(version)) {
       throw AppCatalogSidecars.invalidEntry("unsupported catalog.version: " + version);
     }
     catalogId = normalizeCatalogId(catalogId);
@@ -68,8 +71,10 @@ public record AppCatalog(
     rejectDuplicateEntries(entries);
   }
 
-  static boolean isSupportedVersion(int version) {
-    return version == VERSION_MINIMAL || version == VERSION_STORE_METADATA;
+  static boolean isUnsupportedVersion(int version) {
+    return version != VERSION_MINIMAL
+        && version != VERSION_STORE_METADATA
+        && version != VERSION_PRODUCTION_CHANNELS;
   }
 
   /**

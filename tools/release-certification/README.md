@@ -93,6 +93,7 @@ app-platform.docs-redaction
 app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
+catalog.production-channels
 platform-api.contract
 app-vault.capabilities
 app-platform.identity-profile-publish
@@ -175,7 +176,10 @@ URIs, private keys, live fetched bodies, raw trust statements, or app/session to
 `app-platform.docs-redaction` run a deterministic local docs check for required docs, concept
 coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.
 `app-catalog.first-party-beta` reports source/key configuration readiness but does not fetch the
-public Crypta catalog. `app-review.first-party-catalog`
+public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
+deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
+and Web Shell exposure, signature/review verification preservation, and redaction guarantees.
+`app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review
 receipt for each catalog entry. `interop.extended` and `apphost.live` are recorded as optional

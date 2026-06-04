@@ -14,6 +14,8 @@ Related but documented elsewhere:
 - Developer CLI workflow for standalone staged bundles: [app-dev-cli.md](app-dev-cli.md)
 - Signed catalog sources and remote/local catalog artifact install/update:
   [app-catalogs.md](app-catalogs.md)
+- Production first-party catalog channel semantics:
+  [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md)
 - App-owned static UI routing for installed bundles: [app-owned-ui.md](app-owned-ui.md)
 - App UI design-system assets and linting: [app-ui-design-system.md](app-ui-design-system.md)
 - Browser SDK helpers for app-owned static UI: [platform-sdk-js.md](platform-sdk-js.md)
@@ -23,6 +25,20 @@ Related but documented elsewhere:
 - Browser-side bundle uploads, Crypta app-artifact fetching, remote screenshot proxying, and
   additional sandbox controls beyond the current Linux bubblewrap provider remain future platform
   work.
+
+## Catalog release channels
+
+Signed bundles remain channel-neutral artifacts. Release jobs choose the catalog channel when they
+write the signed `cryptad-app-catalog.properties` entry. Schema v3 catalog entries can declare
+`channel=stable|beta|nightly|deprecated`, `support.status`, `deprecation.status`, optional
+`replacementAppId`, optional security advisory references, and `minimumCryptaVersion` /
+`maximumCryptaVersion`. These fields are signed catalog metadata: they do not weaken bundle digest
+or bundle signature verification.
+
+The production-safe default is `stable`. Beta and nightly catalog entries are preview channels that
+operators must explicitly select in Web Shell browsing or app-update policy before automation can
+process them. Deprecated entries should carry replacement/deprecation metadata and are not ordinary
+automatic update candidates.
 
 ## Bundle Files
 

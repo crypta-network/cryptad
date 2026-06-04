@@ -49,6 +49,18 @@ Policy modes are explicit:
 | `stage` | Stage eligible verified candidates for later review. Do not apply automatically. |
 | `apply_when_stopped` | Apply eligible candidates only when the app is already stopped and review gates allow it. Do not stop a running app to update it. |
 
+Channel policy is separate from the mode. The default allowed channel set is `stable` only. A
+candidate from `beta`, `nightly`, or `deprecated` can still be viewed, reviewed, and explicitly
+staged by an operator when other gates allow it, but policy-driven staging/apply skips it unless the
+local policy explicitly allows that channel. Deprecated entries are blocked from automatic
+staging/apply even if a policy includes the deprecated channel; PR-248 surfaces replacement and
+deprecation metadata but does not implement migration or replacement flows.
+
+When channel policy excludes an otherwise newer candidate, the update summary keeps the candidate
+visible with `channelPolicyAllowed=false`, `policyBlockReason=channel_policy_blocked`, and
+`autoStageAllowed=false`. Update history records the same stable reason without exposing catalog
+scratch paths, staged bundle paths, private insert URIs, tokens, or raw app data.
+
 ## Candidate detection
 
 Catalog responses expose two related values for installed apps:
@@ -69,6 +81,8 @@ The update review surface includes:
 - signed catalog verification and signed bundle verification;
 - artifact size and SHA-256 checks before extraction;
 - manifest `app.id` and `app.version` consistency checks;
+- production channel, support status, deprecation/replacement metadata, and security advisory
+  references from the signed catalog;
 - advisory Cryptad build compatibility and Platform API contract compatibility summaries;
 - publisher-advisory catalog `review.status` and `review.note`;
 - trusted review receipt status, reviewer key/display metadata, policy id/version, evidence
@@ -110,6 +124,11 @@ running before the update is applied. When review policy is
 also requires a trusted positive review receipt for the exact catalog artifact. Platform API routes
 check runtime status before calling AppHost, and AppHost rechecks the live process table before any
 installed-bundle mutation.
+
+Policy summaries expose `allowedChannels`, `automaticStaging`, `automaticApply`, and
+`deprecatedAutoUpdatesBlocked`. The Web Shell renders those fields in the app update lifecycle
+details so operators can tell whether automation is stable-only or explicitly permits preview
+channels.
 
 The update source must already be a local staged directory or a catalog-managed temporary staged
 directory. AppHost copies that stage under managed storage, verifies distribution sidecars when the
@@ -177,7 +196,7 @@ scope:
   represented in source and tests.
 - `app-update.scheduler` proves the background scheduler refreshes signed catalogs, checks
   installed apps through `AppUpdateService.check(...)`, records durable path-free state, applies
-  failure backoff, and preserves the manual default policy.
+  failure backoff, and preserves the manual stable-only default policy.
 - `app-update.rollback` proves durable installed-bundle backup/restore behavior and confirms data,
   cache, and run directories are outside rollback scope.
 
