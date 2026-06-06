@@ -1891,6 +1891,11 @@
     }
     if (action === "stage") {
       appendReviewAcknowledgement(form, updateReviewTrustForAction(appUpdateState(app), action), action);
+      appendMigrationAcknowledgement(
+        form,
+        updateDataMigrationForAction(appUpdateState(app), action),
+        action,
+      );
     }
     form.append(submit);
     return form;
@@ -2193,6 +2198,68 @@
     input.value = "true";
     input.required = true;
     label.append(input, document.createTextNode(` Acknowledge ${reviewTrustLabel(trust)}`));
+    form.append(label);
+  }
+
+  function updateDataMigrationForAction(updateState, action) {
+    const state = recordValue(updateState);
+    const candidate = recordValue(state.candidate);
+    const staged = recordValue(state.staged);
+    if (action === "apply") {
+      return recordValue(staged.dataMigration || candidate.dataMigration);
+    }
+    if (action === "stage") {
+      return recordValue(candidate.dataMigration);
+    }
+    return {};
+  }
+
+  function migrationActionReason(dataMigration, action) {
+    const plan = recordValue(dataMigration);
+    if (Object.keys(plan).length === 0) {
+      return "";
+    }
+    if (migrationAcknowledgementRequired(plan, action)) {
+      return "";
+    }
+    if (typeof plan.blockReason === "string" && plan.blockReason) {
+      return `${normalizedStatus(action)} blocked by app-data migration: ${normalizedStatus(plan.blockReason)}.`;
+    }
+    const status = typeof plan.status === "string" ? plan.status : "";
+    if (
+      action === "apply" &&
+      plan.required === true &&
+      status &&
+      status !== "ready" &&
+      status !== "applied" &&
+      status !== "not_required"
+    ) {
+      return `Apply blocked by app-data migration status: ${normalizedStatus(status)}.`;
+    }
+    return "";
+  }
+
+  function migrationAcknowledgementRequired(dataMigration, action) {
+    const plan = recordValue(dataMigration);
+    return (
+      action === "stage" &&
+      plan.operatorReviewRequired === true &&
+      plan.blockReason === "app_data_migration_review_required"
+    );
+  }
+
+  function appendMigrationAcknowledgement(form, dataMigration, action) {
+    if (!migrationAcknowledgementRequired(dataMigration, action)) {
+      return;
+    }
+    const label = document.createElement("label");
+    label.className = "checkbox-field review-acknowledgement migration-acknowledgement";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "migrationAcknowledged";
+    input.value = "true";
+    input.required = true;
+    label.append(input, document.createTextNode(" Acknowledge rollback-incompatible app-data migration"));
     form.append(label);
   }
 
@@ -2509,6 +2576,13 @@
       if (reviewReason) {
         return reviewReason;
       }
+      const migrationReason = migrationActionReason(
+        updateDataMigrationForAction(updateState, action),
+        action,
+      );
+      if (migrationReason) {
+        return migrationReason;
+      }
     }
     if (action === "rollback" && !rollbackAvailable(updateState)) {
       return "Rollback is unavailable for this app.";
@@ -2534,6 +2608,11 @@
     const candidate = recordValue(updateState.candidate);
     const staged = recordValue(updateState.staged);
     const rollback = recordValue(updateState.rollback);
+    const applyMigration = updateDataMigrationForAction(updateState, "apply");
+    const candidateMigration = updateDataMigrationForAction(updateState, "stage");
+    const visibleMigration = Object.keys(recordValue(applyMigration)).length
+      ? applyMigration
+      : candidateMigration;
     details.append(
       definitionList([
         ["Update candidate", normalizedStatus(appUpdateStatus(updateState), "Unavailable")],
@@ -2544,6 +2623,9 @@
         ["API compatibility before apply", updateApiRiskSummary(staged)],
         ["Trusted review before apply", reviewTrustLabel(updateReviewTrustForAction(updateState, "apply"))],
         ["Review policy handling", reviewTrustWarnings(updateReviewTrustForAction(updateState, "apply"))],
+        ["Candidate app-data migration", updateDataMigrationSummary(candidateMigration)],
+        ["App-data migration before apply", updateDataMigrationSummary(applyMigration)],
+        ["App-data migration blocker", migrationBlockerSummary(visibleMigration)],
         ["Rollback available", rollbackAvailable(updateState) ? "Yes" : "No"],
         [
           "Rollback version",
@@ -2585,7 +2667,105 @@
         ],
       ]),
     );
+    const migrationDetails = appDataMigrationDetailsNode(applyMigration, candidateMigration);
+    if (migrationDetails) {
+      details.append(migrationDetails);
+    }
     return details;
+  }
+
+  function updateDataMigrationSummary(dataMigration) {
+    const plan = recordValue(dataMigration);
+    if (Object.keys(plan).length === 0) {
+      return "Unavailable";
+    }
+    const status = normalizedStatus(plan.status, "Unavailable");
+    if (plan.required !== true) {
+      return `Not required (${status})`;
+    }
+    const current = scalar(plan.currentSchemaVersion);
+    const target = scalar(plan.targetSchemaVersion);
+    const review = plan.operatorReviewRequired === true ? "; operator review required" : "";
+    return `Required: schema ${current} to ${target}; ${status}${review}`;
+  }
+
+  function migrationBlockerSummary(dataMigration) {
+    const plan = recordValue(dataMigration);
+    if (typeof plan.blockReason === "string" && plan.blockReason) {
+      return normalizedStatus(plan.blockReason);
+    }
+    if (plan.operatorReviewRequired === true) {
+      return "Operator acknowledgement required before automatic apply";
+    }
+    return "None";
+  }
+
+  function appDataMigrationDetailsNode(applyMigration, candidateMigration) {
+    const plan = Object.keys(recordValue(applyMigration)).length
+      ? recordValue(applyMigration)
+      : recordValue(candidateMigration);
+    if (Object.keys(plan).length === 0) {
+      return null;
+    }
+    const details = document.createElement("details");
+    details.className = "json-details app-data-migration-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "App-data migration plan";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Required", plan.required === true ? "Yes" : "No"],
+        ["Status", normalizedStatus(plan.status, "Unavailable")],
+        ["Installed/current schema", scalar(plan.currentSchemaVersion)],
+        ["Candidate/target schema", scalar(plan.targetSchemaVersion)],
+        ["Dry-run", scalar(plan.dryRunStatus)],
+        ["Snapshot", scalar(plan.snapshotStatus)],
+        ["Apply", scalar(plan.applyStatus)],
+        ["Operator review", plan.operatorReviewRequired === true ? "Required" : "Not required"],
+        ["Block reason", migrationBlockerSummary(plan)],
+      ]),
+    );
+    const namespaceNode = appDataMigrationNamespaceList(plan.namespaces);
+    if (namespaceNode) {
+      details.append(namespaceNode);
+    }
+    return details;
+  }
+
+  function appDataMigrationNamespaceList(namespaces) {
+    if (!Array.isArray(namespaces) || namespaces.length === 0) {
+      return null;
+    }
+    const list = document.createElement("ul");
+    list.className = "migration-step-list";
+    namespaces.forEach((namespace) => {
+      const step = recordValue(namespace);
+      const item = document.createElement("li");
+      item.className = "migration-step-item";
+      item.append(
+        text(
+          "span",
+          "migration-step-title",
+          `${scalar(step.namespace)}: ${scalar(step.from)} to ${scalar(step.to)}`,
+        ),
+      );
+      item.append(
+        text(
+          "span",
+          "migration-step-meta",
+          [
+            `step ${scalar(step.stepId)}`,
+            step.rollbackCompatible === true ? "rollback compatible" : "rollback incompatible",
+            step.requiresStopped === true ? "requires stopped app" : null,
+            scalar(step.description),
+          ]
+            .filter(Boolean)
+            .join("; "),
+        ),
+      );
+      list.append(item);
+    });
+    return list;
   }
 
   function appendAppUpdateActionForms(actions, app, updateState, runtimeRunning) {
@@ -5414,6 +5594,7 @@
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+      await loadAppsSection();
     }
   }
 

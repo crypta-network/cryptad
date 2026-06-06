@@ -34,6 +34,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | AppVault secret and identity material | [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) |
 | AppHost runtime hardening | [apphost-runtime-hardening.md](apphost-runtime-hardening.md) |
 | App update lifecycle and rollback | [app-update-lifecycle.md](app-update-lifecycle.md) |
+| App upgrade data migrations | [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
 | Social Inbox Preview | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
@@ -55,13 +56,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 13
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 14
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=13` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=14` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 

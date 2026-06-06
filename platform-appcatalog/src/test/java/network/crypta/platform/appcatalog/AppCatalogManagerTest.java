@@ -120,6 +120,29 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void verifyInstallPlan_whenStagedBundleTampered_expectInvalidAppBundle() throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys);
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      Files.writeString(
+          plan.stagedBundleDirectory().resolve("bin/launch.sh"),
+          "#!/bin/sh\nexit 2\n",
+          StandardCharsets.UTF_8);
+
+      AppCatalogException exception =
+          assertThrows(AppCatalogException.class, () -> manager.verifyInstallPlan(plan));
+
+      assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
+    }
+  }
+
+  @Test
   void addSource_whenCatalogIsSigned_expectSnapshotIncludesSignatureKeyId() throws Exception {
     KeyPair keyPair = keyPair();
     TrustedAppKeys trustedKeys = trustedKeys(keyPair);

@@ -539,8 +539,9 @@ public record CoreHttpShellRuntimeSupport(
     AppCatalogManager appCatalogManager =
         createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
     AppVaultService appVaultService = createAppVaultService(layout);
+    AppDataService appDataService = createAppDataService(layout, appHost);
     AppUpdateService appUpdateService =
-        new AppUpdateService(appHost, appCatalogManager, appVaultService);
+        new AppUpdateService(appHost, appCatalogManager, appVaultService, appDataService);
     AppUpdateSchedulerConfig schedulerConfig = AppUpdateSchedulerConfig.loadFromSystem();
     AppUpdateScheduler appUpdateScheduler =
         createAppUpdateScheduler(
@@ -560,7 +561,6 @@ public record CoreHttpShellRuntimeSupport(
     if (contentSubscriptionScheduler != null && contentSchedulerConfig.enabled()) {
       contentSubscriptionScheduler.start();
     }
-    AppDataService appDataService = createAppDataService(layout, appHost);
     TrustGraphApiHandler trustGraphApiHandler = createTrustGraphApiHandler(layout);
     AppServiceCoordinator appServiceCoordinator =
         createAppServiceCoordinator(layout, appHost, trustGraphApiHandler);

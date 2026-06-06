@@ -1079,6 +1079,7 @@ def app_platform_evidence(
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
         "app-update.rollback",
+        "app-update.data-migration-contract",
         *OPERATOR_BETA_EVIDENCE_IDS,
         "apphost.live",
     ]
@@ -1883,9 +1884,14 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "app-update.scheduler",
                 "app-update.live-catalog-refresh",
                 "app-update.rollback",
+                "app-update.data-migration-contract",
             ),
             gate_ids=("ecosystem.app-update-rollback",),
-            docs=("docs/app-update-lifecycle.md", "docs/release-certification.md"),
+            docs=(
+                "docs/app-update-lifecycle.md",
+                "docs/app-upgrade-data-migrations.md",
+                "docs/release-certification.md",
+            ),
         ),
         MatrixRowSpec(
             id="operator-beta-ux-and-recovery",
@@ -7602,7 +7608,12 @@ def run_self_test(repo_root: Path) -> None:
             item
             for item in missing_update_summary["evidence"]
             if item.get("id")
-            not in {"app-update.lifecycle", "app-update.scheduler", "app-update.rollback"}
+            not in {
+                "app-update.lifecycle",
+                "app-update.scheduler",
+                "app-update.rollback",
+                "app-update.data-migration-contract",
+            }
         ]
         write_json(missing_update_evidence_path, missing_update_summary)
         missing_update_items = app_platform_evidence(
@@ -7612,6 +7623,9 @@ def run_self_test(repo_root: Path) -> None:
         assert missing_update_by_id["app-update.lifecycle"].status == "missing", missing_update_by_id
         assert missing_update_by_id["app-update.scheduler"].status == "missing", missing_update_by_id
         assert missing_update_by_id["app-update.rollback"].status == "missing", missing_update_by_id
+        assert (
+            missing_update_by_id["app-update.data-migration-contract"].status == "missing"
+        ), missing_update_by_id
         missing_update_settings = dataclasses.replace(
             settings,
             out_dir=(workspace / "build/missing-update-cert").resolve(),

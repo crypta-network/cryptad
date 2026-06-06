@@ -98,6 +98,9 @@ If a candidate is excluded by channel policy, the candidate remains visible with
 Deprecated entries are blocked from automatic staging/apply even if a policy includes
 `deprecated`. PR-248 only surfaces deprecation and replacement metadata; it does not implement
 app-data migration, backup/restore, advisory denylist enforcement, or automated replacement flows.
+PR-249 app-data migration acknowledgement is an additional update gate only; it does not override
+`allowedChannels`, `channel_policy_blocked`, signed catalog verification, trusted review receipt
+policy, or deprecated-entry automation blocking.
 
 ## Release certification
 

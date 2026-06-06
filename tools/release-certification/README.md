@@ -147,6 +147,7 @@ app-update.lifecycle
 app-update.scheduler
 app-update.live-catalog-refresh
 app-update.rollback
+app-update.data-migration-contract
 operator-beta.dashboard
 operator-beta.catalog-health
 operator-beta.app-update-recovery
@@ -179,6 +180,10 @@ coverage, issue templates, internal Markdown links, README/portal links, and obv
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
 and Web Shell exposure, signature/review verification preservation, and redaction guarantees.
+`app-update.data-migration-contract` verifies signed app-data schema migration metadata, dry-run
+before bundle replacement, internal app-scoped snapshot/restore, missing-path and
+rollback-incompatible blockers, Feed Reader and Trust Graph Preview examples, and path-free
+redacted update summaries.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review

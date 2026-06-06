@@ -83,8 +83,8 @@ content types, `valueText`.
 
 ## Schema metadata
 
-Apps own their record schemas. The platform records metadata only; it does not execute app-provided
-migration code.
+Apps own their record schemas. The app-facing schema route records metadata only; it does not let
+an app principal submit arbitrary migration code at runtime.
 
 Use:
 
@@ -95,6 +95,14 @@ POST /api/v1/app-data/namespaces/{namespace}/schema
 with `fromSchemaVersion`, `toSchemaVersion`, and optional `summary`. Downgrades are rejected.
 Namespace metadata includes the current schema version, timestamps, and bounded migration history.
 The app is responsible for transforming its own records before or after it records the migration.
+
+App bundle updates have a separate signed migration contract. When `cryptad-app.properties`
+declares `app.data.schema.*` and `app.data.migration.*` fields, `AppUpdateService` can run the
+declared bundle-owned migration entrypoint during staging/apply. That flow performs a dry-run
+before bundle replacement, creates an internal app-scoped rollback snapshot before schema-changing
+apply, records namespace schema metadata after success, and restores the snapshot if migration
+apply fails. The snapshot is internal update machinery, not PR-250 user-facing backup/restore
+portability. See [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md).
 
 ## Quotas and limits
 
@@ -178,6 +186,21 @@ CryptaPlatform.data.import(payload, options)
 
 The SDK keeps browser session tokens in memory only and does not use `localStorage` or
 `sessionStorage` for durable app state.
+
+## Update Migration Barrier
+
+Schema-changing app updates hold an internal app-scoped app-data write barrier from immediately
+before the update snapshot is created until the migration apply, rollback handling, health checks,
+and snapshot cleanup have finished. While this barrier is active, app-facing writes such as record
+put/delete, namespace clear, schema migration metadata updates, import, and app-data cleanup fail
+with `app_data_migration_in_progress`.
+
+The barrier is intentionally app-scoped because update snapshots and rollback restores are
+app-scoped. Blocking only the namespace named by a migration step would still allow browser sessions
+or app principals to write other namespaces after the snapshot, and those writes could be lost if
+the update later rolls back. Internal update migration imports and snapshot restore operations are
+allowed under the barrier so the platform can finish the migration or restore the pre-update
+snapshot without exposing raw values.
 
 ## Uninstall behavior
 

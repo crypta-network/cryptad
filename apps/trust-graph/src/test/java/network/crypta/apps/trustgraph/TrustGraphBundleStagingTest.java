@@ -1,5 +1,6 @@
 package network.crypta.apps.trustgraph;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -25,6 +26,13 @@ class TrustGraphBundleStagingTest {
   private static final String EXPECTED_APP_NAME = "Trust Graph Preview";
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/trust-graph.sh";
+  private static final String APP_SCRIPT = "app.js";
+  private static final String APP_STYLESHEET = "app.css";
+  private static final String PLATFORM_SDK_SCRIPT = "crypta-platform.js";
+  private static final String LOCAL_STORAGE = "localStorage";
+  private static final String SESSION_STORAGE = "sessionStorage";
+  private static final String FORM_PASSWORD = "formPassword";
+  private static final String APP_TOKEN_ENV = "CRYPTAD_APP_TOKEN";
   private static final String EXPECTED_PERMISSIONS =
       "trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,"
           + "queue.read,queue.write,vault.identities.read,vault.identities.create,"
@@ -44,7 +52,7 @@ class TrustGraphBundleStagingTest {
           "app.data.read",
           "app.data.write");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 10;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 13;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 14;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -56,7 +64,7 @@ class TrustGraphBundleStagingTest {
           "platform",
           "sdk",
           "js",
-          "crypta-platform.js");
+          PLATFORM_SDK_SCRIPT);
   private static final Path DESIGN_SYSTEM_SOURCE_PATH =
       Path.of(
           "platform-design-system",
@@ -92,44 +100,35 @@ class TrustGraphBundleStagingTest {
     assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
     assertEquals(Long.valueOf(1_048_576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2_097_152L), manifest.cacheQuotaBytes());
+    assertEquals(2, manifest.dataSchemaContract().currentSchemaVersion());
+    assertEquals(1, manifest.dataSchemaContract().namespaces().size());
+    assertEquals(1, manifest.dataSchemaContract().migrations().size());
+    assertEquals("ui-state-v1-v2", manifest.dataSchemaContract().migrations().getFirst().stepId());
+    assertFalse(manifest.dataSchemaContract().migrations().getFirst().rollbackCompatible());
   }
 
   @Test
-  void stagedBundle_whenManifestRead_expectExpectedRenderedContent() throws Exception {
+  void stagedBundle_whenManifestRead_expectExpectedRenderedContent() throws IOException {
     String manifestText =
         Files.readString(stageDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
 
-    assertTrue(manifestText.contains("manifest.version=1"));
-    assertTrue(manifestText.contains("app.id=" + EXPECTED_APP_ID));
-    assertTrue(manifestText.contains("app.name=" + EXPECTED_APP_NAME));
-    assertTrue(manifestText.contains("app.version=" + System.getProperty(APP_VERSION_PROPERTY)));
-    assertTrue(
-        manifestText.contains("api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION));
-    assertTrue(
-        manifestText.contains(
-            "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION));
-    assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=true"));
-    assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));
-    assertTrue(manifestText.contains("app.ui.mode=static"));
-    assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));
-    assertTrue(manifestText.contains("app.permissions=" + EXPECTED_PERMISSIONS));
-    assertTrue(manifestText.contains("app.services.provides=trust-score"));
-    assertTrue(manifestText.contains("app.service.trust-score.id=trust.score"));
-    assertTrue(manifestText.contains("app.service.trust-score.name=Trust Score Service"));
-    assertTrue(manifestText.contains("app.service.trust-score.version=1"));
-    assertTrue(manifestText.contains("app.service.trust-score.kind=platform-adapter"));
-    assertTrue(manifestText.contains("app.service.trust-score.adapter=trust-graph.score"));
-    assertTrue(manifestText.contains("app.service.trust-score.scopes=score.read"));
-    assertTrue(manifestText.contains("app.service.trust-score.contexts=message-author,profile"));
-    assertTrue(
-        manifestText.contains(
-            "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score"
-                + " summary for an app-provided public subject."));
-    assertTrue(manifestText.contains("sandbox.mode=restricted-process"));
-    assertTrue(manifestText.contains("sandbox.required=false"));
-    assertTrue(manifestText.contains("app.restart.policy=never"));
-    assertTrue(manifestText.contains("quota.data.bytes=1048576"));
-    assertTrue(manifestText.contains("quota.cache.bytes=2097152"));
+    verifyManifestIdentityContent(manifestText);
+    verifyManifestTrustScoreServiceContent(manifestText);
+    verifyManifestRuntimeContent(manifestText);
+    verifyManifestDataMigrationContent(manifestText);
+  }
+
+  @Test
+  void stagedBundle_whenMigrationScriptStaged_expectDryRunAndApplyEntrypoint() throws Exception {
+    Path migrationScript = stageDirectory().resolve("bin/migrate-preview-data.sh");
+    String script = Files.readString(migrationScript);
+
+    assertTrue(script.startsWith("#!/bin/sh\n"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_MODE"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_INPUT"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_OUTPUT"));
+    assertTrue(script.contains("dry-run|apply"));
+    assertTrue(script.contains("Trust Graph Preview app-data migration"));
   }
 
   @Test
@@ -157,8 +156,8 @@ class TrustGraphBundleStagingTest {
 
     verifyStaticAssetsPresent(staticDirectory);
     String indexHtml = Files.readString(staticDirectory.resolve("index.html"));
-    String appScript = Files.readString(staticDirectory.resolve("app.js"));
-    String appCss = Files.readString(staticDirectory.resolve("app.css"));
+    String appScript = Files.readString(staticDirectory.resolve(APP_SCRIPT));
+    String appCss = Files.readString(staticDirectory.resolve(APP_STYLESHEET));
     verifyDesignSystemCssLoadsBeforeAppCss(indexHtml);
     verifyDesignSystemComponentsLoadsBeforeSdk(indexHtml);
     verifySdkLoadsBeforeAppScript(indexHtml);
@@ -167,25 +166,77 @@ class TrustGraphBundleStagingTest {
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-tokens.css");
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui.css");
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-components.js");
-    verifyStagedSdkScript(Files.readString(staticDirectory.resolve("crypta-platform.js")));
+    verifyStagedSdkScript(Files.readString(staticDirectory.resolve(PLATFORM_SDK_SCRIPT)));
     verifyTrustGraphAppScript(appScript);
   }
 
   private static void verifyStaticAssetsPresent(Path staticDirectory) {
     assertTrue(Files.isRegularFile(staticDirectory.resolve("index.html")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("app.js")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("app.css")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-platform.js")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(APP_SCRIPT)));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(APP_STYLESHEET)));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(PLATFORM_SDK_SCRIPT)));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-tokens.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-components.js")));
     assertTrue(Files.notExists(staticDirectory.resolve("README.txt")));
   }
 
+  private static void verifyManifestIdentityContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "manifest.version=1",
+        "app.id=" + EXPECTED_APP_ID,
+        "app.name=" + EXPECTED_APP_NAME,
+        "app.version=" + System.getProperty(APP_VERSION_PROPERTY),
+        "api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION,
+        "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION,
+        "api.experimentalCapabilitiesAccepted=true",
+        "app.exec=" + EXPECTED_LAUNCHER_PATH,
+        "app.ui.mode=static",
+        "app.ui.entry=" + EXPECTED_UI_ENTRY,
+        "app.permissions=" + EXPECTED_PERMISSIONS);
+  }
+
+  private static void verifyManifestTrustScoreServiceContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "app.services.provides=trust-score",
+        "app.service.trust-score.id=trust.score",
+        "app.service.trust-score.name=Trust Score Service",
+        "app.service.trust-score.version=1",
+        "app.service.trust-score.kind=platform-adapter",
+        "app.service.trust-score.adapter=trust-graph.score",
+        "app.service.trust-score.scopes=score.read",
+        "app.service.trust-score.contexts=message-author,profile",
+        "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score"
+            + " summary for an app-provided public subject.");
+  }
+
+  private static void verifyManifestRuntimeContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "sandbox.mode=restricted-process",
+        "sandbox.required=false",
+        "app.restart.policy=never",
+        "quota.data.bytes=1048576",
+        "quota.cache.bytes=2097152");
+  }
+
+  private static void verifyManifestDataMigrationContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "app.data.schema.current=2",
+        "app.data.schema.namespaces=ui-state",
+        "app.data.schema.namespace.ui-state.current=2",
+        "app.data.migrations=ui-state-v1-v2",
+        "app.data.migration.ui-state-v1-v2.command=bin/migrate-preview-data.sh",
+        "app.data.migration.ui-state-v1-v2.rollbackCompatible=false");
+  }
+
   private static void verifyDesignSystemCssLoadsBeforeAppCss(String indexHtml) {
     int tokensIndex = indexHtml.indexOf("crypta-ui-tokens.css");
     int uiCssIndex = indexHtml.indexOf("crypta-ui.css");
-    int appCssIndex = indexHtml.indexOf("app.css");
+    int appCssIndex = indexHtml.indexOf(APP_STYLESHEET);
 
     assertTrue(tokensIndex >= 0, "index.html must load design-system tokens.");
     assertTrue(uiCssIndex > tokensIndex, "index.html must load design-system CSS after tokens.");
@@ -194,15 +245,15 @@ class TrustGraphBundleStagingTest {
 
   private static void verifyDesignSystemComponentsLoadsBeforeSdk(String indexHtml) {
     int componentsIndex = indexHtml.indexOf("crypta-ui-components.js");
-    int sdkScriptIndex = indexHtml.indexOf("crypta-platform.js");
+    int sdkScriptIndex = indexHtml.indexOf(PLATFORM_SDK_SCRIPT);
 
     assertTrue(componentsIndex >= 0, "index.html must load design-system components.");
     assertTrue(sdkScriptIndex > componentsIndex, "index.html must load the SDK after components.");
   }
 
   private static void verifySdkLoadsBeforeAppScript(String indexHtml) {
-    int sdkScriptIndex = indexHtml.indexOf("crypta-platform.js");
-    int appScriptIndex = indexHtml.indexOf("app.js");
+    int sdkScriptIndex = indexHtml.indexOf(PLATFORM_SDK_SCRIPT);
+    int appScriptIndex = indexHtml.indexOf(APP_SCRIPT);
 
     assertTrue(sdkScriptIndex >= 0, "index.html must load the platform SDK.");
     assertTrue(appScriptIndex > sdkScriptIndex, "index.html must load app.js after the SDK.");
@@ -250,12 +301,12 @@ class TrustGraphBundleStagingTest {
 
     verifyContainsNone(
         combined,
-        "localStorage",
-        "sessionStorage",
+        LOCAL_STORAGE,
+        SESSION_STORAGE,
         "indexedDB",
         "document.cookie",
-        "formPassword",
-        "CRYPTAD_APP_TOKEN",
+        FORM_PASSWORD,
+        APP_TOKEN_ENV,
         "/api/v1/",
         "innerHTML",
         "insertAdjacentHTML",
@@ -286,8 +337,7 @@ class TrustGraphBundleStagingTest {
         "dom:",
         "browserSessionToken",
         "X-Crypta-App-Session");
-    verifyContainsNone(
-        sdkScript, "formPassword", "CRYPTAD_APP_TOKEN", "localStorage", "sessionStorage");
+    verifyContainsNone(sdkScript, FORM_PASSWORD, APP_TOKEN_ENV, LOCAL_STORAGE, SESSION_STORAGE);
   }
 
   private static void verifyTrustGraphAppScript(String appScript) {
@@ -351,12 +401,12 @@ class TrustGraphBundleStagingTest {
         "function loadJson",
         "function apiError",
         "/api/v1/",
-        "localStorage",
-        "sessionStorage",
+        LOCAL_STORAGE,
+        SESSION_STORAGE,
         "indexedDB",
         "document.cookie",
-        "formPassword",
-        "CRYPTAD_APP_TOKEN",
+        FORM_PASSWORD,
+        APP_TOKEN_ENV,
         "innerHTML",
         "insertAdjacentHTML");
   }

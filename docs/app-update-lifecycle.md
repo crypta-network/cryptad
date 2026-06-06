@@ -15,6 +15,7 @@ The v1 policy is:
 | Schedule | The background scheduler refreshes configured signed catalogs and checks installed apps. It delegates app checks to the same lifecycle service used by manual requests. | `app-update.scheduler` |
 | Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, publisher-advisory review notes, trusted review receipt decisions, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
 | Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
+| App-data migration | A candidate that changes durable app-data schema must declare a signed migration contract, pass dry-run before bundle replacement, and create an internal app-data snapshot before apply. | `app-update.data-migration-contract` |
 | Apply | Applying an update is manual by default. The target app must be stopped unless an explicit restart request allows stop/start choreography. | `app-update.lifecycle` |
 | Roll back | A successful update records the previous installed bundle as the durable rollback target. If replacement cannot complete, AppHost restores the previous bundle from a managed backup. | `app-update.rollback` |
 
@@ -60,6 +61,42 @@ When channel policy excludes an otherwise newer candidate, the update summary ke
 visible with `channelPolicyAllowed=false`, `policyBlockReason=channel_policy_blocked`, and
 `autoStageAllowed=false`. Update history records the same stable reason without exposing catalog
 scratch paths, staged bundle paths, private insert URIs, tokens, or raw app data.
+
+## App-data migration contract
+
+When a candidate bundle declares `app.data.*` schema metadata, staging compares the target
+contract with the installed manifest and current durable app-data namespace metadata. The update
+summary includes a path-free `dataMigration` object with `required`, `status`,
+`currentSchemaVersion`, `targetSchemaVersion`, namespace step summaries, rollback compatibility,
+operator-review requirement, dry-run/snapshot/apply status, and a stable `blockReason` when the
+update cannot proceed.
+
+The migration plan never exposes command paths, staged bundle paths, AppHost paths, app process
+tokens, browser-session tokens, private insert URIs, raw migration logs, or raw app-data values.
+Web Shell renders only schema versions, namespaces, step ids, descriptions, status strings, and
+risk flags.
+
+Schema-changing updates fail closed:
+
+- missing migration path blocks staging with `app_data_migration_missing`;
+- rollback-incompatible migration steps block automatic apply and require explicit operator
+  acknowledgement before staging;
+- migration dry-run runs before bundle replacement and blocks staging with
+  `app_data_migration_dry_run_failed` when it fails;
+- signed steps with `requiresStopped=true` block stage dry-run with
+  `app_data_migration_requires_stopped` while AppHost still reports the app running;
+- required migrations for sandbox-requesting bundles fail closed with
+  `app_data_migration_sandbox_unavailable` unless the migration launcher can enforce the AppHost
+  sandbox boundary;
+- apply creates an internal app-scoped app-data snapshot before bundle replacement;
+- migration commands receive a scoped namespace export payload and must produce a validated
+  migrated output payload before schema metadata is recorded;
+- apply migration failure rolls back the bundle when possible and restores app data from the
+  internal snapshot;
+- snapshot restore failure is reported with `app_data_restore_failed` without raw data.
+
+See [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) for the signed manifest
+grammar, runner environment, snapshot limits, and PR-250 backup/restore non-goals.
 
 ## Candidate detection
 
@@ -159,6 +196,12 @@ Rollback does not roll back:
 Data, cache, and run directories are intentionally preserved across successful updates. If a new
 bundle changes its own data format, the app owns that migration and any app-level downgrade policy.
 
+Schema-changing app updates are the one app-data exception to the bundle-only rollback rule. During
+that apply path, `AppUpdateService` creates a short-lived internal app-data snapshot before
+replacing the bundle and restores it when migration apply or post-migration schema recording fails.
+That snapshot is app-scoped, bounded by the app-data export/import limits, and is not exposed as a
+user-facing backup or cross-app restore feature.
+
 Vault records are also outside rollback snapshots. App-owned secrets, app-owned identities, shared
 identity grants, and grant status changes are evaluated against the currently installed manifest
 and current local grant state. Updating an app preserves app-owned vault material and active grants
@@ -199,6 +242,10 @@ scope:
   failure backoff, and preserves the manual stable-only default policy.
 - `app-update.rollback` proves durable installed-bundle backup/restore behavior and confirms data,
   cache, and run directories are outside rollback scope.
+- `app-update.data-migration-contract` proves signed manifest schema/migration metadata,
+  pre-update dry-run, app-scoped snapshot/restore, missing-path and rollback-incompatible blockers,
+  path-free Platform API/Web Shell summaries, Feed Reader and Trust Graph Preview examples, and
+  raw app-data/token/path/private-URI redaction.
 
 The evidence is collected by `tools/release-certification/app_platform_smoke.py` and aggregated by
 `tools/release-certification/release_certification.py`. It does not require a live node. Release

@@ -128,6 +128,33 @@ class AppBundleStructureValidatorTest {
         exception.getMessage());
   }
 
+  @Test
+  void validate_whenMigrationCommandIsRegularNonExecutableFile_expectAccepted() throws Exception {
+    Path bundleRoot =
+        createBundle(
+            "bin/start.sh",
+            "echo sample\n",
+            """
+            app.data.schema.current=2
+            app.data.schema.namespaces=feeds
+            app.data.schema.namespace.feeds.current=2
+            app.data.migrations=feeds-v1-v2
+            app.data.migration.feeds-v1-v2.namespace=feeds
+            app.data.migration.feeds-v1-v2.from=1
+            app.data.migration.feeds-v1-v2.to=2
+            app.data.migration.feeds-v1-v2.command=bin/migrate.sh
+            app.data.migration.feeds-v1-v2.rollbackCompatible=true
+            app.data.migration.feeds-v1-v2.requiresStopped=true
+            app.data.migration.feeds-v1-v2.description=Upgrade feed data.
+            """);
+    Files.writeString(bundleRoot.resolve("bin/migrate.sh"), "echo migrate\n");
+
+    AppBundleStructureValidator.ValidatedBundle validated =
+        AppBundleStructureValidator.validate(bundleRoot);
+
+    assertEquals("sample-app", validated.manifest().appId());
+  }
+
   private Path createBundle(String execPath, String executableContent) throws Exception {
     return createBundle(execPath, executableContent, "");
   }

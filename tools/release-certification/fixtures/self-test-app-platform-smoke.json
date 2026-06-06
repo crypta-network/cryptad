@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 13,
+        "contractVersion": 14,
         "endpointCount": 61,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -1766,6 +1766,48 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "App-update rollback scope passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "appHostCarriesSignedContract": true,
+          "dryRunRunsBeforeStagingApply": true,
+          "feedReaderDeclaresMigrationExample": true,
+          "internalSnapshotPrimitives": true,
+          "manifestModelsAndParser": true,
+          "manifestValidationRejectsUnsafeMetadata": true,
+          "migrationRunnerIsShellFreeAndScoped": true,
+          "missingPathAndRollbackRiskBlock": true,
+          "redactionAndDocsCoverScope": true,
+          "signedBundleStructureChecksEntrypoints": true,
+          "snapshotBeforeReplacementAndRestoreOnFailure": true,
+          "trustGraphDeclaresMigrationExample": true,
+          "updateSummariesExposeSafePlan": true,
+          "webShellRendersMigrationStatus": true
+        },
+        "redaction": {
+          "privateInsertUrisExcluded": true,
+          "rawAppDataValuesExcluded": true,
+          "rawCommandLogsExcluded": true,
+          "stagingPathsExcluded": true,
+          "tokensExcluded": true
+        },
+        "referenceApps": {
+          "feed-reader": {
+            "migration": "ui-state-v1-v2",
+            "schema": "2"
+          },
+          "trust-graph": {
+            "migration": "ui-state-v1-v2",
+            "schema": "2"
+          }
+        }
+      },
+      "id": "app-update.data-migration-contract",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-data migration contract evidence passed deterministic checks."
     },
     {
       "details": {

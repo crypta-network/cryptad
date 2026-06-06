@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.Objects;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundleManifest;
+import network.crypta.platform.appdist.AppDataSchemaContract;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
@@ -34,6 +35,7 @@ import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
  * @param uiEntry optional UI entry path, or {@code null}
  * @param permissions normalized permission strings
  * @param apiCompatibility optional Platform API contract metadata declared by the app
+ * @param dataSchemaContract signed durable app-data schema and migration contract metadata
  * @param dataQuotaBytes optional data quota metadata, or {@code null}
  * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
  * @param sandboxPolicy requested process sandbox policy
@@ -51,6 +53,7 @@ public record AppManifest(
     String uiEntry,
     List<String> permissions,
     AppApiCompatibilityMetadata apiCompatibility,
+    AppDataSchemaContract dataSchemaContract,
     Long dataQuotaBytes,
     Long cacheQuotaBytes,
     AppSandboxPolicy sandboxPolicy,
@@ -69,6 +72,7 @@ public record AppManifest(
    * @param uiEntry optional UI entry path, or {@code null}
    * @param permissions normalized permission strings
    * @param apiCompatibility optional Platform API contract metadata declared by the app
+   * @param dataSchemaContract signed durable app-data schema and migration contract metadata
    * @param dataQuotaBytes optional data quota metadata, or {@code null}
    * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
    * @param sandboxPolicy requested process sandbox policy
@@ -88,6 +92,7 @@ public record AppManifest(
             uiEntry,
             permissions,
             apiCompatibility,
+            dataSchemaContract,
             dataQuotaBytes,
             cacheQuotaBytes,
             Objects.requireNonNullElse(sandboxPolicy, AppSandboxPolicy.defaults()).mode(),
@@ -104,12 +109,70 @@ public record AppManifest(
     uiEntry = normalized.uiEntry();
     permissions = normalized.permissions();
     apiCompatibility = normalized.apiCompatibility();
+    dataSchemaContract = normalized.dataSchemaContract();
     dataQuotaBytes = normalized.dataQuotaBytes();
     cacheQuotaBytes = normalized.cacheQuotaBytes();
     sandboxPolicy = new AppSandboxPolicy(normalized.sandboxMode(), normalized.sandboxRequired());
     restartPolicy = normalized.restartPolicy();
     restartMaxAttempts = normalized.restartMaxAttempts();
     restartBackoffMillis = normalized.restartBackoffMillis();
+  }
+
+  /**
+   * Creates a manifest with no app-data migration contract metadata.
+   *
+   * <p>This overload preserves source compatibility for callers that construct AppHost manifests
+   * directly using the pre-migration-contract constructor shape.
+   *
+   * @param manifestVersion manifest schema version
+   * @param appId stable path-safe app identifier
+   * @param appName human-readable application name
+   * @param appVersion display version string
+   * @param execPathText executable path relative to the installed app root
+   * @param uiMode normalized browser UI ownership mode declared or inferred from the manifest
+   * @param uiEntry optional UI entry path, or {@code null}
+   * @param permissions normalized permission strings
+   * @param apiCompatibility optional Platform API contract metadata declared by the app
+   * @param dataQuotaBytes optional data quota metadata, or {@code null}
+   * @param cacheQuotaBytes optional cache quota metadata, or {@code null}
+   * @param sandboxPolicy requested process sandbox policy
+   * @param restartPolicy normalized process restart policy
+   * @param restartMaxAttempts maximum automatic restart attempts for one daemon-managed run
+   * @param restartBackoffMillis delay before an automatic restart attempt
+   */
+  public AppManifest(
+      int manifestVersion,
+      String appId,
+      String appName,
+      String appVersion,
+      String execPathText,
+      AppUiMode uiMode,
+      String uiEntry,
+      List<String> permissions,
+      AppApiCompatibilityMetadata apiCompatibility,
+      Long dataQuotaBytes,
+      Long cacheQuotaBytes,
+      AppSandboxPolicy sandboxPolicy,
+      AppRestartPolicy restartPolicy,
+      int restartMaxAttempts,
+      long restartBackoffMillis) {
+    this(
+        manifestVersion,
+        appId,
+        appName,
+        appVersion,
+        execPathText,
+        uiMode,
+        uiEntry,
+        permissions,
+        apiCompatibility,
+        AppDataSchemaContract.undeclared(),
+        dataQuotaBytes,
+        cacheQuotaBytes,
+        sandboxPolicy,
+        restartPolicy,
+        restartMaxAttempts,
+        restartBackoffMillis);
   }
 
   /**
@@ -158,6 +221,7 @@ public record AppManifest(
         uiEntry,
         permissions,
         AppApiCompatibilityMetadata.undeclared(),
+        AppDataSchemaContract.undeclared(),
         dataQuotaBytes,
         cacheQuotaBytes,
         sandboxPolicy,
@@ -353,6 +417,7 @@ public record AppManifest(
         manifest.uiEntry(),
         manifest.permissions(),
         manifest.apiCompatibility(),
+        manifest.dataSchemaContract(),
         manifest.dataQuotaBytes(),
         manifest.cacheQuotaBytes(),
         new AppSandboxPolicy(manifest.sandboxMode(), manifest.sandboxRequired()),

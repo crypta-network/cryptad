@@ -657,6 +657,21 @@ class AppUpdateSchedulerTest {
     Path scratch = tempDir.resolve("scratch-" + entry.version());
     Path staged = scratch.resolve("bundle");
     Files.createDirectories(staged);
+    Files.writeString(
+        staged.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
     return new AppCatalogInstallPlan(CATALOG_ID, entry, staged, scratch);
   }
 }

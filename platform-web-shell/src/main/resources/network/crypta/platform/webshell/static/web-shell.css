@@ -581,6 +581,32 @@ a {
   font-size: 0.9rem;
 }
 
+.migration-step-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.migration-step-item {
+  overflow-wrap: anywhere;
+}
+
+.migration-step-title,
+.migration-step-meta {
+  display: block;
+}
+
+.migration-step-title {
+  color: var(--shell-text);
+  font-weight: 700;
+}
+
+.migration-step-meta {
+  color: var(--shell-muted);
+  font-size: 0.9rem;
+}
+
 .catalog-app-list {
   display: grid;
   gap: 10px;

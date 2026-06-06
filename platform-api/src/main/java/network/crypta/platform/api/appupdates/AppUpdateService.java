@@ -1,19 +1,31 @@
 package network.crypta.platform.api.appupdates;
 
 import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.appdata.AppDataNamespaceMetadata;
+import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataUpdateSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
@@ -31,6 +43,10 @@ import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
+import network.crypta.platform.appdist.AppDataMigrationStep;
+import network.crypta.platform.appdist.AppDataNamespaceSchema;
+import network.crypta.platform.appdist.AppDataSchemaContract;
+import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -39,6 +55,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.appvault.AppVaultException;
 import network.crypta.platform.appvault.AppVaultService;
 
@@ -93,6 +110,19 @@ public final class AppUpdateService {
   private static final String ERROR_HEALTH_CHECK_FAILED = "health_check_failed";
   private static final String ERROR_UPDATE_FAILED = "update_failed";
   private static final String ERROR_STAGE_FAILED = "stage_failed";
+  private static final String ERROR_APP_DATA_MIGRATION_MISSING = "app_data_migration_missing";
+  private static final String ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED =
+      "app_data_migration_dry_run_failed";
+  private static final String ERROR_APP_DATA_MIGRATION_APPLY_FAILED =
+      "app_data_migration_apply_failed";
+  private static final String ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED =
+      "app_data_migration_review_required";
+  private static final String ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED =
+      "app_data_migration_requires_stopped";
+  private static final String ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE =
+      "app_data_migration_sandbox_unavailable";
+  private static final String ERROR_APP_DATA_SNAPSHOT_FAILED = "app_data_snapshot_failed";
+  private static final String ERROR_APP_DATA_RESTORE_FAILED = "app_data_restore_failed";
   private static final String ERROR_INVALID_UPDATE_OPTION = "invalid_update_option";
   private static final String ERROR_INVALID_APP_BUNDLE = "invalid_app_bundle";
   private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
@@ -105,6 +135,10 @@ public final class AppUpdateService {
       "Staged update applied; vault grant cleanup failed and requires operator review.";
   private static final String MESSAGE_STAGE_FAILED = "Failed to stage update candidate.";
   private static final String MESSAGE_ROLLBACK_FAILED = "Rollback failed.";
+  private static final String MESSAGE_STAGED_UPDATE_NO_LONGER_MATCHES =
+      "Staged update no longer matches the installed app version.";
+  private static final String MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED =
+      "App-data migration dry-run failed.";
   private static final String VERSION_NEWER = "newer";
   private static final String VERSION_LOWER = "lower";
   private static final String VERSION_EQUAL = "equal";
@@ -124,6 +158,8 @@ public final class AppUpdateService {
   private final AppReviewPolicy reviewPolicy;
   private final ReviewerKeysProvider reviewerKeysProvider;
   private final AppVaultService appVaultService;
+  private final AppDataService appDataService;
+  private final AppDataMigrationRunner migrationRunner;
   private SchedulerSummaryProvider schedulerSummaryProvider;
   private SchedulerStateCleaner schedulerStateCleaner = _ -> {};
   private final Map<String, AppUpdatePolicy> policies = new LinkedHashMap<>();
@@ -131,6 +167,32 @@ public final class AppUpdateService {
   private final Map<String, StagedUpdate> stagedUpdates = new LinkedHashMap<>();
   private final Map<String, LastCheck> lastChecks = new LinkedHashMap<>();
   private final Map<String, Deque<AppUpdateHistoryEntry>> history = new LinkedHashMap<>();
+
+  private static AppUpdateDependencies defaultDependencies(
+      AppVaultService appVaultService, AppDataService appDataService) {
+    return new AppUpdateDependencies(
+        AppReviewPolicy.loadFromSystem(),
+        trustedReviewerKeysFromSystem(),
+        appVaultService,
+        appDataService,
+        AppDataMigrationRunner.localProcess(),
+        AppUpdateService::disabledSchedulerSummary);
+  }
+
+  private static AppUpdateDependencies reviewedDependencies(
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService,
+      AppDataMigrationRunner migrationRunner,
+      SchedulerSummaryProvider schedulerSummaryProvider) {
+    return new AppUpdateDependencies(
+        reviewPolicy,
+        reviewerKeysProvider,
+        appVaultService,
+        null,
+        migrationRunner,
+        schedulerSummaryProvider);
+  }
 
   /**
    * Creates an app-update service backed by signed catalogs and AppHost.
@@ -144,7 +206,7 @@ public final class AppUpdateService {
    * @param catalogManager signed catalog manager used for candidate discovery and staging
    */
   public AppUpdateService(AppHost appHost, AppCatalogManager catalogManager) {
-    this(appHost, catalogManager, null);
+    this(appHost, catalogManager, (AppVaultService) null);
   }
 
   /**
@@ -157,13 +219,24 @@ public final class AppUpdateService {
    */
   public AppUpdateService(
       AppHost appHost, AppCatalogManager catalogManager, AppVaultService appVaultService) {
-    this(
-        appHost,
-        catalogManager,
-        AppReviewPolicy.loadFromSystem(),
-        trustedReviewerKeysFromSystem(),
-        appVaultService,
-        AppUpdateService::disabledSchedulerSummary);
+    this(appHost, catalogManager, appVaultService, null);
+  }
+
+  /**
+   * Creates an app-update service with optional vault and app-data integration.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param appVaultService optional app-vault service used to disable grants after permission
+   *     removal
+   * @param appDataService optional durable app-data service used for migration snapshots
+   */
+  public AppUpdateService(
+      AppHost appHost,
+      AppCatalogManager catalogManager,
+      AppVaultService appVaultService,
+      AppDataService appDataService) {
+    this(appHost, catalogManager, defaultDependencies(appVaultService, appDataService));
   }
 
   /**
@@ -201,10 +274,12 @@ public final class AppUpdateService {
     this(
         appHost,
         catalogManager,
-        reviewPolicy,
-        reviewerKeysProvider,
-        appVaultService,
-        AppUpdateService::disabledSchedulerSummary);
+        reviewedDependencies(
+            reviewPolicy,
+            reviewerKeysProvider,
+            appVaultService,
+            AppDataMigrationRunner.localProcess(),
+            AppUpdateService::disabledSchedulerSummary));
   }
 
   /**
@@ -232,14 +307,36 @@ public final class AppUpdateService {
       ReviewerKeysProvider reviewerKeysProvider,
       AppVaultService appVaultService,
       SchedulerSummaryProvider schedulerSummaryProvider) {
+    this(
+        appHost,
+        catalogManager,
+        reviewedDependencies(
+            reviewPolicy,
+            reviewerKeysProvider,
+            appVaultService,
+            AppDataMigrationRunner.localProcess(),
+            schedulerSummaryProvider));
+  }
+
+  /**
+   * Creates an app-update service with explicit optional dependencies.
+   *
+   * @param appHost AppHost used for installed state, apply, start, stop, and rollback
+   * @param catalogManager signed catalog manager used for candidate discovery and staging
+   * @param dependencies review, app-data, migration-runner, vault, and scheduler integrations
+   */
+  public AppUpdateService(
+      AppHost appHost, AppCatalogManager catalogManager, AppUpdateDependencies dependencies) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
-    this.reviewPolicy = Objects.requireNonNull(reviewPolicy, "reviewPolicy");
-    this.reviewerKeysProvider =
-        Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
-    this.appVaultService = appVaultService;
-    this.schedulerSummaryProvider =
-        Objects.requireNonNull(schedulerSummaryProvider, "schedulerSummaryProvider");
+    AppUpdateDependencies checkedDependencies =
+        Objects.requireNonNull(dependencies, "dependencies");
+    this.reviewPolicy = checkedDependencies.reviewPolicy();
+    this.reviewerKeysProvider = checkedDependencies.reviewerKeysProvider();
+    this.appVaultService = checkedDependencies.appVaultService();
+    this.appDataService = checkedDependencies.appDataService();
+    this.migrationRunner = checkedDependencies.migrationRunner();
+    this.schedulerSummaryProvider = checkedDependencies.schedulerSummaryProvider();
   }
 
   private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
@@ -298,6 +395,39 @@ public final class AppUpdateService {
      * @param appId normalized app id
      */
     void clearSchedulerState(String appId);
+  }
+
+  /**
+   * Optional integrations used by advanced AppUpdateService embeddings and tests.
+   *
+   * <p>Most callers should use the shorter constructors, which load the local review policy,
+   * trusted reviewer keys, process migration runner, and disabled scheduler summary provider from
+   * the daemon defaults. This record is for compositions that already own those dependencies, such
+   * as the HTTP runtime after it creates a shared scheduler, or tests that need a deterministic
+   * migration runner. The vault and app-data services remain nullable because they are optional
+   * subsystem integrations; the other dependencies are required for safe update decisions.
+   *
+   * @param reviewPolicy local app-review policy
+   * @param reviewerKeysProvider provider for trusted reviewer keys
+   * @param appVaultService optional vault integration used to disable removed grants
+   * @param appDataService optional durable app-data integration used by update migrations
+   * @param migrationRunner app-data migration command runner
+   * @param schedulerSummaryProvider path-free scheduler summary provider
+   */
+  public record AppUpdateDependencies(
+      AppReviewPolicy reviewPolicy,
+      ReviewerKeysProvider reviewerKeysProvider,
+      AppVaultService appVaultService,
+      AppDataService appDataService,
+      AppDataMigrationRunner migrationRunner,
+      SchedulerSummaryProvider schedulerSummaryProvider) {
+    /** Creates validated AppUpdateService dependencies. */
+    public AppUpdateDependencies {
+      Objects.requireNonNull(reviewPolicy, "reviewPolicy");
+      Objects.requireNonNull(reviewerKeysProvider, "reviewerKeysProvider");
+      Objects.requireNonNull(migrationRunner, "migrationRunner");
+      Objects.requireNonNull(schedulerSummaryProvider, "schedulerSummaryProvider");
+    }
   }
 
   /**
@@ -437,6 +567,21 @@ public final class AppUpdateService {
    * @return path-free update summary after a verified candidate is staged
    */
   public synchronized Map<String, Object> stage(String appId, boolean reviewAcknowledged) {
+    return stage(appId, reviewAcknowledged, false);
+  }
+
+  /**
+   * Stages a verified catalog update candidate with explicit review and migration acknowledgement
+   * options.
+   *
+   * @param appId app id from the request path
+   * @param reviewAcknowledged whether the operator acknowledged an untrusted review decision
+   * @param migrationAcknowledged whether the operator acknowledged rollback-incompatible migration
+   *     risk
+   * @return path-free update summary after a verified candidate is staged
+   */
+  public synchronized Map<String, Object> stage(
+      String appId, boolean reviewAcknowledged, boolean migrationAcknowledged) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     AppUpdateCandidate candidate = candidateOrDetect(normalizedAppId, installed);
@@ -451,7 +596,7 @@ public final class AppUpdateService {
           "explicit_stage_blocked:" + exception.errorCode());
       throw exception;
     }
-    stageCandidate(normalizedAppId, installed, candidate);
+    stageCandidate(normalizedAppId, installed, candidate, migrationAcknowledged);
     return summary(normalizedAppId, installed);
   }
 
@@ -472,36 +617,47 @@ public final class AppUpdateService {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     StagedUpdate staged = requireStagedUpdate(normalizedAppId);
-    boolean wasRunning;
-    try {
-      wasRunning = validateApplyRequest(normalizedAppId, staged, installed, options);
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_allowed");
-    } catch (PlatformApiException exception) {
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_blocked:" + exception.errorCode());
-      throw exception;
-    }
+    boolean wasRunning =
+        validateApplyRequestAndRecordGate(normalizedAppId, staged, installed, options);
 
     InstalledAppSnapshot updated = null;
     HealthFailureState healthFailureState = new HealthFailureState();
+    AppDataUpdateSnapshot appDataSnapshot = null;
+    AppDataService.UpdateMigrationWriteBarrier appDataWriteBarrier = null;
+    AppDataMigrationPlan migrationPlan = staged.migrationPlan();
     boolean vaultCleanupFailed;
     try {
       if (wasRunning) {
         appHost.stop(normalizedAppId);
       }
+      verifyStageStillMatchesInstalledForApply(normalizedAppId, staged, installed);
+      AppManifest targetManifest = stagedManifestForApplyOrReject(staged);
+      if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
+        appDataWriteBarrier = beginUpdateMigrationWriteBarrier(normalizedAppId);
+      }
+      migrationPlan =
+          refreshMigrationPlanForApply(normalizedAppId, staged, installed, targetManifest);
+      if (migrationPlan.required()) {
+        if (appDataWriteBarrier == null) {
+          appDataWriteBarrier = beginUpdateMigrationWriteBarrier(normalizedAppId);
+        }
+        appDataSnapshot = createUpdateSnapshot(normalizedAppId);
+        migrationPlan = migrationPlan.withSnapshotCreated();
+      }
       updated = appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
+      if (migrationPlan.required()) {
+        runApplyMigrationOrRollback(
+            normalizedAppId, updated, migrationPlan, appDataSnapshot, healthFailureState);
+        migrationPlan = migrationPlan.applied();
+      }
       if (options.restart()) {
         startOrTreatAsHealthFailure(normalizedAppId, options, healthFailureState);
       }
       verifyHealthOrRollback(normalizedAppId, options, healthFailureState);
+      discardUpdateSnapshot(appDataSnapshot);
       vaultCleanupFailed = !disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
       closeStage(normalizedAppId);
-      candidates.put(normalizedAppId, appliedCandidate(staged.candidate(), updated));
+      candidates.put(normalizedAppId, appliedCandidate(staged.candidate(), updated, migrationPlan));
       appendHistory(
           normalizedAppId,
           ACTION_APPLY,
@@ -516,32 +672,118 @@ public final class AppUpdateService {
           "explicit_apply_applied");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
-      closeStage(normalizedAppId);
-      if (updated != null) {
-        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
-        updateCandidateAfterPostApplyFailure(
-            normalizedAppId, staged.candidate(), updated, healthFailureState);
-      }
+      handlePlatformApplyFailure(
+          new ApplyFailureContext(
+              normalizedAppId,
+              staged,
+              wasRunning,
+              updated,
+              healthFailureState,
+              appDataSnapshot,
+              migrationPlan));
       recordApplyFailure(normalizedAppId, staged.candidate(), exception.errorCode());
       throw exception;
     } catch (AppHostException exception) {
-      restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, updated);
       PlatformApiException mapped =
-          appHostApplyFailure(normalizedAppId, staged, updated, healthFailureState, exception);
+          handleAppHostApplyFailure(
+              new ApplyFailureContext(
+                  normalizedAppId,
+                  staged,
+                  wasRunning,
+                  updated,
+                  healthFailureState,
+                  appDataSnapshot,
+                  migrationPlan),
+              exception);
       recordApplyFailure(normalizedAppId, staged.candidate(), mapped.errorCode());
       throw mapped;
     } catch (IOException _) {
-      if (updated != null) {
-        disableVaultGrantsAfterCommittedUpdate(updated, healthFailureState);
-        closeStage(normalizedAppId);
-        updateCandidateAfterPostApplyFailure(
-            normalizedAppId, staged.candidate(), updated, healthFailureState);
-      } else {
-        restartOriginalAfterUncommittedApplyFailure(normalizedAppId, wasRunning, null);
-      }
+      handleIoApplyFailure(
+          new ApplyFailureContext(
+              normalizedAppId,
+              staged,
+              wasRunning,
+              updated,
+              healthFailureState,
+              appDataSnapshot,
+              migrationPlan));
       recordApplyFailure(normalizedAppId, staged.candidate(), ERROR_UPDATE_FAILED);
       throw lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
+    } finally {
+      closeUpdateMigrationWriteBarrier(appDataWriteBarrier);
     }
+  }
+
+  private boolean validateApplyRequestAndRecordGate(
+      String appId, StagedUpdate staged, InstalledAppSnapshot installed, ApplyOptions options) {
+    try {
+      boolean wasRunning = validateApplyRequest(appId, staged, installed, options);
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          staged.candidate(),
+          "explicit_apply_allowed");
+      return wasRunning;
+    } catch (PlatformApiException exception) {
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          staged.candidate(),
+          "explicit_apply_blocked:" + exception.errorCode());
+      throw exception;
+    }
+  }
+
+  private void handlePlatformApplyFailure(ApplyFailureContext context) {
+    closeStage(context.appId());
+    if (shouldRestoreSnapshotAfterRollback(context)) {
+      restoreSnapshotOrThrow(
+          context.appId(), context.appDataSnapshot(), context.healthFailureState());
+    }
+    if (context.updated() != null) {
+      disableVaultGrantsAfterCommittedUpdate(context.updated(), context.healthFailureState());
+      updateCandidateAfterPostApplyFailure(
+          context.appId(),
+          context.staged().candidate(),
+          context.updated(),
+          context.healthFailureState(),
+          context.migrationPlan());
+      return;
+    }
+    restartOriginalAfterUncommittedApplyFailure(context.appId(), context.wasRunning(), null);
+  }
+
+  private boolean shouldRestoreSnapshotAfterRollback(ApplyFailureContext context) {
+    return context.updated() != null
+        && context.healthFailureState().rollbackCommitted()
+        && !context.healthFailureState().appDataRestored()
+        && context.appDataSnapshot() != null;
+  }
+
+  private PlatformApiException handleAppHostApplyFailure(
+      ApplyFailureContext context, AppHostException exception) {
+    restartOriginalAfterUncommittedApplyFailure(
+        context.appId(), context.wasRunning(), context.updated());
+    return appHostApplyFailure(
+        context.appId(),
+        context.staged(),
+        context.updated(),
+        context.healthFailureState(),
+        context.migrationPlan(),
+        exception);
+  }
+
+  private void handleIoApplyFailure(ApplyFailureContext context) {
+    if (context.updated() != null) {
+      disableVaultGrantsAfterCommittedUpdate(context.updated(), context.healthFailureState());
+      closeStage(context.appId());
+      updateCandidateAfterPostApplyFailure(
+          context.appId(),
+          context.staged().candidate(),
+          context.updated(),
+          context.healthFailureState(),
+          context.migrationPlan());
+      return;
+    }
+    restartOriginalAfterUncommittedApplyFailure(context.appId(), context.wasRunning(), null);
   }
 
   private StagedUpdate requireStagedUpdate(String appId) {
@@ -568,11 +810,19 @@ public final class AppUpdateService {
           staged.candidate().catalogId(),
           staged.candidate().targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
-          "Staged update no longer matches the installed app version.");
+          MESSAGE_STAGED_UPDATE_NO_LONGER_MATCHES);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Installed app version changed since the update was staged.");
+    }
+    AppDataMigrationPlan migrationPlan = staged.migrationPlan();
+    if (!migrationPlan.readyForApply()) {
+      String errorCode =
+          migrationPlan.blockReason() == null
+              ? ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED
+              : migrationPlan.blockReason();
+      throw lifecycleFailure(409, errorCode, "App-data migration is not ready to apply.");
     }
     boolean wasRunning = appHost.status(appId).isPresent();
     if (wasRunning && !options.restart()) {
@@ -583,6 +833,220 @@ public final class AppUpdateService {
           400, ERROR_INVALID_UPDATE_OPTION, "healthCheck=process requires restart=true.");
     }
     return wasRunning;
+  }
+
+  private void verifyStageStillMatchesInstalledForApply(
+      String appId, StagedUpdate staged, InstalledAppSnapshot installed) {
+    if (stageDiffersFromInstalled(staged, installed)) {
+      closeStage(appId);
+      candidates.remove(appId);
+      appendHistory(
+          appId,
+          ACTION_APPLY,
+          STATUS_FAILED,
+          staged.candidate().catalogId(),
+          staged.candidate().targetVersion(),
+          ERROR_UPDATE_CANDIDATE_CHANGED,
+          MESSAGE_STAGED_UPDATE_NO_LONGER_MATCHES);
+      throw lifecycleFailure(
+          409,
+          ERROR_UPDATE_CANDIDATE_CHANGED,
+          "Installed app version changed since the update was staged.");
+    }
+  }
+
+  private AppDataMigrationPlan refreshMigrationPlanForApply(
+      String appId,
+      StagedUpdate staged,
+      InstalledAppSnapshot installed,
+      AppManifest targetManifest) {
+    verifyStagedBundleBeforeApply(staged);
+    AppDataMigrationPlan refreshedPlan =
+        buildMigrationPlan(appId, installed.manifest(), targetManifest);
+    requireApplicableMigrationPlan(staged.migrationPlan(), refreshedPlan, targetManifest);
+    if (refreshedPlan.required()) {
+      AppDataMigrationRunner.MigrationExecutionResult dryRunResult =
+          runApplyDryRunOrReject(staged, refreshedPlan, targetManifest);
+      if (!dryRunResult.success()) {
+        throw lifecycleFailure(
+            409,
+            ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED,
+            MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED);
+      }
+      verifyStagedBundleAfterApplyDryRun(staged);
+    }
+    return refreshedPlan;
+  }
+
+  private boolean shouldHoldApplyMigrationWriteBarrier(AppManifest targetManifest) {
+    return appDataService != null && targetManifest.dataSchemaContract().declared();
+  }
+
+  private void verifyStagedBundleBeforeApply(StagedUpdate staged) {
+    try {
+      catalogManager.verifyInstallPlan(staged.plan());
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
+    }
+  }
+
+  private void verifyStagedBundleAfterApplyDryRun(StagedUpdate staged) {
+    verifyStagedBundleBeforeApply(staged);
+  }
+
+  private AppManifest stagedManifestForApplyOrReject(StagedUpdate staged) {
+    try {
+      return AppManifestParser.parse(
+          staged.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    } catch (IOException _) {
+      throw lifecycleFailure(
+          400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle manifest is invalid.");
+    }
+  }
+
+  private void requireApplicableMigrationPlan(
+      AppDataMigrationPlan stagedPlan,
+      AppDataMigrationPlan refreshedPlan,
+      AppManifest targetManifest) {
+    if (refreshedPlan.hasBlocker()) {
+      throw lifecycleFailure(
+          409, refreshedPlan.blockReason(), "App-data migration plan blocks this update.");
+    }
+    if (refreshedPlan.operatorReviewRequired()
+        && !acknowledgedMigrationStepsMatch(stagedPlan, refreshedPlan)) {
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED,
+          "App-data migration requires explicit operator acknowledgement.");
+    }
+    requireMigrationExecutionAllowed(refreshedPlan, targetManifest);
+  }
+
+  private static boolean acknowledgedMigrationStepsMatch(
+      AppDataMigrationPlan stagedPlan, AppDataMigrationPlan refreshedPlan) {
+    return stagedPlan.operatorReviewRequired()
+        && stagedPlan.namespaces().equals(refreshedPlan.namespaces());
+  }
+
+  private AppDataMigrationRunner.MigrationExecutionResult runApplyDryRunOrReject(
+      StagedUpdate staged, AppDataMigrationPlan migrationPlan, AppManifest targetManifest) {
+    try (AppDataMigrationRunner.MigrationDataAccess dataAccess =
+        migrationDataAccess(staged.candidate().appId(), targetManifest)) {
+      return migrationRunner.run(
+          staged.stagedBundleDirectory(),
+          migrationPlan,
+          AppDataMigrationRunner.Mode.DRY_RUN,
+          dataAccess);
+    } catch (IOException | PlatformApiException _) {
+      throw lifecycleFailure(
+          409, ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED, MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED);
+    }
+  }
+
+  private AppDataUpdateSnapshot createUpdateSnapshot(String appId) {
+    if (appDataService == null) {
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_SNAPSHOT_FAILED,
+          "App-data migration cannot snapshot durable app data.");
+    }
+    try {
+      return appDataService.createUpdateSnapshot(appId);
+    } catch (PlatformApiException exception) {
+      String errorCode =
+          "app_data_snapshot_too_large".equals(exception.errorCode())
+              ? exception.errorCode()
+              : ERROR_APP_DATA_SNAPSHOT_FAILED;
+      throw lifecycleFailure(409, errorCode, "App-data update snapshot could not be created.");
+    }
+  }
+
+  private AppDataService.UpdateMigrationWriteBarrier beginUpdateMigrationWriteBarrier(
+      String appId) {
+    if (appDataService == null) {
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_SNAPSHOT_FAILED,
+          "App-data migration cannot block durable app-data writes.");
+    }
+    return appDataService.beginUpdateMigrationWriteBarrier(appId);
+  }
+
+  private static void closeUpdateMigrationWriteBarrier(
+      AppDataService.UpdateMigrationWriteBarrier barrier) {
+    if (barrier != null) {
+      barrier.close();
+    }
+  }
+
+  private void runApplyMigrationOrRollback(
+      String appId,
+      InstalledAppSnapshot updated,
+      AppDataMigrationPlan migrationPlan,
+      AppDataUpdateSnapshot snapshot,
+      HealthFailureState healthFailureState) {
+    AppDataMigrationRunner.MigrationExecutionResult result;
+    try (AppDataMigrationRunner.MigrationDataAccess dataAccess = migrationDataAccess(appId)) {
+      result =
+          migrationRunner.run(
+              updated.paths().installedRoot(),
+              migrationPlan,
+              AppDataMigrationRunner.Mode.APPLY,
+              dataAccess);
+    } catch (IOException | PlatformApiException _) {
+      rollbackAndRestoreSnapshot(appId, snapshot, healthFailureState);
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_MIGRATION_APPLY_FAILED,
+          "App-data migration apply failed; bundle rollback was attempted.");
+    }
+    if (result.success()) {
+      return;
+    }
+    rollbackAndRestoreSnapshot(appId, snapshot, healthFailureState);
+    throw lifecycleFailure(
+        409,
+        ERROR_APP_DATA_MIGRATION_APPLY_FAILED,
+        "App-data migration apply failed; bundle rollback was attempted.");
+  }
+
+  private void rollbackAndRestoreSnapshot(
+      String appId, AppDataUpdateSnapshot snapshot, HealthFailureState healthFailureState) {
+    try {
+      invokeRollback(appId);
+      healthFailureState.markRollbackCommitted();
+    } catch (IOException _) {
+      healthFailureState.markRollbackFailed();
+      throw lifecycleFailure(
+          500,
+          ERROR_ROLLBACK_FAILED,
+          "App-data migration failed and automatic bundle rollback failed.");
+    }
+    restoreSnapshotOrThrow(appId, snapshot, healthFailureState);
+  }
+
+  private void restoreSnapshotOrThrow(
+      String appId, AppDataUpdateSnapshot snapshot, HealthFailureState healthFailureState) {
+    if (snapshot == null || appDataService == null) {
+      return;
+    }
+    try {
+      appDataService.restoreUpdateSnapshot(appId, snapshot);
+      healthFailureState.markAppDataRestored();
+    } catch (PlatformApiException _) {
+      throw lifecycleFailure(
+          500,
+          ERROR_APP_DATA_RESTORE_FAILED,
+          "Bundle rollback completed, but app-data snapshot restore failed.");
+    }
+  }
+
+  private void discardUpdateSnapshot(AppDataUpdateSnapshot snapshot) {
+    if (snapshot != null && appDataService != null) {
+      appDataService.discardUpdateSnapshot(snapshot);
+    }
   }
 
   private void recordApplyFailure(String appId, AppUpdateCandidate candidate, String errorCode) {
@@ -605,10 +1069,12 @@ public final class AppUpdateService {
       StagedUpdate staged,
       InstalledAppSnapshot updated,
       HealthFailureState healthFailureState,
+      AppDataMigrationPlan migrationPlan,
       AppHostException exception) {
     if (updated != null) {
       closeStage(appId);
-      updateCandidateAfterPostApplyFailure(appId, staged.candidate(), updated, healthFailureState);
+      updateCandidateAfterPostApplyFailure(
+          appId, staged.candidate(), updated, healthFailureState, migrationPlan);
       return lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
     }
     if (isRunningUpdateFailure(exception) || appHost.status(appId).isPresent()) {
@@ -852,7 +1318,7 @@ public final class AppUpdateService {
         appendReviewGateHistory(appId, ACTION_STAGE, candidate);
         return;
       }
-      stageCandidate(appId, installed, candidate);
+      stageCandidateForAutomaticPolicy(appId, installed, candidate);
       return;
     }
     if (policy.mode() == AppUpdatePolicyMode.APPLY_WHEN_STOPPED) {
@@ -883,13 +1349,39 @@ public final class AppUpdateService {
             "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
         return;
       }
-      stageCandidate(appId, installed, candidate);
+      if (!stageCandidateForAutomaticPolicy(appId, installed, candidate)) {
+        return;
+      }
       apply(appId, ApplyOptions.policyDefault());
     }
   }
 
-  private void stageCandidate(
+  private boolean stageCandidateForAutomaticPolicy(
       String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+    try {
+      stageCandidate(appId, installed, candidate, false);
+      return true;
+    } catch (PlatformApiException exception) {
+      if (isAutomaticPolicyMigrationSkip(exception.errorCode())) {
+        return false;
+      }
+      throw exception;
+    }
+  }
+
+  private static boolean isAutomaticPolicyMigrationSkip(String errorCode) {
+    return ERROR_APP_DATA_MIGRATION_MISSING.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE.equals(errorCode);
+  }
+
+  private void stageCandidate(
+      String appId,
+      InstalledAppSnapshot installed,
+      AppUpdateCandidate candidate,
+      boolean migrationAcknowledged) {
     if (candidateDiffersFromInstalled(candidate, installed)) {
       closeStage(appId);
       candidates.remove(appId);
@@ -932,18 +1424,56 @@ public final class AppUpdateService {
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Catalog candidate changed since review; check for updates again.");
     }
-    closeStage(appId);
-    stagedUpdates.put(appId, new StagedUpdate(candidate, plan, Instant.now()));
-    appendHistory(
-        appId,
-        ACTION_STAGE,
-        STATUS_SUCCESS,
-        candidate.catalogId(),
-        candidate.targetVersion(),
-        null,
-        "Verified update candidate staged.");
-    recordUpdateReviewGate(
-        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "stage_staged");
+    try {
+      AppManifest targetManifest = stagedManifestOrReject(appId, candidate, plan);
+      AppDataMigrationPlan migrationPlan =
+          buildMigrationPlan(appId, installed.manifest(), targetManifest);
+      requireStageableMigrationPlan(appId, candidate, migrationPlan, migrationAcknowledged, plan);
+      requireStoppedForStageDryRun(appId, candidate, migrationPlan, plan);
+      requireStageableMigrationExecution(appId, candidate, migrationPlan, targetManifest, plan);
+      if (migrationPlan.required()) {
+        verifyStagedBundleBeforeStageDryRun(appId, candidate, plan);
+        AppDataMigrationRunner.MigrationExecutionResult dryRunResult =
+            runStageDryRunOrReject(appId, candidate, plan, migrationPlan, targetManifest);
+        if (!dryRunResult.success()) {
+          closePlan(plan);
+          throw lifecycleFailure(
+              409,
+              ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED,
+              MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED);
+        }
+      }
+      AppUpdateCandidate stagedCandidate = candidateWithMigrationPlan(candidate, migrationPlan);
+      closeStage(appId);
+      stagedUpdates.put(
+          appId, new StagedUpdate(stagedCandidate, plan, migrationPlan, Instant.now()));
+      appendHistory(
+          appId,
+          ACTION_STAGE,
+          STATUS_SUCCESS,
+          stagedCandidate.catalogId(),
+          stagedCandidate.targetVersion(),
+          null,
+          "Verified update candidate staged.");
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, stagedCandidate, "stage_staged");
+    } catch (RuntimeException exception) {
+      closePlan(plan);
+      throw exception;
+    }
+  }
+
+  private void verifyStagedBundleBeforeStageDryRun(
+      String appId, AppUpdateCandidate candidate, AppCatalogInstallPlan plan) {
+    try {
+      catalogManager.verifyInstallPlan(plan);
+    } catch (AppCatalogException exception) {
+      recordStageFailure(appId, candidate, exception.errorCode());
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      recordStageFailure(appId, candidate, ERROR_STAGE_FAILED);
+      throw lifecycleFailure(500, ERROR_STAGE_FAILED, MESSAGE_STAGE_FAILED);
+    }
   }
 
   private AppCatalogInstallPlan prepareStagePlan(String appId, AppUpdateCandidate candidate) {
@@ -956,6 +1486,558 @@ public final class AppUpdateService {
       recordStageFailure(appId, candidate, ERROR_STAGE_FAILED);
       throw lifecycleFailure(500, ERROR_STAGE_FAILED, MESSAGE_STAGE_FAILED);
     }
+  }
+
+  private AppManifest stagedManifestOrReject(
+      String appId, AppUpdateCandidate candidate, AppCatalogInstallPlan plan) {
+    try {
+      return AppManifestParser.parse(
+          plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    } catch (IOException _) {
+      recordStageFailure(appId, candidate, ERROR_INVALID_APP_BUNDLE);
+      closePlan(plan);
+      throw lifecycleFailure(
+          400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle manifest is invalid.");
+    }
+  }
+
+  private void requireStageableMigrationPlan(
+      String appId,
+      AppUpdateCandidate candidate,
+      AppDataMigrationPlan migrationPlan,
+      boolean migrationAcknowledged,
+      AppCatalogInstallPlan plan) {
+    if (migrationPlan.hasBlocker()) {
+      candidates.put(appId, candidateWithMigrationPlan(candidate, migrationPlan));
+      recordStageFailure(appId, candidate, migrationPlan.blockReason());
+      closePlan(plan);
+      throw lifecycleFailure(
+          409, migrationPlan.blockReason(), "App-data migration plan blocks this update.");
+    }
+    if (migrationPlan.operatorReviewRequired() && !migrationAcknowledged) {
+      AppDataMigrationPlan blockedPlan =
+          AppDataMigrationPlan.blocked(
+              AppDataMigrationPlan.STATUS_ROLLBACK_INCOMPATIBLE,
+              migrationPlan.currentSchemaVersion(),
+              migrationPlan.targetSchemaVersion(),
+              migrationPlan.namespaces(),
+              true,
+              ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED);
+      candidates.put(appId, candidateWithMigrationPlan(candidate, blockedPlan));
+      recordStageFailure(appId, candidate, ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED);
+      closePlan(plan);
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED,
+          "App-data migration requires explicit operator acknowledgement.");
+    }
+  }
+
+  private void requireStoppedForStageDryRun(
+      String appId,
+      AppUpdateCandidate candidate,
+      AppDataMigrationPlan migrationPlan,
+      AppCatalogInstallPlan plan) {
+    if (!migrationPlan.requiresStopped() || appHost.status(appId).isEmpty()) {
+      return;
+    }
+    AppDataMigrationPlan blockedPlan =
+        AppDataMigrationPlan.blocked(
+            AppDataMigrationPlan.STATUS_REQUIRES_STOPPED,
+            migrationPlan.currentSchemaVersion(),
+            migrationPlan.targetSchemaVersion(),
+            migrationPlan.namespaces(),
+            migrationPlan.operatorReviewRequired(),
+            ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED);
+    candidates.put(appId, candidateWithMigrationPlan(candidate, blockedPlan));
+    recordStageFailure(appId, candidate, ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED);
+    closePlan(plan);
+    throw lifecycleFailure(
+        409,
+        ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED,
+        "App-data migration requires the app to be stopped before dry-run.");
+  }
+
+  private void requireStageableMigrationExecution(
+      String appId,
+      AppUpdateCandidate candidate,
+      AppDataMigrationPlan migrationPlan,
+      AppManifest targetManifest,
+      AppCatalogInstallPlan plan) {
+    if (migrationExecutionAllowed(migrationPlan, targetManifest)) {
+      return;
+    }
+    AppDataMigrationPlan blockedPlan =
+        AppDataMigrationPlan.blocked(
+            AppDataMigrationPlan.STATUS_SANDBOX_UNAVAILABLE,
+            migrationPlan.currentSchemaVersion(),
+            migrationPlan.targetSchemaVersion(),
+            migrationPlan.namespaces(),
+            migrationPlan.operatorReviewRequired(),
+            ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE);
+    candidates.put(appId, candidateWithMigrationPlan(candidate, blockedPlan));
+    recordStageFailure(appId, candidate, ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE);
+    closePlan(plan);
+    throw lifecycleFailure(
+        409,
+        ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE,
+        "App-data migration runner cannot enforce the requested app sandbox.");
+  }
+
+  private void requireMigrationExecutionAllowed(
+      AppDataMigrationPlan migrationPlan, AppManifest targetManifest) {
+    if (migrationExecutionAllowed(migrationPlan, targetManifest)) {
+      return;
+    }
+    throw lifecycleFailure(
+        409,
+        ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE,
+        "App-data migration runner cannot enforce the requested app sandbox.");
+  }
+
+  private boolean migrationExecutionAllowed(
+      AppDataMigrationPlan migrationPlan, AppManifest targetManifest) {
+    return !migrationPlan.required()
+        || !targetManifest.sandboxPolicy().required()
+        || targetManifest.sandboxPolicy().mode() == AppSandboxMode.NONE;
+  }
+
+  private AppDataMigrationRunner.MigrationExecutionResult runStageDryRunOrReject(
+      String appId,
+      AppUpdateCandidate candidate,
+      AppCatalogInstallPlan plan,
+      AppDataMigrationPlan migrationPlan,
+      AppManifest targetManifest) {
+    try (AppDataMigrationRunner.MigrationDataAccess dataAccess =
+        migrationDataAccess(appId, targetManifest)) {
+      AppDataMigrationRunner.MigrationExecutionResult result =
+          migrationRunner.run(
+              plan.stagedBundleDirectory(),
+              migrationPlan,
+              AppDataMigrationRunner.Mode.DRY_RUN,
+              dataAccess);
+      if (!result.success()) {
+        recordMigrationDryRunFailure(appId, candidate, migrationPlan);
+      }
+      return result;
+    } catch (IOException | PlatformApiException _) {
+      recordMigrationDryRunFailure(appId, candidate, migrationPlan);
+      closePlan(plan);
+      throw lifecycleFailure(
+          409, ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED, MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED);
+    }
+  }
+
+  private void recordMigrationDryRunFailure(
+      String appId, AppUpdateCandidate candidate, AppDataMigrationPlan migrationPlan) {
+    recordStageFailure(appId, candidate, ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED);
+    candidates.put(appId, candidateWithMigrationPlan(candidate, migrationPlan.withDryRunFailed()));
+  }
+
+  private AppDataMigrationRunner.MigrationDataAccess migrationDataAccess(String appId)
+      throws IOException {
+    return migrationDataAccess(appId, false, null);
+  }
+
+  private AppDataMigrationRunner.MigrationDataAccess migrationDataAccess(
+      String appId, AppManifest targetManifest) throws IOException {
+    Objects.requireNonNull(targetManifest, "targetManifest");
+    return migrationDataAccess(appId, true, targetManifest.dataQuotaBytes());
+  }
+
+  private AppDataMigrationRunner.MigrationDataAccess migrationDataAccess(
+      String appId, boolean useTargetManifestQuota, Long targetDataQuotaBytes) throws IOException {
+    if (appDataService == null) {
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_DATA_SNAPSHOT_FAILED,
+          "App-data migration cannot access durable app data.");
+    }
+    return new AppDataServiceMigrationDataAccess(
+        appId, appDataService, useTargetManifestQuota, targetDataQuotaBytes);
+  }
+
+  private static final class AppDataServiceMigrationDataAccess
+      implements AppDataMigrationRunner.MigrationDataAccess {
+    private final String appId;
+    private final AppDataService appDataService;
+    private final boolean useTargetManifestQuota;
+    private final Long targetDataQuotaBytes;
+    private final Path root;
+    private final Map<String, byte[]> dryRunPayloadsByNamespace = new LinkedHashMap<>();
+
+    private AppDataServiceMigrationDataAccess(
+        String appId,
+        AppDataService appDataService,
+        boolean useTargetManifestQuota,
+        Long targetDataQuotaBytes)
+        throws IOException {
+      this.appId = Objects.requireNonNull(appId, JSON_APP_ID);
+      this.appDataService = Objects.requireNonNull(appDataService, "appDataService");
+      this.useTargetManifestQuota = useTargetManifestQuota;
+      this.targetDataQuotaBytes = targetDataQuotaBytes;
+      root =
+          Files.createTempDirectory(
+              "crypta-app-data-migration-", secureScratchDirectoryAttributes());
+    }
+
+    @Override
+    public AppDataMigrationRunner.StepDataFiles prepare(
+        AppDataMigrationPlan.NamespaceStep step, AppDataMigrationRunner.Mode mode)
+        throws IOException {
+      Objects.requireNonNull(mode, "mode");
+      Path stepDirectory = Files.createTempDirectory(root, "step-" + step.stepId() + "-");
+      Path inputPayload = stepDirectory.resolve("input.json");
+      Path outputPayload = stepDirectory.resolve("output.json");
+      byte[] payload =
+          mode == AppDataMigrationRunner.Mode.DRY_RUN
+              ? dryRunPayloadsByNamespace.computeIfAbsent(
+                  step.namespace(),
+                  namespace -> appDataService.exportUpdateMigrationPayload(appId, namespace))
+              : appDataService.exportUpdateMigrationPayload(appId, step.namespace());
+      Files.write(inputPayload, payload);
+      return new AppDataMigrationRunner.StepDataFiles(inputPayload, outputPayload);
+    }
+
+    @Override
+    public void complete(
+        AppDataMigrationPlan.NamespaceStep step,
+        AppDataMigrationRunner.Mode mode,
+        AppDataMigrationRunner.StepDataFiles files)
+        throws IOException {
+      byte[] outputPayload = readOutputPayload(files.outputPayload());
+      if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
+        byte[] advancedPayload = advanceDryRunPayload(step, outputPayload);
+        dryRunPayloadsByNamespace.put(step.namespace(), advancedPayload);
+        return;
+      }
+      appDataService.importUpdateMigrationPayload(
+          appId, step.namespace(), step.fromSchemaVersion(), step.toSchemaVersion(), outputPayload);
+      appDataService.recordUpdateMigration(
+          appId,
+          step.namespace(),
+          step.fromSchemaVersion(),
+          step.toSchemaVersion(),
+          step.description());
+    }
+
+    private byte[] advanceDryRunPayload(AppDataMigrationPlan.NamespaceStep step, byte[] payload) {
+      if (useTargetManifestQuota) {
+        return appDataService.advanceUpdateMigrationDryRunPayload(
+            appId,
+            step.namespace(),
+            step.fromSchemaVersion(),
+            step.toSchemaVersion(),
+            step.description(),
+            payload,
+            targetDataQuotaBytes);
+      }
+      return appDataService.advanceUpdateMigrationDryRunPayload(
+          appId,
+          step.namespace(),
+          step.fromSchemaVersion(),
+          step.toSchemaVersion(),
+          step.description(),
+          payload);
+    }
+
+    @Override
+    public void close() {
+      try {
+        deleteRecursively(root);
+      } catch (IOException _) {
+        // Migration scratch cleanup is best effort; command success is reported separately.
+      }
+    }
+
+    private byte[] readOutputPayload(Path outputPayload) throws IOException {
+      if (Files.isSymbolicLink(outputPayload)
+          || !Files.isRegularFile(outputPayload, LinkOption.NOFOLLOW_LINKS)) {
+        throw new IOException("migration output payload is missing");
+      }
+      long payloadBytes = Files.size(outputPayload);
+      if (payloadBytes > appDataService.maxUpdateMigrationPayloadBytes()) {
+        throw new PlatformApiException(
+            400, "app_data_import_too_large", "App-data import exceeds the configured limit.");
+      }
+      return Files.readAllBytes(outputPayload);
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+      if (root == null || !Files.exists(root)) {
+        return;
+      }
+      List<Path> paths;
+      try (java.util.stream.Stream<Path> stream = Files.walk(root)) {
+        paths = stream.sorted(Comparator.reverseOrder()).toList();
+      }
+      for (Path path : paths) {
+        Files.deleteIfExists(path);
+      }
+    }
+
+    private static FileAttribute<?>[] secureScratchDirectoryAttributes() {
+      if (!FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+        return new FileAttribute<?>[0];
+      }
+      Set<PosixFilePermission> ownerOnly =
+          EnumSet.of(
+              PosixFilePermission.OWNER_READ,
+              PosixFilePermission.OWNER_WRITE,
+              PosixFilePermission.OWNER_EXECUTE);
+      return new FileAttribute<?>[] {PosixFilePermissions.asFileAttribute(ownerOnly)};
+    }
+  }
+
+  private AppDataMigrationPlan buildMigrationPlan(
+      String appId, AppManifest installedManifest, AppManifest targetManifest) {
+    AppDataSchemaContract installedContract = installedManifest.dataSchemaContract();
+    AppDataSchemaContract targetContract = targetManifest.dataSchemaContract();
+    if (!targetContract.declared()) {
+      return AppDataMigrationPlan.notRequired(
+          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
+    }
+    if (appDataService == null) {
+      return AppDataMigrationPlan.blocked(
+          AppDataMigrationPlan.STATUS_FAILED,
+          installedContract.currentSchemaVersion(),
+          targetContract.currentSchemaVersion(),
+          List.of(),
+          false,
+          "app_data_store_unavailable");
+    }
+    List<AppDataNamespaceMetadata> currentNamespaces =
+        appDataService.listNamespaceMetadataForUpdate(appId);
+    if (currentNamespaces.isEmpty()) {
+      return AppDataMigrationPlan.notRequired(
+          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
+    }
+    Map<String, AppDataNamespaceMetadata> currentMetadata = namespaceMetadataMap(currentNamespaces);
+    List<String> migrationNamespaces = migrationNamespaces(targetContract, currentMetadata);
+    ArrayList<AppDataMigrationPlan.NamespaceStep> steps = new ArrayList<>();
+    for (String namespace : migrationNamespaces) {
+      if (currentMetadata.containsKey(namespace)) {
+        Optional<AppDataMigrationPlan> blocker =
+            appendNamespaceMigrationSteps(
+                namespace, installedContract, targetContract, currentMetadata, steps);
+        if (blocker.isPresent()) {
+          return blocker.orElseThrow();
+        }
+      }
+    }
+    if (steps.isEmpty()) {
+      return AppDataMigrationPlan.notRequired(
+          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
+    }
+    return AppDataMigrationPlan.ready(
+        installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion(), steps);
+  }
+
+  private static Optional<AppDataMigrationPlan> appendNamespaceMigrationSteps(
+      String namespace,
+      AppDataSchemaContract installedContract,
+      AppDataSchemaContract targetContract,
+      Map<String, AppDataNamespaceMetadata> currentMetadata,
+      List<AppDataMigrationPlan.NamespaceStep> steps) {
+    int currentVersion = currentSchemaVersion(namespace, installedContract, currentMetadata);
+    int targetVersion = targetSchemaVersion(namespace, targetContract, currentVersion);
+    if (targetVersion < currentVersion) {
+      return Optional.of(
+          AppDataMigrationPlan.blocked(
+              AppDataMigrationPlan.STATUS_MISSING_MIGRATION,
+              installedContract.currentSchemaVersion(),
+              targetContract.currentSchemaVersion(),
+              steps,
+              false,
+              ERROR_APP_DATA_MIGRATION_MISSING));
+    }
+    if (targetVersion == currentVersion) {
+      return Optional.empty();
+    }
+    List<AppDataMigrationPlan.NamespaceStep> path =
+        migrationPath(namespace, currentVersion, targetVersion, targetContract.migrations());
+    if (path.isEmpty()) {
+      return Optional.of(
+          AppDataMigrationPlan.blocked(
+              AppDataMigrationPlan.STATUS_MISSING_MIGRATION,
+              currentVersion,
+              targetVersion,
+              steps,
+              false,
+              ERROR_APP_DATA_MIGRATION_MISSING));
+    }
+    steps.addAll(path);
+    return Optional.empty();
+  }
+
+  private static Map<String, AppDataNamespaceMetadata> namespaceMetadataMap(
+      List<AppDataNamespaceMetadata> namespaces) {
+    LinkedHashMap<String, AppDataNamespaceMetadata> byNamespace = new LinkedHashMap<>();
+    for (AppDataNamespaceMetadata namespace : namespaces) {
+      byNamespace.put(namespace.namespace(), namespace);
+    }
+    return byNamespace;
+  }
+
+  private static List<String> migrationNamespaces(
+      AppDataSchemaContract targetContract, Map<String, AppDataNamespaceMetadata> currentMetadata) {
+    if (!targetContract.namespaces().isEmpty()) {
+      return targetContract.namespaces().stream().map(AppDataNamespaceSchema::namespace).toList();
+    }
+    if (targetContract.currentSchemaVersion() != null) {
+      return List.copyOf(currentMetadata.keySet());
+    }
+    return List.of();
+  }
+
+  private static int currentSchemaVersion(
+      String namespace,
+      AppDataSchemaContract installedContract,
+      Map<String, AppDataNamespaceMetadata> currentMetadata) {
+    AppDataNamespaceMetadata metadata = currentMetadata.get(namespace);
+    if (metadata != null) {
+      return metadata.schemaVersion();
+    }
+    AppDataNamespaceSchema installedNamespace = installedContract.namespace(namespace);
+    if (installedNamespace != null) {
+      return installedNamespace.currentSchemaVersion();
+    }
+    Integer globalCurrent = installedContract.currentSchemaVersion();
+    return globalCurrent == null ? 1 : globalCurrent;
+  }
+
+  private static int targetSchemaVersion(
+      String namespace, AppDataSchemaContract targetContract, int currentVersion) {
+    AppDataNamespaceSchema targetNamespace = targetContract.namespace(namespace);
+    if (targetNamespace != null) {
+      return targetNamespace.currentSchemaVersion();
+    }
+    Integer globalTarget = targetContract.currentSchemaVersion();
+    return globalTarget == null ? currentVersion : globalTarget;
+  }
+
+  private static List<AppDataMigrationPlan.NamespaceStep> migrationPath(
+      String namespace,
+      int currentVersion,
+      int targetVersion,
+      List<AppDataMigrationStep> migrations) {
+    Optional<List<AppDataMigrationStep>> path =
+        bestMigrationPath(
+            namespace, currentVersion, targetVersion, migrations, new LinkedHashMap<>());
+    return path.map(steps -> steps.stream().map(AppUpdateService::namespaceStep).toList())
+        .orElseGet(List::of);
+  }
+
+  private static Optional<List<AppDataMigrationStep>> bestMigrationPath(
+      String namespace,
+      int currentVersion,
+      int targetVersion,
+      List<AppDataMigrationStep> migrations,
+      Map<Integer, Optional<List<AppDataMigrationStep>>> memoizedPaths) {
+    if (currentVersion == targetVersion) {
+      return Optional.of(List.of());
+    }
+    if (memoizedPaths.containsKey(currentVersion)) {
+      return memoizedPaths.get(currentVersion);
+    }
+    Optional<List<AppDataMigrationStep>> best = Optional.empty();
+    List<AppDataMigrationStep> candidates =
+        migrations.stream()
+            .filter(step -> step.namespace().equals(namespace))
+            .filter(step -> step.fromSchemaVersion() == currentVersion)
+            .filter(step -> step.toSchemaVersion() <= targetVersion)
+            .sorted(
+                Comparator.comparingInt(AppDataMigrationStep::toSchemaVersion)
+                    .thenComparing(AppDataMigrationStep::stepId))
+            .toList();
+    for (AppDataMigrationStep candidate : candidates) {
+      Optional<List<AppDataMigrationStep>> suffix =
+          bestMigrationPath(
+              namespace, candidate.toSchemaVersion(), targetVersion, migrations, memoizedPaths);
+      if (suffix.isEmpty()) {
+        continue;
+      }
+      ArrayList<AppDataMigrationStep> candidatePath = new ArrayList<>();
+      candidatePath.add(candidate);
+      candidatePath.addAll(suffix.get());
+      if (best.isEmpty() || compareMigrationPaths(candidatePath, best.get()) < 0) {
+        best = Optional.of(List.copyOf(candidatePath));
+      }
+    }
+    memoizedPaths.put(currentVersion, best);
+    return best;
+  }
+
+  private static int compareMigrationPaths(
+      List<AppDataMigrationStep> left, List<AppDataMigrationStep> right) {
+    int comparison =
+        Integer.compare(rollbackIncompatibleSteps(left), rollbackIncompatibleSteps(right));
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison = Integer.compare(requiresStoppedSteps(left), requiresStoppedSteps(right));
+    if (comparison != 0) {
+      return comparison;
+    }
+    comparison = Integer.compare(left.size(), right.size());
+    if (comparison != 0) {
+      return comparison;
+    }
+    for (int index = 0; index < left.size(); index++) {
+      comparison = left.get(index).stepId().compareTo(right.get(index).stepId());
+      if (comparison != 0) {
+        return comparison;
+      }
+    }
+    return 0;
+  }
+
+  private static int rollbackIncompatibleSteps(List<AppDataMigrationStep> steps) {
+    return (int) steps.stream().filter(step -> !step.rollbackCompatible()).count();
+  }
+
+  private static int requiresStoppedSteps(List<AppDataMigrationStep> steps) {
+    return (int) steps.stream().filter(AppDataMigrationStep::requiresStopped).count();
+  }
+
+  private static AppDataMigrationPlan.NamespaceStep namespaceStep(AppDataMigrationStep step) {
+    return new AppDataMigrationPlan.NamespaceStep(
+        step.namespace(),
+        step.fromSchemaVersion(),
+        step.toSchemaVersion(),
+        step.stepId(),
+        step.rollbackCompatible(),
+        step.requiresStopped(),
+        step.description(),
+        step.command());
+  }
+
+  private AppUpdateCandidate candidateWithMigrationPlan(
+      AppUpdateCandidate candidate, AppDataMigrationPlan migrationPlan) {
+    return new AppUpdateCandidate(
+        candidate.appId(),
+        candidate.catalogId(),
+        candidate.catalogSourceId(),
+        candidate.installedVersion(),
+        candidate.targetVersion(),
+        candidate.status(),
+        candidate.versionComparison(),
+        candidate.channel(),
+        candidate.supportStatus(),
+        candidate.deprecation(),
+        candidate.securityAdvisories(),
+        candidate.channelPolicyAllowed(),
+        candidate.policyBlockReason(),
+        candidate.bundleSha256(),
+        candidate.bundleSizeBytes(),
+        candidate.bundleType(),
+        candidate.review(),
+        candidate.reviewTrust(),
+        candidate.apiCompatibility(),
+        candidate.permissionDelta(),
+        migrationPlan.toJsonValue(),
+        candidate.running(),
+        candidate.detectedAt());
   }
 
   private AppUpdateCandidate candidateOrDetect(String appId, InstalledAppSnapshot installed) {
@@ -1164,6 +2246,7 @@ public final class AppUpdateService {
         reviewTrust,
         apiCompatibility,
         AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions()),
+        AppDataMigrationPlan.notChecked().toJsonValue(),
         appHost.status(installed.appId()).isPresent(),
         Instant.now());
   }
@@ -1257,6 +2340,10 @@ public final class AppUpdateService {
             PlatformApiContract.current()),
         AppUpdateCandidate.permissionDelta(
             installed.manifest().permissions(), installed.manifest().permissions()),
+        AppDataMigrationPlan.notRequired(
+                installed.manifest().dataSchemaContract().currentSchemaVersion(),
+                installed.manifest().dataSchemaContract().currentSchemaVersion())
+            .toJsonValue(),
         appHost.status(appId).isPresent(),
         Instant.now());
   }
@@ -1482,6 +2569,7 @@ public final class AppUpdateService {
     json.put(JSON_REVIEW_TRUST, candidate.reviewTrust());
     json.put("apiCompatibility", candidate.apiCompatibility());
     json.put("permissionDelta", candidate.permissionDelta());
+    json.put("dataMigration", candidate.dataMigration());
     json.put(JSON_STAGED_AT, staged.stagedAt().toString());
     json.put("expiresAt", null);
     json.put("durable", false);
@@ -1559,7 +2647,9 @@ public final class AppUpdateService {
   }
 
   private AppUpdateCandidate appliedCandidate(
-      AppUpdateCandidate candidate, InstalledAppSnapshot updated) {
+      AppUpdateCandidate candidate,
+      InstalledAppSnapshot updated,
+      AppDataMigrationPlan migrationPlan) {
     return new AppUpdateCandidate(
         candidate.appId(),
         candidate.catalogId(),
@@ -1581,6 +2671,7 @@ public final class AppUpdateService {
         candidate.reviewTrust(),
         candidate.apiCompatibility(),
         candidate.permissionDelta(),
+        migrationPlan.toJsonValue(),
         appHost.status(candidate.appId()).isPresent(),
         Instant.now());
   }
@@ -1622,12 +2713,49 @@ public final class AppUpdateService {
       String appId,
       AppUpdateCandidate stagedCandidate,
       InstalledAppSnapshot updated,
-      HealthFailureState healthFailureState) {
+      HealthFailureState healthFailureState,
+      AppDataMigrationPlan migrationPlan) {
     if (healthFailureState.rollbackCommitted()) {
       candidates.remove(appId);
       return;
     }
-    candidates.put(appId, appliedCandidate(stagedCandidate, updated));
+    if (healthFailureState.rollbackFailed() && migrationPlan.required()) {
+      candidates.put(
+          appId,
+          failedCandidate(stagedCandidate, updated, migrationPlan.failed(ERROR_ROLLBACK_FAILED)));
+      return;
+    }
+    candidates.put(appId, appliedCandidate(stagedCandidate, updated, migrationPlan));
+  }
+
+  private AppUpdateCandidate failedCandidate(
+      AppUpdateCandidate candidate,
+      InstalledAppSnapshot updated,
+      AppDataMigrationPlan migrationPlan) {
+    return new AppUpdateCandidate(
+        candidate.appId(),
+        candidate.catalogId(),
+        candidate.catalogSourceId(),
+        candidate.installedVersion(),
+        updated.manifest().appVersion(),
+        AppUpdateCandidateStatus.FAILED,
+        candidate.versionComparison(),
+        candidate.channel(),
+        candidate.supportStatus(),
+        candidate.deprecation(),
+        candidate.securityAdvisories(),
+        candidate.channelPolicyAllowed(),
+        candidate.policyBlockReason(),
+        candidate.bundleSha256(),
+        candidate.bundleSizeBytes(),
+        candidate.bundleType(),
+        candidate.review(),
+        candidate.reviewTrust(),
+        candidate.apiCompatibility(),
+        candidate.permissionDelta(),
+        migrationPlan.toJsonValue(),
+        appHost.status(candidate.appId()).isPresent(),
+        Instant.now());
   }
 
   private void startOrTreatAsHealthFailure(
@@ -1746,7 +2874,7 @@ public final class AppUpdateService {
           stagedCandidate.catalogId(),
           stagedCandidate.targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
-          "Staged update no longer matches the installed app version.");
+          MESSAGE_STAGED_UPDATE_NO_LONGER_MATCHES);
     }
     AppUpdateCandidate candidate = candidates.get(appId);
     if (candidate != null && candidateDiffersFromInstalled(candidate, installed)) {
@@ -1764,6 +2892,10 @@ public final class AppUpdateService {
     String installedVersion = installed.manifest().appVersion();
     if (candidate.status() == AppUpdateCandidateStatus.APPLIED) {
       return !candidate.targetVersion().equals(installedVersion);
+    }
+    if (candidate.status() == AppUpdateCandidateStatus.FAILED
+        && candidate.targetVersion().equals(installedVersion)) {
+      return false;
     }
     return !candidate.installedVersion().equals(installedVersion)
         || !candidateInstalledPermissions(candidate).equals(permissionSet(installed));
@@ -1974,15 +3106,35 @@ public final class AppUpdateService {
   }
 
   private record StagedUpdate(
-      AppUpdateCandidate candidate, AppCatalogInstallPlan plan, Instant stagedAt) {
+      AppUpdateCandidate candidate,
+      AppCatalogInstallPlan plan,
+      AppDataMigrationPlan migrationPlan,
+      Instant stagedAt) {
     private StagedUpdate {
       Objects.requireNonNull(candidate, "candidate");
       Objects.requireNonNull(plan, "plan");
+      Objects.requireNonNull(migrationPlan, "migrationPlan");
       Objects.requireNonNull(stagedAt, JSON_STAGED_AT);
     }
 
     private Path stagedBundleDirectory() {
       return plan.stagedBundleDirectory();
+    }
+  }
+
+  private record ApplyFailureContext(
+      String appId,
+      StagedUpdate staged,
+      boolean wasRunning,
+      InstalledAppSnapshot updated,
+      HealthFailureState healthFailureState,
+      AppDataUpdateSnapshot appDataSnapshot,
+      AppDataMigrationPlan migrationPlan) {
+    private ApplyFailureContext {
+      Objects.requireNonNull(appId, JSON_APP_ID);
+      Objects.requireNonNull(staged, "staged");
+      Objects.requireNonNull(healthFailureState, "healthFailureState");
+      Objects.requireNonNull(migrationPlan, "migrationPlan");
     }
   }
 
@@ -1998,13 +3150,31 @@ public final class AppUpdateService {
 
   private static final class HealthFailureState {
     private boolean rollbackCommitted;
+    private boolean appDataRestored;
+    private boolean rollbackFailed;
 
     private boolean rollbackCommitted() {
       return rollbackCommitted;
     }
 
+    private boolean appDataRestored() {
+      return appDataRestored;
+    }
+
+    private boolean rollbackFailed() {
+      return rollbackFailed;
+    }
+
     private void markRollbackCommitted() {
       rollbackCommitted = true;
+    }
+
+    private void markAppDataRestored() {
+      appDataRestored = true;
+    }
+
+    private void markRollbackFailed() {
+      rollbackFailed = true;
     }
   }
 

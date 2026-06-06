@@ -6,19 +6,27 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataStore;
+import network.crypta.platform.api.appdata.AppDataStoreConfig;
+import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogDeprecationStatus;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
@@ -37,6 +45,7 @@ import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppRollbackRecord;
@@ -63,8 +72,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -97,6 +109,8 @@ class AppUpdateServiceTest {
   private static final String APP_NOT_FOUND = "app_not_found";
   private static final String ROLLBACK_FAILED = "rollback_failed";
   private static final String ROLLBACK_MANIFEST_BROKEN = "rollback manifest broken";
+  private static final String FEEDS_NAMESPACE = "feeds";
+  private static final String SUBSCRIPTIONS_KEY = "subscriptions";
   private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
   private static final String REVIEW_POLICY_ID = "crypta-app-review-v1";
   private static final String REVIEW_POLICY_VERSION = "1";
@@ -533,6 +547,189 @@ class AppUpdateServiceTest {
     assertEquals(STAGED, staged.get(STATUS));
     assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
     assertFalse(staged.toString().contains(tempDir.toString()));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenStagePolicyMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, false, true));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("rollback_incompatible", migration.get(STATUS));
+    assertEquals("app_data_migration_review_required", migration.get("blockReason"));
+    assertEquals(true, migration.get("operatorReviewRequired"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenStagePolicyMigrationPathMissing_expectCandidateSummaryWithoutCheckFailure()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, true, false));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertFalse(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("missing_migration", migration.get(STATUS));
+    assertEquals("app_data_migration_missing", migration.get("blockReason"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenStagePolicyMigrationDryRunFails_expectCandidateSummaryWithoutCheckFailure()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, true, true));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertTrue(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("dry_run_failed", migration.get(STATUS));
+    assertEquals("app_data_migration_dry_run_failed", migration.get("blockReason"));
+    assertEquals("failed", migration.get("dryRunStatus"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenStagePolicyMigrationDryRunThrows_expectCandidateSummaryWithoutCheckFailure()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              throw new IOException("missing migration output");
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, true, true));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertTrue(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("dry_run_failed", migration.get(STATUS));
+    assertEquals("app_data_migration_dry_run_failed", migration.get("blockReason"));
+    assertEquals("failed", migration.get("dryRunStatus"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenApplyWhenStoppedPolicyMigrationDryRunFails_expectCandidateSummaryWithoutApply()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, true, true));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertTrue(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("dry_run_failed", migration.get(STATUS));
+    assertEquals("app_data_migration_dry_run_failed", migration.get("blockReason"));
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
@@ -1219,8 +1416,8 @@ class AppUpdateServiceTest {
             PlatformApiException.class,
             () -> service.apply(APP_ID, APPLY_RESTART_PROCESS_HEALTH_ROLLBACK));
 
-    assertEquals(500, exception.statusCode());
     assertEquals(ROLLBACK_FAILED, exception.errorCode());
+    assertEquals(500, exception.statusCode());
     Map<String, Object> summary = service.summary(APP_ID);
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals(APPLIED, ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
@@ -1256,6 +1453,51 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.summary(APP_ID);
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals(APPLIED, ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
+    verify(appHost, never()).rollback(APP_ID);
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void
+      apply_whenMigrationAppliedThenProcessHealthFailsWithoutRollback_expectMigrationStatusPreserved()
+          throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed), Optional.of(installed), Optional.of(updated));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.start(APP_ID)).thenReturn(running(updated));
+    service.stage(APP_ID);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_RESTART_PROCESS_HEALTH));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("health_check_failed", exception.errorCode());
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
+    Map<String, Object> summary = service.summary(APP_ID);
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(APPLIED, candidate.get(STATUS));
+    assertEquals("applied", migration.get(STATUS));
+    assertEquals("passed", migration.get("applyStatus"));
     verify(appHost, never()).rollback(APP_ID);
     assertFalse(Files.exists(plan.scratchDirectory()));
   }
@@ -1636,8 +1878,8 @@ class AppUpdateServiceTest {
     PlatformApiException exception =
         assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, true));
 
-    assertEquals(500, exception.statusCode());
     assertEquals(ROLLBACK_FAILED, exception.errorCode());
+    assertEquals(500, exception.statusCode());
     verify(appHost, never()).stop(APP_ID);
     verify(appHost, never()).rollback(APP_ID);
     verify(appHost, never()).start(APP_ID);
@@ -1652,8 +1894,8 @@ class AppUpdateServiceTest {
     PlatformApiException exception =
         assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, false));
 
-    assertEquals(500, exception.statusCode());
     assertEquals(ROLLBACK_FAILED, exception.errorCode());
+    assertEquals(500, exception.statusCode());
     verify(appHost).rollback(APP_ID);
   }
 
@@ -1700,12 +1942,1154 @@ class AppUpdateServiceTest {
     assertEquals("rollback_not_available", exception.errorCode());
   }
 
+  @Test
+  void stage_whenSchemaIncreaseHasNoMigrationStep_expectBlockedBeforeBundleReplacement()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, true, false));
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("app_data_migration_missing", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    Map<String, Object> candidate = (Map<String, Object>) service.summary(APP_ID).get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("missing_migration", migration.get(STATUS));
+    assertEquals("app_data_migration_missing", migration.get("blockReason"));
+  }
+
+  @Test
+  void stage_whenTargetDeclaresNewNamespaceWithoutDurableData_expectNoMigrationRequired()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithUiStateRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+
+    assertFalse(runnerCalled.get());
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    assertEquals("not_required", ((Map<?, ?>) staged.get("dataMigration")).get(STATUS));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void stage_whenMigrationPlanningFails_expectPreparedPlanClosed() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataStore store = org.mockito.Mockito.mock(AppDataStore.class);
+    when(store.listNamespaces(APP_ID)).thenThrow(new IOException("store unavailable"));
+    AppDataService appDataService =
+        new AppDataService(
+            store,
+            null,
+            new AppDataStoreConfig(1024, 16, 4, 8192, 8192, 8),
+            java.time.Clock.fixed(Instant.parse("2026-05-03T00:00:00Z"), java.time.ZoneOffset.UTC),
+            new AppDiskUsageScanner());
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("app_data_store_unavailable", exception.errorCode());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void stage_whenStoppedRequiredMigrationAndAppRunning_expectBlockedBeforeDryRun()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("app_data_migration_requires_stopped", exception.errorCode());
+    assertFalse(runnerCalled.get());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    Map<String, Object> candidate = (Map<String, Object>) service.summary(APP_ID).get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("requires_stopped", migration.get(STATUS));
+    assertEquals("app_data_migration_requires_stopped", migration.get("blockReason"));
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void check_whenPolicyStageAndStoppedRequiredMigrationRunning_expectCandidateSummary()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertFalse(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("requires_stopped", migration.get(STATUS));
+    assertEquals("app_data_migration_requires_stopped", migration.get("blockReason"));
+  }
+
+  @Test
+  void apply_whenMigrationRequiredAndRunnerPasses_expectSnapshotApplyAndSchemaMetadata()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    assertEquals("ready", ((Map<?, ?>) staged.get("dataMigration")).get(STATUS));
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
+    assertEquals(
+        2, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+  }
+
+  @Test
+  void stage_whenTargetManifestRaisesDataQuota_expectDryRunUsesTargetQuota() throws Exception {
+    InstalledAppSnapshot installedForSeed =
+        installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION), Long.MAX_VALUE);
+    Files.createDirectories(installedForSeed.paths().dataDir());
+    Files.createDirectories(installedForSeed.paths().cacheDir());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedForSeed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithHostQuota();
+    InstalledAppSnapshot installedWithOldQuota =
+        installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION), 1L);
+    Files.createDirectories(installedWithOldQuota.paths().dataDir());
+    Files.createDirectories(installedWithOldQuota.paths().cacheDir());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedWithOldQuota));
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan =
+        planWithAppDataMigration(entry, true, true, "quota.data.bytes=65536\n");
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    assertEquals("ready", ((Map<?, ?>) staged.get("dataMigration")).get(STATUS));
+    assertEquals(List.of(AppDataMigrationRunner.Mode.DRY_RUN), modes);
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void apply_whenAppDataWriteAttemptsDuringMigrationWindow_expectWriteRejectedAndBarrierReleased()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<String> rejectedWriteErrors = new java.util.ArrayList<>();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, plan, mode, dataAccess) -> {
+              modes.add(mode);
+              if (mode == AppDataMigrationRunner.Mode.APPLY) {
+                PlatformApiException blocked =
+                    assertThrows(
+                        PlatformApiException.class, () -> putRecordDuringMigration(appDataService));
+                rejectedWriteErrors.add(blocked.errorCode());
+              }
+              rewriteMigrationPayloads(plan, mode, dataAccess);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
+    assertEquals(List.of("app_data_migration_in_progress"), rejectedWriteErrors);
+    appDataService.putRecord(
+        APP_ID,
+        Map.of(
+            "namespace",
+            List.of("feeds"),
+            "key",
+            List.of("after-migration"),
+            "schemaVersion",
+            List.of("2"),
+            "contentType",
+            List.of("application/json"),
+            "valueText",
+            List.of("{\"count\":3}")));
+    assertEquals(
+        2, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+  }
+
+  @Test
+  void apply_whenAppDataWriteAttemptsDuringFinalMigrationDryRun_expectWriteRejected()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    List<String> rejectedWriteErrors = new java.util.ArrayList<>();
+    int[] dryRuns = {0};
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, plan, mode, dataAccess) -> {
+              modes.add(mode);
+              if (mode == AppDataMigrationRunner.Mode.DRY_RUN && ++dryRuns[0] == 2) {
+                try {
+                  appDataService.putRecord(
+                      APP_ID,
+                      Map.of(
+                          "namespace",
+                          List.of("feeds"),
+                          "key",
+                          List.of("final-dry-run"),
+                          "schemaVersion",
+                          List.of("1"),
+                          "contentType",
+                          List.of("application/json"),
+                          "valueText",
+                          List.of("{\"during\":\"final-dry-run\"}")));
+                } catch (PlatformApiException exception) {
+                  rejectedWriteErrors.add(exception.errorCode());
+                }
+              }
+              for (AppDataMigrationPlan.NamespaceStep step : plan.namespaces()) {
+                AppDataMigrationRunner.StepDataFiles files = dataAccess.prepare(step, mode);
+                rewriteSchemaPayload(
+                    files.inputPayload(),
+                    files.outputPayload(),
+                    step.fromSchemaVersion(),
+                    step.toSchemaVersion());
+                dataAccess.complete(step, mode, files);
+              }
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
+    assertEquals(List.of("app_data_migration_in_progress"), rejectedWriteErrors);
+    assertThrows(
+        PlatformApiException.class,
+        () -> appDataService.getRecord(APP_ID, "feeds", "final-dry-run"));
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+  }
+
+  @Test
+  void apply_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    modes.clear();
+    doThrow(new AppCatalogException("invalid_app_bundle", "staged bundle tampered"))
+        .when(catalogManager)
+        .verifyInstallPlan(plan);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertTrue(modes.isEmpty());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, stagedBundleMutatingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    doNothing()
+        .doNothing()
+        .doThrow(new AppCatalogException("invalid_app_bundle", "staged bundle tampered"))
+        .when(catalogManager)
+        .verifyInstallPlan(plan);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    modes.clear();
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertEquals(List.of(AppDataMigrationRunner.Mode.DRY_RUN), modes);
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void stage_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.check(APP_ID, false);
+    doThrow(new AppCatalogException("invalid_app_bundle", "staged bundle tampered"))
+        .when(catalogManager)
+        .verifyInstallPlan(plan);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertTrue(modes.isEmpty());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void stage_whenMigrationHasDeadEndBranch_expectCompletePathSelected() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithDeadEndBranchAppDataMigration(entry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    Map<String, Object> migration = (Map<String, Object>) staged.get("dataMigration");
+    assertEquals("ready", migration.get(STATUS));
+    assertEquals(List.of(AppDataMigrationRunner.Mode.DRY_RUN), modes);
+    assertEquals(List.of("feeds-v1-v2", "feeds-v2-v4"), migrationStepIds(migration));
+  }
+
+  @Test
+  void stage_whenCompatibleChainCompetesWithIncompatibleDirectStep_expectCompatiblePathSelected()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService service =
+        serviceWithAppData(appDataServiceWithFeedRecord(), payloadRewritingMigrationRunner());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithCompatibleAlternativeAppDataMigration(entry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    Map<String, Object> migration = (Map<String, Object>) staged.get("dataMigration");
+    assertEquals("ready", migration.get(STATUS));
+    assertEquals(false, migration.get("operatorReviewRequired"));
+    assertEquals(List.of("feeds-v1-v2", "feeds-v2-v4"), migrationStepIds(migration));
+  }
+
+  @Test
+  void apply_whenLocalMigrationWritesPayload_expectRecordsImportedBeforeSchemaRecorded()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager, null, appDataService);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    writeSchemaRewriteMigrationScript(plan.stagedBundleDirectory());
+    writeSchemaRewriteMigrationScript(updated.paths().installedRoot());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        2, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+    assertEquals(
+        2, appDataService.getRecord(APP_ID, "feeds", "subscriptions").get("schemaVersion"));
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+  }
+
+  @Test
+  void apply_whenMigrationCommandFails_expectBundleRollbackAttemptedOnce() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, plan, mode, dataAccess) -> {
+              if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
+                for (AppDataMigrationPlan.NamespaceStep step : plan.namespaces()) {
+                  AppDataMigrationRunner.StepDataFiles files = dataAccess.prepare(step, mode);
+                  rewriteSchemaPayload(
+                      files.inputPayload(),
+                      files.outputPayload(),
+                      step.fromSchemaVersion(),
+                      step.toSchemaVersion());
+                  dataAccess.complete(step, mode, files);
+                }
+                return AppDataMigrationRunner.MigrationExecutionResult.passed();
+              }
+              return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.rollback(APP_ID)).thenReturn(installed);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals("app_data_migration_apply_failed", exception.errorCode());
+    verify(appHost, times(1)).rollback(APP_ID);
+    assertEquals(
+        1, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+  }
+
+  @Test
+  void apply_whenMigrationApplyFailsAndBundleRollbackFails_expectMigrationFailurePreserved()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(installed),
+            Optional.of(updated));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataService,
+            (_, plan, mode, dataAccess) -> {
+              if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
+                for (AppDataMigrationPlan.NamespaceStep step : plan.namespaces()) {
+                  AppDataMigrationRunner.StepDataFiles files = dataAccess.prepare(step, mode);
+                  rewriteSchemaPayload(
+                      files.inputPayload(),
+                      files.outputPayload(),
+                      step.fromSchemaVersion(),
+                      step.toSchemaVersion());
+                  dataAccess.complete(step, mode, files);
+                }
+                return AppDataMigrationRunner.MigrationExecutionResult.passed();
+              }
+              return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.rollback(APP_ID)).thenThrow(new IOException(ROLLBACK_MANIFEST_BROKEN));
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals(ROLLBACK_FAILED, exception.errorCode());
+    assertEquals(500, exception.statusCode());
+    verify(appHost, times(1)).rollback(APP_ID);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(updated));
+    Map<String, Object> summary = service.summary(APP_ID);
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(FAILED, candidate.get(STATUS));
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("failed", migration.get(STATUS));
+    assertEquals(ROLLBACK_FAILED, migration.get("blockReason"));
+    assertEquals("failed", migration.get("applyStatus"));
+  }
+
+  @Test
+  void apply_whenChainedLocalMigrations_expectEachStepAppliedBeforeNextStep() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager, null, appDataService);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithChainedAppDataMigration(entry);
+    writeSchemaRewriteMigrationScript(plan.stagedBundleDirectory());
+    writeSchemaRewriteMigrationScript(updated.paths().installedRoot());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        3, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+    assertEquals(
+        3, appDataService.getRecord(APP_ID, "feeds", "subscriptions").get("schemaVersion"));
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+  }
+
+  @Test
+  void apply_whenAppDataAppearsAfterStage_expectMigrationPlanRefreshedAndMigrationRuns()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataService();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    assertEquals("not_required", ((Map<?, ?>) staged.get("dataMigration")).get(STATUS));
+
+    putFeedRecord(appDataService);
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(
+        List.of(AppDataMigrationRunner.Mode.DRY_RUN, AppDataMigrationRunner.Mode.APPLY), modes);
+    assertEquals(
+        2, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+  }
+
+  @Test
+  void apply_whenAcknowledgedRollbackIncompatiblePlanRefreshesWithNewStep_expectReviewRequired()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithRollbackIncompatibleTwoNamespaceAppDataMigration(entry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID, false, true);
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    Map<String, Object> stagedMigration = (Map<String, Object>) staged.get("dataMigration");
+    assertEquals(List.of("feeds-v1-v2"), migrationStepIds(stagedMigration));
+    modes.clear();
+    putAppDataRecord(appDataService, "archive", "items");
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals("app_data_migration_review_required", exception.errorCode());
+    assertTrue(modes.isEmpty());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void
+      apply_whenMigrationContractHasNoExistingDataAndWriteAppearsBeforeReplacement_expectWriteRejected()
+          throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataService();
+    AtomicReference<String> rejectedWriteError = new AtomicReference<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+        .thenAnswer(
+            _ -> {
+              try {
+                putFeedRecord(appDataService);
+              } catch (PlatformApiException exception) {
+                rejectedWriteError.set(exception.errorCode());
+              }
+              return updated;
+            });
+
+    service.check(APP_ID, false);
+    Map<String, Object> stagedSummary = service.stage(APP_ID);
+    Map<String, Object> staged = (Map<String, Object>) stagedSummary.get(STAGED);
+    assertEquals("not_required", ((Map<?, ?>) staged.get("dataMigration")).get(STATUS));
+    Map<String, Object> applied = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals("app_data_migration_in_progress", rejectedWriteError.get());
+    assertTrue(appDataService.listNamespaceMetadataForUpdate(APP_ID).isEmpty());
+    Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
+    assertEquals("not_required", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
+    putFeedRecord(appDataService);
+    assertEquals(1, appDataService.listNamespaceMetadataForUpdate(APP_ID).size());
+  }
+
+  @Test
+  void apply_whenRunningMigrationSnapshotTooLarge_expectOriginalAppRestartedBeforeFailure()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(running(installed)),
+            Optional.empty());
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(1),
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    service.stage(APP_ID);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_RESTART_NO_HEALTH));
+
+    assertEquals("app_data_snapshot_too_large", exception.errorCode());
+    verify(appHost).stop(APP_ID);
+    verify(appHost).start(APP_ID);
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void stage_whenMigrationBundleRequestsSandbox_expectBlockedBeforeDryRun() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(
+            planWithAppDataMigration(
+                entry,
+                true,
+                true,
+                """
+                sandbox.mode=restricted-process
+                sandbox.required=true
+                """));
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("app_data_migration_sandbox_unavailable", exception.errorCode());
+    assertFalse(runnerCalled.get());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    Map<String, Object> candidate = (Map<String, Object>) service.summary(APP_ID).get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("sandbox_unavailable", migration.get(STATUS));
+    assertEquals("app_data_migration_sandbox_unavailable", migration.get("blockReason"));
+  }
+
+  @Test
+  void stage_whenMigrationBundleRequestsOptionalSandbox_expectDryRunAndStage() throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(
+            planWithAppDataMigration(
+                entry,
+                true,
+                true,
+                """
+                sandbox.mode=restricted-process
+                sandbox.required=false
+                """));
+
+    service.check(APP_ID, false);
+    Map<String, Object> summary = service.stage(APP_ID);
+
+    assertTrue(runnerCalled.get());
+    Map<String, Object> staged = (Map<String, Object>) summary.get(STAGED);
+    assertEquals(true, staged.get(AVAILABLE));
+    Map<String, Object> migration = (Map<String, Object>) staged.get("dataMigration");
+    assertEquals("ready", migration.get(STATUS));
+    assertNull(migration.get("blockReason"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenApplyWhenStoppedPolicySandboxMigration_expectCandidateSummaryWithoutApply()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            });
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(
+            planWithAppDataMigration(
+                entry,
+                true,
+                true,
+                """
+                sandbox.mode=restricted-process
+                sandbox.required=true
+                """));
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    assertFalse(runnerCalled.get());
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("sandbox_unavailable", migration.get(STATUS));
+    assertEquals("app_data_migration_sandbox_unavailable", migration.get("blockReason"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void stage_whenMigrationRollbackIncompatibleWithoutAcknowledgement_expectReviewRequired()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, false, true));
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("app_data_migration_review_required", exception.errorCode());
+    Map<String, Object> candidate = (Map<String, Object>) service.summary(APP_ID).get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals("rollback_incompatible", migration.get(STATUS));
+    assertEquals(true, migration.get("operatorReviewRequired"));
+  }
+
   private void verifyNoInstallPlanPreparation() {
     assertFalse(
         mockingDetails(catalogManager).getInvocations().stream()
             .map(invocation -> invocation.getMethod().getName())
             .anyMatch("prepareInstallPlan"::equals),
         "prepareInstallPlan should not be called");
+  }
+
+  private AppUpdateService serviceWithAppData(
+      AppDataService appDataService, AppDataMigrationRunner migrationRunner) {
+    return new AppUpdateService(
+        appHost,
+        catalogManager,
+        new AppUpdateService.AppUpdateDependencies(
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty,
+            null,
+            appDataService,
+            migrationRunner,
+            _ -> Map.of()));
+  }
+
+  private static AppDataMigrationRunner payloadRewritingMigrationRunner(
+      List<AppDataMigrationRunner.Mode> modes) {
+    return (_, plan, mode, dataAccess) -> {
+      modes.add(mode);
+      rewriteMigrationPayloads(plan, mode, dataAccess);
+      return AppDataMigrationRunner.MigrationExecutionResult.passed();
+    };
+  }
+
+  private static AppDataMigrationRunner payloadRewritingMigrationRunner() {
+    return payloadRewritingMigrationRunner(new java.util.ArrayList<>());
+  }
+
+  private static AppDataMigrationRunner stagedBundleMutatingMigrationRunner(
+      List<AppDataMigrationRunner.Mode> modes) {
+    AtomicInteger dryRuns = new AtomicInteger();
+    return (bundleRoot, plan, mode, dataAccess) -> {
+      modes.add(mode);
+      rewriteMigrationPayloads(plan, mode, dataAccess);
+      if (mode == AppDataMigrationRunner.Mode.DRY_RUN && dryRuns.incrementAndGet() == 2) {
+        Files.writeString(bundleRoot.resolve("tampered-after-apply-dry-run"), "changed");
+      }
+      return AppDataMigrationRunner.MigrationExecutionResult.passed();
+    };
+  }
+
+  private static void rewriteMigrationPayloads(
+      AppDataMigrationPlan plan,
+      AppDataMigrationRunner.Mode mode,
+      AppDataMigrationRunner.MigrationDataAccess dataAccess)
+      throws IOException {
+    for (AppDataMigrationPlan.NamespaceStep step : plan.namespaces()) {
+      AppDataMigrationRunner.StepDataFiles files = dataAccess.prepare(step, mode);
+      rewriteSchemaPayload(
+          files.inputPayload(),
+          files.outputPayload(),
+          step.fromSchemaVersion(),
+          step.toSchemaVersion());
+      dataAccess.complete(step, mode, files);
+    }
+  }
+
+  private static List<String> migrationStepIds(Map<String, Object> migration) {
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> steps = (List<Map<String, Object>>) migration.get("namespaces");
+    return steps.stream().map(step -> (String) step.get("stepId")).toList();
+  }
+
+  private static void rewriteSchemaPayload(
+      Path inputPayload, Path outputPayload, int fromSchemaVersion, int toSchemaVersion)
+      throws IOException {
+    String content = Files.readString(inputPayload);
+    int recordsOffset = content.indexOf("\"records\"");
+    if (recordsOffset < 0) {
+      Files.writeString(outputPayload, content);
+      return;
+    }
+    String migratedRecords =
+        content
+            .substring(recordsOffset)
+            .replace(
+                "\"schemaVersion\":" + fromSchemaVersion, "\"schemaVersion\":" + toSchemaVersion);
+    Files.writeString(outputPayload, content.substring(0, recordsOffset) + migratedRecords);
+  }
+
+  private static AppDataService appDataServiceWithFeedRecord() {
+    return appDataServiceWithFeedRecord(8192);
+  }
+
+  private static AppDataService appDataServiceWithUiStateRecord() {
+    AppDataService service = appDataService();
+    service.putRecord(
+        APP_ID,
+        Map.of(
+            "namespace",
+            List.of("ui-state"),
+            "key",
+            List.of("view"),
+            "schemaVersion",
+            List.of("1"),
+            "contentType",
+            List.of("application/json"),
+            "valueText",
+            List.of("{\"selected\":true}")));
+    return service;
+  }
+
+  private static AppDataService appDataServiceWithFeedRecord(int maxExportBytes) {
+    AppDataService service = appDataService(maxExportBytes);
+    putFeedRecord(service);
+    return service;
+  }
+
+  private static AppDataService appDataService() {
+    return appDataService(8192);
+  }
+
+  private static AppDataService appDataService(int maxExportBytes) {
+    return new AppDataService(
+        new InMemoryAppDataStore(),
+        null,
+        new AppDataStoreConfig(1024, 16, 4, maxExportBytes, 8192, 8),
+        java.time.Clock.fixed(Instant.parse("2026-05-03T00:00:00Z"), java.time.ZoneOffset.UTC),
+        new AppDiskUsageScanner());
+  }
+
+  private AppDataService appDataServiceWithHostQuota() {
+    AppDataService service =
+        new AppDataService(
+            new InMemoryAppDataStore(),
+            appHost,
+            new AppDataStoreConfig(1024, 16, 4, 8192, 8192, 8),
+            java.time.Clock.fixed(Instant.parse("2026-05-03T00:00:00Z"), java.time.ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    putFeedRecord(service);
+    return service;
+  }
+
+  private static void putFeedRecord(AppDataService service) {
+    putAppDataRecord(service, FEEDS_NAMESPACE, SUBSCRIPTIONS_KEY);
+  }
+
+  private static void putRecordDuringMigration(AppDataService service) {
+    putAppDataRecord(service, FEEDS_NAMESPACE, "during-migration", "{\"count\":2}");
+  }
+
+  private static void putAppDataRecord(AppDataService service, String namespace, String key) {
+    putAppDataRecord(service, namespace, key, "{\"count\":1}");
+  }
+
+  private static void putAppDataRecord(
+      AppDataService service, String namespace, String key, String valueText) {
+    service.putRecord(
+        APP_ID,
+        Map.of(
+            "namespace",
+            List.of(namespace),
+            "key",
+            List.of(key),
+            "schemaVersion",
+            List.of("1"),
+            "contentType",
+            List.of("application/json"),
+            "valueText",
+            List.of(valueText)));
   }
 
   private AppUpdateService serviceWithInstalled(String version, List<String> permissions)
@@ -1727,6 +3111,11 @@ class AppUpdateServiceTest {
   }
 
   private InstalledAppSnapshot installed(String version, List<String> permissions) {
+    return installed(version, permissions, null);
+  }
+
+  private InstalledAppSnapshot installed(
+      String version, List<String> permissions, Long quotaBytes) {
     AppManifest manifest =
         new AppManifest(
             1,
@@ -1737,7 +3126,7 @@ class AppUpdateServiceTest {
             AppUiMode.NONE,
             null,
             permissions,
-            null,
+            quotaBytes,
             null);
     InstalledAppPaths paths =
         new InstalledAppPaths(
@@ -1904,7 +3293,7 @@ class AppUpdateServiceTest {
             REVIEW_POLICY_ID));
   }
 
-  private static KeyPair reviewerKeyPair() throws Exception {
+  private static KeyPair reviewerKeyPair() throws NoSuchAlgorithmException {
     return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
   }
 
@@ -1916,6 +3305,279 @@ class AppUpdateServiceTest {
     Path scratch = tempDir.resolve("scratch-" + entry.version());
     Path staged = scratch.resolve("bundle");
     Files.createDirectories(staged);
+    Files.writeString(
+        staged.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
     return new AppCatalogInstallPlan(catalogId, entry, staged, scratch);
+  }
+
+  private AppCatalogInstallPlan planWithAppDataMigration(
+      AppCatalogEntry entry, boolean rollbackCompatible, boolean includeMigrationStep)
+      throws IOException {
+    return planWithAppDataMigration(entry, rollbackCompatible, includeMigrationStep, "");
+  }
+
+  private AppCatalogInstallPlan planWithAppDataMigration(
+      AppCatalogEntry entry,
+      boolean rollbackCompatible,
+      boolean includeMigrationStep,
+      String extraManifestFields)
+      throws IOException {
+    AppCatalogInstallPlan plan = plan(entry);
+    String migrationFields =
+        includeMigrationStep
+            ? """
+            app.data.migrations=feeds-v1-v2
+            app.data.migration.feeds-v1-v2.namespace=feeds
+            app.data.migration.feeds-v1-v2.from=1
+            app.data.migration.feeds-v1-v2.to=2
+            app.data.migration.feeds-v1-v2.command=bin/migrate-feed-data.sh
+            app.data.migration.feeds-v1-v2.rollbackCompatible=%s
+            app.data.migration.feeds-v1-v2.requiresStopped=true
+            app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+            """
+                .formatted(Boolean.toString(rollbackCompatible))
+            : "";
+    Files.writeString(
+        plan.stagedBundleDirectory().resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        %s
+        app.data.schema.current=2
+        app.data.schema.namespaces=feeds
+        app.data.schema.namespace.feeds.current=2
+        %s
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions()),
+                extraManifestFields,
+                migrationFields));
+    return plan;
+  }
+
+  private AppCatalogInstallPlan planWithRollbackIncompatibleTwoNamespaceAppDataMigration(
+      AppCatalogEntry entry) throws IOException {
+    AppCatalogInstallPlan plan = plan(entry);
+    Files.writeString(
+        plan.stagedBundleDirectory().resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        app.data.schema.current=2
+        app.data.schema.namespaces=feeds,archive
+        app.data.schema.namespace.feeds.current=2
+        app.data.schema.namespace.archive.current=2
+        app.data.migrations=feeds-v1-v2,archive-v1-v2
+        app.data.migration.feeds-v1-v2.namespace=feeds
+        app.data.migration.feeds-v1-v2.from=1
+        app.data.migration.feeds-v1-v2.to=2
+        app.data.migration.feeds-v1-v2.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v2.rollbackCompatible=false
+        app.data.migration.feeds-v1-v2.requiresStopped=true
+        app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+        app.data.migration.archive-v1-v2.namespace=archive
+        app.data.migration.archive-v1-v2.from=1
+        app.data.migration.archive-v1-v2.to=2
+        app.data.migration.archive-v1-v2.command=bin/migrate-feed-data.sh
+        app.data.migration.archive-v1-v2.rollbackCompatible=false
+        app.data.migration.archive-v1-v2.requiresStopped=true
+        app.data.migration.archive-v1-v2.description=Upgrade archived feed records to schema v2.
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
+    return plan;
+  }
+
+  private AppCatalogInstallPlan planWithChainedAppDataMigration(AppCatalogEntry entry)
+      throws IOException {
+    AppCatalogInstallPlan plan = plan(entry);
+    Files.writeString(
+        plan.stagedBundleDirectory().resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        app.data.schema.current=3
+        app.data.schema.namespaces=feeds
+        app.data.schema.namespace.feeds.current=3
+        app.data.migrations=feeds-v1-v2,feeds-v2-v3
+        app.data.migration.feeds-v1-v2.namespace=feeds
+        app.data.migration.feeds-v1-v2.from=1
+        app.data.migration.feeds-v1-v2.to=2
+        app.data.migration.feeds-v1-v2.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v2.rollbackCompatible=true
+        app.data.migration.feeds-v1-v2.requiresStopped=true
+        app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+        app.data.migration.feeds-v2-v3.namespace=feeds
+        app.data.migration.feeds-v2-v3.from=2
+        app.data.migration.feeds-v2-v3.to=3
+        app.data.migration.feeds-v2-v3.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v2-v3.rollbackCompatible=true
+        app.data.migration.feeds-v2-v3.requiresStopped=true
+        app.data.migration.feeds-v2-v3.description=Upgrade feed records to schema v3.
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
+    return plan;
+  }
+
+  private AppCatalogInstallPlan planWithDeadEndBranchAppDataMigration(AppCatalogEntry entry)
+      throws IOException {
+    return planWithBranchingAppDataMigration(
+        entry,
+        """
+        app.data.migrations=feeds-v1-v3,feeds-v1-v2,feeds-v2-v4
+        app.data.migration.feeds-v1-v3.namespace=feeds
+        app.data.migration.feeds-v1-v3.from=1
+        app.data.migration.feeds-v1-v3.to=3
+        app.data.migration.feeds-v1-v3.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v3.rollbackCompatible=true
+        app.data.migration.feeds-v1-v3.requiresStopped=true
+        app.data.migration.feeds-v1-v3.description=Dead-end feed records migration.
+        app.data.migration.feeds-v1-v2.namespace=feeds
+        app.data.migration.feeds-v1-v2.from=1
+        app.data.migration.feeds-v1-v2.to=2
+        app.data.migration.feeds-v1-v2.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v2.rollbackCompatible=true
+        app.data.migration.feeds-v1-v2.requiresStopped=true
+        app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+        app.data.migration.feeds-v2-v4.namespace=feeds
+        app.data.migration.feeds-v2-v4.from=2
+        app.data.migration.feeds-v2-v4.to=4
+        app.data.migration.feeds-v2-v4.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v2-v4.rollbackCompatible=true
+        app.data.migration.feeds-v2-v4.requiresStopped=true
+        app.data.migration.feeds-v2-v4.description=Upgrade feed records to schema v4.
+        """);
+  }
+
+  private AppCatalogInstallPlan planWithCompatibleAlternativeAppDataMigration(AppCatalogEntry entry)
+      throws IOException {
+    return planWithBranchingAppDataMigration(
+        entry,
+        """
+        app.data.migrations=feeds-v1-v4,feeds-v1-v2,feeds-v2-v4
+        app.data.migration.feeds-v1-v4.namespace=feeds
+        app.data.migration.feeds-v1-v4.from=1
+        app.data.migration.feeds-v1-v4.to=4
+        app.data.migration.feeds-v1-v4.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v4.rollbackCompatible=false
+        app.data.migration.feeds-v1-v4.requiresStopped=true
+        app.data.migration.feeds-v1-v4.description=Direct feed records migration.
+        app.data.migration.feeds-v1-v2.namespace=feeds
+        app.data.migration.feeds-v1-v2.from=1
+        app.data.migration.feeds-v1-v2.to=2
+        app.data.migration.feeds-v1-v2.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v1-v2.rollbackCompatible=true
+        app.data.migration.feeds-v1-v2.requiresStopped=true
+        app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+        app.data.migration.feeds-v2-v4.namespace=feeds
+        app.data.migration.feeds-v2-v4.from=2
+        app.data.migration.feeds-v2-v4.to=4
+        app.data.migration.feeds-v2-v4.command=bin/migrate-feed-data.sh
+        app.data.migration.feeds-v2-v4.rollbackCompatible=true
+        app.data.migration.feeds-v2-v4.requiresStopped=true
+        app.data.migration.feeds-v2-v4.description=Upgrade feed records to schema v4.
+        """);
+  }
+
+  private AppCatalogInstallPlan planWithBranchingAppDataMigration(
+      AppCatalogEntry entry, String migrationFields) throws IOException {
+    AppCatalogInstallPlan plan = plan(entry);
+    Files.writeString(
+        plan.stagedBundleDirectory().resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        app.data.schema.current=4
+        app.data.schema.namespaces=feeds
+        app.data.schema.namespace.feeds.current=4
+        %s
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions()),
+                migrationFields));
+    return plan;
+  }
+
+  private static void writeSchemaRewriteMigrationScript(Path bundleRoot) throws IOException {
+    Path binDirectory = bundleRoot.resolve("bin");
+    Files.createDirectories(binDirectory);
+    Path script = binDirectory.resolve("migrate-feed-data.sh");
+    Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        set -eu
+
+        test "${CRYPTA_APP_MIGRATION_NAMESPACE:-}" = "feeds"
+        from="${CRYPTA_APP_MIGRATION_FROM:?}"
+        to="${CRYPTA_APP_MIGRATION_TO:?}"
+        case "${CRYPTA_APP_MIGRATION_MODE:-}" in dry-run|apply) ;; *) exit 64;; esac
+        input="${CRYPTA_APP_MIGRATION_INPUT:?}"
+        output="${CRYPTA_APP_MIGRATION_OUTPUT:?}"
+        awk -v from="$from" -v to="$to" '
+        BEGIN {
+          pattern = "\\"schemaVersion\\":" from
+          replacement = "\\"schemaVersion\\":" to
+        }
+        {
+          pos = index($0, "\\"records\\"")
+          if (pos > 0 && migrated == 0) {
+            prefix = substr($0, 1, pos - 1)
+            suffix = substr($0, pos)
+            gsub(pattern, replacement, suffix)
+            print prefix suffix
+            migrated = 1
+            next
+          }
+          if (migrated != 0) {
+            gsub(pattern, replacement)
+          }
+          print
+        }
+        ' "$input" > "$output"
+        """);
+    assertTrue(script.toFile().setExecutable(true));
   }
 }

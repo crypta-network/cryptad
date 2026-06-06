@@ -8,11 +8,12 @@ import java.util.Objects;
 /**
  * Path-free metadata describing one app-declared namespace schema transition.
  *
- * <p>The platform never executes app-provided migration code. A migration record only captures the
- * app's declared schema movement and a bounded human-readable summary so app updates can coordinate
- * their own durable state changes across restarts. Summaries are sanitized into a single line and
- * are safe for app-facing API responses, but callers should still avoid putting secrets, private
- * insert URIs, raw request bodies, or local filesystem details into them.
+ * <p>The record captures the app's declared schema movement and a bounded human-readable summary so
+ * app updates can coordinate durable state changes across restarts. Update-time migrations may be
+ * executed from signed bundle entrypoints, but the stored record remains metadata only. Summaries
+ * are sanitized into a single line and are safe for app-facing API responses, but callers should
+ * still avoid putting secrets, private insert URIs, raw request bodies, or local filesystem details
+ * into them.
  *
  * <p>Schema versions are positive integers and must move forward or stay equal. Equal versions are
  * useful when an app wants to annotate a metadata refresh without claiming that record values have

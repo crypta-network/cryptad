@@ -29,7 +29,7 @@ class SitePublisherBundleStagingTest {
   private static final String EXPECTED_LAUNCHER_PATH = "bin/site-publisher.sh";
   private static final String EXPECTED_PERMISSIONS = "queue.read,queue.write,content.insert";
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 3;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 13;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 14;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",

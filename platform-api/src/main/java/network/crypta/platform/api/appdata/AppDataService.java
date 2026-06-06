@@ -77,6 +77,7 @@ public final class AppDataService {
   private static final String PARAM_PAYLOAD_BASE64 = "payloadBase64";
   private static final String PARAM_MODE = "mode";
   private static final String FIELD_NAMESPACE_COUNT = "namespaceCount";
+  private static final String FIELD_PAYLOAD_BYTES = "payloadBytes";
   private static final String FIELD_RECORD_COUNT = "recordCount";
   private static final String IMPORT_MODE_MERGE = "merge";
   private static final String IMPORT_MODE_REPLACE_NAMESPACE = "replaceNamespace";
@@ -90,6 +91,7 @@ public final class AppDataService {
   private final Clock clock;
   private final AppDiskUsageScanner diskUsageScanner;
   private final boolean storeUsageOutsideAppDataDir;
+  private final Map<String, Integer> updateMigrationWriteBarriers = new LinkedHashMap<>();
 
   /**
    * Creates a service using system UTC time and the default quota scanner.
@@ -261,6 +263,12 @@ public final class AppDataService {
       String appId, String namespace, Map<String, List<String>> parameters) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
     String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
+    return updateSchemaInternal(normalizedAppId, normalizedNamespace, parameters);
+  }
+
+  private Map<String, Object> updateSchemaInternal(
+      String normalizedAppId, String normalizedNamespace, Map<String, List<String>> parameters) {
     int fromVersion = readRequiredPositiveInt(parameters, "fromSchemaVersion");
     int toVersion = readRequiredPositiveInt(parameters, "toSchemaVersion");
     String summary = PlatformApiParameters.readOptionalString(parameters, "summary");
@@ -318,6 +326,7 @@ public final class AppDataService {
   public synchronized Map<String, Object> deleteNamespace(String appId, String namespace) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
     String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     AppDataNamespaceMetadata existing = readNamespaceRequired(normalizedAppId, normalizedNamespace);
     try {
       store.deleteNamespace(normalizedAppId, normalizedNamespace);
@@ -395,6 +404,7 @@ public final class AppDataService {
   public synchronized Map<String, Object> putRecord(
       String appId, Map<String, List<String>> parameters) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     String namespace =
         AppDataRecord.normalizeNamespace(
             PlatformApiParameters.requireString(parameters, PARAM_NAMESPACE));
@@ -443,7 +453,9 @@ public final class AppDataService {
    * @return deleted record summary with a {@code deleted} marker
    */
   public synchronized Map<String, Object> deleteRecord(String appId, String namespace, String key) {
-    AppDataRecord existing = readRecordRequired(appId, namespace, key);
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
+    AppDataRecord existing = readRecordRequired(normalizedAppId, namespace, key);
     Optional<AppDataNamespaceMetadata> namespaceBeforeDelete =
         readNamespaceOptional(existing.appId(), existing.namespace());
     boolean deleted;
@@ -511,7 +523,7 @@ public final class AppDataService {
     }
     LinkedHashMap<String, Object> json = new LinkedHashMap<>(payload.toJsonValue());
     json.put(PARAM_FORMAT, "json");
-    json.put("payloadBytes", payloadBytes.length);
+    json.put(FIELD_PAYLOAD_BYTES, payloadBytes.length);
     json.put(
         PARAM_PAYLOAD_BASE64, Base64.getUrlEncoder().withoutPadding().encodeToString(payloadBytes));
     return json;
@@ -533,6 +545,7 @@ public final class AppDataService {
   public synchronized Map<String, Object> importData(
       String appId, Map<String, List<String>> parameters) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     byte[] payloadBytes = decodeRequiredPayloadBase64(parameters);
     if (payloadBytes.length > config.maxImportBytes()) {
       throw new PlatformApiException(
@@ -580,8 +593,352 @@ public final class AppDataService {
     json.put("mode", mode);
     json.put(FIELD_NAMESPACE_COUNT, importedNamespaces.size());
     json.put(FIELD_RECORD_COUNT, importedRecords.size());
-    json.put("payloadBytes", payloadBytes.length);
+    json.put(FIELD_PAYLOAD_BYTES, payloadBytes.length);
     return json;
+  }
+
+  /**
+   * Lists namespace metadata for update migration planning.
+   *
+   * <p>This internal path is metadata-only and remains scoped to one normalized app id. It exposes
+   * the same path-free namespace records used by app-facing list routes, but keeps migration
+   * planning inside the daemon instead of requiring update code to inspect store paths or values.
+   *
+   * @param appId app id whose namespace schemas should be inspected
+   * @return deterministic namespace metadata for the app
+   */
+  public synchronized List<AppDataNamespaceMetadata> listNamespaceMetadataForUpdate(String appId) {
+    return List.copyOf(listNamespaceMetadata(AppDataRecord.normalizeAppId(appId)));
+  }
+
+  /**
+   * Begins an internal app-scoped write barrier for a schema-changing update migration.
+   *
+   * <p>The barrier is deliberately app-scoped rather than namespace-scoped because the update
+   * lifecycle snapshots and restores app data as a whole. While the barrier is active, app-facing
+   * writes for this app are rejected with {@code app_data_migration_in_progress}; internal update
+   * migration import and snapshot restore methods remain available to the update lifecycle.
+   *
+   * @param appId app id whose app-facing writes must be blocked
+   * @return closeable barrier token; closing releases one nested barrier
+   */
+  public synchronized UpdateMigrationWriteBarrier beginUpdateMigrationWriteBarrier(String appId) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    updateMigrationWriteBarriers.merge(normalizedAppId, 1, Integer::sum);
+    return new UpdateMigrationWriteBarrier(normalizedAppId);
+  }
+
+  /**
+   * Exports one namespace for an internal signed update migration command.
+   *
+   * <p>This method is app-scoped and reuses the normal export payload format so migration commands
+   * receive bounded JSON data rather than store paths. The returned bytes are for the update
+   * lifecycle only and must not be copied into public summaries.
+   *
+   * @param appId app id whose namespace should be exported
+   * @param namespace namespace being migrated
+   * @return UTF-8 app-data export payload bytes for the namespace
+   */
+  public synchronized byte[] exportUpdateMigrationPayload(String appId, String namespace) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    List<AppDataNamespaceMetadata> namespaces =
+        readNamespaceOptional(normalizedAppId, normalizedNamespace).stream().toList();
+    List<AppDataRecordSummary> summaries =
+        listStoredRecordSummaries(normalizedAppId, normalizedNamespace);
+    Instant exportedAt = clock.instant();
+    enforceExportLimit(normalizedAppId, exportedAt, namespaces, summaries);
+    AppDataExportPayload payload =
+        new AppDataExportPayload(
+            AppDataExportPayload.CURRENT_EXPORT_VERSION,
+            normalizedAppId,
+            exportedAt,
+            namespaces,
+            listStoredRecords(normalizedAppId, normalizedNamespace));
+    byte[] payloadBytes = payload.toJsonBytes();
+    if (payloadBytes.length > config.maxExportBytes()) {
+      throw new PlatformApiException(
+          400, "app_data_export_too_large", "App-data export exceeds the configured limit.");
+    }
+    return payloadBytes;
+  }
+
+  /**
+   * Returns the maximum accepted migration output payload size.
+   *
+   * @return configured app-data import byte cap
+   */
+  public synchronized int maxUpdateMigrationPayloadBytes() {
+    return config.maxImportBytes();
+  }
+
+  /**
+   * Validates one dry-run migration output and returns the payload shape for the next chained step.
+   *
+   * <p>The returned bytes are not committed to durable app data. They contain the same migrated
+   * records from the command output, with namespace metadata advanced to the step target so a later
+   * dry-run step for the same namespace sees the schema precondition it declared.
+   *
+   * @param appId app id whose namespace is being dry-run migrated
+   * @param namespace namespace being migrated
+   * @param fromSchemaVersion current namespace schema version for this step
+   * @param toSchemaVersion target namespace schema version for this step
+   * @param summary bounded migration summary to attach to temporary metadata
+   * @param payloadBytes command output payload bytes
+   * @return validated export payload bytes suitable as the next dry-run input
+   */
+  public synchronized byte[] advanceUpdateMigrationDryRunPayload(
+      String appId,
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      String summary,
+      byte[] payloadBytes) {
+    return advanceUpdateMigrationDryRunPayload(
+        appId,
+        namespace,
+        fromSchemaVersion,
+        toSchemaVersion,
+        summary,
+        payloadBytes,
+        ManifestQuotaCheck.installedManifest());
+  }
+
+  /**
+   * Validates one dry-run migration output against the target manifest quota for an update.
+   *
+   * <p>This variant is used before the updated bundle is installed. Store-level limits still apply,
+   * but positive manifest data-quota checks use the candidate manifest's {@code quota.data.bytes}
+   * declaration instead of the old installed bundle's quota.
+   *
+   * @param appId app id whose namespace is being dry-run migrated
+   * @param namespace namespace being migrated
+   * @param fromSchemaVersion current namespace schema version for this step
+   * @param toSchemaVersion target namespace schema version for this step
+   * @param summary bounded migration summary to attach to temporary metadata
+   * @param payloadBytes command output payload bytes
+   * @param targetDataQuotaBytes candidate manifest quota, or {@code null} when the target has no
+   *     positive manifest data quota
+   * @return validated export payload bytes suitable as the next dry-run input
+   */
+  public synchronized byte[] advanceUpdateMigrationDryRunPayload(
+      String appId,
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      String summary,
+      byte[] payloadBytes,
+      Long targetDataQuotaBytes) {
+    return advanceUpdateMigrationDryRunPayload(
+        appId,
+        namespace,
+        fromSchemaVersion,
+        toSchemaVersion,
+        summary,
+        payloadBytes,
+        ManifestQuotaCheck.targetManifest(targetDataQuotaBytes));
+  }
+
+  private byte[] advanceUpdateMigrationDryRunPayload(
+      String appId,
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      String summary,
+      byte[] payloadBytes,
+      ManifestQuotaCheck manifestQuotaCheck) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    UpdateMigrationPayload payload =
+        updateMigrationPayload(
+            normalizedAppId, namespace, fromSchemaVersion, toSchemaVersion, payloadBytes);
+    AppDataMigrationRecord migration =
+        new AppDataMigrationRecord(
+            fromSchemaVersion, toSchemaVersion, summary == null ? "" : summary, clock.instant());
+    List<AppDataNamespaceMetadata> advancedNamespaces =
+        payload.importedNamespacesMetadata().stream()
+            .map(metadata -> withImportedRecordTotals(metadata, payload.importedRecords()))
+            .map(metadata -> metadata.withMigration(migration, config.maxMigrationHistory()))
+            .toList();
+    preflightImport(
+        normalizedAppId,
+        advancedNamespaces,
+        payload.importedRecords(),
+        IMPORT_MODE_REPLACE_NAMESPACE,
+        manifestQuotaCheck);
+    byte[] advancedPayload =
+        new AppDataExportPayload(
+                AppDataExportPayload.CURRENT_EXPORT_VERSION,
+                normalizedAppId,
+                clock.instant(),
+                advancedNamespaces,
+                payload.importedRecords())
+            .toJsonBytes();
+    if (advancedPayload.length > config.maxImportBytes()) {
+      throw new PlatformApiException(
+          400, "app_data_import_too_large", "App-data import exceeds the configured limit.");
+    }
+    return advancedPayload;
+  }
+
+  /**
+   * Imports one namespace migration output payload after a successful apply command.
+   *
+   * <p>The output must contain only the namespace being migrated. Namespace metadata must still be
+   * at the pre-migration schema version so the platform can append the signed migration record
+   * immediately afterward; all records in the namespace must already carry the target schema
+   * version.
+   *
+   * @param appId app id whose namespace is being migrated
+   * @param namespace namespace being migrated
+   * @param fromSchemaVersion current namespace schema version
+   * @param toSchemaVersion target record schema version
+   * @param payloadBytes command output payload bytes
+   */
+  public synchronized void importUpdateMigrationPayload(
+      String appId,
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      byte[] payloadBytes) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    UpdateMigrationPayload payload =
+        updateMigrationPayload(
+            normalizedAppId, namespace, fromSchemaVersion, toSchemaVersion, payloadBytes);
+    preflightImport(
+        normalizedAppId,
+        payload.importedNamespacesMetadata(),
+        payload.importedRecords(),
+        IMPORT_MODE_REPLACE_NAMESPACE);
+    replaceImportedNamespaces(
+        normalizedAppId,
+        payload.importedNamespacesMetadata(),
+        payload.importedRecords(),
+        payload.importedNamespaces());
+  }
+
+  /**
+   * Creates an internal app-data snapshot for a schema-changing app update.
+   *
+   * <p>The snapshot reuses the export payload validation and configured export size limit. It is
+   * returned as an in-memory object owned by the update lifecycle; no app-facing route is added and
+   * raw values must not be copied into public update summaries.
+   *
+   * @param appId app id whose durable app-data state should be snapshotted
+   * @return bounded internal update snapshot
+   */
+  public synchronized AppDataUpdateSnapshot createUpdateSnapshot(String appId) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    List<AppDataNamespaceMetadata> namespaces = listNamespaceMetadata(normalizedAppId);
+    List<AppDataRecordSummary> summaries = listStoredRecordSummaries(normalizedAppId, null);
+    Instant exportedAt = clock.instant();
+    if (projectedExportBytes(normalizedAppId, exportedAt, namespaces, summaries)
+        > config.maxExportBytes()) {
+      throw new PlatformApiException(
+          400,
+          "app_data_snapshot_too_large",
+          "App-data update snapshot exceeds the configured limit.");
+    }
+    List<AppDataRecord> records = listStoredRecords(normalizedAppId, null);
+    AppDataExportPayload payload =
+        new AppDataExportPayload(
+            AppDataExportPayload.CURRENT_EXPORT_VERSION,
+            normalizedAppId,
+            exportedAt,
+            namespaces,
+            records);
+    byte[] payloadBytes = payload.toJsonBytes();
+    if (payloadBytes.length > config.maxExportBytes()) {
+      throw new PlatformApiException(
+          400,
+          "app_data_snapshot_too_large",
+          "App-data update snapshot exceeds the configured limit.");
+    }
+    return new AppDataUpdateSnapshot(payload, payloadBytes.length, exportedAt);
+  }
+
+  /**
+   * Restores a previously created internal app-data update snapshot.
+   *
+   * <p>The snapshot must belong to the requested app. The method validates record sizes,
+   * namespace/record counts, and migration-history bounds before deleting current app state and
+   * writing the snapshot records back. It does not accept arbitrary user-supplied payloads.
+   *
+   * @param appId app id whose snapshot should be restored
+   * @param snapshot internal update snapshot created by {@link #createUpdateSnapshot(String)}
+   */
+  public synchronized void restoreUpdateSnapshot(String appId, AppDataUpdateSnapshot snapshot) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    AppDataUpdateSnapshot checkedSnapshot = Objects.requireNonNull(snapshot, "snapshot");
+    if (!normalizedAppId.equals(checkedSnapshot.appId())) {
+      throw new PlatformApiException(
+          400, "app_data_snapshot_app_mismatch", "App-data snapshot belongs to another app.");
+    }
+    List<AppDataNamespaceMetadata> namespaces =
+        checkedSnapshot.payload().namespaces().stream()
+            .map(metadata -> withCallerAppId(metadata, normalizedAppId))
+            .toList();
+    List<AppDataRecord> records =
+        checkedSnapshot.payload().records().stream()
+            .map(appDataRecord -> withCallerAppId(appDataRecord, normalizedAppId))
+            .toList();
+    rejectOversizedImportedRecords(records);
+    validateImportedNamespaceMetadata(namespaces);
+    if (namespaces.size() > config.maxNamespacesPerApp()
+        || records.size() > config.maxRecordsPerApp()) {
+      throw quotaExceeded();
+    }
+    long totalBytes = records.stream().mapToLong(AppDataRecord::valueBytes).sum();
+    if (totalBytes > config.maxStoredValueBytesPerApp()) {
+      throw quotaExceeded();
+    }
+    try {
+      store.deleteAllForApp(normalizedAppId);
+    } catch (IOException _) {
+      throw storeUnavailable();
+    }
+    for (AppDataNamespaceMetadata metadata : namespaces) {
+      writeNamespace(metadata);
+    }
+    for (AppDataRecord appDataRecord : records) {
+      ensureNamespaceForRecord(appDataRecord);
+      writeRecord(appDataRecord);
+    }
+  }
+
+  /**
+   * Discards an internal app-data update snapshot.
+   *
+   * <p>Snapshots are currently in-memory, so discard is a validation point and future extension
+   * hook rather than an I/O operation.
+   *
+   * @param snapshot snapshot no longer needed by the update lifecycle
+   */
+  public synchronized void discardUpdateSnapshot(AppDataUpdateSnapshot snapshot) {
+    Objects.requireNonNull(snapshot, "snapshot");
+  }
+
+  /**
+   * Records app-data schema metadata after a signed update migration step has completed.
+   *
+   * @param appId app id whose namespace migrated
+   * @param namespace app-data namespace
+   * @param fromSchemaVersion previous namespace schema version
+   * @param toSchemaVersion target namespace schema version
+   * @param summary bounded migration summary
+   */
+  public synchronized void recordUpdateMigration(
+      String appId, String namespace, int fromSchemaVersion, int toSchemaVersion, String summary) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    Map<String, List<String>> parameters =
+        Map.of(
+            "fromSchemaVersion",
+            List.of(Integer.toString(fromSchemaVersion)),
+            "toSchemaVersion",
+            List.of(Integer.toString(toSchemaVersion)),
+            "summary",
+            List.of(summary == null ? "" : summary));
+    updateSchemaInternal(normalizedAppId, normalizedNamespace, parameters);
   }
 
   /**
@@ -594,10 +951,55 @@ public final class AppDataService {
    * @param appId app id whose durable app-data state should be removed
    */
   public synchronized void clearAppState(String appId) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     try {
-      store.deleteAllForApp(AppDataRecord.normalizeAppId(appId));
+      store.deleteAllForApp(normalizedAppId);
     } catch (IOException _) {
       throw storeUnavailable();
+    }
+  }
+
+  private void rejectIfUpdateMigrationWriteBarrierActive(String normalizedAppId) {
+    if (updateMigrationWriteBarriers.getOrDefault(normalizedAppId, 0) <= 0) {
+      return;
+    }
+    throw new PlatformApiException(
+        409,
+        "app_data_migration_in_progress",
+        "App-data writes are blocked while an update migration is in progress.");
+  }
+
+  /** App-scoped write barrier token for internal update migrations. */
+  public final class UpdateMigrationWriteBarrier implements AutoCloseable {
+    private final String appId;
+    private boolean closed;
+
+    private UpdateMigrationWriteBarrier(String appId) {
+      this.appId = appId;
+    }
+
+    @Override
+    public void close() {
+      synchronized (AppDataService.this) {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        release();
+      }
+    }
+
+    private void release() {
+      Integer count = updateMigrationWriteBarriers.get(appId);
+      if (count == null) {
+        return;
+      }
+      if (count <= 1) {
+        updateMigrationWriteBarriers.remove(appId);
+        return;
+      }
+      updateMigrationWriteBarriers.put(appId, count - 1);
     }
   }
 
@@ -731,6 +1133,20 @@ public final class AppDataService {
       List<AppDataNamespaceMetadata> importedNamespacesMetadata,
       List<AppDataRecord> importedRecords,
       String mode) {
+    preflightImport(
+        appId,
+        importedNamespacesMetadata,
+        importedRecords,
+        mode,
+        ManifestQuotaCheck.installedManifest());
+  }
+
+  private void preflightImport(
+      String appId,
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      List<AppDataRecord> importedRecords,
+      String mode,
+      ManifestQuotaCheck manifestQuotaCheck) {
     rejectOversizedImportedRecords(importedRecords);
     validateImportedNamespaceMetadata(importedNamespacesMetadata);
     Set<String> importedNamespaces =
@@ -757,7 +1173,7 @@ public final class AppDataService {
             projected,
             totalBytes,
             currentBytes);
-    enforceManifestQuota(appId, manifestDelta);
+    enforceManifestQuota(appId, manifestDelta, manifestQuotaCheck);
   }
 
   private void rejectOversizedImportedRecords(List<AppDataRecord> importedRecords) {
@@ -889,6 +1305,78 @@ public final class AppDataService {
     }
   }
 
+  private UpdateMigrationPayload updateMigrationPayload(
+      String appId,
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      byte[] payloadBytes) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    if (fromSchemaVersion <= 0 || toSchemaVersion <= fromSchemaVersion) {
+      throw invalidMigrationOutput();
+    }
+    Objects.requireNonNull(payloadBytes, FIELD_PAYLOAD_BYTES);
+    if (payloadBytes.length > config.maxImportBytes()) {
+      throw new PlatformApiException(
+          400, "app_data_import_too_large", "App-data import exceeds the configured limit.");
+    }
+    AppDataExportPayload payload =
+        AppDataExportPayload.parseForImport(payloadBytes, normalizedAppId);
+    List<AppDataNamespaceMetadata> importedNamespacesMetadata =
+        payload.namespaces().stream()
+            .map(metadata -> withCallerAppId(metadata, normalizedAppId))
+            .toList();
+    List<AppDataRecord> importedRecords =
+        payload.records().stream()
+            .map(appDataRecord -> withCallerAppId(appDataRecord, normalizedAppId))
+            .toList();
+    Set<String> importedNamespaces =
+        collectImportedNamespaces(importedNamespacesMetadata, importedRecords);
+    validateUpdateMigrationScope(
+        normalizedNamespace,
+        fromSchemaVersion,
+        toSchemaVersion,
+        importedNamespacesMetadata,
+        importedRecords,
+        importedNamespaces);
+    return new UpdateMigrationPayload(
+        importedNamespacesMetadata, importedRecords, importedNamespaces);
+  }
+
+  private static void validateUpdateMigrationScope(
+      String namespace,
+      int fromSchemaVersion,
+      int toSchemaVersion,
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      List<AppDataRecord> importedRecords,
+      Set<String> importedNamespaces) {
+    if (importedNamespaces.size() != 1 || !importedNamespaces.contains(namespace)) {
+      throw invalidMigrationOutput();
+    }
+    if (importedNamespacesMetadata.size() != 1
+        || !namespace.equals(importedNamespacesMetadata.getFirst().namespace())
+        || importedNamespacesMetadata.getFirst().schemaVersion() != fromSchemaVersion) {
+      throw invalidMigrationOutput();
+    }
+    boolean recordsMigrated =
+        importedRecords.stream()
+            .allMatch(
+                importedRecord ->
+                    namespace.equals(importedRecord.namespace())
+                        && importedRecord.schemaVersion() == toSchemaVersion);
+    if (!recordsMigrated) {
+      throw invalidMigrationOutput();
+    }
+  }
+
+  private static PlatformApiException invalidMigrationOutput() {
+    return new PlatformApiException(
+        400,
+        "invalid_app_data_migration_output",
+        "App-data migration output is invalid for the requested namespace.");
+  }
+
   private static long positiveNamespaceMetadataDelta(
       AppDataNamespaceMetadata current, AppDataNamespaceMetadata updated) {
     return Math.max(
@@ -919,6 +1407,11 @@ public final class AppDataService {
   }
 
   private void enforceManifestQuota(String appId, long positiveDeltaBytes) {
+    enforceManifestQuota(appId, positiveDeltaBytes, ManifestQuotaCheck.installedManifest());
+  }
+
+  private void enforceManifestQuota(
+      String appId, long positiveDeltaBytes, ManifestQuotaCheck manifestQuotaCheck) {
     if (positiveDeltaBytes <= 0L || appHost == null) {
       return;
     }
@@ -926,7 +1419,10 @@ public final class AppDataService {
     if (installed == null) {
       return;
     }
-    Long quotaBytes = installed.manifest().dataQuotaBytes();
+    Long quotaBytes =
+        manifestQuotaCheck.useOverride()
+            ? manifestQuotaCheck.quotaBytes()
+            : installed.manifest().dataQuotaBytes();
     if (quotaBytes == null || quotaBytes <= 0L) {
       return;
     }
@@ -1236,6 +1732,19 @@ public final class AppDataService {
         metadata.migrationHistory());
   }
 
+  private static AppDataNamespaceMetadata withImportedRecordTotals(
+      AppDataNamespaceMetadata metadata, List<AppDataRecord> importedRecords) {
+    int recordCount = 0;
+    long totalBytes = 0L;
+    for (AppDataRecord appDataRecord : importedRecords) {
+      if (metadata.namespace().equals(appDataRecord.namespace())) {
+        recordCount++;
+        totalBytes += appDataRecord.valueBytes();
+      }
+    }
+    return metadata.withTotals(recordCount, totalBytes, metadata.updatedAt());
+  }
+
   private static PlatformApiException quotaExceeded() {
     return new PlatformApiException(
         400, "app_data_quota_exceeded", "App-data quota would be exceeded.");
@@ -1246,10 +1755,25 @@ public final class AppDataService {
         503, "app_data_store_unavailable", "App-data store is unavailable.");
   }
 
+  private record UpdateMigrationPayload(
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      List<AppDataRecord> importedRecords,
+      Set<String> importedNamespaces) {}
+
   private record ProjectedImport(Map<String, Long> recordBytesByKey, Set<String> namespaces) {
     private ProjectedImport {
       recordBytesByKey = Map.copyOf(Objects.requireNonNull(recordBytesByKey, "recordBytesByKey"));
       namespaces = Set.copyOf(Objects.requireNonNull(namespaces, "namespaces"));
+    }
+  }
+
+  private record ManifestQuotaCheck(boolean useOverride, Long quotaBytes) {
+    private static ManifestQuotaCheck installedManifest() {
+      return new ManifestQuotaCheck(false, null);
+    }
+
+    private static ManifestQuotaCheck targetManifest(Long quotaBytes) {
+      return new ManifestQuotaCheck(true, quotaBytes);
     }
   }
 
