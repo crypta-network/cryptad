@@ -66,9 +66,9 @@ Use this skill when you need to:
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
     compatibility contract, app capabilities/audit, app-vault routes, app-generated document
-    inserts, bounded content fetch, durable content subscriptions, durable app data,
-    local app-service discovery/grants, app-update lifecycle/scheduler, and host/operator-only
-    beta dashboard/support-bundle/recovery routes)
+    inserts, bounded content fetch, durable content subscriptions, durable app data and internal
+    update snapshots, local app-service discovery/grants, app-update lifecycle/scheduler, and
+    host/operator-only beta dashboard/support-bundle/recovery routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -81,7 +81,8 @@ Use this skill when you need to:
     transport helpers, mutation form handling, queue/content/vault/feed/app-data/app-service
     helpers, error parsing, and conservative fragment sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
-    signature, manifest, verifier, trusted-key, deterministic packager, and distribution tooling)
+    signature, manifest, app-data schema/migration metadata, verifier, trusted-key,
+    deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
     metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
@@ -169,8 +170,9 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
   handlers, social-message signing, app-generated document inserts, bounded content fetch,
-  durable content subscriptions, durable app data, local app-service discovery/grants, app-update
-  scheduling, and host/operator-only beta dashboard/support-bundle/recovery routes,
+  durable content subscriptions, durable app data and internal app-update snapshots, local
+  app-service discovery/grants, app-update scheduling, and host/operator-only beta
+  dashboard/support-bundle/recovery routes,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
@@ -370,8 +372,9 @@ Use this skill when you need to:
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
   apps, app updates, app-catalog control-plane families, app-vault route handlers, generated
-  app-document inserts, bounded content fetch, durable content subscriptions, durable app data,
-  local app-service discovery/grants, and the deterministic Platform API compatibility contract,
+  app-document inserts, bounded content fetch, durable content subscriptions, durable app data and
+  update migration snapshots, local app-service discovery/grants, and the deterministic Platform
+  API compatibility contract,
   and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
   browser-session authorization decisions, bounded process-local app audit logs, and local
   app-update lifecycle/scheduler coordination above AppHost, signed catalog, vault, app-data,
@@ -402,8 +405,9 @@ Use this skill when you need to:
 - `:platform-appdist` owns `network.crypta.platform.appdist`, the signed local bundle
   distribution layer. It parses normalized app manifests, writes deterministic SHA-256 digest
   sidecars, verifies Ed25519 signatures, rejects reserved sidecars as executable/UI entries,
-  carries sandbox/quota/API compatibility manifest fields, and exposes the packager/distribution
-  tool used by first-party app Gradle tasks and developer tooling.
+  carries sandbox/quota/API compatibility and app-data schema/migration manifest fields, and
+  exposes the packager/distribution tool used by first-party app Gradle tasks and developer
+  tooling.
 - `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
   artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
   enforces source/URI policy including `crypta:` catalog sources, parses optional review/API

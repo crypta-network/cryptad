@@ -87,6 +87,11 @@ This page records conservative limits and safety boundaries for the Crypta app e
   supports a stricter approved path.
 - Rollback restores the immutable installed bundle. It does not promise to roll back app data,
   cache, run state, external network state, or every user-visible app state.
+- Schema-changing Platform API app-data updates are the narrow exception: the update lifecycle
+  creates a short-lived internal app-scoped snapshot before migration apply and restores it when a
+  migration or post-migration check fails. That snapshot is not a user-facing backup/restore
+  feature and does not cover AppVault records or app-private files outside the durable app-data
+  store.
 - Health checks and rollback records are safety mechanisms, not a guarantee that every update
   failure can be undone.
 

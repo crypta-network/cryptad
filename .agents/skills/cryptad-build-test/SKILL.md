@@ -94,8 +94,9 @@ Use this skill when you need to:
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
   app capability/audit decisions, app-vault route handlers, content/app-data/subscription/service
-  routes, app-update lifecycle service, and host/operator-only beta dashboard/support-bundle
-  routes. Its focused leaf tests now live under `platform-api/src/test/java`.
+  routes, app-update lifecycle service, app-data migration planning/execution and internal update
+  snapshots, and host/operator-only beta dashboard/support-bundle routes. Its focused leaf tests
+  now live under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
   data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.
@@ -106,8 +107,8 @@ Use this skill when you need to:
   metadata, redaction/audit value types, and focused tests under
   `platform-appvault/src/test/java`.
 - `:platform-appdist` owns signed local app bundle digest, signature, verifier, manifest,
-  deterministic packager, and distribution-tool code plus focused tests under
-  `platform-appdist/src/test/java`.
+  app-data schema/migration metadata parsing, deterministic packager, and distribution-tool code
+  plus focused tests under `platform-appdist/src/test/java`.
 - `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
   verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
   independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and

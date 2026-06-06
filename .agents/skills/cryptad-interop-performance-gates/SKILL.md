@@ -81,8 +81,9 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review
   receipts, app-owned UI origin behavior, app UI design-system/lint evidence, live USK catalog
   publication, Site Publisher reference-content coverage, Profile Publisher identity-profile
-  coverage, Feed Reader content-fetch/subscription/app-data coverage, Social Inbox migration
-  coverage, Trust Graph Preview durable exchange coverage, app-service registry/grant/redaction
+  coverage, Feed Reader content-fetch/subscription/app-data and app-data migration coverage,
+  Social Inbox migration coverage, Trust Graph Preview durable exchange and app-data migration
+  coverage, app-service registry/grant/redaction
   coverage, generated document insert/content-fetch and trust redaction coverage, app-review
   governance/reviewer-key/transparency-log evidence, public-beta security hardening evidence,
   operator beta dashboard/recovery/support-bundle evidence, legacy-admin retirement/removal
@@ -135,6 +136,7 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `legacy.retirement`, `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`,
   `legacy-admin.removal-wave-3`, `apphost.sandbox-provider`, `app-update.lifecycle`,
   `app-update.scheduler`, `app-update.rollback`, `app-update.live-catalog-refresh`,
+  `app-update.data-migration-contract`,
   `public-beta-security.*`, `operator-beta.*`, `app-review.trusted-receipts`,
   `app-review.policy`, `app-review.governance`, `app-review.reviewer-key-lifecycle`,
   `app-review.transparency-log`, `app-review.review-history-api`,

@@ -21,6 +21,7 @@ Load only the docs needed for the change:
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
+- App upgrade data migrations: `docs/app-upgrade-data-migrations.md`
 - Durable app data: `docs/app-data-store.md`
 - Local app-service discovery and grants: `docs/app-service-discovery-and-grants.md`
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
@@ -41,9 +42,10 @@ Load only the docs needed for the change:
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
-  staging, bounded content fetch routing, durable content subscriptions, durable app data,
-  local Trust Graph Preview route handlers, local app-service discovery/grants and adapters,
-  bounded app audit logs, and the local app-update lifecycle service plus scheduler above
+  staging, bounded content fetch routing, durable content subscriptions, durable app data and
+  internal update snapshots, local Trust Graph Preview route handlers, local app-service
+  discovery/grants and adapters, bounded app audit logs, and the local app-update lifecycle service
+  plus scheduler above
   AppHost/catalog/vault/app-data/content/trust/runtime primitives, plus the host/operator-only
   beta dashboard, subscription recovery wrappers, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
@@ -62,8 +64,8 @@ Load only the docs needed for the change:
   types, local wrapping-key provider, bounded profile/trust statement signing helpers,
   audit/redaction helpers, and deterministic vault tests.
 - `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
-  deterministic bundle packaging, manifest sandbox/quota fields, and first-party
-  signing/verification tooling.
+  deterministic bundle packaging, manifest sandbox/quota/app-data schema migration fields, and
+  first-party signing/verification tooling.
 - `:platform-appcatalog` owns signed catalog parsing, catalog writing, catalog source/artifact
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
   into AppHost install/update flows, plus optional review/API compatibility metadata, independent
@@ -150,10 +152,11 @@ Load only the docs needed for the change:
 - `crypta:` catalog sources still require signed catalog verification. They do not make catalog
   artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
   `docs/app-catalogs.md`.
-- App-update lifecycle state must stay path-free and token-free. Do not expose catalog scratch
-  directories, staged bundle paths, rollback directories, launch tokens, browser sessions, form
-  passwords, private signing keys, or private insert URIs through API responses, Web Shell text,
-  logs, audit entries, or certification output.
+- App-update lifecycle state, including app-data migration summaries, must stay path-free and
+  token-free. Do not expose catalog scratch directories, staged bundle paths, migration command
+  paths, rollback directories, launch tokens, browser sessions, form passwords, private signing
+  keys, private insert URIs, raw migration logs, or raw app-data values through API responses, Web
+  Shell text, logs, audit entries, or certification output.
 - The default app-update policy is `manual`. Do not introduce silent third-party auto-update; policy
   `stage` may stage eligible verified candidates, and `apply_when_stopped` may apply only when the
   app is already stopped and all review/compatibility gates pass.
@@ -161,8 +164,11 @@ Load only the docs needed for the change:
   they check, stage, apply, rollback, or update policy. Browser/host requests must pass the
   form-password guard. App principals need the published app/catalog capabilities; do not let
   `apps.manage` alone trigger catalog refresh or artifact staging.
-- Rollback restores only the immutable installed bundle. It must preserve AppHost-managed
-  data/cache/run ownership boundaries and must not claim to roll back mutable app data.
+- Rollback normally restores only the immutable installed bundle. It must preserve AppHost-managed
+  data/cache/run ownership boundaries and must not claim broad mutable app-data rollback. The
+  narrow exception is the app-update migration path, where `AppUpdateService` may create and
+  restore an internal, app-scoped, short-lived durable app-data snapshot; do not expose it as
+  user-facing backup/restore or cross-app portability.
 - Operator routes under `/api/v1/operator` are host/operator-only local management and support
   routes. They are not part of the app-facing Platform API compatibility contract, must deny app
   principals, and should not bump the integer contract version. Support bundles and dashboard
@@ -193,10 +199,11 @@ Load only the docs needed for the change:
   evidence, bounded content-fetch/subscription evidence, durable app-data evidence, signed bundle
   evidence, signed catalog/live USK publication evidence, first-party beta catalog metadata, trusted
   app-review receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback
-  evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Preview
-  reference-app evidence, app-service registry/grant/redaction evidence, app-review governance and
-  local transparency-log evidence, public-beta security hardening evidence, operator beta
-  dashboard/recovery/support-bundle evidence, legacy-admin retirement state, and optional
+  and app-data migration contract evidence, Site Publisher/Profile Publisher/Social Inbox/Feed
+  Reader/Trust Graph Preview reference-app evidence, app-service registry/grant/redaction
+  evidence, app-review governance and local transparency-log evidence, public-beta security
+  hardening evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
+  retirement state, and optional
   localhost-only live AppHost lifecycle evidence.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog

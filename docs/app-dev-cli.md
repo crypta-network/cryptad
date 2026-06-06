@@ -779,6 +779,8 @@ and automatic update scheduling.
   defaults.
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
+- [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) describes signed app-data schema
+  migration manifest fields, dry-run/apply behavior, and update snapshot limits.
 - [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and
   `crypta-app ui lint`.
 - [app-catalogs.md](app-catalogs.md) describes the runtime catalog format, verification order, and

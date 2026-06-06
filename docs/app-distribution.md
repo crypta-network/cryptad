@@ -180,9 +180,10 @@ app.data.migration.ui-state-v1-v2.description=Upgrade UI state to schema v2.
 These fields are normalized and validated with the manifest before the bundle is signed or
 installed. Migration command values are relative bundle paths, not shell strings. Absolute paths,
 traversal segments, Windows drive prefixes, empty segments, control characters, and unsafe
-namespace or step identifiers are rejected. The resolved command must be a regular executable file
-inside the bundle; non-executable shell scripts fail bundle validation instead of failing later
-during update staging.
+namespace or step identifiers are rejected. Bundle validation checks that the resolved command is a
+regular safe file inside the signed bundle, but it does not depend on host executable-bit behavior.
+When a migration is actually required, the migration runner enforces direct launchability and fails
+closed before bundle replacement if the local host cannot execute the entrypoint without a shell.
 
 During update staging/apply the Platform API exposes only path-free migration summaries. It does
 not expose the command path, staged bundle path, raw command output, tokens, private insert URIs,

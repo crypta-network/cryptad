@@ -5,7 +5,8 @@ This document describes the v1 lifecycle for Cryptad AppHost app updates and rol
 ## Scope
 
 App updates are local AppHost bundle replacements. They are separate from CoreUpdater and do not
-change peer protocols, core package downloads, catalog trust roots, or app data formats.
+change peer protocols, core package downloads, or catalog trust roots. Durable app-data schemas can
+change only through the signed app-data migration contract described below.
 
 The v1 policy is:
 
@@ -194,7 +195,9 @@ Rollback does not roll back:
 - catalog source state or scratch directories.
 
 Data, cache, and run directories are intentionally preserved across successful updates. If a new
-bundle changes its own data format, the app owns that migration and any app-level downgrade policy.
+bundle changes durable Platform API app-data schema, the signed migration contract owns the
+update-time migration path, operator acknowledgement, and downgrade risk summary. App-private files
+outside the Platform API app-data store remain app-owned and outside this rollback snapshot.
 
 Schema-changing app updates are the one app-data exception to the bundle-only rollback rule. During
 that apply path, `AppUpdateService` creates a short-lived internal app-data snapshot before

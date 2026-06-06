@@ -129,7 +129,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
-| Updates and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), `background update scheduler`, `rollback` evidence |
+| Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
 | Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
 | Legacy plugin migration | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md), `legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike` |
 | Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`; FProxy browse remains retained |
@@ -173,8 +173,9 @@ Start here:
   identity/private-material limits.
 - [app-catalogs.md](app-catalogs.md) and [app-review-governance.md](app-review-governance.md) for
   signed catalogs, trusted reviewer keys, local review transparency logs, and review policy modes.
-- [app-update-lifecycle.md](app-update-lifecycle.md) for manual, stage, and apply-when-stopped
-  update behavior plus rollback scope.
+- [app-update-lifecycle.md](app-update-lifecycle.md) and
+  [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) for manual, stage,
+  apply-when-stopped, signed app-data migrations, internal update snapshots, and rollback scope.
 - [operator-beta-dashboard.md](operator-beta-dashboard.md) for host/operator-only recovery,
   support-bundle redaction, and Web Shell dashboard boundaries.
 - [SECURITY.md](SECURITY.md) for security reporting.
