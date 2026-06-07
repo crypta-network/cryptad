@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 13;
+  public static final int CURRENT_CONTRACT_VERSION = 14;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;

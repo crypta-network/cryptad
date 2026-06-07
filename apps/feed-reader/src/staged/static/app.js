@@ -14,7 +14,7 @@
   const subscriptionPollIntervalSeconds = 5 * 60;
   const dataNamespace = "ui-state";
   const dataStateKey = "reader-state";
-  const dataSchemaVersion = 1;
+  const dataSchemaVersion = 2;
 
   const state = {
     sources: [],
@@ -336,7 +336,7 @@
     }
     try {
       const stored = await CryptaPlatform.data.records.getJson(dataNamespace, dataStateKey);
-      if (!stored || stored.schemaVersion !== dataSchemaVersion) {
+      if (!stored || (stored.schemaVersion !== dataSchemaVersion && stored.schemaVersion !== 1)) {
         return;
       }
       if (Array.isArray(stored.sources)) {

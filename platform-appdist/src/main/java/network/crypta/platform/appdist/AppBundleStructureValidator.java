@@ -63,12 +63,27 @@ public final class AppBundleStructureValidator {
     }
     AppDistributionSidecars.validateBundleEntry(normalizedBundleRoot, bundleRealRoot, executable);
     validateStaticUiEntry(normalizedBundleRoot, bundleRealRoot, manifest);
+    validateMigrationCommands(normalizedBundleRoot, bundleRealRoot, manifest);
     LaunchMode launchMode = classifyLaunchMode(executable);
     if (launchMode == null) {
       throw new AppDistributionException(
           "app.exec is not launchable on any supported platform: " + manifest.execPathText());
     }
     return new ValidatedBundle(manifest, executable, launchMode);
+  }
+
+  private static void validateMigrationCommands(
+      Path normalizedBundleRoot, Path bundleRealRoot, AppBundleManifest manifest)
+      throws IOException {
+    for (AppDataMigrationStep step : manifest.dataSchemaContract().migrations()) {
+      Path command = normalizedBundleRoot.resolve(step.command().path()).normalize();
+      if (!Files.isRegularFile(command, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppDistributionException(
+            "app.data migration command does not resolve to a file in bundle: "
+                + step.command().pathText());
+      }
+      AppDistributionSidecars.validateBundleEntry(normalizedBundleRoot, bundleRealRoot, command);
+    }
   }
 
   private static void validateStaticUiEntry(

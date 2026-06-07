@@ -49,6 +49,7 @@ class AppDataServiceTest {
   private static final String PARAM_FROM_SCHEMA_VERSION = "fromSchemaVersion";
   private static final String PARAM_TO_SCHEMA_VERSION = "toSchemaVersion";
   private static final String ERROR_QUOTA_EXCEEDED = "app_data_quota_exceeded";
+  private static final String ERROR_MIGRATION_IN_PROGRESS = "app_data_migration_in_progress";
   private static final String THEME_DARK_JSON = "{\"theme\":\"dark\"}";
   private static final Instant NOW = Instant.parse("2026-05-24T12:00:00Z");
 
@@ -508,6 +509,189 @@ class AppDataServiceTest {
   }
 
   @Test
+  void advanceUpdateMigrationDryRunPayload_whenOutputExceedsImportQuota_expectQuotaError() {
+    AppDataService service = service(config(128, 1, 4, 4096, 4096));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    byte[] outputPayload =
+        migrationOutputPayloadBytes(
+            List.of(
+                migratedRecord(SETTINGS_KEY, "{\"theme\":\"dark\"}"),
+                migratedRecord("layout", "{\"density\":\"compact\"}")));
+
+    PlatformApiException failure =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                service.advanceUpdateMigrationDryRunPayload(
+                    APP_ID, UI_STATE_NAMESPACE, 1, 2, "dry-run", outputPayload));
+
+    assertEquals(ERROR_QUOTA_EXCEEDED, failure.errorCode());
+    assertEquals(1, service.status(APP_ID).get(FIELD_RECORD_COUNT));
+  }
+
+  @Test
+  void advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed()
+      throws Exception {
+    Path dataRoot = tempDir.resolve("data");
+    Files.createDirectories(dataRoot.resolve(APP_ID));
+    AtomicLong installedQuotaBytes = new AtomicLong(Long.MAX_VALUE);
+    AppDataService service =
+        new AppDataService(
+            new InMemoryAppDataStore(),
+            appHostWithMutableDataQuota(dataRoot, installedQuotaBytes),
+            config(4096, 16, 4, 65536, 65536),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    long currentUsageBytes = quotaDataUsageBytes(service);
+    installedQuotaBytes.set(currentUsageBytes);
+    byte[] outputPayload =
+        migrationOutputPayloadBytes(
+            List.of(
+                migratedRecord(
+                    SETTINGS_KEY, "{\"theme\":\"dark\",\"payload\":\"" + "x".repeat(512) + "\"}")));
+
+    PlatformApiException installedQuotaFailure =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                service.advanceUpdateMigrationDryRunPayload(
+                    APP_ID, UI_STATE_NAMESPACE, 1, 2, "dry-run", outputPayload));
+    byte[] advancedPayload =
+        service.advanceUpdateMigrationDryRunPayload(
+            APP_ID,
+            UI_STATE_NAMESPACE,
+            1,
+            2,
+            "dry-run",
+            outputPayload,
+            currentUsageBytes + 20_000L);
+
+    assertEquals(ERROR_QUOTA_EXCEEDED, installedQuotaFailure.errorCode());
+    assertTrue(advancedPayload.length > 0);
+    assertEquals(1, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+  }
+
+  @Test
+  void advanceUpdateMigrationDryRunPayload_whenTargetManifestLowersQuota_expectQuotaError()
+      throws Exception {
+    Path dataRoot = tempDir.resolve("data");
+    Files.createDirectories(dataRoot.resolve(APP_ID));
+    AtomicLong installedQuotaBytes = new AtomicLong(Long.MAX_VALUE);
+    AppDataService service =
+        new AppDataService(
+            new InMemoryAppDataStore(),
+            appHostWithMutableDataQuota(dataRoot, installedQuotaBytes),
+            config(4096, 16, 4, 65536, 65536),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    long currentUsageBytes = quotaDataUsageBytes(service);
+    installedQuotaBytes.set(currentUsageBytes + 20_000L);
+    byte[] outputPayload = migrationOutputPayloadBytes(List.of(migratedRecord(SETTINGS_KEY, "ok")));
+
+    PlatformApiException failure =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                service.advanceUpdateMigrationDryRunPayload(
+                    APP_ID,
+                    UI_STATE_NAMESPACE,
+                    1,
+                    2,
+                    "dry-run",
+                    outputPayload,
+                    currentUsageBytes - 1L));
+
+    assertEquals(ERROR_QUOTA_EXCEEDED, failure.errorCode());
+    assertEquals(1, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+  }
+
+  @Test
+  void
+      preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError() {
+    AppDataService service = service(config(4096, 3, 4, 65536, 65536));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    service.putRecord(APP_ID, recordParams(PROFILE_DRAFT_NAMESPACE, DRAFT_KEY, "draft"));
+    byte[] uiOutput =
+        migrationOutputPayloadBytes(
+            UI_STATE_NAMESPACE,
+            List.of(
+                migratedRecord(UI_STATE_NAMESPACE, SETTINGS_KEY, "{\"theme\":\"dark\"}", 2),
+                migratedRecord(UI_STATE_NAMESPACE, "layout", "{\"density\":\"compact\"}", 2)));
+    byte[] profileOutput =
+        migrationOutputPayloadBytes(
+            PROFILE_DRAFT_NAMESPACE,
+            List.of(
+                migratedRecord(PROFILE_DRAFT_NAMESPACE, DRAFT_KEY, "{\"body\":\"draft\"}", 2),
+                migratedRecord(PROFILE_DRAFT_NAMESPACE, "title", "{\"text\":\"Draft\"}", 2)));
+    byte[] uiAdvanced =
+        service.advanceUpdateMigrationDryRunPayload(
+            APP_ID, UI_STATE_NAMESPACE, 1, 2, "ui dry-run", uiOutput);
+    byte[] profileAdvanced =
+        service.advanceUpdateMigrationDryRunPayload(
+            APP_ID, PROFILE_DRAFT_NAMESPACE, 1, 2, "profile dry-run", profileOutput);
+    List<byte[]> projectedPayloads = List.of(uiAdvanced, profileAdvanced);
+
+    PlatformApiException failure =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.preflightUpdateMigrationDryRunPayloads(APP_ID, projectedPayloads));
+
+    assertEquals(ERROR_QUOTA_EXCEEDED, failure.errorCode());
+    assertEquals(2, service.status(APP_ID).get(FIELD_RECORD_COUNT));
+    assertEquals(1, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+    assertEquals(
+        1, service.getNamespace(APP_ID, PROFILE_DRAFT_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+  }
+
+  @Test
+  void advanceUpdateMigrationDryRunPayload_whenChainedDryRun_expectNamespaceTotalsMatchRecords() {
+    AppDataService service = service(config(4096, 16, 4, 65536, 65536));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    byte[] stepOneOutput =
+        migrationOutputPayloadBytes(
+            List.of(
+                migratedRecord(SETTINGS_KEY, "{\"theme\":\"dark\"}"),
+                migratedRecord("layout", "{\"density\":\"compact\"}")));
+
+    byte[] stepTwoInput =
+        service.advanceUpdateMigrationDryRunPayload(
+            APP_ID, UI_STATE_NAMESPACE, 1, 2, "step one dry-run", stepOneOutput);
+
+    AppDataExportPayload stepTwoPayload = AppDataExportPayload.parseForImport(stepTwoInput, APP_ID);
+    Map<String, Object> stepTwoNamespaceJson = firstNamespaceJson(stepTwoInput);
+    assertEquals(2L, stepTwoNamespaceJson.get(FIELD_SCHEMA_VERSION));
+    assertEquals(2L, stepTwoNamespaceJson.get(FIELD_RECORD_COUNT));
+    assertEquals(
+        importedValueBytes(stepTwoPayload.records()), stepTwoNamespaceJson.get("totalBytes"));
+
+    byte[] stepTwoOutput =
+        new AppDataExportPayload(
+                AppDataExportPayload.CURRENT_EXPORT_VERSION,
+                APP_ID,
+                NOW,
+                stepTwoPayload.namespaces(),
+                List.of(
+                    migratedRecord(SETTINGS_KEY, "{\"theme\":\"dark\",\"layout\":\"compact\"}", 3),
+                    migratedRecord("layout", "{\"density\":\"compact\"}", 3)))
+            .toJsonBytes();
+    byte[] finalPayloadBytes =
+        service.advanceUpdateMigrationDryRunPayload(
+            APP_ID, UI_STATE_NAMESPACE, 2, 3, "step two dry-run", stepTwoOutput);
+    AppDataExportPayload finalPayload =
+        AppDataExportPayload.parseForImport(finalPayloadBytes, APP_ID);
+    Map<String, Object> finalNamespaceJson = firstNamespaceJson(finalPayloadBytes);
+
+    assertEquals(3L, finalNamespaceJson.get(FIELD_SCHEMA_VERSION));
+    assertEquals(2L, finalNamespaceJson.get(FIELD_RECORD_COUNT));
+    assertEquals(importedValueBytes(finalPayload.records()), finalNamespaceJson.get("totalBytes"));
+    assertEquals(1, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+  }
+
+  @Test
   void updateSchema_whenManifestQuotaCannotHoldMetadata_expectQuotaExceededBeforeWrite()
       throws Exception {
     Path dataRoot = tempDir.resolve("data");
@@ -616,6 +800,92 @@ class AppDataServiceTest {
     assertEquals("invalid_app_data_identifier", failure.errorCode());
     assertFalse(failure.getMessage().contains(".."));
     assertFalse(failure.getMessage().contains("/"));
+  }
+
+  @Test
+  void createUpdateSnapshot_whenOtherAppHasData_expectSnapshotIsAppScoped() {
+    AppDataService service = service(config(64, 16, 4, 4096, 4096));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    service.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "other"));
+
+    AppDataUpdateSnapshot snapshot = service.createUpdateSnapshot(APP_ID);
+
+    assertEquals(APP_ID, snapshot.appId());
+    assertEquals(1, snapshot.payload().records().size());
+    assertEquals(
+        "one", new String(snapshot.payload().records().getFirst().value(), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void restoreUpdateSnapshot_whenDataChangedAfterSnapshot_expectOriginalStateRestored() {
+    AppDataService service = service(config(64, 16, 4, 4096, 4096));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    AppDataUpdateSnapshot snapshot = service.createUpdateSnapshot(APP_ID);
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "two"));
+    service.putRecord(APP_ID, recordParams(PROFILE_DRAFT_NAMESPACE, DRAFT_KEY, "draft"));
+
+    service.restoreUpdateSnapshot(APP_ID, snapshot);
+
+    assertEquals(
+        "one", service.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
+    PlatformApiException missing =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.getRecord(APP_ID, PROFILE_DRAFT_NAMESPACE, DRAFT_KEY));
+    assertEquals("app_data_record_not_found", missing.errorCode());
+  }
+
+  @Test
+  void appFacingWrites_whenUpdateMigrationWriteBarrierActive_expectMigrationInProgressConflict() {
+    AppDataService service = service(config(128, 16, 4, 4096, 4096));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    String payloadBase64 = payloadBase64(themeExportPayloadBytes());
+    Map<String, List<String>> schemaParams =
+        params(PARAM_FROM_SCHEMA_VERSION, "1", PARAM_TO_SCHEMA_VERSION, "2");
+
+    try (var _ = service.beginUpdateMigrationWriteBarrier(APP_ID)) {
+      assertBlockedByMigration(
+          () -> service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, "two", "two")));
+      assertBlockedByMigration(
+          () -> service.deleteRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY));
+      assertBlockedByMigration(
+          () -> service.updateSchema(APP_ID, UI_STATE_NAMESPACE, schemaParams));
+      assertBlockedByMigration(
+          () -> service.importData(APP_ID, params(FIELD_PAYLOAD_BASE64, payloadBase64)));
+      assertBlockedByMigration(() -> service.deleteNamespace(APP_ID, UI_STATE_NAMESPACE));
+      assertBlockedByMigration(() -> service.clearAppState(APP_ID));
+
+      service.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "other"));
+    }
+
+    Map<String, Object> written =
+        service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, "two", "two"));
+    assertEquals("two", written.get(FIELD_VALUE_TEXT));
+  }
+
+  @Test
+  void updateMigrationImport_whenWriteBarrierActive_expectInternalMigrationWritesAllowed() {
+    AppDataService service = service(config(128, 16, 4, 4096, 4096));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+
+    try (var _ = service.beginUpdateMigrationWriteBarrier(APP_ID)) {
+      service.importUpdateMigrationPayload(
+          APP_ID,
+          UI_STATE_NAMESPACE,
+          1,
+          2,
+          migrationOutputPayloadBytes(List.of(migratedRecord(SETTINGS_KEY, "migrated"))));
+      service.recordUpdateMigration(APP_ID, UI_STATE_NAMESPACE, 1, 2, "signed update migration");
+
+      assertBlockedByMigration(
+          () -> service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, "two", "two")));
+    }
+
+    Map<String, Object> migratedStateRecord =
+        service.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY);
+    assertEquals(2, migratedStateRecord.get(FIELD_SCHEMA_VERSION));
+    assertEquals("migrated", migratedStateRecord.get(FIELD_VALUE_TEXT));
+    assertEquals(2, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
   }
 
   @Test
@@ -737,6 +1007,56 @@ class AppDataServiceTest {
         .toJsonBytes();
   }
 
+  private static byte[] migrationOutputPayloadBytes(List<AppDataRecord> records) {
+    return migrationOutputPayloadBytes(UI_STATE_NAMESPACE, records);
+  }
+
+  private static byte[] migrationOutputPayloadBytes(String namespace, List<AppDataRecord> records) {
+    return new AppDataExportPayload(
+            AppDataExportPayload.CURRENT_EXPORT_VERSION,
+            APP_ID,
+            NOW,
+            List.of(namespaceMetadata(namespace)),
+            records)
+        .toJsonBytes();
+  }
+
+  private static AppDataRecord migratedRecord(String key, String value) {
+    return migratedRecord(key, value, 2);
+  }
+
+  private static AppDataRecord migratedRecord(String key, String value, int schemaVersion) {
+    return migratedRecord(UI_STATE_NAMESPACE, key, value, schemaVersion);
+  }
+
+  private static AppDataRecord migratedRecord(
+      String namespace, String key, String value, int schemaVersion) {
+    return new AppDataRecord(
+        APP_ID,
+        namespace,
+        key,
+        new AppDataRecord.Payload(
+            AppDataRecord.JSON_CONTENT_TYPE, schemaVersion, value.getBytes(StandardCharsets.UTF_8)),
+        NOW,
+        NOW);
+  }
+
+  private static AppDataNamespaceMetadata namespaceMetadata(String namespace) {
+    return new AppDataNamespaceMetadata(APP_ID, namespace, 1, 0, 0L, NOW, NOW, null, List.of());
+  }
+
+  private static long importedValueBytes(List<AppDataRecord> records) {
+    return records.stream().mapToLong(AppDataRecord::valueBytes).sum();
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstNamespaceJson(byte[] payloadBytes) {
+    Map<String, Object> payloadJson =
+        (Map<String, Object>)
+            AppDataJsonParser.parse(new String(payloadBytes, StandardCharsets.UTF_8));
+    return (Map<String, Object>) ((List<?>) payloadJson.get("namespaces")).getFirst();
+  }
+
   private static String payloadBase64(byte[] bytes) {
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
@@ -747,6 +1067,11 @@ class AppDataServiceTest {
       values.put(pairs[index], List.of(pairs[index + 1]));
     }
     return values;
+  }
+
+  private static void assertBlockedByMigration(Runnable operation) {
+    PlatformApiException failure = assertThrows(PlatformApiException.class, operation::run);
+    assertEquals(ERROR_MIGRATION_IN_PROGRESS, failure.errorCode());
   }
 
   private static long quotaDataUsageBytes(AppDataService service) {

@@ -10,6 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataStoreConfig;
+import network.crypta.platform.api.appdata.InMemoryAppDataStore;
+import network.crypta.platform.api.appupdates.AppDataMigrationRunner;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
@@ -20,6 +24,8 @@ import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
@@ -2355,15 +2361,47 @@ class PlatformApiRouterTest {
     return sharedService;
   }
 
+  private AppUpdateService sharedAppUpdateServiceWithMigrationAcknowledgement(
+      AppCatalogManager catalogManager, AppDataService appDataService) {
+    AppDataMigrationRunner migrationRunner =
+        (_, _, _, _) -> new AppDataMigrationRunner.MigrationExecutionResult(true, "passed", 0);
+    return new AppUpdateService(
+        appHost,
+        catalogManager,
+        new AppUpdateService.AppUpdateDependencies(
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty,
+            null,
+            appDataService,
+            migrationRunner,
+            appId -> Map.of("appId", appId, "enabled", false)));
+  }
+
+  private AppDataService migrationAppDataService() {
+    AppDataService appDataService =
+        new AppDataService(
+            new InMemoryAppDataStore(), null, new AppDataStoreConfig(128, 16, 4, 4096, 4096, 8));
+    appDataService.putRecord(
+        APP_ID,
+        Map.of(
+            "namespace",
+            List.of("ui-state"),
+            "key",
+            List.of("state"),
+            "schemaVersion",
+            List.of("1"),
+            "valueJson",
+            List.of("{\"schemaVersion\":1}")));
+    return appDataService;
+  }
+
   @Test
   void route_whenAppUpdateStageRequested_expectVerifiedCandidateStaged() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-stage-scratch");
-    Path stagedDir = scratchDir.resolve("bundle");
-    Files.createDirectories(stagedDir);
-    AppCatalogInstallPlan plan = new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+    AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
@@ -2382,15 +2420,52 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenAppUpdateStageMigrationAcknowledged_expectRollbackIncompatibleMigrationStaged()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    AppDataService appDataService = migrationAppDataService();
+    AppUpdateService updateService =
+        sharedAppUpdateServiceWithMigrationAcknowledgement(catalogManager, appDataService);
+    PlatformApiRouter updateRouter =
+        new PlatformApiRouter(
+            runtimePorts,
+            appHost,
+            catalogManager,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            PlatformApiSharedAppServices.of(null, updateService, null, appDataService));
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path scratchDir = tempDir.resolve("app-update-stage-migration-scratch");
+    AppCatalogInstallPlan plan = catalogInstallPlanWithUiStateMigration(entry, scratchDir);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+
+    PlatformApiResponse response =
+        updateRouter.route(
+            request(
+                "POST",
+                List.of("apps", APP_ID, "updates", "stage"),
+                Map.of("migrationAcknowledged", List.of("true"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"status\":\"staged\""));
+    assertTrue(response.body().contains("\"dataMigration\""));
+    assertTrue(response.body().contains("\"namespace\":\"ui-state\""));
+    assertTrue(response.body().contains("\"rollbackCompatible\":false"));
+    assertTrue(response.body().contains("\"operatorReviewRequired\":true"));
+    assertFalse(response.body().contains("app_data_migration_review_required"));
+  }
+
+  @Test
   void route_whenStagedAppUpdateThenAppUninstalled_expectUpdateStateCleared() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
-    Path stagedDir = scratchDir.resolve("bundle");
-    Files.createDirectories(stagedDir);
-    try (AppCatalogInstallPlan plan =
-        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+    try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
@@ -2468,10 +2543,7 @@ class PlatformApiRouterTest {
             vaultService);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-uninstall-vault-cleanup-stage-scratch");
-    Path stagedDir = scratchDir.resolve("bundle");
-    Files.createDirectories(stagedDir);
-    try (AppCatalogInstallPlan plan =
-        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+    try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID))
           .thenReturn(Optional.of(installedSnapshot()))
           .thenReturn(Optional.of(installedSnapshot()))
@@ -2526,10 +2598,7 @@ class PlatformApiRouterTest {
             vaultService);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-uninstall-vault-preblock-stage-scratch");
-    Path stagedDir = scratchDir.resolve("bundle");
-    Files.createDirectories(stagedDir);
-    try (AppCatalogInstallPlan plan =
-        new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir)) {
+    try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
@@ -2563,9 +2632,8 @@ class PlatformApiRouterTest {
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
     Path scratchDir = tempDir.resolve("app-update-apply-scratch");
-    Path stagedDir = scratchDir.resolve("bundle");
-    Files.createDirectories(stagedDir);
-    AppCatalogInstallPlan plan = new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+    AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir);
+    Path stagedDir = plan.stagedBundleDirectory();
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID))
         .thenReturn(Optional.empty())
@@ -3780,6 +3848,61 @@ class PlatformApiRouterTest {
         """
             .formatted(appId, appName, appVersion, APP_UI_ENTRY));
     return stagedDir;
+  }
+
+  private AppCatalogInstallPlan catalogInstallPlan(AppCatalogEntry entry, Path scratchDir)
+      throws IOException {
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    Files.writeString(
+        stagedDir.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch
+        app.permissions=%s
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
+    return new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+  }
+
+  private AppCatalogInstallPlan catalogInstallPlanWithUiStateMigration(
+      AppCatalogEntry entry, Path scratchDir) throws IOException {
+    Path stagedDir = scratchDir.resolve("bundle");
+    Files.createDirectories(stagedDir);
+    Files.writeString(
+        stagedDir.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch
+        app.permissions=%s
+        app.data.schema.current=2
+        app.data.schema.namespaces=ui-state
+        app.data.schema.namespace.ui-state.current=2
+        app.data.migrations=ui-state-v1-v2
+        app.data.migration.ui-state-v1-v2.namespace=ui-state
+        app.data.migration.ui-state-v1-v2.from=1
+        app.data.migration.ui-state-v1-v2.to=2
+        app.data.migration.ui-state-v1-v2.command=bin/migrate-ui-state.sh
+        app.data.migration.ui-state-v1-v2.rollbackCompatible=false
+        app.data.migration.ui-state-v1-v2.requiresStopped=true
+        app.data.migration.ui-state-v1-v2.description=Upgrade UI state to schema v2.
+        """
+            .formatted(
+                entry.appId(),
+                entry.name(),
+                entry.version(),
+                String.join(",", entry.permissions())));
+    return new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
   }
 
   private AppCatalogEntry catalogEntry(String version) {

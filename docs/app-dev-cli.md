@@ -342,7 +342,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=13
+api.maximumTestedVersion=14
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -373,7 +373,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=13
+api.maximumTestedVersion=14
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -408,7 +408,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=13
+api.maximumTestedVersion=14
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -453,7 +453,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
 changelog.summary=Adds the social/mail migration preview reference app.
 api.minimumVersion=12
-api.maximumTestedVersion=13
+api.maximumTestedVersion=14
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -779,6 +779,8 @@ and automatic update scheduling.
   defaults.
 - [app-distribution.md](app-distribution.md) describes the signed bundle sidecars, manifest fields,
   and first-party Gradle tasks.
+- [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) describes signed app-data schema
+  migration manifest fields, dry-run/apply behavior, and update snapshot limits.
 - [app-ui-design-system.md](app-ui-design-system.md) describes canonical app UI assets and
   `crypta-app ui lint`.
 - [app-catalogs.md](app-catalogs.md) describes the runtime catalog format, verification order, and

@@ -75,7 +75,7 @@ public final class AppDataApiHandler {
    *
    * <p>The namespace string is still normalized and validated by the service. Callers receive the
    * stored namespace metadata plus bounded migration history, which is useful for app-side schema
-   * upgrades without making the platform execute app migration code.
+   * upgrades without letting apps trigger arbitrary migration execution through this route.
    *
    * @param appId authenticated app id from the Platform API principal, not a request parameter
    * @param namespace logical namespace segment supplied in the route path
@@ -89,9 +89,9 @@ public final class AppDataApiHandler {
    * Records namespace schema metadata for the calling app.
    *
    * <p>The service records the declared schema transition and summary after validating the version
-   * ordering and configured migration-history limit. The platform does not execute transformation
-   * code and does not inspect record values for schema compatibility; apps remain responsible for
-   * updating their own records before or after calling this endpoint.
+   * ordering and configured migration-history limit. This app-facing route does not execute
+   * transformation code and does not inspect record values for schema compatibility; apps remain
+   * responsible for updating their own records before or after calling this endpoint.
    *
    * @param appId authenticated app id from the Platform API principal, not a request parameter
    * @param namespace logical namespace segment supplied in the route path

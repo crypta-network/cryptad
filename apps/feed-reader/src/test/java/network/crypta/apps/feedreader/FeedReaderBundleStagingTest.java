@@ -44,7 +44,7 @@ class FeedReaderBundleStagingTest {
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 13;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 14;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -92,6 +92,11 @@ class FeedReaderBundleStagingTest {
     assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
     assertEquals(Long.valueOf(1_048_576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2_097_152L), manifest.cacheQuotaBytes());
+    assertEquals(2, manifest.dataSchemaContract().currentSchemaVersion());
+    assertEquals(1, manifest.dataSchemaContract().namespaces().size());
+    assertEquals(1, manifest.dataSchemaContract().migrations().size());
+    assertEquals("ui-state-v1-v2", manifest.dataSchemaContract().migrations().getFirst().stepId());
+    assertFalse(manifest.dataSchemaContract().migrations().getFirst().rollbackCompatible());
   }
 
   @Test
@@ -118,6 +123,27 @@ class FeedReaderBundleStagingTest {
     assertTrue(manifestText.contains("app.restart.policy=never"));
     assertTrue(manifestText.contains("quota.data.bytes=1048576"));
     assertTrue(manifestText.contains("quota.cache.bytes=2097152"));
+    assertTrue(manifestText.contains("app.data.schema.current=2"));
+    assertTrue(manifestText.contains("app.data.schema.namespaces=ui-state"));
+    assertTrue(manifestText.contains("app.data.schema.namespace.ui-state.current=2"));
+    assertTrue(manifestText.contains("app.data.migrations=ui-state-v1-v2"));
+    assertTrue(
+        manifestText.contains(
+            "app.data.migration.ui-state-v1-v2.command=bin/migrate-feed-data.sh"));
+    assertTrue(manifestText.contains("app.data.migration.ui-state-v1-v2.rollbackCompatible=false"));
+  }
+
+  @Test
+  void stagedBundle_whenMigrationScriptStaged_expectDryRunAndApplyEntrypoint() throws Exception {
+    Path migrationScript = stageDirectory().resolve("bin/migrate-feed-data.sh");
+    String script = Files.readString(migrationScript);
+
+    assertTrue(script.startsWith("#!/bin/sh\n"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_MODE"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_INPUT"));
+    assertTrue(script.contains("CRYPTA_APP_MIGRATION_OUTPUT"));
+    assertTrue(script.contains("dry-run|apply"));
+    assertTrue(script.contains("Feed Reader app-data migration"));
   }
 
   @Test

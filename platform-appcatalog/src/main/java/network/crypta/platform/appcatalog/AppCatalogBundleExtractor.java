@@ -154,6 +154,29 @@ public final class AppCatalogBundleExtractor {
     }
   }
 
+  /**
+   * Re-verifies an already-extracted staged bundle against a catalog entry.
+   *
+   * <p>Catalog install plans retain a scratch directory between staging and apply. Callers that run
+   * code from that retained directory before handing it to AppHost must use this method to repeat
+   * signed-bundle verification and manifest/catalog binding checks. This detects scratch tampering
+   * before any staged executable is launched.
+   *
+   * @param entry catalog entry that supplied the staged bundle metadata
+   * @param stagedBundleDirectory extracted signed-bundle root from an installation plan
+   * @param trustedKeys explicit trusted keys used for signed-bundle verification
+   * @throws IOException if filesystem access or signed-bundle verification fails
+   */
+  public void verifyStagedBundle(
+      AppCatalogEntry entry, Path stagedBundleDirectory, TrustedAppKeys trustedKeys)
+      throws IOException {
+    Path stagedRoot =
+        Objects.requireNonNull(stagedBundleDirectory, "stagedBundleDirectory")
+            .toAbsolutePath()
+            .normalize();
+    verifyExtractedBundle(entry, stagedRoot, trustedKeys);
+  }
+
   private static Path requireReadableArtifactZip(Path artifactZip) {
     Path normalized =
         Objects.requireNonNull(artifactZip, "artifactZip").toAbsolutePath().normalize();

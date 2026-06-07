@@ -44,6 +44,14 @@ raw document data.
 App data remains separate. The Trust Graph Preview app uses app data only for UI-local drafts,
 filters, and redacted import summaries; it is not the trust graph backend.
 
+The staged Trust Graph Preview bundle declares an app-data migration contract for the UI-local
+`ui-state/preview-state` record. Its `ui-state-v1-v2` step points at
+`bin/migrate-preview-data.sh`, supports
+`dry-run` and `apply` modes, validates only fixed migration environment variables, and is marked
+rollback-incompatible because schema-v2 preview state is not guaranteed to be readable by the
+previous UI bundle. This is a preview-state example for `app-update.data-migration-contract`; it
+does not expand Trust Graph scope into a release-candidate Web of Trust implementation.
+
 ## Trust Statement Format
 
 Trust statements are public JSON documents with this root type:

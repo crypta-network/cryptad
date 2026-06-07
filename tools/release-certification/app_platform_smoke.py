@@ -47,7 +47,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 13
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 14
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -1956,7 +1956,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 13" in contract_text
+            "CURRENT_CONTRACT_VERSION = 14" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
             and "APP_SERVICES_CALL" in capabilities_text
@@ -4349,6 +4349,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 11" in contract_text
             or "CURRENT_CONTRACT_VERSION = 12" in contract_text
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 14" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4710,6 +4711,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 11" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 12" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -6212,7 +6214,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     docs_text_compact = " ".join(docs_text_lower.split())
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 13" in contract_text
+            "CURRENT_CONTRACT_VERSION = 14" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -6556,7 +6558,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 13" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 14" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -9075,6 +9077,391 @@ def collect_app_update_rollback_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+def collect_app_update_data_migration_contract_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    source_files = {
+        "schemaContract": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppDataSchemaContract.java",
+        "namespaceSchema": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppDataNamespaceSchema.java",
+        "migrationStep": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppDataMigrationStep.java",
+        "migrationCommand": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppDataMigrationCommand.java",
+        "manifestParser": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppBundleManifestParser.java",
+        "structureValidator": workspace
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppBundleStructureValidator.java",
+        "structureValidatorTest": workspace
+        / "platform-appdist/src/test/java/network/crypta/platform/appdist/AppBundleStructureValidatorTest.java",
+        "manifestParserTest": workspace
+        / "platform-appdist/src/test/java/network/crypta/platform/appdist/AppBundleManifestParserTest.java",
+        "appHostManifest": workspace
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/manifest/AppManifest.java",
+        "appHostManifestParser": workspace
+        / "platform-apphost/src/main/java/network/crypta/platform/apphost/manifest/AppManifestParser.java",
+        "appDataService": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataService.java",
+        "appDataSnapshot": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataUpdateSnapshot.java",
+        "appDataServiceTest": workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appdata/AppDataServiceTest.java",
+        "migrationPlan": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppDataMigrationPlan.java",
+        "migrationRunner": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppDataMigrationRunner.java",
+        "migrationRunnerTest": workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppDataMigrationRunnerTest.java",
+        "updateCandidate": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java",
+        "updateService": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java",
+        "updateHandler": workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdatesApiHandler.java",
+        "updateServiceTest": workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java",
+        "catalogManager": workspace
+        / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogManager.java",
+        "catalogManagerTest": workspace
+        / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/AppCatalogManagerTest.java",
+        "webShell": workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+        "feedScript": workspace / "apps/feed-reader/src/staged/bin/migrate-feed-data.sh",
+        "trustScript": workspace / "apps/trust-graph/src/staged/bin/migrate-preview-data.sh",
+    }
+    text = {name: read_source(path) for name, path in source_files.items()}
+    feed_manifest = read_first_manifest(
+        workspace,
+        "feed-reader",
+        "apps/feed-reader/src/staged/cryptad-app.properties.template",
+    )
+    trust_manifest = read_first_manifest(
+        workspace,
+        "trust-graph",
+        "apps/trust-graph/src/staged/cryptad-app.properties.template",
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/app-upgrade-data-migrations.md",
+            "docs/app-update-lifecycle.md",
+            "docs/app-data-store.md",
+            "docs/app-distribution.md",
+            "docs/app-platform-developer-portal.md",
+            "docs/release-certification.md",
+            "docs/production-first-party-catalog-channels.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    dry_run_index = text["updateService"].find("AppDataMigrationRunner.Mode.DRY_RUN")
+    staged_index = text["updateService"].find("new StagedUpdate")
+    apply_verify_index = text["updateService"].find("verifyStagedBundleBeforeApply")
+    apply_dry_run_index = text["updateService"].find("runApplyDryRunOrReject")
+    barrier_index = text["updateService"].find("beginUpdateMigrationWriteBarrier")
+    snapshot_index = text["updateService"].find("appDataSnapshot = createUpdateSnapshot")
+    replacement_index = text["updateService"].find("appHost.updateFromDirectory")
+    checks = {
+        "manifestModelsAndParser": (
+            "record AppDataSchemaContract" in text["schemaContract"]
+            and "record AppDataNamespaceSchema" in text["namespaceSchema"]
+            and "record AppDataMigrationStep" in text["migrationStep"]
+            and "record AppDataMigrationCommand" in text["migrationCommand"]
+            and "app.data.schema.current" in text["manifestParser"]
+            and "app.data.migration." in text["manifestParser"]
+            and "dataSchemaContract" in text["manifestParser"]
+        ),
+        "manifestValidationRejectsUnsafeMetadata": (
+            "must stay under the app root" in text["migrationCommand"]
+            and "WINDOWS_DRIVE_PREFIX_PATTERN" in text["migrationCommand"]
+            and "AppDataNamespaceSchema.normalizeNamespace" in text["migrationStep"]
+            and "toSchemaVersion <= fromSchemaVersion" in text["migrationStep"]
+            and "unsupported app.data manifest property" in text["manifestParser"]
+            and "app.data.migrations requires app.data.schema.current or app.data.schema.namespaces"
+            in text["manifestParser"]
+            and "app.data migration target exceeds declared schema" in text["manifestParser"]
+            and "parseContent_whenMigrationDeclaresNoTargetSchema_expectFailure"
+            in text["manifestParserTest"]
+            and "parseContent_whenGlobalMigrationTargetExceedsSchema_expectFailure"
+            in text["manifestParserTest"]
+            and "parseContent_whenMigrationCommandEscapesBundle_expectFailure"
+            in text["manifestParserTest"]
+            and "parseContent_whenMigrationFieldIsUnknown_expectFailure"
+            in text["manifestParserTest"]
+        ),
+        "signedBundleStructureChecksEntrypoints": (
+            "step.command().path()" in text["structureValidator"]
+            and "Files.isRegularFile" in text["structureValidator"]
+            and "Files.isExecutable" not in text["structureValidator"]
+            and "NOFOLLOW_LINKS" in text["structureValidator"]
+            and "validate_whenMigrationCommandIsRegularNonExecutableFile_expectAccepted"
+            in text["structureValidatorTest"]
+            and "migration command is not executable" in text["migrationRunner"]
+            and "run_whenMigrationCommandIsNotExecutable_expectFailsBeforeCompletion"
+            in text["migrationRunnerTest"]
+        ),
+        "appHostCarriesSignedContract": (
+            "dataSchemaContract" in text["appHostManifest"]
+            and "manifest.dataSchemaContract()" in text["appHostManifestParser"]
+        ),
+        "internalSnapshotPrimitives": (
+            "record AppDataUpdateSnapshot" in text["appDataSnapshot"]
+            and "createUpdateSnapshot" in text["appDataService"]
+            and "restoreUpdateSnapshot" in text["appDataService"]
+            and "discardUpdateSnapshot" in text["appDataService"]
+            and "app_data_snapshot_too_large" in text["appDataService"]
+            and "createUpdateSnapshot_whenOtherAppHasData_expectSnapshotIsAppScoped"
+            in text["appDataServiceTest"]
+            and "restoreUpdateSnapshot_whenDataChangedAfterSnapshot_expectOriginalStateRestored"
+            in text["appDataServiceTest"]
+        ),
+        "migrationRunnerIsShellFreeAndScoped": (
+            "ProcessBuilder(commandLine(command))" in text["migrationRunner"]
+            and "environment().clear()" in text["migrationRunner"]
+            and "CRYPTA_APP_MIGRATION_MODE" in text["migrationRunner"]
+            and "CRYPTA_APP_MIGRATION_NAMESPACE" in text["migrationRunner"]
+            and "CRYPTA_APP_MIGRATION_INPUT" in text["migrationRunner"]
+            and "CRYPTA_APP_MIGRATION_OUTPUT" in text["migrationRunner"]
+            and "MigrationDataAccess" in text["migrationRunner"]
+            and "importUpdateMigrationPayload" in text["appDataService"]
+            and "MAX_CAPTURE_BYTES" in text["migrationRunner"]
+            and 'List.of("/bin/sh"' not in text["migrationRunner"]
+        ),
+        "migrationRunnerFailsClosedWithoutContainment": (
+            "ProcessBoundary" in text["migrationRunner"]
+            and "new AppEnv()" in text["migrationRunner"]
+            and "Process groups alone are not sufficient" in text["migrationRunner"]
+            and "return unsupported();" in text["migrationRunner"]
+            and "migration process containment is unavailable" in text["migrationRunner"]
+            and "OUTPUT_DRAIN_TIMEOUT_MILLIS" in text["migrationRunner"]
+            and "terminateProcessGroup" not in text["migrationRunner"]
+            and "run_whenOnlyProcessGroupCleanupCouldBeBypassed_expectFailsClosedBeforeCommand"
+            in text["migrationRunnerTest"]
+            and "run_whenProcessBoundaryUnavailable_expectFailsClosedBeforeCommand"
+            in text["migrationRunnerTest"]
+        ),
+        "updateSummariesExposeSafePlan": (
+            '"dataMigration"' in text["updateCandidate"]
+            and '"dataMigration"' in text["updateService"]
+            and "AppDataMigrationPlan" in text["migrationPlan"]
+            and "toJsonValue()" in text["migrationPlan"]
+            and '"namespaces"' in text["migrationPlan"]
+            and '"blockReason"' in text["migrationPlan"]
+            and '"requiresStopped"' in text["migrationPlan"]
+            and 'json.put("command"' not in text["migrationPlan"]
+        ),
+        "dryRunRunsBeforeStagingApply": (
+            dry_run_index >= 0
+            and staged_index > dry_run_index
+            and apply_verify_index >= 0
+            and apply_dry_run_index > apply_verify_index
+            and "verifyStagedBundleBeforeStageDryRun" in text["updateService"]
+            and "verifyStagedBundleAfterApplyDryRun" in text["updateService"]
+            and "ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED" in text["updateService"]
+            and "recordMigrationDryRunFailure" in text["updateService"]
+            and "catalogManager.verifyInstallPlan" in text["updateService"]
+            and "verifyInstallPlan" in text["catalogManager"]
+            and "verifyInstallPlan_whenStagedBundleTampered_expectInvalidAppBundle"
+            in text["catalogManagerTest"]
+            and "stage_whenSchemaIncreaseHasNoMigrationStep_expectBlockedBeforeBundleReplacement"
+            in text["updateServiceTest"]
+            and "stage_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner"
+            in text["updateServiceTest"]
+            and "apply_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner"
+            in text["updateServiceTest"]
+            and "apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall"
+            in text["updateServiceTest"]
+        ),
+        "dryRunUsesTargetManifestQuota": (
+            "targetManifest.dataQuotaBytes()" in text["updateService"]
+            and "targetDataQuotaBytes" in text["appDataService"]
+            and "ManifestQuotaCheck.targetManifest" in text["appDataService"]
+            and "preflightUpdateMigrationDryRunPayloads" in text["appDataService"]
+            and "advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed"
+            in text["appDataServiceTest"]
+            and "preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError"
+            in text["appDataServiceTest"]
+            and "stage_whenTargetManifestRaisesDataQuota_expectDryRunUsesTargetQuota"
+            in text["updateServiceTest"]
+        ),
+        "chainedDryRunPreservesNamespaceTotals": (
+            "withImportedRecordTotals" in text["appDataService"]
+            and "recordCount" in text["appDataService"]
+            and "totalBytes" in text["appDataService"]
+            and "advanceUpdateMigrationDryRunPayload_whenChainedDryRun_expectNamespaceTotalsMatchRecords"
+            in text["appDataServiceTest"]
+            and "importedValueBytes" in text["appDataServiceTest"]
+        ),
+        "missingPathAndRollbackRiskBlock": (
+            "STATUS_MISSING_MIGRATION" in text["migrationPlan"]
+            and "ERROR_APP_DATA_MIGRATION_MISSING" in text["updateService"]
+            and "ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED" in text["updateService"]
+            and "ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED" in text["updateService"]
+            and "ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE" in text["updateService"]
+            and "targetManifest.sandboxPolicy().required()" in text["updateService"]
+            and "isAutomaticPolicyMigrationSkip" in text["updateService"]
+            and "bestMigrationPath" in text["updateService"]
+            and "migrationAcknowledged" in text["updateHandler"]
+            and "stage_whenMigrationRollbackIncompatibleWithoutAcknowledgement_expectReviewRequired"
+            in text["updateServiceTest"]
+            and "stage_whenStoppedRequiredMigrationAndAppRunning_expectBlockedBeforeDryRun"
+            in text["updateServiceTest"]
+            and "check_whenStagePolicyMigrationPathMissing_expectCandidateSummaryWithoutCheckFailure"
+            in text["updateServiceTest"]
+            and "check_whenStagePolicyMigrationDryRunFails_expectCandidateSummaryWithoutCheckFailure"
+            in text["updateServiceTest"]
+            and "check_whenStagePolicyMigrationDryRunThrows_expectCandidateSummaryWithoutCheckFailure"
+            in text["updateServiceTest"]
+            and "check_whenApplyWhenStoppedPolicyMigrationDryRunFails_expectCandidateSummaryWithoutApply"
+            in text["updateServiceTest"]
+            and "stage_whenMigrationBundleRequestsOptionalSandbox_expectDryRunAndStage"
+            in text["updateServiceTest"]
+            and "check_whenApplyWhenStoppedPolicySandboxMigration_expectCandidateSummaryWithoutApply"
+            in text["updateServiceTest"]
+            and "stage_whenMigrationHasDeadEndBranch_expectCompletePathSelected"
+            in text["updateServiceTest"]
+            and "stage_whenCompatibleChainCompetesWithIncompatibleDirectStep_expectCompatiblePathSelected"
+            in text["updateServiceTest"]
+        ),
+        "snapshotBeforeReplacementAndRestoreOnFailure": (
+            barrier_index >= 0
+            and snapshot_index > barrier_index
+            and replacement_index > snapshot_index
+            and "closeUpdateMigrationWriteBarrier" in text["updateService"]
+            and "shouldHoldApplyMigrationWriteBarrier" in text["updateService"]
+            and "targetManifest.dataSchemaContract().declared()" in text["updateService"]
+            and "runApplyMigrationOrRollback" in text["updateService"]
+            and "rollbackAndRestoreSnapshot" in text["updateService"]
+            and "markRollbackFailed" in text["updateService"]
+            and "restoreUpdateSnapshot" in text["updateService"]
+            and "Migration scratch cleanup is best effort" in text["updateService"]
+            and "apply_whenMigrationRequiredAndRunnerPasses_expectSnapshotApplyAndSchemaMetadata"
+            in text["updateServiceTest"]
+            and "apply_whenChainedMigrationRunner_expectEachStepAppliedBeforeNextStep"
+            in text["updateServiceTest"]
+            and "apply_whenMigrationContractHasNoExistingDataAndWriteAppearsBeforeReplacement_expectWriteRejected"
+            in text["updateServiceTest"]
+            and "apply_whenMigrationApplyFailsAndBundleRollbackFails_expectMigrationFailurePreserved"
+            in text["updateServiceTest"]
+        ),
+        "appDataWritesBlockedDuringMigrationApply": (
+            "beginUpdateMigrationWriteBarrier" in text["appDataService"]
+            and "app_data_migration_in_progress" in text["appDataService"]
+            and "rejectIfUpdateMigrationWriteBarrierActive" in text["appDataService"]
+            and "appFacingWrites_whenUpdateMigrationWriteBarrierActive_expectMigrationInProgressConflict"
+            in text["appDataServiceTest"]
+            and "updateMigrationImport_whenWriteBarrierActive_expectInternalMigrationWritesAllowed"
+            in text["appDataServiceTest"]
+            and "apply_whenAppDataWriteAttemptsDuringMigrationWindow_expectWriteRejectedAndBarrierReleased"
+            in text["updateServiceTest"]
+            and "apply_whenAppDataWriteAttemptsDuringFinalMigrationDryRun_expectWriteRejected"
+            in text["updateServiceTest"]
+        ),
+        "webShellRendersMigrationStatus": (
+            "App-data migration plan" in text["webShell"]
+            and "migrationAcknowledged" in text["webShell"]
+            and "migration-step-list" in text["webShell"]
+            and "App-data migration blocker" in text["webShell"]
+        ),
+        "feedReaderDeclaresMigrationExample": (
+            feed_manifest.get("app.data.schema.current") == "2"
+            and feed_manifest.get("app.data.schema.namespace.ui-state.current") == "2"
+            and feed_manifest.get("app.data.migration.ui-state-v1-v2.from") == "1"
+            and feed_manifest.get("app.data.migration.ui-state-v1-v2.to") == "2"
+            and feed_manifest.get("app.data.migration.ui-state-v1-v2.command")
+            == "bin/migrate-feed-data.sh"
+            and feed_manifest.get("app.data.migration.ui-state-v1-v2.rollbackCompatible")
+            == "false"
+            and "CRYPTA_APP_MIGRATION_MODE" in text["feedScript"]
+            and "CRYPTA_APP_MIGRATION_INPUT" in text["feedScript"]
+            and "CRYPTA_APP_MIGRATION_OUTPUT" in text["feedScript"]
+            and "ui-state" in text["feedScript"]
+            and "dry-run" in text["feedScript"]
+            and "apply" in text["feedScript"]
+        ),
+        "trustGraphDeclaresMigrationExample": (
+            trust_manifest.get("app.data.schema.current") == "2"
+            and trust_manifest.get("app.data.schema.namespace.ui-state.current") == "2"
+            and trust_manifest.get("app.data.migration.ui-state-v1-v2.from") == "1"
+            and trust_manifest.get("app.data.migration.ui-state-v1-v2.to") == "2"
+            and trust_manifest.get("app.data.migration.ui-state-v1-v2.command")
+            == "bin/migrate-preview-data.sh"
+            and trust_manifest.get("app.data.migration.ui-state-v1-v2.rollbackCompatible")
+            == "false"
+            and "CRYPTA_APP_MIGRATION_MODE" in text["trustScript"]
+            and "CRYPTA_APP_MIGRATION_INPUT" in text["trustScript"]
+            and "CRYPTA_APP_MIGRATION_OUTPUT" in text["trustScript"]
+            and "ui-state" in text["trustScript"]
+            and "dry-run" in text["trustScript"]
+            and "apply" in text["trustScript"]
+        ),
+        "redactionAndDocsCoverScope": (
+            "app-update.data-migration-contract" in docs_text
+            and "rollback snapshot" in docs_text.lower()
+            and "PR-250" in docs_text
+            and "raw app-data values" in docs_text
+            and "private insert URIs" in docs_text
+            and "channel_policy_blocked" in text["updateService"]
+            and "catalog.production-channels" in docs_text
+        ),
+    }
+    details = {
+        "checks": checks,
+        "referenceApps": {
+            "feed-reader": {
+                "schema": feed_manifest.get("app.data.schema.current"),
+                "migration": feed_manifest.get("app.data.migrations"),
+            },
+            "trust-graph": {
+                "schema": trust_manifest.get("app.data.schema.current"),
+                "migration": trust_manifest.get("app.data.migrations"),
+            },
+        },
+        "redaction": {
+            "rawAppDataValuesExcluded": True,
+            "rawCommandLogsExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "stagingPathsExcluded": True,
+        },
+        "sources": {
+            name: display_path(path, workspace) for name, path in source_files.items()
+        },
+    }
+    errors = [key for key, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "app-update.data-migration-contract",
+            root_consequence(settings, "fail"),
+            True,
+            "App-data migration contract evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-update.data-migration-contract",
+        "pass",
+        True,
+        "App-data migration contract evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
+def read_first_manifest(workspace: Path, app_id: str, preferred: str) -> dict[str, str]:
+    candidates = (
+        workspace / preferred,
+        workspace / f"apps/{app_id}/build/cryptad-app/{app_id}/cryptad-app.properties",
+    )
+    for path in candidates:
+        if path.is_file():
+            try:
+                return parse_properties(path)
+            except ValueError:
+                return {}
+    return {}
+
+
 OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.dashboard",
     "operator-beta.catalog-health",
@@ -9713,6 +10100,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_update_scheduler_evidence(settings),
         collect_app_update_live_catalog_refresh_evidence(settings),
         collect_app_update_rollback_evidence(settings),
+        collect_app_update_data_migration_contract_evidence(settings),
         *collect_operator_beta_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
@@ -10658,6 +11046,20 @@ def run_self_test(repo_root: Path) -> None:
         assert rollback_checks["restorePreviousBundleOnReplacementFailure"] is True, rollback_checks
         assert rollback_checks["mutableDirectoriesPreservedByUpdate"] is True, rollback_checks
         assert rollback_checks["mutableDirectoriesPreservedByRollback"] is True, rollback_checks
+        migration_contract_item = evidence_by_id["app-update.data-migration-contract"]
+        assert migration_contract_item["status"] == "pass", migration_contract_item
+        assert migration_contract_item["requiredForReleaseCandidate"] is True
+        migration_contract_checks = migration_contract_item["details"]["checks"]
+        assert migration_contract_checks["manifestModelsAndParser"] is True, migration_contract_checks
+        assert migration_contract_checks["snapshotBeforeReplacementAndRestoreOnFailure"] is True, (
+            migration_contract_checks
+        )
+        assert migration_contract_checks["feedReaderDeclaresMigrationExample"] is True, (
+            migration_contract_checks
+        )
+        assert migration_contract_checks["trustGraphDeclaresMigrationExample"] is True, (
+            migration_contract_checks
+        )
         for evidence_id in OPERATOR_BETA_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
             assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
@@ -11044,7 +11446,7 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.bootstrap.load({ appId });\n"
             "CryptaPlatform.data.records.getJson('ui-state', 'reader-state');\n"
             "CryptaPlatform.data.records.putJson({ namespace: 'ui-state', key: 'reader-state', "
-            "schemaVersion: 1, value: { lastPublisherDraft: {}, selectedSourceId: '', fetchedSnapshots: [] } });\n"
+            "schemaVersion: 2, value: { lastPublisherDraft: {}, selectedSourceId: '', fetchedSnapshots: [] } });\n"
             "CryptaPlatform.content.subscriptions.list();\n"
             "CryptaPlatform.content.subscriptions.create({ uri: 'USK@redacted/feed/0/feed.json', label: 'Feed' });\n"
             "CryptaPlatform.content.subscriptions.refresh('sub-redacted');\n"
@@ -11144,7 +11546,7 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const state = { recentImports: [], auditEvents: [], subscriptions: [], lastDraft: {} };\n"
             "CryptaPlatform.data.records.getJson('ui-state', 'preview-state');\n"
             "CryptaPlatform.data.records.putJson({ namespace: 'ui-state', key: 'preview-state', "
-            "schemaVersion: 1, value: { lastDraft: {}, recentImports: [] } });\n"
+            "schemaVersion: 2, value: { lastDraft: {}, recentImports: [] } });\n"
             "CryptaPlatform.trust.status();\n"
             "CryptaPlatform.trust.anchors.list();\n"
             "CryptaPlatform.trust.importStatement({ document: '{}' });\n"
@@ -11208,6 +11610,30 @@ def make_self_test_workspace(workspace: Path) -> None:
                 encoding="utf-8",
             )
             (root / "static/app.css").write_text("body { color: #111; }\n", encoding="utf-8")
+            if app_id == "feed-reader":
+                (root / "bin/migrate-feed-data.sh").write_text(
+                    "#!/usr/bin/env sh\n"
+                    "case \"$CRYPTA_APP_MIGRATION_MODE\" in dry-run|apply) ;; *) exit 64;; esac\n"
+                    "test \"$CRYPTA_APP_MIGRATION_NAMESPACE\" = ui-state || exit 64\n"
+                    "test \"$CRYPTA_APP_MIGRATION_FROM\" = 1 || exit 64\n"
+                    "test \"$CRYPTA_APP_MIGRATION_TO\" = 2 || exit 64\n"
+                    "test -n \"$CRYPTA_APP_MIGRATION_INPUT\" || exit 64\n"
+                    "test -n \"$CRYPTA_APP_MIGRATION_OUTPUT\" || exit 64\n"
+                    "printf '%s\\n' 'feed migration schema check complete'\n",
+                    encoding="utf-8",
+                )
+            if app_id == "trust-graph":
+                (root / "bin/migrate-preview-data.sh").write_text(
+                    "#!/usr/bin/env sh\n"
+                    "case \"$CRYPTA_APP_MIGRATION_MODE\" in dry-run|apply) ;; *) exit 64;; esac\n"
+                    "test \"$CRYPTA_APP_MIGRATION_NAMESPACE\" = ui-state || exit 64\n"
+                    "test \"$CRYPTA_APP_MIGRATION_FROM\" = 1 || exit 64\n"
+                    "test \"$CRYPTA_APP_MIGRATION_TO\" = 2 || exit 64\n"
+                    "test -n \"$CRYPTA_APP_MIGRATION_INPUT\" || exit 64\n"
+                    "test -n \"$CRYPTA_APP_MIGRATION_OUTPUT\" || exit 64\n"
+                    "printf '%s\\n' 'preview migration schema check complete'\n",
+                    encoding="utf-8",
+                )
             for asset_name in design_system_asset_names():
                 shutil.copy2(design_dir / asset_name, root / "static/crypta-ui" / asset_name)
             shutil.copy2(sdk, root / "static/crypta-platform.js")
@@ -11231,6 +11657,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         )
         experimental_accepted = "true" if is_profile_publisher or is_social_inbox or is_trust_graph else "false"
         service_lines: list[str] = []
+        migration_lines: list[str] = []
         if is_social_inbox:
             service_lines = [
                 "app.services.requests=trust-score",
@@ -11252,6 +11679,33 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.service.trust-score.contexts=message-author,profile",
                 "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.",
             ]
+            migration_lines = [
+                "app.data.schema.current=2",
+                "app.data.schema.namespaces=ui-state",
+                "app.data.schema.namespace.ui-state.current=2",
+                "app.data.migrations=ui-state-v1-v2",
+                "app.data.migration.ui-state-v1-v2.namespace=ui-state",
+                "app.data.migration.ui-state-v1-v2.from=1",
+                "app.data.migration.ui-state-v1-v2.to=2",
+                "app.data.migration.ui-state-v1-v2.command=bin/migrate-preview-data.sh",
+                "app.data.migration.ui-state-v1-v2.rollbackCompatible=false",
+                "app.data.migration.ui-state-v1-v2.requiresStopped=true",
+                "app.data.migration.ui-state-v1-v2.description=Validate Trust Graph Preview UI state schema v2.",
+            ]
+        elif is_feed_reader:
+            migration_lines = [
+                "app.data.schema.current=2",
+                "app.data.schema.namespaces=ui-state",
+                "app.data.schema.namespace.ui-state.current=2",
+                "app.data.migrations=ui-state-v1-v2",
+                "app.data.migration.ui-state-v1-v2.namespace=ui-state",
+                "app.data.migration.ui-state-v1-v2.from=1",
+                "app.data.migration.ui-state-v1-v2.to=2",
+                "app.data.migration.ui-state-v1-v2.command=bin/migrate-feed-data.sh",
+                "app.data.migration.ui-state-v1-v2.rollbackCompatible=false",
+                "app.data.migration.ui-state-v1-v2.requiresStopped=true",
+                "app.data.migration.ui-state-v1-v2.description=Validate Feed Reader UI state schema v2.",
+            ]
         (staged / "cryptad-app.properties").write_text(
             "\n".join(
                 [
@@ -11267,6 +11721,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "app.ui.entry=static/index.html",
                     f"app.permissions={permissions}",
                     *service_lines,
+                    *migration_lines,
                     "quota.data.bytes=0",
                     "quota.cache.bytes=0",
                 ]
@@ -11432,7 +11887,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_dir / "AppCatalogManager.java").write_text(
         "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); "
         "String s = \"AppCatalogVerifier.verify sourceStore.write(catalog, source, fetched "
-        "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place\"; }\n",
+        "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place\"; "
+        "void verifyInstallPlan(AppCatalogInstallPlan plan) { bundleExtractor.verifyStagedBundle(plan.entry(), plan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys()); } }\n",
         encoding="utf-8",
     )
     appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
@@ -11440,6 +11896,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_tests / "AppCatalogManagerTest.java").write_text(
         "void entry_whenArtifactUriIsCryptaChk_expectAccepted() {}\n"
         "void prepareInstallPlan_whenCryptaArtifactUsesContentFetchPort_expectVerifiedPlan() {}\n"
+        "void verifyInstallPlan_whenStagedBundleTampered_expectInvalidAppBundle() {}\n"
         "void download_whenCryptaRuntimeIsUnavailable_expectArtifactFetchUnavailable() {}\n"
         "void fetch_whenCryptaCatalogResolvesToUskEdition_expectSignatureFetchedFromResolvedEdition() {}\n"
         "void fetch_whenCryptaResolvedCatalogHasSchemePrefix_expectSignatureFetchedFromResolvedEdition() {}\n"
@@ -11469,6 +11926,69 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_tests / "RecommendedAppCatalogsTest.java").write_text(
         "// first-party beta fixture\n", encoding="utf-8"
     )
+    appdist_dir = workspace / "platform-appdist/src/main/java/network/crypta/platform/appdist"
+    appdist_dir.mkdir(parents=True, exist_ok=True)
+    (appdist_dir / "AppDataSchemaContract.java").write_text(
+        "public record AppDataSchemaContract(Integer currentSchemaVersion) { "
+        "String fields = \"dataSchemaContract app.data.schema.current\"; }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppDataNamespaceSchema.java").write_text(
+        "public record AppDataNamespaceSchema(String namespace, int currentSchemaVersion) { "
+        "static String normalizeNamespace(String namespace) { return namespace; } }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppDataMigrationStep.java").write_text(
+        "public record AppDataMigrationStep(String stepId, String namespace, int fromSchemaVersion, "
+        "int toSchemaVersion) { AppDataMigrationStep { "
+        "AppDataNamespaceSchema.normalizeNamespace(namespace); "
+        "if (toSchemaVersion <= fromSchemaVersion) throw new IllegalArgumentException(); } }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppDataMigrationCommand.java").write_text(
+        "public record AppDataMigrationCommand(String pathText) { "
+        "static final Object WINDOWS_DRIVE_PREFIX_PATTERN = null; "
+        "String error = \"must stay under the app root\"; }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppBundleManifestParser.java").write_text(
+        "final class AppBundleManifestParser { String fields = \"app.data.schema.current "
+        "app.data.migration. dataSchemaContract unsupported app.data manifest property "
+        "app.data.migrations requires app.data.schema.current or app.data.schema.namespaces "
+        "app.data migration target exceeds declared schema\"; }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppBundleStructureValidator.java").write_text(
+        "final class AppBundleStructureValidator { void validate() { "
+        "Object p = step.command().path(); Files.isRegularFile(p, NOFOLLOW_LINKS); "
+        "} }\n",
+        encoding="utf-8",
+    )
+    appdist_test_dir = workspace / "platform-appdist/src/test/java/network/crypta/platform/appdist"
+    appdist_test_dir.mkdir(parents=True, exist_ok=True)
+    (appdist_test_dir / "AppBundleManifestParserTest.java").write_text(
+        "class AppBundleManifestParserTest { "
+        "void parse_whenAppDataMigrationContractPresent_expectContractParsed() {} "
+        "void parseContent_whenMigrationDeclaresNoTargetSchema_expectFailure() {} "
+        "void parseContent_whenGlobalMigrationTargetExceedsSchema_expectFailure() {} "
+        "void parseContent_whenMigrationCommandEscapesBundle_expectFailure() {} "
+        "void parseContent_whenMigrationFieldIsUnknown_expectFailure() {} }\n",
+        encoding="utf-8",
+    )
+    (appdist_test_dir / "AppBundleStructureValidatorTest.java").write_text(
+        "class AppBundleStructureValidatorTest { "
+        "void validate_whenMigrationCommandIsRegularNonExecutableFile_expectAccepted() {} }\n",
+        encoding="utf-8",
+    )
+    apphost_manifest_dir = workspace / "platform-apphost/src/main/java/network/crypta/platform/apphost/manifest"
+    apphost_manifest_dir.mkdir(parents=True, exist_ok=True)
+    (apphost_manifest_dir / "AppManifest.java").write_text(
+        "record AppManifest(Object dataSchemaContract) {}\n", encoding="utf-8"
+    )
+    (apphost_manifest_dir / "AppManifestParser.java").write_text(
+        "final class AppManifestParser { String s = \"manifest.dataSchemaContract()\"; }\n",
+        encoding="utf-8",
+    )
     api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
     catalog_api_dir = api_dir / "appcatalogs"
     catalog_api_dir.mkdir(parents=True, exist_ok=True)
@@ -11486,7 +12006,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 13; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 14; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11; "
@@ -11751,7 +12271,20 @@ def make_self_test_workspace(workspace: Path) -> None:
         "static final String CAPABILITY_APP_DATA_WRITE = \"app.data.write\"; "
         "boolean storeUsageOutsideAppDataDir; "
         "void updateSchema(){ String fromSchemaVersion; String toSchemaVersion; } "
+        "AutoCloseable beginUpdateMigrationWriteBarrier(String appId) { String error = \"app_data_migration_in_progress\"; rejectIfUpdateMigrationWriteBarrierActive(appId); return null; } "
+        "AppDataUpdateSnapshot createUpdateSnapshot(String appId) { String e = \"app_data_snapshot_too_large\"; return null; } "
+        "void restoreUpdateSnapshot(String appId, AppDataUpdateSnapshot snapshot) {} "
+        "void discardUpdateSnapshot(AppDataUpdateSnapshot snapshot) {} "
+        "byte[] advanceUpdateMigrationDryRunPayload(String appId, String namespace, int from, int to, String summary, byte[] payload, Long targetDataQuotaBytes) { ManifestQuotaCheck.targetManifest(targetDataQuotaBytes); return null; } "
+        "void preflightUpdateMigrationDryRunPayloads(String appId, java.util.Collection<byte[]> payloads, Long targetDataQuotaBytes) { ManifestQuotaCheck.targetManifest(targetDataQuotaBytes); } "
+        "Object withImportedRecordTotals(Object metadata, java.util.List<Object> records) { int recordCount = records.size(); long totalBytes = records.size(); return metadata.withTotals(recordCount, totalBytes, metadata.updatedAt()); } "
+        "void importUpdateMigrationPayload(String appId, String namespace, int from, int to, byte[] payload) {} "
+        "void recordUpdateMigration(String appId, String namespace, int from, int to, String summary) {} "
         "String lastMigrationAt; String quota = \"quota.data.bytes\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataUpdateSnapshot.java").write_text(
+        "record AppDataUpdateSnapshot(String appId, Object payload, long sizeBytes) {}\n",
         encoding="utf-8",
     )
     (appdata_api_dir / "AppDataExportPayload.java").write_text(
@@ -12007,7 +12540,15 @@ def make_self_test_workspace(workspace: Path) -> None:
     appdata_tests.mkdir(parents=True, exist_ok=True)
     (appdata_tests / "AppDataServiceTest.java").write_text(
         "void putRecord_whenIdentifierContainsTraversal_expectPathFreeValidationError() {}\n"
-        "void exportImport_whenPayloadRoundTrips_expectValuesCopiedAndOtherAppRejected() {}\n",
+        "void exportImport_whenPayloadRoundTrips_expectValuesCopiedAndOtherAppRejected() {}\n"
+        "void createUpdateSnapshot_whenOtherAppHasData_expectSnapshotIsAppScoped() {}\n"
+        "void restoreUpdateSnapshot_whenDataChangedAfterSnapshot_expectOriginalStateRestored() {}\n"
+        "void appFacingWrites_whenUpdateMigrationWriteBarrierActive_expectMigrationInProgressConflict() {}\n"
+        "void updateMigrationImport_whenWriteBarrierActive_expectInternalMigrationWritesAllowed() {}\n"
+        "void advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed() {}\n"
+        "void preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError() {}\n"
+        "void advanceUpdateMigrationDryRunPayload_whenChainedDryRun_expectNamespaceTotalsMatchRecords() { importedValueBytes(records); }\n"
+        "long importedValueBytes(java.util.List<Object> records) { return 0L; }\n",
         encoding="utf-8",
     )
     (appdata_tests / "FileAppDataStoreTest.java").write_text(
@@ -12135,13 +12676,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "App data routes are app-scoped. "
         "It requires app.data.read and app.data.write, enforces cryptad.appData.maxRecordBytes and quota bounds, "
         "is not a filesystem API, is not a generic database, and is not a secret vault. "
-        "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app values. "
+        "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app-data values. "
         "Contract v12 adds GET /api/v1/app-services, app.services.read, app.services.call, "
         "operator-approved app-service grants, and mediated trust.score invocation through Trust Score Service grants. "
         "Contract v13 adds catalog.version=3 production catalog channels: stable, beta, nightly, and deprecated. "
         "Stable is the default automatic update channel, beta and nightly require explicit policy, "
         "channel_policy_blocked records excluded automation candidates, and deprecated entries expose "
         "replacement metadata without bypassing signed catalog verification. "
+        "Contract v14 adds app-update.data-migration-contract for signed app-data schema migration declarations. "
+        "The app-data migration lifecycle runs a dry-run before bundle replacement, creates an internal rollback snapshot, "
+        "restores app data on failed migration rollback, and keeps rollback snapshot scope app-only. "
+        "It blocks missing migration paths and rollback-incompatible migrations until operator review, "
+        "and PR-250 user-facing backup/restore portability remains deferred. "
         "It is not generic RPC, not a localhost proxy, and does not give apps ambient access to provider ports or data. "
         "Social Inbox uses a Trust Score Service grant for message-author annotations; revoked grants fail, and it must not fall back to\n"
         "`CryptaPlatform.trust.score`. "
@@ -12168,6 +12714,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.trust-graph, reference-app.trust-graph-durable-exchange, "
         "app-platform.trust-graph-preview, app-platform.trust-graph-durable-store, "
         "app-platform.trust-graph-exchange, "
+        "app-update.data-migration-contract, catalog.production-channels, "
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "Developers can find legacy-plugin-migration-guide.md from the app-platform portal. "
@@ -12182,6 +12729,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-platform-developer-portal.md",
         "app-platform-beta-known-limitations.md",
         "app-platform-beta-tutorials.md",
+        "app-upgrade-data-migrations.md",
         "app-permissions-and-audit.md",
         "feed-reader-reference-app.md",
         "platform-api-contract.md",
@@ -12626,12 +13174,56 @@ record AppUpdateCandidate() {
     json.put("review", review);
     json.put("apiCompatibility", apiCompatibility);
     json.put("permissionDelta", permissionDelta(candidatePermissions, installedPermissions));
+    json.put("dataMigration", dataMigration);
     return json;
   }
+  boolean dataMigrationAllowsAutomaticStage() { return dataMigration.get("blockReason") == null; }
   static Map<String, Object> reviewSummary(String status, String note) { return Map.of(); }
   static Map<String, Object> permissionDelta(List<String> candidatePermissions, List<String> local) { return Map.of(); }
 }
 """,
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppDataMigrationPlan.java").write_text(
+        """
+record AppDataMigrationPlan() {
+  static final String STATUS_MISSING_MIGRATION = "missing_migration";
+	  Map<String, Object> toJsonValue() {
+	    json.put("dataMigration", this);
+	    json.put("namespaces", namespaces);
+	    json.put("blockReason", blockReason);
+	    json.put("requiresStopped", requiresStopped);
+	    return json;
+	  }
+	  record NamespaceStep(String namespace, int from, int to, String stepId, boolean rollbackCompatible, boolean requiresStopped) {}
+	}
+""",
+        encoding="utf-8",
+    )
+    (appupdates_dir / "AppDataMigrationRunner.java").write_text(
+        """
+	interface AppDataMigrationRunner {
+	  int MAX_CAPTURE_BYTES = 4096;
+	  enum Mode { DRY_RUN, APPLY }
+		  interface MigrationDataAccess {}
+		  default void run(Path bundleRoot, AppDataMigrationPlan plan, Mode mode, MigrationDataAccess dataAccess) throws IOException {
+		    ProcessBuilder builder = new ProcessBuilder(commandLine(command));
+		    new AppEnv();
+		    ProcessBoundary boundary = ProcessBoundary.detect(appEnv);
+		    boundary.commandLine(command);
+		    return unsupported();
+		    String executable = "migration command is not executable";
+		    String processGroups = "Process groups alone are not sufficient";
+		    String blocker = "migration process containment is unavailable";
+		    long timeout = OUTPUT_DRAIN_TIMEOUT_MILLIS;
+		    builder.environment().clear();
+		    builder.environment().put("CRYPTA_APP_MIGRATION_MODE", "dry-run");
+	    builder.environment().put("CRYPTA_APP_MIGRATION_NAMESPACE", "feeds");
+    builder.environment().put("CRYPTA_APP_MIGRATION_INPUT", input.toString());
+    builder.environment().put("CRYPTA_APP_MIGRATION_OUTPUT", output.toString());
+  }
+	}
+	""",
         encoding="utf-8",
     )
     (appupdates_dir / "AppUpdatePolicy.java").write_text(
@@ -12648,7 +13240,12 @@ class AppUpdatePolicy {
         """
 class AppUpdateService {
   static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
-  AppUpdateService.SchedulerSummaryProvider schedulerSummaryProvider;
+	  static final String ERROR_APP_DATA_MIGRATION_MISSING = "app_data_migration_missing";
+	  static final String ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED = "app_data_migration_dry_run_failed";
+	  static final String ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED = "app_data_migration_review_required";
+	  static final String ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED = "app_data_migration_requires_stopped";
+	  static final String ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE = "app_data_migration_sandbox_unavailable";
+	  AppUpdateService.SchedulerSummaryProvider schedulerSummaryProvider;
 
   public synchronized Map<String, Object> check(String appId, boolean includeStaged) {
     return summary(appId, installed);
@@ -12660,24 +13257,89 @@ class AppUpdateService {
     if (planDiffersFromCandidate(candidate, installed, plan)) {
       throw new PlatformApiException(409, "update_candidate_changed", "changed");
     }
+    AppDataMigrationPlan migrationPlan = buildMigrationPlan(appId, installed.manifest(), targetManifest);
+    boolean sandboxBlock =
+        targetManifest.sandboxPolicy().required()
+            && targetManifest.sandboxPolicy().mode() != AppSandboxMode.NONE;
+    if (migrationPlan.hasBlocker()) throw new PlatformApiException(409, ERROR_APP_DATA_MIGRATION_MISSING, "missing");
+	    if (migrationPlan.operatorReviewRequired() && !migrationAcknowledged) {
+	      throw new PlatformApiException(409, ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED, "review");
+	    }
+	    verifyStagedBundleBeforeStageDryRun(appId, candidate, plan);
+	    migrationRunner.run(plan.stagedBundleDirectory(), migrationPlan, AppDataMigrationRunner.Mode.DRY_RUN, migrationDataAccess(appId, targetManifest));
+	    if (!dryRunResult.success()) throw new PlatformApiException(409, ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED, "dry run");
+	    bestMigrationPath(namespace, currentVersion, targetVersion, migrations);
     stageCandidate(appId, installed, candidate);
+    stagedUpdates.put(appId, new StagedUpdate(candidate, plan, migrationPlan, Instant.now()));
     return summary(appId, installed);
   }
 
-  public synchronized Map<String, Object> apply(String appId, ApplyOptions options) {
+		  public synchronized Map<String, Object> apply(String appId, ApplyOptions options) {
+	    verifyStagedBundleBeforeApply(staged);
+	    if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
+	      targetManifest.dataSchemaContract().declared();
+	      beginUpdateMigrationWriteBarrier(normalizedAppId);
+	    }
+	    if (migrationPlan.required()) {
+	      runApplyDryRunOrReject(staged, migrationPlan, targetManifest);
+	      targetManifest.dataQuotaBytes();
+	      verifyStagedBundleAfterApplyDryRun(staged);
+	      beginUpdateMigrationWriteBarrier(normalizedAppId);
+	      appDataSnapshot = createUpdateSnapshot(normalizedAppId);
+	    }
     InstalledAppSnapshot updated =
         appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
-    closeStage(normalizedAppId);
-    return summary(normalizedAppId, updated);
+    runApplyMigrationOrRollback(normalizedAppId, updated, migrationPlan, appDataSnapshot, healthFailureState);
+    rollbackAndRestoreSnapshot(normalizedAppId, healthFailureState, appDataSnapshot);
+	    appDataService.restoreUpdateSnapshot(normalizedAppId, appDataSnapshot);
+	    healthFailureState.markRollbackFailed();
+	    closeUpdateMigrationWriteBarrier(barrier);
+	    closeStage(normalizedAppId);
+	    return summary(normalizedAppId, updated);
+	  }
+
+		  void verifyStagedBundleBeforeApply(StagedUpdate staged) {
+		    catalogManager.verifyInstallPlan(staged.plan());
+		  }
+
+	  boolean shouldHoldApplyMigrationWriteBarrier(AppManifest targetManifest) {
+	    return targetManifest.dataSchemaContract().declared();
+	  }
+
+  void verifyStagedBundleBeforeStageDryRun(String appId, AppUpdateCandidate candidate, AppCatalogInstallPlan plan) {
+    catalogManager.verifyInstallPlan(plan);
   }
 
-  Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
+  boolean isAutomaticPolicyMigrationSkip(String errorCode) {
+    return ERROR_APP_DATA_MIGRATION_MISSING.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_REQUIRES_STOPPED.equals(errorCode)
+        || ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE.equals(errorCode);
+  }
+
+	  void recordMigrationDryRunFailure(String appId, AppUpdateCandidate candidate, AppDataMigrationPlan plan, String errorCode) {
+	    if (ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED.equals(errorCode)) {
+	      candidates.put(appId, candidateWithMigrationPlan(candidate, plan.withDryRunFailed()));
+	    }
+  }
+
+		  Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
     json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId));
+    json.put("dataMigration", migrationPlan.toJsonValue());
     if (productionMetadata.deprecatedForAutomaticUpdates()) {
       throw new PlatformApiException(409, ERROR_CHANNEL_POLICY_BLOCKED, "blocked");
     }
     AppReviewReceiptVerifier.evaluate(entry, keys, policy, now);
     return json;
+  }
+
+  void closeMigrationScratch() {
+    try {
+      deleteRecursively(root);
+    } catch (IOException _) {
+      // Migration scratch cleanup is best effort; command success is reported separately.
+    }
   }
 }
 """,
@@ -12763,6 +13425,11 @@ class AppUpdatesApiHandler {
     return updateService.stage(appId);
   }
 
+  public Map<String, Object> stage(String appId, Map<String, List<String>> queryParameters) {
+    boolean migrationAcknowledged = true;
+    return updateService.stage(appId, reviewAcknowledged, migrationAcknowledged);
+  }
+
   public Map<String, Object> apply(String appId, Map<String, List<String>> queryParameters) {
     return updateService.apply(appId, applyOptions(queryParameters));
   }
@@ -12780,8 +13447,36 @@ class AppUpdateServiceTest {
         .thenThrow(new AppHostException("cannot update a running app: " + APP_ID));
     assertEquals("app_running", exception.errorCode());
   }
-}
-""",
+		  void stage_whenSchemaIncreaseHasNoMigrationStep_expectBlockedBeforeBundleReplacement() {}
+			  void apply_whenMigrationRequiredAndRunnerPasses_expectSnapshotApplyAndSchemaMetadata() {}
+			  void apply_whenAppDataWriteAttemptsDuringMigrationWindow_expectWriteRejectedAndBarrierReleased() {}
+			  void apply_whenAppDataWriteAttemptsDuringFinalMigrationDryRun_expectWriteRejected() {}
+			  void apply_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner() {}
+			  void apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall() {}
+			  void stage_whenTargetManifestRaisesDataQuota_expectDryRunUsesTargetQuota() {}
+		  void apply_whenChainedMigrationRunner_expectEachStepAppliedBeforeNextStep() {}
+		  void apply_whenMigrationContractHasNoExistingDataAndWriteAppearsBeforeReplacement_expectWriteRejected() {}
+		  void apply_whenMigrationApplyFailsAndBundleRollbackFails_expectMigrationFailurePreserved() {}
+		  void stage_whenMigrationRollbackIncompatibleWithoutAcknowledgement_expectReviewRequired() {}
+			  void stage_whenStoppedRequiredMigrationAndAppRunning_expectBlockedBeforeDryRun() {}
+			  void check_whenStagePolicyMigrationPathMissing_expectCandidateSummaryWithoutCheckFailure() {}
+			  void check_whenStagePolicyMigrationDryRunFails_expectCandidateSummaryWithoutCheckFailure() {}
+			  void check_whenStagePolicyMigrationDryRunThrows_expectCandidateSummaryWithoutCheckFailure() {}
+			  void check_whenApplyWhenStoppedPolicyMigrationDryRunFails_expectCandidateSummaryWithoutApply() {}
+			  void stage_whenMigrationBundleRequestsOptionalSandbox_expectDryRunAndStage() {}
+		  void check_whenApplyWhenStoppedPolicySandboxMigration_expectCandidateSummaryWithoutApply() {}
+		  void stage_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner() {}
+		  void stage_whenMigrationHasDeadEndBranch_expectCompletePathSelected() {}
+	  void stage_whenCompatibleChainCompetesWithIncompatibleDirectStep_expectCompatiblePathSelected() {}
+	}
+	""",
+        encoding="utf-8",
+    )
+    (appupdates_test_dir / "AppDataMigrationRunnerTest.java").write_text(
+        "class AppDataMigrationRunnerTest { "
+        "void run_whenOnlyProcessGroupCleanupCouldBeBypassed_expectFailsClosedBeforeCommand() {} "
+        "void run_whenProcessBoundaryUnavailable_expectFailsClosedBeforeCommand() {} "
+        "void run_whenMigrationCommandIsNotExecutable_expectFailsBeforeCompletion() {} }\n",
         encoding="utf-8",
     )
     (appupdates_test_dir / "AppUpdateSchedulerConfigTest.java").write_text(
@@ -12901,7 +13596,11 @@ definitionList([
   ["Scheduler status", scheduler.status],
   ["Scheduler failures", scheduler.failureCount],
   ["Last scheduler error", scheduler.lastErrorCode],
+  ["App-data migration blocker", migrationBlockerSummary(dataMigration)],
 ]);
+const migrationTitle = "App-data migration plan";
+const migrationAcknowledged = "migrationAcknowledged";
+const migrationStepList = "migration-step-list";
 """,
         encoding="utf-8",
     )
@@ -13213,7 +13912,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=13",
+                "api.maximumTestedVersion=14",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -13362,7 +14061,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 13,
+                    "contractVersion": 14,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -13584,7 +14283,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=13' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=14' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -13761,7 +14460,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 13,
+    "contractVersion": 14,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [

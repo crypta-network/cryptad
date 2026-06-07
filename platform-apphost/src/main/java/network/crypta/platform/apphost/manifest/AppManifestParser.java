@@ -60,6 +60,7 @@ public final class AppManifestParser {
         manifest.uiEntry(),
         manifest.permissions(),
         manifest.apiCompatibility(),
+        manifest.dataSchemaContract(),
         manifest.dataQuotaBytes(),
         manifest.cacheQuotaBytes(),
         new AppSandboxPolicy(manifest.sandboxMode(), manifest.sandboxRequired()),

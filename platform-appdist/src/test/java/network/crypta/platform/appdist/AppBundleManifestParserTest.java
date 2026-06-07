@@ -388,6 +388,140 @@ class AppBundleManifestParserTest {
     assertEquals("quota.data.bytes must not be blank", exception.getMessage());
   }
 
+  @Test
+  void parseContent_whenAppDataMigrationDeclared_expectContractMetadata() throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest(
+                """
+                app.data.schema.current=2
+                app.data.schema.namespaces=feeds,settings
+                app.data.schema.namespace.feeds.current=2
+                app.data.schema.namespace.settings.current=1
+                app.data.migrations=feeds-v1-v2
+                app.data.migration.feeds-v1-v2.namespace=feeds
+                app.data.migration.feeds-v1-v2.from=1
+                app.data.migration.feeds-v1-v2.to=2
+                app.data.migration.feeds-v1-v2.command=bin/migrate-app-data.sh
+                app.data.migration.feeds-v1-v2.rollbackCompatible=true
+                app.data.migration.feeds-v1-v2.requiresStopped=true
+                app.data.migration.feeds-v1-v2.description=Upgrade feed records to schema v2.
+                """));
+
+    AppDataSchemaContract contract = manifest.dataSchemaContract();
+    assertTrue(contract.declared());
+    assertEquals(Integer.valueOf(2), contract.currentSchemaVersion());
+    assertEquals(
+        List.of("feeds", "settings"),
+        contract.namespaces().stream().map(AppDataNamespaceSchema::namespace).toList());
+    AppDataMigrationStep step = contract.migrations().getFirst();
+    assertEquals("feeds-v1-v2", step.stepId());
+    assertEquals("feeds", step.namespace());
+    assertEquals(1, step.fromSchemaVersion());
+    assertEquals(2, step.toSchemaVersion());
+    assertEquals("bin/migrate-app-data.sh", step.command().pathText());
+    assertTrue(step.rollbackCompatible());
+    assertTrue(step.requiresStopped());
+  }
+
+  @Test
+  void parseContent_whenAppDataSchemaVersionIsInvalid_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("app.data.schema.current=0\n")));
+
+    assertEquals("app.data.schema.current must be a positive integer", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenMigrationDeclaresNoTargetSchema_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest(
+                        """
+                        app.data.migrations=feeds-v1-v2
+                        app.data.migration.feeds-v1-v2.namespace=feeds
+                        app.data.migration.feeds-v1-v2.from=1
+                        app.data.migration.feeds-v1-v2.to=2
+                        app.data.migration.feeds-v1-v2.command=bin/migrate-app-data.sh
+                        app.data.migration.feeds-v1-v2.rollbackCompatible=true
+                        app.data.migration.feeds-v1-v2.requiresStopped=true
+                        app.data.migration.feeds-v1-v2.description=Upgrade feed records.
+                        """)));
+
+    assertEquals(
+        "app.data.migrations requires app.data.schema.current or app.data.schema.namespaces",
+        exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenGlobalMigrationTargetExceedsSchema_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest(
+                        """
+                        app.data.schema.current=2
+                        app.data.migrations=feeds-v1-v3
+                        app.data.migration.feeds-v1-v3.namespace=feeds
+                        app.data.migration.feeds-v1-v3.from=1
+                        app.data.migration.feeds-v1-v3.to=3
+                        app.data.migration.feeds-v1-v3.command=bin/migrate-app-data.sh
+                        app.data.migration.feeds-v1-v3.rollbackCompatible=true
+                        app.data.migration.feeds-v1-v3.requiresStopped=true
+                        app.data.migration.feeds-v1-v3.description=Upgrade feed records.
+                        """)));
+
+    assertEquals(
+        "app.data migration target exceeds declared schema: feeds-v1-v3", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenMigrationCommandEscapesBundle_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest(
+                        """
+                        app.data.schema.namespaces=feeds
+                        app.data.schema.namespace.feeds.current=2
+                        app.data.migrations=feeds-v1-v2
+                        app.data.migration.feeds-v1-v2.namespace=feeds
+                        app.data.migration.feeds-v1-v2.from=1
+                        app.data.migration.feeds-v1-v2.to=2
+                        app.data.migration.feeds-v1-v2.command=../migrate.sh
+                        app.data.migration.feeds-v1-v2.rollbackCompatible=true
+                        app.data.migration.feeds-v1-v2.requiresStopped=true
+                        app.data.migration.feeds-v1-v2.description=Upgrade feed records.
+                        """)));
+
+    assertEquals("app.data migration command must stay under the app root", exception.getMessage());
+  }
+
+  @Test
+  void parseContent_whenMigrationFieldIsUnknown_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("app.data.migration.feeds-v1-v2.shell=echo unsafe\n")));
+
+    assertEquals(
+        "unsupported app.data manifest property: app.data.migration.feeds-v1-v2.shell",
+        exception.getMessage());
+  }
+
   private static String minimalManifest(String uiProperties) {
     return """
     manifest.version=1

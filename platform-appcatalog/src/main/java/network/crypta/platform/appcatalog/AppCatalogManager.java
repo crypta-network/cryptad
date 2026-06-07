@@ -374,6 +374,25 @@ public final class AppCatalogManager {
   }
 
   /**
+   * Re-verifies a retained installation plan before callers execute staged bundle code.
+   *
+   * <p>Prepared install plans are verified when they are created, but their scratch directories
+   * remain mutable local filesystem state until the plan is applied or closed. Update flows that
+   * run app-owned migration commands from the retained stage must call this method immediately
+   * before execution so modified staged content is rejected before any process launch. The
+   * verification uses the same trusted-key provider and signed-bundle checks as {@link
+   * #prepareInstallPlan(String, String)}.
+   *
+   * @param plan retained installation plan to verify
+   * @throws IOException if staged bundle verification or filesystem access fails
+   */
+  public synchronized void verifyInstallPlan(AppCatalogInstallPlan plan) throws IOException {
+    AppCatalogInstallPlan checkedPlan = Objects.requireNonNull(plan, "plan");
+    bundleExtractor.verifyStagedBundle(
+        checkedPlan.entry(), checkedPlan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys());
+  }
+
+  /**
    * Returns whether the current trusted app/catalog key registry contains one key id.
    *
    * <p>Recommended-catalog onboarding uses this as a configuration check before attempting to add a

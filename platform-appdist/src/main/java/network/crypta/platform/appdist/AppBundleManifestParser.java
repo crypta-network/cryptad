@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +40,14 @@ public final class AppBundleManifestParser {
   public static final String MANIFEST_FILE_NAME = "cryptad-app.properties";
 
   private static final char UTF_8_BOM = '\uFEFF';
+  private static final String APP_DATA_SCHEMA_CURRENT = "app.data.schema.current";
+  private static final String APP_DATA_SCHEMA_NAMESPACES = "app.data.schema.namespaces";
+  private static final String APP_DATA_SCHEMA_NAMESPACE_PREFIX = "app.data.schema.namespace.";
+  private static final String APP_DATA_SCHEMA_NAMESPACE_CURRENT_SUFFIX = ".current";
+  private static final String APP_DATA_MIGRATIONS = "app.data.migrations";
+  private static final String APP_DATA_MIGRATION_PREFIX = "app.data.migration.";
+  private static final String BOOLEAN_FALSE = "false";
+  private static final String BOOLEAN_TRUE = "true";
   private static final Pattern PERMISSION_PATTERN =
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
   private static final Pattern WINDOWS_DRIVE_PREFIX_PATTERN = Pattern.compile("^[a-zA-Z]:.*");
@@ -265,6 +274,7 @@ public final class AppBundleManifestParser {
     String uiEntry = optionalUiEntry(properties);
     List<String> permissions = parsePermissions(optional(properties, "app.permissions"));
     AppApiCompatibilityMetadata apiCompatibility = parseApiCompatibility(properties);
+    AppDataSchemaContract dataSchemaContract = parseAppDataSchemaContract(properties);
     Long dataQuotaBytes = parseOptionalLong(properties, "quota.data.bytes");
     Long cacheQuotaBytes = parseOptionalLong(properties, "quota.cache.bytes");
     AppSandboxMode sandboxMode = parseSandboxMode(optional(properties, "sandbox.mode"));
@@ -283,6 +293,7 @@ public final class AppBundleManifestParser {
           uiEntry,
           permissions,
           apiCompatibility,
+          dataSchemaContract,
           dataQuotaBytes,
           cacheQuotaBytes,
           sandboxMode,
@@ -293,6 +304,168 @@ public final class AppBundleManifestParser {
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
+  }
+
+  private static AppDataSchemaContract parseAppDataSchemaContract(Properties properties)
+      throws AppDistributionException {
+    Set<String> consumedKeys = new LinkedHashSet<>();
+    Integer currentSchemaVersion =
+        parseOptionalPositiveInteger(properties, APP_DATA_SCHEMA_CURRENT, consumedKeys);
+    List<AppDataNamespaceSchema> namespaces =
+        parseAppDataNamespaceSchemas(properties, consumedKeys);
+    List<AppDataMigrationStep> migrations = parseAppDataMigrationSteps(properties, consumedKeys);
+    rejectUnknownAppDataProperties(properties, consumedKeys);
+    try {
+      AppDataSchemaContract contract =
+          new AppDataSchemaContract(currentSchemaVersion, namespaces, migrations);
+      requireMigrationTargetsDeclared(contract);
+      return contract;
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static List<AppDataNamespaceSchema> parseAppDataNamespaceSchemas(
+      Properties properties, Set<String> consumedKeys) throws AppDistributionException {
+    List<String> namespaceNames =
+        parseIdentifierList(optional(properties, APP_DATA_SCHEMA_NAMESPACES, consumedKeys));
+    List<AppDataNamespaceSchema> namespaces = new ArrayList<>(namespaceNames.size());
+    for (String namespaceName : namespaceNames) {
+      String normalizedNamespace;
+      try {
+        normalizedNamespace = AppDataNamespaceSchema.normalizeNamespace(namespaceName);
+      } catch (IllegalArgumentException exception) {
+        throw new AppDistributionException(exception.getMessage(), exception);
+      }
+      String key =
+          APP_DATA_SCHEMA_NAMESPACE_PREFIX
+              + normalizedNamespace
+              + APP_DATA_SCHEMA_NAMESPACE_CURRENT_SUFFIX;
+      Integer current = parseOptionalPositiveInteger(properties, key, consumedKeys);
+      if (current == null) {
+        throw new AppDistributionException("missing " + key);
+      }
+      try {
+        namespaces.add(new AppDataNamespaceSchema(normalizedNamespace, current));
+      } catch (IllegalArgumentException exception) {
+        throw new AppDistributionException(exception.getMessage(), exception);
+      }
+    }
+    return List.copyOf(namespaces);
+  }
+
+  private static List<AppDataMigrationStep> parseAppDataMigrationSteps(
+      Properties properties, Set<String> consumedKeys) throws AppDistributionException {
+    List<String> stepIds =
+        parseIdentifierList(optional(properties, APP_DATA_MIGRATIONS, consumedKeys));
+    List<AppDataMigrationStep> steps = new ArrayList<>(stepIds.size());
+    for (String rawStepId : stepIds) {
+      String stepId;
+      try {
+        stepId = AppDataMigrationStep.normalizeStepId(rawStepId);
+      } catch (IllegalArgumentException exception) {
+        throw new AppDistributionException(exception.getMessage(), exception);
+      }
+      String prefix = APP_DATA_MIGRATION_PREFIX + stepId + ".";
+      steps.add(parseAppDataMigrationStep(properties, consumedKeys, stepId, prefix));
+    }
+    return List.copyOf(steps);
+  }
+
+  private static AppDataMigrationStep parseAppDataMigrationStep(
+      Properties properties, Set<String> consumedKeys, String stepId, String prefix)
+      throws AppDistributionException {
+    try {
+      return new AppDataMigrationStep(
+          stepId,
+          required(properties, prefix + "namespace", consumedKeys),
+          requiredPositiveInteger(properties, prefix + "from", consumedKeys),
+          requiredPositiveInteger(properties, prefix + "to", consumedKeys),
+          new AppDataMigrationCommand(required(properties, prefix + "command", consumedKeys)),
+          requiredBoolean(properties, prefix + "rollbackCompatible", consumedKeys),
+          requiredBoolean(properties, prefix + "requiresStopped", consumedKeys),
+          required(properties, prefix + "description", consumedKeys));
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
+  }
+
+  private static void requireMigrationTargetsDeclared(AppDataSchemaContract contract)
+      throws AppDistributionException {
+    if (contract.migrations().isEmpty()) {
+      return;
+    }
+    if (contract.currentSchemaVersion() == null && contract.namespaces().isEmpty()) {
+      throw new AppDistributionException(
+          "app.data.migrations requires app.data.schema.current or app.data.schema.namespaces");
+    }
+    if (contract.namespaces().isEmpty()) {
+      requireMigrationTargetsWithinGlobalSchema(contract);
+      return;
+    }
+    for (AppDataMigrationStep step : contract.migrations()) {
+      AppDataNamespaceSchema target = contract.namespace(step.namespace());
+      if (target == null) {
+        throw new AppDistributionException(
+            "app.data migration namespace is not declared: " + step.namespace());
+      }
+      if (step.toSchemaVersion() > target.currentSchemaVersion()) {
+        throw new AppDistributionException(
+            "app.data migration target exceeds declared namespace schema: " + step.stepId());
+      }
+    }
+  }
+
+  private static void requireMigrationTargetsWithinGlobalSchema(AppDataSchemaContract contract)
+      throws AppDistributionException {
+    for (AppDataMigrationStep step : contract.migrations()) {
+      if (step.toSchemaVersion() > contract.currentSchemaVersion()) {
+        throw new AppDistributionException(
+            "app.data migration target exceeds declared schema: " + step.stepId());
+      }
+    }
+  }
+
+  private static void rejectUnknownAppDataProperties(
+      Properties properties, Set<String> consumedKeys) throws AppDistributionException {
+    List<String> appDataKeys =
+        properties.stringPropertyNames().stream()
+            .filter(key -> key.startsWith("app.data."))
+            .sorted(Comparator.naturalOrder())
+            .toList();
+    for (String key : appDataKeys) {
+      if (!consumedKeys.contains(key)) {
+        throw new AppDistributionException("unsupported app.data manifest property: " + key);
+      }
+    }
+  }
+
+  private static List<String> parseIdentifierList(String rawValue) throws AppDistributionException {
+    if (rawValue == null) {
+      return List.of();
+    }
+    LinkedHashSet<String> values = new LinkedHashSet<>();
+    StringBuilder current = new StringBuilder();
+    for (int index = 0; index < rawValue.length(); index++) {
+      char character = rawValue.charAt(index);
+      if (character == ',') {
+        addIdentifierListValue(values, current);
+      } else {
+        current.append(character);
+      }
+    }
+    addIdentifierListValue(values, current);
+    return List.copyOf(values);
+  }
+
+  private static void addIdentifierListValue(Set<String> values, StringBuilder current)
+      throws AppDistributionException {
+    String value = current.toString().trim().toLowerCase(Locale.ROOT);
+    current.setLength(0);
+    if (value.isEmpty()) {
+      throw new AppDistributionException("app.data identifier lists must not contain blanks");
+    }
+    values.add(value);
   }
 
   private static AppApiCompatibilityMetadata parseApiCompatibility(Properties properties)
@@ -483,6 +656,22 @@ public final class AppBundleManifestParser {
   private static Integer parseOptionalPositiveInteger(Properties properties, String key)
       throws AppDistributionException {
     String value = optional(properties, key);
+    return parseOptionalPositiveIntegerValue(value, key);
+  }
+
+  private static Integer parseOptionalPositiveInteger(
+      Properties properties, String key, Set<String> consumedKeys) throws AppDistributionException {
+    String value = optional(properties, key, consumedKeys);
+    return parseOptionalPositiveIntegerValue(value, key);
+  }
+
+  private static int requiredPositiveInteger(
+      Properties properties, String key, Set<String> consumedKeys) throws AppDistributionException {
+    return parseOptionalPositiveIntegerValue(required(properties, key, consumedKeys), key);
+  }
+
+  private static Integer parseOptionalPositiveIntegerValue(String value, String key)
+      throws AppDistributionException {
     if (value == null) {
       return null;
     }
@@ -505,10 +694,10 @@ public final class AppBundleManifestParser {
       return false;
     }
     String normalized = value.toLowerCase(Locale.ROOT);
-    if (normalized.equals("true")) {
+    if (normalized.equals(BOOLEAN_TRUE)) {
       return true;
     }
-    if (normalized.equals("false")) {
+    if (normalized.equals(BOOLEAN_FALSE)) {
       return false;
     }
     throw new AppDistributionException("invalid " + key + ": " + value);
@@ -558,10 +747,10 @@ public final class AppBundleManifestParser {
       return false;
     }
     String normalized = value.toLowerCase(Locale.ROOT);
-    if (normalized.equals("true")) {
+    if (normalized.equals(BOOLEAN_TRUE)) {
       return true;
     }
-    if (normalized.equals("false")) {
+    if (normalized.equals(BOOLEAN_FALSE)) {
       return false;
     }
     throw new AppDistributionException("invalid " + key + ": " + value);
@@ -570,6 +759,15 @@ public final class AppBundleManifestParser {
   private static String required(Properties properties, String key)
       throws AppDistributionException {
     String value = optional(properties, key);
+    if (value == null) {
+      throw new AppDistributionException("missing " + key);
+    }
+    return value;
+  }
+
+  private static String required(Properties properties, String key, Set<String> consumedKeys)
+      throws AppDistributionException {
+    String value = optional(properties, key, consumedKeys);
     if (value == null) {
       throw new AppDistributionException("missing " + key);
     }
@@ -587,6 +785,33 @@ public final class AppBundleManifestParser {
       throw new AppDistributionException(key + " must not be blank");
     }
     return trimmed;
+  }
+
+  private static String optional(Properties properties, String key, Set<String> consumedKeys)
+      throws AppDistributionException {
+    String value = properties.getProperty(key);
+    if (value == null) {
+      return null;
+    }
+    consumedKeys.add(key);
+    String trimmed = value.trim();
+    if (trimmed.isEmpty()) {
+      throw new AppDistributionException(key + " must not be blank");
+    }
+    return trimmed;
+  }
+
+  private static boolean requiredBoolean(
+      Properties properties, String key, Set<String> consumedKeys) throws AppDistributionException {
+    String value = required(properties, key, consumedKeys);
+    String normalized = value.toLowerCase(Locale.ROOT);
+    if (normalized.equals(BOOLEAN_TRUE)) {
+      return true;
+    }
+    if (normalized.equals(BOOLEAN_FALSE)) {
+      return false;
+    }
+    throw new AppDistributionException("invalid " + key + ": " + value);
   }
 
   private static String optionalUiEntry(Properties properties) throws AppDistributionException {

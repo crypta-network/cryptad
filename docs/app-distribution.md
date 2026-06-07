@@ -22,6 +22,8 @@ Related but documented elsewhere:
 - Public catalog-over-Crypta source syntax and trust boundaries: [app-catalogs.md](app-catalogs.md)
 - App update candidate detection, policy, staged apply, and rollback scope:
   [app-update-lifecycle.md](app-update-lifecycle.md)
+- Signed app-data migration declarations for schema-changing updates:
+  [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md)
 - Browser-side bundle uploads, Crypta app-artifact fetching, remote screenshot proxying, and
   additional sandbox controls beyond the current Linux bubblewrap provider remain future platform
   work.
@@ -155,6 +157,38 @@ Process-log size is controlled by host policy rather than signed manifest metada
 the tail of the file for diagnostics. AppHost may retain a small additional redaction overlap beyond
 the displayed process-log limit so bounded log reads can still redact tokens and known AppHost paths
 when the display tail begins inside a sensitive value.
+
+## App-data Schema Manifest Fields
+
+Schema-changing app updates can declare a signed app-data migration contract:
+
+```properties
+app.data.schema.current=2
+app.data.schema.namespaces=ui-state
+app.data.schema.namespace.ui-state.current=2
+
+app.data.migrations=ui-state-v1-v2
+app.data.migration.ui-state-v1-v2.namespace=ui-state
+app.data.migration.ui-state-v1-v2.from=1
+app.data.migration.ui-state-v1-v2.to=2
+app.data.migration.ui-state-v1-v2.command=bin/migrate-feed-data.sh
+app.data.migration.ui-state-v1-v2.rollbackCompatible=false
+app.data.migration.ui-state-v1-v2.requiresStopped=true
+app.data.migration.ui-state-v1-v2.description=Upgrade UI state to schema v2.
+```
+
+These fields are normalized and validated with the manifest before the bundle is signed or
+installed. Migration command values are relative bundle paths, not shell strings. Absolute paths,
+traversal segments, Windows drive prefixes, empty segments, control characters, and unsafe
+namespace or step identifiers are rejected. Bundle validation checks that the resolved command is a
+regular safe file inside the signed bundle, but it does not depend on host executable-bit behavior.
+When a migration is actually required, the migration runner enforces direct launchability and fails
+closed before bundle replacement if the local host cannot execute the entrypoint without a shell.
+
+During update staging/apply the Platform API exposes only path-free migration summaries. It does
+not expose the command path, staged bundle path, raw command output, tokens, private insert URIs,
+or raw app-data values. See [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) for
+the lifecycle, rollback snapshot, and PR-250 non-goals.
 
 ## Runtime Manifest Fields
 

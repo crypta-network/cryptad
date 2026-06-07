@@ -43,6 +43,7 @@ import java.util.Objects;
  * @param reviewTrust independent review receipt trust decision
  * @param apiCompatibility Platform API compatibility summary for the candidate
  * @param permissionDelta added, removed, and unchanged permissions versus the installed app
+ * @param dataMigration path-free app-data migration plan or status summary
  * @param running whether the app was running when the candidate was detected
  * @param detectedAt timestamp when the candidate snapshot was computed
  * @see AppUpdateService
@@ -68,6 +69,7 @@ public record AppUpdateCandidate(
     Map<String, Object> reviewTrust,
     Map<String, Object> apiCompatibility,
     Map<String, Object> permissionDelta,
+    Map<String, Object> dataMigration,
     boolean running,
     Instant detectedAt) {
   private static final String JSON_STATUS = "status";
@@ -137,6 +139,7 @@ public record AppUpdateCandidate(
     reviewTrust = copyInOrder(reviewTrust, "reviewTrust");
     apiCompatibility = copyInOrder(apiCompatibility, "apiCompatibility");
     permissionDelta = copyInOrder(permissionDelta, "permissionDelta");
+    dataMigration = copyInOrder(dataMigration, "dataMigration");
     Objects.requireNonNull(detectedAt, "detectedAt");
   }
 
@@ -160,7 +163,10 @@ public record AppUpdateCandidate(
    * @return {@code true} when the candidate is available and channel policy allows automation
    */
   public boolean eligibleForAutomaticStage() {
-    return eligibleByDefault() && channelPolicyAllowed && policyBlockReason == null;
+    return eligibleByDefault()
+        && channelPolicyAllowed
+        && policyBlockReason == null
+        && dataMigrationAllowsAutomaticStage();
   }
 
   /**
@@ -179,7 +185,8 @@ public record AppUpdateCandidate(
   public boolean eligibleForAutomaticApply() {
     return eligibleForAutomaticStage()
         && reviewTrustAllowsAutomaticApply()
-        && apiCompatibilityAllowsAutomaticApply();
+        && apiCompatibilityAllowsAutomaticApply()
+        && dataMigrationAllowsAutomaticStage();
   }
 
   boolean reviewTrustAllowsAutomaticApply() {
@@ -188,6 +195,11 @@ public record AppUpdateCandidate(
 
   boolean apiCompatibilityAllowsAutomaticApply() {
     return apiCompatibilityAllowsAutomaticApply(apiCompatibility);
+  }
+
+  boolean dataMigrationAllowsAutomaticStage() {
+    Object blockReason = dataMigration.get("blockReason");
+    return blockReason == null;
   }
 
   /**
@@ -201,7 +213,7 @@ public record AppUpdateCandidate(
    * @return path-free candidate summary for API responses
    */
   public Map<String, Object> toJsonValue() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(23);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(24);
     json.put("appId", appId);
     json.put("catalogId", catalogId);
     json.put("catalogSourceId", catalogSourceId);
@@ -220,6 +232,7 @@ public record AppUpdateCandidate(
     json.put("reviewTrust", reviewTrust);
     json.put("apiCompatibility", apiCompatibility);
     json.put("permissionDelta", permissionDelta);
+    json.put("dataMigration", dataMigration);
     json.put("running", running);
     json.put("detectedAt", detectedAt.toString());
     json.put("autoStageAllowed", eligibleForAutomaticStage());
@@ -235,6 +248,11 @@ public record AppUpdateCandidate(
     if (status == AppUpdateCandidateStatus.AVAILABLE
         && (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
             || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE)))) {
+      return true;
+    }
+    if (status == AppUpdateCandidateStatus.AVAILABLE
+        && (Boolean.TRUE.equals(dataMigration.get("operatorReviewRequired"))
+            || dataMigration.get("blockReason") != null)) {
       return true;
     }
     return switch (status) {

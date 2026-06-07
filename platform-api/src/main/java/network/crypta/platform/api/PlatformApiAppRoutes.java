@@ -105,7 +105,9 @@ final class PlatformApiAppRoutes {
                 appVaultService);
     AppUpdateService resolvedUpdateService = sharedServices.appUpdateService();
     if (resolvedUpdateService == null && appHost != null && appCatalogManager != null) {
-      resolvedUpdateService = new AppUpdateService(appHost, appCatalogManager, appVaultService);
+      resolvedUpdateService =
+          new AppUpdateService(
+              appHost, appCatalogManager, appVaultService, sharedServices.appDataService());
     }
     appUpdateService = resolvedUpdateService;
     contentSubscriptionService = sharedServices.contentSubscriptionService();

@@ -28,6 +28,7 @@ public final class AppUpdatesApiHandler {
   private static final String PARAM_HEALTH_CHECK = "healthCheck";
   private static final String PARAM_CHANNELS = "channels";
   private static final String PARAM_MODE = "mode";
+  private static final String PARAM_MIGRATION_ACKNOWLEDGED = "migrationAcknowledged";
   private static final String PARAM_REFRESH_CATALOGS = "refreshCatalogs";
   private static final String PARAM_RESTART = "restart";
   private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
@@ -97,7 +98,10 @@ public final class AppUpdatesApiHandler {
    * @return path-free update state after staging
    */
   public Map<String, Object> stage(String appId, Map<String, List<String>> queryParameters) {
-    return updateService.stage(appId, optionalBoolean(queryParameters, PARAM_REVIEW_ACKNOWLEDGED));
+    return updateService.stage(
+        appId,
+        optionalBoolean(queryParameters, PARAM_REVIEW_ACKNOWLEDGED),
+        optionalBoolean(queryParameters, PARAM_MIGRATION_ACKNOWLEDGED));
   }
 
   /**

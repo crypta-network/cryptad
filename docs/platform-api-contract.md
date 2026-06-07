@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=13
+contractVersion=14
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 13,
+    "contractVersion": 14,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -106,6 +106,12 @@ profile-publishing workflow still requires the v5 profile-document and app-docum
 
 Existing version 1 capabilities and endpoints remain stable, and their descriptors keep
 `sinceContractVersion=1` so tooling can distinguish old and newly introduced surface area.
+
+Contract version 14 extends app update summaries with path-free `dataMigration` status for signed
+app-data migration contracts, including namespace schema steps, rollback compatibility, and
+stopped-app requirements. It does not add app-facing backup/restore routes and does not expose
+bundle paths, migration command paths, raw migration logs, tokens, private insert URIs, or raw
+app-data values. See [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md).
 
 Contract version 6 adds bounded content fetch support for static feed apps:
 

@@ -36,7 +36,8 @@ Build: 2
   durable content-subscription evidence, durable app-data evidence, app-service grant evidence,
   Trust Graph Preview evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust
   Graph Preview reference-app evidence, app platform beta docs/program evidence, live USK catalog
-  publication evidence, app-update lifecycle/scheduler/rollback evidence, `crypta-app` developer
+  publication evidence, app-update lifecycle/scheduler/rollback and app-data migration contract
+  evidence, `crypta-app` developer
   beta toolkit smoke, legacy-admin retirement/removal evidence, Hyphanet interop smoke/soak
   evidence, and the packaged-node performance smoke.
 
@@ -108,7 +109,8 @@ git push origin v<build-number>
       Feed Reader content-subscription, Trust Graph Preview durable exchange, live USK catalog
       refresh, app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
       docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
-      app-update rollback, developer beta toolkit, and legacy-admin retirement/removal evidence are
+      app-update rollback, app-update data migration contract, developer beta toolkit, and
+      legacy-admin retirement/removal evidence are
       present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
