@@ -420,8 +420,7 @@
     }
   }
 
-  function downloadJsonBlob(value, fileName) {
-    const blob = new Blob([`${formatJson(value)}\n`], { type: "application/json" });
+  function downloadBlob(blob, fileName) {
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
@@ -430,6 +429,10 @@
     link.click();
     link.remove();
     URL.revokeObjectURL(href);
+  }
+
+  function downloadJsonBlob(value, fileName) {
+    downloadBlob(new Blob([`${formatJson(value)}\n`], { type: "application/json" }), fileName);
   }
 
   function safeFilePart(value, fallback) {
@@ -451,6 +454,21 @@
       binary += String.fromCharCode(...bytes.slice(offset, offset + chunkSize));
     }
     return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function urlSafeBase64ToBytes(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const paddingLength = (4 - (normalized.length % 4)) % 4;
+    const padded = normalized.padEnd(normalized.length + paddingLength, "=");
+    const binary = window.atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
   }
 
   function summaryCard(title, values, tone) {
@@ -5980,6 +5998,22 @@
     return `cryptad-app-data-backup-${scope}${appPart}-${isoFileTimestamp(bundle.createdAt)}.json`;
   }
 
+  function appDataBackupPayloadBlob(response) {
+    const payloadBase64 =
+      response && typeof response.payloadBase64 === "string" ? response.payloadBase64 : "";
+    if (payloadBase64) {
+      return new Blob([urlSafeBase64ToBytes(payloadBase64)], { type: "application/json" });
+    }
+    return new Blob([JSON.stringify(appDataBackupBundle(response))], { type: "application/json" });
+  }
+
+  function downloadAppDataBackupPayload(response, fallbackScope, fallbackAppId) {
+    downloadBlob(
+      appDataBackupPayloadBlob(response),
+      appDataBackupFileName(response, fallbackScope, fallbackAppId),
+    );
+  }
+
   async function downloadAllAppDataBackup() {
     if (!formPassword) {
       setBetaDashboardStatus("App-data backup is unavailable in read-only mode.", "is-error");
@@ -5991,7 +6025,7 @@
         allAppDataBackupFormData(),
         "App-data backup is unavailable in read-only mode.",
       );
-      downloadJsonBlob(appDataBackupBundle(response), appDataBackupFileName(response, "all-apps", ""));
+      downloadAppDataBackupPayload(response, "all-apps", "");
       setBetaDashboardStatus("All-app app-data backup download prepared.", "is-success");
     } catch (error) {
       setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -6013,7 +6047,7 @@
       formData,
       "App-data backup is unavailable in read-only mode.",
     );
-    downloadJsonBlob(appDataBackupBundle(response), appDataBackupFileName(response, "single-app", appId));
+    downloadAppDataBackupPayload(response, "single-app", appId);
     setAppsStatus(`${appName} app-data backup download prepared.`, "is-success");
     return response;
   }

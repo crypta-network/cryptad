@@ -4973,7 +4973,10 @@ def collect_app_data_backup_restore_evidence(settings: Settings) -> EvidenceItem
             and "operator/app-data/backups" in text["webShell"]
             and "operator/app-data/restore/plan" in text["webShell"]
             and "operator/app-data/restore" in text["webShell"]
-            and "new Blob([`${formatJson(value)}\\n`]" in text["webShell"]
+            and "function appDataBackupPayloadBlob(response)" in text["webShell"]
+            and "urlSafeBase64ToBytes(payloadBase64)" in text["webShell"]
+            and 'downloadAppDataBackupPayload(response, "all-apps", "")' in text["webShell"]
+            and 'downloadAppDataBackupPayload(response, "single-app", appId)' in text["webShell"]
             and "localStorage" in text["webShell"]
             and "backupPayload" in text["webShell"]
             and "sessionStorage" not in text["webShell"]
@@ -13964,6 +13967,11 @@ function downloadAllAppDataBackup(){ return postForm("operator/app-data/backups"
 function submitAppDataRestoreForm(form, restoreAction, statusSetter){}
 function setBetaDashboardStatus(message){}
 function downloadJsonBlob(value, fileName){ new Blob([`${formatJson(value)}\\n`]); }
+function urlSafeBase64ToBytes(value){ return value; }
+function appDataBackupPayloadBlob(response){ const payloadBase64 = response.payloadBase64; return new Blob([urlSafeBase64ToBytes(payloadBase64)]); }
+function downloadAppDataBackupPayload(response, fallbackScope, appId){ downloadBlob(appDataBackupPayloadBlob(response)); }
+downloadAppDataBackupPayload(response, "all-apps", "");
+downloadAppDataBackupPayload(response, "single-app", appId);
 function appDataBackupFormDataForApp(appId){ const formData = new FormData(); formData.set("appId", appId); return formData; }
 function allAppDataBackupFormData(){ const formData = new FormData(); formData.set("scope", "all"); return formData; }
 apiUrl("operator/app-data/restore/plan");
