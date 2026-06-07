@@ -1108,16 +1108,28 @@ public final class AppDataService {
     return config.maxImportBytes();
   }
 
+  @SuppressWarnings("unused")
   AppDataExportPayload exportPayload(String normalizedAppId, Instant exportedAt) {
-    List<AppDataRecordSummary> summaries = listStoredRecordSummaries(normalizedAppId, null);
-    List<AppDataNamespaceMetadata> namespaces = listNamespaceMetadata(normalizedAppId);
-    enforceExportLimit(normalizedAppId, exportedAt, namespaces, summaries);
+    ExportProjection projection = exportProjection(normalizedAppId, exportedAt);
+    return exportPayload(projection);
+  }
+
+  AppDataExportPayload exportPayload(ExportProjection projection) {
     return new AppDataExportPayload(
         AppDataExportPayload.CURRENT_EXPORT_VERSION,
-        normalizedAppId,
-        exportedAt,
-        namespaces,
-        listStoredRecords(normalizedAppId, null));
+        projection.appId(),
+        projection.exportedAt(),
+        projection.namespaces(),
+        listStoredRecords(projection.appId(), null));
+  }
+
+  ExportProjection exportProjection(String normalizedAppId, Instant exportedAt) {
+    String appId = AppDataRecord.normalizeAppId(normalizedAppId);
+    List<AppDataRecordSummary> summaries = listStoredRecordSummaries(appId, null);
+    List<AppDataNamespaceMetadata> namespaces = listNamespaceMetadata(appId);
+    long projectedBytes = projectedExportBytes(appId, exportedAt, namespaces, summaries);
+    enforceExportLimit(projectedBytes);
+    return new ExportProjection(appId, exportedAt, namespaces, summaries, projectedBytes);
   }
 
   void preflightRestorePayload(
@@ -1358,7 +1370,11 @@ public final class AppDataService {
       Instant exportedAt,
       List<AppDataNamespaceMetadata> namespaces,
       List<AppDataRecordSummary> summaries) {
-    if (projectedExportBytes(appId, exportedAt, namespaces, summaries) > config.maxExportBytes()) {
+    enforceExportLimit(projectedExportBytes(appId, exportedAt, namespaces, summaries));
+  }
+
+  private void enforceExportLimit(long projectedBytes) {
+    if (projectedBytes > config.maxExportBytes()) {
       throw new PlatformApiException(
           400, "app_data_export_too_large", "App-data export exceeds the configured limit.");
     }
@@ -2139,6 +2155,25 @@ public final class AppDataService {
     private ProjectedImport {
       recordBytesByKey = Map.copyOf(Objects.requireNonNull(recordBytesByKey, "recordBytesByKey"));
       namespaces = Set.copyOf(Objects.requireNonNull(namespaces, "namespaces"));
+    }
+  }
+
+  record ExportProjection(
+      String appId,
+      Instant exportedAt,
+      List<AppDataNamespaceMetadata> namespaces,
+      List<AppDataRecordSummary> summaries,
+      long projectedBytes) {
+    int namespaceCount() {
+      return namespaces.size();
+    }
+
+    int recordCount() {
+      return summaries.size();
+    }
+
+    long totalBytes() {
+      return summaries.stream().mapToLong(AppDataRecordSummary::valueBytes).sum();
     }
   }
 

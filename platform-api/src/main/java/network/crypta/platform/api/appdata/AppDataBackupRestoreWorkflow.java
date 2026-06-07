@@ -1,5 +1,6 @@
 package network.crypta.platform.api.appdata;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -9,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 
 /**
@@ -32,6 +34,8 @@ final class AppDataBackupRestoreWorkflow {
   private static final String PARAM_PAYLOAD_BASE64 = "payloadBase64";
   private static final String PARAM_SCOPE = "scope";
   private static final String FIELD_BACKUP = "backup";
+  private static final String FIELD_APPS = "apps";
+  private static final String FIELD_EXPORT = "export";
   private static final String FIELD_PAYLOAD_BYTES = "payloadBytes";
   private static final String FIELD_RESTORE_PLAN = "restorePlan";
   private static final String FIELD_RESTORE_RESULT = "restoreResult";
@@ -53,6 +57,7 @@ final class AppDataBackupRestoreWorkflow {
   private static final String ERROR_INVALID_QUERY_PARAMETER = "invalid_query_parameter";
   private static final String ERROR_QUOTA_EXCEEDED = "app_data_quota_exceeded";
   private static final String ERROR_RESTORE_APP_MISMATCH = "app_data_restore_app_mismatch";
+  private static final String DIGEST_LENGTH_PLACEHOLDER = "0".repeat(64);
 
   private final AppDataService appDataService;
 
@@ -163,31 +168,94 @@ final class AppDataBackupRestoreWorkflow {
 
   private AppDataBackupBundle createBackupBundle(AppDataBackupOptions options) {
     Instant createdAt = appDataService.currentBackupInstant();
+    AppDataBackupManifest manifest =
+        AppDataBackupManifest.create(options.scope(), createdAt, options.sourceCryptaVersion());
+    BackupBundleSizeBudget sizeBudget =
+        new BackupBundleSizeBudget(manifest, appDataService.maxBackupExportBytes());
     List<String> appIds =
         AppDataBackupOptions.SCOPE_SINGLE_APP.equals(options.scope())
             ? List.of(options.appId())
             : appDataService.listStoreAppIds();
     ArrayList<AppDataBackupEntry> entries = new ArrayList<>();
     for (String appId : appIds) {
-      entries.add(createBackupEntry(appId, createdAt));
+      BackupEntryProjection projection = backupEntryProjection(appId, createdAt);
+      sizeBudget.requireProjectedEntryFits(projection.projectedJsonBytes());
+      AppDataBackupEntry entry = createBackupEntry(projection);
+      sizeBudget.addActualEntry(entry);
+      entries.add(entry);
     }
-    AppDataBackupManifest manifest =
-        AppDataBackupManifest.create(options.scope(), createdAt, options.sourceCryptaVersion());
     return new AppDataBackupBundle(manifest, entries);
   }
 
-  private AppDataBackupEntry createBackupEntry(String appId, Instant exportedAt) {
-    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
-    AppDataExportPayload export = appDataService.exportPayload(normalizedAppId, exportedAt);
+  private BackupEntryProjection backupEntryProjection(String appId, Instant exportedAt) {
+    AppDataService.ExportProjection exportProjection =
+        appDataService.exportProjection(AppDataRecord.normalizeAppId(appId), exportedAt);
     InstalledAppSnapshot installed =
-        appDataService.installedAppForBackup(normalizedAppId).orElse(null);
-    return AppDataBackupEntry.fromExport(
-        normalizedAppId,
+        appDataService.installedAppForBackup(exportProjection.appId()).orElse(null);
+    String appName = installed == null ? null : installed.manifest().appName();
+    String appVersion = installed == null ? null : installed.manifest().appVersion();
+    Map<String, Object> schemaSummary = AppDataBackupMetadata.schemaSummary(installed);
+    long projectedJsonBytes =
+        projectedBackupEntryBytes(
+            exportProjection, installed != null, appName, appVersion, schemaSummary);
+    return new BackupEntryProjection(
+        exportProjection,
         installed != null,
-        installed == null ? null : installed.manifest().appName(),
-        installed == null ? null : installed.manifest().appVersion(),
-        AppDataBackupMetadata.schemaSummary(installed),
+        appName,
+        appVersion,
+        schemaSummary,
+        projectedJsonBytes);
+  }
+
+  private AppDataBackupEntry createBackupEntry(BackupEntryProjection projection) {
+    AppDataService.ExportProjection exportProjection = projection.exportProjection();
+    AppDataExportPayload export = appDataService.exportPayload(exportProjection);
+    return AppDataBackupEntry.fromExport(
+        exportProjection.appId(),
+        projection.installed(),
+        projection.appName(),
+        projection.appVersion(),
+        projection.schemaSummary(),
         export);
+  }
+
+  private static long projectedBackupEntryBytes(
+      AppDataService.ExportProjection projection,
+      boolean installed,
+      String appName,
+      String appVersion,
+      Map<String, Object> schemaSummary) {
+    Map<String, Object> exportJson = projectedExportJson(projection);
+    long emptyExportBytes = utf8Length(PlatformApiJsonWriter.write(exportJson));
+    LinkedHashMap<String, Object> entryJson = LinkedHashMap.newLinkedHashMap(10);
+    entryJson.put(PARAM_APP_ID, projection.appId());
+    entryJson.put("installed", installed);
+    entryJson.put("appName", appName);
+    entryJson.put("appVersion", appVersion);
+    entryJson.put("schemaSummary", schemaSummary);
+    entryJson.put("namespaceCount", projection.namespaceCount());
+    entryJson.put("recordCount", projection.recordCount());
+    entryJson.put("totalBytes", projection.totalBytes());
+    entryJson.put("payloadSha256", DIGEST_LENGTH_PLACEHOLDER);
+    entryJson.put(FIELD_EXPORT, exportJson);
+    return utf8Length(PlatformApiJsonWriter.write(entryJson))
+        - emptyExportBytes
+        + projection.projectedBytes();
+  }
+
+  private static Map<String, Object> projectedExportJson(
+      AppDataService.ExportProjection projection) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put("exportVersion", AppDataExportPayload.CURRENT_EXPORT_VERSION);
+    json.put(PARAM_APP_ID, projection.appId());
+    json.put("exportedAt", projection.exportedAt().toString());
+    json.put("namespaceCount", projection.namespaceCount());
+    json.put("recordCount", projection.recordCount());
+    json.put(
+        "namespaces",
+        projection.namespaces().stream().map(namespace -> namespace.toJsonValue(true)).toList());
+    json.put("records", List.of());
+    return json;
   }
 
   private RestoreRequest restoreRequest(Map<String, List<String>> parameters) {
@@ -360,6 +428,10 @@ final class AppDataBackupRestoreWorkflow {
         400, "app_data_backup_too_large", "App-data backup payload exceeds the configured limit.");
   }
 
+  private static long utf8Length(String value) {
+    return value.getBytes(StandardCharsets.UTF_8).length;
+  }
+
   private static Map<String, Object> envelope(String key, Object value) {
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
     envelope.put(key, value);
@@ -368,4 +440,43 @@ final class AppDataBackupRestoreWorkflow {
 
   private record RestoreRequest(
       AppDataBackupBundle bundle, AppDataRestoreMode mode, String targetAppId) {}
+
+  private record BackupEntryProjection(
+      AppDataService.ExportProjection exportProjection,
+      boolean installed,
+      String appName,
+      String appVersion,
+      Map<String, Object> schemaSummary,
+      long projectedJsonBytes) {}
+
+  private static final class BackupBundleSizeBudget {
+    private final long emptyBundleBytes;
+    private final long maxBytes;
+    private long entryBytes;
+    private int entryCount;
+
+    private BackupBundleSizeBudget(AppDataBackupManifest manifest, long maxBytes) {
+      LinkedHashMap<String, Object> emptyBundle = new LinkedHashMap<>(manifest.toJsonValue());
+      emptyBundle.put(FIELD_APPS, List.of());
+      emptyBundleBytes = utf8Length(PlatformApiJsonWriter.write(emptyBundle));
+      this.maxBytes = maxBytes;
+    }
+
+    private void requireProjectedEntryFits(long projectedEntryBytes) {
+      requireBundleFits(entryBytes + projectedEntryBytes, entryCount + 1);
+    }
+
+    private void addActualEntry(AppDataBackupEntry entry) {
+      entryBytes += utf8Length(PlatformApiJsonWriter.write(entry.toJsonValue()));
+      entryCount++;
+      requireBundleFits(entryBytes, entryCount);
+    }
+
+    private void requireBundleFits(long candidateEntryBytes, int candidateEntryCount) {
+      long separatorBytes = Math.max(0L, candidateEntryCount - 1L);
+      if (emptyBundleBytes + candidateEntryBytes + separatorBytes > maxBytes) {
+        throw backupTooLarge();
+      }
+    }
+  }
 }

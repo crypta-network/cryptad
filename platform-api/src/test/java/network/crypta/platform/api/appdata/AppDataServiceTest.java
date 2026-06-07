@@ -956,6 +956,40 @@ class AppDataServiceTest {
   }
 
   @Test
+  void exportBackup_whenAllAppsWouldExceedLimit_expectRejectsBeforeReadingNextAppValues()
+      throws Exception {
+    AppDataStore store = mock(AppDataStore.class);
+    AppDataRecord firstRecord = settingsRecord(APP_ID, "one");
+    AppDataRecord secondRecord = settingsRecord(OTHER_APP_ID, "two");
+    int cappedBackupBytes = allAppBackupCapAfterOneEntry();
+    when(store.listAppIds()).thenReturn(List.of(APP_ID, OTHER_APP_ID));
+    when(store.listNamespaces(APP_ID)).thenReturn(List.of(uiStateNamespace(APP_ID)));
+    when(store.listNamespaces(OTHER_APP_ID)).thenReturn(List.of(uiStateNamespace(OTHER_APP_ID)));
+    when(store.listRecordSummaries(APP_ID, null))
+        .thenReturn(List.of(AppDataRecordSummary.from(firstRecord)));
+    when(store.listRecordSummaries(OTHER_APP_ID, null))
+        .thenReturn(List.of(AppDataRecordSummary.from(secondRecord)));
+    when(store.listRecords(APP_ID, null)).thenReturn(List.of(firstRecord));
+    when(store.listRecords(OTHER_APP_ID, null))
+        .thenThrow(new AssertionError("second app values must not be loaded for oversized backup"));
+    AppDataService service =
+        new AppDataService(
+            store,
+            null,
+            config(256, 16, 4, cappedBackupBytes, 8192),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner());
+    Map<String, List<String>> backupParams = params("scope", "all");
+
+    PlatformApiException failure =
+        assertThrows(PlatformApiException.class, () -> service.exportBackup(backupParams, "test"));
+
+    assertEquals("app_data_backup_too_large", failure.errorCode());
+    verify(store).listRecords(APP_ID, null);
+    verify(store, never()).listRecords(OTHER_APP_ID, null);
+  }
+
+  @Test
   void planRestore_whenBackupVersionOrEncryptionUnsupported_expectStableBackupErrors() {
     AppDataService service = service(config(128, 16, 4, 8192, 8192));
     service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
@@ -1172,13 +1206,22 @@ class AppDataServiceTest {
   }
 
   private static AppDataNamespaceMetadata uiStateNamespace() {
-    return uiStateNamespace(1, List.of());
+    return uiStateNamespace(APP_ID);
+  }
+
+  private static AppDataNamespaceMetadata uiStateNamespace(String appId) {
+    return uiStateNamespace(appId, 1, List.of());
   }
 
   private static AppDataNamespaceMetadata uiStateNamespace(
       int schemaVersion, List<AppDataMigrationRecord> migrations) {
+    return uiStateNamespace(APP_ID, schemaVersion, migrations);
+  }
+
+  private static AppDataNamespaceMetadata uiStateNamespace(
+      String appId, int schemaVersion, List<AppDataMigrationRecord> migrations) {
     return new AppDataNamespaceMetadata(
-        APP_ID,
+        appId,
         UI_STATE_NAMESPACE,
         schemaVersion,
         0,
@@ -1187,6 +1230,34 @@ class AppDataServiceTest {
         NOW,
         migrations.isEmpty() ? null : migrations.getLast().migratedAt(),
         migrations);
+  }
+
+  private static AppDataRecord settingsRecord(String appId, String value) {
+    return new AppDataRecord(
+        appId,
+        UI_STATE_NAMESPACE,
+        SETTINGS_KEY,
+        new AppDataRecord.Payload(
+            AppDataRecord.JSON_CONTENT_TYPE, 1, value.getBytes(StandardCharsets.UTF_8)),
+        NOW,
+        NOW);
+  }
+
+  private static int allAppBackupCapAfterOneEntry() {
+    AppDataService singleEntryService = service(config(256, 16, 4, 8192, 8192));
+    singleEntryService.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    int singleEntryBytes = backupPayloadBytes(singleEntryService);
+    AppDataService twoEntryService = service(config(256, 16, 4, 8192, 8192));
+    twoEntryService.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    twoEntryService.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "two"));
+    int twoEntryBytes = backupPayloadBytes(twoEntryService);
+    assertTrue(singleEntryBytes < twoEntryBytes);
+    return singleEntryBytes + 1;
+  }
+
+  private static int backupPayloadBytes(AppDataService service) {
+    Map<String, Object> backup = service.exportBackup(params("scope", "all"), "test");
+    return decodeUrlPayload((String) backup.get(FIELD_PAYLOAD_BASE64)).length;
   }
 
   private static AppDataMigrationRecord migration(int fromSchemaVersion, int toSchemaVersion) {
