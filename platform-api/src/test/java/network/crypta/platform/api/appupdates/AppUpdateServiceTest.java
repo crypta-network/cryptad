@@ -2455,19 +2455,19 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void apply_whenLocalMigrationWritesPayload_expectRecordsImportedBeforeSchemaRecorded()
+  void apply_whenMigrationRunnerWritesPayload_expectRecordsImportedBeforeSchemaRecorded()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AppDataService appDataService = appDataServiceWithFeedRecord();
-    AppUpdateService service = new AppUpdateService(appHost, catalogManager, null, appDataService);
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
-    writeSchemaRewriteMigrationScript(plan.stagedBundleDirectory());
-    writeSchemaRewriteMigrationScript(updated.paths().installedRoot());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
@@ -2481,6 +2481,12 @@ class AppUpdateServiceTest {
         2, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
     assertEquals(
         2, appDataService.getRecord(APP_ID, "feeds", "subscriptions").get("schemaVersion"));
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
     Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
     assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
   }
@@ -2594,18 +2600,18 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void apply_whenChainedLocalMigrations_expectEachStepAppliedBeforeNextStep() throws Exception {
+  void apply_whenChainedMigrationRunner_expectEachStepAppliedBeforeNextStep() throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AppDataService appDataService = appDataServiceWithFeedRecord();
-    AppUpdateService service = new AppUpdateService(appHost, catalogManager, null, appDataService);
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithChainedAppDataMigration(entry);
-    writeSchemaRewriteMigrationScript(plan.stagedBundleDirectory());
-    writeSchemaRewriteMigrationScript(updated.paths().installedRoot());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
@@ -2619,6 +2625,12 @@ class AppUpdateServiceTest {
         3, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
     assertEquals(
         3, appDataService.getRecord(APP_ID, "feeds", "subscriptions").get("schemaVersion"));
+    assertEquals(
+        List.of(
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.DRY_RUN,
+            AppDataMigrationRunner.Mode.APPLY),
+        modes);
     Map<String, Object> candidate = (Map<String, Object>) applied.get(CANDIDATE);
     assertEquals("applied", ((Map<?, ?>) candidate.get("dataMigration")).get(STATUS));
   }
@@ -3538,46 +3550,5 @@ class AppUpdateServiceTest {
                 String.join(",", entry.permissions()),
                 migrationFields));
     return plan;
-  }
-
-  private static void writeSchemaRewriteMigrationScript(Path bundleRoot) throws IOException {
-    Path binDirectory = bundleRoot.resolve("bin");
-    Files.createDirectories(binDirectory);
-    Path script = binDirectory.resolve("migrate-feed-data.sh");
-    Files.writeString(
-        script,
-        """
-        #!/bin/sh
-        set -eu
-
-        test "${CRYPTA_APP_MIGRATION_NAMESPACE:-}" = "feeds"
-        from="${CRYPTA_APP_MIGRATION_FROM:?}"
-        to="${CRYPTA_APP_MIGRATION_TO:?}"
-        case "${CRYPTA_APP_MIGRATION_MODE:-}" in dry-run|apply) ;; *) exit 64;; esac
-        input="${CRYPTA_APP_MIGRATION_INPUT:?}"
-        output="${CRYPTA_APP_MIGRATION_OUTPUT:?}"
-        awk -v from="$from" -v to="$to" '
-        BEGIN {
-          pattern = "\\"schemaVersion\\":" from
-          replacement = "\\"schemaVersion\\":" to
-        }
-        {
-          pos = index($0, "\\"records\\"")
-          if (pos > 0 && migrated == 0) {
-            prefix = substr($0, 1, pos - 1)
-            suffix = substr($0, pos)
-            gsub(pattern, replacement, suffix)
-            print prefix suffix
-            migrated = 1
-            next
-          }
-          if (migrated != 0) {
-            gsub(pattern, replacement)
-          }
-          print
-        }
-        ' "$input" > "$output"
-        """);
-    assertTrue(script.toFile().setExecutable(true));
   }
 }

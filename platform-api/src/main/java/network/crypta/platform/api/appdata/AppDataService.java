@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -778,6 +780,88 @@ public final class AppDataService {
           400, "app_data_import_too_large", "App-data import exceeds the configured limit.");
     }
     return advancedPayload;
+  }
+
+  /**
+   * Validates the combined projected output of all dry-run migrated namespaces.
+   *
+   * <p>Each payload must already have passed {@link #advanceUpdateMigrationDryRunPayload(String,
+   * String, int, int, String, byte[])} for its namespace. This method reparses those advanced
+   * payloads together and applies the normal replace-namespace import preflight once, so a dry-run
+   * that grows several namespaces cannot pass independently and then fail during apply after the
+   * first namespace has already been committed.
+   *
+   * @param appId app id whose namespace outputs are being projected
+   * @param payloads advanced dry-run payload bytes keyed by migrated namespace in caller order
+   */
+  public synchronized void preflightUpdateMigrationDryRunPayloads(
+      String appId, Collection<byte[]> payloads) {
+    preflightUpdateMigrationDryRunPayloads(appId, payloads, ManifestQuotaCheck.installedManifest());
+  }
+
+  /**
+   * Validates combined dry-run outputs against the target manifest quota for an update.
+   *
+   * <p>This variant is used while the candidate bundle is still staged. Store-level import limits
+   * are enforced from the durable app-data configuration, while positive manifest data-quota checks
+   * use the candidate manifest quota supplied by the update lifecycle.
+   *
+   * @param appId app id whose namespace outputs are being projected
+   * @param payloads advanced dry-run payload bytes keyed by migrated namespace in caller order
+   * @param targetDataQuotaBytes candidate manifest quota, or {@code null} when the target has no
+   *     positive manifest data quota
+   */
+  public synchronized void preflightUpdateMigrationDryRunPayloads(
+      String appId, Collection<byte[]> payloads, Long targetDataQuotaBytes) {
+    preflightUpdateMigrationDryRunPayloads(
+        appId, payloads, ManifestQuotaCheck.targetManifest(targetDataQuotaBytes));
+  }
+
+  private void preflightUpdateMigrationDryRunPayloads(
+      String appId, Collection<byte[]> payloads, ManifestQuotaCheck manifestQuotaCheck) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    Objects.requireNonNull(payloads, "payloads");
+    ArrayList<AppDataNamespaceMetadata> importedNamespacesMetadata = new ArrayList<>();
+    ArrayList<AppDataRecord> importedRecords = new ArrayList<>();
+    LinkedHashSet<String> seenNamespaces = new LinkedHashSet<>();
+    for (byte[] payloadBytes : payloads) {
+      AppDataExportPayload payload = parseAdvancedMigrationPayload(normalizedAppId, payloadBytes);
+      List<AppDataNamespaceMetadata> payloadNamespacesMetadata =
+          payload.namespaces().stream()
+              .map(metadata -> withCallerAppId(metadata, normalizedAppId))
+              .toList();
+      List<AppDataRecord> payloadRecords =
+          payload.records().stream()
+              .map(appDataRecord -> withCallerAppId(appDataRecord, normalizedAppId))
+              .toList();
+      Set<String> payloadNamespaces =
+          collectImportedNamespaces(payloadNamespacesMetadata, payloadRecords);
+      if (payloadNamespaces.size() != 1 || payloadNamespacesMetadata.size() != 1) {
+        throw invalidMigrationOutput();
+      }
+      for (String namespace : payloadNamespaces) {
+        if (!seenNamespaces.add(namespace)) {
+          throw invalidMigrationOutput();
+        }
+      }
+      importedNamespacesMetadata.addAll(payloadNamespacesMetadata);
+      importedRecords.addAll(payloadRecords);
+    }
+    preflightImport(
+        normalizedAppId,
+        importedNamespacesMetadata,
+        importedRecords,
+        IMPORT_MODE_REPLACE_NAMESPACE,
+        manifestQuotaCheck);
+  }
+
+  private AppDataExportPayload parseAdvancedMigrationPayload(String appId, byte[] payloadBytes) {
+    Objects.requireNonNull(payloadBytes, FIELD_PAYLOAD_BYTES);
+    if (payloadBytes.length > config.maxImportBytes()) {
+      throw new PlatformApiException(
+          400, "app_data_import_too_large", "App-data import exceeds the configured limit.");
+    }
+    return AppDataExportPayload.parseForImport(payloadBytes, appId);
   }
 
   /**

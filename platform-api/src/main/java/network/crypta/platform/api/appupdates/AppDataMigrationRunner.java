@@ -3,7 +3,6 @@ package network.crypta.platform.api.appupdates;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -41,9 +40,6 @@ public interface AppDataMigrationRunner {
   /** Maximum command output bytes drained before diagnostics are discarded. */
   int MAX_CAPTURE_BYTES = 4096;
 
-  /** Grace period, in milliseconds, used between process-group termination probes. */
-  long PROCESS_GROUP_TERMINATE_GRACE_MILLIS = 500L;
-
   /** Maximum time, in milliseconds, to wait for stdout/stderr drain after cleanup. */
   long OUTPUT_DRAIN_TIMEOUT_MILLIS = 500L;
 
@@ -70,9 +66,10 @@ public interface AppDataMigrationRunner {
   /**
    * Returns the production runner.
    *
-   * <p>The local runner requires process-group containment support before it will launch app-owned
-   * migration code. On hosts where that boundary is unavailable, migration execution fails closed
-   * and the update lifecycle reports a stable blocker instead of silently skipping the migration.
+   * <p>The local runner requires a process-lifetime containment boundary that remains valid even
+   * when app code starts a new session or process group. On hosts where that boundary is
+   * unavailable, migration execution fails closed and the update lifecycle reports a stable blocker
+   * instead of silently skipping the migration.
    *
    * @return local process migration runner with the default per-step timeout
    */
@@ -229,14 +226,14 @@ public interface AppDataMigrationRunner {
    *
    * <p>The runner launches each signed command directly, never through a shell parser. It clears
    * the inherited environment, installs only the fixed migration variables, and requires a
-   * process-group boundary so descendant processes cannot outlive the migration step. Unsupported
-   * hosts fail before app-owned code is started.
+   * process-lifetime boundary that can account for descendants that create new sessions or process
+   * groups. Unsupported hosts fail before app-owned code is started.
    */
   final class LocalProcessMigrationRunner implements AppDataMigrationRunner {
     /** Per-step wall-clock timeout used for direct command execution. */
     private final Duration timeout;
 
-    /** Host-specific process boundary used to launch and reap the command group. */
+    /** Host-specific process boundary used to launch and reap the command tree. */
     private final ProcessBoundary processBoundary;
 
     /**
@@ -252,7 +249,7 @@ public interface AppDataMigrationRunner {
      * Creates a local process runner with an explicit environment detector.
      *
      * @param timeout per-step wall-clock timeout for each migration command
-     * @param appEnv environment helper used to detect process-group support
+     * @param appEnv environment helper used to detect process containment support
      */
     LocalProcessMigrationRunner(Duration timeout, AppEnv appEnv) {
       this.timeout = Objects.requireNonNull(timeout, "timeout");
@@ -282,9 +279,9 @@ public interface AppDataMigrationRunner {
     /**
      * Runs one namespace migration command and validates its process lifecycle.
      *
-     * <p>The command must exit before the timeout, and the process boundary must find no live
-     * descendants after termination. If a descendant is still present, the runner fails the step
-     * before the data-access channel can commit output.
+     * <p>The command must exit before the timeout, and the process boundary must be able to prove
+     * no app-owned migration process can outlive the step. If that proof is unavailable, the runner
+     * fails before launch rather than relying on process-group cleanup.
      *
      * @param bundleRoot normalized bundle root used as the working directory
      * @param step namespace migration step being executed
@@ -303,18 +300,12 @@ public interface AppDataMigrationRunner {
       builder.environment().clear();
       builder.environment().putAll(environment(step, mode, files));
       Process process = builder.start();
-      long processGroupId = process.pid();
       CompletableFuture<byte[]> output =
           CompletableFuture.supplyAsync(() -> readBoundedOutput(process.getInputStream()));
       try {
         if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-          processBoundary.terminateProcessGroup(processGroupId);
+          process.destroyForcibly();
           output.cancel(true);
-          return MigrationExecutionResult.failed(null);
-        }
-        boolean hadDetachedProcess = processBoundary.terminateProcessGroup(processGroupId);
-        if (hadDetachedProcess) {
-          output.get(OUTPUT_DRAIN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
           return MigrationExecutionResult.failed(null);
         }
         output.get(OUTPUT_DRAIN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
@@ -324,14 +315,14 @@ public interface AppDataMigrationRunner {
         }
         return MigrationExecutionResult.passed();
       } catch (InterruptedException exception) {
-        processBoundary.terminateProcessGroup(processGroupId);
+        process.destroyForcibly();
         Thread.currentThread().interrupt();
         throw new IOException("migration process interrupted", exception);
       } catch (ExecutionException exception) {
-        processBoundary.terminateProcessGroup(processGroupId);
+        process.destroyForcibly();
         throw new IOException("migration output could not be captured", exception);
       } catch (TimeoutException _) {
-        processBoundary.terminateProcessGroup(processGroupId);
+        process.destroyForcibly();
         output.cancel(true);
         return MigrationExecutionResult.failed(null);
       }
@@ -421,33 +412,27 @@ public interface AppDataMigrationRunner {
     }
 
     /**
-     * Linux process-group boundary used to contain migration commands.
+     * Host process-lifetime boundary used to contain migration commands.
      *
-     * <p>The boundary launches commands through {@code setsid} and later addresses the negative
-     * process-group id with {@code kill}. If either tool is unavailable, the runner refuses to
-     * launch migration commands because descendant processes could escape the update lifecycle.
+     * <p>Process groups alone are not sufficient: app-owned code can call {@code setsid}, double
+     * fork, or otherwise start a descendant outside the original group. Until this runner has a
+     * boundary such as an AppHost sandbox launcher or a writable cgroup that can account for
+     * regrouped descendants, it reports the boundary as unsupported and refuses to launch required
+     * migration code.
      *
-     * @param supported whether this host has the required process-group tooling
-     * @param setsidCommand absolute path to {@code setsid}, or blank when unsupported
-     * @param killCommand absolute path to {@code kill}, or blank when unsupported
+     * @param supported whether this host has a containment primitive strong enough for migration
+     *     code
      */
-    private record ProcessBoundary(boolean supported, String setsidCommand, String killCommand) {
+    private record ProcessBoundary(boolean supported) {
       /**
-       * Detects whether the current host supports process-group migration containment.
+       * Detects whether the current host supports full migration process containment.
        *
        * @param appEnv environment helper used for platform and command lookup checks
-       * @return supported boundary when Linux {@code setsid} and {@code kill} are available
+       * @return supported boundary only when regrouped descendants can be tracked and terminated
        */
       private static ProcessBoundary detect(AppEnv appEnv) {
-        if (!appEnv.isLinux() || !appEnv.onPath("setsid") || !appEnv.onPath("kill")) {
-          return unsupported();
-        }
-        String setsid = commandPath("setsid");
-        String kill = commandPath("kill");
-        if (setsid == null || kill == null) {
-          return unsupported();
-        }
-        return new ProcessBoundary(true, setsid, kill);
+        Objects.requireNonNull(appEnv, "appEnv");
+        return unsupported();
       }
 
       /**
@@ -456,151 +441,21 @@ public interface AppDataMigrationRunner {
        * @return unsupported process boundary with no command paths
        */
       private static ProcessBoundary unsupported() {
-        return new ProcessBoundary(false, "", "");
+        return new ProcessBoundary(false);
       }
 
       /**
-       * Resolves a supported process-control command from deterministic system locations.
-       *
-       * @param command command basename to resolve
-       * @return executable absolute command path, or {@code null} when unavailable
-       */
-      private static String commandPath(String command) {
-        for (Path candidate : List.of(Path.of("/usr/bin", command), Path.of("/bin", command))) {
-          if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-            return candidate.toString();
-          }
-        }
-        return null;
-      }
-
-      /**
-       * Builds the process command line that starts a fresh process group.
+       * Builds the process command line inside the containment boundary.
        *
        * @param command validated migration command inside the bundle root
-       * @return direct command line headed by {@code setsid}
-       * @throws IOException when the host cannot provide process-group containment
+       * @return direct command line inside a proven process-lifetime boundary
+       * @throws IOException when the host cannot provide full process containment
        */
       private List<String> commandLine(Path command) throws IOException {
         if (!supported) {
-          throw new IOException("migration process-group isolation is unavailable");
+          throw new IOException("migration process containment is unavailable");
         }
-        return List.of(setsidCommand, command.toString());
-      }
-
-      /**
-       * Terminates the migration process group and reports whether a group existed.
-       *
-       * @param processGroupId process id of the launched command's process group leader
-       * @return {@code true} when a process group was signaled, including detached descendants
-       */
-      private boolean terminateProcessGroup(long processGroupId) {
-        if (!supported) {
-          return false;
-        }
-        boolean signaled = sendSignal("TERM", processGroupId);
-        if (!signaled) {
-          return false;
-        }
-        waitForProcessGroupExit(processGroupId);
-        if (processGroupAlive(processGroupId)) {
-          sendSignal("KILL", processGroupId);
-          waitForProcessGroupExit(processGroupId);
-        }
-        return true;
-      }
-
-      /**
-       * Checks whether the migration process group still has live members.
-       *
-       * @param processGroupId process group id to probe
-       * @return {@code true} when the group exists according to {@code kill -0}
-       */
-      private boolean processGroupAlive(long processGroupId) {
-        return runKillCommand(List.of("-0", "--", "-" + processGroupId));
-      }
-
-      /**
-       * Sends a POSIX signal to the migration process group.
-       *
-       * @param signal signal name without the leading dash
-       * @param processGroupId process group id to signal
-       * @return {@code true} when the signal command reports success
-       */
-      private boolean sendSignal(String signal, long processGroupId) {
-        return runKillCommand(List.of("-" + signal, "--", "-" + processGroupId));
-      }
-
-      /**
-       * Runs the configured {@code kill} command with bounded waiting and drained output.
-       *
-       * @param arguments command arguments appended after the {@code kill} executable
-       * @return {@code true} when the command exits with code zero before the grace deadline
-       */
-      private boolean runKillCommand(List<String> arguments) {
-        try {
-          return runStartedKillCommand(arguments);
-        } catch (IOException _) {
-          return false;
-        } catch (InterruptedException _) {
-          Thread.currentThread().interrupt();
-          return false;
-        }
-      }
-
-      /**
-       * Starts and waits for one {@code kill} command invocation.
-       *
-       * <p>The process is definitely available inside this helper, so interruption cleanup can
-       * forcibly stop it without nullable state.
-       *
-       * @param arguments command arguments appended after the {@code kill} executable
-       * @return {@code true} when the command exits with code zero before the grace deadline
-       * @throws IOException when the command cannot start or output cannot drain
-       * @throws InterruptedException when interrupted while draining or waiting
-       */
-      private boolean runStartedKillCommand(List<String> arguments)
-          throws IOException, InterruptedException {
-        ProcessBuilder builder = new ProcessBuilder(killCommand);
-        builder.command().addAll(arguments);
-        builder.redirectErrorStream(true);
-        Process process = builder.start();
-        try {
-          try (InputStream output = process.getInputStream()) {
-            output.transferTo(OutputStream.nullOutputStream());
-          }
-          if (!process.waitFor(PROCESS_GROUP_TERMINATE_GRACE_MILLIS, TimeUnit.MILLISECONDS)) {
-            process.destroyForcibly();
-            return false;
-          }
-          return process.exitValue() == 0;
-        } catch (InterruptedException exception) {
-          process.destroyForcibly();
-          throw exception;
-        }
-      }
-
-      /**
-       * Waits briefly for a migration process group to disappear.
-       *
-       * @param processGroupId process group id to poll until it exits or the grace deadline expires
-       */
-      private void waitForProcessGroupExit(long processGroupId) {
-        long deadlineNanos =
-            System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(PROCESS_GROUP_TERMINATE_GRACE_MILLIS);
-        while (processGroupAlive(processGroupId)) {
-          long remainingNanos = deadlineNanos - System.nanoTime();
-          if (remainingNanos <= 0L) {
-            return;
-          }
-          try {
-            TimeUnit.MILLISECONDS.sleep(
-                Math.clamp(TimeUnit.NANOSECONDS.toMillis(remainingNanos), 1L, 25L));
-          } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-            return;
-          }
-        }
+        return List.of(command.toString());
       }
     }
   }

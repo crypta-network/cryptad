@@ -9227,18 +9227,15 @@ def collect_app_update_data_migration_contract_evidence(settings: Settings) -> E
             and "MAX_CAPTURE_BYTES" in text["migrationRunner"]
             and 'List.of("/bin/sh"' not in text["migrationRunner"]
         ),
-        "migrationRunnerReapsProcessTree": (
+        "migrationRunnerFailsClosedWithoutContainment": (
             "ProcessBoundary" in text["migrationRunner"]
             and "new AppEnv()" in text["migrationRunner"]
-            and '"setsid"' in text["migrationRunner"]
-            and '"kill"' in text["migrationRunner"]
-            and "terminateProcessGroup" in text["migrationRunner"]
-            and "PROCESS_GROUP_TERMINATE_GRACE_MILLIS" in text["migrationRunner"]
-            and "migration process-group isolation is unavailable" in text["migrationRunner"]
+            and "Process groups alone are not sufficient" in text["migrationRunner"]
+            and "return unsupported();" in text["migrationRunner"]
+            and "migration process containment is unavailable" in text["migrationRunner"]
             and "OUTPUT_DRAIN_TIMEOUT_MILLIS" in text["migrationRunner"]
-            and "run_whenCommandDetachesQuickly_expectProcessGroupTerminatedBeforeSuccess"
-            in text["migrationRunnerTest"]
-            and "run_whenDetachedChildKeepsStdoutOpenAfterParentExit_expectNoHangAndStepFails"
+            and "terminateProcessGroup" not in text["migrationRunner"]
+            and "run_whenOnlyProcessGroupCleanupCouldBeBypassed_expectFailsClosedBeforeCommand"
             in text["migrationRunnerTest"]
             and "run_whenProcessBoundaryUnavailable_expectFailsClosedBeforeCommand"
             in text["migrationRunnerTest"]
@@ -9261,7 +9258,7 @@ def collect_app_update_data_migration_contract_evidence(settings: Settings) -> E
             and "verifyStagedBundleBeforeStageDryRun" in text["updateService"]
             and "verifyStagedBundleAfterApplyDryRun" in text["updateService"]
             and "ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED" in text["updateService"]
-            and "recordMigrationExecutionFailure" in text["updateService"]
+            and "recordMigrationDryRunFailure" in text["updateService"]
             and "catalogManager.verifyInstallPlan" in text["updateService"]
             and "verifyInstallPlan" in text["catalogManager"]
             and "verifyInstallPlan_whenStagedBundleTampered_expectInvalidAppBundle"
@@ -9279,7 +9276,10 @@ def collect_app_update_data_migration_contract_evidence(settings: Settings) -> E
             "targetManifest.dataQuotaBytes()" in text["updateService"]
             and "targetDataQuotaBytes" in text["appDataService"]
             and "ManifestQuotaCheck.targetManifest" in text["appDataService"]
+            and "preflightUpdateMigrationDryRunPayloads" in text["appDataService"]
             and "advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed"
+            in text["appDataServiceTest"]
+            and "preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError"
             in text["appDataServiceTest"]
             and "stage_whenTargetManifestRaisesDataQuota_expectDryRunUsesTargetQuota"
             in text["updateServiceTest"]
@@ -9337,7 +9337,7 @@ def collect_app_update_data_migration_contract_evidence(settings: Settings) -> E
             and "Migration scratch cleanup is best effort" in text["updateService"]
             and "apply_whenMigrationRequiredAndRunnerPasses_expectSnapshotApplyAndSchemaMetadata"
             in text["updateServiceTest"]
-            and "apply_whenChainedLocalMigrations_expectEachStepAppliedBeforeNextStep"
+            and "apply_whenChainedMigrationRunner_expectEachStepAppliedBeforeNextStep"
             in text["updateServiceTest"]
             and "apply_whenMigrationContractHasNoExistingDataAndWriteAppearsBeforeReplacement_expectWriteRejected"
             in text["updateServiceTest"]
@@ -12276,6 +12276,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void restoreUpdateSnapshot(String appId, AppDataUpdateSnapshot snapshot) {} "
         "void discardUpdateSnapshot(AppDataUpdateSnapshot snapshot) {} "
         "byte[] advanceUpdateMigrationDryRunPayload(String appId, String namespace, int from, int to, String summary, byte[] payload, Long targetDataQuotaBytes) { ManifestQuotaCheck.targetManifest(targetDataQuotaBytes); return null; } "
+        "void preflightUpdateMigrationDryRunPayloads(String appId, java.util.Collection<byte[]> payloads, Long targetDataQuotaBytes) { ManifestQuotaCheck.targetManifest(targetDataQuotaBytes); } "
         "Object withImportedRecordTotals(Object metadata, java.util.List<Object> records) { int recordCount = records.size(); long totalBytes = records.size(); return metadata.withTotals(recordCount, totalBytes, metadata.updatedAt()); } "
         "void importUpdateMigrationPayload(String appId, String namespace, int from, int to, byte[] payload) {} "
         "void recordUpdateMigration(String appId, String namespace, int from, int to, String summary) {} "
@@ -12545,6 +12546,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void appFacingWrites_whenUpdateMigrationWriteBarrierActive_expectMigrationInProgressConflict() {}\n"
         "void updateMigrationImport_whenWriteBarrierActive_expectInternalMigrationWritesAllowed() {}\n"
         "void advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed() {}\n"
+        "void preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError() {}\n"
         "void advanceUpdateMigrationDryRunPayload_whenChainedDryRun_expectNamespaceTotalsMatchRecords() { importedValueBytes(records); }\n"
         "long importedValueBytes(java.util.List<Object> records) { return 0L; }\n",
         encoding="utf-8",
@@ -13200,24 +13202,22 @@ record AppDataMigrationPlan() {
     )
     (appupdates_dir / "AppDataMigrationRunner.java").write_text(
         """
-interface AppDataMigrationRunner {
-  int MAX_CAPTURE_BYTES = 4096;
-  long PROCESS_GROUP_TERMINATE_GRACE_MILLIS = 500L;
-  enum Mode { DRY_RUN, APPLY }
-	  interface MigrationDataAccess {}
-	  default void run(Path bundleRoot, AppDataMigrationPlan plan, Mode mode, MigrationDataAccess dataAccess) throws IOException {
-	    ProcessBuilder builder = new ProcessBuilder(commandLine(command));
-	    new AppEnv();
-	    ProcessBoundary boundary = ProcessBoundary.detect(appEnv);
-	    boundary.commandLine(command);
-	    boundary.terminateProcessGroup(process.pid());
-	    String executable = "migration command is not executable";
-	    String setsid = "setsid";
-	    String kill = "kill";
-	    String blocker = "migration process-group isolation is unavailable";
-	    long timeout = OUTPUT_DRAIN_TIMEOUT_MILLIS;
-	    builder.environment().clear();
-	    builder.environment().put("CRYPTA_APP_MIGRATION_MODE", "dry-run");
+	interface AppDataMigrationRunner {
+	  int MAX_CAPTURE_BYTES = 4096;
+	  enum Mode { DRY_RUN, APPLY }
+		  interface MigrationDataAccess {}
+		  default void run(Path bundleRoot, AppDataMigrationPlan plan, Mode mode, MigrationDataAccess dataAccess) throws IOException {
+		    ProcessBuilder builder = new ProcessBuilder(commandLine(command));
+		    new AppEnv();
+		    ProcessBoundary boundary = ProcessBoundary.detect(appEnv);
+		    boundary.commandLine(command);
+		    return unsupported();
+		    String executable = "migration command is not executable";
+		    String processGroups = "Process groups alone are not sufficient";
+		    String blocker = "migration process containment is unavailable";
+		    long timeout = OUTPUT_DRAIN_TIMEOUT_MILLIS;
+		    builder.environment().clear();
+		    builder.environment().put("CRYPTA_APP_MIGRATION_MODE", "dry-run");
 	    builder.environment().put("CRYPTA_APP_MIGRATION_NAMESPACE", "feeds");
     builder.environment().put("CRYPTA_APP_MIGRATION_INPUT", input.toString());
     builder.environment().put("CRYPTA_APP_MIGRATION_OUTPUT", output.toString());
@@ -13318,10 +13318,10 @@ class AppUpdateService {
         || ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE.equals(errorCode);
   }
 
-  void recordMigrationExecutionFailure(String appId, AppUpdateCandidate candidate, AppDataMigrationPlan plan, String errorCode) {
-    if (ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED.equals(errorCode)) {
-      candidates.put(appId, candidateWithMigrationPlan(candidate, plan.withDryRunFailed()));
-    }
+	  void recordMigrationDryRunFailure(String appId, AppUpdateCandidate candidate, AppDataMigrationPlan plan, String errorCode) {
+	    if (ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED.equals(errorCode)) {
+	      candidates.put(appId, candidateWithMigrationPlan(candidate, plan.withDryRunFailed()));
+	    }
   }
 
 		  Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
@@ -13454,7 +13454,7 @@ class AppUpdateServiceTest {
 			  void apply_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner() {}
 			  void apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall() {}
 			  void stage_whenTargetManifestRaisesDataQuota_expectDryRunUsesTargetQuota() {}
-		  void apply_whenChainedLocalMigrations_expectEachStepAppliedBeforeNextStep() {}
+		  void apply_whenChainedMigrationRunner_expectEachStepAppliedBeforeNextStep() {}
 		  void apply_whenMigrationContractHasNoExistingDataAndWriteAppearsBeforeReplacement_expectWriteRejected() {}
 		  void apply_whenMigrationApplyFailsAndBundleRollbackFails_expectMigrationFailurePreserved() {}
 		  void stage_whenMigrationRollbackIncompatibleWithoutAcknowledgement_expectReviewRequired() {}
@@ -13474,8 +13474,7 @@ class AppUpdateServiceTest {
     )
     (appupdates_test_dir / "AppDataMigrationRunnerTest.java").write_text(
         "class AppDataMigrationRunnerTest { "
-        "void run_whenCommandDetachesQuickly_expectProcessGroupTerminatedBeforeSuccess() {} "
-        "void run_whenDetachedChildKeepsStdoutOpenAfterParentExit_expectNoHangAndStepFails() {} "
+        "void run_whenOnlyProcessGroupCleanupCouldBeBypassed_expectFailsClosedBeforeCommand() {} "
         "void run_whenProcessBoundaryUnavailable_expectFailsClosedBeforeCommand() {} "
         "void run_whenMigrationCommandIsNotExecutable_expectFailsBeforeCompletion() {} }\n",
         encoding="utf-8",

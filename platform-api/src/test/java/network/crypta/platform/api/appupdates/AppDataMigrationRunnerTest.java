@@ -6,10 +6,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.Stream;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppDataMigrationCommand;
 import org.junit.jupiter.api.Assumptions;
@@ -30,43 +26,8 @@ class AppDataMigrationRunnerTest {
   @TempDir private Path tempDir;
 
   @Test
-  void run_whenCommandDetachesQuickly_expectProcessGroupTerminatedBeforeSuccess() throws Exception {
-    Assumptions.assumeTrue(processGroupBoundarySupported());
-    Path bundleRoot = tempDir.resolve(BUNDLE_DIRECTORY);
-    Path binDirectory = bundleRoot.resolve("bin");
-    Files.createDirectories(binDirectory);
-    Path script = binDirectory.resolve(MIGRATION_SCRIPT);
-    Files.writeString(
-        script,
-        """
-        #!/bin/sh
-        (
-          sleep 10 >/dev/null 2>&1 &
-          echo $! > child.pid
-        ) >/dev/null 2>&1
-        printf '{}' > "$CRYPTA_APP_MIGRATION_OUTPUT"
-        exit 0
-        """);
-    assertTrue(script.toFile().setExecutable(true));
-    AppDataMigrationRunner runner =
-        new AppDataMigrationRunner.LocalProcessMigrationRunner(Duration.ofSeconds(3));
-
-    try (TestMigrationDataAccess dataAccess =
-        new TestMigrationDataAccess(tempDir.resolve(PAYLOADS_DIRECTORY))) {
-      AppDataMigrationRunner.MigrationExecutionResult result =
-          runner.run(bundleRoot, migrationPlan(), AppDataMigrationRunner.Mode.APPLY, dataAccess);
-
-      assertFalse(result.success());
-      assertFalse(dataAccess.completed());
-    }
-    long childPid = Long.parseLong(Files.readString(bundleRoot.resolve("child.pid")).trim());
-    assertProcessDead(childPid);
-  }
-
-  @Test
-  void run_whenDetachedChildKeepsStdoutOpenAfterParentExit_expectNoHangAndStepFails()
+  void run_whenOnlyProcessGroupCleanupCouldBeBypassed_expectFailsClosedBeforeCommand()
       throws Exception {
-    Assumptions.assumeTrue(processGroupBoundarySupported());
     Path bundleRoot = tempDir.resolve(BUNDLE_DIRECTORY);
     Path binDirectory = bundleRoot.resolve("bin");
     Files.createDirectories(binDirectory);
@@ -75,25 +36,29 @@ class AppDataMigrationRunnerTest {
         script,
         """
         #!/bin/sh
-        sleep 10 &
-        echo $! > child.pid
+        touch ran
+        setsid sh -c 'sleep 10' >/dev/null 2>&1 &
         printf '{}' > "$CRYPTA_APP_MIGRATION_OUTPUT"
         exit 0
         """);
     assertTrue(script.toFile().setExecutable(true));
     AppDataMigrationRunner runner =
-        new AppDataMigrationRunner.LocalProcessMigrationRunner(Duration.ofSeconds(3));
+        new AppDataMigrationRunner.LocalProcessMigrationRunner(
+            Duration.ofSeconds(3), new AppEnv(Map.of("PATH", "/usr/bin:/bin"), "Linux"));
 
     try (TestMigrationDataAccess dataAccess =
         new TestMigrationDataAccess(tempDir.resolve(PAYLOADS_DIRECTORY))) {
-      AppDataMigrationRunner.MigrationExecutionResult result =
-          runner.run(bundleRoot, migrationPlan(), AppDataMigrationRunner.Mode.APPLY, dataAccess);
+      IOException exception =
+          assertThrows(
+              IOException.class,
+              () ->
+                  runner.run(
+                      bundleRoot, migrationPlan(), AppDataMigrationRunner.Mode.APPLY, dataAccess));
 
-      assertFalse(result.success());
+      assertEquals("migration process containment is unavailable", exception.getMessage());
       assertFalse(dataAccess.completed());
     }
-    long childPid = Long.parseLong(Files.readString(bundleRoot.resolve("child.pid")).trim());
-    assertProcessDead(childPid);
+    assertFalse(Files.exists(bundleRoot.resolve("ran")));
   }
 
   @Test
@@ -176,36 +141,6 @@ class AppDataMigrationRunnerTest {
                 false,
                 "Upgrade feed records.",
                 new AppDataMigrationCommand("bin/migrate.sh"))));
-  }
-
-  private static void assertProcessDead(long pid) throws Exception {
-    Optional<ProcessHandle> process = ProcessHandle.of(pid).filter(ProcessHandle::isAlive);
-    if (process.isEmpty()) {
-      return;
-    }
-    ProcessHandle handle = process.orElseThrow();
-    try {
-      handle.onExit().get(2L, TimeUnit.SECONDS);
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      throw exception;
-    } catch (TimeoutException _) {
-      assertFalse(handle.isAlive());
-    }
-  }
-
-  private static boolean processGroupBoundarySupported() {
-    AppEnv appEnv = new AppEnv();
-    return appEnv.isLinux()
-        && appEnv.onPath("setsid")
-        && appEnv.onPath("kill")
-        && commandAvailable("setsid")
-        && commandAvailable("kill");
-  }
-
-  private static boolean commandAvailable(String command) {
-    return Stream.of(Path.of("/usr/bin", command), Path.of("/bin", command))
-        .anyMatch(path -> Files.isRegularFile(path) && Files.isExecutable(path));
   }
 
   private static final class TestMigrationDataAccess

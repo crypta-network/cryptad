@@ -1709,6 +1709,7 @@ public final class AppUpdateService {
       if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
         byte[] advancedPayload = advanceDryRunPayload(step, outputPayload);
         dryRunPayloadsByNamespace.put(step.namespace(), advancedPayload);
+        preflightProjectedDryRunPayloads();
         return;
       }
       appDataService.importUpdateMigrationPayload(
@@ -1739,6 +1740,16 @@ public final class AppUpdateService {
           step.toSchemaVersion(),
           step.description(),
           payload);
+    }
+
+    private void preflightProjectedDryRunPayloads() {
+      if (useTargetManifestQuota) {
+        appDataService.preflightUpdateMigrationDryRunPayloads(
+            appId, dryRunPayloadsByNamespace.values(), targetDataQuotaBytes);
+        return;
+      }
+      appDataService.preflightUpdateMigrationDryRunPayloads(
+          appId, dryRunPayloadsByNamespace.values());
     }
 
     @Override
