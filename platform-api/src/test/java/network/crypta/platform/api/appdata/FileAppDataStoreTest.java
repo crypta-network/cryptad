@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileAppDataStoreTest {
   private static final String APP_ID = "feed-reader";
+  private static final String OTHER_APP_ID = "other-app";
   private static final String UI_STATE_NAMESPACE = "ui-state";
   private static final String SETTINGS_KEY = "settings";
   private static final String TEXT_PLAIN = "text/plain";
@@ -51,6 +52,20 @@ class FileAppDataStoreTest {
     assertEquals("{\"theme\":\"dark\"}", new String(restored.value(), StandardCharsets.UTF_8));
     assertEquals(1, reopened.listNamespaces(APP_ID).getFirst().recordCount());
     assertFalse(allRelativePaths().contains(SETTINGS_KEY));
+  }
+
+  @Test
+  void listAppIds_whenStoreHasKnownAndMalformedDirectories_expectOnlyNormalizedIds()
+      throws Exception {
+    FileAppDataStore store = new FileAppDataStore(tempDir);
+    store.writeRecord(appDataRecord(APP_ID, "one"));
+    store.writeRecord(appDataRecord(OTHER_APP_ID, "two"));
+    Files.createDirectories(tempDir.resolve("Invalid_App").resolve(".cryptad-app-data"));
+
+    List<String> appIds = store.listAppIds();
+
+    assertEquals(List.of(APP_ID, OTHER_APP_ID), appIds);
+    assertFalse(appIds.toString().contains(tempDir.toString()));
   }
 
   @Test
@@ -356,6 +371,16 @@ class FileAppDataStoreTest {
 
   private static boolean makeUnreadable(Path path) {
     return path.toFile().setReadable(false, false) && !Files.isReadable(path);
+  }
+
+  private static AppDataRecord appDataRecord(String appId, String value) {
+    return new AppDataRecord(
+        appId,
+        UI_STATE_NAMESPACE,
+        SETTINGS_KEY,
+        new AppDataRecord.Payload(TEXT_PLAIN, 1, value.getBytes(StandardCharsets.UTF_8)),
+        NOW,
+        NOW);
   }
 
   private static boolean createSymlink(Path link, Path target) {

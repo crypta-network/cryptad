@@ -77,6 +77,19 @@ document insert route without exposing launch tokens, browser-session tokens, pr
 material, or server-side staging paths. The app-data record stores drafts and publish summaries
 only; secrets, seeds, private keys, and identity material remain in AppVault.
 
+## App-data backup scope
+
+Operator app-data backups for `profile-publisher` include only the app's durable app-data record in
+the `profile-draft` namespace: bounded profile draft fields, the selected identity id, the last
+published profile URI, and recent publish/action summaries. Treat exported backups as sensitive
+user data because profile drafts, selected identities, and profile URIs can identify the operator.
+
+Backups do not include AppVault private identity material, vault private identity material, seeds,
+private keys, signed preview state, launch tokens, browser-session tokens, app-service tokens,
+queue internals, app bundle files, or local paths.
+Restoring a backup rehydrates the draft and publish summaries; identity signing authority still
+depends on the target node's AppVault state.
+
 Run focused validation with:
 
 ```bash

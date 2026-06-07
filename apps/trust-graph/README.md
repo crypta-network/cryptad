@@ -112,6 +112,21 @@ uses AppVault to create the public statement, queues it through generated app-do
 and imports the local public statement summary into the durable trust graph store. Subscriptions use
 the content subscription scheduler and do not crawl the network globally.
 
+## App-data backup scope
+
+Operator app-data backups for `trust-graph` include only the app's `ui-state` durable app-data
+record: UI-local draft choices, selected filters when present, source-kind import state, and
+redacted recent import summaries. Treat exported backups as sensitive user data because drafts and
+import summaries can reveal what trust material the operator is reviewing.
+
+Backups do not include platform trust graph backend state such as anchors, imported public trust
+statements, scores, or service-provider state. They also exclude content subscriptions, AppVault
+identity material, vault private identity material, private signing secrets, raw statement bodies,
+raw signatures, private insert URIs, app-service tokens, app-service grant state, app bundle files,
+tokens, and local paths. Restoring a backup rehydrates the browser UI preview state only; trust
+anchors and imported statements must already exist on the target node or be restored through their
+platform-specific flows.
+
 ## Browser Safety
 
 The UI persists draft form values, selected filters, and redacted import summaries through

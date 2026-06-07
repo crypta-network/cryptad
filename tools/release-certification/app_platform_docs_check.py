@@ -37,6 +37,7 @@ REQUIRED_DOCS = (
     "docs/app-secret-and-identity-vault.md",
     "docs/app-review-governance.md",
     "docs/app-update-lifecycle.md",
+    "docs/app-data-backup-restore-portability.md",
     "docs/first-party-beta-catalog.md",
     "docs/production-first-party-catalog-channels.md",
     "docs/feed-reader-reference-app.md",
@@ -135,6 +136,7 @@ REDACTION_ALLOWLIST_PATH_PREFIXES = (
     "/static/",
     "/src/",
     "/app-catalogs/",
+    "/operator/",
 )
 
 REDACTION_ALLOWLIST_EXACT_PATHS = (

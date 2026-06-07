@@ -25,6 +25,19 @@ import java.util.Optional;
  */
 public interface AppDataStore {
   /**
+   * Lists app ids with durable app-data state known to this store.
+   *
+   * <p>The result is intended for host/operator backup flows, not app-principal routing. Store
+   * implementations should discover only ids that are safely contained by their managed app-data
+   * scope, skip malformed or unsafe entries, and keep the output sorted deterministically. Missing
+   * app-data roots should return an empty list rather than creating state.
+   *
+   * @return normalized app ids with known durable app-data state
+   * @throws IOException when durable state cannot be inspected
+   */
+  List<String> listAppIds() throws IOException;
+
+  /**
    * Lists namespace metadata for one app.
    *
    * <p>The returned metadata should include derived record counts and byte totals when the backing

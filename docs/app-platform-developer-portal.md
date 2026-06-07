@@ -35,6 +35,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | AppHost runtime hardening | [apphost-runtime-hardening.md](apphost-runtime-hardening.md) |
 | App update lifecycle and rollback | [app-update-lifecycle.md](app-update-lifecycle.md) |
 | App upgrade data migrations | [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) |
+| App-data backup, restore, and portability | [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
 | Social Inbox Preview | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |

@@ -1,0 +1,186 @@
+# App data backup, restore, and portability
+
+This document describes the operator-visible durable app-data backup and restore layer.
+
+## Scope
+
+App-data backup is for user-owned durable records stored through the Platform API app-data store.
+It is a portability feature, not a diagnostics feature. A backup may contain raw app-owned record
+values, so treat every backup as sensitive user data.
+
+The feature covers:
+
+- exporting one app's durable app-data records;
+- exporting all known app-data records in one multi-app bundle;
+- previewing restore plans before writing data;
+- restoring with safe merge and replacement modes;
+- uninstall flows that distinguish delete, preserve, and export before delete.
+
+The feature does not export app bundles, AppVault entries, vault secrets, private identity material,
+private insert URIs, app-service tokens, browser-session tokens, form passwords, cache/run data,
+content-subscription scheduler internals, or arbitrary filesystem paths. Content-subscription,
+draft, read-state, or import-summary data is included only when an app already stores it as durable
+app-data records.
+
+## Backup bundle format
+
+The current backup envelope is versioned as `backupVersion = 1` and identified with
+`kind = crypta-app-data-backup`. The executable implementation supports only
+`encryption.mode = none`.
+
+A bundle contains deterministic metadata and the app-data export payload for each app entry:
+
+```json
+{
+  "backupVersion": 1,
+  "kind": "crypta-app-data-backup",
+  "scope": "single-app",
+  "createdAt": "2026-06-06T20:15:37Z",
+  "sourceCryptaVersion": "15",
+  "sensitiveUserData": true,
+  "encryption": {
+    "mode": "none"
+  },
+  "apps": [
+    {
+      "appId": "feed-reader",
+      "installed": true,
+      "appName": "Feed Reader",
+      "appVersion": "1",
+      "schemaSummary": {
+        "declared": true,
+        "current": 2
+      },
+      "namespaceCount": 2,
+      "recordCount": 14,
+      "totalBytes": 4096,
+      "payloadSha256": "<lowercase-sha256>",
+      "export": {
+        "exportVersion": 1,
+        "appId": "feed-reader",
+        "namespaces": [],
+        "records": []
+      }
+    }
+  ]
+}
+```
+
+Field order, app order, namespace order, and record order are deterministic. `scope` is
+`single-app` for one normalized app id and `all-apps` for every app id the durable store can list.
+Each entry's `payloadSha256`, counts, and byte totals describe the nested export payload without
+requiring release evidence or Web Shell status panels to display raw record values.
+
+Unsupported `backupVersion` values are rejected with `unsupported_backup_version`. Unsupported
+encryption modes are rejected with `unsupported_backup_encryption`. Future encrypted envelopes
+must use approved Crypta crypto primitives; this PR intentionally does not add homegrown
+passphrase encryption.
+
+## Operator routes
+
+Operator backup and restore routes are host/operator-only local management routes under
+`/api/v1/operator`. They are intentionally outside the app-facing Platform API compatibility
+contract and do not add app capabilities.
+
+| Method and route | Behavior |
+| --- | --- |
+| `POST /api/v1/operator/app-data/backups` with `appId=<app-id>` | Exports a `single-app` backup for one normalized app id. |
+| `POST /api/v1/operator/app-data/backups` with `scope=all` | Exports an `all-apps` backup for every known app-data app id. |
+| `POST /api/v1/operator/app-data/restore/plan` | Parses `payloadBase64`, validates the requested mode, and returns a metadata-only restore plan. |
+| `POST /api/v1/operator/app-data/restore` | Rebuilds the plan and commits it only when the plan is ready. |
+
+Restore POST bodies use `application/x-www-form-urlencoded` fields:
+
+```text
+payloadBase64=<url-safe-or-standard-base64 backup JSON>
+mode=merge|replaceNamespace|replaceApp
+appId=<optional target app id>
+```
+
+The default restore target is the app id inside each backup entry. Cross-app remapping is out of
+scope. Supplying `appId` is accepted only for same-app-id restore of a single-app bundle.
+
+App principals must be denied before backup data is assembled. Missing app-data service wiring
+fails closed with `app_data_service_unavailable`. Route errors, restore plans, restore results,
+support bundles, and release evidence must not include host filesystem paths, temporary paths,
+private insert URIs, tokens, vault secret values, or raw backup payloads.
+
+Backup export uses `POST` rather than `GET` so the legacy HTTP bridge applies the local
+form-password guard before returning raw app-data values. The Web Shell sends either
+`appId=<app-id>` for a single-app backup or `scope=all` for an all-app backup in a
+`application/x-www-form-urlencoded` body.
+
+## Restore preview and modes
+
+Every restore should be previewed before commit. The restore plan is metadata-only. It may include
+app ids, installed flags, app versions, schema versions, namespace names, counts, byte totals,
+digests, compatibility warnings, blockers, and safe reason codes.
+
+Restore modes are:
+
+| Mode | Behavior |
+| --- | --- |
+| `merge` | Adds or replaces records from the backup without deleting unrelated records. |
+| `replaceNamespace` | Clears each imported namespace for the target app, then imports the backup records for those namespaces. |
+| `replaceApp` | Clears all durable app-data records for the target app, then imports the app's backup entry. Other apps are not changed. |
+
+Restore validation reuses the existing app-data import path. Identifier validation, export payload
+parsing, import size limits, namespace limits, record limits, value size limits, record count caps,
+and quota preflight checks all run before writes. A blocked plan does not write data.
+
+Restoring data for an app that is not currently installed is allowed when the durable app-data
+store can validate the payload. The plan reports `installed=false` and warns that manifest schema
+and quota compatibility cannot be fully verified until the app is installed again.
+
+## Web Shell flows
+
+The Web Shell exposes backup and restore as explicit operator actions:
+
+- per-app `Export app data`;
+- per-app `Restore app data` with preview before commit;
+- all-app `Download all app-data backup` in the operator beta dashboard;
+- uninstall choices for `Uninstall preserving data`, `Delete app and data`, and `Export backup before delete`.
+
+Backups are downloaded as browser `Blob` files or submitted through an explicit restore form. The
+Web Shell does not store backup payloads in `localStorage`, `sessionStorage`, IndexedDB, cookies,
+or other persistent browser state. Ordinary dashboard panels and restore previews must not display
+raw record values. `replaceNamespace`, `replaceApp`, and export-before-delete flows require
+explicit confirmation before destructive steps.
+
+## App-facing export/import
+
+App-facing `GET /api/v1/app-data/export` and `POST /api/v1/app-data/import` remain scoped to the
+authenticated app principal. The browser SDK helpers `CryptaPlatform.data.export()` and
+`CryptaPlatform.data.import()` continue to operate only on the current app.
+
+Operator backup/restore is separate. It can read and restore multiple apps only through
+host/operator routes, and it does not grant apps cross-app read or write authority.
+
+## Uninstall behavior
+
+Default uninstall deletes app data. `preserveData=true` keeps the app-visible persistent data
+directory and the host-managed durable app-data records while removing the immutable bundle, cache,
+run state, rollback state, and runtime bookkeeping.
+
+Export-before-delete is a two-step operator flow:
+
+1. download a sensitive app-data backup for the app;
+2. after a second confirmation, call the existing uninstall route with data deletion.
+
+There is no implicit route that returns a large backup payload and deletes data in one action.
+
+## Redaction and certification
+
+Backups are not support bundles. Support bundles and release evidence must not include raw backup
+payloads or raw app-data values. They may include only safe metadata such as route names, evidence
+ids, app ids, namespace counts, record counts, byte totals, schema versions, timestamps, status
+labels, warnings, and digests.
+
+Release certification records this surface with:
+
+- `app-data.backup-restore-portability`;
+- `operator-beta.app-data-backup-restore`.
+
+Those checks verify the backup envelope, operator-only route design, app-principal denial,
+metadata-only restore planning, merge and replacement modes, Web Shell controls, first-party app
+backup-scope docs, and support-bundle redaction without writing raw backup values to evidence.

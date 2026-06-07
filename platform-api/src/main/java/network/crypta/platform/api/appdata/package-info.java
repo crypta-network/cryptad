@@ -12,6 +12,11 @@
  * implementations own persistence mechanics. The model records define the stable metadata and value
  * shapes returned through the API and browser SDK.
  *
+ * <p>Host/operator backup and restore builds on the same app-scoped export/import payloads but
+ * wraps them in a separate versioned backup envelope. Backup bundles are explicit user artifacts
+ * and may contain raw app-owned values. Restore plans and results remain metadata-only, and support
+ * bundles or release evidence must not include backup payloads.
+ *
  * <p>Data is scoped by the authenticated app principal. Request parameters never select a target
  * app id, and logical namespaces or keys are not host filesystem paths. File-backed storage hashes
  * record keys before they become directory names and keeps host roots, staging paths, tokens,

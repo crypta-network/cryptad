@@ -101,6 +101,7 @@ app-platform.generated-document-insert
 app-platform.content-fetch
 app-platform.content-subscriptions
 network-content.subscription-scheduler
+app-data.backup-restore-portability
 app-platform.trust-graph-preview
 app-platform.trust-statement-signing
 app-platform.social-message-signing
@@ -154,6 +155,7 @@ operator-beta.app-update-recovery
 operator-beta.subscription-recovery
 operator-beta.trust-review-warnings
 operator-beta.app-data-quota-warnings
+operator-beta.app-data-backup-restore
 operator-beta.support-bundle-redaction
 operator-beta.web-shell
 app-review.trusted-receipts
@@ -184,6 +186,13 @@ and Web Shell exposure, signature/review verification preservation, and redactio
 before bundle replacement, internal app-scoped snapshot/restore, missing-path and
 rollback-incompatible blockers, Feed Reader and Trust Graph Preview examples, and path-free
 redacted update summaries.
+`app-data.backup-restore-portability` verifies the `backupVersion = 1`
+`crypta-app-data-backup` envelope, single-app and all-app backup, host/operator-only restore plan
+and commit routes, app-principal denial, `merge`, `replaceNamespace`, and `replaceApp` restore
+modes, Web Shell controls, first-party app backup-scope docs, and support-bundle redaction without
+recording raw backup payloads. `operator-beta.app-data-backup-restore` verifies the operator
+dashboard controls for sensitive backup, restore preview, restore commit, all-app backup, and
+export-before-delete.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review

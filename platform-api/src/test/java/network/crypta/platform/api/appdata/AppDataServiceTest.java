@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
@@ -262,6 +263,24 @@ class AppDataServiceTest {
     assertEquals(true, imported.get(FIELD_IMPORTED));
     assertEquals(0, importedRecord.get("valueBytes"));
     assertEquals("", importedRecord.get("valueBase64"));
+  }
+
+  @Test
+  void parseForImport_whenNamespaceCountsProvided_expectMetadataCountsPreserved() {
+    byte[] payloadBytes = namespaceMetadataPayloadBytes("2", "42");
+
+    AppDataExportPayload parsed = AppDataExportPayload.parseForImport(payloadBytes, APP_ID);
+
+    AppDataNamespaceMetadata namespace = parsed.namespaces().getFirst();
+    assertEquals(2, namespace.recordCount());
+    assertEquals(42L, namespace.totalBytes());
+  }
+
+  @Test
+  void parseForImport_whenNamespaceCountsInvalid_expectInvalidImportError() {
+    assertInvalidNamespaceCounts("-1", "42");
+    assertInvalidNamespaceCounts("2147483648", "42");
+    assertInvalidNamespaceCounts("2", "-1");
   }
 
   @Test
@@ -898,6 +917,210 @@ class AppDataServiceTest {
     assertTrue(FIELD_PAYLOAD_BASE64.length() + "=".length() + encodedPayload.length() <= 1_048_576);
   }
 
+  @Test
+  void exportBackup_whenSingleAppRequested_expectVersionedEnvelopeAndMetadataOnlyToString() {
+    AppDataService service = service(config(128, 16, 4, 8192, 8192));
+    service.putRecord(
+        APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "private-reader-state"));
+    service.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "other"));
+
+    Map<String, Object> exported =
+        service.exportBackup(params("appId", APP_ID), "cryptad-test-version");
+    AppDataBackupBundle bundle =
+        AppDataBackupBundle.parse(decodeUrlPayload((String) exported.get(FIELD_PAYLOAD_BASE64)));
+
+    assertEquals(AppDataBackupManifest.CURRENT_BACKUP_VERSION, bundle.manifest().backupVersion());
+    assertEquals(AppDataBackupManifest.BACKUP_KIND, bundle.manifest().kind());
+    assertEquals(AppDataBackupOptions.SCOPE_SINGLE_APP, bundle.manifest().scope());
+    assertEquals(1, bundle.apps().size());
+    assertEquals(APP_ID, bundle.apps().getFirst().appId());
+    assertEquals(1, bundle.apps().getFirst().recordCount());
+    assertFalse(bundle.toString().contains("private-reader-state"));
+    assertFalse(bundle.apps().getFirst().toString().contains("private-reader-state"));
+  }
+
+  @Test
+  void exportBackup_whenAllAppsRequested_expectKnownAppIdsSorted() {
+    AppDataService service = service(config(128, 16, 4, 8192, 8192));
+    service.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "other"));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+
+    Map<String, Object> exported = service.exportBackup(params("scope", "all"), "test");
+    AppDataBackupBundle bundle =
+        AppDataBackupBundle.parse(decodeUrlPayload((String) exported.get(FIELD_PAYLOAD_BASE64)));
+
+    assertEquals(AppDataBackupOptions.SCOPE_ALL_APPS, bundle.manifest().scope());
+    assertEquals(
+        List.of(APP_ID, OTHER_APP_ID),
+        bundle.apps().stream().map(AppDataBackupEntry::appId).toList());
+  }
+
+  @Test
+  void planRestore_whenBackupVersionOrEncryptionUnsupported_expectStableBackupErrors() {
+    AppDataService service = service(config(128, 16, 4, 8192, 8192));
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "one"));
+    String backupJson =
+        new String(decodeUrlPayload(backupPayloadBase64(service)), StandardCharsets.UTF_8);
+    String unsupportedVersion =
+        payloadBase64(
+            backupJson
+                .replace("\"backupVersion\":1", "\"backupVersion\":2")
+                .getBytes(StandardCharsets.UTF_8));
+    String unsupportedEncryption =
+        payloadBase64(
+            backupJson
+                .replace("\"mode\":\"none\"", "\"mode\":\"aes-gcm\"")
+                .getBytes(StandardCharsets.UTF_8));
+    Map<String, List<String>> unsupportedVersionParams =
+        params(FIELD_PAYLOAD_BASE64, unsupportedVersion);
+    Map<String, List<String>> unsupportedEncryptionParams =
+        params(FIELD_PAYLOAD_BASE64, unsupportedEncryption);
+
+    PlatformApiException versionFailure =
+        assertThrows(
+            PlatformApiException.class, () -> service.planRestore(unsupportedVersionParams));
+    PlatformApiException encryptionFailure =
+        assertThrows(
+            PlatformApiException.class, () -> service.planRestore(unsupportedEncryptionParams));
+
+    assertEquals("unsupported_backup_version", versionFailure.errorCode());
+    assertEquals("unsupported_backup_encryption", encryptionFailure.errorCode());
+  }
+
+  @Test
+  void restoreBackup_whenBackupContainsDuplicateAppEntries_expectInvalidPayloadBeforeWrite() {
+    AppDataService source = service(config(256, 16, 4, 8192, 8192));
+    source.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "new"));
+    AppDataService target = service(config(256, 16, 4, 8192, 8192));
+    target.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "existing"));
+    String duplicatePayloadBase64 = payloadBase64(backupPayloadWithDuplicateAppEntry(source));
+    Map<String, List<String>> restoreParams = params(FIELD_PAYLOAD_BASE64, duplicatePayloadBase64);
+
+    PlatformApiException failure =
+        assertThrows(PlatformApiException.class, () -> target.restoreBackup(restoreParams));
+
+    assertEquals("invalid_backup_payload", failure.errorCode());
+    assertEquals(
+        "existing",
+        target.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
+  }
+
+  @Test
+  void restorePlan_whenBackupContainsRawValues_expectMetadataOnlyPlan() {
+    AppDataService source = service(config(256, 16, 4, 8192, 8192));
+    source.putRecord(
+        APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "private-backup-record-value"));
+    AppDataService target = service(config(256, 16, 4, 8192, 8192));
+
+    Map<String, Object> plan =
+        target.planRestore(params(FIELD_PAYLOAD_BASE64, backupPayloadBase64(source)));
+
+    assertTrue(plan.toString().contains("restorePlan"));
+    assertTrue(plan.toString().contains("app_not_installed_warning"));
+    assertFalse(plan.toString().contains("private-backup-record-value"));
+    assertFalse(plan.toString().contains("valueBase64"));
+    assertFalse(plan.toString().contains("records"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void planRestore_whenInstalledAppQuotaCannotBeMeasured_expectQuotaUnavailableBlocker()
+      throws Exception {
+    AppDataService source = service(config(256, 16, 4, 8192, 8192));
+    source.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "new"));
+    Path dataRoot = tempDir.resolve("data");
+    Files.createDirectories(dataRoot);
+    Files.writeString(dataRoot.resolve(APP_ID), "not a directory", StandardCharsets.UTF_8);
+    AppDataService target =
+        new AppDataService(
+            new InMemoryAppDataStore(),
+            appHostWithDataQuota(dataRoot, 65_536L),
+            config(256, 16, 4, 8192, 8192),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    Map<String, List<String>> restoreParams =
+        params(FIELD_PAYLOAD_BASE64, backupPayloadBase64(source));
+
+    Map<String, Object> planEnvelope = target.planRestore(restoreParams);
+    Map<String, Object> plan = (Map<String, Object>) planEnvelope.get("restorePlan");
+    Map<String, Object> appPlan = firstAppMetadata(plan);
+    List<String> planBlockers = (List<String>) appPlan.get("blockers");
+    Map<String, Object> resultEnvelope = target.restoreBackup(restoreParams);
+    Map<String, Object> result = (Map<String, Object>) resultEnvelope.get("restoreResult");
+    Map<String, Object> appResult = firstAppMetadata(result);
+    List<String> resultBlockers = (List<String>) appResult.get("blockers");
+
+    assertEquals("blocked", plan.get("status"));
+    assertTrue(planBlockers.contains("app_data_quota_unavailable"));
+    assertFalse(planBlockers.contains("invalid_payload"));
+    assertEquals("blocked", result.get("status"));
+    assertTrue(resultBlockers.contains("app_data_quota_unavailable"));
+    assertFalse(resultBlockers.contains("invalid_payload"));
+    assertEquals(false, appResult.get("restored"));
+    assertEquals(
+        "app_data_record_not_found",
+        assertThrows(
+                PlatformApiException.class,
+                () -> target.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY))
+            .errorCode());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void restoreBackup_whenTargetAppIsNotInstalled_expectResultReportsInstalledFalse() {
+    AppDataService source = service(config(256, 16, 4, 8192, 8192));
+    source.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "new"));
+    AppDataService target = service(config(256, 16, 4, 8192, 8192));
+
+    Map<String, Object> resultEnvelope =
+        target.restoreBackup(params(FIELD_PAYLOAD_BASE64, backupPayloadBase64(source)));
+    Map<String, Object> result = (Map<String, Object>) resultEnvelope.get("restoreResult");
+    Map<String, Object> appResult = firstAppMetadata(result);
+    List<String> warnings = (List<String>) appResult.get("warnings");
+
+    assertEquals("restored", result.get("status"));
+    assertEquals(false, appResult.get("installed"));
+    assertEquals(true, appResult.get("restored"));
+    assertTrue(warnings.contains("app_not_installed_warning"));
+    assertEquals(
+        "new", target.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get("valueText"));
+  }
+
+  @Test
+  void restoreBackup_whenReplaceApp_expectTargetAppClearedAndOtherAppsPreserved() {
+    AppDataService source = service(config(256, 16, 4, 8192, 8192));
+    source.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "new"));
+    AppDataService target = service(config(256, 16, 4, 8192, 8192));
+    target.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "old"));
+    target.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, STALE_KEY, "stale"));
+    target.putRecord(APP_ID, recordParams(PROFILE_DRAFT_NAMESPACE, DRAFT_KEY, "draft"));
+    target.putRecord(OTHER_APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "other"));
+
+    Map<String, Object> result =
+        target.restoreBackup(
+            params(FIELD_PAYLOAD_BASE64, backupPayloadBase64(source), "mode", "replaceApp"));
+
+    assertTrue(result.toString().contains("restored"));
+    assertEquals(
+        "new", target.getRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
+    assertEquals(
+        "other",
+        target.getRecord(OTHER_APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).get(FIELD_VALUE_TEXT));
+    assertEquals(
+        "app_data_record_not_found",
+        assertThrows(
+                PlatformApiException.class,
+                () -> target.getRecord(APP_ID, UI_STATE_NAMESPACE, STALE_KEY))
+            .errorCode());
+    assertEquals(
+        "app_data_namespace_not_found",
+        assertThrows(
+                PlatformApiException.class,
+                () -> target.getNamespace(APP_ID, PROFILE_DRAFT_NAMESPACE))
+            .errorCode());
+  }
+
   private static AppDataService service(AppDataStoreConfig config) {
     return new AppDataService(
         new InMemoryAppDataStore(),
@@ -1007,6 +1230,31 @@ class AppDataServiceTest {
         .toJsonBytes();
   }
 
+  private static byte[] namespaceMetadataPayloadBytes(String recordCount, String totalBytes) {
+    return """
+    {
+      "exportVersion": 1,
+      "appId": "feed-reader",
+      "exportedAt": "2026-05-24T12:00:00Z",
+      "namespaces": [
+        {
+          "appId": "feed-reader",
+          "namespace": "ui-state",
+          "schemaVersion": 1,
+          "recordCount": %s,
+          "totalBytes": %s,
+          "createdAt": "2026-05-24T12:00:00Z",
+          "updatedAt": "2026-05-24T12:00:00Z",
+          "migrationHistory": []
+        }
+      ],
+      "records": []
+    }
+    """
+        .formatted(recordCount, totalBytes)
+        .getBytes(StandardCharsets.UTF_8);
+  }
+
   private static byte[] migrationOutputPayloadBytes(List<AppDataRecord> records) {
     return migrationOutputPayloadBytes(UI_STATE_NAMESPACE, records);
   }
@@ -1061,6 +1309,34 @@ class AppDataServiceTest {
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 
+  private static String backupPayloadBase64(AppDataService service) {
+    return (String) service.exportBackup(params("appId", APP_ID), "test").get(FIELD_PAYLOAD_BASE64);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static byte[] backupPayloadWithDuplicateAppEntry(AppDataService service) {
+    String payloadBase64 =
+        (String) service.exportBackup(params("scope", "all"), "test").get(FIELD_PAYLOAD_BASE64);
+    Map<String, Object> bundleJson =
+        new java.util.LinkedHashMap<>(
+            (Map<String, Object>)
+                AppDataJsonParser.parse(
+                    new String(decodeUrlPayload(payloadBase64), StandardCharsets.UTF_8)));
+    List<Object> apps = new java.util.ArrayList<>((List<Object>) bundleJson.get("apps"));
+    apps.add(apps.getFirst());
+    bundleJson.put("apps", apps);
+    return PlatformApiJsonWriter.write(bundleJson).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] decodeUrlPayload(String payloadBase64) {
+    return Base64.getUrlDecoder().decode(payloadBase64);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstAppMetadata(Map<String, Object> restoreMetadata) {
+    return (Map<String, Object>) ((List<?>) restoreMetadata.get("apps")).getFirst();
+  }
+
   private static Map<String, List<String>> params(String... pairs) {
     java.util.LinkedHashMap<String, List<String>> values = new java.util.LinkedHashMap<>();
     for (int index = 0; index < pairs.length; index += 2) {
@@ -1072,6 +1348,17 @@ class AppDataServiceTest {
   private static void assertBlockedByMigration(Runnable operation) {
     PlatformApiException failure = assertThrows(PlatformApiException.class, operation::run);
     assertEquals(ERROR_MIGRATION_IN_PROGRESS, failure.errorCode());
+  }
+
+  private static void assertInvalidNamespaceCounts(String recordCount, String totalBytes) {
+    byte[] payloadBytes = namespaceMetadataPayloadBytes(recordCount, totalBytes);
+
+    PlatformApiException failure =
+        assertThrows(
+            PlatformApiException.class,
+            () -> AppDataExportPayload.parseForImport(payloadBytes, APP_ID));
+    assertEquals(400, failure.statusCode());
+    assertEquals("invalid_app_data_import", failure.errorCode());
   }
 
   private static long quotaDataUsageBytes(AppDataService service) {

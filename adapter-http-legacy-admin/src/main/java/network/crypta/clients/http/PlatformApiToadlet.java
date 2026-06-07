@@ -677,9 +677,21 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   private static boolean requiresOperatorFormPassword(String method, List<String> pathSegments) {
-    return "POST".equals(method)
-        && pathSegments.size() == 5
-        && OPERATOR_SEGMENT.equals(pathSegments.getFirst())
+    if (!"POST".equals(method)
+        || pathSegments.size() < 3
+        || !OPERATOR_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if ("app-data".equals(pathSegments.get(1))) {
+      if ("backups".equals(pathSegments.get(2))) {
+        return pathSegments.size() == 3;
+      }
+      if ("restore".equals(pathSegments.get(2))) {
+        return pathSegments.size() == 3
+            || (pathSegments.size() == 4 && "plan".equals(pathSegments.get(3)));
+      }
+    }
+    return pathSegments.size() == 5
         && "subscriptions".equals(pathSegments.get(1))
         && ("refresh".equals(pathSegments.get(4))
             || "pause".equals(pathSegments.get(4))

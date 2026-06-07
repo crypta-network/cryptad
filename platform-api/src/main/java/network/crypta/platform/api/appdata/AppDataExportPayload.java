@@ -190,6 +190,8 @@ public record AppDataExportPayload(
     int schemaVersion = positiveInt(number(map.get(FIELD_SCHEMA_VERSION)), FIELD_SCHEMA_VERSION);
     Instant createdAt = instant(string(map.get("createdAt")));
     Instant updatedAt = instant(string(map.get("updatedAt")));
+    int recordCount = optionalNonNegativeInt(map.get("recordCount"));
+    long totalBytes = optionalNonNegativeLong(map.get("totalBytes"));
     List<AppDataMigrationRecord> migrationHistory =
         list(map.get("migrationHistory")).stream().map(item -> migration(asMap(item))).toList();
     Instant lastMigrationAt =
@@ -198,8 +200,8 @@ public record AppDataExportPayload(
         appId,
         namespace,
         schemaVersion,
-        0,
-        0L,
+        recordCount,
+        totalBytes,
         createdAt,
         updatedAt,
         lastMigrationAt,
@@ -300,6 +302,28 @@ public record AppDataExportPayload(
           400, "invalid_app_data_import", "Invalid app-data " + fieldName + ".");
     }
     return (int) value;
+  }
+
+  private static int optionalNonNegativeInt(Object item) {
+    if (item == null) {
+      return 0;
+    }
+    long value = number(item).longValue();
+    if (value < 0L || value > Integer.MAX_VALUE) {
+      throw invalidPayload();
+    }
+    return (int) value;
+  }
+
+  private static long optionalNonNegativeLong(Object item) {
+    if (item == null) {
+      return 0L;
+    }
+    long value = number(item).longValue();
+    if (value < 0L) {
+      throw invalidPayload();
+    }
+    return value;
   }
 
   private static String string(Object item) {
