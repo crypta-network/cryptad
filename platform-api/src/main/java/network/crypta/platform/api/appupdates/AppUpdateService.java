@@ -739,6 +739,7 @@ public final class AppUpdateService {
           context.appId(), context.appDataSnapshot(), context.healthFailureState());
     }
     if (context.updated() != null) {
+      restartOriginalAfterCommittedRollbackApplyFailure(context);
       disableVaultGrantsAfterCommittedUpdate(context.updated(), context.healthFailureState());
       updateCandidateAfterPostApplyFailure(
           context.appId(),
@@ -1196,6 +1197,18 @@ public final class AppUpdateService {
         ACTION_APPLY,
         ERROR_UPDATE_FAILED,
         "Update failed before replacement, and original app restart failed.");
+  }
+
+  private void restartOriginalAfterCommittedRollbackApplyFailure(ApplyFailureContext context) {
+    if (!context.healthFailureState().rollbackCommitted()) {
+      return;
+    }
+    restartOriginalAfterUncommittedFailure(
+        context.appId(),
+        context.wasRunning(),
+        ACTION_APPLY,
+        ERROR_UPDATE_FAILED,
+        "Update failed after replacement, rollback succeeded, and original app restart failed.");
   }
 
   private void restartOriginalAfterUncommittedRollbackFailure(String appId, boolean wasRunning) {

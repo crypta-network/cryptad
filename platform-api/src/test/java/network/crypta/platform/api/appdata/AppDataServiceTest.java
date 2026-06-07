@@ -574,6 +574,42 @@ class AppDataServiceTest {
   }
 
   @Test
+  void advanceUpdateMigrationDryRunPayload_whenTargetManifestLowersQuota_expectQuotaError()
+      throws Exception {
+    Path dataRoot = tempDir.resolve("data");
+    Files.createDirectories(dataRoot.resolve(APP_ID));
+    AtomicLong installedQuotaBytes = new AtomicLong(Long.MAX_VALUE);
+    AppDataService service =
+        new AppDataService(
+            new InMemoryAppDataStore(),
+            appHostWithMutableDataQuota(dataRoot, installedQuotaBytes),
+            config(4096, 16, 4, 65536, 65536),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new AppDiskUsageScanner(),
+            true);
+    service.putRecord(APP_ID, recordParams(UI_STATE_NAMESPACE, SETTINGS_KEY, "ok"));
+    long currentUsageBytes = quotaDataUsageBytes(service);
+    installedQuotaBytes.set(currentUsageBytes + 20_000L);
+    byte[] outputPayload = migrationOutputPayloadBytes(List.of(migratedRecord(SETTINGS_KEY, "ok")));
+
+    PlatformApiException failure =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                service.advanceUpdateMigrationDryRunPayload(
+                    APP_ID,
+                    UI_STATE_NAMESPACE,
+                    1,
+                    2,
+                    "dry-run",
+                    outputPayload,
+                    currentUsageBytes - 1L));
+
+    assertEquals(ERROR_QUOTA_EXCEEDED, failure.errorCode());
+    assertEquals(1, service.getNamespace(APP_ID, UI_STATE_NAMESPACE).get(FIELD_SCHEMA_VERSION));
+  }
+
+  @Test
   void
       preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError() {
     AppDataService service = service(config(4096, 3, 4, 65536, 65536));

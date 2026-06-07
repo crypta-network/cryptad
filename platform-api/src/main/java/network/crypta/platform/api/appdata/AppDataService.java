@@ -1257,7 +1257,10 @@ public final class AppDataService {
             projected,
             totalBytes,
             currentBytes);
-    enforceManifestQuota(appId, manifestDelta, manifestQuotaCheck);
+    long projectedStoreUsageBytes =
+        projectedStoreQuotaUsageBytes(
+            importedNamespacesMetadata, currentNamespaceMetadata, projected);
+    enforceManifestQuota(appId, manifestDelta, manifestQuotaCheck, projectedStoreUsageBytes);
   }
 
   private void rejectOversizedImportedRecords(List<AppDataRecord> importedRecords) {
@@ -1378,6 +1381,40 @@ public final class AppDataService {
     return manifestDelta;
   }
 
+  private static long projectedStoreQuotaUsageBytes(
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      Map<String, AppDataNamespaceMetadata> currentNamespaceMetadata,
+      ProjectedImport projected) {
+    long total =
+        projected.recordBytesByKey().values().stream()
+            .mapToLong(valueBytes -> valueBytes + RECORD_METADATA_QUOTA_RESERVE_BYTES)
+            .sum();
+    Map<String, AppDataNamespaceMetadata> importedNamespaceMetadataByName =
+        importedNamespaceMetadataByName(importedNamespacesMetadata);
+    for (String namespace : projected.namespaces()) {
+      AppDataNamespaceMetadata importedMetadata = importedNamespaceMetadataByName.get(namespace);
+      if (importedMetadata != null) {
+        total += namespaceMetadataQuotaReserve(importedMetadata);
+        continue;
+      }
+      AppDataNamespaceMetadata currentMetadata = currentNamespaceMetadata.get(namespace);
+      total +=
+          currentMetadata == null
+              ? NAMESPACE_METADATA_QUOTA_RESERVE_BYTES
+              : namespaceMetadataQuotaReserve(currentMetadata);
+    }
+    return total;
+  }
+
+  private static Map<String, AppDataNamespaceMetadata> importedNamespaceMetadataByName(
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata) {
+    Map<String, AppDataNamespaceMetadata> metadataByName = new LinkedHashMap<>();
+    for (AppDataNamespaceMetadata metadata : importedNamespacesMetadata) {
+      metadataByName.put(metadata.namespace(), metadata);
+    }
+    return metadataByName;
+  }
+
   private void validateImportedNamespaceMetadata(List<AppDataNamespaceMetadata> metadata) {
     for (AppDataNamespaceMetadata namespace : metadata) {
       if (namespace.migrationHistory().size() > config.maxMigrationHistory()) {
@@ -1496,7 +1533,15 @@ public final class AppDataService {
 
   private void enforceManifestQuota(
       String appId, long positiveDeltaBytes, ManifestQuotaCheck manifestQuotaCheck) {
-    if (positiveDeltaBytes <= 0L || appHost == null) {
+    enforceManifestQuota(appId, positiveDeltaBytes, manifestQuotaCheck, null);
+  }
+
+  private void enforceManifestQuota(
+      String appId,
+      long positiveDeltaBytes,
+      ManifestQuotaCheck manifestQuotaCheck,
+      Long projectedStoreUsageBytes) {
+    if (appHost == null || shouldSkipManifestQuotaCheck(positiveDeltaBytes, manifestQuotaCheck)) {
       return;
     }
     InstalledAppSnapshot installed = installedApp(appId).orElse(null);
@@ -1515,9 +1560,15 @@ public final class AppDataService {
       throw new PlatformApiException(
           503, "app_data_quota_unavailable", "App-data quota could not be measured.");
     }
-    if (manifestQuotaUsageBytes(appId, scan) + positiveDeltaBytes > quotaBytes) {
+    if (projectedManifestQuotaUsageBytes(appId, scan, positiveDeltaBytes, projectedStoreUsageBytes)
+        > quotaBytes) {
       throw quotaExceeded();
     }
+  }
+
+  private static boolean shouldSkipManifestQuotaCheck(
+      long positiveDeltaBytes, ManifestQuotaCheck manifestQuotaCheck) {
+    return positiveDeltaBytes <= 0L && !manifestQuotaCheck.useOverride();
   }
 
   private Map<String, Object> quotaJson(String appId) {
@@ -1544,6 +1595,18 @@ public final class AppDataService {
       return dataUsageBytes;
     }
     return dataUsageBytes + currentStoreQuotaUsageBytes(appId);
+  }
+
+  private long projectedManifestQuotaUsageBytes(
+      String appId,
+      AppDiskUsageScanner.ScanResult scan,
+      long positiveDeltaBytes,
+      Long projectedStoreUsageBytes) {
+    long currentUsageBytes = manifestQuotaUsageBytes(appId, scan);
+    if (!storeUsageOutsideAppDataDir || projectedStoreUsageBytes == null) {
+      return currentUsageBytes + Math.max(0L, positiveDeltaBytes);
+    }
+    return currentUsageBytes - currentStoreQuotaUsageBytes(appId) + projectedStoreUsageBytes;
   }
 
   private long currentStoreQuotaUsageBytes(String appId) {

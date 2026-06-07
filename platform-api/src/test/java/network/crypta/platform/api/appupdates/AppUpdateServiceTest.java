@@ -2499,23 +2499,7 @@ class AppUpdateServiceTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AppDataService appDataService = appDataServiceWithFeedRecord();
     AppUpdateService service =
-        serviceWithAppData(
-            appDataService,
-            (_, plan, mode, dataAccess) -> {
-              if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
-                for (AppDataMigrationPlan.NamespaceStep step : plan.namespaces()) {
-                  AppDataMigrationRunner.StepDataFiles files = dataAccess.prepare(step, mode);
-                  rewriteSchemaPayload(
-                      files.inputPayload(),
-                      files.outputPayload(),
-                      step.fromSchemaVersion(),
-                      step.toSchemaVersion());
-                  dataAccess.complete(step, mode, files);
-                }
-                return AppDataMigrationRunner.MigrationExecutionResult.passed();
-              }
-              return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
-            });
+        serviceWithAppData(appDataService, dryRunPassingApplyFailingMigrationRunner());
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
@@ -2533,6 +2517,47 @@ class AppUpdateServiceTest {
 
     assertEquals("app_data_migration_apply_failed", exception.errorCode());
     verify(appHost, times(1)).rollback(APP_ID);
+    assertEquals(
+        1, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
+  }
+
+  @Test
+  void apply_whenRunningMigrationApplyFailsAndRollbackSucceeds_expectRolledBackAppRestarted()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(running(installed)),
+            Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, dryRunPassingApplyFailingMigrationRunner());
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.rollback(APP_ID)).thenReturn(installed);
+    when(appHost.start(APP_ID)).thenReturn(running(installed));
+
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_RESTART_NO_HEALTH));
+
+    assertEquals("app_data_migration_apply_failed", exception.errorCode());
+    verify(appHost).stop(APP_ID);
+    verify(appHost, times(1)).rollback(APP_ID);
+    verify(appHost, times(1)).start(APP_ID);
     assertEquals(
         1, appDataService.listNamespaceMetadataForUpdate(APP_ID).getFirst().schemaVersion());
   }
@@ -2967,6 +2992,16 @@ class AppUpdateServiceTest {
 
   private static AppDataMigrationRunner payloadRewritingMigrationRunner() {
     return payloadRewritingMigrationRunner(new java.util.ArrayList<>());
+  }
+
+  private static AppDataMigrationRunner dryRunPassingApplyFailingMigrationRunner() {
+    return (_, plan, mode, dataAccess) -> {
+      if (mode == AppDataMigrationRunner.Mode.DRY_RUN) {
+        rewriteMigrationPayloads(plan, mode, dataAccess);
+        return AppDataMigrationRunner.MigrationExecutionResult.passed();
+      }
+      return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
+    };
   }
 
   private static AppDataMigrationRunner stagedBundleMutatingMigrationRunner(
