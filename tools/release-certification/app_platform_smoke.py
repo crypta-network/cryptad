@@ -4826,6 +4826,7 @@ def collect_app_data_backup_restore_evidence(settings: Settings) -> EvidenceItem
     workspace = settings.workspace_root
     source_files = {
         "service": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataService.java",
+        "workflow": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupRestoreWorkflow.java",
         "store": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataStore.java",
         "fileStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/FileAppDataStore.java",
         "memoryStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/InMemoryAppDataStore.java",
@@ -4911,11 +4912,12 @@ def collect_app_data_backup_restore_evidence(settings: Settings) -> EvidenceItem
         ),
         "serviceExportsSingleAndAllBackups": (
             "exportBackup" in text["service"]
-            and "createBackupBundle" in text["service"]
-            and "AppDataBackupOptions.SCOPE_SINGLE_APP" in text["service"]
-            and "AppDataBackupOptions.SCOPE_ALL_APPS" in text["service"]
-            and "listStoreAppIds()" in text["service"]
-            and "payloadBase64" in text["service"]
+            and "backupRestoreWorkflow.exportBackup" in text["service"]
+            and "createBackupBundle" in text["workflow"]
+            and "AppDataBackupOptions.SCOPE_SINGLE_APP" in text["workflow"]
+            and "AppDataBackupOptions.SCOPE_ALL_APPS" in text["workflow"]
+            and "listStoreAppIds()" in text["workflow"]
+            and "payloadBase64" in text["workflow"]
             and "exportBackup_whenSingleAppRequested_expectVersionedEnvelopeAndMetadataOnlyToString"
             in text["serviceTest"]
             and "exportBackup_whenAllAppsRequested_expectKnownAppIdsSorted" in text["serviceTest"]
@@ -4940,7 +4942,11 @@ def collect_app_data_backup_restore_evidence(settings: Settings) -> EvidenceItem
             and '"backups".equals(segments.get(2))' in text["operatorRoutes"]
             and "methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE)" in text["operatorRoutes"]
             and '"restore".equals(segments.get(2))' in text["operatorRoutes"]
-            and 'case "plan"' in text["operatorRoutes"]
+            and (
+                'case "plan"' in text["operatorRoutes"]
+                or '"plan".equals(segments.get(3))' in text["operatorRoutes"]
+            )
+            and "appDataService.planRestore" in text["operatorRoutes"]
             and "requireHostOperator(request)" in text["operatorRoutes"]
             and "app_data_service_unavailable" in text["operatorRoutes"]
             and "requiresOperatorFormPassword" in text["toadlet"]
@@ -12547,8 +12553,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppDataService { static final String CAPABILITY_APP_DATA_READ = \"app.data.read\"; "
         "static final String CAPABILITY_APP_DATA_WRITE = \"app.data.write\"; "
         "boolean storeUsageOutsideAppDataDir; "
-        "Object exportBackup(AppDataBackupOptions options, String sourceCryptaVersion) { payloadBase64 = \"\"; return createBackupBundle(options); } "
-        "Object createBackupBundle(AppDataBackupOptions options) { AppDataBackupOptions.SCOPE_SINGLE_APP.toString(); AppDataBackupOptions.SCOPE_ALL_APPS.toString(); listStoreAppIds(); return null; } "
+        "AppDataBackupRestoreWorkflow backupRestoreWorkflow; "
+        "Object exportBackup(AppDataBackupOptions options, String sourceCryptaVersion) { return backupRestoreWorkflow.exportBackup(options, sourceCryptaVersion); } "
         "Object listStoreAppIds() { return store.listAppIds(); } "
         "Object planRestore(byte[] payload, AppDataRestoreMode mode, String appId) { preflightImport(null); preflightReplaceApp(null); return null; } "
         "Object restoreBackup(byte[] payload, AppDataRestoreMode mode, String appId) { replaceImportedNamespaces(null); replaceAppData(appId); return null; } "
@@ -12565,6 +12571,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void importUpdateMigrationPayload(String appId, String namespace, int from, int to, byte[] payload) {} "
         "void recordUpdateMigration(String appId, String namespace, int from, int to, String summary) {} "
         "String lastMigrationAt; String quota = \"quota.data.bytes\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataBackupRestoreWorkflow.java").write_text(
+        "final class AppDataBackupRestoreWorkflow { "
+        "Object exportBackup(AppDataBackupOptions options, String sourceCryptaVersion) { payloadBase64 = \"\"; return createBackupBundle(options); } "
+        "Object createBackupBundle(AppDataBackupOptions options) { AppDataBackupOptions.SCOPE_SINGLE_APP.toString(); AppDataBackupOptions.SCOPE_ALL_APPS.toString(); listStoreAppIds(); return null; } "
+        "Object listStoreAppIds() { return service.listStoreAppIds(); } }\n",
         encoding="utf-8",
     )
     (appdata_api_dir / "AppDataStore.java").write_text(
@@ -14086,7 +14099,7 @@ final class PlatformApiOperatorRoutes {
     if ("backups".equals(segments.get(2))) return routeAppDataBackup(request);
     if ("restore".equals(segments.get(2))) return routeAppDataRestore(request);
     switch (action) { case "refresh": break; case "pause": break; case "resume": break; }
-    switch (restoreAction) { case "plan": break; }
+    if ("plan".equals(segments.get(3))) return appDataService.planRestore(request);
     String route = "operator/app-data";
     String error = "host_operator_required app_data_service_unavailable";
     return null;
