@@ -101,6 +101,9 @@
       const status = await CryptaPlatform.trust.status();
       state.status = status;
       renderStatus(status);
+      if (state.statements.length > 0) {
+        renderStatements();
+      }
       setStatus("Trust status refreshed.");
     } catch (error) {
       renderError(elements.statusSummary, error);
@@ -636,6 +639,16 @@
     ]);
   }
 
+  function lifecycleActionsAvailable() {
+    const lifecycle = state.status && state.status.statementLifecycle;
+    return Boolean(
+      lifecycle &&
+      typeof lifecycle === "object" &&
+      lifecycle.supportsLocalRevocation === true &&
+      lifecycle.supportsLocalDeprecation === true
+    );
+  }
+
   function limitsArticle(limits) {
     const source = limits && typeof limits === "object" ? limits : {};
     return summaryArticle("Limits", [
@@ -753,9 +766,12 @@
     button.type = "button";
     button.textContent = label;
     const helper = statementLifecycleHelper(action);
-    button.disabled = !fingerprint || alreadyApplied || !helper;
+    const lifecycleSupported = lifecycleActionsAvailable();
+    button.disabled = !fingerprint || alreadyApplied || !helper || !lifecycleSupported;
     if (!helper) {
       button.title = "This Platform API contract does not expose a lifecycle SDK helper.";
+    } else if (!lifecycleSupported) {
+      button.title = "Statement lifecycle actions require Platform API contract v15 status support.";
     } else if (alreadyApplied) {
       button.title = `Statement is already ${label.toLowerCase()}d.`;
     }
@@ -767,6 +783,10 @@
     const helper = statementLifecycleHelper(action);
     if (!helper || !fingerprint) {
       setStatus("Statement lifecycle helper is unavailable.");
+      return;
+    }
+    if (!lifecycleActionsAvailable()) {
+      setStatus("Statement lifecycle actions require Platform API contract v15 status support.");
       return;
     }
     try {

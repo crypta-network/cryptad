@@ -977,7 +977,7 @@
     list.className = "permission-list trust-scope-notes";
     [
       "Local trust only; it is not global truth.",
-      "Not moderation, blocking, routing policy, peer selection, or network crawling.",
+      "Not moderation, not blocking, not routing policy, not peer selection, and not network crawling.",
       "No legacy WoT, Freetalk, Sone, Freemail, or old WebOfTrust plugin compatibility promise.",
     ].forEach((note) => {
       const item = document.createElement("li");

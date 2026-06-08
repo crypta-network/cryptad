@@ -210,6 +210,10 @@ POST /api/v1/trust-graph/statements/{fingerprint}/reactivate
 GET  /api/v1/trust-graph/score
 ```
 
+Contract v10 added the bounded exchange routes `POST /api/v1/trust-graph/import-uri` and
+`GET /api/v1/trust-graph/audit`. Contract v15 keeps those routes and adds local lifecycle
+management for imported statements.
+
 `POST /api/v1/trust-graph/import` accepts form-encoded `document`, optional `sourceUri`, optional
 `sourceLabel`, and safe source metadata. It validates size, parses
 `crypta.trust.statement.v1`, stores a redacted summary, records whether the signature verifies

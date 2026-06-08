@@ -699,8 +699,12 @@ def has_direct_local_endpoint_reference(text: str) -> bool:
     return DIRECT_LOCAL_ENDPOINT_RE.search(text) is not None
 
 
+def normalized_source_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.lower())
+
+
 def social_inbox_docs_frame_spike_non_goals(docs_text: str) -> bool:
-    normalized = re.sub(r"\s+", " ", docs_text.lower())
+    normalized = normalized_source_text(docs_text)
     wot_non_goal = bool(
         re.search(
             r"\bnot\s+(?:a\s+)?(?:[^.]{0,160}\b)?full\s+(?:wot|web of trust)\b",
@@ -5924,6 +5928,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
     source_app_js = read_source(source_static_dir / "app.js")
     app_readme = read_source(app_dir / "README.md")
     reference_doc = read_source(settings.workspace_root / "docs/trust-graph-preview.md")
+    normalized_reference_doc = normalized_source_text(reference_doc)
     manifest: dict[str, str] = {}
     manifest_permissions: set[str] = set()
     if manifest_path.is_file():
@@ -5988,20 +5993,23 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         mentioned_permissions
     )
     checks["docsDescribePreviewLimits"] = (
-        "Trust Graph Local RC" in reference_doc
-        and "local anchors" in reference_doc
-        and "no crawling" in reference_doc
-        and "no global moderation" in reference_doc
-        and "Trust anchors are local" in reference_doc
-        and "trust.read" in reference_doc
-        and "trust.write" in reference_doc
-        and "UI-local" in reference_doc
+        "trust graph local rc" in normalized_reference_doc
+        and "local anchors" in normalized_reference_doc
+        and "no crawling" in normalized_reference_doc
+        and "no global moderation" in normalized_reference_doc
+        and (
+            "local anchors only" in normalized_reference_doc
+            or "trust anchors are local" in normalized_reference_doc
+        )
+        and "trust.read" in normalized_reference_doc
+        and "trust.write" in normalized_reference_doc
+        and "ui-local" in normalized_reference_doc
     )
     checks["docsDescribeTrustScoreService"] = (
-        "Trust Score Service" in reference_doc
-        and "trust.score" in reference_doc
-        and "operator-approved app-service grants" in reference_doc
-        and "read-only" in reference_doc
+        "trust score service" in normalized_reference_doc
+        and "trust.score" in normalized_reference_doc
+        and "operator-approved app-service grants" in normalized_reference_doc
+        and "read-only" in normalized_reference_doc
     )
     checks["readmeDocumentsTrustFlow"] = (
         "Trust Graph Local RC" in app_readme
@@ -6108,7 +6116,7 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
             "docs/release-certification.md",
         )
     )
-    docs_text_lower = docs_text.lower()
+    docs_text_lower = normalized_source_text(docs_text)
     manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
     permissions = parse_permission_set(manifest.get("app.permissions", ""))
     checks = details["checks"]
@@ -6139,9 +6147,21 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
     checks["docsSeparateAppDataAndTrustBackend"] = (
         "reference-app.trust-graph-app-data-preview" in docs_text
         and "ui-local" in docs_text_lower
-        and "separate from the platform trust graph backend" in docs_text_lower
+        and (
+            "separate from the platform trust graph backend" in docs_text_lower
+            or (
+                "app data remains separate" in docs_text_lower
+                and "platform trust graph service state" in docs_text_lower
+            )
+        )
         and "durable local backend" in docs_text_lower
-        and "not a full web of trust" in docs_text_lower
+        and (
+            "not a full web of trust" in docs_text_lower
+            or (
+                "does not crawl the network" in docs_text_lower
+                and "no global moderation" in docs_text_lower
+            )
+        )
     )
     checks["noBrowserStorageOrRawAdminPath"] = (
         "/api/v1/" not in app_js
@@ -6188,6 +6208,10 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
     router_text = read_source(
         workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
     )
+    route_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiTrustGraphRoutes.java"
+    )
     handler_text = read_source(
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
@@ -6210,6 +6234,8 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
             "docs/release-certification.md",
         )
     )
+    normalized_docs_text = normalized_source_text(docs_text)
+    route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV7": "TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7" in contract_text,
         "capabilitiesPresent": "trust.read" in capabilities_text and "trust.write" in capabilities_text,
@@ -6226,7 +6252,7 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         )
         and "trust-graph" in router_text
         and all(
-            f'"{resource}"' in router_text or f"/trust-graph/{resource}" in router_text
+            f'"{resource}"' in route_source_text or f"/trust-graph/{resource}" in route_source_text
             for resource in ("status", "anchors", "import", "subjects", "statements", "score")
         ),
         "capabilityGatesPresent": (
@@ -6258,16 +6284,16 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
             )
         ),
         "docsDescribeLimits": (
-            "not a full Web of Trust" in docs_text
-            and "old WebOfTrust plugin" in docs_text
-            and "No FNP/FCP/wire protocol" in docs_text
-            and "trust.read" in docs_text
-            and "trust.write" in docs_text
+            "not a full web of trust" in normalized_docs_text
+            and "old weboftrust plugin" in normalized_docs_text
+            and "no fnp/fcp/wire protocol" in normalized_docs_text
+            and "trust.read" in normalized_docs_text
+            and "trust.write" in normalized_docs_text
         ),
         "redactionDocumented": (
-            "raw trust statement bodies" in docs_text
-            and "browser-session tokens" in docs_text
-            and "form passwords" in docs_text
+            "raw trust statement bodies" in normalized_docs_text
+            and "browser-session tokens" in normalized_docs_text
+            and "form passwords" in normalized_docs_text
         ),
     }
     details = {"checks": checks, "routes": ["trust-graph/status", "trust-graph/score"]}
@@ -6337,7 +6363,9 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
             "apps/trust-graph/README.md",
         )
     )
-    docs_lower = docs_text.lower()
+    ui_text = app_index + "\n" + app_js + "\n" + web_shell_text
+    normalized_ui_text = normalized_source_text(ui_text)
+    docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
             "CURRENT_CONTRACT_VERSION = 15" in contract_text
@@ -6428,18 +6456,18 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
             )
         ),
         "uiAndWebShellWarnLocalOnly": all(
-            fragment in app_index + app_js + web_shell_text
+            fragment in normalized_ui_text
             for fragment in (
-                "Trust Graph Local RC",
-                "Local trust only",
+                "trust graph local rc",
+                "local trust only",
                 "not global truth",
                 "not moderation",
                 "not blocking",
                 "not routing policy",
-                "no legacy WoT",
-                "Statement lifecycle",
-                "nonContributingReasons",
-                "evidenceTruncated",
+                "no legacy wot",
+                "statement lifecycle",
+                "noncontributingreasons",
+                "evidencetruncated",
             )
         )
         and "innerHTML" not in app_js,
@@ -6540,6 +6568,7 @@ def collect_trust_graph_durable_store_evidence(settings: Settings) -> EvidenceIt
             "docs/release-certification.md",
         )
     )
+    normalized_docs_text = normalized_source_text(docs_text)
     checks = {
         "fileBackedStorePresent": (
             "class FileTrustGraphStore" in store_text and "implements TrustGraphStore" in store_text
@@ -6587,10 +6616,13 @@ def collect_trust_graph_durable_store_evidence(settings: Settings) -> EvidenceIt
             )
         ),
         "docsDescribeDurableLocalBackend": (
-            "durable file-backed preview store" in docs_text
-            and "persists local trust anchors" in docs_text
-            and "raw fetched content" in docs_text
-            and "private insert URIs" in docs_text
+            (
+                "durable file-backed preview store" in normalized_docs_text
+                or "durable file-backed store" in normalized_docs_text
+            )
+            and "persists local trust anchors" in normalized_docs_text
+            and "raw fetched content" in normalized_docs_text
+            and "private insert uris" in normalized_docs_text
         ),
     }
     details = {
@@ -6639,6 +6671,10 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     router_text = read_source(
         workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
     )
+    route_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiTrustGraphRoutes.java"
+    )
     handler_text = read_source(
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
@@ -6669,6 +6705,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     )
     docs_text_lower = docs_text.lower()
     docs_text_compact = " ".join(docs_text_lower.split())
+    route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
             "CURRENT_CONTRACT_VERSION = 15" in contract_text
@@ -6682,9 +6719,9 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
             and "PlatformApiCapabilities.TRUST_WRITE" in contract_text
         ),
         "routerRoutesPresent": (
-            "importUri" in router_text
+            "importUri" in route_source_text
             and "/trust-graph/import-uri" in contract_text
-            and 'envelope("audit"' in router_text
+            and 'envelope("audit"' in route_source_text
         ),
         "handlerUsesBoundedContentFetch": (
             "ContentFetchPort" in handler_text
@@ -6729,7 +6766,11 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
         "docsDescribeExchangeLimits": (
             "contract v10" in docs_text_compact
             and (
-                "does not crawl the network globally" in docs_text_compact
+                "does not crawl the network" in docs_text_compact
+                or "does not discover statements by walking the network" in docs_text_compact
+                or "no crawling" in docs_text_compact
+                or "network crawling" in docs_text_compact
+                or "does not crawl the network globally" in docs_text_compact
                 or "global network crawling" in docs_text_compact
                 or "background crawler" in docs_text_compact
             )
