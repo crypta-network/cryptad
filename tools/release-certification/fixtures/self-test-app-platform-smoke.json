@@ -387,6 +387,49 @@
     },
     {
       "details": {
+        "backupVersion": 1,
+        "checks": {
+          "docsCoverFormatModesSensitivityAndExclusions": true,
+          "firstPartyDocsDescribePortableScope": true,
+          "metadataToStringAndPlanOmitRawValues": true,
+          "operatorOnlyRoutesAndAppPrincipalDenied": true,
+          "restoreModesPlanAndCommitReuseValidation": true,
+          "serviceExportsSingleAndAllBackups": true,
+          "storeListsKnownAppIds": true,
+          "supportRedactionRecognizesBackupPayloads": true,
+          "versionedEnvelopeModels": true,
+          "webShellExposesBackupRestoreAndNoPersistentBackupStorage": true
+        },
+        "encryptionModesSupported": [
+          "none"
+        ],
+        "operatorRouteTemplates": [
+          "POST /api/v1/operator/app-data/backups appId=<app-id>",
+          "POST /api/v1/operator/app-data/backups scope=all",
+          "POST /api/v1/operator/app-data/restore/plan",
+          "POST /api/v1/operator/app-data/restore"
+        ],
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawBackupPayloadsExcludedFromEvidence": true,
+          "supportBundlesExcludeBackupPayloads": true,
+          "tokensExcluded": true
+        },
+        "restoreModes": [
+          "merge",
+          "replaceNamespace",
+          "replaceApp"
+        ]
+      },
+      "id": "app-data.backup-restore-portability",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-data backup/restore portability evidence passed deterministic checks."
+    },
+    {
+      "details": {
         "checks": {
           "capabilitiesPresent": true,
           "capabilityGatesPresent": true,
@@ -1868,6 +1911,18 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Operator beta app-data and quota-warning evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "hostOperatorOnly": true,
+        "rawBackupPayloadsExcludedFromEvidence": true
+      },
+      "id": "operator-beta.app-data-backup-restore",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator beta app-data backup/restore evidence passed."
     },
     {
       "details": {

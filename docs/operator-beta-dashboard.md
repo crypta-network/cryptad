@@ -6,6 +6,10 @@ operator route family:
 
 - `GET /api/v1/operator/beta-dashboard`
 - `GET /api/v1/operator/support-bundle`
+- `POST /api/v1/operator/app-data/backups` with `appId=<app-id>`
+- `POST /api/v1/operator/app-data/backups` with `scope=all`
+- `POST /api/v1/operator/app-data/restore/plan`
+- `POST /api/v1/operator/app-data/restore`
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/refresh`
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/pause`
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/resume`
@@ -13,6 +17,8 @@ operator route family:
 These routes are not part of the app-facing Platform API contract. App principals must not call
 them, and app compatibility descriptors should not depend on them. Mutating subscription recovery
 actions require the normal local form-password bridge when they are reached through legacy HTTP.
+App-data backup export is also a `POST` route, not a `GET`, so the bridge applies the same
+form-password guard before returning a raw user backup payload.
 
 ## Dashboard Contents
 
@@ -27,6 +33,7 @@ contract or release certification reports.
 | `operator-beta.subscription-recovery` | Shows all durable content subscriptions to the host operator with redacted source display, digest, status, last success/failure, next due time, failure count, and refresh/pause/resume actions. It must not expose raw fetched content or app-private request bodies. |
 | `operator-beta.trust-review-warnings` | Shows Trust Graph Preview as local preview state only, not complete Web of Trust, and surfaces app-review/update warnings that need operator attention. |
 | `operator-beta.app-data-quota-warnings` | Summarizes app-data and AppHost quota warnings using counts, booleans, and status labels instead of raw app data values. |
+| `operator-beta.app-data-backup-restore` | Shows sensitive app-data backup, restore preview, restore commit, all-app backup, and export-before-delete controls without displaying raw backup record values in ordinary dashboard panels. |
 | `operator-beta.support-bundle-redaction` | Exports a redacted support bundle for issue triage. |
 | `operator-beta.web-shell` | Pins the Web Shell panel, refresh controls, support-bundle export/copy controls, read-only hints, and recovery-action submit handling. |
 
@@ -39,6 +46,9 @@ Recovery actions are intentionally narrow:
   the existing update policy and running-app guards.
 - Subscription recovery uses the operator wrapper around the shared content-subscription service.
   It does not grant apps authority over other apps' subscriptions.
+- App-data backup and restore uses the durable app-data backup layer. Backups are sensitive user
+  data, restore plans are metadata-only, and destructive `replaceNamespace`, `replaceApp`, and
+  export-before-delete steps require explicit operator confirmation.
 - Support-bundle export is read-only.
 
 The dashboard should prefer "unavailable" or warning cards when optional services are missing. A
@@ -55,6 +65,7 @@ The bundle must exclude or redact:
   other credentials;
 - raw request bodies, raw fetched content, raw feed bodies, raw social message bodies, and raw Trust
   Graph documents;
+- raw app-data backup payloads and raw app-data values;
 - private insert URIs, private identity material, seeds, recovery phrases, private keys, and
   signatures;
 - local absolute paths, catalog scratch paths, staged bundle paths, rollback paths, source paths,
@@ -69,7 +80,10 @@ source displays.
 Release certification remains the source of truth for promotion. The dashboard helps the operator
 find and recover beta issues on a local node, while release certification records deterministic
 source, docs, and fixture evidence. Certification for this surface is recorded under the
-`operator-beta-ux-and-recovery` ecosystem matrix row and the `operator-beta.*` evidence ids above.
+`operator-beta-ux-and-recovery` ecosystem matrix row and the `operator-beta.*` evidence ids above,
+including `operator-beta.app-data-backup-restore`. The app-data portability layer also records
+`app-data.backup-restore-portability`; see
+[app-data-backup-restore-portability.md](app-data-backup-restore-portability.md).
 
 The dashboard does not introduce a public app store, full Web of Trust, live-network requirement for
 normal PR evidence, generic HTTP/HTTPS crawler, generic filesystem access, generic app database API,

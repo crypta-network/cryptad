@@ -148,6 +148,8 @@ SENSITIVE_KEY_PATTERN = (
     r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
+    r"|app[-_ ]?data[-_ ]?backup|backup[-_ ]?payload|payloadBase64|"
+    r"raw[-_ ]?app[-_ ]?data[-_ ]?valu(?:e|es)|record[-_ ]?valu(?:e|es)"
 )
 SENSITIVE_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -233,7 +235,7 @@ WINDOWS_UNC_PATH_RE = re.compile(
 FILE_URI_PATH_RE = re.compile(r"\bfile://(?P<path>[^\s\])},;\"']+)")
 ROUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])/"
-    r"(?:api/v1|apps|app/node|app-data|app-vault|content|identity-vault|platform|queue|"
+    r"(?:api/v1|apps|app/node|app-data|app-vault|content|identity-vault|operator|platform|queue|"
     r"trust-graph|\.well-known)(?:/[^\s\]),;\"'?]*)?"
 )
 ROUTE_IDENTIFIER_RE = re.compile(r"(?:\{[A-Za-z][A-Za-z0-9]*\}|[A-Za-z0-9][A-Za-z0-9._~-]*)")
@@ -4814,6 +4816,233 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
         "pass",
         True,
         "Durable app-data store evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_app_data_backup_restore_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    source_files = {
+        "service": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataService.java",
+        "workflow": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupRestoreWorkflow.java",
+        "store": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataStore.java",
+        "fileStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/FileAppDataStore.java",
+        "memoryStore": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/InMemoryAppDataStore.java",
+        "bundle": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupBundle.java",
+        "entry": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupEntry.java",
+        "manifest": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupManifest.java",
+        "options": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataBackupOptions.java",
+        "restoreMode": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataRestoreMode.java",
+        "restorePlan": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataRestorePlan.java",
+        "restoreResult": workspace / "platform-api/src/main/java/network/crypta/platform/api/appdata/AppDataRestoreResult.java",
+        "operatorRoutes": workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java",
+        "toadlet": workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java",
+        "redactor": workspace / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java",
+        "serviceTest": workspace / "platform-api/src/test/java/network/crypta/platform/api/appdata/AppDataServiceTest.java",
+        "fileStoreTest": workspace / "platform-api/src/test/java/network/crypta/platform/api/appdata/FileAppDataStoreTest.java",
+        "operatorRoutesTest": workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java",
+        "toadletTest": workspace / "src/test/java/network/crypta/clients/http/PlatformApiToadletTest.java",
+        "redactorTest": workspace / "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java",
+        "webShell": workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+        "webShellIndex": workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html",
+        "webShellTest": workspace / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java",
+        "backupDoc": workspace / "docs/app-data-backup-restore-portability.md",
+        "appDataDoc": workspace / "docs/app-data-store.md",
+        "operatorDoc": workspace / "docs/operator-beta-dashboard.md",
+        "developerPortal": workspace / "docs/app-platform-developer-portal.md",
+        "releaseDoc": workspace / "docs/release-certification.md",
+        "certReadme": workspace / "tools/release-certification/README.md",
+        "profileReadme": workspace / "apps/profile-publisher/README.md",
+        "feedReadme": workspace / "apps/feed-reader/README.md",
+        "socialReadme": workspace / "apps/social-inbox/README.md",
+        "trustReadme": workspace / "apps/trust-graph/README.md",
+    }
+    text = {name: read_source(path) for name, path in source_files.items()}
+    docs_text = "\n".join(
+        text[name]
+        for name in ("backupDoc", "appDataDoc", "operatorDoc", "developerPortal", "releaseDoc", "certReadme")
+    )
+    reference_docs_text = "\n".join(
+        text[name] for name in ("profileReadme", "feedReadme", "socialReadme", "trustReadme")
+    )
+    model_text = "\n".join(
+        text[name]
+        for name in (
+            "bundle",
+            "entry",
+            "manifest",
+            "options",
+            "restoreMode",
+            "restorePlan",
+            "restoreResult",
+        )
+    )
+    checks = {
+        "versionedEnvelopeModels": (
+            "record AppDataBackupBundle" in text["bundle"]
+            and "record AppDataBackupEntry" in text["entry"]
+            and "record AppDataBackupManifest" in text["manifest"]
+            and "CURRENT_BACKUP_VERSION = 1" in text["manifest"]
+            and "crypta-app-data-backup" in text["manifest"]
+            and "sensitiveUserData" in text["manifest"]
+            and "ENCRYPTION_MODE_NONE" in text["manifest"]
+            and "unsupported_backup_encryption" in text["manifest"]
+        ),
+        "metadataToStringAndPlanOmitRawValues": (
+            "export.toJsonValue()" in text["entry"]
+            and "return \"AppDataBackupBundle[" in text["bundle"]
+            and "return \"AppDataBackupEntry[" in text["entry"]
+            and "record AppDataRestorePlan" in text["restorePlan"]
+            and "record AppDataRestoreResult" in text["restoreResult"]
+            and "without raw backup values" in text["restorePlan"]
+            and "without raw backup values" in text["restoreResult"]
+            and '"export"' not in text["restorePlan"]
+            and '"payloadBase64"' not in text["restorePlan"]
+            and '"export"' not in text["restoreResult"]
+            and '"payloadBase64"' not in text["restoreResult"]
+        ),
+        "storeListsKnownAppIds": (
+            "listAppIds()" in text["store"]
+            and "List<String> listAppIds()" in text["fileStore"]
+            and "List<String> listAppIds()" in text["memoryStore"]
+            and "listAppIds_whenStoreHasKnownAndMalformedDirectories_expectOnlyNormalizedIds"
+            in text["fileStoreTest"]
+        ),
+        "serviceExportsSingleAndAllBackups": (
+            "exportBackup" in text["service"]
+            and "backupRestoreWorkflow.exportBackup" in text["service"]
+            and "createBackupBundle" in text["workflow"]
+            and "AppDataBackupOptions.SCOPE_SINGLE_APP" in text["workflow"]
+            and "AppDataBackupOptions.SCOPE_ALL_APPS" in text["workflow"]
+            and "listStoreAppIds()" in text["workflow"]
+            and "payloadBase64" in text["workflow"]
+            and "exportBackup_whenSingleAppRequested_expectVersionedEnvelopeAndMetadataOnlyToString"
+            in text["serviceTest"]
+            and "exportBackup_whenAllAppsRequested_expectKnownAppIdsSorted" in text["serviceTest"]
+        ),
+        "restoreModesPlanAndCommitReuseValidation": (
+            "enum AppDataRestoreMode" in text["restoreMode"]
+            and "MERGE(\"merge\")" in text["restoreMode"]
+            and "REPLACE_NAMESPACE(\"replaceNamespace\")" in text["restoreMode"]
+            and "REPLACE_APP(\"replaceApp\")" in text["restoreMode"]
+            and "planRestore" in text["service"]
+            and "restoreBackup" in text["service"]
+            and "preflightImport" in text["service"]
+            and "preflightReplaceApp" in text["service"]
+            and "replaceImportedNamespaces" in text["service"]
+            and "replaceAppData" in text["service"]
+            and "restoreBackup_whenReplaceApp_expectTargetAppClearedAndOtherAppsPreserved"
+            in text["serviceTest"]
+            and "restorePlan_whenBackupContainsRawValues_expectMetadataOnlyPlan" in text["serviceTest"]
+        ),
+        "operatorOnlyRoutesAndAppPrincipalDenied": (
+            "operator/app-data" in text["operatorRoutes"]
+            and '"backups".equals(segments.get(2))' in text["operatorRoutes"]
+            and "methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE)" in text["operatorRoutes"]
+            and '"restore".equals(segments.get(2))' in text["operatorRoutes"]
+            and (
+                'case "plan"' in text["operatorRoutes"]
+                or '"plan".equals(segments.get(3))' in text["operatorRoutes"]
+            )
+            and "appDataService.planRestore" in text["operatorRoutes"]
+            and "requireHostOperator(request)" in text["operatorRoutes"]
+            and "app_data_service_unavailable" in text["operatorRoutes"]
+            and "requiresOperatorFormPassword" in text["toadlet"]
+            and '"backups".equals(pathSegments.get(2))' in text["toadlet"]
+            and "/operator/app-data/backups" in text["toadletTest"]
+            and "route_whenOperatorUsesAppDataBackupRestore_expectSensitiveBackupAndMetadataPlan"
+            in text["operatorRoutesTest"]
+            and "route_whenAppPrincipalRequestsAppDataBackupRestore_expectForbidden"
+            in text["operatorRoutesTest"]
+        ),
+        "supportRedactionRecognizesBackupPayloads": (
+            "crypta-app-data-backup" in text["redactor"]
+            and "REDACTED_APP_DATA_BACKUP" in text["redactor"]
+            and "backupbundle" in text["redactor"].lower()
+            and "payloadbase64" in text["redactor"].lower()
+            and "redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted"
+            in text["redactorTest"]
+        ),
+        "webShellExposesBackupRestoreAndNoPersistentBackupStorage": (
+            "Download all app-data backup" in text["webShellIndex"]
+            and "Sensitive backup payload" in text["webShellIndex"]
+            and "function downloadAllAppDataBackup()" in text["webShell"]
+            and "function submitAppDataRestoreForm(form, restoreAction, statusSetter)" in text["webShell"]
+            and "operator/app-data/backups" in text["webShell"]
+            and "operator/app-data/restore/plan" in text["webShell"]
+            and "operator/app-data/restore" in text["webShell"]
+            and "function appDataBackupPayloadBlob(response)" in text["webShell"]
+            and "urlSafeBase64ToBytes(payloadBase64)" in text["webShell"]
+            and 'downloadAppDataBackupPayload(response, "all-apps", "")' in text["webShell"]
+            and 'downloadAppDataBackupPayload(response, "single-app", appId)' in text["webShell"]
+            and "localStorage" in text["webShell"]
+            and "backupPayload" in text["webShell"]
+            and "sessionStorage" not in text["webShell"]
+            and "IndexedDB" not in text["webShell"]
+            and "Export backup before delete" in text["webShell"]
+            and "assertAppDataBackupRestoreMarkersPresent(script)" in text["webShellTest"]
+        ),
+        "docsCoverFormatModesSensitivityAndExclusions": (
+            "backupVersion" in docs_text
+            and "crypta-app-data-backup" in docs_text
+            and "single-app" in docs_text
+            and "all-apps" in docs_text
+            and "merge" in docs_text
+            and "replaceNamespace" in docs_text
+            and "replaceApp" in docs_text
+            and "sensitive user data" in docs_text
+            and "encryption.mode = none" in docs_text
+            and "vault secrets" in docs_text
+            and "private identity material" in docs_text
+            and "support bundles" in docs_text
+            and "release evidence" in docs_text
+            and "operator-beta.app-data-backup-restore" in docs_text
+            and "app-data.backup-restore-portability" in docs_text
+        ),
+        "firstPartyDocsDescribePortableScope": (
+            reference_docs_text.count("App-data backup scope") >= 4
+            and "vault private identity material" in reference_docs_text
+            and "app-service tokens" in reference_docs_text
+            and "UI-local" in reference_docs_text
+        ),
+    }
+    details = {
+        "checks": checks,
+        "backupVersion": 1,
+        "encryptionModesSupported": ["none"],
+        "restoreModes": ["merge", "replaceNamespace", "replaceApp"],
+        "operatorRouteTemplates": [
+            "POST /api/v1/operator/app-data/backups appId=<app-id>",
+            "POST /api/v1/operator/app-data/backups scope=all",
+            "POST /api/v1/operator/app-data/restore/plan",
+            "POST /api/v1/operator/app-data/restore",
+        ],
+        "redaction": {
+            "rawBackupPayloadsExcludedFromEvidence": True,
+            "supportBundlesExcludeBackupPayloads": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+        "sources": {name: display_path(path, workspace) for name, path in source_files.items()},
+    }
+    errors = [key for key, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "app-data.backup-restore-portability",
+            root_consequence(settings, "fail"),
+            True,
+            "App-data backup/restore portability evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-data.backup-restore-portability",
+        "pass",
+        True,
+        "App-data backup/restore portability evidence passed deterministic checks.",
         source,
         details,
     )
@@ -9469,6 +9698,7 @@ OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.subscription-recovery",
     "operator-beta.trust-review-warnings",
     "operator-beta.app-data-quota-warnings",
+    "operator-beta.app-data-backup-restore",
     "operator-beta.support-bundle-redaction",
     "operator-beta.web-shell",
 )
@@ -9722,6 +9952,45 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                 "docs": "operator-beta.app-data-quota-warnings" in docs_text,
             },
             "Operator beta app-data and quota-warning evidence passed.",
+        ),
+        (
+            "operator-beta.app-data-backup-restore",
+            {
+                "backupRestoreRoutes": (
+                    "routeAppDataBackup" in routes_text
+                    and "methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE)" in routes_text
+                    and "routeAppDataRestoreCommit" in routes_text
+                    and "routeAppDataRestore(" in routes_text
+                    and "app_data_service_unavailable" in routes_text
+                    and "requireHostOperator(request)" in routes_text
+                ),
+                "formPasswordGuard": (
+                    "requiresOperatorFormPassword" in toadlet_text
+                    and "/operator/app-data/backups" in toadlet_test_text
+                    and "/operator/app-data/restore/plan" in toadlet_test_text
+                    and "/operator/app-data/restore" in toadlet_test_text
+                ),
+                "appPrincipalDenied": (
+                    "route_whenAppPrincipalRequestsAppDataBackupRestore_expectForbidden"
+                    in operator_routes_test_text
+                ),
+                "webShellControls": (
+                    "downloadAllAppDataBackup()" in web_shell_text
+                    and "submitAppDataRestoreForm(" in web_shell_text
+                    and "setBetaDashboardStatus" in web_shell_text
+                    and "Export backup before delete" in web_shell_text
+                    and 'id="all-app-data-backup-button"' in web_shell_index_text
+                    and 'id="operator-app-data-restore-form"' in web_shell_index_text
+                ),
+                "resourceTests": (
+                    "assertAppDataBackupRestoreMarkersPresent(script)" in web_shell_test_text
+                ),
+                "docs": (
+                    "operator-beta.app-data-backup-restore" in docs_text
+                    and "app-data.backup-restore-portability" in docs_text
+                ),
+            },
+            "Operator beta app-data backup/restore evidence passed.",
         ),
         (
             "operator-beta.support-bundle-redaction",
@@ -10026,6 +10295,7 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem]) -> dict[str,
             "reviewerKeyMaterialRedacted": True,
             "reviewTransparencyPathsExcluded": True,
             "rawUpdateRollbackOutputsExcluded": True,
+            "rawAppDataBackupsExcluded": True,
             "absolutePathsSanitized": True,
         },
     }
@@ -10050,6 +10320,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_content_subscription_evidence(settings),
         collect_content_subscription_scheduler_evidence(settings),
         collect_app_data_store_evidence(settings),
+        collect_app_data_backup_restore_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
         collect_trust_graph_durable_store_evidence(settings),
         collect_trust_graph_exchange_evidence(settings),
@@ -10721,6 +10992,15 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-platform.content-subscriptions"]["status"] == "pass"
         assert evidence_by_id["network-content.subscription-scheduler"]["status"] == "pass"
         assert evidence_by_id["app-platform.durable-app-data-store"]["status"] == "pass"
+        backup_restore_item = evidence_by_id["app-data.backup-restore-portability"]
+        assert backup_restore_item["status"] == "pass", backup_restore_item
+        assert backup_restore_item["requiredForReleaseCandidate"] is True
+        assert backup_restore_item["details"]["backupVersion"] == 1, backup_restore_item
+        assert backup_restore_item["details"]["restoreModes"] == [
+            "merge",
+            "replaceNamespace",
+            "replaceApp",
+        ], backup_restore_item
         contract_details = contract_item["details"]
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
@@ -11739,7 +12019,8 @@ def make_self_test_workspace(workspace: Path) -> None:
             (workspace / "apps/profile-publisher/README.md").write_text(
                 "Profile Publisher creates an app-owned identity, calls the "
                 "profile-document route, persists bounded app-data draft state in AppVault-safe form, and inserts the signed app-document "
-                "without storing raw signatures in release evidence.\n",
+                "without storing raw signatures in release evidence. App-data backup scope includes profile drafts and publish summaries. "
+                "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
         if app_id == "feed-reader":
@@ -11747,7 +12028,9 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "Feed Reader uses POST /api/v1/content/fetch through SDK feed helpers, "
                 "uses durable content.subscribe metadata for USK subscriptions, "
                 "uses app-data for bounded local reader state, "
-                "then publishes generated feed summaries without storing raw feed bodies.\n",
+                "then publishes generated feed summaries without storing raw feed bodies. "
+                "App-data backup scope includes feed sources, selected subscriptions, read state, and safe drafts. "
+                "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
         if app_id == "social-inbox":
@@ -11759,13 +12042,16 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "It is not a production social network, mail protocol, full WoT implementation, "
                 "Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, daemon-core message store, "
                 "or a network protocol change, and it avoids private insert URIs, browser-session tokens, "
-                "raw fetched documents, and private identity material.\n",
+                "raw fetched documents, and private identity material. App-data backup scope includes sources, summaries, drafts, and read state. "
+                "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
         if app_id == "trust-graph":
             (workspace / "apps/trust-graph/README.md").write_text(
                 "Trust Graph Preview creates an app-owned trust identity, signs a trust-statement "
-                "through AppVault, stores UI-local app-data draft summaries, imports local anchors, and is not full WoT.\n",
+                "through AppVault, stores UI-local app-data draft summaries, imports local anchors, and is not full WoT. "
+                "App-data backup scope includes UI-local drafts, filters, and redacted import summaries. "
+                "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
     adversarial_markup_test_text = "\n".join(PUBLIC_BETA_SECURITY_MARKUP_FIXTURES)
@@ -12270,6 +12556,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppDataService { static final String CAPABILITY_APP_DATA_READ = \"app.data.read\"; "
         "static final String CAPABILITY_APP_DATA_WRITE = \"app.data.write\"; "
         "boolean storeUsageOutsideAppDataDir; "
+        "AppDataBackupRestoreWorkflow backupRestoreWorkflow; "
+        "Object exportBackup(AppDataBackupOptions options, String sourceCryptaVersion) { return backupRestoreWorkflow.exportBackup(options, sourceCryptaVersion); } "
+        "Object listStoreAppIds() { return store.listAppIds(); } "
+        "Object planRestore(byte[] payload, AppDataRestoreMode mode, String appId) { preflightImport(null); preflightReplaceApp(null); return null; } "
+        "Object restoreBackup(byte[] payload, AppDataRestoreMode mode, String appId) { replaceImportedNamespaces(null); replaceAppData(appId); return null; } "
+        "void preflightImport(Object payload) {} void preflightReplaceApp(Object payload) {} "
+        "void replaceImportedNamespaces(Object payload) {} void replaceAppData(String appId) {} "
         "void updateSchema(){ String fromSchemaVersion; String toSchemaVersion; } "
         "AutoCloseable beginUpdateMigrationWriteBarrier(String appId) { String error = \"app_data_migration_in_progress\"; rejectIfUpdateMigrationWriteBarrierActive(appId); return null; } "
         "AppDataUpdateSnapshot createUpdateSnapshot(String appId) { String e = \"app_data_snapshot_too_large\"; return null; } "
@@ -12283,6 +12576,17 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String lastMigrationAt; String quota = \"quota.data.bytes\"; }\n",
         encoding="utf-8",
     )
+    (appdata_api_dir / "AppDataBackupRestoreWorkflow.java").write_text(
+        "final class AppDataBackupRestoreWorkflow { "
+        "Object exportBackup(AppDataBackupOptions options, String sourceCryptaVersion) { payloadBase64 = \"\"; return createBackupBundle(options); } "
+        "Object createBackupBundle(AppDataBackupOptions options) { AppDataBackupOptions.SCOPE_SINGLE_APP.toString(); AppDataBackupOptions.SCOPE_ALL_APPS.toString(); listStoreAppIds(); return null; } "
+        "Object listStoreAppIds() { return service.listStoreAppIds(); } }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataStore.java").write_text(
+        "interface AppDataStore { java.util.List<String> listAppIds(); }\n",
+        encoding="utf-8",
+    )
     (appdata_api_dir / "AppDataUpdateSnapshot.java").write_text(
         "record AppDataUpdateSnapshot(String appId, Object payload, long sizeBytes) {}\n",
         encoding="utf-8",
@@ -12293,9 +12597,53 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appdata_api_dir / "FileAppDataStore.java").write_text(
-        "final class FileAppDataStore { String hash = \"sha256\"; String move = \"ATOMIC_MOVE\"; "
+        "final class FileAppDataStore { List<String> listAppIds() { return List.of(); } "
+        "String hash = \"sha256\"; String move = \"ATOMIC_MOVE\"; "
         "String current = \"current.properties\"; String root = \".cryptad-app-data\"; "
         "String value = \"value.bin\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "InMemoryAppDataStore.java").write_text(
+        "final class InMemoryAppDataStore { List<String> listAppIds() { return List.of(); } }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataBackupBundle.java").write_text(
+        "record AppDataBackupBundle(AppDataBackupManifest manifest, java.util.List<AppDataBackupEntry> apps) { "
+        "public String toString() { return \"AppDataBackupBundle[metadata only]\"; } }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataBackupEntry.java").write_text(
+        "record AppDataBackupEntry(String appId, AppDataExportPayload export) { "
+        "Object json() { return export.toJsonValue(); } "
+        "public String toString() { return \"AppDataBackupEntry[metadata only]\"; } }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataBackupManifest.java").write_text(
+        "record AppDataBackupManifest(int backupVersion, String kind, boolean sensitiveUserData) { "
+        "static final int CURRENT_BACKUP_VERSION = 1; "
+        "static final String BACKUP_KIND = \"crypta-app-data-backup\"; "
+        "static final String ENCRYPTION_MODE_NONE = \"none\"; "
+        "static final String ERROR = \"unsupported_backup_encryption\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataBackupOptions.java").write_text(
+        "record AppDataBackupOptions(String scope, String appId) { "
+        "static final String SCOPE_SINGLE_APP = \"single-app\"; "
+        "static final String SCOPE_ALL_APPS = \"all-apps\"; }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataRestoreMode.java").write_text(
+        "enum AppDataRestoreMode { MERGE(\"merge\"), REPLACE_NAMESPACE(\"replaceNamespace\"), REPLACE_APP(\"replaceApp\"); AppDataRestoreMode(String wireName) {} }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataRestorePlan.java").write_text(
+        "record AppDataRestorePlan(String status) { // without raw backup values\n"
+        "Object toJsonValue() { return status; } }\n",
+        encoding="utf-8",
+    )
+    (appdata_api_dir / "AppDataRestoreResult.java").write_text(
+        "record AppDataRestoreResult(String status) { // without raw backup values\n"
+        "Object toJsonValue() { return status; } }\n",
         encoding="utf-8",
     )
     (appdata_api_dir / "AppDataStoreConfig.java").write_text(
@@ -12548,11 +12896,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void advanceUpdateMigrationDryRunPayload_whenTargetManifestRaisesQuota_expectTargetQuotaUsed() {}\n"
         "void preflightUpdateMigrationDryRunPayloads_whenCombinedOutputExceedsRecordQuota_expectQuotaError() {}\n"
         "void advanceUpdateMigrationDryRunPayload_whenChainedDryRun_expectNamespaceTotalsMatchRecords() { importedValueBytes(records); }\n"
+        "void exportBackup_whenSingleAppRequested_expectVersionedEnvelopeAndMetadataOnlyToString() {}\n"
+        "void exportBackup_whenAllAppsRequested_expectKnownAppIdsSorted() {}\n"
+        "void restoreBackup_whenReplaceApp_expectTargetAppClearedAndOtherAppsPreserved() {}\n"
+        "void restorePlan_whenBackupContainsRawValues_expectMetadataOnlyPlan() {}\n"
         "long importedValueBytes(java.util.List<Object> records) { return 0L; }\n",
         encoding="utf-8",
     )
     (appdata_tests / "FileAppDataStoreTest.java").write_text(
-        "void writeRecord_whenUnreferencedGenerationExists_expectCurrentRecordUnaffected() {}\n",
+        "void writeRecord_whenUnreferencedGenerationExists_expectCurrentRecordUnaffected() {}\n"
+        "void listAppIds_whenStoreHasKnownAndMalformedDirectories_expectOnlyNormalizedIds() {}\n",
         encoding="utf-8",
     )
     (platform_api_tests / "TrustGraphApiTest.java").write_text(
@@ -12677,6 +13030,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "It requires app.data.read and app.data.write, enforces cryptad.appData.maxRecordBytes and quota bounds, "
         "is not a filesystem API, is not a generic database, and is not a secret vault. "
         "Export and import are bounded, schema migration metadata is recorded, and Redaction rules exclude raw app-data values. "
+        "App-data backup and restore uses backupVersion 1 with kind crypta-app-data-backup, "
+        "single-app and all-apps scope, restore modes merge, replaceNamespace, and replaceApp, "
+        "sensitive user data warnings, encryption.mode = none, vault secrets and private identity material exclusions, "
+        "support bundles and release evidence redaction, app-data.backup-restore-portability, and operator-beta.app-data-backup-restore. "
         "Contract v12 adds GET /api/v1/app-services, app.services.read, app.services.call, "
         "operator-approved app-service grants, and mediated trust.score invocation through Trust Score Service grants. "
         "Contract v13 adds catalog.version=3 production catalog channels: stable, beta, nightly, and deprecated. "
@@ -12687,7 +13044,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "The app-data migration lifecycle runs a dry-run before bundle replacement, creates an internal rollback snapshot, "
         "restores app data on failed migration rollback, and keeps rollback snapshot scope app-only. "
         "It blocks missing migration paths and rollback-incompatible migrations until operator review, "
-        "and PR-250 user-facing backup/restore portability remains deferred. "
+        "and PR-250 long-term backup/restore portability is handled by the operator backup envelope. "
         "It is not generic RPC, not a localhost proxy, and does not give apps ambient access to provider ports or data. "
         "Social Inbox uses a Trust Score Service grant for message-author annotations; revoked grants fail, and it must not fall back to\n"
         "`CryptaPlatform.trust.score`. "
@@ -12724,6 +13081,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     for doc_name in (
         "app-catalogs.md",
+        "app-data-backup-restore-portability.md",
         "app-data-store.md",
         "app-dev-cli.md",
         "app-platform-developer-portal.md",
@@ -12741,6 +13099,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "release-certification.md",
     ):
         (docs / doc_name).write_text(first_party_docs, encoding="utf-8")
+    cert_readme = workspace / "tools/release-certification/README.md"
+    cert_readme.parent.mkdir(parents=True, exist_ok=True)
+    cert_readme.write_text(first_party_docs, encoding="utf-8")
     (docs / "legacy-plugin-migration-guide.md").write_text(
         "The old plugin runtime removed status is intentional. There is no old plugin ABI "
         "compatibility and no old FCP plugin command compatibility. WebOfTrust-like and WoT-like "
@@ -13601,6 +13962,21 @@ definitionList([
 const migrationTitle = "App-data migration plan";
 const migrationAcknowledged = "migrationAcknowledged";
 const migrationStepList = "migration-step-list";
+const storedCatalogChannel = window.localStorage.getItem("catalogChannel");
+function downloadAllAppDataBackup(){ return postForm("operator/app-data/backups", new FormData()); }
+function submitAppDataRestoreForm(form, restoreAction, statusSetter){}
+function setBetaDashboardStatus(message){}
+function downloadJsonBlob(value, fileName){ new Blob([`${formatJson(value)}\\n`]); }
+function urlSafeBase64ToBytes(value){ return value; }
+function appDataBackupPayloadBlob(response){ const payloadBase64 = response.payloadBase64; return new Blob([urlSafeBase64ToBytes(payloadBase64)]); }
+function downloadAppDataBackupPayload(response, fallbackScope, appId){ downloadBlob(appDataBackupPayloadBlob(response)); }
+downloadAppDataBackupPayload(response, "all-apps", "");
+downloadAppDataBackupPayload(response, "single-app", appId);
+function appDataBackupFormDataForApp(appId){ const formData = new FormData(); formData.set("appId", appId); return formData; }
+function allAppDataBackupFormData(){ const formData = new FormData(); formData.set("scope", "all"); return formData; }
+apiUrl("operator/app-data/restore/plan");
+apiUrl("operator/app-data/restore");
+const appDataRestoreFields = "payloadBase64 replaceNamespace replaceApp backupPayload Export backup before delete";
 """,
         encoding="utf-8",
     )
@@ -13634,15 +14010,21 @@ const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
     )
     web_shell_index.write_text(
         '<article id="beta-dashboard"><div id="beta-dashboard-body"></div>'
-        '<button id="support-bundle-download-button">Download support JSON</button></article>\n',
+        '<button id="support-bundle-download-button">Download support JSON</button>'
+        '<button id="all-app-data-backup-button">Download all app-data backup</button>'
+        '<form id="operator-app-data-restore-form">'
+        '<label>Sensitive backup payload</label><textarea name="backupPayload"></textarea>'
+        '</form></article>\n',
         encoding="utf-8",
     )
     web_shell_test.write_text(
         web_shell_test.read_text(encoding="utf-8")
         + "void assertBetaDashboardMarkersPresent(String script) {} "
         "void assertBetaDashboardLoadSequencing(String script) {} "
+        "void assertAppDataBackupRestoreMarkersPresent(String script) {} "
         "void calls() { assertBetaDashboardMarkersPresent(script); "
-        "assertBetaDashboardLoadSequencing(script); }\n",
+        "assertBetaDashboardLoadSequencing(script); "
+        "assertAppDataBackupRestoreMarkersPresent(script); }\n",
         encoding="utf-8",
     )
     operator_dir = api_dir / "operator"
@@ -13710,7 +14092,9 @@ final class OperatorBetaDashboardService {
     )
     (operator_dir / "OperatorSupportRedactor.java").write_text(
         'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
-        '"browsersession", "requestbody", "rawbody", "sourcepath", "rollbackpath"}; }\n',
+        '"browsersession", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
+        '"backupbundle", "payloadbase64"}; String marker = "crypta-app-data-backup"; '
+        'String value = REDACTED_APP_DATA_BACKUP; }\n',
         encoding="utf-8",
     )
     (api_dir / "PlatformApiOperatorRoutes.java").write_text(
@@ -13720,10 +14104,18 @@ final class PlatformApiOperatorRoutes {
     requireHostOperator(request);
     if ("beta-dashboard".equals(resource)) return dashboardService.dashboard();
     if ("support-bundle".equals(resource)) return dashboardService.supportBundle();
+    if ("backups".equals(segments.get(2))) return routeAppDataBackup(request);
+    if ("restore".equals(segments.get(2))) return routeAppDataRestore(request);
     switch (action) { case "refresh": break; case "pause": break; case "resume": break; }
-    String error = "host_operator_required";
+    if ("plan".equals(segments.get(3))) return appDataService.planRestore(request);
+    String route = "operator/app-data";
+    String error = "host_operator_required app_data_service_unavailable";
     return null;
   }
+  Object routeAppDataBackup(Object request) { return null; }
+  Object routeAppDataBackupPostOnly(Object request) { return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE); }
+  Object routeAppDataRestore(Object request) { return routeAppDataRestoreCommit(request); }
+  Object routeAppDataRestoreCommit(Object request) { return null; }
 }
 """,
         encoding="utf-8",
@@ -13746,9 +14138,11 @@ final class PlatformApiOperatorRoutes {
         """
 class PlatformApiOperatorRoutesTest {
   private static final String FORM_FIELD_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
-  void route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch() {}
-  void route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden() {}
-  void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
+	  void route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch() {}
+	  void route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden() {}
+	  void route_whenAppPrincipalRequestsAppDataBackupRestore_expectForbidden() {}
+	  void route_whenOperatorUsesAppDataBackupRestore_expectSensitiveBackupAndMetadataPlan() {}
+	  void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
     String path = "/work/private/catalog";
     String secret = FORM_FIELD_ASSIGNMENT;
     assertFalse(response.body().contains(FORM_FIELD_ASSIGNMENT));
@@ -13766,6 +14160,7 @@ class OperatorSupportRedactorTest {
     String path = "/work/cryptad/private.txt";
     String secret = "query-secret";
   }
+  void redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted() {}
 }
 """,
         encoding="utf-8",
@@ -13773,22 +14168,24 @@ class OperatorSupportRedactorTest {
     legacy_http_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
     legacy_http_dir.mkdir(parents=True, exist_ok=True)
     (legacy_http_dir / "PlatformApiToadlet.java").write_text(
-        "final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return true; } }\n",
+        'final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return "backups".equals(pathSegments.get(2)); } String route = "operator/app-data/backups"; String method = "POST"; }\n',
         encoding="utf-8",
     )
     legacy_http_test_dir = workspace / "src/test/java/network/crypta/clients/http"
     legacy_http_test_dir.mkdir(parents=True, exist_ok=True)
     (legacy_http_test_dir / "PlatformApiToadletTest.java").write_text(
-        'class PlatformApiToadletTest { String path = "/operator/subscriptions/feed-reader/sub-123/refresh"; }\n',
+        'class PlatformApiToadletTest { String paths = "/operator/app-data/backups /operator/app-data/restore/plan /operator/app-data/restore /operator/subscriptions/feed-reader/sub-123/refresh"; }\n',
         encoding="utf-8",
     )
     operator_doc_text = (
         "The host/operator-only Operator beta dashboard documents operator-beta.dashboard, "
         "operator-beta.catalog-health, operator-beta.app-update-recovery, "
         "operator-beta.subscription-recovery, operator-beta.trust-review-warnings, "
-        "operator-beta.app-data-quota-warnings, operator-beta.support-bundle-redaction, and "
-        "operator-beta.web-shell. Trust Graph Preview is not complete Web of Trust. "
-        "Support bundles are reviewed by the operator before sharing and exclude raw request bodies."
+        "operator-beta.app-data-quota-warnings, operator-beta.app-data-backup-restore, "
+        "operator-beta.support-bundle-redaction, and operator-beta.web-shell. "
+        "App-data backup restore evidence app-data.backup-restore-portability uses sensitive user data warnings. "
+        "Trust Graph Preview is not complete Web of Trust. "
+        "Support bundles are reviewed by the operator before sharing and exclude raw request bodies and raw backup values."
     )
     (docs / "operator-beta-dashboard.md").write_text(operator_doc_text, encoding="utf-8")
     (docs / "app-platform-beta-program.md").write_text(

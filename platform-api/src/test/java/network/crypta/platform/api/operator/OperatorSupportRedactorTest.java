@@ -73,6 +73,41 @@ class OperatorSupportRedactorTest {
   }
 
   @Test
+  void redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted() {
+    Map<String, Object> backup =
+        Map.of(
+            "backupVersion",
+            1,
+            "kind",
+            "crypta-app-data-backup",
+            "apps",
+            List.of(
+                Map.of(
+                    "appId",
+                    "feed-reader",
+                    "export",
+                    Map.of(
+                        "records",
+                        List.of(
+                            Map.of(
+                                "key",
+                                "settings",
+                                "valueBase64",
+                                "private-backup-record-value"))))));
+    Map<String, Object> input =
+        Map.of("diagnostic", "backup marker crypta-app-data-backup", "backup", backup);
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains("private-backup-record-value"));
+    assertFalse(rendered.contains("valueBase64"));
+    assertFalse(rendered.contains("crypta-app-data-backup"));
+    assertTrue(rendered.contains("<redacted-app-data-backup>"));
+    assertTrue(result.omittedFields().contains("backup"));
+  }
+
+  @Test
   void redact_whenArbitraryAbsolutePathsPresent_expectUnsafePathsRemoved() {
     String posixPath = posixAppPath();
     String macSupportPath = macSupportAppPath();

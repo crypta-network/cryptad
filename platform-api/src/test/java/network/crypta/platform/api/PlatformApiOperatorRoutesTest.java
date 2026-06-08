@@ -8,9 +8,14 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import network.crypta.platform.api.appdata.AppDataRecord;
+import network.crypta.platform.api.appdata.AppDataService;
+import network.crypta.platform.api.appdata.AppDataStoreConfig;
+import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
+import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
@@ -180,6 +185,130 @@ class PlatformApiOperatorRoutesTest {
   }
 
   @Test
+  void route_whenOperatorUsesAppDataBackupRestore_expectSensitiveBackupAndMetadataPlan() {
+    AppDataService source = appDataService();
+    source.putRecord(APP_ID, appDataRecordParams("private-backup-record-value"));
+    String backupPayloadBase64 =
+        (String) source.exportBackup(Map.of("appId", List.of(APP_ID)), "test").get("payloadBase64");
+    AppDataService target = appDataService();
+    target.putRecord(APP_ID, appDataRecordParams("old"));
+    PlatformApiRouter router =
+        new PlatformApiRouter(
+            runtimePorts(),
+            null,
+            null,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            PlatformApiSharedAppServices.of(null, null, null, target));
+
+    PlatformApiResponse backupResponse =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "backups"),
+                Map.of("appId", List.of(APP_ID))));
+    PlatformApiResponse planResponse =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "restore", "plan"),
+                Map.of("payloadBase64", List.of(backupPayloadBase64), "mode", List.of("merge"))));
+    PlatformApiResponse restoreResponse =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "restore"),
+                Map.of("payloadBase64", List.of(backupPayloadBase64), "mode", List.of("merge"))));
+
+    assertEquals(200, backupResponse.statusCode());
+    assertTrue(backupResponse.body().contains("crypta-app-data-backup"));
+    assertTrue(
+        backupResponse
+            .body()
+            .contains(
+                java.util.Base64.getEncoder()
+                    .encodeToString("old".getBytes(StandardCharsets.UTF_8))));
+    assertEquals(200, planResponse.statusCode());
+    assertTrue(planResponse.body().contains("\"restorePlan\""));
+    assertTrue(planResponse.body().contains("\"would_merge\""));
+    assertFalse(planResponse.body().contains("private-backup-record-value"));
+    assertEquals(200, restoreResponse.statusCode());
+    assertTrue(restoreResponse.body().contains("\"restoreResult\""));
+    assertEquals(
+        "private-backup-record-value",
+        target.getRecord(APP_ID, "ui-state", "settings").get("valueText"));
+  }
+
+  @Test
+  void route_whenOperatorUsesGetForAppDataBackup_expectMethodNotAllowedWithoutBackupPayload() {
+    AppDataService service = appDataService();
+    service.putRecord(APP_ID, appDataRecordParams("private-backup-record-value"));
+    PlatformApiRouter router =
+        new PlatformApiRouter(
+            runtimePorts(),
+            null,
+            null,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            PlatformApiSharedAppServices.of(null, null, null, service));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "GET",
+                List.of(OPERATOR_SEGMENT, "app-data", "backups"),
+                Map.of("scope", List.of("all"))));
+
+    assertEquals(405, response.statusCode());
+    assertFalse(response.body().contains("crypta-app-data-backup"));
+    assertFalse(response.body().contains("private-backup-record-value"));
+  }
+
+  @Test
+  void route_whenAppPrincipalRequestsAppDataBackupRestore_expectForbidden() {
+    PlatformApiRouter router =
+        new PlatformApiRouter(
+            runtimePorts(),
+            null,
+            null,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            PlatformApiSharedAppServices.of(null, null, null, appDataService()));
+    PlatformApiPrincipal appPrincipal =
+        PlatformApiPrincipal.appBrowserSession(
+            APP_ID,
+            List.of(
+                AppDataService.CAPABILITY_APP_DATA_READ, AppDataService.CAPABILITY_APP_DATA_WRITE));
+
+    PlatformApiResponse backup =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "backups"),
+                Map.of("appId", List.of(APP_ID)),
+                appPrincipal));
+    PlatformApiResponse plan =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "restore", "plan"),
+                Map.of("payloadBase64", List.of("ignored")),
+                appPrincipal));
+    PlatformApiResponse restore =
+        router.route(
+            request(
+                "POST",
+                List.of(OPERATOR_SEGMENT, "app-data", "restore"),
+                Map.of("payloadBase64", List.of("ignored")),
+                appPrincipal));
+
+    assertEquals(403, backup.statusCode());
+    assertEquals(403, plan.statusCode());
+    assertEquals(403, restore.statusCode());
+    assertFalse(backup.body().contains("payloadBase64"));
+  }
+
+  @Test
   void route_whenReducedRouterTrustGraphAnchorAdded_expectOperatorDashboardSeesAnchor() {
     PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
 
@@ -259,6 +388,29 @@ class PlatformApiOperatorRoutesTest {
         1024L,
         Duration.ofSeconds(1),
         Duration.ofSeconds(5));
+  }
+
+  private static AppDataService appDataService() {
+    return new AppDataService(
+        new InMemoryAppDataStore(),
+        null,
+        new AppDataStoreConfig(256, 16, 4, 8192, 8192, 8),
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new AppDiskUsageScanner());
+  }
+
+  private static Map<String, List<String>> appDataRecordParams(String value) {
+    return Map.of(
+        "namespace",
+        List.of("ui-state"),
+        "key",
+        List.of("settings"),
+        "contentType",
+        List.of(AppDataRecord.JSON_CONTENT_TYPE),
+        "schemaVersion",
+        List.of("1"),
+        "valueText",
+        List.of(value));
   }
 
   private static RuntimePorts runtimePorts() {

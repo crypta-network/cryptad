@@ -78,9 +78,11 @@ public final class AppDataService {
   private static final String PARAM_FORMAT = "format";
   private static final String PARAM_PAYLOAD_BASE64 = "payloadBase64";
   private static final String PARAM_MODE = "mode";
+  private static final String PARAM_APP_ID = "appId";
   private static final String FIELD_NAMESPACE_COUNT = "namespaceCount";
   private static final String FIELD_PAYLOAD_BYTES = "payloadBytes";
   private static final String FIELD_RECORD_COUNT = "recordCount";
+  private static final String STATUS_QUOTA_UNAVAILABLE = "app_data_quota_unavailable";
   private static final String IMPORT_MODE_MERGE = "merge";
   private static final String IMPORT_MODE_REPLACE_NAMESPACE = "replaceNamespace";
   private static final long RECORD_METADATA_QUOTA_RESERVE_BYTES = 2_048L;
@@ -93,6 +95,7 @@ public final class AppDataService {
   private final Clock clock;
   private final AppDiskUsageScanner diskUsageScanner;
   private final boolean storeUsageOutsideAppDataDir;
+  private final AppDataBackupRestoreWorkflow backupRestoreWorkflow;
   private final Map<String, Integer> updateMigrationWriteBarriers = new LinkedHashMap<>();
 
   /**
@@ -188,6 +191,7 @@ public final class AppDataService {
     this.clock = Objects.requireNonNull(clock, "clock");
     this.diskUsageScanner = Objects.requireNonNull(diskUsageScanner, "diskUsageScanner");
     this.storeUsageOutsideAppDataDir = storeUsageOutsideAppDataDir;
+    backupRestoreWorkflow = new AppDataBackupRestoreWorkflow(this);
   }
 
   /**
@@ -206,7 +210,7 @@ public final class AppDataService {
     List<AppDataRecordSummary> records = listStoredRecordSummaries(normalizedAppId, null);
     long totalBytes = records.stream().mapToLong(AppDataRecordSummary::valueBytes).sum();
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
-    json.put("appId", normalizedAppId);
+    json.put(PARAM_APP_ID, normalizedAppId);
     json.put(FIELD_RECORD_COUNT, records.size());
     json.put(FIELD_NAMESPACE_COUNT, namespaces.size());
     json.put("totalBytes", totalBytes);
@@ -597,6 +601,54 @@ public final class AppDataService {
     json.put(FIELD_RECORD_COUNT, importedRecords.size());
     json.put(FIELD_PAYLOAD_BYTES, payloadBytes.length);
     return json;
+  }
+
+  /**
+   * Exports one operator-visible portable app-data backup bundle.
+   *
+   * <p>This route-level helper is host/operator-only in the router. It can export a single app id
+   * or every app id safely known to the store, including preserved data for apps that are no longer
+   * installed. The returned {@code backup} object and {@code payloadBase64} contain raw app-owned
+   * values and must be handled as sensitive user backup data, not support diagnostics.
+   *
+   * @param parameters decoded query parameters; supply {@code appId} for one app or {@code
+   *     scope=all} for all known app-data state
+   * @param sourceCryptaVersion path-free daemon version label
+   * @return backup response envelope containing the bundle and URL-safe payload base64
+   */
+  public synchronized Map<String, Object> exportBackup(
+      Map<String, List<String>> parameters, String sourceCryptaVersion) {
+    return backupRestoreWorkflow.exportBackup(parameters, sourceCryptaVersion);
+  }
+
+  /**
+   * Builds a metadata-only restore plan for an operator backup payload.
+   *
+   * <p>The plan route decodes and validates the backup envelope, then runs the same identifier,
+   * size, count, import, and quota preflight used by commit. It does not write app data and does
+   * not expose record values from the backup payload.
+   *
+   * @param parameters decoded form/query fields containing {@code payloadBase64}, optional {@code
+   *     mode}, and optional same-id {@code appId}
+   * @return response envelope containing the metadata-only restore plan
+   */
+  public synchronized Map<String, Object> planRestore(Map<String, List<String>> parameters) {
+    return backupRestoreWorkflow.planRestore(parameters);
+  }
+
+  /**
+   * Restores an operator backup payload after preflight.
+   *
+   * <p>The method plans first and returns a blocked metadata result without writing when any app
+   * entry cannot be restored. Successful commits use the requested restore mode and return only
+   * counts, byte totals, app ids, and status codes.
+   *
+   * @param parameters decoded form/query fields containing {@code payloadBase64}, optional {@code
+   *     mode}, and optional same-id {@code appId}
+   * @return response envelope containing the metadata-only restore result
+   */
+  public synchronized Map<String, Object> restoreBackup(Map<String, List<String>> parameters) {
+    return backupRestoreWorkflow.restoreBackup(parameters);
   }
 
   /**
@@ -1044,6 +1096,185 @@ public final class AppDataService {
     }
   }
 
+  Instant currentBackupInstant() {
+    return clock.instant();
+  }
+
+  int maxBackupExportBytes() {
+    return config.maxExportBytes();
+  }
+
+  int maxBackupImportBytes() {
+    return config.maxImportBytes();
+  }
+
+  @SuppressWarnings("unused")
+  AppDataExportPayload exportPayload(String normalizedAppId, Instant exportedAt) {
+    ExportProjection projection = exportProjection(normalizedAppId, exportedAt);
+    return exportPayload(projection);
+  }
+
+  AppDataExportPayload exportPayload(ExportProjection projection) {
+    return new AppDataExportPayload(
+        AppDataExportPayload.CURRENT_EXPORT_VERSION,
+        projection.appId(),
+        projection.exportedAt(),
+        projection.namespaces(),
+        listStoredRecords(projection.appId(), null));
+  }
+
+  ExportProjection exportProjection(String normalizedAppId, Instant exportedAt) {
+    String appId = AppDataRecord.normalizeAppId(normalizedAppId);
+    List<AppDataRecordSummary> summaries = listStoredRecordSummaries(appId, null);
+    List<AppDataNamespaceMetadata> namespaces = listNamespaceMetadata(appId);
+    long projectedBytes = projectedExportBytes(appId, exportedAt, namespaces, summaries);
+    enforceExportLimit(projectedBytes);
+    return new ExportProjection(appId, exportedAt, namespaces, summaries, projectedBytes);
+  }
+
+  void preflightRestorePayload(
+      String appId, AppDataExportPayload exportPayload, String importMode, boolean replaceApp) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
+    List<AppDataNamespaceMetadata> importedNamespacesMetadata =
+        exportPayload.namespaces().stream()
+            .map(metadata -> withCallerAppId(metadata, normalizedAppId))
+            .toList();
+    List<AppDataRecord> importedRecords =
+        exportPayload.records().stream()
+            .map(appDataRecord -> withCallerAppId(appDataRecord, normalizedAppId))
+            .toList();
+    if (replaceApp) {
+      preflightReplaceApp(normalizedAppId, importedNamespacesMetadata, importedRecords);
+      return;
+    }
+    preflightImport(normalizedAppId, importedNamespacesMetadata, importedRecords, importMode);
+  }
+
+  private void preflightReplaceApp(
+      String appId,
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      List<AppDataRecord> importedRecords) {
+    rejectOversizedImportedRecords(importedRecords);
+    validateImportedNamespaceMetadata(importedNamespacesMetadata);
+    Set<String> importedNamespaces =
+        collectImportedNamespaces(importedNamespacesMetadata, importedRecords);
+    Map<String, Long> projectedRecordBytes = new LinkedHashMap<>();
+    for (AppDataRecord appDataRecord : importedRecords) {
+      projectedRecordBytes.put(recordKey(appDataRecord), (long) appDataRecord.valueBytes());
+    }
+    ProjectedImport projected = new ProjectedImport(projectedRecordBytes, importedNamespaces);
+    enforceProjectedImportLimits(projected);
+    Map<String, AppDataNamespaceMetadata> noCurrentMetadata = Map.of();
+    long projectedStoreUsageBytes =
+        projectedStoreQuotaUsageBytes(importedNamespacesMetadata, noCurrentMetadata, projected);
+    long currentStoreUsageBytes = currentStoreQuotaUsageBytes(appId);
+    enforceManifestQuota(
+        appId,
+        Math.max(0L, projectedStoreUsageBytes - currentStoreUsageBytes),
+        ManifestQuotaCheck.installedManifest(),
+        projectedStoreUsageBytes);
+  }
+
+  void commitRestorePayload(
+      String appId, AppDataExportPayload exportPayload, String importMode, boolean replaceApp) {
+    String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    preflightRestorePayload(normalizedAppId, exportPayload, importMode, replaceApp);
+    List<AppDataNamespaceMetadata> importedNamespacesMetadata =
+        exportPayload.namespaces().stream()
+            .map(metadata -> withCallerAppId(metadata, normalizedAppId))
+            .toList();
+    List<AppDataRecord> importedRecords =
+        exportPayload.records().stream()
+            .map(appDataRecord -> withCallerAppId(appDataRecord, normalizedAppId))
+            .toList();
+    Set<String> importedNamespaces =
+        collectImportedNamespaces(importedNamespacesMetadata, importedRecords);
+    if (replaceApp) {
+      replaceAppData(
+          normalizedAppId, importedNamespacesMetadata, importedRecords, importedNamespaces);
+      return;
+    }
+    if (IMPORT_MODE_REPLACE_NAMESPACE.equals(importMode)) {
+      replaceImportedNamespaces(
+          normalizedAppId, importedNamespacesMetadata, importedRecords, importedNamespaces);
+      return;
+    }
+    for (AppDataNamespaceMetadata metadata : importedNamespacesMetadata) {
+      writeNamespace(metadata);
+    }
+    for (AppDataRecord appDataRecord : importedRecords) {
+      ensureNamespaceForRecord(appDataRecord);
+      writeRecord(appDataRecord);
+    }
+  }
+
+  private void replaceAppData(
+      String appId,
+      List<AppDataNamespaceMetadata> importedNamespacesMetadata,
+      List<AppDataRecord> importedRecords,
+      Set<String> importedNamespaces) {
+    if (importedNamespaces.isEmpty()) {
+      try {
+        store.deleteAllForApp(appId);
+      } catch (IOException _) {
+        throw storeUnavailable();
+      }
+      return;
+    }
+    Map<String, AppDataRecordSummary> existingRecords = currentRecordSummaryMap(appId);
+    LinkedHashSet<String> importedRecordKeys = new LinkedHashSet<>();
+    for (AppDataRecord appDataRecord : importedRecords) {
+      importedRecordKeys.add(recordKey(appDataRecord));
+      ensureNamespaceForRecord(appDataRecord);
+      writeRecord(appDataRecord);
+    }
+    for (AppDataNamespaceMetadata metadata : importedNamespacesMetadata) {
+      writeNamespace(metadata);
+    }
+    for (AppDataRecordSummary summary : existingRecords.values()) {
+      if (!importedRecordKeys.contains(recordKey(summary))) {
+        deleteStoredRecord(appId, summary.namespace(), summary.key());
+      }
+    }
+    for (AppDataNamespaceMetadata namespace : listNamespaceMetadata(appId)) {
+      if (!importedNamespaces.contains(namespace.namespace())) {
+        deleteStoredNamespace(appId, namespace.namespace());
+      }
+    }
+  }
+
+  int conflictCount(String appId, AppDataExportPayload exportPayload) {
+    Set<String> currentRecordKeys = currentRecordSummaryMap(appId).keySet();
+    int conflicts = 0;
+    for (AppDataRecord appDataRecord : exportPayload.records()) {
+      if (currentRecordKeys.contains(recordKey(appDataRecord))) {
+        conflicts++;
+      }
+    }
+    return conflicts;
+  }
+
+  Optional<InstalledAppSnapshot> installedAppForBackup(String appId) {
+    if (appHost == null) {
+      return Optional.empty();
+    }
+    try {
+      return appHost.describe(AppDataRecord.normalizeAppId(appId));
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          503, "app_data_backup_unavailable", "App-data backup metadata is unavailable.");
+    }
+  }
+
+  List<String> listStoreAppIds() {
+    try {
+      return store.listAppIds().stream().map(AppDataRecord::normalizeAppId).sorted().toList();
+    } catch (IOException _) {
+      throw storeUnavailable();
+    }
+  }
+
   private void rejectIfUpdateMigrationWriteBarrierActive(String normalizedAppId) {
     if (updateMigrationWriteBarriers.getOrDefault(normalizedAppId, 0) <= 0) {
       return;
@@ -1139,7 +1370,11 @@ public final class AppDataService {
       Instant exportedAt,
       List<AppDataNamespaceMetadata> namespaces,
       List<AppDataRecordSummary> summaries) {
-    if (projectedExportBytes(appId, exportedAt, namespaces, summaries) > config.maxExportBytes()) {
+    enforceExportLimit(projectedExportBytes(appId, exportedAt, namespaces, summaries));
+  }
+
+  private void enforceExportLimit(long projectedBytes) {
+    if (projectedBytes > config.maxExportBytes()) {
       throw new PlatformApiException(
           400, "app_data_export_too_large", "App-data export exceeds the configured limit.");
     }
@@ -1152,7 +1387,7 @@ public final class AppDataService {
       List<AppDataRecordSummary> summaries) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
     json.put("exportVersion", AppDataExportPayload.CURRENT_EXPORT_VERSION);
-    json.put("appId", appId);
+    json.put(PARAM_APP_ID, appId);
     json.put("exportedAt", exportedAt.toString());
     json.put(FIELD_NAMESPACE_COUNT, namespaces.size());
     json.put(FIELD_RECORD_COUNT, summaries.size());
@@ -1558,7 +1793,7 @@ public final class AppDataService {
     AppDiskUsageScanner.ScanResult scan = diskUsageScanner.scan(installed.paths(), null);
     if (hasDataScanWarning(scan.warnings())) {
       throw new PlatformApiException(
-          503, "app_data_quota_unavailable", "App-data quota could not be measured.");
+          503, STATUS_QUOTA_UNAVAILABLE, "App-data quota could not be measured.");
     }
     if (projectedManifestQuotaUsageBytes(appId, scan, positiveDeltaBytes, projectedStoreUsageBytes)
         > quotaBytes) {
@@ -1638,7 +1873,7 @@ public final class AppDataService {
       return appHost.describe(AppDataRecord.normalizeAppId(appId));
     } catch (IOException _) {
       throw new PlatformApiException(
-          503, "app_data_quota_unavailable", "App-data quota could not be measured.");
+          503, STATUS_QUOTA_UNAVAILABLE, "App-data quota could not be measured.");
     }
   }
 
@@ -1745,6 +1980,15 @@ public final class AppDataService {
           AppDataRecord.normalizeAppId(appId),
           AppDataRecord.normalizeNamespace(namespace),
           AppDataRecord.normalizeKey(key));
+    } catch (IOException _) {
+      throw storeUnavailable();
+    }
+  }
+
+  private void deleteStoredNamespace(String appId, String namespace) {
+    try {
+      store.deleteNamespace(
+          AppDataRecord.normalizeAppId(appId), AppDataRecord.normalizeNamespace(namespace));
     } catch (IOException _) {
       throw storeUnavailable();
     }
@@ -1911,6 +2155,25 @@ public final class AppDataService {
     private ProjectedImport {
       recordBytesByKey = Map.copyOf(Objects.requireNonNull(recordBytesByKey, "recordBytesByKey"));
       namespaces = Set.copyOf(Objects.requireNonNull(namespaces, "namespaces"));
+    }
+  }
+
+  record ExportProjection(
+      String appId,
+      Instant exportedAt,
+      List<AppDataNamespaceMetadata> namespaces,
+      List<AppDataRecordSummary> summaries,
+      long projectedBytes) {
+    int namespaceCount() {
+      return namespaces.size();
+    }
+
+    int recordCount() {
+      return summaries.size();
+    }
+
+    long totalBytes() {
+      return summaries.stream().mapToLong(AppDataRecordSummary::valueBytes).sum();
     }
   }
 

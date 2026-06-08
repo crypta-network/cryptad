@@ -129,6 +129,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.content-subscriptions` | App-platform smoke summary. | The content subscription routes under `/api/v1/content/subscriptions` are present, documented, app-principal scoped, capability-gated by `content.subscribe` plus `content.fetch` for create/refresh, and covered by raw-content/token/path/queue HTML redaction evidence. |
 | `network-content.subscription-scheduler` | App-platform smoke summary. | Offline source and test evidence proves deterministic content-subscription `tick(Instant)`, no-overlap execution, per-app/global/per-tick limits, failure backoff, dedupe, queue pressure handling without parsing queue HTML, and path-free durable metadata. |
 | `app-platform.durable-app-data-store` | App-platform smoke summary. | The `/api/v1/app-data` route family, `app.data.read`, and `app.data.write` are present in the current contract, file-backed records use path-safe atomic storage, quotas/import/export/schema metadata are bounded, and evidence excludes raw app values, request bodies, tokens, private insert URIs, and local paths. |
+| `app-data.backup-restore-portability` | App-platform smoke summary. | The `backupVersion = 1` `crypta-app-data-backup` envelope, single-app and all-app export, host/operator-only restore plan and commit routes, `merge`, `replaceNamespace`, and `replaceApp` modes, app-principal denial, Web Shell controls, first-party app backup-scope docs, and support-bundle redaction checks are present without raw backup payloads in evidence. |
 | `app-platform.trust-graph-preview` | App-platform smoke summary. | The v7 trust graph routes are present, documented, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
 | `app-platform.trust-graph-durable-store` | App-platform smoke summary. | The file-backed trust graph store is present, runtime wiring injects it into Platform API, anchors/statements/audit entries are bounded and redacted, and evidence excludes raw trust bodies, raw fetched content, private insert URIs, tokens, signatures, and local paths. |
 | `app-platform.trust-graph-exchange` | App-platform smoke summary. | Contract v10 exposes trust URI import and audit descriptors, SDK exchange helpers cover URI import, publish, and subscription wrappers, and exchange evidence uses only route names, capability names, booleans, counts, and redacted identifiers. |
@@ -188,6 +189,7 @@ Release-candidate mode requires these evidence ids:
 | `operator-beta.subscription-recovery` | App-platform smoke summary. | Host/operator subscription recovery wrappers list all subscriptions safely and provide refresh/pause/resume without granting app principals cross-app authority. |
 | `operator-beta.trust-review-warnings` | App-platform smoke summary. | Trust Graph Preview and app-review warnings are surfaced as local preview/review state, not complete Web of Trust. |
 | `operator-beta.app-data-quota-warnings` | App-platform smoke summary. | App-data and AppHost quota warnings are summarized as counts, booleans, and status labels without raw app data values. |
+| `operator-beta.app-data-backup-restore` | App-platform smoke summary. | Web Shell and operator route evidence expose sensitive app-data backup, restore preview, restore commit, all-app backup, and export-before-delete controls while keeping restore previews metadata-only and support bundles free of raw backup values. |
 | `operator-beta.support-bundle-redaction` | App-platform smoke summary. | The support bundle route, redactor, and tests exclude tokens, form passwords, raw bodies, private insert URIs, local paths, command lines, and app-private values. |
 | `operator-beta.web-shell` | App-platform smoke summary. | Web Shell renders the operator beta panel, refresh controls, support-bundle export/copy actions, read-only hints, and recovery submit handling. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
@@ -236,7 +238,10 @@ PR-246 live-network beta certification command below for that release-manager ev
 release-candidate mode unless a release-manager waiver is recorded. The `operator-beta.*` evidence
 ids are deterministic checks for the local dashboard, support bundle redaction, and recovery
 wiring; missing operator beta evidence blocks release-candidate mode unless a release-manager
-waiver is recorded. `apphost.live` is optional
+waiver is recorded. `app-data.backup-restore-portability` and
+`operator-beta.app-data-backup-restore` are deterministic PR-250 checks for durable app-data
+backup/restore portability. They verify source, docs, Web Shell, and redaction behavior without
+placing raw backup payloads or raw app-data values in release evidence. `apphost.live` is optional
 stronger evidence because normal PR and scheduled CI must not require a live local node or operator
 form password.
 

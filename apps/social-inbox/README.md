@@ -99,6 +99,20 @@ messages are normalized before storage, verified against the signed
 `crypta.social.message.v1` canonical payload, and fetched documents are parsed only as bounded JSON
 `crypta.social.outbox.v1` snapshots.
 
+## App-data backup scope
+
+Operator app-data backups for `social-inbox` include the durable records listed above: UI
+selection state, bounded source summaries/hashes, subscription metadata, outbox summaries,
+imported-message index summaries, read state, and explicitly saved drafts. Treat exported backups
+as sensitive user data because saved drafts, source summaries, and read state can reveal private
+social context.
+
+Backups do not include AppVault private identity material, vault private identity material, raw
+source URIs, private insert URIs, raw fetched documents, raw signatures, browser-session tokens,
+app-service tokens, app-service grant tokens, Trust Graph service grant state, app bundle files, or
+local paths. Restoring a backup rehydrates Social Inbox UI state and drafts; Trust Graph service
+access still depends on the target node's current operator-approved grant state.
+
 ## Tests
 
 ```bash

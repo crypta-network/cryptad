@@ -144,6 +144,20 @@ Import rejects payloads that name a different app id. It also rejects unsupporte
 oversized payloads, invalid identifiers, and payloads that would exceed record, namespace, record
 count, import, or data-quota limits.
 
+## Operator backup and restore
+
+Operators can use the host/operator-only backup routes documented in
+[app-data-backup-restore-portability.md](app-data-backup-restore-portability.md). That layer wraps
+the app-facing export/import payloads in a deterministic `backupVersion = 1`
+`crypta-app-data-backup` envelope for `single-app` or `all-apps` scope. Backups are sensitive user
+data because they may contain raw app-owned values.
+
+Operator restore always builds a metadata-only preview before commit and supports `merge`,
+`replaceNamespace`, and `replaceApp`. The restore path reuses app-data export parsing, app id and
+namespace validation, import size limits, record and value caps, namespace caps, and quota
+preflight checks. The operator routes do not grant app principals cross-app read or write access,
+and they are separate from the app-facing Platform API compatibility contract.
+
 ## Browser SDK
 
 Static browser apps should use `CryptaPlatform.data` helpers:
@@ -210,12 +224,16 @@ uninstall removes the immutable bundle, cache, run state, rollback state, and ru
 while leaving the persistent data directory and durable app-data records for a future reinstall or
 migration.
 
+The Web Shell also exposes export-before-delete as a two-step operator flow: download the app-data
+backup first, then explicitly confirm uninstall with data deletion. This keeps the existing
+`preserveData=true` behavior distinct from backup/export and from destructive delete.
+
 ## Redaction rules
 
-API errors, audit events, diagnostics, release evidence, and model `toString()` output must not
-include store root paths, app data directories, temporary paths, raw request bodies, private insert
-URIs, private keys, seed material, raw vault secrets, form passwords, app process tokens, or browser
-session tokens.
+API errors, audit events, diagnostics, support bundles, release evidence, and model `toString()`
+output must not include store root paths, app data directories, temporary paths, raw request
+bodies, raw backup payloads, private insert URIs, private keys, seed material, raw vault secrets,
+form passwords, app process tokens, or browser session tokens.
 
 Release evidence should use route names, capability labels, record counts, namespace counts, byte
 counts, schema versions, booleans, sanitized error codes, and digests. It must not include raw

@@ -67,7 +67,23 @@ Feed Reader & Publisher declares:
 
 The manifest requires Platform API contract v9 because the reference app depends on durable content
 subscription helpers and durable app-data records for reader state, and it is tested through the
-current v10 contract. Run focused validation with:
+current v10 contract.
+
+## App-data backup scope
+
+Operator app-data backups for `feed-reader` include the app's `ui-state` durable app-data record:
+feed source labels and content-key URIs, selected source and subscription ids, bounded read/fetch
+summaries, and safe publisher draft fields. Treat exported backups as sensitive user data because
+feed sources, read state, and drafts reveal reading and publishing intent.
+
+Backups do not include fetched feed bodies, queue artifacts, content subscription scheduler
+internals beyond ids or summaries already represented in app-data, vault private identity
+material, vault identities or keys, private insert URIs, form passwords, app-service tokens,
+browser-session tokens, app bundle files, or local paths. Restoring a backup brings back configured
+sources, read state, and draft metadata; platform subscription records may need to be recreated or
+reconciled if they are not present on the target node.
+
+Run focused validation with:
 
 ```bash
 ./gradlew :apps:feed-reader:test

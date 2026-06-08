@@ -44,6 +44,20 @@ public final class InMemoryAppDataStore implements AppDataStore {
   /**
    * {@inheritDoc}
    *
+   * <p>The in-memory store reports any app id that owns namespace metadata or records, including
+   * preserved app-data state for apps that are no longer installed in the test embedding.
+   */
+  @Override
+  public synchronized List<String> listAppIds() {
+    return java.util.stream.Stream.concat(namespaces.keySet().stream(), records.keySet().stream())
+        .distinct()
+        .sorted()
+        .toList();
+  }
+
+  /**
+   * {@inheritDoc}
+   *
    * <p>The returned namespace metadata includes counts, byte totals, and update timestamps derived
    * from the current in-memory record map.
    */

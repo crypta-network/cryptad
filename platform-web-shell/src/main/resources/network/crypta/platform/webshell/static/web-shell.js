@@ -118,6 +118,11 @@
     supportRefreshButton: document.getElementById("support-bundle-refresh-button"),
     supportDownloadButton: document.getElementById("support-bundle-download-button"),
     supportCopyButton: document.getElementById("support-bundle-copy-button"),
+    allAppDataBackupButton: document.getElementById("all-app-data-backup-button"),
+    appDataRestoreForm: document.getElementById("operator-app-data-restore-form"),
+    appDataRestorePayload: document.getElementById("operator-app-data-restore-payload"),
+    appDataRestoreMode: document.getElementById("operator-app-data-restore-mode"),
+    appDataRestoreResult: document.getElementById("operator-app-data-restore-result"),
   };
   const appsControls = {
     refreshButton: document.getElementById("apps-refresh-button"),
@@ -415,6 +420,57 @@
     }
   }
 
+  function downloadBlob(blob, fileName) {
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = fileName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+  }
+
+  function downloadJsonBlob(value, fileName) {
+    downloadBlob(new Blob([`${formatJson(value)}\n`], { type: "application/json" }), fileName);
+  }
+
+  function safeFilePart(value, fallback) {
+    const raw = typeof value === "string" && value ? value : fallback;
+    return raw.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+  }
+
+  function isoFileTimestamp(value) {
+    const timestamp = typeof value === "string" ? new Date(value) : new Date();
+    return Number.isNaN(timestamp.getTime())
+      ? "unknown"
+      : timestamp.toISOString().replace(/[:.]/g, "-");
+  }
+
+  function bytesToUrlSafeBase64(bytes) {
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.slice(offset, offset + chunkSize));
+    }
+    return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function urlSafeBase64ToBytes(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const paddingLength = (4 - (normalized.length % 4)) % 4;
+    const padded = normalized.padEnd(normalized.length + paddingLength, "=");
+    const binary = window.atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
   function summaryCard(title, values, tone) {
     const card = document.createElement("div");
     card.append(createPill(title, tone), definitionList(values));
@@ -696,6 +752,15 @@
           ],
         ],
         warnings.length ? "is-warning" : "",
+      ),
+      summaryCard(
+        "App-data backups",
+        [
+          ["Scope", "Single app or all known app data"],
+          ["Restore modes", "merge / replaceNamespace / replaceApp"],
+          ["Sensitivity", "Contains raw app-owned user data"],
+        ],
+        "is-warning",
       ),
     );
     sections.betaDashboard.append(summaryCards);
@@ -1426,6 +1491,29 @@
     }
   }
 
+  function appDataBackupFormDataForApp(appId) {
+    if (typeof appId !== "string" || appId.length === 0) {
+      return null;
+    }
+    const formData = new FormData();
+    formData.set("appId", appId);
+    return formData;
+  }
+
+  function allAppDataBackupFormData() {
+    const formData = new FormData();
+    formData.set("scope", "all");
+    return formData;
+  }
+
+  function appendHiddenField(form, name, value) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.append(input);
+  }
+
   function appRuntimePath(appId) {
     return typeof appId === "string" && appId.length > 0
       ? `apps/${encodeURIComponent(appId)}/runtime`
@@ -1844,7 +1932,7 @@
     return safeWarnings.length ? safeWarnings.join("; ") : "Unavailable";
   }
 
-  function buildAppActionForm(app, action, label) {
+  function buildAppActionForm(app, action, label, options = {}) {
     const appId = typeof app.appId === "string" ? app.appId : "";
     const path = appMutationPath(appId, action);
     if (!path) {
@@ -1856,6 +1944,12 @@
     form.dataset.appId = appId;
     form.dataset.appAction = action;
     form.dataset.appName = appDisplayName(app);
+    if (options && options.uninstallMode) {
+      form.dataset.appUninstallMode = options.uninstallMode;
+    }
+    for (const [name, value] of Object.entries(recordValue(options && options.hiddenFields))) {
+      appendHiddenField(form, name, value);
+    }
 
     const submit = document.createElement("button");
     submit.className = "button button-secondary";
@@ -1863,6 +1957,92 @@
     submit.textContent = label;
     form.append(submit);
     return form;
+  }
+
+  function buildAppDataBackupActionForm(app, action, label) {
+    const appId = typeof app.appId === "string" ? app.appId : "";
+    if (!appDataBackupFormDataForApp(appId)) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.appId = appId;
+    form.dataset.appName = appDisplayName(app);
+    form.dataset.appDataBackupAction = action;
+
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    form.append(submit);
+    return form;
+  }
+
+  function buildAppDataRestoreDetails(app) {
+    const appId = typeof app.appId === "string" ? app.appId : "";
+    if (!appId) {
+      return null;
+    }
+    const details = document.createElement("details");
+    details.className = "json-details app-data-restore-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Restore app data";
+    details.append(summary);
+
+    const form = document.createElement("form");
+    form.className = "control-form app-data-restore-form";
+    form.dataset.appDataRestoreAction = "app";
+    form.dataset.appId = appId;
+    form.dataset.appName = appDisplayName(app);
+
+    const description = text(
+      "p",
+      "panel-description",
+      "App-data backups contain sensitive user data. Restore previews show metadata only.",
+    );
+    const grid = document.createElement("div");
+    grid.className = "control-form-grid";
+
+    const payloadField = document.createElement("label");
+    payloadField.className = "queue-field app-data-restore-payload";
+    payloadField.append(text("span", "", "Sensitive backup payload"));
+    const payloadInput = document.createElement("textarea");
+    payloadInput.name = "backupPayload";
+    payloadInput.autocomplete = "off";
+    payloadInput.spellcheck = false;
+    payloadInput.required = true;
+    payloadField.append(payloadInput);
+
+    const modeField = selectField("Restore mode", "mode", [
+      ["merge", "Merge"],
+      ["replaceNamespace", "Replace namespace"],
+      ["replaceApp", "Replace app"],
+    ]);
+    appendHiddenField(form, "appId", appId);
+    grid.append(payloadField, modeField);
+
+    const actions = document.createElement("div");
+    actions.className = "control-form-actions";
+    const preview = document.createElement("button");
+    preview.className = "button button-secondary";
+    preview.name = "restoreAction";
+    preview.type = "submit";
+    preview.value = "preview";
+    preview.textContent = "Preview restore";
+    const restore = document.createElement("button");
+    restore.className = "button button-primary";
+    restore.name = "restoreAction";
+    restore.type = "submit";
+    restore.value = "restore";
+    restore.textContent = "Restore app data";
+    actions.append(preview, restore);
+
+    const result = document.createElement("div");
+    result.className = "app-data-restore-result";
+    result.setAttribute("aria-live", "polite");
+    form.append(description, grid, actions, result);
+    details.append(form);
+    return details;
   }
 
   function buildAppUpdateActionForm(app, action, label, disabledReason) {
@@ -2972,14 +3152,35 @@
         runtimeStoppable ? "stop" : "start",
         runtimeStoppable ? "Stop" : "Start",
       );
-      const uninstallForm = runtimeStoppable
+      const backupForm = buildAppDataBackupActionForm(app, "export", "Export app data");
+      const preserveDataForm = runtimeStoppable
         ? null
-        : buildAppActionForm(app, "uninstall", "Uninstall");
+        : buildAppActionForm(app, "uninstall", "Uninstall preserving data", {
+            hiddenFields: { preserveData: "true" },
+            uninstallMode: "preserveData",
+          });
+      const deleteDataForm = runtimeStoppable
+        ? null
+        : buildAppActionForm(app, "uninstall", "Delete app and data", {
+            uninstallMode: "deleteData",
+          });
+      const exportBeforeDeleteForm = runtimeStoppable
+        ? null
+        : buildAppDataBackupActionForm(app, "exportBeforeDelete", "Export backup before delete");
       if (startForm) {
         actions.append(startForm);
       }
-      if (uninstallForm) {
-        actions.append(uninstallForm);
+      if (backupForm) {
+        actions.append(backupForm);
+      }
+      if (preserveDataForm) {
+        actions.append(preserveDataForm);
+      }
+      if (deleteDataForm) {
+        actions.append(deleteDataForm);
+      }
+      if (exportBeforeDeleteForm) {
+        actions.append(exportBeforeDeleteForm);
       }
       if (hasUpdateState) {
         appendAppUpdateActionForms(actions, app, updateState, runtimeRunning);
@@ -2987,6 +3188,12 @@
     }
     if (actions.childNodes.length) {
       card.append(actions);
+    }
+    if (formPassword) {
+      const restoreDetails = buildAppDataRestoreDetails(app);
+      if (restoreDetails) {
+        card.append(restoreDetails);
+      }
     }
 
     return card;
@@ -4511,9 +4718,15 @@
     if (sections.betaDashboardReadonlyHint) {
       sections.betaDashboardReadonlyHint.hidden = !!formPassword;
     }
+    if (betaDashboardControls.appDataRestoreForm) {
+      betaDashboardControls.appDataRestoreForm.hidden = !formPassword;
+    }
     const hasSupportBundle = !!shellState.supportBundleSnapshot;
     betaDashboardControls.supportDownloadButton.disabled = !hasSupportBundle;
     betaDashboardControls.supportCopyButton.disabled = !hasSupportBundle;
+    if (betaDashboardControls.allAppDataBackupButton) {
+      betaDashboardControls.allAppDataBackupButton.disabled = !formPassword;
+    }
   }
 
   function updateAppsToolbar() {
@@ -5744,15 +5957,7 @@
       setBetaDashboardStatus("Generate a support bundle before downloading it.", "is-error");
       return;
     }
-    const blob = new Blob([`${formatJson(bundle)}\n`], { type: "application/json" });
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = supportBundleFileName(bundle);
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(href);
+    downloadJsonBlob(bundle, supportBundleFileName(bundle));
     setBetaDashboardStatus("Support bundle download prepared.", "is-success");
   }
 
@@ -5772,6 +5977,291 @@
       setBetaDashboardStatus("Support summary copied.", "is-success");
     } catch (error) {
       setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function appDataBackupBundle(response) {
+    return response && response.backup && typeof response.backup === "object"
+      ? response.backup
+      : recordValue(response);
+  }
+
+  function appDataBackupFileName(response, fallbackScope, fallbackAppId) {
+    const bundle = appDataBackupBundle(response);
+    const scope = safeFilePart(bundle.scope || fallbackScope, "app-data");
+    const apps = Array.isArray(bundle.apps) ? bundle.apps : [];
+    const appId =
+      apps.length === 1 && apps[0] && typeof apps[0].appId === "string"
+        ? apps[0].appId
+        : fallbackAppId;
+    const appPart = appId ? `-${safeFilePart(appId, "app")}` : "";
+    return `cryptad-app-data-backup-${scope}${appPart}-${isoFileTimestamp(bundle.createdAt)}.json`;
+  }
+
+  function appDataBackupPayloadBlob(response) {
+    const payloadBase64 =
+      response && typeof response.payloadBase64 === "string" ? response.payloadBase64 : "";
+    if (payloadBase64) {
+      return new Blob([urlSafeBase64ToBytes(payloadBase64)], { type: "application/json" });
+    }
+    return new Blob([JSON.stringify(appDataBackupBundle(response))], { type: "application/json" });
+  }
+
+  function downloadAppDataBackupPayload(response, fallbackScope, fallbackAppId) {
+    downloadBlob(
+      appDataBackupPayloadBlob(response),
+      appDataBackupFileName(response, fallbackScope, fallbackAppId),
+    );
+  }
+
+  async function downloadAllAppDataBackup() {
+    if (!formPassword) {
+      setBetaDashboardStatus("App-data backup is unavailable in read-only mode.", "is-error");
+      return;
+    }
+    try {
+      const response = await postForm(
+        "operator/app-data/backups",
+        allAppDataBackupFormData(),
+        "App-data backup is unavailable in read-only mode.",
+      );
+      downloadAppDataBackupPayload(response, "all-apps", "");
+      setBetaDashboardStatus("All-app app-data backup download prepared.", "is-success");
+    } catch (error) {
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function downloadAppDataBackup(appId, appName) {
+    if (!formPassword) {
+      setAppsStatus("App-data backup is unavailable in read-only mode.", "is-error");
+      return null;
+    }
+    const formData = appDataBackupFormDataForApp(appId);
+    if (!formData) {
+      setAppsStatus("App-data backup route unavailable for this app.", "is-error");
+      return null;
+    }
+    const response = await postForm(
+      "operator/app-data/backups",
+      formData,
+      "App-data backup is unavailable in read-only mode.",
+    );
+    downloadAppDataBackupPayload(response, "single-app", appId);
+    setAppsStatus(`${appName} app-data backup download prepared.`, "is-success");
+    return response;
+  }
+
+  function backupPayloadBase64FromText(value) {
+    const payload = typeof value === "string" ? value.trim() : "";
+    if (!payload) {
+      throw new Error("Paste a backup JSON bundle or payloadBase64 value before previewing restore.");
+    }
+    if (payload.startsWith("{")) {
+      JSON.parse(payload);
+      return bytesToUrlSafeBase64(new TextEncoder().encode(payload));
+    }
+    return payload.replace(/\s+/g, "");
+  }
+
+  function buildAppDataRestoreFormData(form) {
+    const source = new FormData(form);
+    const target = new FormData();
+    const rawPayload = source.get("backupPayload");
+    target.set(
+      "payloadBase64",
+      backupPayloadBase64FromText(typeof rawPayload === "string" ? rawPayload : ""),
+    );
+    target.set("mode", String(source.get("mode") || "merge"));
+    const appId = String(source.get("appId") || form.dataset.appId || "");
+    if (appId) {
+      target.set("appId", appId);
+    }
+    return target;
+  }
+
+  function restoreModeFromForm(form) {
+    const data = new FormData(form);
+    return String(data.get("mode") || "merge");
+  }
+
+  function restorePlanReady(response) {
+    const plan = recordValue(response && response.restorePlan);
+    return (
+      plan.status === "ready" &&
+      arrayValue(plan.apps).every((app) => !arrayValue(recordValue(app).blockers).length)
+    );
+  }
+
+  function renderAppDataRestoreMetadata(container, response) {
+    if (!container) {
+      return;
+    }
+    const plan = response && response.restorePlan ? recordValue(response.restorePlan) : null;
+    const result = response && response.restoreResult ? recordValue(response.restoreResult) : null;
+    const payload = plan || result || {};
+    clear(container);
+    if (!payload.status) {
+      container.append(text("p", "error-state", "Restore response did not include metadata."));
+      return;
+    }
+    const title = plan ? "Restore plan" : "Restore result";
+    const blocked = payload.status === "blocked";
+    container.append(
+      summaryCard(
+        `${title}: ${normalizedStatus(payload.status, "Unavailable")}`,
+        [
+          ["Mode", scalar(payload.mode)],
+          ["Scope", scalar(payload.scope)],
+          ["Apps", scalar(payload.appCount)],
+          ["Records", scalar(payload.recordCount)],
+          ["Bytes", formatBytes(payload.totalBytes)],
+        ],
+        blocked ? "is-error" : payload.status === "ready" || payload.status === "restored" ? "is-success" : "",
+      ),
+    );
+    const apps = arrayValue(payload.apps);
+    if (!apps.length) {
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    apps.forEach((appValue) => {
+      const app = recordValue(appValue);
+      const blockers = stringList(app.blockers);
+      const warnings = stringList(app.warnings);
+      const statuses = stringList(app.statuses);
+      const namespaces = arrayValue(app.namespaces).map(recordValue);
+      const card = document.createElement("article");
+      card.className = blockers.length ? "app-card is-warning" : "app-card";
+      card.append(
+        betaCardHeader(
+          app.appName || app.appId || "App",
+          app.status || payload.status,
+          blockers.length ? "is-error" : warnings.length ? "is-warning" : "is-success",
+        ),
+        definitionList([
+          ["App ID", scalar(app.appId)],
+          ["Installed", app.installed === true ? "Yes" : app.installed === false ? "No" : "Unavailable"],
+          ["Version", scalar(app.appVersion)],
+          ["Namespaces", scalar(app.namespaceCount)],
+          [
+            "Namespace names",
+            namespaces.length
+              ? namespaces.map((namespace) => scalar(namespace.namespace)).join(", ")
+              : "Unavailable",
+          ],
+          [
+            "Schema versions",
+            namespaces.length
+              ? namespaces.map((namespace) => scalar(namespace.schemaVersion)).join(", ")
+              : "Unavailable",
+          ],
+          ["Records", scalar(app.recordCount)],
+          ["Bytes", formatBytes(app.totalBytes)],
+          ["Conflicts", scalar(app.conflictCount)],
+          ["Statuses", statuses.length ? statuses.join(", ") : "None"],
+          ["Warnings", warnings.length ? warnings.join(", ") : "None"],
+          ["Blockers", blockers.length ? blockers.join(", ") : "None"],
+        ]),
+      );
+      list.append(card);
+    });
+    container.append(list);
+  }
+
+  async function submitAppDataRestoreForm(form, restoreAction, statusSetter) {
+    if (!formPassword) {
+      statusSetter("App-data restore is unavailable in read-only mode.", "is-error");
+      return;
+    }
+    if (typeof form.reportValidity === "function" && !form.reportValidity()) {
+      return;
+    }
+    const resultContainer =
+      form.querySelector(".app-data-restore-result") || betaDashboardControls.appDataRestoreResult;
+    try {
+      const formData = buildAppDataRestoreFormData(form);
+      const planResponse = await postForm(
+        "operator/app-data/restore/plan",
+        formData,
+        "App-data restore is unavailable in read-only mode.",
+      );
+      renderAppDataRestoreMetadata(resultContainer, planResponse);
+      if (restoreAction !== "restore") {
+        statusSetter("Restore preview generated.", "is-success");
+        return;
+      }
+      if (!restorePlanReady(planResponse)) {
+        statusSetter("Restore blocked by preview findings.", "is-error");
+        return;
+      }
+      const mode = restoreModeFromForm(form);
+      if (
+        mode !== "merge" &&
+        !window.confirm(`Commit ${mode} restore using the previewed metadata-only plan?`)
+      ) {
+        statusSetter("Restore cancelled.", "is-warning");
+        return;
+      }
+      if (
+        mode === "replaceApp" &&
+        !window.confirm("Replace app restore clears existing durable app-data for each restored app.")
+      ) {
+        statusSetter("Restore cancelled.", "is-warning");
+        return;
+      }
+      const restoreResponse = await postForm(
+        "operator/app-data/restore",
+        formData,
+        "App-data restore is unavailable in read-only mode.",
+      );
+      renderAppDataRestoreMetadata(resultContainer, restoreResponse);
+      statusSetter("App-data restore completed.", "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      statusSetter(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function confirmAppUninstall(form) {
+    const appName = form.dataset.appName || appDisplayName({ appId: form.dataset.appId || "" });
+    const mode = form.dataset.appUninstallMode || "";
+    if (mode === "preserveData") {
+      return window.confirm(`Uninstall ${appName} while preserving durable app data?`);
+    }
+    if (mode === "deleteData") {
+      return window.confirm(`Delete ${appName} and its durable app data?`);
+    }
+    return window.confirm(`Uninstall ${appName}?`);
+  }
+
+  async function submitAppDataBackupAction(form, action) {
+    const appId = form.dataset.appId || "";
+    const appName = form.dataset.appName || appDisplayName({ appId });
+    try {
+      await downloadAppDataBackup(appId, appName);
+      if (action !== "exportBeforeDelete") {
+        return;
+      }
+      if (!window.confirm(`${appName} backup download was prepared. Continue to app deletion?`)) {
+        setAppsStatus("Delete cancelled after backup export.", "is-warning");
+        return;
+      }
+      if (!window.confirm(`Delete ${appName} and its durable app data now?`)) {
+        setAppsStatus("Delete cancelled after backup export.", "is-warning");
+        return;
+      }
+      const path = appMutationPath(appId, "uninstall");
+      if (!path) {
+        setAppsStatus("App lifecycle action unavailable for this app.", "is-error");
+        return;
+      }
+      await deleteForm(path, new FormData(), "App lifecycle actions unavailable in read-only mode.");
+      setAppsStatus(`${appName} deleted after backup export.`, "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
     }
   }
 
@@ -6407,6 +6897,25 @@
     betaDashboardControls.supportCopyButton.addEventListener("click", () => {
       copySupportSummary();
     });
+    if (betaDashboardControls.allAppDataBackupButton) {
+      betaDashboardControls.allAppDataBackupButton.addEventListener("click", () => {
+        setBetaDashboardStatus("Preparing all-app app-data backup.");
+        downloadAllAppDataBackup();
+      });
+    }
+    if (betaDashboardControls.appDataRestoreForm) {
+      betaDashboardControls.appDataRestoreForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const restoreAction = event.submitter instanceof HTMLButtonElement
+          ? event.submitter.value
+          : "preview";
+        await submitAppDataRestoreForm(
+          betaDashboardControls.appDataRestoreForm,
+          restoreAction,
+          setBetaDashboardStatus,
+        );
+      });
+    }
     sections.betaDashboard.addEventListener("submit", async (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) {
@@ -6479,11 +6988,30 @@
         await submitAppUpdateMutation(form, appUpdateAction);
         return;
       }
+      const appDataRestoreAction = form.dataset.appDataRestoreAction;
+      if (appDataRestoreAction) {
+        event.preventDefault();
+        const restoreAction = event.submitter instanceof HTMLButtonElement
+          ? event.submitter.value
+          : "preview";
+        await submitAppDataRestoreForm(form, restoreAction, setAppsStatus);
+        return;
+      }
+      const appDataBackupAction = form.dataset.appDataBackupAction;
+      if (appDataBackupAction) {
+        event.preventDefault();
+        await submitAppDataBackupAction(form, appDataBackupAction);
+        return;
+      }
       const action = form.dataset.appAction;
       if (!action) {
         return;
       }
       event.preventDefault();
+      if (action === "uninstall" && !confirmAppUninstall(form)) {
+        setAppsStatus("App uninstall cancelled.", "is-warning");
+        return;
+      }
       await submitAppMutation(form, action);
     });
     if (appsControls.catalogSourceForm) {

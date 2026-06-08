@@ -10,11 +10,11 @@ migration steps from older schema versions, the migration entrypoint inside the 
 whether the step is rollback-compatible, and whether operator review is required before the update
 can be staged.
 
-This is not PR-250 user-facing backup/restore portability. Operators do not get an arbitrary
-app-data export/import UI from this feature, and the update lifecycle does not create long-term
-backup envelopes or cross-app restore bundles. The snapshot described here is internal,
-app-scoped, bounded by the existing app-data export/import limits, and retained only while the
-update apply/rollback choreography needs it.
+This is separate from user-facing backup/restore portability. Operators use the dedicated
+[app-data-backup-restore-portability.md](app-data-backup-restore-portability.md) routes and Web
+Shell controls for long-term backup envelopes and cross-app restore planning. The snapshot
+described here is internal, app-scoped, bounded by the existing app-data export/import limits, and
+retained only while the update apply/rollback choreography needs it.
 
 ## Manifest properties
 

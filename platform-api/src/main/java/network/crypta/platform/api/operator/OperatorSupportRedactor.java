@@ -27,9 +27,11 @@ import java.util.regex.Pattern;
  */
 public final class OperatorSupportRedactor {
   private static final String REDACTED = "<redacted>";
+  private static final String REDACTED_APP_DATA_BACKUP = "<redacted-app-data-backup>";
   private static final String REDACTED_PATH = "<redacted-path>";
   private static final String REDACTED_PRIVATE_KEY = "<redacted-private-key>";
   private static final String FILE_URI_PREFIX = "file:";
+  private static final String APP_DATA_BACKUP_KIND = "crypta-app-data-backup";
   private static final String PEM_BEGIN_PREFIX = "-----BEGIN ";
   private static final String PEM_END_PREFIX = "-----END ";
   private static final String PEM_LINE_SUFFIX = "-----";
@@ -69,6 +71,18 @@ public final class OperatorSupportRedactor {
           "plaintextbody",
           "plaintext",
           "plaintextexport",
+          "backup",
+          "backupbundle",
+          "backuppayload",
+          "backuppayloadbase64",
+          "appdatabackup",
+          "appdatabackupbundle",
+          "appdatabackuppayload",
+          "restorepayloadbase64",
+          "rawappdatavalue",
+          "recordvalue",
+          "payloadbase64",
+          "valuebase64",
           "commandline",
           "command",
           "path",
@@ -101,6 +115,7 @@ public final class OperatorSupportRedactor {
           "authorization_or_cookie_header",
           "secret_assignment",
           "sensitive_query_parameter",
+          "app_data_backup_payload",
           "sensitive_field_name");
 
   private OperatorSupportRedactor() {}
@@ -138,6 +153,10 @@ public final class OperatorSupportRedactor {
 
   private static Object redactValue(Object value, Set<String> omittedFields) {
     if (value instanceof Map<?, ?> map) {
+      if (isBackupPayloadMap(map)) {
+        omittedFields.add("appDataBackup");
+        return REDACTED_APP_DATA_BACKUP;
+      }
       return redactMap(map, omittedFields);
     }
     if (value instanceof List<?> list) {
@@ -162,6 +181,27 @@ public final class OperatorSupportRedactor {
     return redacted;
   }
 
+  private static boolean isBackupPayloadMap(Map<?, ?> map) {
+    Object kind = map.get("kind");
+    if (kind instanceof String text && APP_DATA_BACKUP_KIND.equalsIgnoreCase(text)) {
+      return true;
+    }
+    if (map.containsKey("backupVersion") && map.containsKey("apps")) {
+      return true;
+    }
+    for (Object key : map.keySet()) {
+      String normalized = normalizeFieldName(String.valueOf(key));
+      if (normalized.contains("appdatabackup")
+          || normalized.equals("backupbundle")
+          || normalized.equals("backuppayload")
+          || normalized.equals("backuppayloadbase64")
+          || normalized.equals("restorepayloadbase64")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static boolean isSensitiveFieldName(String fieldName) {
     String normalized = normalizeFieldName(fieldName);
     return isSensitiveCredentialKey(normalized);
@@ -169,6 +209,9 @@ public final class OperatorSupportRedactor {
 
   private static String redactString(String input) {
     String redacted = Objects.requireNonNull(input, "input");
+    if (redacted.toLowerCase(Locale.ROOT).contains(APP_DATA_BACKUP_KIND)) {
+      return REDACTED_APP_DATA_BACKUP;
+    }
     redacted = redactPrivateKeyBlocks(redacted);
     redacted = CONTENT_URI.matcher(redacted).replaceAll("<redacted-content-uri>");
     redacted = redactAbsolutePaths(redacted);

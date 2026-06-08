@@ -31,6 +31,11 @@ class WebShellResourcesTest {
         "Generate support bundle",
         "Download support JSON",
         "Copy support summary",
+        "Download all app-data backup",
+        "Sensitive backup payload",
+        "Preview restore",
+        "Restore app data",
+        "App-data backups contain sensitive user data.",
         "Publisher fallback panel",
         "Retained and pending legacy tools",
         "Installed apps JSON",
@@ -49,6 +54,13 @@ class WebShellResourcesTest {
         "id=\"support-bundle-refresh-button\"",
         "id=\"support-bundle-download-button\"",
         "id=\"support-bundle-copy-button\"",
+        "id=\"all-app-data-backup-button\"",
+        "id=\"operator-app-data-restore-form\"",
+        "id=\"operator-app-data-restore-payload\"",
+        "id=\"operator-app-data-restore-mode\"",
+        "id=\"operator-app-data-restore-preview-button\"",
+        "id=\"operator-app-data-restore-commit-button\"",
+        "id=\"operator-app-data-restore-result\"",
         "id=\"beta-dashboard-readonly-hint\"",
         "id=\"apps-body\"",
         "id=\"apps-status\"",
@@ -95,6 +107,7 @@ class WebShellResourcesTest {
     assertPeerMutationSubmissionOrder(script);
     assertPeerLoadSequencing(script);
     assertBetaDashboardMarkersPresent(script);
+    assertAppDataBackupRestoreMarkersPresent(script);
     assertBetaDashboardLoadSequencing(script);
     assertAppsMarkersPresent(script);
     assertAppUpdateLifecycleMarkersPresent(script);
@@ -129,6 +142,10 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions,"));
     assertTrue(stylesheet.contains(".security-fallback-actions {"));
+    assertTrue(stylesheet.contains(".app-data-restore-form {"));
+    assertTrue(stylesheet.contains(".app-data-restore-payload {"));
+    assertTrue(stylesheet.contains(".app-data-restore-result {"));
+    assertTrue(stylesheet.contains(".app-data-restore-details {"));
     assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
   }
 
@@ -386,6 +403,11 @@ class WebShellResourcesTest {
         "supportRefreshButton: document.getElementById(\"support-bundle-refresh-button\")",
         "supportDownloadButton: document.getElementById(\"support-bundle-download-button\")",
         "supportCopyButton: document.getElementById(\"support-bundle-copy-button\")",
+        "allAppDataBackupButton: document.getElementById(\"all-app-data-backup-button\")",
+        "appDataRestoreForm: document.getElementById(\"operator-app-data-restore-form\")",
+        "appDataRestorePayload: document.getElementById(\"operator-app-data-restore-payload\")",
+        "appDataRestoreMode: document.getElementById(\"operator-app-data-restore-mode\")",
+        "appDataRestoreResult: document.getElementById(\"operator-app-data-restore-result\")",
         "function setBetaDashboardStatus(message, tone)",
         "function updateBetaDashboardToolbar()",
         "function renderBetaDashboard(data)",
@@ -401,6 +423,8 @@ class WebShellResourcesTest {
         "function supportSummaryText(bundle)",
         "function downloadSupportBundle()",
         "function copySupportSummary()",
+        "function downloadAllAppDataBackup()",
+        "function submitAppDataRestoreForm(form, restoreAction, statusSetter)",
         "function submitOperatorRecoveryAction(form)",
         "function bindBetaDashboardInteractions()",
         "loadJson(apiUrl(\"operator/beta-dashboard\"))",
@@ -412,6 +436,46 @@ class WebShellResourcesTest {
         "bindBetaDashboardInteractions();",
         "updateBetaDashboardToolbar();",
         "loadBetaDashboardSection().catch((error) => {");
+  }
+
+  private static void assertAppDataBackupRestoreMarkersPresent(String script) {
+    assertContainsAll(
+        script,
+        "function appDataBackupFormDataForApp(appId)",
+        "function allAppDataBackupFormData()",
+        "function downloadJsonBlob(value, fileName)",
+        "function urlSafeBase64ToBytes(value)",
+        "function appDataBackupBundle(response)",
+        "function appDataBackupFileName(response, fallbackScope, fallbackAppId)",
+        "function appDataBackupPayloadBlob(response)",
+        "function downloadAppDataBackupPayload(response, fallbackScope, fallbackAppId)",
+        "function backupPayloadBase64FromText(value)",
+        "function buildAppDataRestoreFormData(form)",
+        "function restorePlanReady(response)",
+        "function renderAppDataRestoreMetadata(container, response)",
+        "operator/app-data/backups",
+        "postForm(",
+        "operator/app-data/restore/plan",
+        "operator/app-data/restore",
+        "formData.set(\"scope\", \"all\")",
+        "payloadBase64",
+        "app.installed === true ? \"Yes\" : app.installed === false ? \"No\" : \"Unavailable\"",
+        "replaceNamespace",
+        "replaceApp",
+        "Export app data",
+        "Restore app data",
+        "Uninstall preserving data",
+        "Delete app and data",
+        "Export backup before delete",
+        "new Blob([urlSafeBase64ToBytes(payloadBase64)]",
+        "downloadAppDataBackupPayload(response, \"all-apps\", \"\")",
+        "downloadAppDataBackupPayload(response, \"single-app\", appId)",
+        "URL.createObjectURL(blob)",
+        "link.download = fileName;",
+        "URL.revokeObjectURL(href)",
+        "App-data backups contain sensitive user data. Restore previews show metadata only.",
+        "App-data backup is unavailable in read-only mode.",
+        "App-data restore is unavailable in read-only mode.");
   }
 
   private static void assertBetaDashboardLoadSequencing(String script) {
@@ -530,7 +594,8 @@ class WebShellResourcesTest {
             "const runtimeStoppable = runtimeRunning || runtimeState === \"RESTARTING\";"));
     assertTrue(script.contains("runtimeStoppable ? \"stop\" : \"start\""));
     assertTrue(script.contains("runtimeStoppable ? \"Stop\" : \"Start\""));
-    assertTrue(script.contains("const uninstallForm = runtimeStoppable"));
+    assertTrue(script.contains("const preserveDataForm = runtimeStoppable"));
+    assertTrue(script.contains("const deleteDataForm = runtimeStoppable"));
     assertTrue(script.contains("Runtime log tail"));
     assertTrue(script.contains("Declared permissions"));
     assertTrue(script.contains("Vault status"));
@@ -794,14 +859,35 @@ class WebShellResourcesTest {
     int appServiceMutationIndex =
         script.indexOf(
             "await submitAppServiceGrantMutation(form, appServiceGrantAction);", bindAppsIndex);
+    int appDataRestoreLookupIndex =
+        script.indexOf(
+            "const appDataRestoreAction = form.dataset.appDataRestoreAction;", bindAppsIndex);
+    int appDataRestoreMutationIndex =
+        script.indexOf(
+            "await submitAppDataRestoreForm(form, restoreAction, setAppsStatus);", bindAppsIndex);
+    int appDataBackupLookupIndex =
+        script.indexOf(
+            "const appDataBackupAction = form.dataset.appDataBackupAction;", bindAppsIndex);
+    int appDataBackupMutationIndex =
+        script.indexOf(
+            "await submitAppDataBackupAction(form, appDataBackupAction);", bindAppsIndex);
+    int uninstallConfirmIndex =
+        script.indexOf(
+            "if (action === \"uninstall\" && !confirmAppUninstall(form))", bindAppsIndex);
 
     assertTrue(bindAppsIndex >= 0);
     assertTrue(appServiceActionLookupIndex > bindAppsIndex);
     assertTrue(appServiceMutationIndex > appServiceActionLookupIndex);
     assertTrue(catalogActionLookupIndex > bindAppsIndex);
     assertTrue(catalogMutationIndex > catalogActionLookupIndex);
+    assertTrue(appDataRestoreLookupIndex > bindAppsIndex);
+    assertTrue(appDataRestoreMutationIndex > appDataRestoreLookupIndex);
+    assertTrue(appDataBackupLookupIndex > appDataRestoreMutationIndex);
+    assertTrue(appDataBackupMutationIndex > appDataBackupLookupIndex);
     assertTrue(actionLookupIndex > bindAppsIndex);
+    assertTrue(actionLookupIndex > appDataBackupMutationIndex);
     assertTrue(preventDefaultIndex > actionLookupIndex);
+    assertTrue(uninstallConfirmIndex > preventDefaultIndex);
     assertTrue(mutationIndex > preventDefaultIndex);
   }
 

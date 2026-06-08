@@ -64,6 +64,7 @@ OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.subscription-recovery",
     "operator-beta.trust-review-warnings",
     "operator-beta.app-data-quota-warnings",
+    "operator-beta.app-data-backup-restore",
     "operator-beta.support-bundle-redaction",
     "operator-beta.web-shell",
 )
@@ -94,6 +95,8 @@ SENSITIVE_KEY_PATTERN = (
     r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
+    r"|app[-_ ]?data[-_ ]?backup|backup[-_ ]?payload|payloadBase64|"
+    r"raw[-_ ]?app[-_ ]?data[-_ ]?valu(?:e|es)|record[-_ ]?valu(?:e|es)"
 )
 SENSITIVE_KEY_RE = re.compile(
     rf"({SENSITIVE_KEY_PATTERN})",
@@ -142,7 +145,7 @@ WINDOWS_UNC_PATH_RE = re.compile(
 )
 FILE_URI_PATH_RE = re.compile(r"\bfile://(?P<path>[^\s\])},;\"']+)")
 ROUTE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_:/.\->])/(?:api/v1|apps|app/node|\.well-known)(?:/[^\s\])},;\"'?]*)?"
+    r"(?<![A-Za-z0-9_:/.\->])/(?:api/v1|apps|app/node|operator|\.well-known)(?:/[^\s\])},;\"'?]*)?"
 )
 NON_SECRET_METADATA_SUFFIXES = (
     "available",
@@ -1023,6 +1026,7 @@ def app_platform_evidence(
         "app-platform.content-subscriptions",
         "network-content.subscription-scheduler",
         "app-platform.durable-app-data-store",
+        "app-data.backup-restore-portability",
         "app-platform.trust-graph-preview",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
@@ -1810,6 +1814,24 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/feed-reader-reference-app.md",
                 "docs/app-data-store.md",
             ),
+        ),
+        MatrixRowSpec(
+            id="app-data-backup-restore-portability",
+            category="app-platform",
+            title="App-data backup, restore, and portability",
+            required_evidence_ids=(
+                "app-platform.durable-app-data-store",
+                "app-data.backup-restore-portability",
+                "operator-beta.app-data-backup-restore",
+            ),
+            docs=(
+                "docs/app-data-backup-restore-portability.md",
+                "docs/app-data-store.md",
+                "docs/operator-beta-dashboard.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-9",
         ),
         MatrixRowSpec(
             id="trust-graph-preview-platform",
@@ -4942,6 +4964,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.content-subscriptions",
         "network-content.subscription-scheduler",
         "app-platform.durable-app-data-store",
+        "app-data.backup-restore-portability",
         "app-platform.trust-graph-preview",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
@@ -5002,7 +5025,7 @@ def render_report(summary: dict[str, Any]) -> str:
             "",
             "## Redaction Rules",
             "",
-            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw feed bodies, raw update or rollback command output, private insert URIs, and raw signatures are not included.",
+            "- Private signing keys, form passwords, app process tokens, browser-session tokens, raw request bodies, raw feed bodies, raw update or rollback command output, raw app-data backup payloads, private insert URIs, and raw signatures are not included.",
             "- Local absolute paths, including absolute staging paths, are sanitized as `<repo>`, `<workdir>`, `<home>`, or `<path>` placeholders.",
             "- Catalog scratch paths, staged bundle paths, installed bundle paths, data/cache/run paths, and rollback backup paths are sanitized.",
             "- `artifacts/private-insert-uris.json` is excluded even if an interop summary references it.",
@@ -5727,6 +5750,7 @@ def run_self_test(repo_root: Path) -> None:
             "review-governance-transparency",
             "app-vault-and-generated-documents",
             "content-fetch-and-networked-content",
+            "app-data-backup-restore-portability",
             "trust-graph-preview-platform",
             "social-inbox-preview",
             "legacy-plugin-migration",
@@ -5781,6 +5805,8 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.beta-program",
             "app-platform.beta-tutorials",
             "app-platform.docs-redaction",
+            "app-data.backup-restore-portability",
+            "operator-beta.app-data-backup-restore",
         ):
             assert evidence_id in covered_evidence_ids, evidence_id
         gate_ids = {gate["id"] for gate in summary["ecosystemGates"]}
@@ -5814,6 +5840,8 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.beta-program",
             "app-platform.beta-tutorials",
             "app-platform.docs-redaction",
+            "app-data.backup-restore-portability",
+            "operator-beta.app-data-backup-restore",
         ):
             assert f"### `{evidence_id}`" in report_text, evidence_id
         assert "redactionFindings" in report_text, report_text
@@ -5834,6 +5862,15 @@ def run_self_test(repo_root: Path) -> None:
         ), evidence_by_id
         assert (
             evidence_by_id["app-platform.durable-app-data-store"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
+            evidence_by_id["app-data.backup-restore-portability"]["status"] == "pass"
+        ), evidence_by_id
+        assert evidence_by_id["app-data.backup-restore-portability"][
+            "requiredForReleaseCandidate"
+        ] is True
+        assert (
+            evidence_by_id["operator-beta.app-data-backup-restore"]["status"] == "pass"
         ), evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-platform.trust-graph-preview"][

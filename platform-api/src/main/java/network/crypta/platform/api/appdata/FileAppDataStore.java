@@ -140,6 +140,38 @@ public final class FileAppDataStore implements AppDataStore {
   /**
    * {@inheritDoc}
    *
+   * <p>The file implementation discovers app ids from first-level managed directories. It reports
+   * only path-safe ids whose store subtree is present and not a symlink, so all-app backup can
+   * include preserved app-data state without exposing host filesystem paths or following
+   * caller-controlled links.
+   */
+  @Override
+  public synchronized List<String> listAppIds() throws IOException {
+    if (directoryMissingOrHasSymlinkAncestor(appDataRoot)) {
+      return List.of();
+    }
+    ArrayList<String> appIds = new ArrayList<>();
+    try (Stream<Path> stream = Files.list(existingManagedRootRealPath().orElseThrow())) {
+      for (Path path : sortedDirectories(stream)) {
+        String directoryName = path.getFileName().toString();
+        try {
+          String appId = AppDataRecord.normalizeAppId(directoryName);
+          if (appId.equals(directoryName)
+              && !directoryMissingOrHasSymlinkAncestor(appStoreDirectory(appId))) {
+            appIds.add(appId);
+          }
+        } catch (RuntimeException _) {
+          // Ignore malformed app-id directories; they are outside the app-data contract.
+        }
+      }
+    }
+    appIds.sort(Comparator.naturalOrder());
+    return Collections.unmodifiableList(appIds);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
    * <p>The file implementation derives record counts, byte totals, and effective update timestamps
    * from record summaries without reading record values.
    */

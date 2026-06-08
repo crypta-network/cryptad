@@ -397,6 +397,19 @@ a {
   gap: 12px;
 }
 
+.app-data-restore-form {
+  margin-block: 12px;
+}
+
+.app-data-restore-payload {
+  grid-column: 1 / -1;
+}
+
+.app-data-restore-result {
+  display: grid;
+  gap: 12px;
+}
+
 .queue-create-copy,
 .queue-create-description,
 .peer-add-copy,
@@ -571,6 +584,11 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.app-data-restore-details {
+  display: grid;
+  gap: 10px;
 }
 
 .review-acknowledgement {

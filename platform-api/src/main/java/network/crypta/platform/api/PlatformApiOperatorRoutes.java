@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
+import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
@@ -49,11 +50,20 @@ final class PlatformApiOperatorRoutes {
   /** Path segment that identifies subscription recovery routes under the operator namespace. */
   private static final String SUBSCRIPTIONS_SEGMENT = "subscriptions";
 
+  /** Path segment that identifies app-data backup and restore routes. */
+  private static final String APP_DATA_SEGMENT = "app-data";
+
   /** Builds redacted dashboard and support-bundle payloads from shared app-platform services. */
   private final OperatorBetaDashboardService dashboardService;
 
   /** Shared durable subscription service used by operator-initiated refresh and pause actions. */
   private final ContentSubscriptionService contentSubscriptionService;
+
+  /** Shared app-data service used for operator backup and restore portability routes. */
+  private final AppDataService appDataService;
+
+  /** Path-free Cryptad version label included in backup manifests. */
+  private final Supplier<String> currentCryptaVersion;
 
   /**
    * Required route-composition inputs that come from the top-level router.
@@ -122,6 +132,8 @@ final class PlatformApiOperatorRoutes {
             : new DiagnosticsApiHandler(
                 dependencies.runtimePorts().diagnostic(), dependencies.legacyAdminUsage());
     contentSubscriptionService = appServices.contentSubscriptionService();
+    appDataService = appServices.appDataService();
+    currentCryptaVersion = dependencies.currentCryptaVersion();
     dashboardService =
         new OperatorBetaDashboardService(
             new OperatorBetaDashboardService.HandlerSources(
@@ -152,6 +164,8 @@ final class PlatformApiOperatorRoutes {
     requireHostOperator(request);
     return switch (segments.size()) {
       case 2 -> routeCollection(segments.get(1), request);
+      case 3 -> routeAppData(segments, request);
+      case 4 -> routeAppDataRestore(segments, request);
       case 5 -> routeSubscriptionAction(segments, request);
       default -> throw notFound();
     };
@@ -176,6 +190,74 @@ final class PlatformApiOperatorRoutes {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
       }
       return PlatformApiResponse.ok(dashboardService.supportBundle());
+    }
+    throw notFound();
+  }
+
+  /**
+   * Routes app-data backup creation and restore commit under {@code /operator/app-data}.
+   *
+   * @param segments decoded operator route segments
+   * @param request full request metadata used to validate the method and query parameters
+   * @return sensitive backup response containing an app-data backup bundle
+   */
+  private PlatformApiResponse routeAppData(List<String> segments, PlatformApiRequest request) {
+    if (!APP_DATA_SEGMENT.equals(segments.get(1))) {
+      throw notFound();
+    }
+    if ("backups".equals(segments.get(2))) {
+      return routeAppDataBackup(request);
+    }
+    if ("restore".equals(segments.get(2))) {
+      return routeAppDataRestoreCommit(request);
+    }
+    throw notFound();
+  }
+
+  private PlatformApiResponse routeAppDataBackup(PlatformApiRequest request) {
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+    }
+    if (appDataService == null) {
+      throw new PlatformApiException(
+          503, "app_data_service_unavailable", "App-data service is unavailable.");
+    }
+    return PlatformApiResponse.ok(
+        appDataService.exportBackup(request.queryParameters(), currentCryptaVersion.get()));
+  }
+
+  private PlatformApiResponse routeAppDataRestoreCommit(PlatformApiRequest request) {
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+    }
+    if (appDataService == null) {
+      throw new PlatformApiException(
+          503, "app_data_service_unavailable", "App-data service is unavailable.");
+    }
+    return PlatformApiResponse.ok(appDataService.restoreBackup(request.queryParameters()));
+  }
+
+  /**
+   * Routes app-data restore planning and commit under {@code /operator/app-data/restore}.
+   *
+   * @param segments decoded operator route segments
+   * @param request full request metadata used to validate the method and form fields
+   * @return metadata-only restore plan or result response
+   */
+  private PlatformApiResponse routeAppDataRestore(
+      List<String> segments, PlatformApiRequest request) {
+    if (!APP_DATA_SEGMENT.equals(segments.get(1)) || !"restore".equals(segments.get(2))) {
+      throw notFound();
+    }
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+    }
+    if (appDataService == null) {
+      throw new PlatformApiException(
+          503, "app_data_service_unavailable", "App-data service is unavailable.");
+    }
+    if ("plan".equals(segments.get(3))) {
+      return PlatformApiResponse.ok(appDataService.planRestore(request.queryParameters()));
     }
     throw notFound();
   }

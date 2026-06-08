@@ -73,11 +73,63 @@
             <button class="button button-secondary" id="support-bundle-copy-button" type="button">
               Copy support summary
             </button>
+            <button class="button button-secondary" id="all-app-data-backup-button" type="button">
+              Download all app-data backup
+            </button>
             <a class="button button-secondary" href="#apps">Open apps area</a>
           </div>
+          <form class="control-form app-data-restore-form" id="operator-app-data-restore-form">
+            <p class="panel-description">
+              App-data backups contain sensitive user data. Restore previews show metadata only.
+            </p>
+            <div class="control-form-grid">
+              <label class="queue-field app-data-restore-payload" for="operator-app-data-restore-payload">
+                <span>Sensitive backup payload</span>
+                <textarea
+                  id="operator-app-data-restore-payload"
+                  name="backupPayload"
+                  autocomplete="off"
+                  spellcheck="false"
+                ></textarea>
+              </label>
+              <label class="queue-field" for="operator-app-data-restore-mode">
+                <span>Restore mode</span>
+                <select id="operator-app-data-restore-mode" name="mode">
+                  <option value="merge" selected>Merge</option>
+                  <option value="replaceNamespace">Replace namespace</option>
+                  <option value="replaceApp">Replace app</option>
+                </select>
+              </label>
+            </div>
+            <div class="control-form-actions">
+              <button
+                class="button button-secondary"
+                id="operator-app-data-restore-preview-button"
+                name="restoreAction"
+                type="submit"
+                value="preview"
+              >
+                Preview restore
+              </button>
+              <button
+                class="button button-primary"
+                id="operator-app-data-restore-commit-button"
+                name="restoreAction"
+                type="submit"
+                value="restore"
+              >
+                Restore app data
+              </button>
+            </div>
+            <div
+              class="app-data-restore-result"
+              id="operator-app-data-restore-result"
+              aria-live="polite"
+            ></div>
+          </form>
           <div class="queue-status" id="beta-dashboard-status" aria-live="polite"></div>
           <p class="panel-description" hidden id="beta-dashboard-readonly-hint">
-            Recovery actions are unavailable in read-only mode.
+            Recovery and app-data restore actions are unavailable in read-only mode.
           </p>
           <div class="panel-body" id="beta-dashboard-body">
             <p class="loading">Loading operator beta dashboard...</p>
