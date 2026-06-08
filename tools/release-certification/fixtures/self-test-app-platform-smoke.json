@@ -60,8 +60,8 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 14,
-        "endpointCount": 61,
+        "contractVersion": 15,
+        "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
           "stable": 75
@@ -451,6 +451,51 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Trust Graph Preview Platform API evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "contractV15AndRoutesPresent": true,
+          "docsDescribeRcNonGoalsAndRedaction": true,
+          "lifecycleModelPresent": true,
+          "scorerExcludesUnsafeEvidenceWithReasons": true,
+          "sdkLifecycleHelpersPresent": true,
+          "statusExposesLocalRcScope": true,
+          "storesPersistLifecycleAndSourceMetadata": true,
+          "testsCoverLifecyclePersistenceAndApi": true,
+          "trustScoreServiceRemainsReadOnly": true,
+          "uiAndWebShellWarnLocalOnly": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawAppDataBackupsExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawStatementBodiesExcluded": true,
+          "tokensExcluded": true
+        },
+        "routes": [
+          "GET /trust-graph/status",
+          "GET /trust-graph/statements/{fingerprint}",
+          "POST /trust-graph/statements/{fingerprint}/deprecate",
+          "POST /trust-graph/statements/{fingerprint}/revoke",
+          "POST /trust-graph/statements/{fingerprint}/reactivate"
+        ],
+        "scope": {
+          "importedStatementsOnly": true,
+          "localAnchorsOnly": true,
+          "noBlocking": true,
+          "noCrawling": true,
+          "noGlobalModeration": true,
+          "noLegacyWoTCompatibility": true,
+          "noRoutingDecisions": true
+        }
+      },
+      "id": "app-platform.trust-graph-rc-scope-and-safety",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph Local RC scope and safety evidence passed."
     },
     {
       "details": {

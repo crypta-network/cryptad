@@ -15,6 +15,7 @@
     recentImports: [],
     auditEvents: [],
     subscriptions: [],
+    statements: [],
     status: null,
   };
 
@@ -32,6 +33,7 @@
     elements.identityList = document.getElementById("identity-list");
     elements.anchorList = document.getElementById("anchor-list");
     elements.statementPreview = document.getElementById("statement-preview");
+    elements.statementList = document.getElementById("statement-list");
     elements.scoreResult = document.getElementById("score-result");
     elements.publishResult = document.getElementById("publish-result");
     elements.queuePreview = document.getElementById("queue-preview");
@@ -42,6 +44,7 @@
     elements.refreshAnchorsButton = document.getElementById("refresh-anchors-button");
     elements.refreshQueueButton = document.getElementById("refresh-queue-button");
     elements.refreshAuditButton = document.getElementById("refresh-audit-button");
+    elements.refreshStatementsButton = document.getElementById("refresh-statements-button");
     elements.refreshSubscriptionsButton = document.getElementById("refresh-subscriptions-button");
     elements.secondaryRefreshQueueButton =
       document.getElementById("secondary-refresh-queue-button");
@@ -59,6 +62,7 @@
     elements.refreshAnchorsButton.addEventListener("click", refreshAnchors);
     elements.refreshQueueButton.addEventListener("click", refreshQueue);
     elements.refreshAuditButton.addEventListener("click", refreshAudit);
+    elements.refreshStatementsButton.addEventListener("click", refreshStatements);
     elements.refreshSubscriptionsButton.addEventListener("click", refreshSubscriptions);
     elements.secondaryRefreshQueueButton.addEventListener("click", refreshQueue);
     elements.identityForm.addEventListener("submit", createIdentity);
@@ -70,7 +74,7 @@
   }
 
   async function startApp() {
-    setStatus("Loading Trust Graph Preview.");
+    setStatus("Loading Trust Graph Local RC.");
     try {
       if (CryptaPlatform.bootstrap && typeof CryptaPlatform.bootstrap.load === "function") {
         await CryptaPlatform.bootstrap.load({ appId });
@@ -81,11 +85,12 @@
         refreshStatus(),
         refreshAnchors(),
         refreshIdentities(),
+        refreshStatements(),
         refreshQueue(),
         refreshAudit(),
         refreshSubscriptions(),
       ]);
-      setStatus("Trust Graph Preview is ready.");
+      setStatus("Trust Graph Local RC is ready.");
     } catch (error) {
       setStatus(errorMessage(error));
     }
@@ -95,7 +100,7 @@
     try {
       const status = await CryptaPlatform.trust.status();
       state.status = status;
-      replaceChildren(elements.statusSummary, summaryNodes(status, "Trust status"));
+      renderStatus(status);
       setStatus("Trust status refreshed.");
     } catch (error) {
       renderError(elements.statusSummary, error);
@@ -121,6 +126,23 @@
       setStatus("Trust audit refreshed.");
     } catch (error) {
       renderError(elements.auditList, error);
+    }
+  }
+
+  async function refreshStatements() {
+    if (!CryptaPlatform.trust || typeof CryptaPlatform.trust.statements !== "function") {
+      replaceChildren(elements.statementList, [
+        emptyNode("Statement listing is unavailable on this Platform API contract."),
+      ]);
+      return;
+    }
+    try {
+      const response = await CryptaPlatform.trust.statements({ limit: evidenceLimit() });
+      state.statements = asArray(response.statements || response.items || response);
+      renderStatements();
+      setStatus("Trust statements refreshed.");
+    } catch (error) {
+      renderError(elements.statementList, error);
     }
   }
 
@@ -294,7 +316,7 @@
         imported
       );
       renderImportSummary(uri, imported);
-      await Promise.all([refreshStatus(), refreshAudit()]);
+      await Promise.all([refreshStatus(), refreshStatements(), refreshAudit()]);
       setStatus("Statement fetched and imported.");
     } catch (error) {
       renderError(elements.statementPreview, error);
@@ -319,7 +341,7 @@
       state.lastStatementText = text;
       rememberImportSummary(label, sourceUri, byteLength(text || ""), imported);
       renderStatement(label, text, imported);
-      await Promise.all([refreshStatus(), refreshAudit()]);
+      await Promise.all([refreshStatus(), refreshStatements(), refreshAudit()]);
       setStatus("Statement imported.");
     } catch (error) {
       renderError(elements.statementPreview, error);
@@ -344,7 +366,7 @@
         context,
         includeEvidence: true,
       });
-      replaceChildren(elements.scoreResult, summaryNodes(score, "Trust score"));
+      renderScoreResult(score);
       state.lastDraft.score = { subjectKind, subject, context };
       persistDurableState();
       setStatus("Trust score calculated.");
@@ -382,7 +404,7 @@
         insertUri,
         identifier,
       });
-      await Promise.all([refreshQueue(), refreshStatus(), refreshAudit()]);
+      await Promise.all([refreshQueue(), refreshStatus(), refreshStatements(), refreshAudit()]);
       state.lastDraft.publish = { authorIdentity, subjectKind, subjectIdentity, value, context, reason };
       persistDurableState();
       replaceChildren(
@@ -440,7 +462,7 @@
         },
       });
     } catch (error) {
-      setStatus("Trust Graph Preview UI state could not be saved.");
+      setStatus("Trust Graph Local RC UI state could not be saved.");
     }
   }
 
@@ -548,6 +570,81 @@
     }
   }
 
+  function renderStatus(status) {
+    const nodes = [];
+    nodes.push(
+      summaryArticle("Trust Graph Local RC", [
+        ["Mode", stringField(status, "mode") || "local-rc"],
+        ["Service", stringField(status, "service") || "local trust service"],
+        ["Scoring", stringField(status, "scoring") || "direct local anchors"],
+        ["Available", compactValue(status && status.available)],
+        ["Durable", compactValue(status && status.durable)],
+        ["Store", stringField(status, "storeType") || "Not shown"],
+        ["Anchors", compactValue(status && status.anchorCount)],
+        ["Statements", compactValue(status && status.statementCount)],
+        ["Audit entries", compactValue(status && status.auditCount)],
+      ])
+    );
+    nodes.push(scopeArticle(status && status.scope));
+    nodes.push(lifecycleArticle(status && status.statementLifecycle));
+    nodes.push(limitsArticle(status && status.limits));
+    replaceChildren(elements.statusSummary, nodes);
+  }
+
+  function scopeArticle(scope) {
+    const effectiveScope = Object.assign(
+      {
+        localAnchorsOnly: true,
+        importedStatementsOnly: true,
+        noCrawling: true,
+        noGlobalModeration: true,
+        noBlocking: true,
+        noRoutingDecisions: true,
+        noLegacyWoTCompatibility: true,
+      },
+      scope && typeof scope === "object" ? scope : {}
+    );
+    const item = document.createElement("article");
+    item.className = "summary-item";
+    item.append(rowNode("Scope", "Local operator-curated RC service"));
+    const list = document.createElement("ul");
+    list.className = "scope-list";
+    [
+      ["Local anchors only", effectiveScope.localAnchorsOnly],
+      ["Imported statements only", effectiveScope.importedStatementsOnly],
+      ["No network crawling", effectiveScope.noCrawling],
+      ["No global moderation", effectiveScope.noGlobalModeration],
+      ["No blocking policy", effectiveScope.noBlocking ?? effectiveScope.noGlobalModeration],
+      ["No routing decisions", effectiveScope.noRoutingDecisions],
+      ["No legacy WoT/Freetalk/Sone/Freemail compatibility", effectiveScope.noLegacyWoTCompatibility],
+    ].forEach(([label, value]) => {
+      const entry = document.createElement("li");
+      entry.textContent = `${label}: ${yesNo(value)}`;
+      list.append(entry);
+    });
+    item.append(list);
+    return item;
+  }
+
+  function lifecycleArticle(lifecycle) {
+    const source = lifecycle && typeof lifecycle === "object" ? lifecycle : {};
+    return summaryArticle("Statement lifecycle", [
+      ["Supports local revocation", yesNo(source.supportsLocalRevocation ?? true)],
+      ["Supports local deprecation", yesNo(source.supportsLocalDeprecation ?? true)],
+      ["Revoked contributes", yesNo(source.revokedContributes ?? false)],
+      ["Deprecated contributes", yesNo(source.deprecatedContributes ?? false)],
+    ]);
+  }
+
+  function limitsArticle(limits) {
+    const source = limits && typeof limits === "object" ? limits : {};
+    return summaryArticle("Limits", [
+      ["Max evidence rows", compactValue(source.maxEvidenceRows ?? evidenceLimit())],
+      ["Max statements", compactValue(source.maxStatements)],
+      ["Max audit entries", compactValue(source.maxAuditEntries)],
+    ]);
+  }
+
   function renderAnchors() {
     if (state.anchors.length === 0) {
       replaceChildren(elements.anchorList, [emptyNode("No trust anchors returned.")]);
@@ -608,10 +705,114 @@
     replaceChildren(elements.identityList, nodes);
   }
 
+  function renderStatements() {
+    if (state.statements.length === 0) {
+      replaceChildren(elements.statementList, [emptyNode("No imported trust statements returned.")]);
+      return;
+    }
+
+    const nodes = state.statements.map((statement) => {
+      const fingerprint = statementFingerprint(statement);
+      const lifecycle = lifecycleStatus(statement);
+      const article = document.createElement("article");
+      article.className = "statement-item";
+      article.append(
+        rowNode("Fingerprint", fingerprint || "Unknown"),
+        rowNode("Lifecycle", lifecycle),
+        rowNode("Issuer", stringField(statement, "issuerFingerprint") || "Unknown"),
+        rowNode("Subject", statementSubject(statement)),
+        rowNode("Score", compactValue(statement && statement.score)),
+        rowNode("Confidence", compactValue(statement && statement.confidence)),
+        rowNode("Signature verified", yesNo(statement && statement.signatureVerified)),
+        rowNode("Expires", stringField(statement, "expiresAt") || "None"),
+        rowNode("Source type", stringField(statement, "sourceType", "source") || "Unknown"),
+        rowNode("Source URI kind", sourceUriKind(statement)),
+        rowNode("Source label", boundedText(stringField(statement, "sourceLabel") || "Not shown"))
+      );
+      article.append(statementLifecycleActions(fingerprint, lifecycle));
+      return article;
+    });
+    replaceChildren(elements.statementList, nodes);
+  }
+
+  function statementLifecycleActions(fingerprint, lifecycle) {
+    const actions = document.createElement("div");
+    actions.className = "statement-item__actions";
+    const normalized = String(lifecycle || "").toLowerCase();
+    actions.append(
+      lifecycleButton("Deprecate", "deprecate", fingerprint, normalized === "deprecated"),
+      lifecycleButton("Revoke", "revoke", fingerprint, normalized === "revoked"),
+      lifecycleButton("Reactivate", "reactivate", fingerprint, normalized === "active")
+    );
+    return actions;
+  }
+
+  function lifecycleButton(label, action, fingerprint, alreadyApplied) {
+    const button = document.createElement("button");
+    button.className = "cr-button cr-button--secondary";
+    button.type = "button";
+    button.textContent = label;
+    const helper = statementLifecycleHelper(action);
+    button.disabled = !fingerprint || alreadyApplied || !helper;
+    if (!helper) {
+      button.title = "This Platform API contract does not expose a lifecycle SDK helper.";
+    } else if (alreadyApplied) {
+      button.title = `Statement is already ${label.toLowerCase()}d.`;
+    }
+    button.addEventListener("click", () => updateStatementLifecycle(action, fingerprint));
+    return button;
+  }
+
+  async function updateStatementLifecycle(action, fingerprint) {
+    const helper = statementLifecycleHelper(action);
+    if (!helper || !fingerprint) {
+      setStatus("Statement lifecycle helper is unavailable.");
+      return;
+    }
+    try {
+      await helper(fingerprint, {
+        reasonCode: `operator-${action}`,
+        note: "Updated from Trust Graph Local RC UI",
+        actorAppId: appId,
+      });
+      await Promise.all([refreshStatements(), refreshStatus(), refreshAudit()]);
+      setStatus(`Statement lifecycle ${action} completed.`);
+    } catch (error) {
+      renderError(elements.statementList, error);
+    }
+  }
+
+  function statementLifecycleHelper(action) {
+    const trust = CryptaPlatform.trust || {};
+    const statements = trust.statements;
+    if (statements && typeof statements[action] === "function") {
+      return (fingerprint, request) => statements[action](fingerprint, request);
+    }
+    if (
+      statements &&
+      statements.lifecycle &&
+      typeof statements.lifecycle[action] === "function"
+    ) {
+      return (fingerprint, request) => statements.lifecycle[action](fingerprint, request);
+    }
+    if (trust.lifecycle && typeof trust.lifecycle[action] === "function") {
+      return (fingerprint, request) =>
+        trust.lifecycle[action](Object.assign({ statementFingerprint: fingerprint }, request));
+    }
+    if (trust.statementLifecycle && typeof trust.statementLifecycle[action] === "function") {
+      return (fingerprint, request) =>
+        trust.statementLifecycle[action](
+          Object.assign({ statementFingerprint: fingerprint }, request)
+        );
+    }
+    return null;
+  }
+
   function renderStatement(uri, text, imported) {
     const nodes = [
       rowNode("Source", importSummaryLabel(uri, "")),
       rowNode("Import", compactValue(imported)),
+      rowNode("Lifecycle", lifecycleStatus(imported)),
       textBlock("Statement text", text),
     ];
     replaceChildren(elements.statementPreview, nodes);
@@ -621,10 +822,15 @@
     const summary = {
       source: "content-fetch",
       sourceSummary: redactedUri(uri),
+      sourceType: stringField(imported, "sourceType", "source") || "content-fetch",
+      sourceUriKind: sourceUriKind(imported) || importSourceKind(uri),
       documentFingerprint: stringField(imported, "documentFingerprint"),
+      statementFingerprint: stringField(imported, "statementFingerprint", "fingerprint"),
       payloadHash: stringField(imported, "payloadHash"),
       signatureVerified: stringField(imported, "signatureVerified"),
+      lifecycleStatus: lifecycleStatus(imported),
       importedAt: stringField(imported, "importedAt"),
+      lastSeenAt: stringField(imported, "lastSeenAt"),
       updatedAt: stringField(imported, "updatedAt"),
     };
     replaceChildren(elements.statementPreview, summaryNodes(summary, "Imported statement"));
@@ -717,12 +923,73 @@
     return button;
   }
 
+  function renderScoreResult(score) {
+    const rows = scoreEvidenceRows(score);
+    const nodes = [
+      summaryArticle("Trust score", [
+        ["Status", stringField(score, "status") || "unknown"],
+        ["Score", compactValue(score && score.score)],
+        ["Confidence", compactValue(score && score.confidence)],
+        ["Evidence rows", compactValue(score && score.evidenceCount)],
+        ["Contributing rows", compactValue(score && score.contributingEvidenceCount)],
+        ["Evidence truncated", yesNo(scoreEvidenceTruncated(score, rows))],
+      ]),
+    ];
+    if (rows.length) {
+      nodes.push(scoreEvidenceList(rows));
+    } else {
+      nodes.push(emptyNode("No bounded evidence rows were returned for this score."));
+    }
+    replaceChildren(elements.scoreResult, nodes);
+  }
+
+  function scoreEvidenceList(rows) {
+    const container = document.createElement("div");
+    container.className = "score-evidence-list";
+    rows.forEach((evidence, index) => {
+      const article = document.createElement("article");
+      article.className = "evidence-item";
+      article.append(
+        rowNode("Evidence", `Row ${index + 1}`),
+        rowNode("Issuer", stringField(evidence, "issuerFingerprint") || "Unknown"),
+        rowNode("Score", compactValue(evidence && evidence.score)),
+        rowNode("Confidence", compactValue(evidence && evidence.confidence)),
+        rowNode("Signature verified", yesNo(evidence && evidence.signatureVerified)),
+        rowNode("Anchored", yesNo(evidence && evidence.anchored)),
+        rowNode("Expired", yesNo(evidence && evidence.expired)),
+        rowNode("Lifecycle", lifecycleStatus(evidence)),
+        rowNode("Contributing", yesNo(evidence && evidence.contributing)),
+        reasonListNode(nonContributingReasons(evidence))
+      );
+      container.append(article);
+    });
+    return container;
+  }
+
+  function reasonListNode(reasons) {
+    const block = document.createElement("div");
+    block.className = "summary-row";
+    block.append(strongText("Non-contributing reasons: "));
+    const list = document.createElement("ul");
+    list.className = "reason-list";
+    const effectiveReasons = reasons.length ? reasons : ["none"];
+    effectiveReasons.forEach((reason) => {
+      const entry = document.createElement("li");
+      entry.textContent = boundedText(reason);
+      list.append(entry);
+    });
+    block.append(list);
+    return block;
+  }
+
   function publicationSummary(published) {
     return {
       requestId: stringField(published, "requestId", "id"),
       documentFingerprint: stringField(published, "documentFingerprint"),
+      statementFingerprint: stringField(published, "statementFingerprint", "fingerprint"),
       payloadHash: stringField(published, "payloadHash"),
       signatureVerified: stringField(published, "signatureVerified"),
+      lifecycleStatus: lifecycleStatus(published),
       source: stringField(published, "source") || "local-publish",
     };
   }
@@ -735,26 +1002,27 @@
     };
   }
 
-  function summaryNodes(value, title) {
+  function summaryArticle(title, entries) {
     const item = document.createElement("article");
     item.className = "summary-item";
     const heading = document.createElement("p");
     heading.className = "summary-title";
     heading.append(strongText(title));
     item.append(heading);
+    entries.forEach(([label, value]) => item.append(rowNode(label, value)));
+    return item;
+  }
 
+  function summaryNodes(value, title) {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const keys = Object.keys(value).slice(0, 8);
       if (keys.length === 0) {
-        item.append(rowNode("Result", "No fields returned."));
-      } else {
-        keys.forEach((key) => item.append(rowNode(labelFromKey(key), compactValue(value[key]))));
+        return [summaryArticle(title, [["Result", "No fields returned."]])];
       }
+      return [summaryArticle(title, keys.map((key) => [labelFromKey(key), compactValue(value[key])]))];
     } else {
-      item.append(rowNode("Result", compactValue(value)));
+      return [summaryArticle(title, [["Result", compactValue(value)]])];
     }
-
-    return [item];
   }
 
   function rowNode(label, value) {
@@ -805,6 +1073,129 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function scoreEvidenceRows(score) {
+    const direct = asArray(score && score.evidence);
+    const rows = direct.length
+      ? direct
+      : asArray(score && score.evidenceRows).length
+        ? asArray(score.evidenceRows)
+        : asArray(score && score.explanation && score.explanation.evidence);
+    return rows.slice(0, evidenceLimit(score));
+  }
+
+  function scoreEvidenceTruncated(score, rows) {
+    if (score && score.evidenceTruncated === true) {
+      return true;
+    }
+    const count = Number(score && score.evidenceCount);
+    return Number.isFinite(count) && count > rows.length;
+  }
+
+  function evidenceLimit(source) {
+    const statusLimits = state.status && state.status.limits;
+    const candidates = [
+      source && source.maxEvidenceRows,
+      source && source.limits && source.limits.maxEvidenceRows,
+      statusLimits && statusLimits.maxEvidenceRows,
+      25,
+    ];
+    for (const candidate of candidates) {
+      const number = Number(candidate);
+      if (Number.isFinite(number) && number > 0) {
+        return Math.max(1, Math.min(25, Math.floor(number)));
+      }
+    }
+    return 25;
+  }
+
+  function statementFingerprint(statement) {
+    return stringField(
+      statement,
+      "statementFingerprint",
+      "canonicalStatementFingerprint",
+      "documentFingerprint",
+      "fingerprint",
+      "payloadHash"
+    );
+  }
+
+  function lifecycleStatus(value) {
+    if (!value || typeof value !== "object") {
+      return "active";
+    }
+    const lifecycle = value.lifecycle && typeof value.lifecycle === "object" ? value.lifecycle : {};
+    return (
+      stringField(value, "lifecycleStatus", "statementLifecycleStatus") ||
+      stringField(lifecycle, "status") ||
+      "active"
+    ).toLowerCase();
+  }
+
+  function statementSubject(statement) {
+    const subject = statement && typeof statement.subject === "object" ? statement.subject : null;
+    if (!subject) {
+      return stringField(statement, "subjectUri", "subject", "identity") || "Unknown";
+    }
+    const kind = stringField(subject, "kind", "subjectKind") || "subject";
+    const uri = stringField(subject, "uri", "subjectUri", "identity", "id") || compactValue(subject);
+    return `${kind}: ${boundedText(uri)}`;
+  }
+
+  function sourceUriKind(value) {
+    const explicit = stringField(value, "sourceUriKind", "uriKind", "sourceKind");
+    if (explicit) {
+      return explicit;
+    }
+    const sourceUri = stringField(value, "sourceUri", "uri");
+    if (!sourceUri) {
+      return "not shown";
+    }
+    if (/^crypta:usk@|^usk@/i.test(sourceUri)) {
+      return "crypta-usk";
+    }
+    if (/^crypta:ssk@|^ssk@/i.test(sourceUri)) {
+      return "crypta-ssk";
+    }
+    if (/^crypta:chk@|^chk@/i.test(sourceUri)) {
+      return "crypta-chk";
+    }
+    if (/^file:/i.test(sourceUri)) {
+      return "file";
+    }
+    return "unknown";
+  }
+
+  function nonContributingReasons(evidence) {
+    if (!evidence || typeof evidence !== "object") {
+      return [];
+    }
+    const explicit = asArray(evidence.nonContributingReasons || evidence.reasons)
+      .map((reason) => String(reason || "").trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    if (explicit.length || evidence.contributing === true) {
+      return explicit;
+    }
+    const reasons = [];
+    if (evidence.signatureVerified === false) {
+      reasons.push("signature-unverified");
+    }
+    if (evidence.anchored === false) {
+      reasons.push("issuer-not-local-anchor");
+    }
+    if (evidence.expired === true) {
+      reasons.push("expired");
+    }
+    if (Number(evidence.confidence) === 0) {
+      reasons.push("zero-confidence");
+    }
+    const lifecycle = lifecycleStatus(evidence);
+    if (lifecycle === "revoked" || lifecycle === "deprecated") {
+      reasons.push(lifecycle);
+    }
+    return reasons;
+  }
+
   function stringField(value, ...keys) {
     if (!value || typeof value !== "object") {
       return "";
@@ -847,7 +1238,11 @@
       return "None";
     }
     if (Array.isArray(value)) {
-      return value.length === 0 ? "None" : value.map(compactValue).join(", ");
+      if (value.length === 0) {
+        return "None";
+      }
+      const compact = value.slice(0, 8).map(compactValue).join(", ");
+      return value.length > 8 ? `${compact}, ...` : compact;
     }
     if (typeof value === "object") {
       return Object.entries(value)
@@ -855,7 +1250,22 @@
         .map(([key, entryValue]) => `${labelFromKey(key)}=${compactValue(entryValue)}`)
         .join("; ");
     }
-    return String(value);
+    return boundedText(String(value));
+  }
+
+  function boundedText(value) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+  }
+
+  function yesNo(value) {
+    if (value === true) {
+      return "Yes";
+    }
+    if (value === false) {
+      return "No";
+    }
+    return "Unavailable";
   }
 
   function labelFromKey(key) {

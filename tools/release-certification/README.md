@@ -103,6 +103,7 @@ app-platform.content-subscriptions
 network-content.subscription-scheduler
 app-data.backup-restore-portability
 app-platform.trust-graph-preview
+app-platform.trust-graph-rc-scope-and-safety
 app-platform.trust-statement-signing
 app-platform.social-message-signing
 app-services.registry
@@ -184,7 +185,7 @@ deprecated metadata, stable-only default update automation, deprecated replaceme
 and Web Shell exposure, signature/review verification preservation, and redaction guarantees.
 `app-update.data-migration-contract` verifies signed app-data schema migration metadata, dry-run
 before bundle replacement, internal app-scoped snapshot/restore, missing-path and
-rollback-incompatible blockers, Feed Reader and Trust Graph Preview examples, and path-free
+rollback-incompatible blockers, Feed Reader and Trust Graph Local RC UI-state examples, and path-free
 redacted update summaries.
 `app-data.backup-restore-portability` verifies the `backupVersion = 1`
 `crypta-app-data-backup` envelope, single-app and all-app backup, host/operator-only restore plan
@@ -193,6 +194,11 @@ modes, Web Shell controls, first-party app backup-scope docs, and support-bundle
 recording raw backup payloads. `operator-beta.app-data-backup-restore` verifies the operator
 dashboard controls for sensitive backup, restore preview, restore commit, all-app backup, and
 export-before-delete.
+`app-platform.trust-graph-rc-scope-and-safety` verifies Trust Graph Local RC scope and safety:
+local anchors, imported public signed statements, local lifecycle states, bounded score
+explanations, redacted source metadata, read-only `trust.score` service boundaries, no crawling, no
+global moderation or blocking, no routing decisions, no node-to-node trust propagation, and no
+legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility claim.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review
@@ -364,7 +370,7 @@ dashboard/recovery/support-bundle evidence, independent app-review receipt evide
 Profile Publisher identity-profile publishing evidence,
 app-generated document insert evidence, content-fetch evidence, content-subscription scheduler
 evidence, Feed Reader reference-app and subscription evidence,
-Trust Graph Preview evidence, app-review governance evidence, and the legacy-admin retirement map.
+Trust Graph Local RC evidence, app-review governance evidence, and the legacy-admin retirement map.
 
 Signing inputs use the documented first-party app environment variables:
 
@@ -467,7 +473,7 @@ disposable certification apps.
 The runner validates localhost-only node access, live USK catalog fetch/verification, app
 install/update/rollback, content fetch, feed subscription metadata, synthetic profile publish,
 synthetic trust statement publish/import, interop/performance timing, and artifact redaction. It
-can also invoke the Trust Graph `trust.score` app-service when
+can also invoke the read-only Trust Graph `trust.score` app-service when
 `CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise
 `live-network-beta.app-service-score` is reported as optional skipped evidence, not a false pass.
 Aggregation records these results under the `ecosystem.live-network-beta` gate and the

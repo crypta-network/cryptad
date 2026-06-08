@@ -354,7 +354,7 @@ class PlatformApiRouterTest {
     assertTrue(
         response
             .body()
-            .contains("\"contractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION));
+            .contains("\"contractVersion\":" + PlatformApiContract.current().contractVersion()));
   }
 
   @Test

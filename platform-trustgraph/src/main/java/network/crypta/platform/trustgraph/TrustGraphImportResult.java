@@ -19,6 +19,8 @@ import java.util.Map;
  * @param sourceUri optional redacted Crypta content URI summary associated with the import
  * @param sourceUriHash optional SHA-256 hash of the normalized source URI
  * @param sourceLabel optional short caller-supplied label for display
+ * @param sourceUriKind optional redacted source URI family such as {@code crypta-usk}
+ * @param subscriptionId optional local content-subscription id associated with the import
  * @param importedAt first time this statement fingerprint was retained
  * @param updatedAt latest time this statement fingerprint metadata was updated
  * @param document parsed trust statement model retained by the store
@@ -32,9 +34,46 @@ public record TrustGraphImportResult(
     String sourceUri,
     String sourceUriHash,
     String sourceLabel,
+    String sourceUriKind,
+    String subscriptionId,
     java.time.Instant importedAt,
     java.time.Instant updatedAt,
     TrustStatementDocument document) {
+  /**
+   * Creates an import result without subscription source metadata.
+   *
+   * <p>This overload preserves older store call sites that only report source type, source URI
+   * summary, and source label. The new fields are derived where possible and omitted when absent.
+   */
+  @SuppressWarnings("unused")
+  public TrustGraphImportResult(
+      String documentFingerprint,
+      String payloadHash,
+      boolean imported,
+      boolean signatureVerified,
+      String source,
+      String sourceUri,
+      String sourceUriHash,
+      String sourceLabel,
+      java.time.Instant importedAt,
+      java.time.Instant updatedAt,
+      TrustStatementDocument document) {
+    this(
+        documentFingerprint,
+        payloadHash,
+        imported,
+        signatureVerified,
+        source,
+        sourceUri,
+        sourceUriHash,
+        sourceLabel,
+        null,
+        null,
+        importedAt,
+        updatedAt,
+        document);
+  }
+
   /**
    * Returns a redacted import summary without the raw document or signature value.
    *
@@ -51,8 +90,12 @@ public record TrustGraphImportResult(
     json.put("subject", document.payload().subject().toJson());
     json.put("context", document.payload().context());
     json.put("source", source);
+    json.put("sourceType", source);
     if (sourceUri != null) {
       json.put("sourceUri", sourceUri);
+    }
+    if (sourceUriKind != null) {
+      json.put("sourceUriKind", sourceUriKind);
     }
     if (sourceUriHash != null) {
       json.put("sourceUriHash", sourceUriHash);
@@ -60,11 +103,15 @@ public record TrustGraphImportResult(
     if (sourceLabel != null) {
       json.put("sourceLabel", sourceLabel);
     }
+    if (subscriptionId != null) {
+      json.put("subscriptionId", subscriptionId);
+    }
     if (importedAt != null) {
       json.put("importedAt", importedAt.toString());
     }
     if (updatedAt != null) {
       json.put("updatedAt", updatedAt.toString());
+      json.put("lastSeenAt", updatedAt.toString());
     }
     return json;
   }

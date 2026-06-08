@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Process-local Trust Graph Preview store used by the minimal service surface.
+ * Process-local Trust Graph RC store used by the minimal service surface.
  *
  * <p>The store keeps imported statements and local anchors in memory with explicit retention caps.
  * It is suitable for reference apps, offline developer tools, and tests that need deterministic
@@ -40,12 +40,16 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
    */
   public static final int DEFAULT_MAX_ANCHORS = 256;
 
+  private static final String KEY_DOCUMENT_FINGERPRINT = "documentFingerprint";
+
   private final Clock clock;
   private final int maxStatements;
   private final int maxAnchors;
   private final int maxAuditEntries;
+  private final int maxLifecycleRecords;
   private final Map<String, TrustAnchor> anchors = new LinkedHashMap<>();
   private final Map<String, StoredTrustStatement> statements = new LinkedHashMap<>();
+  private final Map<String, TrustStatementLifecycleRecord> lifecycleRecords = new LinkedHashMap<>();
   private final List<TrustGraphAuditEvent> auditEvents = new ArrayList<>();
 
   /**
@@ -95,12 +99,24 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
     }
     this.maxStatements = maxStatements;
     this.maxAnchors = maxAnchors;
-    this.maxAuditEntries = TrustGraphStoreConfig.defaults().maxAuditEntries();
+    TrustGraphStoreConfig defaults = TrustGraphStoreConfig.defaults();
+    this.maxAuditEntries = defaults.maxAuditEntries();
+    this.maxLifecycleRecords = defaults.maxLifecycleRecords();
   }
 
   @Override
   public synchronized TrustGraphImportResult importStatement(
       TrustStatementDocument document, String source, String sourceUri, String sourceLabel) {
+    return importStatement(document, source, sourceUri, sourceLabel, null);
+  }
+
+  @Override
+  public synchronized TrustGraphImportResult importStatement(
+      TrustStatementDocument document,
+      String source,
+      String sourceUri,
+      String sourceLabel,
+      String subscriptionId) {
     String documentFingerprint = TrustStatementFingerprint.documentFingerprint(document);
     String payloadHash = TrustStatementFingerprint.payloadHash(document);
     boolean signatureVerified = TrustStatementVerifier.isSignatureVerified(document);
@@ -108,6 +124,9 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
     String normalizedSourceUri = TrustGraphStoreSanitizer.redactedUriSummary(sourceUri);
     String sourceUriHash = TrustGraphStoreSanitizer.sourceUriHash(sourceUri);
     String normalizedSourceLabel = TrustGraphStoreSanitizer.normalizeSourceLabel(sourceLabel);
+    String sourceUriKind = TrustGraphStoreSanitizer.sourceUriKind(sourceUri);
+    String normalizedSubscriptionId =
+        TrustGraphStoreSanitizer.normalizeSubscriptionId(subscriptionId);
     StoredTrustStatement existing = statements.get(documentFingerprint);
     boolean imported = existing == null;
     Instant now = clock.instant();
@@ -126,6 +145,8 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
             normalizedSourceUri,
             sourceUriHash,
             normalizedSourceLabel,
+            sourceUriKind,
+            normalizedSubscriptionId,
             importedAt,
             now));
     return new TrustGraphImportResult(
@@ -137,6 +158,8 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
         normalizedSourceUri,
         sourceUriHash,
         normalizedSourceLabel,
+        sourceUriKind,
+        normalizedSubscriptionId,
         importedAt,
         now,
         document);
@@ -187,6 +210,13 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
   }
 
   @Override
+  public synchronized StoredTrustStatement statement(String documentFingerprint) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    return statements.get(normalized);
+  }
+
+  @Override
   public synchronized List<TrustSubject> subjects() {
     TreeMap<String, TrustSubject> subjects = new TreeMap<>();
     for (StoredTrustStatement statement : statements.values()) {
@@ -206,6 +236,57 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
   }
 
   @Override
+  public synchronized TrustStatementLifecycleRecord lifecycle(String documentFingerprint) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    TrustStatementLifecycleRecord lifecycleRecord = lifecycleRecords.get(normalized);
+    if (lifecycleRecord != null) {
+      return lifecycleRecord;
+    }
+    StoredTrustStatement statement = statements.get(normalized);
+    Instant timestamp =
+        statement == null || statement.importedAt() == null
+            ? clock.instant()
+            : statement.importedAt();
+    return TrustStatementLifecycleRecord.active(normalized, timestamp);
+  }
+
+  @Override
+  public synchronized TrustStatementLifecycleRecord updateLifecycle(
+      String documentFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String note,
+      String replacementUri,
+      String actorAppId,
+      String source) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    if (!statements.containsKey(normalized)) {
+      throw new TrustGraphException("trust_statement_not_found", "Trust statement was not found.");
+    }
+    Instant now = clock.instant();
+    TrustStatementLifecycleRecord previous = lifecycleRecords.get(normalized);
+    Instant createdAt = previous == null ? now : previous.createdAt();
+    TrustStatementLifecycleRecord lifecycleRecord =
+        TrustStatementLifecycleRecord.updated(
+            normalized,
+            status,
+            reasonCode,
+            note,
+            replacementUri,
+            createdAt,
+            now,
+            actorAppId,
+            source);
+    if (!lifecycleRecords.containsKey(normalized)) {
+      evictEldestLifecycleIfFull();
+    }
+    lifecycleRecords.put(normalized, lifecycleRecord);
+    return lifecycleRecord;
+  }
+
+  @Override
   public synchronized int statementCount() {
     return statements.size();
   }
@@ -213,7 +294,11 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
   @Override
   public TrustGraphStoreConfig config() {
     return new TrustGraphStoreConfig(
-        maxStatements, maxAnchors, maxAuditEntries, TrustStatementValidator.MAX_DOCUMENT_BYTES);
+        maxStatements,
+        maxAnchors,
+        maxAuditEntries,
+        TrustStatementValidator.MAX_DOCUMENT_BYTES,
+        maxLifecycleRecords);
   }
 
   @Override
@@ -252,6 +337,17 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
   private void evictEldestAnchorIfFull() {
     while (anchors.size() >= maxAnchors) {
       Iterator<String> iterator = anchors.keySet().iterator();
+      if (!iterator.hasNext()) {
+        return;
+      }
+      iterator.next();
+      iterator.remove();
+    }
+  }
+
+  private void evictEldestLifecycleIfFull() {
+    while (lifecycleRecords.size() >= maxLifecycleRecords) {
+      Iterator<String> iterator = lifecycleRecords.keySet().iterator();
       if (!iterator.hasNext()) {
         return;
       }

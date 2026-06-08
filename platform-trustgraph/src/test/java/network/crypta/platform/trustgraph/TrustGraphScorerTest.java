@@ -34,6 +34,8 @@ class TrustGraphScorerTest {
     assertEquals(1, score.evidenceCount());
     assertEquals(0, score.contributingEvidenceCount());
     assertFalse(score.evidence().getFirst().contributing());
+    assertFalse(score.evidence().getFirst().anchored());
+    assertEquals(List.of("unanchored"), score.evidence().getFirst().nonContributingReasons());
   }
 
   @Test
@@ -71,6 +73,7 @@ class TrustGraphScorerTest {
     assertEquals(1, score.evidenceCount());
     assertTrue(score.evidence().getFirst().expired());
     assertFalse(score.evidence().getFirst().contributing());
+    assertEquals(List.of("expired"), score.evidence().getFirst().nonContributingReasons());
   }
 
   @Test
@@ -149,6 +152,60 @@ class TrustGraphScorerTest {
     assertEquals(1, score.evidenceCount());
     assertFalse(score.evidence().getFirst().signatureVerified());
     assertFalse(score.evidence().getFirst().contributing());
+    assertEquals(List.of("unverified"), score.evidence().getFirst().nonContributingReasons());
+  }
+
+  @Test
+  void score_whenAnchoredStatementRevoked_expectLifecycleBlocksContribution() {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
+    TrustStatementDocument document = signedStatement(80, 50, "2026-05-16T00:00:00Z", null);
+    store.addAnchor(fingerprint(document), "Alice", "manual");
+    TrustGraphImportResult imported = store.importStatement(document, "manual", null, null);
+    store.updateLifecycle(
+        imported.documentFingerprint(),
+        TrustStatementLifecycleStatus.REVOKED,
+        "operator-revoked",
+        "local policy",
+        null,
+        "trust-graph",
+        "app");
+
+    TrustGraphScore score = scorer(store).score(query());
+
+    assertEquals("unknown", score.status());
+    assertEquals(0, score.contributingEvidenceCount());
+    assertEquals(1, score.evidenceCount());
+    TrustGraphEvidence evidence = score.evidence().getFirst();
+    assertTrue(evidence.anchored());
+    assertTrue(evidence.signatureVerified());
+    assertEquals(TrustStatementLifecycleStatus.REVOKED, evidence.lifecycleStatus());
+    assertEquals(List.of("revoked"), evidence.nonContributingReasons());
+    assertFalse(evidence.contributing());
+  }
+
+  @Test
+  void score_whenAnchoredStatementDeprecated_expectLifecycleBlocksContribution() {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
+    TrustStatementDocument document = signedStatement(80, 50, "2026-05-16T00:00:00Z", null);
+    store.addAnchor(fingerprint(document), "Alice", "manual");
+    TrustGraphImportResult imported = store.importStatement(document, "manual", null, null);
+    store.updateLifecycle(
+        imported.documentFingerprint(),
+        TrustStatementLifecycleStatus.DEPRECATED,
+        "operator-deprecated",
+        null,
+        null,
+        "trust-graph",
+        "app");
+
+    TrustGraphScore score = scorer(store).score(query());
+
+    assertEquals("unknown", score.status());
+    assertEquals(0, score.contributingEvidenceCount());
+    TrustGraphEvidence evidence = score.evidence().getFirst();
+    assertEquals(TrustStatementLifecycleStatus.DEPRECATED, evidence.lifecycleStatus());
+    assertEquals(List.of("deprecated"), evidence.nonContributingReasons());
+    assertFalse(evidence.contributing());
   }
 
   @Test
@@ -286,6 +343,8 @@ class TrustGraphScorerTest {
     assertEquals(30, score.evidenceCount());
     assertEquals(25, score.evidence().size());
     assertEquals(0, score.contributingEvidenceCount());
+    assertTrue(score.evidenceTruncated());
+    assertEquals(25, score.maxEvidenceRows());
   }
 
   private static TrustGraphScorer scorer(TrustGraphStore store) {

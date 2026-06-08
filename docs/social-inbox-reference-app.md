@@ -29,7 +29,7 @@ For broader legacy plugin categories and migration recipes, see
 app.id=social-inbox
 app.name=Social Inbox Preview
 api.minimumVersion=12
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
 ```
 

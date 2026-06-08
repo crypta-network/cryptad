@@ -917,21 +917,33 @@
   function renderBetaTrustAndServices(trustGraph, appServices) {
     const group = document.createElement("section");
     group.className = "diagnostics-section";
-    group.append(text("h3", "diagnostics-section-title", "Trust preview and app-service grants"));
+    group.append(text("h3", "diagnostics-section-title", "Trust Graph Local RC and app-service grants"));
     const list = document.createElement("div");
     list.className = "app-card-list";
+    const scope = recordValue(trustGraph.scope);
+    const lifecycle = recordValue(trustGraph.statementLifecycle);
     const trustCard = document.createElement("article");
     trustCard.className = "app-card";
     trustCard.append(
-      betaCardHeader("Trust Graph Preview", "local preview", "is-warning"),
+      betaCardHeader("Trust Graph Local RC", "local operator-curated", "is-warning"),
       definitionList([
-        ["Preview only", trustGraph.previewOnly ? "Yes" : "Unavailable"],
-        ["Complete WoT", trustGraph.completeWot ? "Yes" : "No"],
+        ["Mode", scalar(trustGraph.mode || "local-rc")],
+        ["Local anchors only", yesNoText(scope.localAnchorsOnly, true)],
+        ["Imported statements only", yesNoText(scope.importedStatementsOnly, true)],
+        ["No crawling", yesNoText(scope.noCrawling, true)],
+        ["No global moderation", yesNoText(scope.noGlobalModeration, true)],
+        ["No blocking policy", yesNoText(scope.noBlocking, true)],
+        ["No routing decisions", yesNoText(scope.noRoutingDecisions, true)],
+        ["No legacy WoT/Freetalk/Sone/Freemail", yesNoText(scope.noLegacyWoTCompatibility, true)],
+        ["Revoked contributes", yesNoText(lifecycle.revokedContributes, false)],
+        ["Deprecated contributes", yesNoText(lifecycle.deprecatedContributes, false)],
+        ["Global Web of Trust", trustGraph.completeWot ? "Yes" : "No"],
         ["Durable", scalar(trustGraph.durable)],
         ["Anchors", scalar(trustGraph.anchorCount)],
         ["Statements", scalar(trustGraph.statementCount)],
         ["Audit entries", scalar(trustGraph.auditCount)],
       ]),
+      renderTrustGraphScopeNotes(),
       renderCompactWarningText(stringList(trustGraph.warnings)),
     );
     const servicesCard = document.createElement("article");
@@ -958,6 +970,32 @@
     list.append(trustCard, servicesCard);
     group.append(list);
     return group;
+  }
+
+  function renderTrustGraphScopeNotes() {
+    const list = document.createElement("ul");
+    list.className = "permission-list trust-scope-notes";
+    [
+      "Local trust only; it is not global truth.",
+      "Not moderation, blocking, routing policy, peer selection, or network crawling.",
+      "No legacy WoT, Freetalk, Sone, Freemail, or old WebOfTrust plugin compatibility promise.",
+    ].forEach((note) => {
+      const item = document.createElement("li");
+      item.textContent = note;
+      list.append(item);
+    });
+    return list;
+  }
+
+  function yesNoText(value, fallback) {
+    const effective = typeof value === "boolean" ? value : fallback;
+    if (effective === true) {
+      return "Yes";
+    }
+    if (effective === false) {
+      return "No";
+    }
+    return "Unavailable";
   }
 
   function renderBetaRecoveryActions(actions) {

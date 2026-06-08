@@ -16,6 +16,7 @@
 .anchors-panel,
 .fetch-panel,
 .score-panel,
+.statements-panel,
 .subscriptions-panel,
 .audit-panel,
 .publish-panel,
@@ -34,6 +35,14 @@
 .safe-use-panel ul,
 .cr-permission-summary ul {
   margin: 0;
+}
+
+.rc-warning {
+  margin: 0;
+  padding: var(--cr-space-3);
+  border-left: 4px solid var(--cr-color-warning, #b47a00);
+  background: var(--cr-color-warning-soft, rgba(180, 122, 0, 0.12));
+  overflow-wrap: anywhere;
 }
 
 .workspace-grid,
@@ -75,6 +84,8 @@
 .summary-item,
 .anchor-item,
 .identity-item,
+.statement-item,
+.evidence-item,
 .subscription-item,
 .audit-item,
 .queue-item {
@@ -87,6 +98,8 @@
 .summary-item:last-child,
 .anchor-item:last-child,
 .identity-item:last-child,
+.statement-item:last-child,
+.evidence-item:last-child,
 .subscription-item:last-child,
 .audit-item:last-child,
 .queue-item:last-child {
@@ -95,10 +108,22 @@
 }
 
 .anchor-item__actions,
+.statement-item__actions,
 .subscription-item__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cr-space-2);
+}
+
+.scope-list,
+.reason-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.score-evidence-list {
+  display: grid;
+  gap: var(--cr-space-3);
 }
 
 .button-row {

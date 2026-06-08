@@ -1,11 +1,16 @@
 package network.crypta.platform.api;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
+import network.crypta.platform.trustgraph.TrustStatementFingerprint;
+import network.crypta.platform.trustgraph.TrustStatementParser;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -20,6 +25,8 @@ import static org.mockito.Mockito.mock;
 @SuppressWarnings("java:S100")
 class TrustGraphApiRouterTest {
   private static final String APP_ID = "trust-reader";
+  private static final Clock FIXED_CLOCK =
+      Clock.fixed(Instant.parse("2026-05-17T00:00:00Z"), ZoneOffset.UTC);
 
   @Test
   void route_whenAppHasTrustRead_expectStatusAllowed() {
@@ -33,7 +40,11 @@ class TrustGraphApiRouterTest {
                     PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.read"))));
 
     assertEquals(200, response.statusCode());
-    assertTrue(response.body().contains("\"service\":\"trust-graph-preview\""));
+    assertTrue(response.body().contains("\"service\":\"trust-graph-local-rc\""));
+    assertTrue(response.body().contains("\"mode\":\"local-rc\""));
+    assertTrue(response.body().contains("\"noCrawling\":true"));
+    assertTrue(response.body().contains("\"noGlobalModeration\":true"));
+    assertTrue(response.body().contains("\"noBlocking\":true"));
     assertTrue(response.body().contains("\"completeWot\":false"));
   }
 
@@ -108,7 +119,82 @@ class TrustGraphApiRouterTest {
     assertTrue(scoreResponse.body().contains("\"status\":\"unknown\""));
     assertTrue(scoreResponse.body().contains("\"contributing\":false"));
     assertTrue(scoreResponse.body().contains("\"signatureVerified\":false"));
+    assertTrue(scoreResponse.body().contains("\"nonContributingReasons\":[\"unverified\"]"));
     assertFalse(scoreResponse.body().contains("signature-value"));
+  }
+
+  @Test
+  void route_whenWriterRevokesImportedStatement_expectLifecycleVisibleAndReimportDoesNotErase() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession("trust-reader", List.of("trust.read"));
+    String fingerprint = documentFingerprint(validStatement());
+
+    PlatformApiResponse importResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement())),
+                writer));
+    PlatformApiResponse revoked =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "statements", fingerprint, "revoke"),
+                Map.of("reasonCode", List.of("operator-revoked"), "note", List.of("bad source")),
+                writer));
+    PlatformApiResponse reimported =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement()), "sourceLabel", List.of("again")),
+                writer));
+    PlatformApiResponse statement =
+        router.route(
+            request("GET", List.of("trust-graph", "statements", fingerprint), Map.of(), reader));
+
+    assertEquals(200, importResponse.statusCode());
+    assertEquals(200, revoked.statusCode());
+    assertTrue(revoked.body().contains("\"status\":\"revoked\""));
+    assertTrue(revoked.body().contains("\"reasonCode\":\"operator-revoked\""));
+    assertFalse(revoked.body().contains("signature-value"));
+    assertEquals(200, reimported.statusCode());
+    assertTrue(reimported.body().contains("\"imported\":false"));
+    assertEquals(200, statement.statusCode());
+    assertTrue(statement.body().contains("\"lifecycleStatus\":\"revoked\""));
+    assertTrue(statement.body().contains("\"lastSeenAt\""));
+    assertFalse(statement.body().contains("signature-value"));
+  }
+
+  @Test
+  void route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession("trust-reader", List.of("trust.read"));
+    String fingerprint = documentFingerprint(validStatement());
+
+    router.route(
+        request(
+            "POST",
+            List.of("trust-graph", "import"),
+            Map.of("document", List.of(validStatement())),
+            writer));
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "statements", fingerprint, "deprecate"),
+                Map.of("reasonCode", List.of("operator-deprecated")),
+                reader));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
   }
 
   @Test
@@ -438,8 +524,7 @@ class TrustGraphApiRouterTest {
   @Test
   void route_whenSharedTrustGraphHandlerInjected_expectStateSharedByRouter() {
     InMemoryTrustGraphStore store = new InMemoryTrustGraphStore();
-    PlatformApiRouter router =
-        router(null, new TrustGraphApiHandler(store, java.time.Clock.systemUTC()));
+    PlatformApiRouter router = router(null, new TrustGraphApiHandler(store, FIXED_CLOCK));
     store.addAnchor("fingerprint-shared", "Shared", "test");
 
     PlatformApiResponse response =
@@ -568,5 +653,9 @@ class TrustGraphApiRouterTest {
       }
     }
     """;
+  }
+
+  private static String documentFingerprint(String statementJson) {
+    return TrustStatementFingerprint.documentFingerprint(TrustStatementParser.parse(statementJson));
   }
 }

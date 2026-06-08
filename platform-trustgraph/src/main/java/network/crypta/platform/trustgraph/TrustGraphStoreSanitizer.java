@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.Locale;
 
 /**
- * Shared normalization helpers for local Trust Graph Preview stores and audit records.
+ * Shared normalization helpers for local Trust Graph RC stores and audit records.
  *
  * <p>The helpers define the storage boundary for source metadata. Store implementations call them
  * before writing records and again when loading persisted records, so the same rules protect both
@@ -68,6 +68,29 @@ final class TrustGraphStoreSanitizer {
    */
   static String normalizeSourceLabel(String sourceLabel) {
     return TrustStatementValidator.optionalText("sourceLabel", sourceLabel, 120);
+  }
+
+  /**
+   * Normalizes an optional content-subscription id for statement source metadata.
+   *
+   * <p>The value is a local app-platform identifier, not a source URI and not an authority signal.
+   * It may be returned in statement summaries so operators can correlate an import with an
+   * app-owned bounded content subscription without exposing raw fetched content or private keys.
+   *
+   * @param subscriptionId optional subscription id associated with an import workflow
+   * @return normalized id, or {@code null} when absent
+   * @throws TrustGraphException when the id is too long or contains unsafe characters
+   */
+  static String normalizeSubscriptionId(String subscriptionId) {
+    String normalized = TrustStatementValidator.optionalText("subscriptionId", subscriptionId, 128);
+    if (normalized == null) {
+      return null;
+    }
+    if (!normalized.matches("[A-Za-z0-9._:-]{1,128}")) {
+      throw new TrustGraphException(
+          "invalid_trust_statement", "Field 'subscriptionId' is invalid.");
+    }
+    return normalized;
   }
 
   /**
@@ -174,6 +197,40 @@ final class TrustGraphStoreSanitizer {
   static String sourceUriHash(String sourceUri) {
     String normalized = normalizeSourceUri(sourceUri);
     return normalized == null ? null : hashText(normalized);
+  }
+
+  /**
+   * Returns a stable redacted source URI kind for imported statement metadata.
+   *
+   * <p>The value identifies only the public key family and optional {@code crypta:} wrapper, such
+   * as {@code crypta-usk} or {@code chk}. It is safe for status and statement summaries because it
+   * does not contain the raw URI body, edition, filename, query text, or a local path.
+   *
+   * @param sourceUri optional raw source URI supplied by a workflow
+   * @return redacted source kind, or {@code null} when no source URI is present
+   * @throws TrustGraphException when the source URI is unsupported or unsafe
+   */
+  static String sourceUriKind(String sourceUri) {
+    String normalized = normalizeSourceUri(sourceUri);
+    if (normalized == null) {
+      return null;
+    }
+    boolean cryptaWrapped =
+        normalized.regionMatches(true, 0, CRYPTA_SCHEME_PREFIX, 0, CRYPTA_SCHEME_PREFIX.length());
+    String runtimeUri = runtimeFetchUri(normalized);
+    String family;
+    if (startsWithContentKeyPrefix(runtimeUri, CHK_PREFIX)) {
+      family = "chk";
+    } else if (startsWithContentKeyPrefix(runtimeUri, SSK_PREFIX)) {
+      family = "ssk";
+    } else if (startsWithContentKeyPrefix(runtimeUri, USK_PREFIX)) {
+      family = "usk";
+    } else if (startsWithContentKeyPrefix(runtimeUri, KSK_PREFIX)) {
+      family = "ksk";
+    } else {
+      family = "unknown";
+    }
+    return cryptaWrapped ? "crypta-" + family : family;
   }
 
   /**

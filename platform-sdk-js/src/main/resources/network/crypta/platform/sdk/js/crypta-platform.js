@@ -665,6 +665,45 @@
     );
   }
 
+  function getTrustStatement(fingerprintOrOptions, options) {
+    const request = trustStatementFingerprintRequest(fingerprintOrOptions, options);
+    return apiGet(
+      `trust-graph/statements/${encodeURIComponent(request.fingerprint)}`,
+      request.options
+    ).then((response) => unwrapField(response, "statement"));
+  }
+
+  function deprecateTrustStatement(fingerprintOrOptions, request, options) {
+    return mutateTrustStatementLifecycle(
+      "deprecate",
+      fingerprintOrOptions,
+      request,
+      options
+    );
+  }
+
+  function revokeTrustStatement(fingerprintOrOptions, request, options) {
+    return mutateTrustStatementLifecycle("revoke", fingerprintOrOptions, request, options);
+  }
+
+  function reactivateTrustStatement(fingerprintOrOptions, request, options) {
+    return mutateTrustStatementLifecycle(
+      "reactivate",
+      fingerprintOrOptions,
+      request,
+      options
+    );
+  }
+
+  function mutateTrustStatementLifecycle(action, fingerprintOrOptions, request, options) {
+    const normalized = trustStatementLifecycleRequest(fingerprintOrOptions, request, options);
+    return apiPostForm(
+      `trust-graph/statements/${encodeURIComponent(normalized.fingerprint)}/${action}`,
+      normalizeTrustLifecycleMutation(normalized.request),
+      normalized.options
+    ).then((response) => unwrapField(response, "lifecycle"));
+  }
+
   function trustScore(request, options) {
     const source = requireOptionsObject(request, "Trust score query");
     const requestOptions = Object.assign({}, requestOptionsFrom(source), options || {});
@@ -795,6 +834,18 @@
   function removeTrustSubscription(subscriptionIdOrOptions, options) {
     return removeContentSubscription(subscriptionIdOrOptions, options);
   }
+
+  Object.assign(trustStatements, {
+    get: getTrustStatement,
+    deprecate: deprecateTrustStatement,
+    revoke: revokeTrustStatement,
+    reactivate: reactivateTrustStatement,
+    lifecycle: Object.freeze({
+      deprecate: deprecateTrustStatement,
+      revoke: revokeTrustStatement,
+      reactivate: reactivateTrustStatement,
+    }),
+  });
 
   function parseFeedSnapshot(value) {
     const source = parseJsonObject(value, "Feed snapshot");
@@ -1495,6 +1546,7 @@
     copyStringParamAs(source, params, "uri", "sourceUri");
     copyStringParam(source, params, "sourceLabel");
     copyStringParamAs(source, params, "label", "sourceLabel");
+    copyStringParam(source, params, "subscriptionId");
     return params;
   }
 
@@ -1504,8 +1556,76 @@
     params.set("uri", trimmedRequired(source.uri || source.sourceUri, "uri"));
     copyStringParam(source, params, "sourceLabel");
     copyStringParamAs(source, params, "label", "sourceLabel");
+    copyStringParam(source, params, "subscriptionId");
     copyIntegerParam(source, params, "maxBytes");
     return params;
+  }
+
+  function normalizeTrustLifecycleMutation(request) {
+    const source = request && typeof request === "object" && !Array.isArray(request) ? request : {};
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "reasonCode");
+    copyStringParam(source, params, "note");
+    copyStringParam(source, params, "replacementUri");
+    copyStringParamAs(source, params, "replacement", "replacementUri");
+    return params;
+  }
+
+  function trustStatementFingerprintRequest(fingerprintOrOptions, options) {
+    if (
+      fingerprintOrOptions &&
+      typeof fingerprintOrOptions === "object" &&
+      !Array.isArray(fingerprintOrOptions) &&
+      typeof fingerprintOrOptions.entries !== "function"
+    ) {
+      const source = fingerprintOrOptions;
+      return {
+        fingerprint: trustStatementFingerprint(source),
+        options: Object.assign({}, requestOptionsFrom(source), options || {}),
+      };
+    }
+    return {
+      fingerprint: trimmedRequired(fingerprintOrOptions, "statementFingerprint"),
+      options,
+    };
+  }
+
+  function trustStatementLifecycleRequest(fingerprintOrOptions, request, options) {
+    if (
+      fingerprintOrOptions &&
+      typeof fingerprintOrOptions === "object" &&
+      !Array.isArray(fingerprintOrOptions) &&
+      typeof fingerprintOrOptions.entries !== "function"
+    ) {
+      const source = fingerprintOrOptions;
+      return {
+        fingerprint: trustStatementFingerprint(source),
+        request: source,
+        options: Object.assign({}, requestOptionsFrom(source), request || {}),
+      };
+    }
+    const mutation = request && typeof request === "object" ? request : {};
+    return {
+      fingerprint: trimmedRequired(fingerprintOrOptions, "statementFingerprint"),
+      request: mutation,
+      options: Object.assign({}, requestOptionsFrom(mutation), options || {}),
+    };
+  }
+
+  function trustStatementFingerprint(source) {
+    if (typeof source === "string") {
+      return trimmedRequired(source, "statementFingerprint");
+    }
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("Trust statement fingerprint is required.");
+    }
+    return trimmedRequired(
+      source.statementFingerprint ||
+        source.documentFingerprint ||
+        source.fingerprint ||
+        source.id,
+      "statementFingerprint"
+    );
   }
 
   function normalizeTrustQuery(source, requireSubject) {

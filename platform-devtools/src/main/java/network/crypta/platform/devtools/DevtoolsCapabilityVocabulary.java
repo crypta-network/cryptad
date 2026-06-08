@@ -26,10 +26,6 @@ import network.crypta.platform.api.PlatformApiStabilityLevel;
  * already includes the vault capabilities, this class returns it unchanged.
  */
 final class DevtoolsCapabilityVocabulary {
-  /** Contract version used for supplemental app-vault capability descriptors. */
-  private static final int APP_VAULT_CONTRACT_VERSION =
-      PlatformApiContract.CURRENT_CONTRACT_VERSION;
-
   /** Supplemental vault descriptors used when an older in-process contract snapshot lacks them. */
   private static final List<PlatformApiCapabilityDescriptor> APP_VAULT_DESCRIPTORS =
       List.of(
@@ -120,6 +116,10 @@ final class DevtoolsCapabilityVocabulary {
    */
   private static PlatformApiCapabilityDescriptor capability(String name, String description) {
     return new PlatformApiCapabilityDescriptor(
-        name, PlatformApiStabilityLevel.STABLE, APP_VAULT_CONTRACT_VERSION, null, description);
+        name,
+        PlatformApiStabilityLevel.STABLE,
+        PlatformApiContract.current().contractVersion(),
+        null,
+        description);
   }
 }

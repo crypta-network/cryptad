@@ -20,6 +20,8 @@ import java.util.Map;
  * @param confidence average contributing confidence
  * @param evidenceCount total evidence rows considered
  * @param contributingEvidenceCount evidence rows that contributed to the final score
+ * @param evidenceTruncated whether retained matching evidence exceeded the response evidence cap
+ * @param maxEvidenceRows maximum evidence rows that may appear in one response
  * @param evidence bounded evidence rows
  */
 public record TrustGraphScore(
@@ -30,6 +32,8 @@ public record TrustGraphScore(
     int confidence,
     int evidenceCount,
     int contributingEvidenceCount,
+    boolean evidenceTruncated,
+    int maxEvidenceRows,
     List<TrustGraphEvidence> evidence) {
   /** Creates a score result with immutable evidence. */
   public TrustGraphScore {
@@ -57,6 +61,8 @@ public record TrustGraphScore(
     json.put("confidence", confidence);
     json.put("evidenceCount", evidenceCount);
     json.put("contributingEvidenceCount", contributingEvidenceCount);
+    json.put("evidenceTruncated", evidenceTruncated);
+    json.put("maxEvidenceRows", maxEvidenceRows);
     if (includeEvidence) {
       json.put("evidence", evidence.stream().map(TrustGraphEvidence::toJson).toList());
     }

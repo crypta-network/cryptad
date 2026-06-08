@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=14
+contractVersion=15
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 14,
+    "contractVersion": 15,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -113,6 +113,23 @@ stopped-app requirements. It does not add app-facing backup/restore routes and d
 bundle paths, migration command paths, raw migration logs, tokens, private insert URIs, or raw
 app-data values. See [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md).
 
+Contract version 15 moves Trust Graph from broad Preview wording into the bounded local RC trust
+service surface. It adds path-free local RC scope metadata on `GET /api/v1/trust-graph/status`,
+redacted statement lifecycle summaries, and local lifecycle mutation routes:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/trust-graph/statements/{fingerprint}` | `trust.read` | Read one redacted imported statement summary, including local lifecycle status and safe source metadata. |
+| `POST /api/v1/trust-graph/statements/{fingerprint}/deprecate` | `trust.write` | Mark one imported statement deprecated under local operator/app policy. |
+| `POST /api/v1/trust-graph/statements/{fingerprint}/revoke` | `trust.write` | Mark one imported statement revoked under local operator/app policy. |
+| `POST /api/v1/trust-graph/statements/{fingerprint}/reactivate` | `trust.write` | Return one imported statement to active local lifecycle status. |
+
+Lifecycle records are local policy, not globally propagated revocation truth. Re-importing an old
+statement keeps any existing local deprecated or revoked status. Score evidence now includes
+bounded contribution reason codes and an `evidenceTruncated` flag; revoked, deprecated, expired,
+unverified, unanchored, or zero-confidence statements do not contribute. The `trust.score`
+app-service remains read-only and no more permissive than direct score reads.
+
 Contract version 6 adds bounded content fetch support for static feed apps:
 
 | Route | Required app capabilities | Purpose |
@@ -135,31 +152,33 @@ default timeout is 30000 milliseconds, and the hard timeout is 60000 millisecond
 returns UTF-8 `contentText`; `format=base64` returns `contentBase64`. App principals cannot use this
 route for `file:`, `http:`, `https:`, loopback, LAN, or absolute local-path fetches.
 
-Contract version 7 adds the local Trust Graph Preview service and the bounded AppVault
+Contract version 7 adds the local Trust Graph service and the bounded AppVault
 trust-statement signing route:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
-| `GET /api/v1/trust-graph/status` | `trust.read` | Read local preview service status and document type metadata. |
+| `GET /api/v1/trust-graph/status` | `trust.read` | Read local RC service status, scope, limits, lifecycle support, and document type metadata. |
 | `GET /api/v1/trust-graph/anchors` | `trust.read` | List local trust anchors. |
 | `POST /api/v1/trust-graph/anchors` | `trust.write` | Add or replace one local trust anchor. |
 | `DELETE /api/v1/trust-graph/anchors/{fingerprint}` | `trust.write` | Remove one local trust anchor. |
-| `POST /api/v1/trust-graph/import` | `trust.write` | Import one bounded `crypta.trust.statement.v1` document into the local preview store and record whether its AppVault preview signature verifies. |
+| `POST /api/v1/trust-graph/import` | `trust.write` | Import one bounded `crypta.trust.statement.v1` document into the local store and record whether its AppVault trust-statement signature verifies. |
 | `GET /api/v1/trust-graph/subjects` | `trust.read` | List subjects that have imported trust statement evidence. |
 | `GET /api/v1/trust-graph/statements` | `trust.read` | List redacted trust statement summaries with optional filters. |
 | `GET /api/v1/trust-graph/score` | `trust.read` | Query a deterministic local score and optional bounded evidence for one subject/context. |
 | `POST /api/v1/app-vault/identities/{identityId}/trust-statement` | `trust.write`, `vault.identities.read`, `vault.identities.use` | Ask AppVault to sign one bounded trust statement payload without exporting private identity material. |
 
-`trust.read` lets an app read local trust preview scores and evidence; it does not grant import,
+`trust.read` lets an app read local trust scores and evidence; it does not grant import,
 anchor mutation, queue access, vault access, catalog access, moderation authority, or content
 blocking. `trust.write` lets an app import trust statements and manage local anchors; it does not
 publish anything automatically, export private identity material, or create a global trust policy.
 
-The preview service is intentionally not a full Web of Trust implementation and does not provide
-old WebOfTrust plugin compatibility. Trust anchors are local, imported statements are
-persisted locally, non-contributing until anchored, and the scorer uses direct local anchors with a simple
+The service is intentionally local and operator-curated. It is not a full Web of Trust
+implementation, does not crawl the network, does not perform global moderation or blocking, does
+not make routing decisions, and does not provide old WebOfTrust/Freetalk/Sone/Freemail
+compatibility. Trust anchors are local, imported statements are persisted locally,
+non-contributing until anchored and verified, and the scorer uses direct local anchors with a simple
 confidence-weighted average. No FNP/FCP/wire protocol, routing, datastore, peer-management, or
-FProxy browse behavior changes are part of contract v7. See
+FProxy browse behavior changes are part of contract v7 or v15. See
 [trust-graph-preview.md](trust-graph-preview.md).
 
 Contract version 8 adds app-owned, durable, bounded USK content subscriptions under
@@ -231,7 +250,7 @@ bodies, store roots, app data directories, staging paths, private insert URIs, p
 process tokens, browser-session tokens, form passwords, or raw vault secret material. See
 [app-data-store.md](app-data-store.md).
 
-Contract version 10 adds durable Trust Graph Preview exchange and audit routes:
+Contract version 10 adds durable Trust Graph exchange and audit routes:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
@@ -261,7 +280,7 @@ tokens, app process tokens, raw request bodies, domain-separated payload bytes, 
 URIs.
 
 This route exists so `apps/social-inbox` can demonstrate a social/mail-like migration spike using
-AppVault identity, content insert/fetch/subscriptions, durable app data, and Trust Graph Preview
+AppVault identity, content insert/fetch/subscriptions, durable app data, and local Trust Graph
 annotations outside daemon core. Contract v12 moves those annotations behind app-service grants,
 so Social Inbox no longer needs direct `trust.read` for the proving path. It is not full WoT, old
 plugin ABI compatibility, Freetalk, Sone, Freemail, encrypted mail transport, a moderation system,
@@ -448,10 +467,12 @@ Feed Reader bundle. Social Inbox Preview has separate evidence:
 `reference-app.social-inbox-trust-annotations`, `app-services.registry`,
 `app-services.grants`, `app-services.trust-score-provider`,
 `reference-app.social-inbox-service-grant`, `app-services.web-shell`,
-`app-services.redaction`, and `migration.social-mail-preview`. Trust Graph Preview has
+`app-services.redaction`, and `migration.social-mail-preview`. Trust Graph Local RC has
 separate evidence: `reference-app.trust-graph` for the first-party app,
-`app-platform.trust-graph-preview` for the v7 trust routes and SDK helpers, and
-`app-platform.trust-statement-signing` for the bounded AppVault signing route and redaction checks.
+`app-platform.trust-graph-preview` for the original v7 trust routes and SDK helpers,
+`app-platform.trust-graph-rc-scope-and-safety` for the local RC scope, lifecycle, scoring, UI, and
+redaction checks, and `app-platform.trust-statement-signing` for the bounded AppVault signing route
+and redaction checks.
 
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor
 parse failure, or strict compatibility verifier failure blocks promotion unless an explicit

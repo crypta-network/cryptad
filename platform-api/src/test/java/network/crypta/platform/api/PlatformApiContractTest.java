@@ -19,7 +19,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":14"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":15"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +40,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(14, version.contractVersion());
+    assertEquals(15, version.contractVersion());
   }
 
   @Test
@@ -358,6 +358,36 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingTrustGraphRcLifecycleEndpoints_expectContractV15Capabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.of(
+            "GET /trust-graph/statements/{fingerprint}",
+            List.of("trust.read"),
+            "POST /trust-graph/statements/{fingerprint}/deprecate",
+            List.of("trust.write"),
+            "POST /trust-graph/statements/{fingerprint}/revoke",
+            List.of("trust.write"),
+            "POST /trust-graph/statements/{fingerprint}/reactivate",
+            List.of("trust.write"));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(15, endpoint.sinceContractVersion(), key);
+      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void current_whenInspectingTrustStatementEndpoint_expectBoundedVaultCapabilities() {
     PlatformApiEndpointDescriptor endpoint =
         PlatformApiContract.current().endpoints().stream()
@@ -416,6 +446,10 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().equals("/trust-graph/statements/{fingerprint}")
+        || endpoint.routeTemplate().startsWith("/trust-graph/statements/{fingerprint}/")) {
+      return 15;
+    }
     if (endpoint.routeTemplate().equals("/trust-graph/import-uri")
         || endpoint.routeTemplate().equals("/trust-graph/audit")) {
       return 10;

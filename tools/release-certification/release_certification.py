@@ -1028,6 +1028,7 @@ def app_platform_evidence(
         "app-platform.durable-app-data-store",
         "app-data.backup-restore-portability",
         "app-platform.trust-graph-preview",
+        "app-platform.trust-graph-rc-scope-and-safety",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
@@ -1836,9 +1837,10 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="trust-graph-preview-platform",
             category="app-platform",
-            title="Trust graph preview platform routes and signing",
+            title="Trust Graph Local RC platform routes and signing",
             required_evidence_ids=(
                 "app-platform.trust-graph-preview",
+                "app-platform.trust-graph-rc-scope-and-safety",
                 "app-platform.trust-graph-durable-store",
                 "app-platform.trust-graph-exchange",
                 "app-platform.trust-statement-signing",
@@ -4966,6 +4968,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.durable-app-data-store",
         "app-data.backup-restore-portability",
         "app-platform.trust-graph-preview",
+        "app-platform.trust-graph-rc-scope-and-safety",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",

@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * File-backed local store for Trust Graph Preview anchors, statements, and audit events.
+ * File-backed local store for Trust Graph RC anchors, statements, lifecycle, and audit events.
  *
  * <p>The store is rooted below a platform-owned app-service data directory such as {@code
  * <app-host-data-dir>/apps/trust-graph}. It stores only local anchors, normalized public trust
@@ -37,13 +37,13 @@ import org.jetbrains.annotations.Nullable;
  * <p>Each record is written through a temporary file in the target directory, fsynced where the
  * filesystem allows it, and then moved into place with atomic replace when supported. Read paths
  * skip corrupt, incomplete, over-limit, or mismatched records so one bad persisted entry does not
- * prevent other local trust-preview state from loading.
+ * prevent other local trust graph state from loading.
  *
  * <p>The implementation is synchronized at the public method boundary. Callers can share one
  * instance across Platform API requests without adding external locking, and every returned list is
- * an immutable snapshot. This class is intentionally a local preview service store, not a network
+ * an immutable snapshot. This class is intentionally a local RC service store, not a network
  * crawler or a node-wide policy source. Scores produced from its contents stay local to the app
- * platform trust-preview API.
+ * platform trust graph API.
  *
  * <p>Important persistence behaviors:
  *
@@ -62,6 +62,7 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   private static final String ANCHORS_DIRECTORY = "anchors";
   private static final String STATEMENTS_DIRECTORY = "statements";
   private static final String AUDIT_DIRECTORY = "audit";
+  private static final String LIFECYCLE_DIRECTORY = "lifecycle";
   private static final String FILE_SUFFIX = ".properties";
   private static final String KEY_VERSION = "version";
   private static final String KEY_ISSUER_FINGERPRINT = "issuerFingerprint";
@@ -84,8 +85,15 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   private static final String KEY_SUBJECT_URI_HASH = "subjectUriHash";
   private static final String KEY_SUBJECT_URI_SUMMARY = "subjectUriSummary";
   private static final String KEY_SOURCE_URI_HASH = "sourceUriHash";
+  private static final String KEY_SOURCE_URI_KIND = "sourceUriKind";
+  private static final String KEY_SUBSCRIPTION_ID = "subscriptionId";
   private static final String KEY_SOURCE_SUMMARY = "sourceSummary";
   private static final String KEY_STATUS_CODE = "statusCode";
+  private static final String KEY_LIFECYCLE_STATUS = "lifecycleStatus";
+  private static final String KEY_REASON_CODE = "reasonCode";
+  private static final String KEY_NOTE = "note";
+  private static final String KEY_REPLACEMENT_URI = "replacementUri";
+  private static final String KEY_ACTOR_APP_ID = "actorAppId";
   private static final int MAX_PROPERTIES_FILE_BYTES = 1024 * 1024;
 
   private final Path rootDirectory;
@@ -94,15 +102,16 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   private final Clock clock;
   private final Map<String, TrustAnchor> anchors = new LinkedHashMap<>();
   private final Map<String, StoredTrustStatement> statements = new LinkedHashMap<>();
+  private final Map<String, TrustStatementLifecycleRecord> lifecycleRecords = new LinkedHashMap<>();
   private final List<TrustGraphAuditEvent> auditEvents = new ArrayList<>();
 
   /**
-   * Opens a file-backed store with default preview limits and the system UTC clock.
+   * Opens a file-backed store with default local RC limits and the system UTC clock.
    *
    * <p>This constructor is useful for production composition when the runtime has already chosen a
-   * platform-owned Trust Graph Preview state directory. The managed boundary defaults to the parent
-   * of {@code rootDirectory}; use {@link #FileTrustGraphStore(Path, Path)} when the caller can
-   * provide the app-host data root explicitly.
+   * platform-owned Trust Graph RC state directory. The managed boundary defaults to the parent of
+   * {@code rootDirectory}; use {@link #FileTrustGraphStore(Path, Path)} when the caller can provide
+   * the app-host data root explicitly.
    *
    * @param rootDirectory platform-owned trust graph state root containing managed record
    *     directories
@@ -142,8 +151,8 @@ public final class FileTrustGraphStore implements TrustGraphStore {
    *
    * <p>The boundary should be the trusted app-platform data root. Directory creation then validates
    * and creates every trust-graph path segment beneath that root without following symlinks, so an
-   * {@code apps} or {@code trust-graph} symlink cannot redirect durable preview state outside the
-   * managed tree.
+   * {@code apps} or {@code trust-graph} symlink cannot redirect durable local trust state outside
+   * the managed tree.
    *
    * @param rootDirectory platform-owned trust graph state root containing managed record
    *     directories
@@ -192,7 +201,7 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   }
 
   /**
-   * Imports a parsed trust statement into durable local preview state.
+   * Imports a parsed trust statement into durable local RC state.
    *
    * <p>The stored document is the canonical public statement representation derived from {@code
    * document}, not the caller's raw request or fetched response body. The import key is the
@@ -212,6 +221,16 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   @Override
   public synchronized TrustGraphImportResult importStatement(
       TrustStatementDocument document, String source, String sourceUri, String sourceLabel) {
+    return importStatement(document, source, sourceUri, sourceLabel, null);
+  }
+
+  @Override
+  public synchronized TrustGraphImportResult importStatement(
+      TrustStatementDocument document,
+      String source,
+      String sourceUri,
+      String sourceLabel,
+      String subscriptionId) {
     String canonicalDocumentJson = TrustGraphStoreSanitizer.canonicalDocumentJson(document);
     int documentBytes = canonicalDocumentJson.getBytes(StandardCharsets.UTF_8).length;
     if (documentBytes > config.maxStoredDocumentBytes()) {
@@ -225,6 +244,9 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     String normalizedSourceUri = TrustGraphStoreSanitizer.redactedUriSummary(sourceUri);
     String sourceUriHash = TrustGraphStoreSanitizer.sourceUriHash(sourceUri);
     String normalizedSourceLabel = TrustGraphStoreSanitizer.normalizeSourceLabel(sourceLabel);
+    String sourceUriKind = TrustGraphStoreSanitizer.sourceUriKind(sourceUri);
+    String normalizedSubscriptionId =
+        TrustGraphStoreSanitizer.normalizeSubscriptionId(subscriptionId);
     StoredTrustStatement existing = statements.get(documentFingerprint);
     boolean imported = existing == null;
     Instant now = clock.instant();
@@ -239,6 +261,8 @@ public final class FileTrustGraphStore implements TrustGraphStore {
             normalizedSourceUri,
             sourceUriHash,
             normalizedSourceLabel,
+            sourceUriKind,
+            normalizedSubscriptionId,
             importedAt,
             now);
     writeStatement(stored, canonicalDocumentJson, documentBytes);
@@ -253,6 +277,8 @@ public final class FileTrustGraphStore implements TrustGraphStore {
         normalizedSourceUri,
         sourceUriHash,
         normalizedSourceLabel,
+        sourceUriKind,
+        normalizedSubscriptionId,
         importedAt,
         now,
         document);
@@ -261,9 +287,9 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   /**
    * Adds or replaces a durable local trust anchor.
    *
-   * <p>Anchors are local operator/app-preview inputs. Replacing an existing issuer fingerprint
-   * writes the new record before the in-memory view changes, so a write failure leaves the previous
-   * state intact. Adding a new issuer may evict the oldest anchor after the replacement has been
+   * <p>Anchors are local operator/app RC inputs. Replacing an existing issuer fingerprint writes
+   * the new record before the in-memory view changes, so a write failure leaves the previous state
+   * intact. Adding a new issuer may evict the oldest anchor after the replacement has been
    * persisted.
    *
    * @param anchor validated local anchor metadata to persist under its issuer fingerprint
@@ -336,6 +362,19 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   }
 
   /**
+   * Returns one retained statement by canonical document fingerprint.
+   *
+   * @param documentFingerprint statement document fingerprint to look up
+   * @return retained statement metadata, or {@code null} when absent
+   */
+  @Override
+  public synchronized StoredTrustStatement statement(String documentFingerprint) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    return statements.get(normalized);
+  }
+
+  /**
    * Returns distinct subjects present in retained statements.
    *
    * <p>Subjects are de-duplicated by subject kind and URI, then returned in deterministic sorted
@@ -369,6 +408,84 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   }
 
   /**
+   * Returns local lifecycle policy for one statement fingerprint.
+   *
+   * <p>When no explicit record exists, the method returns an active default tied to the statement's
+   * import timestamp. That default is not persisted unless a caller explicitly reactivates the
+   * statement through the lifecycle mutation route.
+   *
+   * @param documentFingerprint canonical statement document fingerprint
+   * @return local lifecycle record or active default
+   */
+  @Override
+  public synchronized TrustStatementLifecycleRecord lifecycle(String documentFingerprint) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    TrustStatementLifecycleRecord lifecycleRecord = lifecycleRecords.get(normalized);
+    if (lifecycleRecord != null) {
+      return lifecycleRecord;
+    }
+    StoredTrustStatement statement = statements.get(normalized);
+    Instant timestamp =
+        statement == null || statement.importedAt() == null
+            ? clock.instant()
+            : statement.importedAt();
+    return TrustStatementLifecycleRecord.active(normalized, timestamp);
+  }
+
+  /**
+   * Writes a durable local lifecycle policy record for one imported statement.
+   *
+   * <p>The method requires the statement to be currently retained. It preserves the first lifecycle
+   * timestamp across later changes, writes the durable record before exposing it in memory, and
+   * then reapplies the lifecycle retention cap.
+   *
+   * @param documentFingerprint canonical statement document fingerprint
+   * @param status lifecycle state to store locally
+   * @param reasonCode optional stable reason code
+   * @param note optional bounded local note
+   * @param replacementUri optional replacement statement URI; only a redacted summary is stored
+   * @param actorAppId optional app id that requested the change
+   * @param source local source label for the mutation workflow
+   * @return stored lifecycle record
+   * @throws TrustGraphException when the statement is absent or the lifecycle record cannot be
+   *     written durably
+   */
+  @Override
+  public synchronized TrustStatementLifecycleRecord updateLifecycle(
+      String documentFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String note,
+      String replacementUri,
+      String actorAppId,
+      String source) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_DOCUMENT_FINGERPRINT, documentFingerprint, 128);
+    if (!statements.containsKey(normalized)) {
+      throw new TrustGraphException("trust_statement_not_found", "Trust statement was not found.");
+    }
+    Instant now = clock.instant();
+    TrustStatementLifecycleRecord previous = lifecycleRecords.get(normalized);
+    Instant createdAt = previous == null ? now : previous.createdAt();
+    TrustStatementLifecycleRecord lifecycleRecord =
+        TrustStatementLifecycleRecord.updated(
+            normalized,
+            status,
+            reasonCode,
+            note,
+            replacementUri,
+            createdAt,
+            now,
+            actorAppId,
+            source);
+    writeLifecycleRecord(lifecycleRecord);
+    lifecycleRecords.put(normalized, lifecycleRecord);
+    evictEldestLifecycleRecordsIfNeeded();
+    return lifecycleRecord;
+  }
+
+  /**
    * Returns the number of retained imported statements.
    *
    * <p>The count reflects idempotent import replacement and cap eviction. It is suitable for status
@@ -382,7 +499,7 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   }
 
   /**
-   * Reports that this implementation persists Trust Graph Preview state.
+   * Reports that this implementation persists Trust Graph RC state.
    *
    * @return {@code true} because anchors, statements, and audit events are backed by files
    */
@@ -394,7 +511,7 @@ public final class FileTrustGraphStore implements TrustGraphStore {
   /**
    * Returns the public store type label used by status responses.
    *
-   * @return {@code file}, indicating durable file-backed local preview storage
+   * @return {@code file}, indicating durable file-backed local RC storage
    */
   @Override
   public String storeType() {
@@ -464,9 +581,11 @@ public final class FileTrustGraphStore implements TrustGraphStore {
       ensureManagedDirectories();
       loadAnchors();
       loadStatements();
+      loadLifecycleRecords();
       loadAuditEvents();
       evictEldestAnchorsIfNeeded();
       evictEldestStatementsIfNeeded();
+      evictEldestLifecycleRecordsIfNeeded();
       evictEldestAuditEventsIfNeeded();
     } catch (IOException _) {
       throw storeUnavailable();
@@ -507,6 +626,25 @@ public final class FileTrustGraphStore implements TrustGraphStore {
             .thenComparing(StoredTrustStatement::documentFingerprint));
     for (StoredTrustStatement statement : loaded) {
       statements.put(statement.documentFingerprint(), statement);
+    }
+  }
+
+  private void loadLifecycleRecords() throws IOException {
+    Path directory = lifecycleDirectory();
+    if (!isExistingDirectory(directory)) {
+      return;
+    }
+    ArrayList<TrustStatementLifecycleRecord> loaded = new ArrayList<>();
+    try (Stream<Path> stream = Files.list(directory)) {
+      for (Path file : sortedPropertyFiles(stream)) {
+        readLifecycleRecord(file).ifPresent(loaded::add);
+      }
+    }
+    loaded.sort(
+        Comparator.comparing(TrustStatementLifecycleRecord::createdAt)
+            .thenComparing(TrustStatementLifecycleRecord::statementFingerprint));
+    for (TrustStatementLifecycleRecord lifecycleRecord : loaded) {
+      lifecycleRecords.put(lifecycleRecord.statementFingerprint(), lifecycleRecord);
     }
   }
 
@@ -584,8 +722,38 @@ public final class FileTrustGraphStore implements TrustGraphStore {
                   properties.getProperty(KEY_SOURCE_URI_HASH)),
               TrustGraphStoreSanitizer.normalizeSourceLabel(
                   properties.getProperty(KEY_SOURCE_LABEL)),
+              TrustGraphStoreSanitizer.optionalAuditText(
+                  KEY_SOURCE_URI_KIND, properties.getProperty(KEY_SOURCE_URI_KIND), 32),
+              TrustGraphStoreSanitizer.normalizeSubscriptionId(
+                  properties.getProperty(KEY_SUBSCRIPTION_ID)),
               instant(properties.getProperty(KEY_IMPORTED_AT)),
               instant(properties.getProperty(KEY_UPDATED_AT))));
+    } catch (IOException | RuntimeException _) {
+      return Optional.empty();
+    }
+  }
+
+  private Optional<TrustStatementLifecycleRecord> readLifecycleRecord(Path file) {
+    try {
+      Properties properties = readProperties(file).orElse(null);
+      if (properties == null || !"1".equals(properties.getProperty(KEY_VERSION))) {
+        return Optional.empty();
+      }
+      String fingerprint = properties.getProperty(KEY_DOCUMENT_FINGERPRINT);
+      if (fingerprint == null || !hashFileName(fingerprint).equals(file.getFileName().toString())) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          new TrustStatementLifecycleRecord(
+              fingerprint,
+              TrustStatementLifecycleStatus.parse(properties.getProperty(KEY_LIFECYCLE_STATUS)),
+              properties.getProperty(KEY_REASON_CODE),
+              properties.getProperty(KEY_NOTE),
+              properties.getProperty(KEY_REPLACEMENT_URI),
+              instant(properties.getProperty(KEY_CREATED_AT)),
+              instant(properties.getProperty(KEY_UPDATED_AT)),
+              properties.getProperty(KEY_ACTOR_APP_ID),
+              properties.getProperty(KEY_SOURCE)));
     } catch (IOException | RuntimeException _) {
       return Optional.empty();
     }
@@ -639,12 +807,32 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     setOptional(properties, KEY_SOURCE_URI, statement.sourceUri());
     setOptional(properties, KEY_SOURCE_URI_HASH, statement.sourceUriHash());
     setOptional(properties, KEY_SOURCE_LABEL, statement.sourceLabel());
+    setOptional(properties, KEY_SOURCE_URI_KIND, statement.sourceUriKind());
+    setOptional(properties, KEY_SUBSCRIPTION_ID, statement.subscriptionId());
     properties.setProperty(KEY_IMPORTED_AT, statement.importedAt().toString());
     properties.setProperty(KEY_UPDATED_AT, statement.updatedAt().toString());
     properties.setProperty(KEY_DOCUMENT_BYTES, Integer.toString(documentBytes));
     properties.setProperty(KEY_DOCUMENT_JSON, canonicalDocumentJson);
     writeProperties(
         statementFile(statement.documentFingerprint()), properties, "Cryptad trust statement");
+  }
+
+  private void writeLifecycleRecord(TrustStatementLifecycleRecord lifecycleRecord) {
+    Properties properties = new Properties();
+    properties.setProperty(KEY_VERSION, "1");
+    properties.setProperty(KEY_DOCUMENT_FINGERPRINT, lifecycleRecord.statementFingerprint());
+    properties.setProperty(KEY_LIFECYCLE_STATUS, lifecycleRecord.status().jsonValue());
+    properties.setProperty(KEY_REASON_CODE, lifecycleRecord.reasonCode());
+    setOptional(properties, KEY_NOTE, lifecycleRecord.note());
+    setOptional(properties, KEY_REPLACEMENT_URI, lifecycleRecord.replacementUri());
+    properties.setProperty(KEY_CREATED_AT, lifecycleRecord.createdAt().toString());
+    properties.setProperty(KEY_UPDATED_AT, lifecycleRecord.updatedAt().toString());
+    setOptional(properties, KEY_ACTOR_APP_ID, lifecycleRecord.actorAppId());
+    properties.setProperty(KEY_SOURCE, lifecycleRecord.source());
+    writeProperties(
+        lifecycleFile(lifecycleRecord.statementFingerprint()),
+        properties,
+        "Cryptad trust statement lifecycle");
   }
 
   private void writeAuditEvent(TrustGraphAuditEvent event) {
@@ -694,6 +882,22 @@ public final class FileTrustGraphStore implements TrustGraphStore {
       }
       anchors.remove(eldest.issuerFingerprint());
       deleteQuietly(anchorFile(eldest.issuerFingerprint()));
+    }
+  }
+
+  private void evictEldestLifecycleRecordsIfNeeded() {
+    while (lifecycleRecords.size() > config.maxLifecycleRecords()) {
+      TrustStatementLifecycleRecord eldest =
+          lifecycleRecords.values().stream()
+              .min(
+                  Comparator.comparing(TrustStatementLifecycleRecord::createdAt)
+                      .thenComparing(TrustStatementLifecycleRecord::statementFingerprint))
+              .orElse(null);
+      if (eldest == null) {
+        return;
+      }
+      lifecycleRecords.remove(eldest.statementFingerprint());
+      deleteQuietly(lifecycleFile(eldest.statementFingerprint()));
     }
   }
 
@@ -779,6 +983,7 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     ensureDirectory(rootDirectory);
     ensureDirectory(anchorsDirectory());
     ensureDirectory(statementsDirectory());
+    ensureDirectory(lifecycleDirectory());
     ensureDirectory(auditDirectory());
   }
 
@@ -902,12 +1107,20 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     return rootDirectory.resolve(AUDIT_DIRECTORY);
   }
 
+  private Path lifecycleDirectory() {
+    return rootDirectory.resolve(LIFECYCLE_DIRECTORY);
+  }
+
   private Path anchorFile(String issuerFingerprint) {
     return anchorsDirectory().resolve(hashFileName(issuerFingerprint));
   }
 
   private Path statementFile(String documentFingerprint) {
     return statementsDirectory().resolve(hashFileName(documentFingerprint));
+  }
+
+  private Path lifecycleFile(String documentFingerprint) {
+    return lifecycleDirectory().resolve(hashFileName(documentFingerprint));
   }
 
   private static String hashFileName(String value) {

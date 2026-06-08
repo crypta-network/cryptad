@@ -25,6 +25,8 @@ class TrustGraphStoreSanitizerTest {
     assertFalse(summary.contains("trust.json"), summary);
     assertEquals(64, hash.length());
     assertTrue(hash.matches("[0-9a-f]{64}"), hash);
+    assertEquals("crypta-chk", TrustGraphStoreSanitizer.sourceUriKind(sourceUri));
+    assertEquals("sub:trust-1", TrustGraphStoreSanitizer.normalizeSubscriptionId("sub:trust-1"));
   }
 
   @Test
@@ -32,6 +34,8 @@ class TrustGraphStoreSanitizerTest {
     assertNull(TrustGraphStoreSanitizer.normalizeSourceUri(null));
     assertNull(TrustGraphStoreSanitizer.redactedUriSummary(null));
     assertNull(TrustGraphStoreSanitizer.sourceUriHash(null));
+    assertNull(TrustGraphStoreSanitizer.sourceUriKind(null));
+    assertNull(TrustGraphStoreSanitizer.normalizeSubscriptionId(null));
   }
 
   @Test
@@ -107,6 +111,20 @@ class TrustGraphStoreSanitizerTest {
               value);
 
       assertEquals("invalid_trust_audit_event", exception.errorCode(), value);
+    }
+  }
+
+  @Test
+  void normalizeSubscriptionId_whenUnsafe_expectInvalidTrustStatement() {
+    for (String subscriptionId :
+        java.util.List.of("bad/id", "bad id", "bad\nid", "x".repeat(129))) {
+      TrustGraphException exception =
+          assertThrows(
+              TrustGraphException.class,
+              () -> TrustGraphStoreSanitizer.normalizeSubscriptionId(subscriptionId),
+              subscriptionId);
+
+      assertEquals("invalid_trust_statement", exception.errorCode(), subscriptionId);
     }
   }
 }

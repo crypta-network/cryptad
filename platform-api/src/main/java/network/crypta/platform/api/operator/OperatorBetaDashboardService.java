@@ -39,12 +39,12 @@ import network.crypta.platform.api.trust.TrustGraphApiHandler;
  * host-only state.
  *
  * <p>The dashboard favors operator actionability over raw detail. It summarizes catalog health,
- * installed apps, update state, subscription backoff, local Trust Graph Preview status, app-service
- * grants, and legacy-admin usage counters, then attaches safe recovery actions for the UI to
- * render. Source URIs, raw fetched content, local file paths, and diagnostic bodies are either
- * omitted, redacted, or replaced by bounded digests. Instances are lightweight and hold references
- * to long-lived services supplied by router composition; they do not start schedulers or persist
- * dashboard state.
+ * installed apps, update state, subscription backoff, local Trust Graph Local RC status,
+ * app-service grants, and legacy-admin usage counters, then attaches safe recovery actions for the
+ * UI to render. Source URIs, raw fetched content, local file paths, and diagnostic bodies are
+ * either omitted, redacted, or replaced by bounded digests. Instances are lightweight and hold
+ * references to long-lived services supplied by router composition; they do not start schedulers or
+ * persist dashboard state.
  */
 public final class OperatorBetaDashboardService {
   private static final Pattern CONTENT_URI =
@@ -128,7 +128,8 @@ public final class OperatorBetaDashboardService {
    *
    * @param contentSubscriptionService durable subscription service, or {@code null} when disabled
    * @param appDataService durable app-data service, or {@code null} when storage is absent
-   * @param trustGraphApiHandler local Trust Graph Preview handler, or {@code null} when unavailable
+   * @param trustGraphApiHandler local Trust Graph Local RC handler, or {@code null} when
+   *     unavailable
    * @param appServiceCoordinator app-service coordinator, or {@code null} when grants are disabled
    */
   public record AppStateSources(
@@ -491,16 +492,21 @@ public final class OperatorBetaDashboardService {
 
   private Map<String, Object> trustGraphSummary(List<String> warnings) {
     if (trustGraphApiHandler == null) {
-      warnings.add("Trust Graph Preview service is unavailable.");
-      return unavailableBlock("Trust Graph Preview service is unavailable.");
+      warnings.add("Trust Graph Local RC service is unavailable.");
+      return unavailableBlock("Trust Graph Local RC service is unavailable.");
     }
     try {
       Map<String, Object> status = trustGraphApiHandler.status();
-      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(16);
       json.put(AVAILABLE_FIELD, status.get(AVAILABLE_FIELD));
+      json.put("mode", status.get("mode"));
       json.put("previewOnly", true);
       json.put("completeWot", false);
       json.put("service", status.get("service"));
+      json.put("scoring", status.get("scoring"));
+      json.put("scope", status.get("scope"));
+      json.put("statementLifecycle", status.get("statementLifecycle"));
+      json.put("limits", status.get("limits"));
       json.put("durable", status.get("durable"));
       json.put("storeType", status.get("storeType"));
       json.put("anchorCount", status.get("anchorCount"));
@@ -508,11 +514,13 @@ public final class OperatorBetaDashboardService {
       json.put("auditCount", status.get("auditCount"));
       json.put(
           WARNINGS_FIELD,
-          List.of("Trust Graph Preview is local preview state only, not complete Web of Trust."));
+          List.of(
+              "Trust Graph Local RC is local operator-curated state only, not global truth, "
+                  + "moderation, blocking, routing policy, or legacy Web of Trust compatibility."));
       return json;
     } catch (RuntimeException exception) {
-      warnings.add("Trust Graph Preview status could not be inspected: " + safeReason(exception));
-      return unavailableBlock("Trust Graph Preview status could not be inspected.");
+      warnings.add("Trust Graph Local RC status could not be inspected: " + safeReason(exception));
+      return unavailableBlock("Trust Graph Local RC status could not be inspected.");
     }
   }
 
@@ -744,7 +752,8 @@ public final class OperatorBetaDashboardService {
   private static List<String> supportWarnings(Map<String, Object> redaction) {
     return List.of(
         "Support bundles are redacted but should be reviewed by the operator before sharing.",
-        "Trust Graph Preview entries describe local preview state only, not complete Web of Trust.",
+        "Trust Graph Local RC entries describe local operator-curated state only, not global truth,"
+            + " moderation, blocking, routing policy, or legacy Web of Trust compatibility.",
         "Redaction status: " + redaction.get(STATUS_FIELD));
   }
 

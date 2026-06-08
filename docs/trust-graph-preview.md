@@ -1,58 +1,82 @@
-# Trust Graph Preview
+# Trust Graph Local RC
 
-Trust Graph Preview is a first-party reference app and local Platform API preview service for
-bounded trust statements. It demonstrates that a future WoT-like trust layer can live outside the
-daemon and network core while using AppHost, AppVault, app-owned browser sessions, content fetch,
-generated document inserts, signed catalog metadata, review receipts, and release-certification
-evidence.
+This document describes the first-party Trust Graph local release-candidate service. The file name
+is retained for compatibility with older links that referred to the Trust Graph Preview.
 
-It is not a full Web of Trust implementation. It does not implement the old WebOfTrust plugin,
-`FCPPluginMessage`, PluginTalker compatibility, global moderation, automatic blocking, global
-network crawling, daemon-core identity sharing, FNP/FCP/wire protocol changes, routing changes,
-datastore changes, peer-management changes, or FProxy browse removal.
+Trust Graph Local RC is a bounded local trust service for one Cryptad node. It lets an operator
+curate local anchors, import public signed trust statements, attach local lifecycle policy, and ask
+for deterministic direct-anchor scores. It does not crawl the network, publish trust policy to other
+nodes, moderate content, block apps or messages, change routing, or claim legacy WebOfTrust,
+Freetalk, Sone, or Freemail compatibility.
+
+## Scope and non-goals
+
+The RC service has these release boundaries:
+
+| Boundary | Meaning |
+| --- | --- |
+| Local anchors only | Scores can use only issuers that the local operator or an authorized local app anchored on this node. |
+| Imported public statements only | The store accepts bounded public `crypta.trust.statement.v1` documents from paste, URI import, app-generated publication, or content-subscription flows. |
+| No crawling | Trust Graph does not discover statements by walking the network. Durable subscriptions remain owned by the content-subscription layer. |
+| No global moderation or blocking | Scores are advisory local annotations. They do not hide content, block apps, mutate feeds, or enforce catalog policy. |
+| No routing decisions | Scores never change peer selection, request routing, FProxy browse behavior, content filters, or daemon-core protocols. |
+| No legacy compatibility promise | The service does not implement old WebOfTrust plugin APIs, `FCPPluginMessage`, PluginTalker, Freetalk, Sone, Freemail, or old WoT data formats. |
+
+PR-252 and later work remains out of scope here. Trust Graph Local RC does not add Social Inbox
+message threading, app-service dependency bundles, ecosystem advisory or denylist policy,
+network-scale soak requirements, operator RC recovery workflows, or the final ecosystem RC gate.
 
 ## Components
 
 - `:platform-trustgraph` owns the bounded statement model, strict JSON parser, deterministic
-  canonical payload writer, fingerprints, local anchors, durable file-backed preview store,
-  redacted trust audit events, in-memory test store, and preview scorer.
-- `:platform-api` exposes contract v7 `trust.read` and `trust.write` compatibility routes,
-  contract v10 trust exchange and audit routes, the local `/api/v1/trust-graph/*` route family,
-  contract v12 app-service discovery/grant routes for the local `trust.score` service, and the
-  bounded AppVault signing route `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
-- `:platform-sdk-js` exposes `CryptaPlatform.trust.*`, `CryptaPlatform.trust.exchange.*`, and
-  `CryptaPlatform.vault.identities.createTrustStatement(...)` helpers.
-- `apps:trust-graph` stages the static Trust Graph Preview reference app with SDK, durable
-  backend status, URI import, publication, subscription, redacted audit, UI-local app-data state,
+  canonical payload writer, fingerprints, local anchors, lifecycle records, durable file-backed
+  store, redacted trust audit events, in-memory test store, and direct-anchor scorer.
+- `:platform-api` exposes the local `/api/v1/trust-graph/*` route family, `trust.read` and
+  `trust.write` capability checks, trust exchange and audit routes, lifecycle management routes,
+  app-service discovery/grant routes for the read-only `trust.score` service, and the bounded
+  AppVault signing route `POST /api/v1/app-vault/identities/{identityId}/trust-statement`.
+- `:platform-sdk-js` exposes `CryptaPlatform.trust.*`,
+  `CryptaPlatform.trust.exchange.*`, and
+  `CryptaPlatform.vault.identities.createTrustStatement(...)` helpers. SDK helpers are transport
+  convenience only; server-side Platform API capability checks remain authoritative.
+- `apps:trust-graph` stages the static Trust Graph app with SDK, backend status, URI import,
+  statement lifecycle controls, publication, subscription, redacted audit, UI-local app-data state,
   and design-system assets.
 
-## Durable Local Backend
+## Durable local backend
 
-The runtime wires a shared file-backed trust graph store under the platform-owned AppHost data
-tree. It persists local trust anchors, normalized public trust statements, redacted source
-metadata, and bounded redacted trust audit events across process restart. Reduced embeddings and
-unit tests may still inject the in-memory store.
+The runtime wires a shared file-backed trust graph store under platform-owned AppHost state. It
+persists local trust anchors, normalized public trust statements, local lifecycle records, redacted
+source metadata, and bounded redacted trust audit events across process restart. Reduced
+embeddings and unit tests may still inject the in-memory store.
 
 The durable store records canonical public `crypta.trust.statement.v1` documents rather than raw
-request bodies or raw fetched content. Statement metadata is bounded and redacted: source type,
-optional source URI summary/hash, source label, imported/updated timestamps, document fingerprint,
-payload hash, and signature verification status. Imports are idempotent by document fingerprint,
-listing order is deterministic, and retention caps bound anchors, statements, audit entries, and
-stored document bytes. Corrupt persisted entries are ignored safely without exposing local paths or
-raw document data.
+request bodies or raw fetched content. Statement metadata is bounded and redacted:
 
-App data remains separate. The Trust Graph Preview app uses app data only for UI-local drafts,
-filters, and redacted import summaries; it is not the trust graph backend.
+- `sourceType`, such as `local-import`, `content-fetch`, `subscription`, or `app-generated`;
+- redacted URI kind, such as `crypta-usk`, `crypta-ssk`, `file`, or `unknown`;
+- optional sanitized `subscriptionId` and `sourceLabel`;
+- imported and last-seen timestamps;
+- document fingerprint, payload hash, and signature verification status.
 
-The staged Trust Graph Preview bundle declares an app-data migration contract for the UI-local
+Imports are idempotent by canonical statement fingerprint. Re-importing the same statement updates
+safe source and last-seen metadata, but it must not clear a local `deprecated` or `revoked`
+lifecycle record. Listing order is deterministic, and retention caps bound anchors, statements,
+audit entries, evidence rows, lifecycle notes, source labels, and stored document bytes. Corrupt
+persisted entries are ignored safely without exposing local paths or raw document data.
+
+App data remains separate. The Trust Graph app uses app data only for UI-local drafts, filters, and
+redacted import summaries. Trust anchors, imported statements, lifecycle records, source metadata,
+and scoring state are platform trust graph service state, not app-data backup records.
+
+The staged Trust Graph app declares an app-data migration contract for the UI-local
 `ui-state/preview-state` record. Its `ui-state-v1-v2` step points at
-`bin/migrate-preview-data.sh`, supports
-`dry-run` and `apply` modes, validates only fixed migration environment variables, and is marked
-rollback-incompatible because schema-v2 preview state is not guaranteed to be readable by the
-previous UI bundle. This is a preview-state example for `app-update.data-migration-contract`; it
-does not expand Trust Graph scope into a release-candidate Web of Trust implementation.
+`bin/migrate-preview-data.sh`, supports `dry-run` and `apply` modes, validates only fixed
+migration environment variables, and is marked rollback-incompatible because schema-v2 UI state is
+not guaranteed to be readable by the previous UI bundle. This migration example does not expand
+Trust Graph scope into global Web of Trust behavior.
 
-## Trust Statement Format
+## Trust statement format
 
 Trust statements are public JSON documents with this root type:
 
@@ -106,33 +130,66 @@ crypta.trust.statement.v1
 Canonical payload JSON has stable field order and stable whitespace. Unknown fields are rejected
 before signing or import so apps cannot smuggle unreviewed fields into signatures.
 
-## Local Scoring
+## Lifecycle policy
 
-The preview scorer is deliberately simple:
+Lifecycle records are local operator policy, not universal revocation truth. They are keyed by the
+canonical statement fingerprint and stored separately from the public statement body.
 
-- only statements from local trust anchors contribute to the final score;
-- contributing statements must also have a locally verified AppVault preview signature;
-- imported non-anchor statements are retained as evidence but marked non-contributing;
-- imported statements without issuer public key material, with a mismatched fingerprint, or with an
-  invalid signature are retained as unverified, non-contributing evidence;
-- expired statements are ignored for score but may appear as expired evidence;
-- subject/context scores are confidence-weighted averages of contributing direct statements;
-- no contributing evidence returns `unknown` with score `0` and confidence `0`;
-- evidence rows are bounded, and normal evidence does not include raw trust document bodies.
+| Lifecycle state | Scoring behavior | Operator meaning |
+| --- | --- | --- |
+| `active` | May contribute if every other scoring rule passes. | The local node has no lifecycle policy excluding the statement. |
+| `deprecated` | Does not contribute. | The local operator prefers a replacement, updated context, or retired evidence. |
+| `revoked` | Does not contribute. | The local operator has explicitly withdrawn local reliance on this statement. |
+| `expired` | Does not contribute. | The statement's own `expiresAt` is in the past; this is derived from the statement, not a lifecycle record. |
 
-Trust anchors are local state. Adding an anchor does not publish anything and does not make the
-issuer globally trusted for other nodes or apps. Imported statements remain untrusted until their
-issuer fingerprint is anchored locally, and unverified imports still do not contribute after an
-anchor is added.
+Lifecycle records include a bounded reason code, sanitized note, optional sanitized replacement URI
+summary, created and updated timestamps, optional bounded actor app id, and source such as
+`operator`, `app`, or `imported-metadata`. API responses and audit entries expose only lifecycle
+summaries. They do not include raw statement JSON, raw signatures, private insert URIs, tokens, or
+absolute store paths.
+
+## Local scoring
+
+The scorer is deterministic and intentionally narrow. A statement contributes only when all of
+these conditions are true:
+
+- the issuer fingerprint is a local anchor;
+- the statement signature is locally verified;
+- the statement has not expired;
+- confidence is greater than zero;
+- lifecycle status is `active`;
+- the subject kind, subject URI, and context match the score request.
+
+Statements do not contribute when the issuer is unanchored, the signature is unverified, the
+statement is expired, confidence is zero, or lifecycle status is `deprecated` or `revoked`.
+Subject/context scores are confidence-weighted averages of contributing direct statements. No
+contributing evidence returns `unknown` with score `0` and confidence `0`.
+
+Score explanations are bounded. Evidence rows use stable reason codes such as `unanchored`,
+`unverified`, `expired`, `zero-confidence`, `deprecated`, and `revoked`. Rows also expose safe
+booleans and status fields such as issuer fingerprint, score, confidence, signature verification,
+anchor match, expiry state, lifecycle status, contribution state, and non-contribution reason
+codes. Evidence never includes raw statement bodies, raw fetched content, raw signature values,
+private insert URIs, private keys, tokens, app-data backup payloads, absolute paths, or unbounded
+human text.
+
+`includeEvidence=true` must not create an unbounded response. The status route exposes the current
+evidence row limit, statement retention limit, audit retention limit, and lifecycle contribution
+rules. Score responses include an `evidenceTruncated` flag or equivalent when matching evidence
+exceeds the configured row limit.
 
 ## Platform API
 
-Contract v7 adds the original local trust graph routes:
+The status route returns path-free RC metadata. It should identify `mode=local-rc`, the scope
+booleans listed above, the direct-local-anchor scoring method, lifecycle contribution rules, and
+store limits without exposing filesystem paths, tokens, private material, or raw statement bodies.
+
+Trust Graph capabilities:
 
 | Capability | Purpose |
 | --- | --- |
-| `trust.read` | Read local trust status, anchors, subjects, statement summaries, scores, and bounded evidence. |
-| `trust.write` | Import trust statements and add/remove local trust anchors. |
+| `trust.read` | Read local trust status, anchors, subjects, statement summaries, lifecycle summaries, scores, and bounded evidence. |
+| `trust.write` | Import trust statements, add or remove local anchors, and mutate local statement lifecycle records. |
 
 Trust routes:
 
@@ -142,33 +199,38 @@ GET  /api/v1/trust-graph/anchors
 POST /api/v1/trust-graph/anchors
 DELETE /api/v1/trust-graph/anchors/{fingerprint}
 POST /api/v1/trust-graph/import
+POST /api/v1/trust-graph/import-uri
+GET  /api/v1/trust-graph/audit
 GET  /api/v1/trust-graph/subjects
 GET  /api/v1/trust-graph/statements
+GET  /api/v1/trust-graph/statements/{fingerprint}
+POST /api/v1/trust-graph/statements/{fingerprint}/deprecate
+POST /api/v1/trust-graph/statements/{fingerprint}/revoke
+POST /api/v1/trust-graph/statements/{fingerprint}/reactivate
 GET  /api/v1/trust-graph/score
 ```
 
-Contract v10 adds durable exchange and audit routes:
+`POST /api/v1/trust-graph/import` accepts form-encoded `document`, optional `sourceUri`, optional
+`sourceLabel`, and safe source metadata. It validates size, parses
+`crypta.trust.statement.v1`, stores a redacted summary, records whether the signature verifies
+against the issuer public key, and returns an import summary without raw private data.
 
-| Route | Required app capabilities | Purpose |
-| --- | --- | --- |
-| `POST /api/v1/trust-graph/import-uri` | `trust.write`, `content.fetch` | Fetch bounded Crypta content by URI, parse it as one trust statement, persist it, and return a redacted import summary. |
-| `GET /api/v1/trust-graph/audit` | `trust.read` | Return a bounded list of redacted trust graph mutation/exchange audit events. |
-
-`POST /api/v1/trust-graph/import` accepts form-encoded `document`, optional `sourceUri`, and
-optional `sourceLabel`. It validates size, parses `crypta.trust.statement.v1`, stores a redacted
-summary, records whether the signature verifies against the issuer public key, and returns an
-import summary without raw private data.
+`POST /api/v1/trust-graph/import-uri` accepts a Crypta content URI, optional `sourceLabel`, and an
+optional byte cap bounded by trust graph configuration. It uses the same content fetch rules as the
+content API, rejects oversized content before parsing, stores only the normalized public trust
+statement and redacted source metadata, and never returns raw fetched content. Private insert URIs
+must not be stored or exposed.
 
 `GET /api/v1/trust-graph/score` accepts `subjectKind`, `subjectUri`, `context`, and optional
-`includeEvidence=true`. First-party Trust Graph UI uses this direct route for its own preview
-screen. Other apps should not use this route for the v12 service proving path; they use the
-platform-mediated `trust.score` service with `app.services.read`, `app.services.call`, and an active
-operator-approved grant. Apps can import statements or manage anchors only when their manifest
-grants `trust.write`.
+`includeEvidence=true`. The direct route requires `trust.read`. Apps can import statements, manage
+anchors, or mutate lifecycle records only when their manifest grants `trust.write`.
 
-Other apps need operator-approved app-service grants before they can call `trust.score`.
+Other apps should call scores through the platform-mediated `trust.score` app-service. That
+service uses operator-approved app-service grants and requires `app.services.read`,
+`app.services.call`, and an active grant. It is read-only: app-service consumers cannot import
+statements, manage anchors, deprecate, revoke, or reactivate statements through `trust.score`.
 
-Contract v12 advertises the local Trust Score Service from the signed Trust Graph manifest:
+The signed Trust Graph manifest advertises:
 
 ```text
 app.services.provides=trust-score
@@ -181,20 +243,14 @@ app.service.trust-score.scopes=score.read
 app.service.trust-score.contexts=message-author,profile
 ```
 
-The service is preview-only and not complete WoT. Invocation is not a proxy to a Trust Graph app
-localhost server. The platform dispatches to a built-in `trust-graph.score` adapter, checks the
-consumer manifest and active grant at call time, and returns only a redacted score summary and
-subject URI hash.
+Invocation is not a proxy to a Trust Graph app localhost server. The platform dispatches to the
+built-in `trust-graph.score` adapter, checks the consumer manifest and active grant at call time,
+and returns only a redacted score summary and subject URI hash. App-service score output must be no
+more permissive than direct score output and must preserve evidence limits.
 
-`POST /api/v1/trust-graph/import-uri` accepts a Crypta content URI, optional `sourceLabel`, and an
-optional byte cap bounded by the trust graph configuration. It uses the same content fetch rules as
-the content API, rejects oversized content before parsing, stores only the normalized public trust
-statement and redacted source metadata, and never returns raw fetched content.
-
-Trust statement subscription management uses the contract v8 content subscription routes through
-SDK trust exchange helpers. This avoids a separate crawler and keeps subscription ownership,
-restart durability, refresh, pause, resume, and delete semantics in the content subscription
-service.
+Trust statement subscription management uses the content subscription routes through SDK trust
+exchange helpers. This avoids a Trust Graph crawler and keeps subscription ownership, restart
+durability, refresh, pause, resume, and delete semantics in the content subscription service.
 
 The bounded signing route is:
 
@@ -207,36 +263,40 @@ bounded trust statement payload with AppVault. It returns public identity metada
 the fixed domain, and the public trust statement. It does not export private keys, seed material,
 vault paths, raw process tokens, browser session tokens, form passwords, or generic signing access.
 
-## Reference App
+## Reference app
 
-`apps:trust-graph` declares API minimum v10 and maximum tested v12, with:
+`apps:trust-graph` preserves `app.id=trust-graph`. The visible app name may say Trust Graph Local
+RC, but compatibility depends on the stable app id. The app declares the trust, content, vault,
+queue, and app-data permissions needed for local statement import, publication, subscription,
+anchor management, scoring, lifecycle controls, and UI-local state.
 
-```text
-trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,
-queue.write,vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,
-app.data.write
-```
+The app must keep a persistent warning visible: Trust Graph is local trust only, not global truth,
+not moderation, not blocking, not routing policy, and not legacy WoT/Freetalk/Sone/Freemail
+compatibility. Its status panel should render the RC scope and limits from
+`GET /api/v1/trust-graph/status`. Statement lists should show lifecycle state. Score results
+should show bounded contribution status and non-contribution reason codes.
 
 The static app can create or select an app-owned trust identity, ask AppVault to create a bounded
 statement, publish it as `application/vnd.crypta.trust+json` with target filename `trust.json`,
 import the locally generated public statement into the durable backend, fetch/import selected
 Crypta trust documents by URI, manage content subscriptions for trust statement URIs, manage local
-anchors, query scores, show recent queue state, and show redacted trust audit entries. It uses
-`CryptaPlatform.data.records.getJson` and `putJson` only for UI-local state: draft form values,
-selected filters, and redacted import summaries.
+anchors, manage local lifecycle records, query scores, show recent queue state, and show redacted
+trust audit entries. It uses `CryptaPlatform.data.records.getJson` and `putJson` only for
+UI-local state: draft form values, selected filters, and redacted import summaries.
 
 The app uses SDK helpers rather than hard-coded `/api/v1/` URLs. URI fetch/import does not display
 raw fetched bodies. Pasted statement JSON is rendered only as text when the operator deliberately
-imports pasted content. Publication and audit summaries avoid private insert URIs, private identity
-material, raw signatures, tokens, and local paths.
+imports pasted content. Publication and audit summaries avoid private insert URIs, private
+identity material, raw signatures, tokens, and local paths. Browser persistent storage must not be
+used for private data, raw statements, app-service tokens, or app-data backup payloads.
 
 ## Redaction
 
 Model `toString()` output, API errors, trust audit entries, authorization audit entries, UI errors,
-release evidence, and developer-tooling reports must not include raw trust statement bodies from
-real users, raw request bodies, raw fetched content, private insert URIs, private keys, seed
-material, app process tokens, browser-session tokens, form passwords, absolute local paths, or raw
-signatures. Release-certification evidence should use route names, capability labels, booleans,
-counts, fixture hashes, and redacted summaries. Durable UI-local app-data evidence should similarly
-use counts and summary fields instead of raw trust statements, private insert URIs, or raw form
-bodies.
+support bundles, release evidence, and developer-tooling reports must not include raw trust
+statement bodies from real users, raw request bodies, raw fetched content, private insert URIs,
+private keys, seed material, app process tokens, browser-session tokens, form passwords, absolute
+local paths, raw app-data backup payloads, or raw signatures. Release-certification evidence should
+use route names, capability labels, booleans, counts, fixture hashes, lifecycle status labels,
+reason codes, and redacted summaries. Durable UI-local app-data evidence should similarly use
+counts and summary fields instead of raw trust statements, private insert URIs, or raw form bodies.

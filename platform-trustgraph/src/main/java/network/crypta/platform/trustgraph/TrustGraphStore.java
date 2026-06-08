@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Local store abstraction for Trust Graph Preview statements and anchors.
+ * Local store abstraction for Trust Graph RC statements, anchors, lifecycle, and audit events.
  *
- * <p>The interface separates the preview model and scorer from a specific retention mechanism.
+ * <p>The interface separates the local RC model and scorer from a specific retention mechanism.
  * Implementations own import idempotency, source metadata normalization, signature verification
  * bookkeeping, anchor storage, and deterministic listing order. They must not expose raw request
  * bodies, raw signature values, tokens, local filesystem paths, or private identity material
@@ -25,6 +25,29 @@ public interface TrustGraphStore {
    */
   TrustGraphImportResult importStatement(
       TrustStatementDocument document, String source, String sourceUri, String sourceLabel);
+
+  /**
+   * Imports or replaces one statement record with optional subscription source metadata.
+   *
+   * <p>The four-argument import method delegates here with a {@code null} subscription id. Store
+   * implementations retain only a bounded local subscription identifier when supplied; they must
+   * not fetch subscription content or expose raw fetched bodies through statement summaries.
+   *
+   * @param document parsed and validated trust statement document
+   * @param source bounded local source type label, or {@code null} for an implementation default
+   * @param sourceUri optional Crypta content URI associated with the imported document
+   * @param sourceLabel optional short display label supplied by the importing app
+   * @param subscriptionId optional local content-subscription id associated with the import
+   * @return redacted import summary including hashes and signature verification status
+   */
+  default TrustGraphImportResult importStatement(
+      TrustStatementDocument document,
+      String source,
+      String sourceUri,
+      String sourceLabel,
+      String subscriptionId) {
+    return importStatement(document, source, sourceUri, sourceLabel);
+  }
 
   /**
    * Adds or replaces a local trust anchor.
@@ -57,6 +80,23 @@ public interface TrustGraphStore {
   List<StoredTrustStatement> statements();
 
   /**
+   * Returns one imported statement by canonical document fingerprint.
+   *
+   * @param documentFingerprint statement document fingerprint to look up
+   * @return retained statement metadata, or {@code null} when no imported statement matches
+   */
+  default StoredTrustStatement statement(String documentFingerprint) {
+    String normalized =
+        TrustStatementValidator.requiredText("documentFingerprint", documentFingerprint, 128);
+    for (StoredTrustStatement statement : statements()) {
+      if (statement.documentFingerprint().equals(normalized)) {
+        return statement;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Returns all distinct subjects currently present in imported statements.
    *
    * @return immutable subject list suitable for app-facing discovery responses
@@ -70,6 +110,47 @@ public interface TrustGraphStore {
    * @return {@code true} when the fingerprint is currently anchored locally
    */
   boolean isAnchor(String issuerFingerprint);
+
+  /**
+   * Returns the local lifecycle record for one imported statement.
+   *
+   * <p>Implementations should return an active default when no local lifecycle mutation has been
+   * stored for the fingerprint. The returned value is local policy only; it does not represent a
+   * global revocation, moderation decision, or network propagation signal.
+   *
+   * @param documentFingerprint canonical statement document fingerprint
+   * @return local lifecycle view for the statement
+   */
+  default TrustStatementLifecycleRecord lifecycle(String documentFingerprint) {
+    return TrustStatementLifecycleRecord.active(
+        TrustStatementValidator.requiredText("documentFingerprint", documentFingerprint, 128),
+        java.time.Instant.EPOCH);
+  }
+
+  /**
+   * Creates or replaces a local lifecycle record for one imported statement.
+   *
+   * @param documentFingerprint canonical statement document fingerprint
+   * @param status local lifecycle status to store
+   * @param reasonCode optional bounded reason code
+   * @param note optional bounded note for local operator display
+   * @param replacementUri optional Crypta replacement URI; stores retain only a redacted summary
+   * @param actorAppId optional app id associated with the request
+   * @param source local source label such as {@code operator}, {@code app}, or {@code
+   *     imported-metadata}
+   * @return stored lifecycle record
+   */
+  default TrustStatementLifecycleRecord updateLifecycle(
+      String documentFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String note,
+      String replacementUri,
+      String actorAppId,
+      String source) {
+    throw new TrustGraphException(
+        "trust_graph_store_unavailable", "Trust graph lifecycle store is unavailable.");
+  }
 
   /**
    * Returns the number of imported statements.
@@ -142,6 +223,10 @@ public interface TrustGraphStore {
    * @param sourceUri optional redacted Crypta content URI summary
    * @param sourceUriHash optional SHA-256 hash of the normalized source URI
    * @param sourceLabel optional caller-provided display label
+   * @param sourceUriKind optional redacted source URI family such as {@code crypta-usk}
+   * @param subscriptionId optional local content-subscription id associated with the import
+   * @param importedAt first time this statement fingerprint was retained
+   * @param updatedAt latest time this statement fingerprint metadata was updated
    */
   record StoredTrustStatement(
       TrustStatementDocument document,
@@ -152,6 +237,8 @@ public interface TrustGraphStore {
       String sourceUri,
       String sourceUriHash,
       String sourceLabel,
+      String sourceUriKind,
+      String subscriptionId,
       java.time.Instant importedAt,
       java.time.Instant updatedAt) {
     /**
@@ -159,18 +246,45 @@ public interface TrustGraphStore {
      *
      * @return public metadata without raw document text or signature value
      */
+    @SuppressWarnings("unused")
     public Map<String, Object> toSummaryJson() {
+      return toSummaryJson(null);
+    }
+
+    /**
+     * Returns a redacted statement summary with local lifecycle metadata.
+     *
+     * @param lifecycle local lifecycle view to include, or {@code null} for active default
+     * @return public metadata without raw document text or signature value
+     */
+    public Map<String, Object> toSummaryJson(TrustStatementLifecycleRecord lifecycle) {
       Map<String, Object> summary =
           document.toSummaryJson(signatureVerified, source, sourceUri, sourceLabel);
+      summary.put("sourceType", source);
+      if (sourceUriKind != null) {
+        summary.put("sourceUriKind", sourceUriKind);
+      }
       if (sourceUriHash != null) {
         summary.put("sourceUriHash", sourceUriHash);
+      }
+      if (subscriptionId != null) {
+        summary.put("subscriptionId", subscriptionId);
       }
       if (importedAt != null) {
         summary.put("importedAt", importedAt.toString());
       }
       if (updatedAt != null) {
         summary.put("updatedAt", updatedAt.toString());
+        summary.put("lastSeenAt", updatedAt.toString());
       }
+      java.time.Instant activeLifecycleTimestamp =
+          importedAt == null ? java.time.Instant.EPOCH : importedAt;
+      TrustStatementLifecycleRecord effectiveLifecycle =
+          lifecycle == null
+              ? TrustStatementLifecycleRecord.active(documentFingerprint, activeLifecycleTimestamp)
+              : lifecycle;
+      summary.put("lifecycleStatus", effectiveLifecycle.status().jsonValue());
+      summary.put("lifecycle", effectiveLifecycle.toJson());
       return summary;
     }
   }

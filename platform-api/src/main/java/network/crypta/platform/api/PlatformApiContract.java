@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 14;
+  public static final int CURRENT_CONTRACT_VERSION = 15;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -71,7 +71,7 @@ public record PlatformApiContract(
   private static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10;
   private static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11;
   private static final int APP_SERVICES_CONTRACT_VERSION = 12;
-  private static final int PRODUCTION_CATALOG_CHANNELS_CONTRACT_VERSION = 13;
+  private static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -86,8 +86,9 @@ public record PlatformApiContract(
       "Stable endpoints and capabilities remain available within Platform API v1 contract version "
           + CURRENT_CONTRACT_VERSION
           + ". Contract version "
-          + PRODUCTION_CATALOG_CHANNELS_CONTRACT_VERSION
-          + " adds production catalog channel metadata to catalog and update-policy summaries"
+          + TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION
+          + " adds local Trust Graph RC scope metadata, lifecycle statement routes, and bounded"
+          + " contribution reason summaries"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -334,12 +335,13 @@ public record PlatformApiContract(
         experimentalCapabilitySince(
             PlatformApiCapabilities.TRUST_READ,
             TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
-            "Read local Trust Graph Preview status, anchors, subjects, statements, scores, and"
-                + " bounded evidence."),
+            "Read local Trust Graph RC status, anchors, subjects, statements, scores, lifecycle,"
+                + " and bounded evidence."),
         experimentalCapabilitySince(
             PlatformApiCapabilities.TRUST_WRITE,
             TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
-            "Import local trust statements and manage local Trust Graph Preview anchors."),
+            "Import local trust statements and manage local Trust Graph RC anchors and statement"
+                + " lifecycle policy."),
         capability(PlatformApiCapabilities.UPDATES_READ, "Read core update state."),
         capability(PlatformApiCapabilities.UPDATES_WRITE, "Trigger core update actions."),
         experimentalCapability(
@@ -1333,6 +1335,19 @@ public record PlatformApiContract(
           "/trust-graph/statements",
           "trust-graph.statements",
           "List redacted imported trust statement summaries.");
+      trustGraphStatementGet();
+      trustGraphLifecyclePost(
+          "/trust-graph/statements/{fingerprint}/deprecate",
+          "trust-graph.statements.deprecate",
+          "Mark one imported statement deprecated in local lifecycle policy.");
+      trustGraphLifecyclePost(
+          "/trust-graph/statements/{fingerprint}/revoke",
+          "trust-graph.statements.revoke",
+          "Mark one imported statement revoked in local lifecycle policy.");
+      trustGraphLifecyclePost(
+          "/trust-graph/statements/{fingerprint}/reactivate",
+          "trust-graph.statements.reactivate",
+          "Reactivate one imported statement in local lifecycle policy.");
       trustGraphGet(
           "/trust-graph/score",
           "trust-graph.score",
@@ -1427,6 +1442,22 @@ public record PlatformApiContract(
               description));
     }
 
+    private void trustGraphStatementGet() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_GET,
+              "/trust-graph/statements/{fingerprint}",
+              "trust-graph.statements.get",
+              List.of(PlatformApiCapabilities.TRUST_READ),
+              TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Read one redacted local Trust Graph RC statement summary."));
+    }
+
     private void trustGraphPost(
         String routeTemplate, String actionLabel, List<String> capabilities, String description) {
       endpoint(
@@ -1437,6 +1468,23 @@ public record PlatformApiContract(
               actionLabel,
               capabilities,
               TRUST_GRAPH_PREVIEW_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
+    }
+
+    private void trustGraphLifecyclePost(
+        String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              routeTemplate,
+              actionLabel,
+              List.of(PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION,
               true,
               true,
               true,

@@ -8,28 +8,28 @@ import network.crypta.platform.trustgraph.TrustGraphException;
 import network.crypta.runtime.spi.ContentFetchPort;
 
 /**
- * Routes the local Trust Graph Preview Platform API endpoint family.
+ * Routes the local Trust Graph RC Platform API endpoint family.
  *
  * <p>The top-level router owns authentication, capability checks, and app audit recording. This
  * collaborator owns only the {@code /trust-graph} path grammar and the small amount of bridge state
- * needed by Trust Graph Preview: its API handler and the optional bounded content-fetch port used
- * by {@code /trust-graph/import-uri}. Keeping those details here prevents the main router from
+ * needed by Trust Graph RC: its API handler and the optional bounded content-fetch port used by
+ * {@code /trust-graph/import-uri}. Keeping those details here prevents the main router from
  * depending directly on Trust Graph model exceptions or handler internals while preserving the same
  * method checks and error envelopes.
  *
- * <p>Trust Graph Preview remains a local, bounded preview API. This dispatcher never exposes raw
- * statement bodies, private identity material, local paths, or fetched content; it delegates those
- * redaction and validation decisions to {@link TrustGraphApiHandler}, then maps any remaining
+ * <p>Trust Graph RC remains a local, bounded operator-curated API. This dispatcher never exposes
+ * raw statement bodies, private identity material, local paths, or fetched content; it delegates
+ * those redaction and validation decisions to {@link TrustGraphApiHandler}, then maps any remaining
  * {@link TrustGraphException} to the stable Platform API error shape.
  */
 final class PlatformApiTrustGraphRoutes {
-  /** Shared method token for routes that read Trust Graph Preview state. */
+  /** Shared method token for routes that read Trust Graph RC state. */
   private static final String METHOD_GET = "GET";
 
-  /** Shared method token for routes that mutate Trust Graph Preview state. */
+  /** Shared method token for routes that mutate Trust Graph RC state. */
   private static final String METHOD_POST = "POST";
 
-  /** Shared method token for routes that remove Trust Graph Preview resources. */
+  /** Shared method token for routes that remove Trust Graph RC resources. */
   private static final String METHOD_DELETE = "DELETE";
 
   /** Shared 405 message for routes that only support GET. */
@@ -42,10 +42,16 @@ final class PlatformApiTrustGraphRoutes {
   private static final String DELETE_ONLY_MESSAGE =
       "Platform API v1 supports DELETE requests only.";
 
-  /** Shared route segment and list envelope key for Trust Graph Preview anchors. */
+  /** Shared route segment and list envelope key for Trust Graph RC anchors. */
   private static final String ANCHORS_SEGMENT = "anchors";
 
-  /** Handler that performs bounded Trust Graph Preview validation, storage, and redaction. */
+  /** Shared route segment and list envelope key for Trust Graph statement summaries. */
+  private static final String STATEMENTS_SEGMENT = "statements";
+
+  /** Shared envelope key for Trust Graph statement lifecycle mutation responses. */
+  private static final String LIFECYCLE_ENVELOPE_KEY = "lifecycle";
+
+  /** Handler that performs bounded Trust Graph RC validation, storage, and redaction. */
   private final TrustGraphApiHandler trustGraphApiHandler;
 
   /** Optional runtime content-fetch port for import-by-URI requests. */
@@ -55,7 +61,7 @@ final class PlatformApiTrustGraphRoutes {
    * Builds Trust Graph routes from the shared Platform API service group.
    *
    * <p>Reduced embeddings can omit a durable shared Trust Graph handler. In that case the route
-   * family falls back to the same process-local preview handler used before durable app-platform
+   * family falls back to the same process-local local-RC handler used before durable app-platform
    * services were wired in.
    *
    * @param appServices shared app-platform services supplied to the Platform API router
@@ -93,7 +99,7 @@ final class PlatformApiTrustGraphRoutes {
    *
    * @param segments decoded path segments relative to the Platform API mount point
    * @param request full request metadata, including method, principal, and query parameters
-   * @return JSON response for the selected Trust Graph Preview endpoint
+   * @return JSON response for the selected Trust Graph RC endpoint
    */
   PlatformApiResponse route(List<String> segments, PlatformApiRequest request) {
     try {
@@ -107,6 +113,8 @@ final class PlatformApiTrustGraphRoutes {
     return switch (segments.size()) {
       case 2 -> routeCollection(segments.get(1), request);
       case 3 -> routeResource(segments.get(1), segments.get(2), request);
+      case 4 ->
+          routeNestedResourceAction(segments.get(1), segments.get(2), segments.get(3), request);
       default -> throw notFound();
     };
   }
@@ -153,12 +161,13 @@ final class PlatformApiTrustGraphRoutes {
         }
         yield PlatformApiResponse.ok(envelope("subjects", trustGraphApiHandler.subjects()));
       }
-      case "statements" -> {
+      case STATEMENTS_SEGMENT -> {
         if (!METHOD_GET.equals(request.method())) {
           yield methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
         }
         yield PlatformApiResponse.ok(
-            envelope("statements", trustGraphApiHandler.statements(request.queryParameters())));
+            envelope(
+                STATEMENTS_SEGMENT, trustGraphApiHandler.statements(request.queryParameters())));
       }
       case "score" -> {
         if (!METHOD_GET.equals(request.method())) {
@@ -187,16 +196,54 @@ final class PlatformApiTrustGraphRoutes {
 
   private PlatformApiResponse routeResource(
       String resource, String resourceId, PlatformApiRequest request) {
-    if (!ANCHORS_SEGMENT.equals(resource)) {
+    if (ANCHORS_SEGMENT.equals(resource)) {
+      if (!METHOD_DELETE.equals(request.method())) {
+        return methodNotAllowed(METHOD_DELETE, DELETE_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          envelope(
+              "anchor",
+              trustGraphApiHandler.removeAnchor(resourceId, optionalAppPrincipalId(request))));
+    }
+    if (STATEMENTS_SEGMENT.equals(resource)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          envelope("statement", trustGraphApiHandler.statement(resourceId)));
+    }
+    throw notFound();
+  }
+
+  private PlatformApiResponse routeNestedResourceAction(
+      String resource, String resourceId, String action, PlatformApiRequest request) {
+    if (!STATEMENTS_SEGMENT.equals(resource)) {
       throw notFound();
     }
-    if (!METHOD_DELETE.equals(request.method())) {
-      return methodNotAllowed(METHOD_DELETE, DELETE_ONLY_MESSAGE);
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
     }
-    return PlatformApiResponse.ok(
-        envelope(
-            "anchor",
-            trustGraphApiHandler.removeAnchor(resourceId, optionalAppPrincipalId(request))));
+    return switch (action) {
+      case "deprecate" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  LIFECYCLE_ENVELOPE_KEY,
+                  trustGraphApiHandler.deprecateStatement(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      case "revoke" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  LIFECYCLE_ENVELOPE_KEY,
+                  trustGraphApiHandler.revokeStatement(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      case "reactivate" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  LIFECYCLE_ENVELOPE_KEY,
+                  trustGraphApiHandler.reactivateStatement(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      default -> throw notFound();
+    };
   }
 
   private static String optionalAppPrincipalId(PlatformApiRequest request) {

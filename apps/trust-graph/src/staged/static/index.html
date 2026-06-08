@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust Graph Preview</title>
+  <title>Trust Graph Local RC</title>
   <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
   <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
   <link rel="stylesheet" href="./app.css">
@@ -13,7 +13,7 @@
     <header class="cr-header">
       <div>
         <p class="cr-label">Crypta trust app</p>
-        <h1>Trust Graph Preview</h1>
+        <h1>Trust Graph Local RC</h1>
       </div>
       <div class="header-actions">
         <button class="cr-button cr-button--secondary" id="refresh-status-button" type="button">
@@ -28,8 +28,8 @@
     <section class="cr-permission-summary" data-crypta-permission-summary>
       <p><strong>Declared permissions</strong></p>
       <ul>
-        <li><code>trust.read</code> reads status, anchors, imported statements, and scores.</li>
-        <li><code>trust.write</code> imports bounded trust statements and manages local anchors.</li>
+        <li><code>trust.read</code> reads local RC scope, anchors, statement lifecycle, and bounded scores.</li>
+        <li><code>trust.write</code> imports bounded statements and manages local anchors and lifecycle policy.</li>
         <li><code>content.fetch</code> fetches statement documents through the bounded import helper.</li>
         <li><code>content.subscribe</code> manages trust statement content subscriptions.</li>
         <li><code>content.insert.app-document</code> stages generated statement documents.</li>
@@ -38,21 +38,26 @@
         <li><code>vault.identities.read</code> lists visible identity metadata.</li>
         <li><code>vault.identities.create</code> creates app-owned statement identities.</li>
         <li><code>vault.identities.use</code> requests vault-authored trust statements.</li>
-        <li><code>app.data.read</code> restores UI-local drafts, filters, and import summaries.</li>
-        <li><code>app.data.write</code> saves bounded UI-local preview state only.</li>
+        <li><code>app.data.read</code> restores UI-local drafts, filters, and redacted import summaries.</li>
+        <li><code>app.data.write</code> saves bounded UI-local RC state only.</li>
       </ul>
     </section>
 
-    <section class="cr-card safe-use-panel" aria-labelledby="safe-use-title">
-      <h2 id="safe-use-title">Overview</h2>
-      <p>Trust Graph Preview is a local durable preview, not full WoT or moderation.</p>
-      <p>App id: <code>trust-graph</code>. Platform API contracts: <code>10-12</code>.</p>
+    <section class="cr-card safe-use-panel rc-scope-panel" aria-labelledby="safe-use-title">
+      <h2 id="safe-use-title">Local RC scope</h2>
+      <p class="rc-warning">
+        Local trust only. This app shows operator-curated local evidence; it is not global truth,
+        moderation, blocking, routing policy, network crawling, or legacy WoT/Freetalk/Sone/Freemail
+        compatibility.
+      </p>
+      <p>App id: <code>trust-graph</code>. Platform API contracts: <code>10-15</code>.</p>
       <ul>
         <li>Draft form values, selected filters, and redacted import summaries persist through app data.</li>
         <li>Anchors and imported statements persist through the platform trust graph backend.</li>
-        <li>Anchors are local and are not published automatically.</li>
-        <li>The local Trust Score Service is preview-only and available to other apps only through operator-approved app-service grants.</li>
-        <li>Exchange uses content fetch, insert, and subscription APIs without protocol changes.</li>
+        <li>Anchors and lifecycle records are local policy and are not published automatically.</li>
+        <li>The local Trust Score Service is read-only for other apps and requires operator-approved app-service grants.</li>
+        <li>Score evidence is bounded and must explain why a statement did or did not contribute.</li>
+        <li>Exchange uses content fetch, insert, and subscription APIs without crawling or protocol changes.</li>
         <li>Fetched statement bodies are not displayed; pasted statement JSON is rendered only as text.</li>
         <li>Statement authorship uses vault and trust exchange helpers without exposing private signing secrets.</li>
       </ul>
@@ -63,7 +68,7 @@
         <div class="panel-heading">
           <div>
             <p class="cr-label">Graph health</p>
-            <h2 id="status-title">Status</h2>
+            <h2 id="status-title">Scope and status</h2>
           </div>
           <button class="cr-button cr-button--secondary" id="load-identities-button" type="button">
             Identities
@@ -202,6 +207,25 @@
           <p class="cr-empty">Trust score results appear here.</p>
         </div>
       </section>
+    </section>
+
+    <section class="cr-card statements-panel" aria-labelledby="statements-title">
+      <div class="panel-heading">
+        <div>
+          <p class="cr-label">Imported public statements</p>
+          <h2 id="statements-title">Statement lifecycle</h2>
+        </div>
+        <button class="cr-button cr-button--secondary" id="refresh-statements-button" type="button">
+          Refresh statements
+        </button>
+      </div>
+      <p class="cr-empty">
+        Lifecycle status is local operator policy. Deprecated, revoked, expired, unverified, or
+        unanchored statements must not silently contribute to local scores.
+      </p>
+      <div class="summary-list" id="statement-list">
+        <p class="cr-empty">Imported statements load after refresh.</p>
+      </div>
     </section>
 
     <section class="exchange-grid" aria-label="Trust statement exchange">

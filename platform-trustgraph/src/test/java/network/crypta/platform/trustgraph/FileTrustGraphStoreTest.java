@@ -76,6 +76,49 @@ class FileTrustGraphStoreTest {
   }
 
   @Test
+  void reopen_whenStatementRevokedAndReimported_expectLifecycleDurableAndPreserved()
+      throws Exception {
+    FileTrustGraphStore store = store();
+    TrustStatementDocument document = signedStatement(40, 60);
+    TrustGraphImportResult imported = store.importStatement(document, "manual", null, "first");
+
+    TrustStatementLifecycleRecord revoked =
+        store.updateLifecycle(
+            imported.documentFingerprint(),
+            TrustStatementLifecycleStatus.REVOKED,
+            "operator-revoked",
+            "local note",
+            "crypta:CHK@replacement",
+            "trust-graph",
+            "app");
+    TrustGraphImportResult reimported =
+        store.importStatement(document, "content-fetch", null, "second");
+    FileTrustGraphStore reopened = store();
+
+    assertEquals(TrustStatementLifecycleStatus.REVOKED, revoked.status());
+    assertFalse(reimported.imported());
+    assertEquals(1, reopened.statementCount());
+    assertEquals(
+        TrustStatementLifecycleStatus.REVOKED,
+        reopened.lifecycle(imported.documentFingerprint()).status());
+    assertEquals(
+        "operator-revoked", reopened.lifecycle(imported.documentFingerprint()).reasonCode());
+    assertTrue(
+        reopened
+            .lifecycle(imported.documentFingerprint())
+            .replacementUri()
+            .startsWith("CHK@sha256:"));
+    assertEquals(
+        "revoked",
+        reopened
+            .statements()
+            .getFirst()
+            .toSummaryJson(reopened.lifecycle(imported.documentFingerprint()))
+            .get("lifecycleStatus"));
+    assertFalse(allRelativePaths().contains("CHK@replacement"));
+  }
+
+  @Test
   void addAnchor_whenExistingAnchorReplacedAtLimit_expectNoUnrelatedEviction() {
     FileTrustGraphStore store = store(new TrustGraphStoreConfig(4, 2, 4, 65_536));
     store.addAnchor(new TrustAnchor("fingerprint-1", "Original", "manual", NOW));
