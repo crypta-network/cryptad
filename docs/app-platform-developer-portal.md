@@ -39,7 +39,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | App review governance | [app-review-governance.md](app-review-governance.md) |
 | Social Inbox Preview | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
-| Trust Graph Preview | [trust-graph-preview.md](trust-graph-preview.md) |
+| Trust Graph Local RC | [trust-graph-preview.md](trust-graph-preview.md) |
 | Legacy plugin migration guide | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) |
 | Legacy HTTP boundary | [legacy-http-boundary.md](legacy-http-boundary.md) |
 | Legacy retirement plan | [legacy-retirement-plan.md](legacy-retirement-plan.md) |
@@ -57,13 +57,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 14
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 15
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=14` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=15` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -80,15 +80,22 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Publisher | `publisher` | Legacy publisher replacement for content insert workflows. |
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
 | Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
-| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and operator-approved Trust Graph service annotations. |
+| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and operator-approved Trust Graph Local RC service annotations. |
 | Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
-| Trust Graph Preview | `trust-graph` | Durable local trust backend, URI import, scoring, signing, publication, subscription, redacted audit, and UI-local state. |
+| Trust Graph Local RC | `trust-graph` | Local operator-curated trust service with anchors, imported public signed statements, lifecycle policy, bounded scoring evidence, redacted source metadata, publication, subscription helpers, and UI-local state. |
 
 See [first-party-beta-catalog.md](first-party-beta-catalog.md),
 [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md),
 [social-inbox-reference-app.md](social-inbox-reference-app.md),
 [feed-reader-reference-app.md](feed-reader-reference-app.md), and
 [trust-graph-preview.md](trust-graph-preview.md) for app-specific notes.
+
+Trust Graph Local RC is advisory local trust only. It does not crawl the network, perform global
+moderation or blocking, change routing or FProxy browse behavior, propagate trust to other nodes,
+or promise legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility. Apps that need trust
+annotations should use the read-only `trust.score` app-service through an operator-approved grant;
+they do not gain authority to import statements, mutate anchors, or change statement lifecycle
+records through that service.
 
 ## Developer path
 
@@ -128,7 +135,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | --- | --- |
 | First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
-| Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence |
+| Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
 | Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
@@ -177,6 +184,9 @@ Start here:
 - [app-update-lifecycle.md](app-update-lifecycle.md) and
   [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) for manual, stage,
   apply-when-stopped, signed app-data migrations, internal update snapshots, and rollback scope.
+- [trust-graph-preview.md](trust-graph-preview.md) for the Trust Graph Local RC scope, local
+  statement lifecycle states, score contribution rules, bounded evidence, and redacted source
+  metadata.
 - [operator-beta-dashboard.md](operator-beta-dashboard.md) for host/operator-only recovery,
   support-bundle redaction, and Web Shell dashboard boundaries.
 - [SECURITY.md](SECURITY.md) for security reporting.

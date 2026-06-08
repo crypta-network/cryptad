@@ -9,11 +9,11 @@ input_payload="${CRYPTA_APP_MIGRATION_INPUT:-}"
 output_payload="${CRYPTA_APP_MIGRATION_OUTPUT:-}"
 
 if [ "$namespace" != "ui-state" ] || [ "$from_schema" != "1" ] || [ "$to_schema" != "2" ]; then
-  printf 'Trust Graph Preview migration precondition failed\n' >&2
+  printf 'Trust Graph Local RC migration precondition failed\n' >&2
   exit 2
 fi
 if [ ! -r "$input_payload" ] || [ -z "$output_payload" ]; then
-  printf 'Trust Graph Preview migration payload channel unavailable\n' >&2
+  printf 'Trust Graph Local RC migration payload channel unavailable\n' >&2
   exit 2
 fi
 
@@ -36,10 +36,10 @@ case "$mode" in
       print
     }
     ' "$input_payload" > "$output_payload"
-    printf 'Trust Graph Preview app-data migration %s validated\n' "$mode"
+    printf 'Trust Graph Local RC app-data migration %s validated\n' "$mode"
     ;;
   *)
-    printf 'Unsupported Trust Graph Preview migration mode\n' >&2
+    printf 'Unsupported Trust Graph Local RC migration mode\n' >&2
     exit 2
     ;;
 esac

@@ -10,7 +10,7 @@ plugins {
 
 version = rootProject.version
 
-val appDisplayName = "Trust Graph Preview"
+val appDisplayName = "Trust Graph Local RC"
 val appId = "trust-graph"
 val appDistMainClass = "network.crypta.platform.appdist.AppDistributionTool"
 val mainSourceSet = sourceSets.named("main")

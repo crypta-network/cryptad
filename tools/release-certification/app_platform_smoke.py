@@ -47,7 +47,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 14
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 15
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -699,8 +699,12 @@ def has_direct_local_endpoint_reference(text: str) -> bool:
     return DIRECT_LOCAL_ENDPOINT_RE.search(text) is not None
 
 
+def normalized_source_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.lower())
+
+
 def social_inbox_docs_frame_spike_non_goals(docs_text: str) -> bool:
-    normalized = re.sub(r"\s+", " ", docs_text.lower())
+    normalized = normalized_source_text(docs_text)
     wot_non_goal = bool(
         re.search(
             r"\bnot\s+(?:a\s+)?(?:[^.]{0,160}\b)?full\s+(?:wot|web of trust)\b",
@@ -935,7 +939,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
         },
         {
             "appId": "trust-graph",
-            "name": "Trust Graph Preview",
+            "name": "Trust Graph Local RC",
             "stagedDir": (
                 settings.workspace_root / "apps/trust-graph/build/cryptad-app/trust-graph"
             ),
@@ -1958,7 +1962,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 14" in contract_text
+            "CURRENT_CONTRACT_VERSION = 15" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
             and "APP_SERVICES_CALL" in capabilities_text
@@ -4352,6 +4356,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 12" in contract_text
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 15" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4714,6 +4719,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 12" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -5909,7 +5915,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
             "reference-app.trust-graph",
             root_consequence(settings, "fail"),
             True,
-            "Trust Graph Preview first-party app spec is missing.",
+            "Trust Graph Local RC first-party app spec is missing.",
             source,
             details,
         )
@@ -5922,6 +5928,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
     source_app_js = read_source(source_static_dir / "app.js")
     app_readme = read_source(app_dir / "README.md")
     reference_doc = read_source(settings.workspace_root / "docs/trust-graph-preview.md")
+    normalized_reference_doc = normalized_source_text(reference_doc)
     manifest: dict[str, str] = {}
     manifest_permissions: set[str] = set()
     if manifest_path.is_file():
@@ -5986,23 +5993,28 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         mentioned_permissions
     )
     checks["docsDescribePreviewLimits"] = (
-        "Trust Graph Preview" in reference_doc
-        and "not a full Web of Trust" in reference_doc
-        and "Trust anchors are local" in reference_doc
-        and "trust.read" in reference_doc
-        and "trust.write" in reference_doc
-        and "UI-local" in reference_doc
+        "trust graph local rc" in normalized_reference_doc
+        and "local anchors" in normalized_reference_doc
+        and "no crawling" in normalized_reference_doc
+        and "no global moderation" in normalized_reference_doc
+        and (
+            "local anchors only" in normalized_reference_doc
+            or "trust anchors are local" in normalized_reference_doc
+        )
+        and "trust.read" in normalized_reference_doc
+        and "trust.write" in normalized_reference_doc
+        and "ui-local" in normalized_reference_doc
     )
     checks["docsDescribeTrustScoreService"] = (
-        "Trust Score Service" in reference_doc
-        and "trust.score" in reference_doc
-        and "operator-approved app-service grants" in reference_doc
-        and "not complete WoT" in reference_doc
+        "trust score service" in normalized_reference_doc
+        and "trust.score" in normalized_reference_doc
+        and "operator-approved app-service grants" in normalized_reference_doc
+        and "read-only" in normalized_reference_doc
     )
     checks["readmeDocumentsTrustFlow"] = (
-        "Trust Graph Preview" in app_readme
+        "Trust Graph Local RC" in app_readme
         and "trust-statement" in app_readme
-        and "not full WoT" in app_readme
+        and "not global truth" in app_readme
         and "app-data" in app_readme
     )
     if manifest:
@@ -6022,7 +6034,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         }
         checks["manifestDeclaresTrustGraph"] = (
             manifest.get("app.id") == "trust-graph"
-            and manifest.get("app.name") == "Trust Graph Preview"
+            and manifest.get("app.name") == "Trust Graph Local RC"
             and manifest.get("app.ui.mode") == "static"
             and manifest.get("app.ui.entry") == "static/index.html"
         )
@@ -6056,7 +6068,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
             "reference-app.trust-graph",
             root_consequence(settings, "fail"),
             True,
-            "Trust Graph Preview reference app evidence found problems.",
+            "Trust Graph Local RC reference app evidence found problems.",
             source,
             {"errors": errors, **details},
         )
@@ -6064,7 +6076,7 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         "reference-app.trust-graph",
         "pass",
         True,
-        "Trust Graph Preview reference app evidence passed.",
+        "Trust Graph Local RC reference app evidence passed.",
         source,
         details,
     )
@@ -6104,7 +6116,7 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
             "docs/release-certification.md",
         )
     )
-    docs_text_lower = docs_text.lower()
+    docs_text_lower = normalized_source_text(docs_text)
     manifest = parse_properties(manifest_path) if manifest_path.is_file() else {}
     permissions = parse_permission_set(manifest.get("app.permissions", ""))
     checks = details["checks"]
@@ -6135,9 +6147,21 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
     checks["docsSeparateAppDataAndTrustBackend"] = (
         "reference-app.trust-graph-app-data-preview" in docs_text
         and "ui-local" in docs_text_lower
-        and "separate from the platform trust graph backend" in docs_text_lower
+        and (
+            "separate from the platform trust graph backend" in docs_text_lower
+            or (
+                "app data remains separate" in docs_text_lower
+                and "platform trust graph service state" in docs_text_lower
+            )
+        )
         and "durable local backend" in docs_text_lower
-        and "not a full web of trust" in docs_text_lower
+        and (
+            "not a full web of trust" in docs_text_lower
+            or (
+                "does not crawl the network" in docs_text_lower
+                and "no global moderation" in docs_text_lower
+            )
+        )
     )
     checks["noBrowserStorageOrRawAdminPath"] = (
         "/api/v1/" not in app_js
@@ -6184,6 +6208,10 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
     router_text = read_source(
         workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
     )
+    route_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiTrustGraphRoutes.java"
+    )
     handler_text = read_source(
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
@@ -6206,6 +6234,8 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
             "docs/release-certification.md",
         )
     )
+    normalized_docs_text = normalized_source_text(docs_text)
+    route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV7": "TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7" in contract_text,
         "capabilitiesPresent": "trust.read" in capabilities_text and "trust.write" in capabilities_text,
@@ -6222,7 +6252,7 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         )
         and "trust-graph" in router_text
         and all(
-            f'"{resource}"' in router_text or f"/trust-graph/{resource}" in router_text
+            f'"{resource}"' in route_source_text or f"/trust-graph/{resource}" in route_source_text
             for resource in ("status", "anchors", "import", "subjects", "statements", "score")
         ),
         "capabilityGatesPresent": (
@@ -6254,16 +6284,16 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
             )
         ),
         "docsDescribeLimits": (
-            "not a full Web of Trust" in docs_text
-            and "old WebOfTrust plugin" in docs_text
-            and "No FNP/FCP/wire protocol" in docs_text
-            and "trust.read" in docs_text
-            and "trust.write" in docs_text
+            "not a full web of trust" in normalized_docs_text
+            and "old weboftrust plugin" in normalized_docs_text
+            and "no fnp/fcp/wire protocol" in normalized_docs_text
+            and "trust.read" in normalized_docs_text
+            and "trust.write" in normalized_docs_text
         ),
         "redactionDocumented": (
-            "raw trust statement bodies" in docs_text
-            and "browser-session tokens" in docs_text
-            and "form passwords" in docs_text
+            "raw trust statement bodies" in normalized_docs_text
+            and "browser-session tokens" in normalized_docs_text
+            and "form passwords" in normalized_docs_text
         ),
     }
     details = {"checks": checks, "routes": ["trust-graph/status", "trust-graph/score"]}
@@ -6282,6 +6312,232 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         "pass",
         True,
         "Trust Graph Preview Platform API evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    trustgraph_dir = workspace / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph"
+    trustgraph_test_dir = workspace / "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph"
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    contract_text = read_source(api_dir / "PlatformApiContract.java")
+    route_text = read_source(api_dir / "PlatformApiTrustGraphRoutes.java")
+    handler_text = read_source(api_dir / "trust/TrustGraphApiHandler.java")
+    app_service_adapter_text = read_source(
+        api_dir / "appservices/TrustGraphScoreAppServiceAdapter.java"
+    )
+    store_text = read_source(trustgraph_dir / "TrustGraphStore.java")
+    file_store_text = read_source(trustgraph_dir / "FileTrustGraphStore.java")
+    memory_store_text = read_source(trustgraph_dir / "InMemoryTrustGraphStore.java")
+    lifecycle_status_text = read_source(trustgraph_dir / "TrustStatementLifecycleStatus.java")
+    lifecycle_record_text = read_source(trustgraph_dir / "TrustStatementLifecycleRecord.java")
+    scorer_text = read_source(trustgraph_dir / "TrustGraphScorer.java")
+    evidence_text = read_source(trustgraph_dir / "TrustGraphEvidence.java")
+    score_text = read_source(trustgraph_dir / "TrustGraphScore.java")
+    scorer_test_text = read_source(trustgraph_test_dir / "TrustGraphScorerTest.java")
+    store_test_text = read_source(trustgraph_test_dir / "FileTrustGraphStoreTest.java")
+    router_test_text = read_source(
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/TrustGraphApiRouterTest.java"
+    )
+    sdk_text = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    app_index = read_source(workspace / "apps/trust-graph/src/staged/static/index.html")
+    app_js = read_source(workspace / "apps/trust-graph/src/staged/static/app.js")
+    web_shell_text = read_source(
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-graph-preview.md",
+            "docs/app-platform-developer-portal.md",
+            "docs/operator-beta-dashboard.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+            "apps/trust-graph/README.md",
+        )
+    )
+    ui_text = app_index + "\n" + app_js + "\n" + web_shell_text
+    normalized_ui_text = normalized_source_text(ui_text)
+    docs_lower = normalized_source_text(docs_text)
+    checks = {
+        "contractV15AndRoutesPresent": (
+            "CURRENT_CONTRACT_VERSION = 15" in contract_text
+            and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
+            and "/trust-graph/statements/{fingerprint}" in contract_text
+            and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
+            and "/trust-graph/statements/{fingerprint}/revoke" in contract_text
+            and "/trust-graph/statements/{fingerprint}/reactivate" in contract_text
+            and "routeNestedResourceAction" in route_text
+        ),
+        "statusExposesLocalRcScope": all(
+            fragment in handler_text
+            for fragment in (
+                '"trust-graph-local-rc"',
+                '"local-rc"',
+                "localAnchorsOnly",
+                "importedStatementsOnly",
+                "noCrawling",
+                "noGlobalModeration",
+                "noBlocking",
+                "noRoutingDecisions",
+                "noLegacyWoTCompatibility",
+                "statementLifecycleJson",
+                "maxEvidenceRows",
+            )
+        ),
+        "lifecycleModelPresent": all(
+            fragment in lifecycle_status_text + lifecycle_record_text
+            for fragment in (
+                "ACTIVE",
+                "DEPRECATED",
+                "REVOKED",
+                "operator-local policy",
+                "statementFingerprint",
+                "reasonCode",
+                "replacementUri",
+                "actorAppId",
+            )
+        ),
+        "storesPersistLifecycleAndSourceMetadata": all(
+            fragment in store_text + file_store_text + memory_store_text
+            for fragment in (
+                "updateLifecycle",
+                "lifecycleRecords",
+                "sourceUriKind",
+                "subscriptionId",
+                "lastSeenAt",
+                "maxLifecycleRecords",
+                "writeLifecycleRecord",
+                "loadLifecycleRecords",
+                "normalizeSubscriptionId",
+            )
+        ),
+        "testsCoverLifecyclePersistenceAndApi": (
+            "reopen_whenStatementRevokedAndReimported_expectLifecycleDurableAndPreserved"
+            in store_test_text
+            and "route_whenWriterRevokesImportedStatement_expectLifecycleVisibleAndReimportDoesNotErase"
+            in router_test_text
+            and "route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler"
+            in router_test_text
+        ),
+        "scorerExcludesUnsafeEvidenceWithReasons": all(
+            fragment in scorer_text + evidence_text + score_text + scorer_test_text
+            for fragment in (
+                "nonContributingReasons",
+                "unanchored",
+                "unverified",
+                "expired",
+                "zero-confidence",
+                "revoked",
+                "deprecated",
+                "evidenceTruncated",
+                "MAX_EVIDENCE_ROWS",
+                "score_whenAnchoredStatementRevoked_expectLifecycleBlocksContribution",
+                "score_whenAnchoredStatementDeprecated_expectLifecycleBlocksContribution",
+            )
+        ),
+        "sdkLifecycleHelpersPresent": all(
+            fragment in sdk_text
+            for fragment in (
+                "function getTrustStatement",
+                "function deprecateTrustStatement",
+                "function revokeTrustStatement",
+                "function reactivateTrustStatement",
+                "trust-graph/statements/",
+                "normalizeTrustLifecycleMutation",
+                "subscriptionId",
+            )
+        ),
+        "uiAndWebShellWarnLocalOnly": all(
+            fragment in normalized_ui_text
+            for fragment in (
+                "trust graph local rc",
+                "local trust only",
+                "not global truth",
+                "not moderation",
+                "not blocking",
+                "not routing policy",
+                "no legacy wot",
+                "statement lifecycle",
+                "noncontributingreasons",
+                "evidencetruncated",
+            )
+        )
+        and "innerHTML" not in app_js,
+        "trustScoreServiceRemainsReadOnly": (
+            "TrustGraphApiHandler#score" in app_service_adapter_text
+            and "redactedScore" in app_service_adapter_text
+            and "updateLifecycle" not in app_service_adapter_text
+            and "trust.write" not in app_service_adapter_text
+            and "score.read" in app_service_adapter_text
+        ),
+        "docsDescribeRcNonGoalsAndRedaction": all(
+            fragment in docs_lower
+            for fragment in (
+                "local rc",
+                "no crawling",
+                "no global moderation",
+                "not blocking",
+                "no routing decisions",
+                "no legacy",
+                "deprecated",
+                "revoked",
+                "non-contribution reason",
+                "raw fetched content",
+                "private insert uri",
+                "app-platform.trust-graph-rc-scope-and-safety",
+            )
+        ),
+    }
+    details = {
+        "checks": checks,
+        "routes": [
+            "GET /trust-graph/status",
+            "GET /trust-graph/statements/{fingerprint}",
+            "POST /trust-graph/statements/{fingerprint}/deprecate",
+            "POST /trust-graph/statements/{fingerprint}/revoke",
+            "POST /trust-graph/statements/{fingerprint}/reactivate",
+        ],
+        "scope": {
+            "localAnchorsOnly": True,
+            "importedStatementsOnly": True,
+            "noCrawling": True,
+            "noGlobalModeration": True,
+            "noBlocking": True,
+            "noRoutingDecisions": True,
+            "noLegacyWoTCompatibility": True,
+        },
+        "redaction": {
+            "rawStatementBodiesExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "absolutePathsExcluded": True,
+            "rawAppDataBackupsExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if passed is not True]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-graph-rc-scope-and-safety",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust Graph Local RC scope and safety evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-graph-rc-scope-and-safety",
+        "pass",
+        True,
+        "Trust Graph Local RC scope and safety evidence passed.",
         source,
         details,
     )
@@ -6312,6 +6568,7 @@ def collect_trust_graph_durable_store_evidence(settings: Settings) -> EvidenceIt
             "docs/release-certification.md",
         )
     )
+    normalized_docs_text = normalized_source_text(docs_text)
     checks = {
         "fileBackedStorePresent": (
             "class FileTrustGraphStore" in store_text and "implements TrustGraphStore" in store_text
@@ -6359,10 +6616,13 @@ def collect_trust_graph_durable_store_evidence(settings: Settings) -> EvidenceIt
             )
         ),
         "docsDescribeDurableLocalBackend": (
-            "durable file-backed preview store" in docs_text
-            and "persists local trust anchors" in docs_text
-            and "raw fetched content" in docs_text
-            and "private insert URIs" in docs_text
+            (
+                "durable file-backed preview store" in normalized_docs_text
+                or "durable file-backed store" in normalized_docs_text
+            )
+            and "persists local trust anchors" in normalized_docs_text
+            and "raw fetched content" in normalized_docs_text
+            and "private insert uris" in normalized_docs_text
         ),
     }
     details = {
@@ -6411,6 +6671,10 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     router_text = read_source(
         workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
     )
+    route_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiTrustGraphRoutes.java"
+    )
     handler_text = read_source(
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java"
@@ -6441,9 +6705,10 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     )
     docs_text_lower = docs_text.lower()
     docs_text_compact = " ".join(docs_text_lower.split())
+    route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 14" in contract_text
+            "CURRENT_CONTRACT_VERSION = 15" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -6454,9 +6719,9 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
             and "PlatformApiCapabilities.TRUST_WRITE" in contract_text
         ),
         "routerRoutesPresent": (
-            "importUri" in router_text
+            "importUri" in route_source_text
             and "/trust-graph/import-uri" in contract_text
-            and 'envelope("audit"' in router_text
+            and 'envelope("audit"' in route_source_text
         ),
         "handlerUsesBoundedContentFetch": (
             "ContentFetchPort" in handler_text
@@ -6501,7 +6766,11 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
         "docsDescribeExchangeLimits": (
             "contract v10" in docs_text_compact
             and (
-                "does not crawl the network globally" in docs_text_compact
+                "does not crawl the network" in docs_text_compact
+                or "does not discover statements by walking the network" in docs_text_compact
+                or "no crawling" in docs_text_compact
+                or "network crawling" in docs_text_compact
+                or "does not crawl the network globally" in docs_text_compact
                 or "global network crawling" in docs_text_compact
                 or "background crawler" in docs_text_compact
             )
@@ -6600,7 +6869,7 @@ def collect_trust_graph_durable_exchange_reference_app_evidence(
             "Exchange uses content fetch, insert, and subscription APIs",
             "Subscriptions",
             "Audit",
-            "not full WoT",
+            "not global truth",
         )
     )
     checks["usesSdkExchangeHelpers"] = all(
@@ -6787,7 +7056,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 14" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 15" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -9918,19 +10187,21 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
             "operator-beta.trust-review-warnings",
             {
                 "trustPreviewWarning": (
-                    "Trust Graph Preview is local preview state only, not complete Web of Trust."
+                    "Trust Graph Local RC is local operator-curated state only"
                     in service_text
                     and '"previewOnly"' in service_text
                     and '"completeWot"' in service_text
+                    and '"scope"' in service_text
+                    and '"statementLifecycle"' in service_text
                 ),
                 "appReviewSurface": (
                     '"reviewTrust"' in service_text
                     and "renderBetaTrustAndServices(trustGraph, appServices)" in web_shell_text
-                    and "Trust Graph Preview" in web_shell_text
+                    and "Trust Graph Local RC" in web_shell_text
                 ),
                 "docs": (
                     "operator-beta.trust-review-warnings" in docs_text
-                    and "not complete Web of Trust" in docs_text
+                    and "not global truth" in docs_text
                 ),
             },
             "Operator beta trust and review-warning evidence passed.",
@@ -10322,6 +10593,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_data_store_evidence(settings),
         collect_app_data_backup_restore_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
+        collect_trust_graph_rc_scope_and_safety_evidence(settings),
         collect_trust_graph_durable_store_evidence(settings),
         collect_trust_graph_exchange_evidence(settings),
         collect_trust_statement_signing_evidence(settings),
@@ -11006,7 +11278,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
         assert contract_details["capabilityCount"] == 11, contract_item
-        assert contract_details["endpointCount"] == 24, contract_item
+        assert contract_details["endpointCount"] == 28, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
         assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
         assert contract_details["stableCapabilities"] == [
@@ -11089,6 +11361,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.trust-graph-durable-exchange"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"
+        assert (
+            evidence_by_id["app-platform.trust-graph-rc-scope-and-safety"]["status"] == "pass"
+        )
         assert evidence_by_id["app-platform.trust-graph-durable-store"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-exchange"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-statement-signing"]["status"] == "pass"
@@ -11637,6 +11912,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "const appDataImportPath = 'app-data/import'; "
         "function trustStatus(){} function addTrustAnchor(){} function importTrustStatement(){} "
         "function importTrustUri(){} function trustAudit(){} function trustScore(){} "
+        "function getTrustStatement(){} function deprecateTrustStatement(){} "
+        "function revokeTrustStatement(){} function reactivateTrustStatement(){} "
+        "function normalizeTrustLifecycleMutation(){} "
+        "const trustStatementRoute = 'trust-graph/statements/'; const subscriptionId = 'sub-redacted'; "
         "function publishTrustStatement(){} function fetchAndImportTrustStatement(){} "
         "function createTrustSubscription(){} function normalizeSocialMessageDocument(){} "
         "function listAppServices(){} function getAppService(){} "
@@ -11808,7 +12087,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         (
             "trust-graph",
             "trust-graph",
-            "Trust Graph Preview",
+            "Trust Graph Local RC",
             "trust-graph.sh",
             "trust.read,trust.write,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,"
             "vault.identities.read,vault.identities.create,vault.identities.use,app.data.read,app.data.write",
@@ -11833,6 +12112,11 @@ def make_self_test_workspace(workspace: Path) -> None:
             "CryptaPlatform.trust.exchange.fetchAndImport({ uri: 'CHK@redacted' });\n"
             "CryptaPlatform.trust.audit.list({ limit: 12 });\n"
             "CryptaPlatform.trust.score({ subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile' });\n"
+            "CryptaPlatform.trust.statements.get('fingerprint');\n"
+            "CryptaPlatform.trust.statements.deprecate('fingerprint', { reasonCode: 'local-policy' });\n"
+            "CryptaPlatform.trust.statements.revoke('fingerprint', { reasonCode: 'local-policy' });\n"
+            "CryptaPlatform.trust.statements.reactivate('fingerprint');\n"
+            "const nonContributingReasons = ['revoked']; const evidenceTruncated = true;\n"
             "CryptaPlatform.trust.exchange.publish({ identityId: 'trust-self-test', subjectKind: 'profile', subjectUri: 'USK@redacted', context: 'profile', score: 50, confidence: 80, insertUri: 'USK@redacted', identifier: 'trust' });\n"
             "CryptaPlatform.trust.exchange.subscriptions.list();\n"
             "CryptaPlatform.trust.exchange.subscriptions.create({ uri: 'USK@redacted/trust/0/trust.json' });\n"
@@ -11853,10 +12137,12 @@ def make_self_test_workspace(workspace: Path) -> None:
             permission_items = "".join(f"<li><code>{permission}</code></li>" for permission in permissions.split(","))
             if app_id == "trust-graph":
                 extra_ui = (
+                    "<p>Trust Graph Local RC. Local trust only; it is not global truth, "
+                    "not moderation, not blocking, not routing policy, no legacy WoT, and no network crawling.</p>"
                     "<p>Anchors and imported statements persist through the platform trust graph backend.</p>"
                     "<p>Exchange uses content fetch, insert, and subscription APIs.</p>"
                     "<p>Trust Score Service exposes trust.score through operator-approved app-service grants.</p>"
-                    "<h2>Subscriptions</h2><h2>Audit</h2><p>not full WoT</p>"
+                    "<h2>Statement lifecycle</h2><h2>Subscriptions</h2><h2>Audit</h2><p>not global truth</p>"
                 )
             elif app_id == "social-inbox":
                 extra_ui = (
@@ -11945,7 +12231,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.service-request.trust-score.service=trust.score",
                 "app.service-request.trust-score.scopes=score.read",
                 "app.service-request.trust-score.contexts=message-author",
-                "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.",
+                "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.",
             ]
         elif is_trust_graph:
             service_lines = [
@@ -11957,7 +12243,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.service.trust-score.adapter=trust-graph.score",
                 "app.service.trust-score.scopes=score.read",
                 "app.service.trust-score.contexts=message-author,profile",
-                "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.",
+                "app.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.",
             ]
             migration_lines = [
                 "app.data.schema.current=2",
@@ -11970,7 +12256,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.data.migration.ui-state-v1-v2.command=bin/migrate-preview-data.sh",
                 "app.data.migration.ui-state-v1-v2.rollbackCompatible=false",
                 "app.data.migration.ui-state-v1-v2.requiresStopped=true",
-                "app.data.migration.ui-state-v1-v2.description=Validate Trust Graph Preview UI state schema v2.",
+                "app.data.migration.ui-state-v1-v2.description=Validate Trust Graph Local RC UI state schema v2.",
             ]
         elif is_feed_reader:
             migration_lines = [
@@ -12048,8 +12334,9 @@ def make_self_test_workspace(workspace: Path) -> None:
             )
         if app_id == "trust-graph":
             (workspace / "apps/trust-graph/README.md").write_text(
-                "Trust Graph Preview creates an app-owned trust identity, signs a trust-statement "
-                "through AppVault, stores UI-local app-data draft summaries, imports local anchors, and is not full WoT. "
+                "Trust Graph Local RC creates an app-owned trust identity, signs a trust-statement "
+                "through AppVault, stores UI-local app-data draft summaries, imports local anchors, "
+                "and is local trust only, not global truth, moderation, blocking, routing policy, or legacy WoT. "
                 "App-data backup scope includes UI-local drafts, filters, and redacted import summaries. "
                 "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
@@ -12292,9 +12579,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 14; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 15; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
+        "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
         "static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11; "
         "static final int CONTENT_SUBSCRIPTIONS_CONTRACT_VERSION = 8; "
         "static final int APP_DATA_STORE_CONTRACT_VERSION = 9; "
@@ -12346,6 +12634,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String trustAudit = \"/trust-graph/audit\"; "
         "String trustSubjects = \"/trust-graph/subjects\"; "
         "String trustStatements = \"/trust-graph/statements\"; "
+        "String trustStatement = \"/trust-graph/statements/{fingerprint}\"; "
+        "String trustDeprecate = \"/trust-graph/statements/{fingerprint}/deprecate\"; "
+        "String trustRevoke = \"/trust-graph/statements/{fingerprint}/revoke\"; "
+        "String trustReactivate = \"/trust-graph/statements/{fingerprint}/reactivate\"; "
         "String trustScore = \"/trust-graph/score\"; "
         "String trustRead = \"PlatformApiCapabilities.TRUST_READ\"; "
         "String trustWrite = \"PlatformApiCapabilities.TRUST_WRITE\"; "
@@ -12394,6 +12686,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "PlatformApiAppServiceRoutes appServiceRoutes; String route = \"app-services\"; "
         "// case \"app-services\" "
         "Object app = appServiceRoutes.route(null, null); }\n",
+        encoding="utf-8",
+    )
+    (api_dir / "PlatformApiTrustGraphRoutes.java").write_text(
+        "final class PlatformApiTrustGraphRoutes { Object routeNestedResourceAction; "
+        "String routes = \"statements deprecate revoke reactivate\"; }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiSharedAppServices.java").write_text(
@@ -12460,9 +12757,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appservices_dir / "TrustGraphScoreAppServiceAdapter.java").write_text(
         "class TrustGraphScoreAppServiceAdapter { static final String ADAPTER_ID = \"trust-graph.score\"; "
-        "// not a proxy\n"
+        "// not a proxy; invokes TrustGraphApiHandler#score for score.read only\n"
         "void invoke(){ trustGraphApiHandler.score(null); json.put(\"subjectUriHash\", \"sha256:redacted\"); "
-        "String completeWot = \"completeWot\"; } }\n",
+        "Object redactedScore; String scope = \"score.read\"; String completeWot = \"completeWot\"; } }\n",
         encoding="utf-8",
     )
     api_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api"
@@ -12522,7 +12819,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
         "final class TrustGraphApiRouterTest { void route_whenImportUriHasContentFetchCapability() {} "
-        "void route_whenAuditReadAfterImport() { String summary = \"uri:redacted token=secret\"; } }\n",
+        "void route_whenAuditReadAfterImport() { String summary = \"uri:redacted token=secret\"; } "
+        "void route_whenWriterRevokesImportedStatement_expectLifecycleVisibleAndReimportDoesNotErase() {} "
+        "void route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler() {} }\n",
         encoding="utf-8",
     )
     sdk_test_dir = workspace / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js"
@@ -12697,6 +12996,11 @@ def make_self_test_workspace(workspace: Path) -> None:
     trust_api_dir.mkdir(parents=True, exist_ok=True)
     (trust_api_dir / "TrustGraphApiHandler.java").write_text(
         "final class TrustGraphApiHandler { Object store = new InMemoryTrustGraphStore(); "
+        "Map status() { String service = \"trust-graph-local-rc\"; String mode = \"local-rc\"; "
+        "String scope = \"localAnchorsOnly importedStatementsOnly noCrawling noGlobalModeration "
+        "noBlocking noRoutingDecisions noLegacyWoTCompatibility\"; "
+        "Object lifecycle = statementLifecycleJson(); String max = \"maxEvidenceRows\"; return null; } "
+        "Object statementLifecycleJson() { return null; } "
         "void importStatement() { TrustStatementParser.parse(\"{}\"); } "
         "void importUri(ContentFetchPort port) { Object handler = new ContentApiHandler(null); "
         "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
@@ -12723,12 +13027,53 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (trustgraph_main_dir / "TrustGraphStoreSanitizer.java").write_text(
-        "final class TrustGraphStoreSanitizer { boolean control(char ch) { return Character.isISOControl(ch); } }\n",
+        "final class TrustGraphStoreSanitizer { boolean control(char ch) { return Character.isISOControl(ch); } "
+        "String normalizeSubscriptionId(String value) { return value; } }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustStatementLifecycleStatus.java").write_text(
+        "enum TrustStatementLifecycleStatus { ACTIVE, DEPRECATED, REVOKED; "
+        "String text = \"operator-local policy\"; }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustStatementLifecycleRecord.java").write_text(
+        "record TrustStatementLifecycleRecord(String statementFingerprint, "
+        "TrustStatementLifecycleStatus status, String reasonCode, String replacementUri, "
+        "String actorAppId) { String text = \"operator-local policy\"; }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphStore.java").write_text(
+        "interface TrustGraphStore { void updateLifecycle(); Object lifecycle(); "
+        "record StoredTrustStatement(String sourceUriKind, String subscriptionId, "
+        "Object lastSeenAt) {} String normalizeSubscriptionId = \"normalizeSubscriptionId\"; }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "InMemoryTrustGraphStore.java").write_text(
+        "final class InMemoryTrustGraphStore implements TrustGraphStore { "
+        "Object lifecycleRecords; int maxLifecycleRecords; void updateLifecycle(){} "
+        "String sourceUriKind; String subscriptionId; String lastSeenAt; }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphEvidence.java").write_text(
+        "record TrustGraphEvidence(String lifecycleStatus, Object nonContributingReasons) {}\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphScore.java").write_text(
+        "record TrustGraphScore(boolean evidenceTruncated, int maxEvidenceRows) {}\n",
+        encoding="utf-8",
+    )
+    (trustgraph_main_dir / "TrustGraphScorer.java").write_text(
+        "final class TrustGraphScorer { static final int MAX_EVIDENCE_ROWS = 25; "
+        "String reasons = \"nonContributingReasons unanchored unverified expired "
+        "zero-confidence revoked deprecated evidenceTruncated\"; }\n",
         encoding="utf-8",
     )
     (trustgraph_main_dir / "FileTrustGraphStore.java").write_text(
         "final class FileTrustGraphStore implements TrustGraphStore { "
         "String anchors = \"anchors\"; String statements = \"statements\"; String audit = \"audit\"; "
+        "Object lifecycleRecords; int maxLifecycleRecords; String sourceUriKind; "
+        "String subscriptionId; String lastSeenAt; "
+        "void updateLifecycle(){} void writeLifecycleRecord(){} void loadLifecycleRecords(){} "
         "void write() { String temp = \"createTempFile\"; String move = \"ATOMIC_MOVE\"; force(); } "
         "void force() {} }\n",
         encoding="utf-8",
@@ -12747,11 +13092,20 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class FileTrustGraphStoreTest { "
         "void reopen_whenAnchorStored_expectAnchorDurable() {} "
         "void reopen_whenVerifiedStatementAndAnchorStored_expectScoreUsesDurableState() {} "
+        "void reopen_whenStatementRevokedAndReimported_expectLifecycleDurableAndPreserved() {} "
         "void importStatement_whenSameDocumentImportedTwice_expectMetadataReplacedWithoutDuplicate() {} "
         "void retention_whenCapsExceeded_expectOldestRecordsEvicted() {} "
         "void reopen_whenPersistedRecordIsCorrupt_expectRecordIgnoredSafely() {} "
         "void auditEvents_whenStoredAndReopened_expectBoundedNewestFirstAndRedacted() {} "
         "void auditEvents_whenDuplicateEventsEvicted_expectOnlyOnePersistedDuplicateDeleted() {} }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_test_dir / "TrustGraphScorerTest.java").write_text(
+        "final class TrustGraphScorerTest { "
+        "void score_whenAnchoredStatementRevoked_expectLifecycleBlocksContribution() {} "
+        "void score_whenAnchoredStatementDeprecated_expectLifecycleBlocksContribution() {} "
+        "String reasons = \"nonContributingReasons unanchored unverified expired "
+        "zero-confidence revoked deprecated evidenceTruncated MAX_EVIDENCE_ROWS\"; }\n",
         encoding="utf-8",
     )
     (trustgraph_test_dir / "TrustStatementParserTest.java").write_text(
@@ -13003,7 +13357,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "durable content.subscribe USK sources, app-data read-state and drafts, and Trust Graph Preview message-author annotations that are not a moderation decision. "
         "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message protocol, or network protocol changes. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
-        "Trust Graph Preview is not a full Web of Trust, not complete WoT, and uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, bounded trust-statement signing, and operator-approved app-service grants. "
+        "Trust Graph Local RC is local trust only, not global truth, not a full Web of Trust, "
+        "not complete WoT, no crawling, no global moderation, not blocking, no routing decisions, "
+        "and no legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility. "
+        "It uses trust.read, trust.write, local anchors, durable local backend storage, redacted audit, "
+        "bounded trust-statement signing, lifecycle states active, deprecated, and revoked, "
+        "bounded non-contribution reason codes, Trust Score Service, trust.score, "
+        "operator-approved app-service grants, and read-only app-service score access. "
         "Trust anchors are local. "
         "It has no old WebOfTrust plugin compatibility. No FNP/FCP/wire protocol changes are involved. "
         "api.minimumVersion, changelog.summary, and review receipts. "
@@ -13041,6 +13401,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "channel_policy_blocked records excluded automation candidates, and deprecated entries expose "
         "replacement metadata without bypassing signed catalog verification. "
         "Contract v14 adds app-update.data-migration-contract for signed app-data schema migration declarations. "
+        "Contract v15 adds app-platform.trust-graph-rc-scope-and-safety for Trust Graph Local RC scope, lifecycle, source metadata, and score safety. "
         "The app-data migration lifecycle runs a dry-run before bundle replacement, creates an internal rollback snapshot, "
         "restores app data on failed migration rollback, and keeps rollback snapshot scope app-only. "
         "It blocks missing migration paths and rollback-incompatible migrations until operator review, "
@@ -13051,7 +13412,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Release evidence covers app-services.registry, app-services.grants, app-services.trust-score-provider, "
         "reference-app.social-inbox-service-grant, app-services.web-shell, and app-services.redaction. "
         "Feed Reader and Profile Publisher use app-data for bounded local state. "
-        "Trust Graph Preview uses UI-local app-data state separate from the platform trust graph backend. "
+        "Trust Graph Local RC uses UI-local app-data state separate from the platform trust graph backend. "
         "The durable local backend has a durable file-backed preview store that persists local trust anchors, imported public statements, and redacted audit entries. "
         "Contract v10 adds POST /api/v1/trust-graph/import-uri and GET /api/v1/trust-graph/audit. "
         "Exchange uses content fetch, insert, and subscription APIs and does not crawl the network globally. "
@@ -13990,7 +14351,11 @@ function renderBetaCatalogs(catalogs){}
 function renderBetaApps(apps){}
 function renderBetaSubscriptions(subscriptions){}
 function renderBetaTrustAndServices(trustGraph, appServices){}
-const trustPreviewTitle = "Trust Graph Preview";
+const trustPreviewTitle = "Trust Graph Local RC";
+const trustScopeText = "Local trust only; it is not global truth, not moderation, not blocking, "
+  + "not routing policy, no legacy WoT, no global moderation, and no crawling.";
+const trustScopeFields = "scope statementLifecycle localAnchorsOnly importedStatementsOnly "
+  + "noCrawling noGlobalModeration noBlocking noRoutingDecisions noLegacyWoTCompatibility";
 function renderBetaRecoveryActions(actions){}
 function operatorRecoveryActionVisible(action){ const actionId = "preserve-data-uninstall"; return actionId !== "preserve-data-uninstall"; }
 function loadBetaDashboardSection(){ loadJson(apiUrl("operator/beta-dashboard")); }
@@ -14076,7 +14441,9 @@ final class OperatorBetaDashboardService {
   void trustGraphSummary() {
     json.put("previewOnly", true);
     json.put("completeWot", false);
-    String warning = "Trust Graph Preview is local preview state only, not complete Web of Trust.";
+    json.put("scope", scope);
+    json.put("statementLifecycle", statementLifecycle);
+    String warning = "Trust Graph Local RC is local operator-curated state only, not global truth, moderation, blocking, routing policy, or legacy Web of Trust compatibility.";
   }
   void appSummary(String appId) {
     appDataSummary(appId);
@@ -14184,7 +14551,7 @@ class OperatorSupportRedactorTest {
         "operator-beta.app-data-quota-warnings, operator-beta.app-data-backup-restore, "
         "operator-beta.support-bundle-redaction, and operator-beta.web-shell. "
         "App-data backup restore evidence app-data.backup-restore-portability uses sensitive user data warnings. "
-        "Trust Graph Preview is not complete Web of Trust. "
+        "Trust Graph Local RC is local trust only, not global truth, not moderation, not blocking, not routing policy, no legacy WoT, and no crawling. "
         "Support bundles are reviewed by the operator before sharing and exclude raw request bodies and raw backup values."
     )
     (docs / "operator-beta-dashboard.md").write_text(operator_doc_text, encoding="utf-8")
@@ -14309,7 +14676,7 @@ def init_app(args):
                 "app.version=0.1.0",
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
-                "api.maximumTestedVersion=14",
+                "api.maximumTestedVersion=15",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -14458,7 +14825,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 14,
+                    "contractVersion": 15,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -14568,6 +14935,34 @@ def api_snapshot(args):
                         {"method": "POST", "routeTemplate": "/app-data/import", "stability": "stable"},
                         {"method": "GET", "routeTemplate": "/trust-graph/audit", "stability": "stable"},
                         {"method": "POST", "routeTemplate": "/trust-graph/import-uri", "stability": "stable"},
+                        {
+                            "method": "GET",
+                            "routeTemplate": "/trust-graph/statements/{fingerprint}",
+                            "requiredCapabilities": ["trust.read"],
+                            "stability": "experimental",
+                            "sinceContractVersion": 15,
+                        },
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/trust-graph/statements/{fingerprint}/deprecate",
+                            "requiredCapabilities": ["trust.write"],
+                            "stability": "experimental",
+                            "sinceContractVersion": 15,
+                        },
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/trust-graph/statements/{fingerprint}/revoke",
+                            "requiredCapabilities": ["trust.write"],
+                            "stability": "experimental",
+                            "sinceContractVersion": 15,
+                        },
+                        {
+                            "method": "POST",
+                            "routeTemplate": "/trust-graph/statements/{fingerprint}/reactivate",
+                            "requiredCapabilities": ["trust.write"],
+                            "stability": "experimental",
+                            "sinceContractVersion": 15,
+                        },
                         {
                             "method": "POST",
                             "routeTemplate": "/app-vault/identities/{identityId}/social-message",
@@ -14680,7 +15075,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=14' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=15' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -14857,7 +15252,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 14,
+    "contractVersion": 15,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
@@ -14901,14 +15296,14 @@ PY
         "stability": "stable",
         "sinceContractVersion": 7,
         "deprecation": null,
-        "description": "Read local trust graph preview state."
+        "description": "Read local Trust Graph RC state and lifecycle."
       },
       {
         "name": "trust.write",
         "stability": "stable",
         "sinceContractVersion": 7,
         "deprecation": null,
-        "description": "Mutate local trust graph preview state."
+        "description": "Mutate local Trust Graph RC anchors and lifecycle."
       },
       {
         "name": "vault.identities.read",
@@ -15020,6 +15415,42 @@ PY
         "method": "POST",
         "routeTemplate": "/trust-graph/import-uri",
         "stability": "stable"
+      },
+      {
+        "method": "GET",
+        "routeTemplate": "/trust-graph/statements/{fingerprint}",
+        "requiredCapabilities": [
+          "trust.read"
+        ],
+        "stability": "experimental",
+        "sinceContractVersion": 15
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/trust-graph/statements/{fingerprint}/deprecate",
+        "requiredCapabilities": [
+          "trust.write"
+        ],
+        "stability": "experimental",
+        "sinceContractVersion": 15
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/trust-graph/statements/{fingerprint}/revoke",
+        "requiredCapabilities": [
+          "trust.write"
+        ],
+        "stability": "experimental",
+        "sinceContractVersion": 15
+      },
+      {
+        "method": "POST",
+        "routeTemplate": "/trust-graph/statements/{fingerprint}/reactivate",
+        "requiredCapabilities": [
+          "trust.write"
+        ],
+        "stability": "experimental",
+        "sinceContractVersion": 15
       },
       {
         "method": "POST",

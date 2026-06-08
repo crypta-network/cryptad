@@ -50,7 +50,7 @@ class SocialInboxBundleStagingTest {
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 12;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 14;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 15;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -127,7 +127,7 @@ class SocialInboxBundleStagingTest {
     assertTrue(
         manifestText.contains(
             "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using"
-                + " the local Trust Graph Preview score service."));
+                + " the local Trust Graph Local RC score service."));
     assertTrue(manifestText.contains("sandbox.mode=restricted-process"));
     assertTrue(manifestText.contains("sandbox.required=false"));
     assertTrue(manifestText.contains("app.restart.policy=never"));
@@ -232,7 +232,7 @@ class SocialInboxBundleStagingTest {
         "AppVault",
         "bounded signed message documents",
         "content insert/fetch/subscriptions",
-        "operator-approved Trust Graph Preview service annotations",
+        "operator-approved Trust Graph Local RC service annotations",
         "not full WoT",
         "not compatible with old WebOfTrust plugin APIs",
         "not Freetalk, Sone, Freemail",

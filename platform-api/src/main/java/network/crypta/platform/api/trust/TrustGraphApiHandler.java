@@ -19,6 +19,8 @@ import network.crypta.platform.trustgraph.TrustGraphScore;
 import network.crypta.platform.trustgraph.TrustGraphScorer;
 import network.crypta.platform.trustgraph.TrustGraphStore;
 import network.crypta.platform.trustgraph.TrustStatementDocument;
+import network.crypta.platform.trustgraph.TrustStatementLifecycleRecord;
+import network.crypta.platform.trustgraph.TrustStatementLifecycleStatus;
 import network.crypta.platform.trustgraph.TrustStatementParser;
 import network.crypta.platform.trustgraph.TrustStatementPayload;
 import network.crypta.platform.trustgraph.TrustStatementValidator;
@@ -27,7 +29,7 @@ import network.crypta.platform.trustgraph.TrustSubjectKind;
 import network.crypta.runtime.spi.ContentFetchPort;
 
 /**
- * Handles the local Trust Graph Preview route family.
+ * Handles the local Trust Graph RC route family.
  *
  * <p>The handler stores only validated trust statement models, redacted source labels, and local
  * anchors. It never returns raw imported document bodies, signature values, request bodies, browser
@@ -36,7 +38,7 @@ import network.crypta.runtime.spi.ContentFetchPort;
  * <p>This class is intentionally transport-neutral. The parent Platform API router performs
  * authentication, capability checks, and audit emission; this handler focuses on decoded
  * parameters, trust-graph model validation, response shaping, and translating model failures into
- * stable client errors. The backing store is app-platform trust-preview state, not daemon-core
+ * stable client errors. The backing store is app-platform local trust state, not daemon-core
  * reputation, moderation, routing, or peer-selection state.
  */
 public final class TrustGraphApiHandler {
@@ -47,8 +49,12 @@ public final class TrustGraphApiHandler {
   private static final String PARAM_LABEL = "label";
   private static final String PARAM_LIMIT = "limit";
   private static final String PARAM_MAX_BYTES = "maxBytes";
+  private static final String PARAM_NOTE = "note";
+  private static final String PARAM_REASON_CODE = "reasonCode";
+  private static final String PARAM_REPLACEMENT_URI = "replacementUri";
   private static final String PARAM_SOURCE = "source";
   private static final String PARAM_SOURCE_LABEL = "sourceLabel";
+  private static final String PARAM_SUBSCRIPTION_ID = "subscriptionId";
   private static final String PARAM_SOURCE_URI = "sourceUri";
   private static final String PARAM_SUBJECT_KIND = "subjectKind";
   private static final String PARAM_SUBJECT_URI = "subjectUri";
@@ -104,20 +110,22 @@ public final class TrustGraphApiHandler {
   }
 
   /**
-   * Returns local preview status.
+   * Returns local RC status.
    *
    * <p>The status response describes the route family, durable-store mode, and current local counts
    * without exposing any imported statement body, signature value, private insert URI, or app
    * identity material.
    *
-   * @return insertion-ordered JSON-compatible status fields for the local preview service
+   * @return insertion-ordered JSON-compatible status fields for the local RC service
    */
   public Map<String, Object> status() {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
     json.put("available", true);
-    json.put("service", "trust-graph-preview");
+    json.put("service", "trust-graph-local-rc");
+    json.put("mode", "local-rc");
     json.put("documentType", TrustDocumentTypes.TRUST_STATEMENT_V1);
     json.put("contentType", TrustDocumentTypes.TRUST_STATEMENT_CONTENT_TYPE);
+    json.put("scope", scopeJson());
     json.put("durable", store.durable());
     json.put("storeType", store.storeType());
     json.put("statementCount", store.statementCount());
@@ -125,6 +133,7 @@ public final class TrustGraphApiHandler {
     json.put("auditCount", store.auditEvents(store.config().maxAuditEntries()).size());
     json.put("limits", limitsJson());
     json.put("scoring", "direct-local-anchors-confidence-weighted-average");
+    json.put("statementLifecycle", statementLifecycleJson());
     json.put("completeWot", false);
     return json;
   }
@@ -248,7 +257,8 @@ public final class TrustGraphApiHandler {
               document,
               importSource(queryParameters),
               PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL));
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
       appendImportAudit("statement_imported", appId, result);
       return result.toJson();
     } catch (TrustGraphException exception) {
@@ -308,7 +318,8 @@ public final class TrustGraphApiHandler {
               document,
               "content-fetch",
               uri,
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL));
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
       appendImportAudit("statement_imported_from_uri", appId, result);
       return result.toJson();
     } catch (TrustGraphException exception) {
@@ -359,11 +370,75 @@ public final class TrustGraphApiHandler {
       return store.statements().stream()
           .filter(statement -> issuerMatches(statement.document().payload(), issuerFingerprint))
           .filter(statement -> query == null || query.matches(statement.document().payload()))
-          .map(TrustGraphStore.StoredTrustStatement::toSummaryJson)
+          .map(
+              statement ->
+                  statement.toSummaryJson(store.lifecycle(statement.documentFingerprint())))
           .toList();
     } catch (TrustGraphException exception) {
       throw toPlatformException(exception);
     }
+  }
+
+  /**
+   * Returns one redacted statement summary by canonical document fingerprint.
+   *
+   * @param fingerprint document fingerprint path segment
+   * @return redacted statement summary with lifecycle metadata
+   * @throws PlatformApiException when the fingerprint is invalid or no retained statement matches
+   */
+  public Map<String, Object> statement(String fingerprint) {
+    try {
+      TrustGraphStore.StoredTrustStatement statement = store.statement(fingerprint);
+      if (statement == null) {
+        throw new TrustGraphException(
+            "trust_statement_not_found", "Trust statement was not found.");
+      }
+      return statement.toSummaryJson(store.lifecycle(statement.documentFingerprint()));
+    } catch (TrustGraphException exception) {
+      throw toPlatformException(exception);
+    }
+  }
+
+  /**
+   * Marks one retained statement deprecated in local lifecycle policy.
+   *
+   * @param fingerprint document fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason and note fields
+   * @param appId optional app id associated with the request
+   * @return stored local lifecycle summary
+   */
+  public Map<String, Object> deprecateStatement(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.DEPRECATED, queryParameters, appId);
+  }
+
+  /**
+   * Marks one retained statement revoked in local lifecycle policy.
+   *
+   * @param fingerprint document fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason and note fields
+   * @param appId optional app id associated with the request
+   * @return stored local lifecycle summary
+   */
+  public Map<String, Object> revokeStatement(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.REVOKED, queryParameters, appId);
+  }
+
+  /**
+   * Restores one retained statement to active local lifecycle policy.
+   *
+   * @param fingerprint document fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason and note fields
+   * @param appId optional app id associated with the request
+   * @return stored local lifecycle summary
+   */
+  public Map<String, Object> reactivateStatement(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.ACTIVE, queryParameters, appId);
   }
 
   /**
@@ -424,16 +499,42 @@ public final class TrustGraphApiHandler {
     if ("trust_graph_store_unavailable".equals(exception.errorCode())) {
       return new PlatformApiException(503, exception.errorCode(), exception.getMessage());
     }
+    if ("trust_statement_not_found".equals(exception.errorCode())) {
+      return new PlatformApiException(404, exception.errorCode(), exception.getMessage());
+    }
     return new PlatformApiException(400, exception.errorCode(), exception.getMessage());
   }
 
   private Map<String, Object> limitsJson() {
-    LinkedHashMap<String, Object> limits = LinkedHashMap.newLinkedHashMap(4);
+    LinkedHashMap<String, Object> limits = LinkedHashMap.newLinkedHashMap(6);
+    limits.put("maxEvidenceRows", TrustGraphScorer.MAX_EVIDENCE_ROWS);
     limits.put("maxStatements", store.config().maxStatements());
     limits.put("maxAnchors", store.config().maxAnchors());
     limits.put("maxAuditEntries", store.config().maxAuditEntries());
     limits.put("maxStoredDocumentBytes", store.config().maxStoredDocumentBytes());
+    limits.put("maxLifecycleRecords", store.config().maxLifecycleRecords());
     return limits;
+  }
+
+  private static Map<String, Object> scopeJson() {
+    LinkedHashMap<String, Object> scope = LinkedHashMap.newLinkedHashMap(7);
+    scope.put("localAnchorsOnly", true);
+    scope.put("importedStatementsOnly", true);
+    scope.put("noCrawling", true);
+    scope.put("noGlobalModeration", true);
+    scope.put("noBlocking", true);
+    scope.put("noRoutingDecisions", true);
+    scope.put("noLegacyWoTCompatibility", true);
+    return scope;
+  }
+
+  private static Map<String, Object> statementLifecycleJson() {
+    LinkedHashMap<String, Object> lifecycle = LinkedHashMap.newLinkedHashMap(4);
+    lifecycle.put("supportsLocalRevocation", true);
+    lifecycle.put("supportsLocalDeprecation", true);
+    lifecycle.put("revokedContributes", false);
+    lifecycle.put("deprecatedContributes", false);
+    return lifecycle;
   }
 
   private int readMaxBytes(Map<String, List<String>> queryParameters) {
@@ -499,6 +600,29 @@ public final class TrustGraphApiHandler {
     };
   }
 
+  private Map<String, Object> updateLifecycle(
+      String fingerprint,
+      TrustStatementLifecycleStatus status,
+      Map<String, List<String>> queryParameters,
+      String appId) {
+    try {
+      TrustStatementLifecycleRecord lifecycleRecord =
+          store.updateLifecycle(
+              fingerprint,
+              status,
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_REASON_CODE),
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_NOTE),
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_REPLACEMENT_URI),
+              appId,
+              appId == null ? "operator" : "app");
+      appendLifecycleAudit("statement_lifecycle_" + status.jsonValue(), appId, lifecycleRecord);
+      return lifecycleRecord.toJson();
+    } catch (TrustGraphException exception) {
+      appendRejectedAudit("statement_lifecycle_rejected", appId, null, exception.errorCode());
+      throw toPlatformException(exception);
+    }
+  }
+
   private void appendAnchorAudit(String eventType, String appId, String issuerFingerprint) {
     store.appendAuditEvent(
         new TrustGraphAuditEvent(
@@ -536,6 +660,26 @@ public final class TrustGraphApiHandler {
             result.sourceUri(),
             result.signatureVerified(),
             AUDIT_STATUS_OK));
+  }
+
+  private void appendLifecycleAudit(
+      String eventType, String appId, TrustStatementLifecycleRecord lifecycleRecord) {
+    store.appendAuditEvent(
+        new TrustGraphAuditEvent(
+            eventType,
+            clock.instant(),
+            appId,
+            lifecycleRecord.statementFingerprint(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            lifecycleRecord.source(),
+            null,
+            null,
+            null,
+            lifecycleRecord.status().jsonValue()));
   }
 
   private void appendRejectedAudit(

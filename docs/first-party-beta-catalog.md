@@ -110,7 +110,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -126,7 +126,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -146,7 +146,7 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -174,12 +174,12 @@ service-request.trust-score.provider=trust-graph
 service-request.trust-score.service=trust.score
 service-request.trust-score.scopes=score.read
 service-request.trust-score.contexts=message-author
-service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
+service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 categories=social,identity,preview
 review.status=reviewed
 review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
 api.minimumVersion=12
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -208,7 +208,7 @@ service.trust-score.kind=platform-adapter
 service.trust-score.adapter=trust-graph.score
 service.trust-score.scopes=score.read
 service.trust-score.contexts=message-author,profile
-service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.
+service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 categories=identity,trust,preview
 channel=beta
 support.status=experimental
@@ -216,7 +216,7 @@ deprecation.status=none
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=14
+api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
 ```
 

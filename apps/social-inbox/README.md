@@ -6,7 +6,7 @@ social/mail-like migration path outside the daemon core and legacy plugin surfac
 
 The preview combines AppVault identities, bounded signed social-message documents, generated
 app-document inserts, content fetch/subscriptions, durable app data, and an operator-approved
-Trust Graph Preview Trust Score Service grant. It is not a production social network, mail
+Trust Graph Local RC Trust Score Service grant. It is not a production social network, mail
 protocol, full WoT implementation,
 Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation service, or daemon
 message store.
@@ -73,7 +73,7 @@ app.services.read
 app.services.call
 ```
 
-The signed manifest also declares a transparent service request for Trust Graph Preview's
+The signed manifest also declares a transparent service request for Trust Graph Local RC's
 `trust.score` service with `score.read` in the `message-author` context. The request does not
 approve access by itself; Web Shell must approve the grant before score annotations can run. If the
 grant is missing, pending, revoked, or inactive, the UI keeps messages visible and shows a neutral

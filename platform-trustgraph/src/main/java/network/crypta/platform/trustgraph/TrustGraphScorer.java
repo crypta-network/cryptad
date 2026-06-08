@@ -6,19 +6,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deterministic direct-anchor Trust Graph Preview scorer.
+ * Deterministic direct-anchor Trust Graph local RC scorer.
  *
  * <p>The scorer is deliberately small. It does not crawl the network, follow transitive trust
  * chains, subscribe to feeds, or apply content-blocking decisions. For one subject/context query it
  * scans retained local statements, records bounded evidence, and computes a confidence-weighted
  * average from statements that pass every contribution gate.
  *
- * <p>A statement contributes only when its issuer fingerprint is a local anchor, its signature
- * verified against issuer public key material, it is not expired at the scorer clock, and its
- * confidence is greater than zero. All other matching statements can still appear as evidence.
+ * <p>A statement contributes only when its issuer fingerprint is a local anchor. Its signature must
+ * verify against issuer public key material, and it must not be expired at the scorer clock.
+ * Confidence must be greater than zero, and the local lifecycle status must be active. Deprecated
+ * and revoked local lifecycle records remain visible as explanation evidence but cannot affect
+ * scores.
  */
 public final class TrustGraphScorer {
-  private static final int MAX_EVIDENCE_ROWS = 25;
+  /** Maximum evidence rows returned for one score explanation. */
+  public static final int MAX_EVIDENCE_ROWS = 25;
 
   private final TrustGraphStore store;
   private final Clock clock;
@@ -56,8 +59,11 @@ public final class TrustGraphScorer {
       }
       boolean expired = payload.expiredAt(now);
       boolean anchored = store.isAnchor(payload.issuer().publicKeyFingerprint());
-      boolean contributes =
-          anchored && statement.signatureVerified() && !expired && payload.confidence() > 0;
+      TrustStatementLifecycleStatus lifecycleStatus =
+          store.lifecycle(statement.documentFingerprint()).status();
+      List<String> nonContributingReasons =
+          nonContributingReasons(statement, anchored, expired, lifecycleStatus);
+      boolean contributes = nonContributingReasons.isEmpty();
       evidenceCount++;
       if (contributes) {
         weightedScoreSum += (long) payload.score() * payload.confidence();
@@ -75,8 +81,11 @@ public final class TrustGraphScorer {
                 payload.issuedAt(),
                 payload.expiresAt(),
                 statement.signatureVerified(),
+                anchored,
                 contributes,
                 expired,
+                lifecycleStatus,
+                nonContributingReasons,
                 statement.source()));
       }
     }
@@ -91,7 +100,36 @@ public final class TrustGraphScorer {
         confidence,
         evidenceCount,
         contributing,
+        evidenceCount > evidence.size(),
+        MAX_EVIDENCE_ROWS,
         List.copyOf(evidence));
+  }
+
+  private static List<String> nonContributingReasons(
+      TrustGraphStore.StoredTrustStatement statement,
+      boolean anchored,
+      boolean expired,
+      TrustStatementLifecycleStatus lifecycleStatus) {
+    ArrayList<String> reasons = new ArrayList<>();
+    TrustStatementPayload payload = statement.document().payload();
+    if (!anchored) {
+      reasons.add("unanchored");
+    }
+    if (!statement.signatureVerified()) {
+      reasons.add("unverified");
+    }
+    if (expired) {
+      reasons.add("expired");
+    }
+    if (payload.confidence() == 0) {
+      reasons.add("zero-confidence");
+    }
+    if (lifecycleStatus == TrustStatementLifecycleStatus.REVOKED) {
+      reasons.add("revoked");
+    } else if (lifecycleStatus == TrustStatementLifecycleStatus.DEPRECATED) {
+      reasons.add("deprecated");
+    }
+    return List.copyOf(reasons);
   }
 
   private static String status(

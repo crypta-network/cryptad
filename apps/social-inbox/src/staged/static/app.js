@@ -904,7 +904,7 @@
         scopes: [trustScoreScope],
         contexts: [trustScoreContext],
         purpose:
-          "Annotate Social Inbox message authors using the local Trust Graph Preview score service.",
+          "Annotate Social Inbox message authors using the local Trust Graph Local RC score service.",
       });
       await refreshTrustServiceStatus({ silent: true });
       setStatus("Trust Score Service grant requested; an operator must approve it.");

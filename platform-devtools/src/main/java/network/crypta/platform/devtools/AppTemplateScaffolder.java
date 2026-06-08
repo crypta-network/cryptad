@@ -869,7 +869,7 @@ final class AppTemplateScaffolder {
      */
     String manifestContent() {
       StringBuilder builder = new StringBuilder();
-      int currentContractVersion = PlatformApiContract.CURRENT_CONTRACT_VERSION;
+      int currentContractVersion = PlatformApiContract.current().contractVersion();
       builder
           .append("manifest.version=1\n")
           .append("app.id=")

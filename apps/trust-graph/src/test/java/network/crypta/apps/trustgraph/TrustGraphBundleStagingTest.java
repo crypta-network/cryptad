@@ -23,7 +23,7 @@ class TrustGraphBundleStagingTest {
   private static final String APP_VERSION_PROPERTY = "trustGraph.appVersion";
   private static final String STAGE_DIR_PROPERTY = "trustGraph.stageDir";
   private static final String EXPECTED_APP_ID = "trust-graph";
-  private static final String EXPECTED_APP_NAME = "Trust Graph Preview";
+  private static final String EXPECTED_APP_NAME = "Trust Graph Local RC";
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/trust-graph.sh";
   private static final String APP_SCRIPT = "app.js";
@@ -52,7 +52,7 @@ class TrustGraphBundleStagingTest {
           "app.data.read",
           "app.data.write");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 10;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 14;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 15;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -128,7 +128,7 @@ class TrustGraphBundleStagingTest {
     assertTrue(script.contains("CRYPTA_APP_MIGRATION_INPUT"));
     assertTrue(script.contains("CRYPTA_APP_MIGRATION_OUTPUT"));
     assertTrue(script.contains("dry-run|apply"));
-    assertTrue(script.contains("Trust Graph Preview app-data migration"));
+    assertTrue(script.contains("Trust Graph Local RC app-data migration"));
   }
 
   @Test
@@ -138,8 +138,8 @@ class TrustGraphBundleStagingTest {
 
     assertTrue(launcherScript.startsWith("#!/bin/sh\n"));
     assertTrue(launcherScript.contains("log_file=\"${CRYPTAD_APP_RUN_DIR:-.}/trust-graph.log\""));
-    assertTrue(launcherScript.contains("Trust Graph Preview started"));
-    assertTrue(launcherScript.contains("trap 'printf \"Trust Graph Preview stopping"));
+    assertTrue(launcherScript.contains("Trust Graph Local RC started"));
+    assertTrue(launcherScript.contains("trap 'printf \"Trust Graph Local RC stopping"));
     assertTrue(launcherScript.contains("while :; do"));
     assertTrue(launcherScript.contains("sleep 5"));
 
@@ -208,8 +208,8 @@ class TrustGraphBundleStagingTest {
         "app.service.trust-score.adapter=trust-graph.score",
         "app.service.trust-score.scopes=score.read",
         "app.service.trust-score.contexts=message-author,profile",
-        "app.service.trust-score.description=Returns a local redacted Trust Graph Preview score"
-            + " summary for an app-provided public subject.");
+        "app.service.trust-score.description=Returns a bounded local RC Trust Graph score summary"
+            + " for an app-provided public subject.");
   }
 
   private static void verifyManifestRuntimeContent(String manifestText) {
@@ -273,10 +273,20 @@ class TrustGraphBundleStagingTest {
         "<code>vault.identities.read</code>",
         "<code>vault.identities.create</code>",
         "<code>vault.identities.use</code>",
-        "Overview",
-        "Status",
+        "Local RC scope",
+        "Local trust only",
+        "not global truth",
+        "moderation",
+        "blocking",
+        "routing policy",
+        "legacy WoT/Freetalk/Sone/Freemail",
+        "Scope and status",
         "Anchors",
         "Fetch and import",
+        "Statement lifecycle",
+        "Refresh statements",
+        "Deprecated",
+        "revoked",
         "Subscriptions",
         "Audit",
         "Pasted statement JSON",
@@ -290,6 +300,7 @@ class TrustGraphBundleStagingTest {
         "persist through the platform trust graph backend",
         "Trust Score Service",
         "operator-approved app-service grants",
+        "bounded and must explain",
         "rendered only as text",
         "without exposing private signing secrets");
   }
@@ -352,6 +363,7 @@ class TrustGraphBundleStagingTest {
         "CryptaPlatform.trust.importStatement",
         "CryptaPlatform.trust.exchange.fetchAndImport",
         "CryptaPlatform.trust.audit.list",
+        "CryptaPlatform.trust.statements",
         "CryptaPlatform.trust.score",
         "CryptaPlatform.trust.exchange.publish",
         "CryptaPlatform.trust.exchange.subscriptions.list",
@@ -375,8 +387,23 @@ class TrustGraphBundleStagingTest {
         "recentImports",
         "auditEvents",
         "subscriptions",
+        "statements",
         "sourceKind",
         "importSummaryLabel",
+        "statementFingerprint",
+        "lifecycleStatus",
+        "lifecycleActionsAvailable",
+        "supportsLocalRevocation === true",
+        "supportsLocalDeprecation === true",
+        "Platform API contract v15 status support",
+        "statementLifecycleHelper",
+        "updateStatementLifecycle",
+        "renderStatus",
+        "renderStatements",
+        "renderScoreResult",
+        "scoreEvidenceRows",
+        "nonContributingReasons",
+        "evidenceTruncated",
         "publicationSummary",
         "redactedUri",
         "renderAudit",

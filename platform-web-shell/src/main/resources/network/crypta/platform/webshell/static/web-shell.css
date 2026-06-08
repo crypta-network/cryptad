@@ -720,6 +720,10 @@ a {
   overflow-wrap: anywhere;
 }
 
+.trust-scope-notes {
+  color: var(--shell-muted);
+}
+
 .permission-review-list {
   display: grid;
   gap: 10px;

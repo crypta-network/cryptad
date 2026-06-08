@@ -84,12 +84,8 @@ class CryptaAppCliTest {
         Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
 
     assertFalse(manifest.contains("app.permissions="));
-    assertTrue(
-        manifest.contains(
-            "api.minimumVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION + "\n"));
-    assertTrue(
-        manifest.contains(
-            "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION + "\n"));
+    assertTrue(manifest.contains("api.minimumVersion=" + currentContractVersion() + "\n"));
+    assertTrue(manifest.contains("api.maximumTestedVersion=" + currentContractVersion() + "\n"));
     assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
   }
 
@@ -1211,8 +1207,7 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Wrote Platform API contract"));
     String json = Files.readString(contractFile, StandardCharsets.UTF_8);
-    assertTrue(
-        json.contains("\"contractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION));
+    assertTrue(json.contains("\"contractVersion\":" + currentContractVersion()));
     assertTrue(json.contains("\"platform.contract.read\""));
   }
 
@@ -1253,15 +1248,15 @@ class CryptaAppCliTest {
         "--version",
         "0.1.0");
     Path manifest = appDir.resolve("cryptad-app.properties");
-    int futureContractVersion = PlatformApiContract.CURRENT_CONTRACT_VERSION + 1;
+    int futureContractVersion = currentContractVersion() + 1;
     Files.writeString(
         manifest,
         Files.readString(manifest, StandardCharsets.UTF_8)
             .replace(
-                "api.minimumVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION,
+                "api.minimumVersion=" + currentContractVersion(),
                 "api.minimumVersion=" + futureContractVersion)
             .replace(
-                "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION,
+                "api.maximumTestedVersion=" + currentContractVersion(),
                 "api.maximumTestedVersion=" + futureContractVersion),
         StandardCharsets.UTF_8);
 
@@ -1545,12 +1540,8 @@ class CryptaAppCliTest {
             "app.sample-app.deprecation.status=deprecated\n",
             "app.sample-app.replacementAppId=sample-app-stable\n",
             "app.sample-app.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001\n",
-            "app.sample-app.api.minimumVersion="
-                + PlatformApiContract.CURRENT_CONTRACT_VERSION
-                + "\n",
-            "app.sample-app.api.maximumTestedVersion="
-                + PlatformApiContract.CURRENT_CONTRACT_VERSION
-                + "\n",
+            "app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n",
+            "app.sample-app.api.maximumTestedVersion=" + currentContractVersion() + "\n",
             "app.sample-app.api.experimentalCapabilitiesAccepted=false\n",
             "app.sample-app.review.status=reviewed\n",
             "app.sample-app.review.note=Reviewed for local operator safety.\n",
@@ -1814,10 +1805,7 @@ class CryptaAppCliTest {
 
     assertTrue(catalog.contains("catalog.version=2\n"));
     assertTrue(
-        catalog.contains(
-            "app.sample-app.api.minimumVersion="
-                + PlatformApiContract.CURRENT_CONTRACT_VERSION
-                + "\n"));
+        catalog.contains("app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n"));
     assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     CliResult signResult =
         runCli(
@@ -1897,4 +1885,8 @@ class CryptaAppCliTest {
   }
 
   private record CliResult(int exitCode, String out, String err) {}
+
+  private static int currentContractVersion() {
+    return PlatformApiContract.current().contractVersion();
+  }
 }

@@ -103,7 +103,7 @@ Release-candidate mode requires these evidence ids:
 | --- | --- | --- |
 | `interop.smoke` | `build/interop-smoke/summary.json` | Tier 1 Hyphanet interop smoke passed with CHK, SSK, USK, peer exchange, and restart-recovery coverage. |
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
-| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Preview, have valid manifests, launchers, static UI assets, and SDK wiring. |
+| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Local RC, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, live publication CLI wiring, docs, and self-test evidence is present. |
 | `app-platform.docs-portal` | App-platform docs check. | The developer portal, required docs, known limitations page, portal links, and README portal link are present. |
@@ -130,20 +130,21 @@ Release-candidate mode requires these evidence ids:
 | `network-content.subscription-scheduler` | App-platform smoke summary. | Offline source and test evidence proves deterministic content-subscription `tick(Instant)`, no-overlap execution, per-app/global/per-tick limits, failure backoff, dedupe, queue pressure handling without parsing queue HTML, and path-free durable metadata. |
 | `app-platform.durable-app-data-store` | App-platform smoke summary. | The `/api/v1/app-data` route family, `app.data.read`, and `app.data.write` are present in the current contract, file-backed records use path-safe atomic storage, quotas/import/export/schema metadata are bounded, and evidence excludes raw app values, request bodies, tokens, private insert URIs, and local paths. |
 | `app-data.backup-restore-portability` | App-platform smoke summary. | The `backupVersion = 1` `crypta-app-data-backup` envelope, single-app and all-app export, host/operator-only restore plan and commit routes, `merge`, `replaceNamespace`, and `replaceApp` modes, app-principal denial, Web Shell controls, first-party app backup-scope docs, and support-bundle redaction checks are present without raw backup payloads in evidence. |
-| `app-platform.trust-graph-preview` | App-platform smoke summary. | The v7 trust graph routes are present, documented, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
-| `app-platform.trust-graph-durable-store` | App-platform smoke summary. | The file-backed trust graph store is present, runtime wiring injects it into Platform API, anchors/statements/audit entries are bounded and redacted, and evidence excludes raw trust bodies, raw fetched content, private insert URIs, tokens, signatures, and local paths. |
-| `app-platform.trust-graph-exchange` | App-platform smoke summary. | Contract v10 exposes trust URI import and audit descriptors, SDK exchange helpers cover URI import, publish, and subscription wrappers, and exchange evidence uses only route names, capability names, booleans, counts, and redacted identifiers. |
+| `app-platform.trust-graph-preview` | App-platform smoke summary. | The original trust graph route evidence remains present and is now documented as local RC trust-service behavior, capability-gated by `trust.read` and `trust.write`, SDK trust helpers exist, and evidence is redacted. |
+| `app-platform.trust-graph-rc-scope-and-safety` | App-platform smoke summary. | Trust Graph status, docs, app UI, Web Shell wording, lifecycle records, source metadata, score evidence, and `trust.score` service boundaries prove local RC scope: local anchors, imported public signed statements, no crawling, no global moderation/blocking/routing, no legacy WoT/Freetalk/Sone/Freemail compatibility, lifecycle exclusions, bounded explanations, and redaction. |
+| `app-platform.trust-graph-durable-store` | App-platform smoke summary. | The file-backed trust graph store is present, runtime wiring injects it into Platform API, anchors/statements/lifecycle/source/audit entries are bounded and redacted, lifecycle state survives restart, and evidence excludes raw trust bodies, raw fetched content, private insert URIs, tokens, signatures, and local paths. |
+| `app-platform.trust-graph-exchange` | App-platform smoke summary. | Trust URI import and audit descriptors, SDK exchange helpers for URI import, publish, and subscription wrappers, and exchange evidence use only route names, capability names, booleans, counts, and redacted identifiers without adding a Trust Graph crawler. |
 | `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-platform.social-message-signing` | App-platform smoke summary. | Contract v11 exposes the bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/social-message`, fixes the signing domain to `crypta.social.message.v1`, requires `vault.identities.read` and `vault.identities.use`, and does not expose generic browser signing or private material in evidence. |
 | `app-services.registry` | App-platform smoke summary. | Contract v12 exposes `/api/v1/app-services`, `app.services.read`, and `app.services.call`, parses signed manifest service descriptors and requests, wires a shared coordinator, and includes SDK service helpers. |
 | `app-services.grants` | App-platform smoke summary. | The app-service grant model, statuses, in-memory/file-backed stores, host-only approval, revocation, active-grant invocation check, and deterministic tests are present. |
-| `app-services.trust-score-provider` | App-platform smoke summary. | Trust Graph Preview advertises `trust.score` through a `trust-graph.score` platform adapter that returns a redacted score summary and is not a localhost proxy. |
+| `app-services.trust-score-provider` | App-platform smoke summary. | Trust Graph Local RC advertises read-only `trust.score` through a `trust-graph.score` platform adapter that returns a bounded redacted score summary, is not a localhost proxy, and cannot mutate anchors, imports, or lifecycle records. |
 | `reference-app.social-inbox-service-grant` | App-platform smoke summary. | Social Inbox declares a `trust.score` request, uses `app.services.read` and `app.services.call`, invokes through `CryptaPlatform.services.invoke`, and shows neutral missing/pending/revoked grant states. |
 | `app-services.web-shell` | App-platform smoke summary. | Web Shell lists advertised services, service requests, grants, and redacted audit events, and lets the operator approve pending grants or revoke active grants. |
 | `app-services.redaction` | App-platform smoke summary. | App-service evidence excludes raw tokens, raw subject URIs, raw request bodies, private insert URIs, local paths, provider app data, and generic proxy behavior. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-update.live-catalog-refresh` | App-platform smoke summary. | App-update scheduler evidence shows configured signed catalog refresh, including live USK catalog refresh, before candidate discovery while keeping manual update policy as the default. |
-| `app-update.data-migration-contract` | App-platform smoke summary. | Signed app manifests declare app-data schema and migration metadata; update summaries expose path-free migration plans; dry-run, snapshot, missing-path, rollback-incompatible, Feed Reader, Trust Graph Preview, and redaction checks are present. |
+| `app-update.data-migration-contract` | App-platform smoke summary. | Signed app manifests declare app-data schema and migration metadata; update summaries expose path-free migration plans; dry-run, snapshot, missing-path, rollback-incompatible, Feed Reader, Trust Graph Local RC UI-state, and redaction checks are present. |
 | `app-ui.lint` | App-platform smoke summary. | `crypta-app ui lint --strict --json` passed for first-party staged static UI bundles and produced sanitized path-free summaries. |
 | `app-ui.first-party-adoption` | App-platform smoke summary. | First-party source/staged UIs load design-system CSS in order, use stable `cr-*` classes, and show permission disclosure for declared permissions across the repo-owned static apps. |
 | `app-ui.smoke` | App-platform smoke summary. | First-party static UI and `crypta-platform.js` remain coherent and do not expose process-token names. |
@@ -154,16 +155,16 @@ Release-candidate mode requires these evidence ids:
 | `reference-app.social-inbox-signed-message` | App-platform smoke summary. | Social Inbox signs bounded `crypta.social.message.v1` documents through AppVault without exposing arbitrary browser signing, private identity material, raw request bodies, or raw signatures in evidence. |
 | `reference-app.social-inbox-subscriptions` | App-platform smoke summary. | Social Inbox follows bounded USK social outbox sources with durable content subscriptions, displays subscription metadata, fetches bounded JSON, and excludes raw fetched content from evidence. |
 | `reference-app.social-inbox-app-data` | App-platform smoke summary. | Social Inbox uses app data for sources, outbox summaries, imported-message summaries, read state, and explicit drafts while excluding private insert URIs, browser-session tokens, private identity material, raw fetched documents, and raw signatures. |
-| `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Preview's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as annotations, and keeps unscored or ungranted messages visible. |
+| `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Local RC's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as advisory annotations, and keeps unscored or ungranted messages visible. |
 | `migration.social-mail-preview` | App-platform smoke summary. | The migration spike evidence proves the social/mail-like layer composes AppVault, content insert/fetch/subscriptions, durable app data, and the mediated Trust Graph score service outside daemon core and legacy plugin APIs. |
 | `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
 | `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox is certified as the executable social/mail-like migration spike with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
 | `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires at least API v9, is tested through v14, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
 | `reference-app.feed-reader-app-data` | App-platform smoke summary. | Feed Reader requires at least contract v9, is tested through v14, declares `app.data.*`, uses SDK JSON record helpers for bounded feed sources, selected source, read/render metadata, safe publisher draft state, and a signed v1-to-v2 migration example, and keeps evidence free of raw feed bodies and app-data values. |
-| `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Preview exists as the local trust-service reference app, requires at least API v10, is tested through v14, declares trust/content/vault/queue/app-data permissions, advertises `trust.score`, uses SDK trust helpers and design-system assets, declares a signed preview-state migration example, and keeps evidence free of raw trust documents and private material. |
-| `reference-app.trust-graph-durable-exchange` | App-platform smoke summary. | Trust Graph Preview demonstrates durable backend status, URI import, redacted audit, trust-statement subscription management, AppVault-backed publication, and local public statement import without hard-coded API URLs or private insert URI persistence. |
-| `reference-app.trust-graph-app-data-preview` | App-platform smoke summary. | Trust Graph Preview uses app data only for UI-local draft/filter/import-summary state, keeps app data separate from the platform trust graph backend, and redacts raw trust statements, private identity material, and local paths. |
+| `reference-app.trust-graph` | App-platform smoke summary. | Trust Graph Local RC exists as the local trust-service reference app, requires at least API v10, is tested through v15, declares trust/content/vault/queue/app-data permissions, advertises read-only `trust.score`, renders local-only warnings and lifecycle state, uses SDK trust helpers and design-system assets, declares a signed UI-state migration example, and keeps evidence free of raw trust documents and private material. |
+| `reference-app.trust-graph-durable-exchange` | App-platform smoke summary. | Trust Graph Local RC demonstrates durable backend status, URI import, redacted audit, trust-statement subscription management, AppVault-backed publication, local public statement import, safe source metadata, and lifecycle status without hard-coded API URLs, crawling, or private insert URI persistence. |
+| `reference-app.trust-graph-app-data-preview` | App-platform smoke summary. | Trust Graph Local RC uses app data only for UI-local draft/filter/import-summary state, keeps app data separate from the platform trust graph backend and app-data backup payloads, and redacts raw trust statements, private identity material, and local paths. |
 | `legacy.retirement` | App-platform smoke summary. | The legacy-admin retirement registry is visible, counts are stable, replaced surfaces are absent from primary shell fallback links, and retained/pending legacy routes remain documented. |
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
@@ -187,7 +188,7 @@ Release-candidate mode requires these evidence ids:
 | `operator-beta.catalog-health` | App-platform smoke summary. | The dashboard shows catalog health, trusted-key state, last fetch state, redacted source display, first-party recommendation warnings, and refresh recovery. |
 | `operator-beta.app-update-recovery` | App-platform smoke summary. | The dashboard exposes safe app lifecycle/update recovery actions while preserving existing review policy, running-app guards, and uninstall restrictions. |
 | `operator-beta.subscription-recovery` | App-platform smoke summary. | Host/operator subscription recovery wrappers list all subscriptions safely and provide refresh/pause/resume without granting app principals cross-app authority. |
-| `operator-beta.trust-review-warnings` | App-platform smoke summary. | Trust Graph Preview and app-review warnings are surfaced as local preview/review state, not complete Web of Trust. |
+| `operator-beta.trust-review-warnings` | App-platform smoke summary. | Trust Graph Local RC and app-review warnings are surfaced as local operator-curated state, not global truth, moderation, blocking, routing policy, node-to-node propagation, or complete Web of Trust. |
 | `operator-beta.app-data-quota-warnings` | App-platform smoke summary. | App-data and AppHost quota warnings are summarized as counts, booleans, and status labels without raw app data values. |
 | `operator-beta.app-data-backup-restore` | App-platform smoke summary. | Web Shell and operator route evidence expose sensitive app-data backup, restore preview, restore commit, all-app backup, and export-before-delete controls while keeping restore previews metadata-only and support bundles free of raw backup values. |
 | `operator-beta.support-bundle-redaction` | App-platform smoke summary. | The support bundle route, redactor, and tests exclude tokens, form passwords, raw bodies, private insert URIs, local paths, command lines, and app-private values. |
@@ -357,17 +358,23 @@ Social Inbox evidence must not include raw social message bodies, raw fetched so
 raw request bodies, raw signature values, private insert URIs, private identity material, app
 process tokens, browser-session tokens, form passwords, private keys, absolute staging paths, or
 local paths.
-Trust Graph Preview supplies the local trust-service reference path. Release evidence must prove
+Trust Graph Local RC supplies the local trust-service reference path. Release evidence must prove
 `reference-app.trust-graph`, `reference-app.trust-graph-durable-exchange`,
 `reference-app.trust-graph-app-data-preview`, `app-platform.trust-graph-preview`,
-`app-platform.trust-graph-durable-store`, `app-platform.trust-graph-exchange`,
-`app-platform.trust-statement-signing`, `app-services.registry`, `app-services.grants`,
-`app-services.trust-score-provider`, `app-services.web-shell`, and `app-services.redaction` before
-a release claims trust graph preview support. Trust and app-service evidence must not include raw
-trust statement bodies from real users, raw fetched content, raw request bodies, raw signature
-values, private insert URIs, private identity material, app process tokens, browser-session tokens,
-form passwords, absolute staging paths, store roots, provider app data, raw subject URIs, or local
-paths.
+`app-platform.trust-graph-rc-scope-and-safety`, `app-platform.trust-graph-durable-store`,
+`app-platform.trust-graph-exchange`, `app-platform.trust-statement-signing`,
+`app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
+`app-services.web-shell`, and `app-services.redaction` before a release claims Trust Graph Local RC
+support. The evidence must prove local anchors, imported public signed statements, local lifecycle
+states, bounded score explanations, redacted source metadata, and read-only app-service score
+boundaries. It must also prove the non-goals: no crawling, no global moderation or blocking, no
+routing decisions, no node-to-node trust propagation, and no legacy WebOfTrust, Freetalk, Sone, or
+Freemail compatibility claim. Trust and app-service evidence must not include raw trust statement
+bodies from real users, raw fetched content, raw request bodies, raw signature values, private
+insert URIs, private identity material, app process tokens, browser-session tokens, form passwords,
+absolute staging paths, store roots, provider app data, raw subject URIs, or local paths. Social
+Inbox threading, app-service dependency bundles, advisory/denylist policy, network-scale soak,
+operator RC recovery workflows, and final ecosystem RC certification remain deferred to later PRs.
 
 ## Historical comparison
 
@@ -462,7 +469,7 @@ release evidence contract as the summary and report.
 The first-party app coverage is intentionally split. `queue-manager`, `publisher`, and the shared
 bundle set are grouped under the first-party app bundle row. `site-publisher` is covered by the
 reference content row. `profile-publisher`, `feed-reader`, and `trust-graph` each have their own
-rows because they validate distinct identity publishing, content fetch, and trust graph preview
+rows because they validate distinct identity publishing, content fetch, and Trust Graph Local RC
 behavior. The `app-platform-beta-docs-and-program` row records Phase 7 docs portal, tutorials,
 beta program, issue-template, link, and redaction readiness.
 
@@ -493,7 +500,7 @@ evidence or missing profile-document route evidence.
 Sandbox gates warn when enforced evidence regresses to best-effort, and block in
 `release-candidate` mode when enforced evidence is required but absent. Reference-content gates
 block if Site Publisher evidence disappears, Profile Publisher evidence disappears, Feed Reader
-evidence disappears, Trust Graph Preview evidence disappears, generated document insert evidence
+evidence disappears, Trust Graph Local RC evidence disappears, generated document insert evidence
 disappears, content-fetch evidence disappears, trust-statement signing evidence disappears, or a
 reference app no longer proves its required helper usage. Legacy
 retirement gates block missing removal-wave evidence, including
@@ -627,7 +634,7 @@ are `site-publisher` for lifecycle, `feed-reader` for content and feed subscript
 The runner proves localhost preflight, live catalog fetch/verification, app
 install/update/rollback, bounded content fetch, feed subscription metadata, synthetic profile
 publish, synthetic trust statement publish/import, interop/performance timing, and redaction guard
-results. It can also invoke the Trust Graph `trust.score` app-service when
+results. It can also invoke the read-only Trust Graph `trust.score` app-service when
 `CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise
 `live-network-beta.app-service-score` is optional skipped evidence, not a pass claim. It does not
 prove global propagation, user adoption, app safety beyond the signed catalog/bundle/review gates,
