@@ -1,15 +1,16 @@
-# Social Inbox Preview
+# Social Inbox RC
 
-`apps/social-inbox` stages a first-party static AppHost bundle that demonstrates a
-social/mail-like migration path outside the daemon core and legacy plugin surface. The app id is
-`social-inbox` and the displayed name is `Social Inbox Preview`.
+`apps/social-inbox` stages a first-party static AppHost bundle that demonstrates local
+message-threading, reply, subscription, read-state, and Trust Graph annotation workflows outside
+daemon core and legacy plugin surfaces. The app id remains `social-inbox`; the RC display name is
+`Social Inbox RC`.
 
-The preview combines AppVault identities, bounded signed social-message documents, generated
-app-document inserts, content fetch/subscriptions, durable app data, and an operator-approved
-Trust Graph Local RC Trust Score Service grant. It is not a production social network, mail
-protocol, full WoT implementation,
-Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation service, or daemon
-message store.
+The reference app combines AppVault identities, bounded signed social-message documents, generated
+app-document inserts, content fetch/subscriptions, durable app data, local channel filtering and
+bounded search, safe author profile links, and an operator-approved Trust Graph Local RC Trust
+Score Service grant. It is not a production social network, mail protocol, full WoT
+implementation, Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation
+service, daemon message store, daemon-core social protocol, or crawler.
 
 ## Build
 
@@ -81,7 +82,7 @@ trust-score unavailable state.
 
 ## Durable State
 
-Social Inbox Preview stores bounded app-owned records through the app data API:
+Social Inbox RC stores bounded app-owned records through the app data API:
 
 ```text
 ui-state/social-inbox
@@ -92,20 +93,29 @@ social/read-state
 social/drafts
 ```
 
-The app stores safe summaries, source URI summaries/hashes, subscription metadata, read state, and
-explicitly saved bounded drafts. It does not persist private insert URIs, raw source URIs, private
-identity material, browser-session tokens, raw fetched documents, or raw signature values. Imported
-messages are normalized before storage, verified against the signed
-`crypta.social.message.v1` canonical payload, and fetched documents are parsed only as bounded JSON
-`crypta.social.outbox.v1` snapshots.
+The app stores safe summaries, source URI summaries/hashes, subscription metadata, UI filters,
+message read state used for thread-level actions, and explicitly saved bounded drafts. It does not persist private
+insert URIs, raw source URIs, private identity material, browser-session tokens, raw fetched
+documents, raw profile documents, or raw signature values. Imported messages are normalized before
+storage, verified against the signed `crypta.social.message.v1` canonical payload, and fetched
+documents are parsed only as bounded JSON `crypta.social.outbox.v1` snapshots. Threading is local:
+`replyTo` links are validated as safe `msg-<sha256>` ids, malformed parents become roots, and
+cycles are broken before rendering.
+
+The signed manifest declares the existing `ui-state` and `social` namespaces at schema 1. PR-252
+keeps the new thread, filter, and source-summary fields additive under that schema because the
+current production app-update migration runner still fails closed before executing signed
+migration commands. Do not add Social Inbox update-time migration metadata until that runner can
+execute migrations for installed apps without blocking updates.
 
 ## App-data backup scope
 
 Operator app-data backups for `social-inbox` include the durable records listed above: UI
-selection state, bounded source summaries/hashes, subscription metadata, outbox summaries,
-imported-message index summaries, read state, and explicitly saved drafts. Treat exported backups
-as sensitive user data because saved drafts, source summaries, and read state can reveal private
-social context.
+selection state, channel/read/archive filters, bounded source summaries/hashes, subscription
+metadata, outbox summaries, imported-message index summaries, message read state that drives
+thread actions, and
+explicitly saved drafts. Treat exported backups as sensitive user data because saved drafts, source
+summaries, author relationships, and read state can reveal private social context.
 
 Backups do not include AppVault private identity material, vault private identity material, raw
 source URIs, private insert URIs, raw fetched documents, raw signatures, browser-session tokens,

@@ -150,23 +150,23 @@ api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=false
 ```
 
-Social Inbox Preview descriptors should include vault, content-fetch, content-subscription,
+Social Inbox RC descriptors should include vault, content-fetch, content-subscription,
 generated-document publication, app-data, and app-service grant rationales while making clear that
-the app is a migration spike, not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, or
-a daemon-core message protocol:
+the app is a threaded RC reference app, not full WoT, Freetalk/Sone/Freemail compatibility,
+encrypted mail, a crawler, or a daemon-core message protocol:
 
 ```properties
 permissions=vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,app.services.read,app.services.call
 permissions.rationale.vault.identities.read=Lists public metadata for app-owned social signing identities.
-permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox preview identity without exporting private material.
+permissions.rationale.vault.identities.create=Creates an app-owned Social Inbox identity without exporting private material.
 permissions.rationale.vault.identities.use=Uses the bounded social-message and profile-document routes without exposing generic browser signing.
 permissions.rationale.content.fetch=Fetches bounded social outbox JSON selected by the user or a subscription.
 permissions.rationale.content.subscribe=Manages durable USK social source subscriptions without global crawling.
 permissions.rationale.content.insert.app-document=Publishes generated social outbox snapshots without local source-path authority.
 permissions.rationale.queue.write=Creates generated social outbox publication inserts.
 permissions.rationale.queue.read=Displays safe upload queue summaries.
-permissions.rationale.app.data.read=Restores bounded sources, imported-message summaries, read state, outbox summaries, and explicit drafts.
-permissions.rationale.app.data.write=Saves bounded Social Inbox state without private insert URIs or private identity material.
+permissions.rationale.app.data.read=Restores bounded sources, imported-message summaries, channel filters, message read-state-derived thread actions, outbox summaries, and explicit drafts.
+permissions.rationale.app.data.write=Saves bounded Social Inbox RC state without private insert URIs, raw fetched documents, or private identity material.
 permissions.rationale.app.services.read=Discovers local app-service descriptors and caller-visible grant state.
 permissions.rationale.app.services.call=Requests and invokes an operator-approved Trust Graph score service grant.
 services.requests=trust-score
@@ -175,9 +175,9 @@ service-request.trust-score.service=trust.score
 service-request.trust-score.scopes=score.read
 service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
-categories=social,identity,preview
+categories=social,identity,reference
 review.status=reviewed
-review.note=First-party social/mail migration preview; not full WoT, plugin compatibility, or encrypted mail.
+review.note=First-party Social Inbox RC reference app; local threading and Trust Graph annotations only, not full WoT, plugin compatibility, Freetalk/Sone/Freemail, encrypted mail, crawler, or daemon-core protocol.
 api.minimumVersion=12
 api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
@@ -316,11 +316,12 @@ Crypta CHK artifact transport tests, first-party metadata documentation, governe
 parsing, transparency-log verification, review-history routing, and whether the certification
 environment has source and key hints configured. Profile Publisher is also covered by
 `reference-app.profile-publisher`, `app-platform.identity-profile-publish`, and
-`app-platform.generated-document-insert`. Social Inbox Preview is covered by
+`app-platform.generated-document-insert`. Social Inbox RC is covered by
 `app-platform.social-message-signing`, `reference-app.social-inbox`,
 `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
 `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
-`reference-app.social-inbox-service-grant`, and `migration.social-mail-preview`. Feed Reader is
+`reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`, and
+`migration.social-mail-preview`. Feed Reader is
 covered by `reference-app.feed-reader`,
 `reference-app.feed-reader-subscriptions`, `app-platform.content-fetch`,
 `app-platform.content-subscriptions`, and `network-content.subscription-scheduler`. Trust Graph

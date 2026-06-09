@@ -1,6 +1,6 @@
 manifest.version=1
 app.id=social-inbox
-app.name=Social Inbox Preview
+app.name=Social Inbox RC
 app.version=${appVersion}
 api.minimumVersion=12
 api.maximumTestedVersion=15
@@ -20,3 +20,7 @@ sandbox.required=false
 app.restart.policy=never
 quota.data.bytes=2097152
 quota.cache.bytes=2097152
+app.data.schema.current=1
+app.data.schema.namespaces=ui-state,social
+app.data.schema.namespace.ui-state.current=1
+app.data.schema.namespace.social.current=1

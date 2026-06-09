@@ -151,7 +151,8 @@ Treat these as release blockers, in order:
    `reference-app.profile-publisher`, `reference-app.social-inbox`,
    `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
    `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
-   `reference-app.social-inbox-service-grant`, `migration.social-mail-preview`,
+   `reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
+   `migration.social-mail-preview`,
    `reference-app.feed-reader`, `reference-app.feed-reader-subscriptions`,
    `reference-app.feed-reader-app-data`, `reference-app.trust-graph`,
    `reference-app.trust-graph-durable-exchange`, and

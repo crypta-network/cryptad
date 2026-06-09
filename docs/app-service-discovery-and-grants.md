@@ -8,7 +8,7 @@ The first proving path is:
 
 ```text
 Trust Graph Preview advertises trust.score
-Social Inbox Preview requests score.read for message-author
+Social Inbox RC requests score.read for message-author
 the operator approves the grant in Web Shell
 Social Inbox invokes trust.score through /api/v1/app-services
 revocation makes future invocations fail
@@ -36,7 +36,7 @@ app.service.trust-score.kind=platform-adapter
 app.service.trust-score.adapter=trust-graph.score
 app.service.trust-score.scopes=score.read
 app.service.trust-score.contexts=message-author,profile
-app.service.trust-score.description=Returns a local redacted Trust Graph Preview score summary for an app-provided public subject.
+app.service.trust-score.description=Returns a local redacted Trust Graph Local RC score summary for an app-provided public subject.
 ```
 
 `trust-score` is only a path-safe manifest alias. `trust.score` is the public service id used by
@@ -58,7 +58,7 @@ app.service-request.trust-score.provider=trust-graph
 app.service-request.trust-score.service=trust.score
 app.service-request.trust-score.scopes=score.read
 app.service-request.trust-score.contexts=message-author
-app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Preview score service.
+app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 ```
 
 Request metadata is transparent intent, not authorization. It does not create or approve a grant.
@@ -181,9 +181,11 @@ Trust Graph Preview provides `trust.score` as a preview-only local service. It i
 not a moderation system, and not a compatibility bridge for old WebOfTrust, Freetalk, Sone, or
 Freemail plugin APIs.
 
-Social Inbox Preview declares the service request, requests an operator-approved grant, invokes the
+Social Inbox RC declares the service request, requests an operator-approved grant, invokes the
 service only through `CryptaPlatform.services.invoke(...)`, and renders a neutral unavailable state
-when the grant is missing, pending, revoked, or inactive. It must not fall back to
+when the grant is missing, pending, revoked, or inactive. Scores are advisory annotations on local
+threaded message summaries; they do not hide messages, archive content, block replies, alter
+subscription refresh, or trigger fetches. The app must not fall back to
 `CryptaPlatform.trust.score` when the grant boundary denies access.
 
 ## Security and Evidence

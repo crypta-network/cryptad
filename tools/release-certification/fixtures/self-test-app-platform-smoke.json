@@ -1382,6 +1382,56 @@
     },
     {
       "details": {
+        "appId": "social-inbox",
+        "checks": {
+          "appWritesExistingSchemaVersion": true,
+          "authorProfileDisplayIsSafe": true,
+          "boundedLocalSearch": true,
+          "channelFilteringIsLocal": true,
+          "dedupePreservesSafeSourceSummaries": true,
+          "docsFrameRcReferenceAndNonGoals": true,
+          "evidenceIdDocumented": true,
+          "manifestUsesNonBlockingSchemaContract": true,
+          "noUnsafeBrowserPersistenceOrExecution": true,
+          "replyActionUsesExistingReplyTo": true,
+          "subscriptionRefreshUxIsExplicit": true,
+          "threadActionsPersistSafeState": true,
+          "threadBuildingLogic": true,
+          "threadRenderingIsBoundedAndDomSafe": true,
+          "trustGraphMediatedOnly": true
+        },
+        "manifest": {
+          "appId": "social-inbox",
+          "migrations": [],
+          "name": "Social Inbox RC",
+          "namespaces": "ui-state,social",
+          "schemaVersion": "1"
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawMessageBodiesExcluded": true,
+          "rawSignaturesExcluded": true,
+          "tokensExcluded": true
+        },
+        "sourceFiles": [
+          "apps/social-inbox/src/staged/static/app.js",
+          "apps/social-inbox/src/staged/static/index.html",
+          "apps/social-inbox/src/staged/cryptad-app.properties.template",
+          "docs/social-inbox-reference-app.md",
+          "apps/social-inbox/README.md"
+        ]
+      },
+      "id": "reference-app.social-inbox-rc-threading",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox RC threading evidence passed."
+    },
+    {
+      "details": {
         "checks": {
           "appComposesExpectedPlatformSurfaces": true,
           "evidenceIdsDocumented": true,
@@ -1423,7 +1473,7 @@
           "pluginSystemLinksGuide": true,
           "reviewGovernance": true,
           "signedCatalog": true,
-          "socialInboxPreview": true,
+          "socialInboxReference": true,
           "trustGraphPreview": true,
           "webOfTrustMigration": true
         }

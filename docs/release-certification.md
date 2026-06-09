@@ -103,7 +103,7 @@ Release-candidate mode requires these evidence ids:
 | --- | --- | --- |
 | `interop.smoke` | `build/interop-smoke/summary.json` | Tier 1 Hyphanet interop smoke passed with CHK, SSK, USK, peer exchange, and restart-recovery coverage. |
 | `performance.smoke` | `build/perf-smoke/summary.json` | Performance smoke did not fail required metrics or deterministic regression thresholds. |
-| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Local RC, have valid manifests, launchers, static UI assets, and SDK wiring. |
+| `app-platform.first-party` | App-platform smoke summary. | The first-party staged apps, including Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox RC, Feed Reader, and Trust Graph Local RC, have valid manifests, launchers, static UI assets, and SDK wiring. |
 | `app-platform.devtools-cli` | App-platform smoke summary. | `crypta-app init`, `validate`, and `pack` work for a generated sample app. |
 | `app-platform.developer-beta-toolkit` | App-platform smoke summary. | Developer beta toolkit command, template, mock-dev, offline-test, catalog entry, dry-run publication, live publication CLI wiring, docs, and self-test evidence is present. |
 | `app-platform.docs-portal` | App-platform docs check. | The developer portal, required docs, known limitations page, portal links, and README portal link are present. |
@@ -151,14 +151,15 @@ Release-candidate mode requires these evidence ids:
 | `reference-apps.content` | App-platform smoke summary. | Site Publisher exists as the first content reference app, declares content publishing permissions, uses the browser SDK content/queue helpers, and avoids vault identity permissions. |
 | `reference-app.profile-publisher` | App-platform smoke summary. | Profile Publisher exists as the first identity-profile reference app, declares the expected vault/content/queue permissions, uses the profile-document and app-document insert routes, and keeps release evidence free of signatures and private material. |
 | `reference-app.profile-publisher-app-data` | App-platform smoke summary. | Profile Publisher requires at least contract v9, is tested through v14, declares `app.data.*`, uses SDK JSON record helpers for bounded profile draft, selected identity, last published URI, and recent publish summaries, and keeps identity private material in AppVault rather than app data. |
-| `reference-app.social-inbox` | App-platform smoke summary. | Social Inbox Preview exists as the first social/mail migration reference app, declares vault/content/subscription/queue/app-data/app-service permissions, uses SDK and design-system assets, and documents that it is not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, or a daemon-core message protocol. |
+| `reference-app.social-inbox` | App-platform smoke summary. | Social Inbox RC exists as the threaded social inbox reference app, preserves `app.id=social-inbox`, declares vault/content/subscription/queue/app-data/app-service permissions, uses SDK and design-system assets, and documents that it is not full WoT, Freetalk/Sone/Freemail compatibility, encrypted mail, crawler, or a daemon-core message protocol. |
 | `reference-app.social-inbox-signed-message` | App-platform smoke summary. | Social Inbox signs bounded `crypta.social.message.v1` documents through AppVault without exposing arbitrary browser signing, private identity material, raw request bodies, or raw signatures in evidence. |
-| `reference-app.social-inbox-subscriptions` | App-platform smoke summary. | Social Inbox follows bounded USK social outbox sources with durable content subscriptions, displays subscription metadata, fetches bounded JSON, and excludes raw fetched content from evidence. |
-| `reference-app.social-inbox-app-data` | App-platform smoke summary. | Social Inbox uses app data for sources, outbox summaries, imported-message summaries, read state, and explicit drafts while excluding private insert URIs, browser-session tokens, private identity material, raw fetched documents, and raw signatures. |
-| `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Local RC's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as advisory annotations, and keeps unscored or ungranted messages visible. |
-| `migration.social-mail-preview` | App-platform smoke summary. | The migration spike evidence proves the social/mail-like layer composes AppVault, content insert/fetch/subscriptions, durable app data, and the mediated Trust Graph score service outside daemon core and legacy plugin APIs. |
+| `reference-app.social-inbox-subscriptions` | App-platform smoke summary. | Social Inbox follows bounded USK social outbox sources with durable content subscriptions, displays last checked, last seen edition, update count, and bounded error state, fetches bounded JSON only on explicit refresh/import paths, and excludes raw fetched content from evidence. |
+| `reference-app.social-inbox-app-data` | App-platform smoke summary. | Social Inbox uses app data for sources, outbox summaries, imported-message summaries, UI filters, message/thread read state, a non-blocking schema-1 namespace contract, and explicit drafts while excluding private insert URIs, browser-session tokens, private identity material, raw fetched documents, raw profile documents, and raw signatures. |
+| `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Local RC's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as advisory annotations, and keeps unscored or ungranted messages visible without hiding, archiving, blocking replies, or changing network behavior. |
+| `reference-app.social-inbox-rc-threading` | App-platform smoke summary. | Social Inbox RC builds local threads from `replyTo`, provides reply context, channel filters, bounded local search, thread-level read/unread/archive/pin behavior, safe author/profile display, and dedupe source summaries without storing raw fetched content or raw message bodies. |
+| `migration.social-mail-preview` | App-platform smoke summary. | The baseline migration evidence proves the social/mail-like layer composes AppVault, content insert/fetch/subscriptions, durable app data, and the mediated Trust Graph score service outside daemon core and legacy plugin APIs. |
 | `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
-| `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox is certified as the executable social/mail-like migration spike with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
+| `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox is certified as the executable app-platform replacement path for social/message-board plugin patterns with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
 | `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires at least API v9, is tested through v14, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
 | `reference-app.feed-reader-app-data` | App-platform smoke summary. | Feed Reader requires at least contract v9, is tested through v14, declares `app.data.*`, uses SDK JSON record helpers for bounded feed sources, selected source, read/render metadata, safe publisher draft state, and a signed v1-to-v2 migration example, and keeps evidence free of raw feed bodies and app-data values. |
@@ -345,19 +346,20 @@ Feed Reader supplies the content-subscription reference path. Release evidence m
 Feed evidence must not include raw feed bodies, raw fetched content, raw request bodies, private
 insert URIs, app process tokens, browser-session tokens, form passwords, private keys, absolute
 staging paths, store root paths, queue HTML, or local paths.
-Social Inbox Preview supplies the social/mail migration reference path. Release evidence must prove
+Social Inbox RC supplies the threaded social inbox reference path. Release evidence must prove
 `app-platform.social-message-signing`, `reference-app.social-inbox`,
 `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
 `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
-`reference-app.social-inbox-service-grant`, `app-services.registry`, `app-services.grants`,
-`app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`, and
-`migration.social-mail-preview` before a release claims social/mail migration preview support.
+`reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
+`app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
+`app-services.web-shell`, `app-services.redaction`, and `migration.social-mail-preview` before a
+release claims Social Inbox RC support.
 `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike` certify the broader legacy
-plugin-to-app migration guidance and the executable Social Inbox spike.
+plugin-to-app migration guidance and the executable Social Inbox app-platform replacement path.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
-raw request bodies, raw signature values, private insert URIs, private identity material, app
-process tokens, browser-session tokens, form passwords, private keys, absolute staging paths, or
-local paths.
+raw profile documents, raw request bodies, raw signature values, private insert URIs, private
+identity material, app process tokens, browser-session tokens, form passwords, private keys,
+absolute staging paths, or local paths.
 Trust Graph Local RC supplies the local trust-service reference path. Release evidence must prove
 `reference-app.trust-graph`, `reference-app.trust-graph-durable-exchange`,
 `reference-app.trust-graph-app-data-preview`, `app-platform.trust-graph-preview`,

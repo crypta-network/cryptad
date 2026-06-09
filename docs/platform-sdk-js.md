@@ -17,7 +17,7 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 <script src="./app.js" defer></script>
 ```
 
-The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox Preview,
+The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox RC,
 Feed Reader, and Trust Graph Preview bundles receive `crypta-platform.js` during their Gradle
 `stageApp` tasks. The canonical source
 lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
@@ -154,8 +154,9 @@ await CryptaPlatform.content.insertAppDocument({
 });
 ```
 
-Social Inbox Preview uses the bounded social-message helper instead of the process-only generic
-identity-use route:
+Social Inbox RC uses the bounded social-message helper instead of the process-only generic
+identity-use route. Reply and thread behavior stays in the app: outgoing replies set the existing
+`replyTo` field to a safe parent `msg-<sha256>` id, and no extra Platform API route is needed.
 
 ```js
 const signedMessageResponse =
@@ -200,7 +201,7 @@ await CryptaPlatform.services.grants.request({
   serviceId: "trust.score",
   scopes: ["score.read"],
   contexts: ["message-author"],
-  purpose: "Annotate message authors with the local Trust Graph Preview score service.",
+  purpose: "Annotate message authors with the local Trust Graph Local RC score service.",
 });
 
 const score = await CryptaPlatform.services.invoke("trust-graph", "trust.score", {
@@ -219,12 +220,14 @@ call. A pending, revoked, inactive, expired, missing, or no-longer-authorized gr
 service call fail. Apps cannot approve their own grants; approval is a Web Shell host/operator
 action.
 
-For the v12 proving path, Social Inbox Preview invokes `trust-graph` / `trust.score` only through
+For the v12 proving path, Social Inbox RC invokes `trust-graph` / `trust.score` only through
 `CryptaPlatform.services.invoke(...)`. The Trust Graph Preview provider advertises a
 `platform-adapter` descriptor, so the platform dispatches to a built-in Trust Graph score adapter
 instead of proxying an arbitrary app server. Responses include service-call metadata and a redacted
 score result. Apps should render missing or revoked grants as neutral unavailable states and must
-not fall back to direct Trust Graph score routes after revocation.
+not fall back to direct Trust Graph score routes after revocation. Score results are annotations
+only; Social Inbox must not use them to hide messages, block replies, archive threads, route
+network behavior, or refresh subscriptions.
 
 Feed Reader uses the v8 feed and content subscription helpers instead of constructing fetch forms
 by hand:

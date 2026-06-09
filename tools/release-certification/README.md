@@ -123,6 +123,7 @@ reference-app.social-inbox-signed-message
 reference-app.social-inbox-subscriptions
 reference-app.social-inbox-app-data
 reference-app.social-inbox-trust-annotations
+reference-app.social-inbox-rc-threading
 migration.social-mail-preview
 legacy-plugin.migration-guide
 legacy-plugin.social-inbox-spike
@@ -199,6 +200,11 @@ local anchors, imported public signed statements, local lifecycle states, bounde
 explanations, redacted source metadata, read-only `trust.score` service boundaries, no crawling, no
 global moderation or blocking, no routing decisions, no node-to-node trust propagation, and no
 legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility claim.
+`reference-app.social-inbox-rc-threading` verifies the Social Inbox RC reference-app source for
+local thread reconstruction, reply actions using the existing `replyTo` field, channel filters,
+bounded local search, thread read/archive/pin actions, safe author profile display, mediated
+Trust Graph service annotations only, a non-blocking schema-1 app-data namespace contract, and
+path-free redacted evidence.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review

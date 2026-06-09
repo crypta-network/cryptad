@@ -5,6 +5,7 @@
 
 .header-actions,
 .panel-actions,
+.thread-actions,
 .message-actions,
 .source-actions,
 .subscription-actions {
@@ -73,12 +74,42 @@
 .subscription-list,
 .inbox-list,
 .outbox-list,
+.thread-messages,
 .queue-content,
 .publish-summary,
 .trust-service-status,
+.reply-context,
 .document-preview {
   display: grid;
   gap: var(--cr-space-3);
+}
+
+.inbox-filters {
+  align-items: end;
+  display: grid;
+  gap: var(--cr-space-3);
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(10rem, 0.8fr) minmax(14rem, 1.4fr) auto;
+}
+
+.inbox-filters__search {
+  min-width: 0;
+}
+
+.thread-card {
+  border-bottom: var(--cr-border);
+  display: grid;
+  gap: var(--cr-space-3);
+  padding-bottom: var(--cr-space-4);
+}
+
+.thread-card:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.thread-summary {
+  display: grid;
+  gap: var(--cr-space-2);
 }
 
 .message-card,
@@ -93,6 +124,30 @@
   padding-bottom: var(--cr-space-3);
 }
 
+.thread-messages .message-card {
+  border: var(--cr-border);
+  border-radius: var(--cr-radius-2);
+  padding: var(--cr-space-3);
+}
+
+.thread-messages .message-card[data-depth="1"] {
+  margin-left: var(--cr-space-3);
+}
+
+.thread-messages .message-card[data-depth="2"],
+.thread-messages .message-card[data-depth="3"],
+.thread-messages .message-card[data-depth="4"],
+.thread-messages .message-card[data-depth="5"],
+.thread-messages .message-card[data-depth="6"],
+.thread-messages .message-card[data-depth="7"],
+.thread-messages .message-card[data-depth="8"],
+.thread-messages .message-card[data-depth="9"],
+.thread-messages .message-card[data-depth="10"],
+.thread-messages .message-card[data-depth="11"],
+.thread-messages .message-card[data-depth="12"] {
+  margin-left: calc(var(--cr-space-3) * 2);
+}
+
 .message-card:last-child,
 .source-item:last-child,
 .subscription-item:last-child,
@@ -103,9 +158,15 @@
   padding-bottom: 0;
 }
 
+.thread-messages .message-card:last-child {
+  border: var(--cr-border);
+  padding: var(--cr-space-3);
+}
+
 .message-title,
 .message-meta,
 .message-body,
+.author-block,
 .source-uri,
 .summary-row {
   margin: 0;
@@ -166,6 +227,7 @@
   .identity-grid,
   .compose-publish-grid,
   .sources-inbox-grid,
+  .inbox-filters,
   .compose-card,
   .publish-card,
   .source-form,
@@ -184,5 +246,9 @@
   .source-actions,
   .subscription-actions {
     justify-content: stretch;
+  }
+
+  .thread-messages .message-card[data-depth] {
+    margin-left: 0;
   }
 }

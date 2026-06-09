@@ -99,8 +99,7 @@ raw signatures.
 
 ## Social message signing route
 
-Social Inbox Preview uses a separate bounded identity-use route for social/mail-like migration
-experiments:
+Social Inbox RC uses a separate bounded identity-use route for threaded social inbox messages:
 
 ```text
 POST /api/v1/app-vault/identities/{identityId}/social-message
@@ -117,8 +116,9 @@ payload hash, public verification key, and public signature bytes. It must not e
 keys, seeds, recovery phrases, vault file paths, raw generic signing inputs, app process tokens,
 browser-session tokens, form passwords, raw request bodies, or private insert URIs. Release
 certification should record route names, capability labels, bounds, fixture hashes, and redacted
-checks rather than raw social message bodies, raw fetched content, raw signatures, or private
-identity material. See [social-inbox-reference-app.md](social-inbox-reference-app.md).
+checks rather than raw social message bodies, raw fetched content, raw profile documents, raw
+signatures, or private identity material. See
+[social-inbox-reference-app.md](social-inbox-reference-app.md).
 
 ## Process and browser restrictions
 

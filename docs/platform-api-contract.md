@@ -265,7 +265,7 @@ persist raw request bodies, raw fetched content outside normalized trust stateme
 private insert URIs, private identity material, browser-session tokens, form passwords, absolute
 paths, or raw signatures.
 
-Contract version 11 adds bounded Social Inbox Preview message signing:
+Contract version 11 adds bounded Social Inbox RC message signing:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
@@ -279,12 +279,13 @@ not include private key material, private identity material, local vault paths, 
 tokens, app process tokens, raw request bodies, domain-separated payload bytes, or private insert
 URIs.
 
-This route exists so `apps/social-inbox` can demonstrate a social/mail-like migration spike using
+This route exists so `apps/social-inbox` can implement threaded social inbox workflows using
 AppVault identity, content insert/fetch/subscriptions, durable app data, and local Trust Graph
 annotations outside daemon core. Contract v12 moves those annotations behind app-service grants,
-so Social Inbox no longer needs direct `trust.read` for the proving path. It is not full WoT, old
-plugin ABI compatibility, Freetalk, Sone, Freemail, encrypted mail transport, a moderation system,
-a daemon-core message protocol, or a network protocol change. See
+so Social Inbox no longer needs direct `trust.read` for the proving path. Threading uses the
+existing signed `replyTo` field locally and does not require a new Platform API route. It is not
+full WoT, old plugin ABI compatibility, Freetalk, Sone, Freemail, encrypted mail transport, a
+moderation system, crawler, daemon-core message protocol, or network protocol change. See
 [social-inbox-reference-app.md](social-inbox-reference-app.md).
 
 Contract version 12 adds local app-service discovery, operator-approved grants, redacted audit, and
@@ -460,14 +461,15 @@ has separate release evidence: `app-platform.content-fetch` for `POST /api/v1/co
 `app-platform.content-subscriptions` for the v8 subscription routes,
 `network-content.subscription-scheduler` for deterministic bounded scheduler behavior, and
 `reference-app.feed-reader` plus `reference-app.feed-reader-subscriptions` for the first-party
-Feed Reader bundle. Social Inbox Preview has separate evidence:
+Feed Reader bundle. Social Inbox RC has separate evidence:
 `app-platform.social-message-signing` for the bounded v11 AppVault social-message route,
 `reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
 `reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
 `reference-app.social-inbox-trust-annotations`, `app-services.registry`,
 `app-services.grants`, `app-services.trust-score-provider`,
-`reference-app.social-inbox-service-grant`, `app-services.web-shell`,
-`app-services.redaction`, and `migration.social-mail-preview`. Trust Graph Local RC has
+`reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
+`app-services.web-shell`, `app-services.redaction`, and `migration.social-mail-preview`.
+Trust Graph Local RC has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the original v7 trust routes and SDK helpers,
 `app-platform.trust-graph-rc-scope-and-safety` for the local RC scope, lifecycle, scoring, UI, and
