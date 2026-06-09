@@ -15,6 +15,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-architecture** — Navigate Cryptad’s module/package architecture, key subsystems, design patterns, security model, and versioning scheme.
 - **$cryptad-build-test** — Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6).
 - **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, SpotBugs, Gradle dependency verification (verification-metadata), SonarLint, Error Prone, JaCoCo coverage, and SonarCloud uploads.
+- **$cryptad-codex-docker** — Maintain the tracked Codex Docker stack, Playwright remote browser server, helper scripts, and `tools/codex-docker` docs.
 - **$cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
 - **$cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
 - **$cryptad-git-workflow** — Canonical guide for branch/release policy: GitFlow naming, integer build version/tags, merge rules, PR policy, and strict git identity safeguards.
@@ -49,6 +50,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **OpenCode LSP:** Treat LSP/typechecker diagnostics as blockers for touched files.
   - If the OpenCode `lsp` tool is enabled, prefer it for definition/reference/hover instead of guessing
 - **Repository discovery:** If the task does not provide exact paths/symbols, identify the relevant files with deterministic local search before making code changes.
+- **Codex Docker / Playwright:** For `tools/codex-docker`, Codex container helpers, Playwright remote browser server wiring, or related docs, load `$cryptad-codex-docker`.
 - **Compatibility:** Avoid breaking persistent formats, on-disk layouts, and wire protocols without an explicit migration plan.
   - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.

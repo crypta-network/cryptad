@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project="${CRYPTAD_DOCKER_PROJECT:-codex-crypta}"
+network="${CRYPTAD_DOCKER_NETWORK:-codex-crypta_default}"
+
+docker ps \
+  --filter "label=com.docker.compose.project=${project}" \
+  --format '{{.Label "com.docker.compose.service"}}|{{.Names}}|{{.Status}}|{{.ID}}' \
+  | sort \
+  | while IFS='|' read -r service name status container_id; do
+      ip_address="$(docker inspect \
+        --format "{{with index .NetworkSettings.Networks \"${network}\"}}{{.IPAddress}}{{end}}" \
+        "${container_id}")"
+      printf '%-18s %-32s %-15s %s\n' "${service}" "${name}" "${ip_address:-"-"}" "${status}"
+    done

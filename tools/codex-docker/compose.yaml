@@ -1,0 +1,104 @@
+name: codex-crypta
+
+services:
+  tailscale-shell:
+    build:
+      context: tailscale-shell
+      args:
+        TAILSCALE_VERSION: ${TAILSCALE_VERSION:-latest}
+    image: codex-crypta-tailscale-shell:${TAILSCALE_VERSION:-latest}
+    environment:
+      TS_AUTH_ONCE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_ROUTES: ${CRYPTAD_DOCKER_SUBNET:-172.30.70.0/24}
+      TS_USERSPACE: "false"
+      CRYPTAD_DOCKER_PROJECT: codex-crypta
+      CRYPTAD_DOCKER_NETWORK: codex-crypta_default
+      CRYPTAD_CODEX_SERVICE: codex
+      CRYPTAD_CODEX_WORKDIR: /work/cryptad
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ../../.env:/run/cryptad/root.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: ${CRYPTAD_TAILSCALE_IPV4:-172.30.70.2}
+
+  codex:
+    hostname: crypta-codex
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GITHUB_MCP_VERSION: ${GITHUB_MCP_VERSION:-v1.2.0}
+        GITHUB_MCP_ARCH: ${GITHUB_MCP_ARCH:-arm64}
+        ACTIONLINT_VERSION: ${ACTIONLINT_VERSION:-1.7.12}
+        ACTIONLINT_ARCH: ${ACTIONLINT_ARCH:-arm64}
+        PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-1.60.0}
+        CODEX_SSH_AUTHORIZED_KEYS: ${CODEX_SSH_AUTHORIZED_KEYS:-}
+    image: codex-crypta:${CODEX_IMAGE_TAG:-0.138.0}
+    pull_policy: build
+    container_name: codex-crypta-0
+    restart: unless-stopped
+    working_dir: /work/cryptad
+
+    environment:
+      VISUAL: nvim
+      CODEX_HOME: /root/.codex
+      PLAYWRIGHT_REMOTE_WS_ENDPOINT: ws://playwright:3000/
+      PW_TEST_CONNECT_WS_ENDPOINT: ws://playwright:3000/
+
+    volumes:
+      - ${CRYPTAD_REPO_ROOT:-../..}:/work/cryptad
+      - ${CRYPTAD_CODEX_HOME_MOUNT:-${HOME}/.codex_docker}:/root/.codex
+      - ${CRYPTAD_SSH_DIR:-${HOME}/.ssh}:/root/.ssh:ro
+      - ${CRYPTAD_GH_CONFIG_DIR:-${HOME}/.config/gh}:/root/.config/gh
+
+    cpus: 8.0
+    mem_limit: 12g
+
+    healthcheck:
+      test: ["CMD-SHELL", "codex app-server daemon version >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks:
+      default:
+        ipv4_address: ${CRYPTAD_CODEX_IPV4:-172.30.70.10}
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION:-1.60.0}-noble
+    init: true
+    user: pwuser
+    working_dir: /home/pwuser
+    command:
+      - /bin/sh
+      - -lc
+      - npx -y playwright@${PLAYWRIGHT_VERSION:-1.60.0} run-server --port 3000 --host 0.0.0.0
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "127.0.0.1:${PLAYWRIGHT_HOST_PORT:-3000}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      default:
+        ipv4_address: ${CRYPTAD_PLAYWRIGHT_IPV4:-172.30.70.20}
+
+volumes:
+  tailscale-state:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CRYPTAD_DOCKER_SUBNET:-172.30.70.0/24}

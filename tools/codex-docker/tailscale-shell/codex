@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project="${CRYPTAD_DOCKER_PROJECT:-codex-crypta}"
+service="${CRYPTAD_CODEX_SERVICE:-codex}"
+workdir="${CRYPTAD_CODEX_WORKDIR:-/work/cryptad}"
+
+container_id="$(
+  docker ps \
+    --filter "label=com.docker.compose.project=${project}" \
+    --filter "label=com.docker.compose.service=${service}" \
+    --format '{{.Names}} {{.ID}}' \
+    | sort \
+    | awk 'NR == 1 {print $2}'
+)"
+
+if [ -z "${container_id}" ]; then
+  echo "No running container found for compose service '${service}' in project '${project}'." >&2
+  exit 1
+fi
+
+tty_args=(-i)
+if [ "${1:-}" != "app-server" ] || [ "${2:-}" != "proxy" ]; then
+  if [ -t 0 ] && [ -t 1 ]; then
+    tty_args=(-it)
+  fi
+fi
+
+exec docker exec "${tty_args[@]}" -w "${workdir}" "${container_id}" codex "$@"

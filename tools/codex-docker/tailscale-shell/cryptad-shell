@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  cryptad-shell <service> [shell-args...]
+
+Services:
+  codex
+  playwright
+  tailscale-shell
+
+Examples:
+  cryptad-shell codex
+  cryptad-shell codex -c 'pwd'
+  cryptad-shell playwright -c 'node --version'
+USAGE
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+service="${1:-}"
+if [ -z "${service}" ]; then
+  usage
+  exit 2
+fi
+shift
+
+case "${service}" in
+  codex|playwright|tailscale-shell)
+    ;;
+  *)
+    echo "Unsupported service: ${service}" >&2
+    usage
+    exit 2
+    ;;
+esac
+
+project="${CRYPTAD_DOCKER_PROJECT:-codex-crypta}"
+container_id="$(
+  docker ps \
+    --filter "label=com.docker.compose.project=${project}" \
+    --filter "label=com.docker.compose.service=${service}" \
+    --format '{{.Names}} {{.ID}}' \
+    | sort \
+    | awk 'NR == 1 {print $2}'
+)"
+
+if [ -z "${container_id}" ]; then
+  echo "No running container found for compose service '${service}' in project '${project}'." >&2
+  echo "Running containers:" >&2
+  cryptad-containers >&2 || true
+  exit 1
+fi
+
+shell_path="$(
+  docker exec "${container_id}" sh -lc 'if command -v bash >/dev/null 2>&1; then command -v bash; elif command -v sh >/dev/null 2>&1; then command -v sh; else printf "%s\n" /bin/sh; fi'
+)"
+
+workdir_args=()
+case "${service}" in
+  codex)
+    workdir_args=(-w "${CRYPTAD_CODEX_WORKDIR:-/work/cryptad}")
+    ;;
+esac
+
+tty_args=()
+if [ -t 0 ] && [ -t 1 ]; then
+  tty_args=(-it)
+else
+  tty_args=(-i)
+fi
+
+if [ "$#" -gt 0 ]; then
+  exec docker exec "${tty_args[@]}" "${workdir_args[@]}" "${container_id}" "${shell_path}" "$@"
+fi
+
+shell_args=()
+if [ "$(basename "${shell_path}")" = "bash" ]; then
+  shell_args=(-l)
+fi
+
+exec docker exec "${tty_args[@]}" "${workdir_args[@]}" "${container_id}" "${shell_path}" "${shell_args[@]}"

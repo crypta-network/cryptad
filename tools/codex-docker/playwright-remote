@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PW_TEST_CONNECT_WS_ENDPOINT="${PW_TEST_CONNECT_WS_ENDPOINT:-${PLAYWRIGHT_REMOTE_WS_ENDPOINT:-ws://playwright:3000/}}"
+
+global_node_modules="$(npm root --global 2>/dev/null || true)"
+if [ -n "${global_node_modules}" ]; then
+  export NODE_PATH="${NODE_PATH:+${NODE_PATH}:}${global_node_modules}"
+fi
+
+exec playwright "$@"
