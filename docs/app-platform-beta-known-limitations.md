@@ -64,10 +64,11 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - The [legacy plugin migration guide](legacy-plugin-migration-guide.md) documents app-platform
   migration patterns, but it does not restore old plugin ABI compatibility or old FCP plugin
   command compatibility.
-- Social Inbox Preview is a social/mail-like migration spike outside daemon core and legacy plugin
-  APIs. Its `crypta.social.message.v1` route is bounded social-message signing only; it is not a
-  generic browser signing API, full WoT, Freetalk, Sone, Freemail, encrypted mail transport,
-  moderation, daemon-core message storage, or a network protocol change.
+- Social Inbox RC is a threaded reference app outside daemon core and legacy plugin APIs. Its
+  `crypta.social.message.v1` route is bounded social-message signing only; local threads,
+  channel filters, search, and read state operate over bounded summaries. It is not a generic
+  browser signing API, full WoT, Freetalk, Sone, Freemail, encrypted mail transport, moderation,
+  crawler, daemon-core message storage, or a network protocol change.
 - Review governance uses local trust configuration plus a local tamper-evident transparency log.
   It is not a global public transparency log.
 - Sandbox provider support depends on platform and provider availability. Linux bubblewrap support

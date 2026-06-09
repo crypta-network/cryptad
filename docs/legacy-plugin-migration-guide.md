@@ -28,7 +28,7 @@ Legacy plugin responsibilities map to existing app-platform mechanisms:
 | Content polling | Content subscriptions |
 | Content publishing | App-generated documents plus queue APIs |
 | Trust scoring | Trust Graph Preview plus an app-service grant to `trust.score` |
-| Social/message board patterns | Social Inbox Preview migration spike |
+| Social/message board patterns | Social Inbox RC reference app |
 | Distribution | Signed bundles, signed catalogs, and trusted review receipts |
 | Compatibility/review | Platform API contract verifier and app review governance |
 
@@ -70,7 +70,7 @@ Social or forum apps should:
 - Follow public source feeds with durable content subscriptions.
 - Persist source summaries, read state, drafts, and imported-message summaries in app data.
 - Publish generated outbox or feed documents with app-generated document insert routes.
-- Use Trust Graph Preview score annotations through `trust.score` app-service grants when trust
+- Use Trust Graph Local RC score annotations through `trust.score` app-service grants when trust
   context is useful.
 
 This is not old Freetalk/Sone plugin compatibility, not a daemon-core social store, not global
@@ -78,7 +78,7 @@ moderation, and not a new social network protocol in daemon core.
 
 ### Freemail-like mail/message layer
 
-Treat Social Inbox Preview as a bounded mail/social migration spike, not as Freemail
+Treat Social Inbox RC as a bounded mail/social reference app, not as Freemail
 compatibility. It proves that message-like workflows can compose AppVault identity use, generated
 documents, content subscriptions, app data, and Trust Graph annotations outside daemon core.
 
@@ -126,25 +126,27 @@ Use this checklist before proposing an app migration:
 - Add release-certification evidence that proves the migration path without raw payloads or
   secrets.
 
-## Executable migration spike
+## Executable reference app
 
-`apps/social-inbox` is the current executable social/mail-like migration spike. See
+`apps/social-inbox` is the current executable threaded social inbox reference app. See
 [social-inbox-reference-app.md](social-inbox-reference-app.md) for the app contract, manifest
 permissions, durable state, and evidence ids.
 
-The spike demonstrates:
+The app demonstrates:
 
 - App vault identity listing, creation, and bounded profile/social-message signing.
-- App data records for UI state, sources, outbox summaries, imported-message summaries, read state,
-  and explicit drafts.
+- App data records for UI state, sources, outbox summaries, imported-message summaries,
+  channel filters, message/thread read state, and explicit drafts.
+- Local threads built from the existing signed `replyTo` field, with bounded search and safe
+  author profile links over imported summaries.
 - Content subscriptions for bounded USK social source follow behavior.
 - App-generated outbox documents inserted through queue/content Platform API routes.
-- Trust Graph Preview score annotations through the `trust.score` app-service grant path.
+- Trust Graph Local RC score annotations through the `trust.score` app-service grant path.
 - Signed bundle, signed catalog, review receipt, and catalog/review governance flow.
 
-The spike deliberately stays outside daemon core and old plugin APIs. It is not full WoT, not
-Freetalk/Sone/Freemail compatibility, not encrypted mail transport, and not a daemon-core message
-store.
+The app deliberately stays outside daemon core and old plugin APIs. It is not full WoT, not
+Freetalk/Sone/Freemail compatibility, not encrypted mail transport, not a crawler, and not a
+daemon-core message store or protocol.
 
 ## Security and privacy boundaries
 

@@ -37,7 +37,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | App upgrade data migrations | [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) |
 | App-data backup, restore, and portability | [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
-| Social Inbox Preview | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
+| Social Inbox RC | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
 | Trust Graph Local RC | [trust-graph-preview.md](trust-graph-preview.md) |
 | Legacy plugin migration guide | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) |
@@ -80,7 +80,7 @@ The current first-party app ecosystem beta includes these repo-owned bundles:
 | Publisher | `publisher` | Legacy publisher replacement for content insert workflows. |
 | Site Publisher | `site-publisher` | Static-site content publishing reference pattern. |
 | Profile Publisher | `profile-publisher` | AppVault identity/profile signing, generated app-document insert, and durable draft state. |
-| Social Inbox Preview | `social-inbox` | Social/mail-like migration spike using bounded social-message signing, generated outbox inserts, durable subscriptions, app data, and operator-approved Trust Graph Local RC service annotations. |
+| Social Inbox RC | `social-inbox` | Threaded social inbox reference app using bounded social-message signing, generated outbox inserts, durable subscriptions, local channel/search filters, read state, safe author profile links, and operator-approved Trust Graph Local RC service annotations. |
 | Feed Reader & Publisher | `feed-reader` | Durable USK `content.subscribe`, bounded `content.fetch`, durable reader state, and generated feed snapshot publication. |
 | Trust Graph Local RC | `trust-graph` | Local operator-curated trust service with anchors, imported public signed statements, lifecycle policy, bounded scoring evidence, redacted source metadata, publication, subscription helpers, and UI-local state. |
 
@@ -96,6 +96,10 @@ or promise legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility. Apps th
 annotations should use the read-only `trust.score` app-service through an operator-approved grant;
 they do not gain authority to import statements, mutate anchors, or change statement lifecycle
 records through that service.
+
+Social Inbox RC keeps message threading, search, channel filtering, read/unread state, and
+author-profile links local to the app. It does not provide encrypted mail, Freetalk/Sone/Freemail
+compatibility, full WoT, moderation policy, a daemon-core social protocol, or background crawling.
 
 ## Developer path
 

@@ -10,7 +10,7 @@ plugins {
 
 version = rootProject.version
 
-val appDisplayName = "Social Inbox Preview"
+val appDisplayName = "Social Inbox RC"
 val appId = "social-inbox"
 val appDistMainClass = "network.crypta.platform.appdist.AppDistributionTool"
 val mainSourceSet = sourceSets.named("main")

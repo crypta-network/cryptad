@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Set;
+import network.crypta.platform.appdist.AppDataNamespaceSchema;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
@@ -22,7 +23,7 @@ class SocialInboxBundleStagingTest {
   private static final String APP_VERSION_PROPERTY = "socialInbox.appVersion";
   private static final String STAGE_DIR_PROPERTY = "socialInbox.stageDir";
   private static final String EXPECTED_APP_ID = "social-inbox";
-  private static final String EXPECTED_APP_NAME = "Social Inbox Preview";
+  private static final String EXPECTED_APP_NAME = "Social Inbox RC";
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/social-inbox.sh";
   private static final String EXPECTED_PERMISSIONS =
@@ -98,6 +99,18 @@ class SocialInboxBundleStagingTest {
     assertEquals(AppRestartPolicy.NEVER, manifest.restartPolicy());
     assertEquals(Long.valueOf(2_097_152L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(2_097_152L), manifest.cacheQuotaBytes());
+    assertEquals(1, manifest.dataSchemaContract().currentSchemaVersion());
+    assertEquals(
+        List.of("ui-state", "social"),
+        manifest.dataSchemaContract().namespaces().stream()
+            .map(AppDataNamespaceSchema::namespace)
+            .toList());
+    assertEquals(
+        List.of(1, 1),
+        manifest.dataSchemaContract().namespaces().stream()
+            .map(AppDataNamespaceSchema::currentSchemaVersion)
+            .toList());
+    assertEquals(List.of(), manifest.dataSchemaContract().migrations());
   }
 
   @Test
@@ -133,6 +146,7 @@ class SocialInboxBundleStagingTest {
     assertTrue(manifestText.contains("app.restart.policy=never"));
     assertTrue(manifestText.contains("quota.data.bytes=2097152"));
     assertTrue(manifestText.contains("quota.cache.bytes=2097152"));
+    verifyManifestDataContractContent(manifestText);
   }
 
   @Test
@@ -142,8 +156,8 @@ class SocialInboxBundleStagingTest {
 
     assertTrue(launcherScript.startsWith("#!/bin/sh\n"));
     assertTrue(launcherScript.contains("log_file=\"${CRYPTAD_APP_RUN_DIR:-.}/social-inbox.log\""));
-    assertTrue(launcherScript.contains("Social Inbox Preview started"));
-    assertTrue(launcherScript.contains("trap 'printf \"Social Inbox Preview stopping"));
+    assertTrue(launcherScript.contains("Social Inbox RC started"));
+    assertTrue(launcherScript.contains("trap 'printf \"Social Inbox RC stopping"));
     assertTrue(launcherScript.contains("while :; do"));
     assertTrue(launcherScript.contains("sleep 5"));
 
@@ -165,7 +179,7 @@ class SocialInboxBundleStagingTest {
     verifyDesignSystemCssLoadsBeforeAppCss(indexHtml);
     verifyDesignSystemComponentsLoadsBeforeSdk(indexHtml);
     verifySdkLoadsBeforeAppScript(indexHtml);
-    verifyPermissionAndMigrationCopy(indexHtml);
+    verifyPermissionAndScopeCopy(indexHtml);
     verifyNoForbiddenBrowserPatterns(indexHtml, appScript, appCss);
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-tokens.css");
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui.css");
@@ -183,6 +197,16 @@ class SocialInboxBundleStagingTest {
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-components.js")));
     assertTrue(Files.notExists(staticDirectory.resolve("README.txt")));
+  }
+
+  private static void verifyManifestDataContractContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "app.data.schema.current=1",
+        "app.data.schema.namespaces=ui-state,social",
+        "app.data.schema.namespace.ui-state.current=1",
+        "app.data.schema.namespace.social.current=1");
+    verifyContainsNone(manifestText, "app.data.migrations", "migrate-social-inbox-data.sh");
   }
 
   private static void verifyDesignSystemCssLoadsBeforeAppCss(String indexHtml) {
@@ -211,7 +235,7 @@ class SocialInboxBundleStagingTest {
     assertTrue(appScriptIndex > sdkScriptIndex, "index.html must load app.js after the SDK.");
   }
 
-  private static void verifyPermissionAndMigrationCopy(String indexHtml) {
+  private static void verifyPermissionAndScopeCopy(String indexHtml) {
     verifyContainsAll(
         indexHtml,
         "data-crypta-permission-summary",
@@ -227,12 +251,14 @@ class SocialInboxBundleStagingTest {
         "<code>app.data.write</code>",
         "<code>app.services.read</code>",
         "<code>app.services.call</code>",
-        "Migration spike status",
+        "Reference app scope",
         "social/mail-like layer outside the daemon",
         "AppVault",
+        "local message threading and read state",
         "bounded signed message documents",
         "content insert/fetch/subscriptions",
-        "operator-approved Trust Graph Local RC service annotations",
+        "operator-approved Trust Graph Local RC",
+        "service annotations",
         "not full WoT",
         "not compatible with old WebOfTrust plugin APIs",
         "not Freetalk, Sone, Freemail",
@@ -242,7 +268,10 @@ class SocialInboxBundleStagingTest {
         "Compose",
         "Publish outbox",
         "Sources and subscriptions",
-        "Inbox");
+        "Threads",
+        "All channels",
+        "Search local summaries",
+        "No reply target selected.");
   }
 
   private static void verifyNoForbiddenBrowserPatterns(
@@ -340,6 +369,39 @@ class SocialInboxBundleStagingTest {
         "social\", \"imported-message-index\"",
         "social\", \"read-state\"",
         "social\", \"drafts\"",
+        "dataSchemaVersion = 1",
+        "channelFilter",
+        "readFilter",
+        "function buildThreadIndex",
+        "function normalizeReplyReference",
+        "function messageThreadRootId",
+        "function threadSortKey",
+        "function messageSortKey",
+        "function threadUnreadCount",
+        "function threadContainsMessage",
+        "function prepareReply",
+        "function renderReplyContext",
+        "function refreshAllActiveSources",
+        "function sourceSummariesForDedupe",
+        "function boundedReadStateEntry",
+        "sourceSummariesForDedupe(current)",
+        "sourceSummariesForDedupe(incoming)",
+        "seenCount: existing",
+        "? Math.min(9999, Math.max(1, numberField(current, \"seenCount\")) + 1)",
+        ": Math.max(1, numberField(incoming, \"seenCount\"))",
+        "if (thread.pinned) {",
+        "updateThreadState(thread, { pinned: false })",
+        "updateMessageState(thread.rootId, { pinned: true })",
+        "hasOwnProperty.call(item, \"read\")",
+        "Object.keys(entry).length === 0",
+        "entry.read = Boolean(item.read)",
+        "if (item.pinned)",
+        "if (item.archived)",
+        "sourcesSeen",
+        "firstImportedAt",
+        "lastSeenAt",
+        "seenCount",
+        "Copy profile URI",
         "insertUriRedaction",
         "publicSourceUriHash",
         "uriHash",
@@ -390,8 +452,7 @@ class SocialInboxBundleStagingTest {
         "CRYPTAD_APP_TOKEN",
         "innerHTML",
         "insertAdjacentHTML",
-        "persistOutboxSummary(await localOutboxSummary())",
-        "function localOutboxSummary");
+        "persistOutboxSummary(await localOutboxSummary())");
   }
 
   private static void verifyAdversarialMarkupFixturesCovered(String appScript) {

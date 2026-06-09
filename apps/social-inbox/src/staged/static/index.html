@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Social Inbox Preview</title>
+  <title>Social Inbox RC</title>
   <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
   <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
   <link rel="stylesheet" href="./app.css">
@@ -13,7 +13,7 @@
     <header class="cr-header">
       <div>
         <p class="cr-label">Crypta app-platform reference app</p>
-        <h1>Social Inbox Preview</h1>
+        <h1>Social Inbox RC</h1>
       </div>
       <div class="header-actions">
         <button class="cr-button cr-button--secondary" id="refresh-identities-button" type="button">
@@ -44,11 +44,12 @@
     </section>
 
     <section class="cr-card preview-warning" aria-labelledby="preview-warning-title">
-      <h2 id="preview-warning-title">Migration spike status</h2>
+      <h2 id="preview-warning-title">Reference app scope</h2>
       <p>
-        This preview demonstrates a social/mail-like layer outside the daemon by combining AppVault
-        identity, bounded signed message documents, content insert/fetch/subscriptions, app data,
-        and operator-approved Trust Graph Local RC service annotations.
+        This RC reference app demonstrates a social/mail-like layer outside the daemon by combining
+        AppVault identity, local message threading and read state, bounded signed message documents,
+        content insert/fetch/subscriptions, app data, and operator-approved Trust Graph Local RC
+        service annotations.
       </p>
       <ul>
         <li>It is not full WoT and is not compatible with old WebOfTrust plugin APIs.</li>
@@ -71,7 +72,7 @@
             class="cr-input"
             name="identityLabel"
             type="text"
-            value="Social Inbox preview identity"
+            value="Social Inbox RC identity"
             autocomplete="off"
             spellcheck="false"
             required>
@@ -175,6 +176,16 @@
           <span class="cr-label">Reply to</span>
           <input class="cr-input" name="replyTo" type="text" autocomplete="off" spellcheck="false">
         </label>
+        <div class="reply-context compose-card__wide" id="reply-context">
+          <p class="cr-empty">No reply target selected.</p>
+        </div>
+        <button
+          class="cr-button cr-button--secondary"
+          id="clear-reply-button"
+          type="button"
+          disabled>
+          Clear reply
+        </button>
         <label class="cr-field">
           <span class="cr-label">Recipient fingerprint</span>
           <input class="cr-input" name="recipientFingerprint" type="text" autocomplete="off" spellcheck="false">
@@ -259,6 +270,9 @@
           <button class="cr-button cr-button--secondary" id="refresh-subscriptions-button" type="button">
             Refresh metadata
           </button>
+          <button class="cr-button cr-button--secondary" id="refresh-all-sources-button" type="button">
+            Refresh active sources
+          </button>
         </div>
         <form class="source-form" id="source-form">
           <label class="cr-field">
@@ -291,8 +305,8 @@
       <section class="cr-card inbox-card" aria-labelledby="inbox-title">
         <div class="panel-heading">
           <div>
-            <p class="cr-label">Plain-text message summaries</p>
-            <h2 id="inbox-title">Inbox</h2>
+            <p class="cr-label">Threaded plain-text summaries</p>
+            <h2 id="inbox-title">Threads</h2>
           </div>
           <div class="panel-actions">
             <button class="cr-button cr-button--secondary" id="request-trust-grant-button" type="button">
@@ -306,8 +320,39 @@
         <div class="trust-service-status" id="trust-service-status">
           <p class="cr-empty">Trust Score Service discovery runs after the app opens.</p>
         </div>
+        <form class="inbox-filters" id="inbox-filters">
+          <label class="cr-field">
+            <span class="cr-label">Channel</span>
+            <select class="cr-input" id="channel-filter">
+              <option value="">All channels</option>
+            </select>
+          </label>
+          <label class="cr-field">
+            <span class="cr-label">View</span>
+            <select class="cr-input" id="read-filter">
+              <option value="active">Active threads</option>
+              <option value="unread">Unread threads</option>
+              <option value="archived">Archived threads</option>
+              <option value="all">All threads</option>
+            </select>
+          </label>
+          <label class="cr-field inbox-filters__search">
+            <span class="cr-label">Search local summaries</span>
+            <input
+              class="cr-input"
+              id="search-input"
+              type="search"
+              maxlength="80"
+              autocomplete="off"
+              spellcheck="false">
+          </label>
+          <button class="cr-button cr-button--secondary" id="clear-search-button" type="button">
+            Clear
+          </button>
+        </form>
+        <p class="summary-row" id="inbox-result-summary">0 of 0 threads / all channels / active</p>
         <div class="inbox-list" id="inbox-list">
-          <p class="cr-empty">Imported messages appear here with neutral Trust Graph annotations.</p>
+          <p class="cr-empty">Imported messages appear here as local threads with neutral Trust Graph annotations.</p>
         </div>
       </section>
     </section>

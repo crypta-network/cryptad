@@ -1,8 +1,8 @@
-# Social Inbox Preview reference app
+# Social Inbox RC reference app
 
-Social Inbox Preview is a first-party static AppHost bundle under `apps/social-inbox`. It
-demonstrates that social/mail-like functionality can move outside the daemon, out of daemon core
-and legacy plugin surfaces, and into an out-of-process app-platform reference app.
+Social Inbox RC is a first-party static AppHost bundle under `apps/social-inbox`. It demonstrates
+local message-threading, reply, subscription, and read-state workflows outside daemon core and
+legacy plugin surfaces.
 
 The app composes existing platform surfaces with bounded Platform API v11 signing and v12
 app-service grants:
@@ -10,15 +10,16 @@ app-service grants:
 ```text
 AppVault identity + signed profile/message documents
 + content insert/fetch/subscribe
-+ durable app data
-+ Trust Graph Preview score annotations through app-service grants
-= social/mail-like reference layer outside the daemon
++ durable app data with a signed schema-1 namespace contract
++ local thread, channel, search, and read-state UI
++ Trust Graph Local RC score annotations through app-service grants
+= Social Inbox RC reference layer outside the daemon
 ```
 
-This is a migration spike, not a production social network, mail protocol, full WoT
-implementation, old plugin ABI compatibility, WebOfTrust plugin compatibility layer,
-Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, moderation system,
-daemon-core message store, daemon-core message protocol, or network protocol changes.
+This is a reference app, not a production social network, mail protocol, full WoT implementation,
+old plugin ABI compatibility, WebOfTrust plugin compatibility layer, Freetalk/Sone/Freemail
+compatibility layer, encrypted mail transport, moderation system, daemon-core message store,
+daemon-core message protocol, crawler, or network protocol change.
 
 For broader legacy plugin categories and migration recipes, see
 [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
@@ -27,26 +28,30 @@ For broader legacy plugin categories and migration recipes, see
 
 ```text
 app.id=social-inbox
-app.name=Social Inbox Preview
+app.name=Social Inbox RC
 api.minimumVersion=12
 api.maximumTestedVersion=15
 api.experimentalCapabilitiesAccepted=true
+app.data.schema.current=1
 ```
+
+The app id remains `social-inbox` so installed app ownership and durable app-data namespaces stay
+stable across the Preview-to-RC promotion.
 
 The app declares these permissions:
 
 | Permission | Rationale |
 | --- | --- |
 | `vault.identities.read` | Lists app-visible public identity metadata for the selected social signing identity. |
-| `vault.identities.create` | Creates an app-owned preview identity without exporting private key material. |
+| `vault.identities.create` | Creates an app-owned Social Inbox identity without exporting private key material. |
 | `vault.identities.use` | Calls bounded AppVault signing routes for profile and social message documents. |
 | `content.fetch` | Fetches bounded social outbox JSON selected by the user or a subscription. |
 | `content.subscribe` | Manages durable app-owned USK social source subscriptions. |
 | `content.insert.app-document` | Publishes generated outbox snapshots without local source-path authority. |
 | `queue.read` | Displays safe upload queue summaries for generated outbox publication. |
 | `queue.write` | Queues generated outbox document inserts. |
-| `app.data.read` | Restores bounded sources, summaries, drafts, imported message summaries, and read state. |
-| `app.data.write` | Saves bounded app-owned Social Inbox state. |
+| `app.data.read` | Restores bounded sources, summaries, drafts, imported message summaries, UI filters, and message read state used for thread actions. |
+| `app.data.write` | Saves bounded app-owned Social Inbox state under the existing schema-1 record contract. |
 | `app.services.read` | Discovers the local Trust Score Service descriptor and caller-visible grant state. |
 | `app.services.call` | Requests and invokes an approved local `trust.score` service grant. |
 
@@ -71,8 +76,11 @@ envelopes, or local vault paths.
 
 Profile metadata is optional. The app reuses the bounded profile-document route through the SDK so
 authors can prepare a signed public profile document or attach a public profile URI to messages.
-Social Inbox does not duplicate the Profile Publisher app; it keeps profile handling to the
-minimum needed to link author metadata to social messages.
+Imported messages may show an author label, a bounded fingerprint summary, and a validated public
+Crypta profile URI as a copyable app-controlled value. The app does not fetch profile documents
+automatically and does not store raw profile documents. Social Inbox does not duplicate the Profile
+Publisher app; it keeps profile handling to the minimum needed to link author metadata to social
+messages.
 
 ## Signed social message document
 
@@ -109,7 +117,7 @@ signatures over deterministic canonical JSON for this public document shape:
     "subject": "bounded subject",
     "body": "bounded plain text body",
     "format": "text/plain",
-    "replyTo": "optional message id or URI",
+    "replyTo": "optional msg-<sha256> parent message id",
     "recipientFingerprint": "optional public recipient fingerprint",
     "tags": ["bounded", "tags"]
   },
@@ -128,6 +136,12 @@ When importing remote outboxes, the app rejects messages whose `messageId` is no
 `msg-<sha256>` value recomputed from the canonical public message payload without the `messageId`
 field. Read-state keys are accepted only for that safe generated shape, so imported content cannot
 choose object-prototype names or collide with another signed payload's identifier.
+
+RC threading uses the existing signed `message.replyTo` field. A reply links only to another safe
+`msg-<sha256>` id in the imported or local message set. Missing parents become local thread roots,
+and cycle detection breaks malformed reply graphs before rendering. The UI caps rendered thread
+depth and total message counts, sorts pinned threads first, then by the most recent message
+timestamp, and sorts replies by timestamp and message id.
 
 The signing response contains public verification material only. Release evidence and logs must not
 include raw request bodies, raw message bodies, raw signatures, private identity material,
@@ -150,7 +164,7 @@ The generated outbox document is bounded JSON:
   "appId": "social-inbox",
   "generatedAt": "2026-05-27T00:00:00Z",
   "profileUri": "crypta:USK@<public-profile-key>/profile/1/profile.json",
-  "sourceLabel": "Social Inbox Preview",
+  "sourceLabel": "Social Inbox RC",
   "messages": []
 }
 ```
@@ -167,8 +181,9 @@ examples.
 The app follows remote social sources with durable content subscriptions from Platform API v8 and
 bounded content fetch from Platform API v6. Sources must be `USK@...` or `crypta:USK@...` social
 outbox URIs. App data stores source labels, subscription ids, URI summaries/hashes, status, last
-check, last seen edition, update count, and bounded backoff or error summary. The raw source URI is
-passed to the subscription/fetch request path only and is not copied into `social/sources`.
+checked time, last seen edition, update count, and bounded backoff or error summary. The raw
+source URI is passed to the subscription/fetch request path only and is not copied into
+`social/sources`.
 
 Manual import fetches the current resolved source using `content.fetch`, parses only bounded JSON
 objects with `type=crypta.social.outbox.v1`, and imports only bounded signed
@@ -181,6 +196,16 @@ fingerprint, public profile URI, signature SHA-256, timestamps, and import time.
 must pass bounded field validation and Ed25519 verification against the signed
 `crypta.social.message.v1` canonical payload before Trust Graph annotations are queried. Release
 evidence must redact raw fetched content and raw message bodies.
+
+When the same safe `messageId` appears from multiple sources, dedupe keeps the verified canonical
+message summary and preserves bounded source summaries such as source id, label, URI hash,
+first-import time, last-seen time, and seen count. It must not store raw fetched documents, raw
+source URIs, raw signatures, or full raw message bodies.
+
+Changing the local channel filter or search query does not fetch network content. Channel names are
+bounded and malformed values fall back to `general`. Search runs only over already imported bounded
+summaries such as subject, author label, fingerprint summary, channel, tags, body preview, and
+source label.
 
 ## Durable app data
 
@@ -195,19 +220,28 @@ social/read-state
 social/drafts
 ```
 
-`social/read-state` tracks read/unread, pinned, archived/hidden, and last viewed timestamp keyed by
-validated `msg-<sha256>` message ids.
+`ui-state/social-inbox` stores bounded UI selections such as channel and read/archive filters.
+`social/read-state` tracks message read/unread, pin/archive state, and last viewed timestamp keyed
+by validated `msg-<sha256>` message ids. Thread-level read/unread/archive/pin actions are derived
+from those validated message records, so PR-252 does not add a separate durable thread record.
 `social/sources` tracks safe subscription metadata, source URI summaries, and source URI hashes,
 not raw source URIs. `social/imported-message-index` stores capped message summaries.
 `social/drafts` stores a draft body only when the user explicitly selects the draft checkbox, and
 the draft remains bounded.
+
+The signed manifest declares the existing `ui-state` and `social` namespaces at schema 1. The RC
+threading, filter, read-state, and source-summary additions are additive under that schema so
+installed Preview users do not need an update-time migration command. This is intentional while
+the production app-update migration runner still fails closed before executing signed migration
+commands; do not add a Social Inbox v1-to-v2 manifest migration until that runner can execute it
+without blocking installed updates.
 
 These records must not contain private identity material, private insert URIs, browser-session
 tokens, app process tokens, raw fetched documents, raw signatures, local paths, or generic secrets.
 
 ## Trust Score Service Grant
 
-For each message author fingerprint, the app queries Trust Graph Preview through the v12
+For each message author fingerprint, the app queries Trust Graph Local RC through the v12
 app-services API:
 
 ```text
@@ -227,14 +261,15 @@ approve in Web Shell. After approval, author annotations use
 Pending, revoked, inactive, missing, or no-longer-authorized grants are rendered as neutral
 `Trust score unavailable / grant required` states. The app must not fall back to
 `CryptaPlatform.trust.score` or direct Trust Graph routes after revocation. The result is rendered
-as a preview annotation. Scores and evidence counts are displayed when available. Missing or failed
+as annotations only. Scores and evidence counts are displayed when available. Missing or failed
 trust evidence is shown as a neutral/unscored badge. The app still shows unscored and untrusted
 messages; Trust Graph annotations are not a moderation decision, not content hiding, and not daemon
-routing policy.
+routing policy. Trust score values do not hide, archive, sort by policy, block replies, trigger
+network fetches, or change subscription behavior.
 
 ## Release evidence
 
-PR-242 adds deterministic offline evidence for these ids:
+Deterministic offline evidence for Social Inbox includes these ids:
 
 ```text
 app-platform.social-message-signing
@@ -244,6 +279,7 @@ reference-app.social-inbox-subscriptions
 reference-app.social-inbox-app-data
 reference-app.social-inbox-trust-annotations
 reference-app.social-inbox-service-grant
+reference-app.social-inbox-rc-threading
 app-services.registry
 app-services.grants
 app-services.trust-score-provider
@@ -252,11 +288,13 @@ app-services.redaction
 migration.social-mail-preview
 ```
 
-Evidence must verify the app exists and stages, declares its permissions, uses the SDK and design
-system, signs messages through the bounded AppVault social-message route, publishes generated
-outbox documents, manages durable USK subscriptions, persists only safe bounded app data, requests
-and uses a mediated Trust Score Service grant for message-author scores, verifies revocation
-failure, and documents the migration boundary.
+Evidence must verify the app exists and stages, preserves `app.id=social-inbox`, declares its
+permissions, uses the SDK and design system, signs messages through the bounded AppVault
+social-message route, publishes generated outbox documents, manages durable USK subscriptions,
+persists only safe bounded app data, builds local threads from `replyTo`, supports channel
+filtering and bounded local search, renders safe author/profile metadata, requests and uses a
+mediated Trust Score Service grant for message-author scores, verifies revocation failure, and
+documents the migration boundary.
 
 Evidence must not include raw message bodies, raw fetched content, raw request bodies, raw
 signatures, private insert URIs, private keys, private identity material, browser-session tokens,

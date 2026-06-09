@@ -95,10 +95,12 @@ Preview, Feed Reader, and Trust Graph Preview bundles use `app.ui.mode=static` a
 available. Queue Manager and legacy Publisher remain compatibility fallbacks for the current
 retirement map. Site Publisher is the content reference app for local publishing workflows, Profile
 Publisher is the identity-profile reference app for vault-backed profile-document publishing,
-Social Inbox Preview is the social/mail-like migration reference app, Feed Reader is the bounded
-content-subscription reference app for durable USK feed follow behavior, feed reading, and generated
-feed publication, and Trust Graph Preview is the local trust-service reference app for trust
-statements, anchors, preview scoring, and the `trust.score` app-service provider.
+Social Inbox RC is the threaded social inbox reference app for local threads, read state,
+subscriptions, channel/search filters, safe author links, and advisory Trust Graph annotations.
+Feed Reader is the bounded content-subscription reference app for durable USK feed follow behavior,
+feed reading, and generated feed publication, and Trust Graph Preview is the local trust-service
+reference app for trust statements, anchors, preview scoring, and the `trust.score` app-service
+provider.
 
 See [app-owned-ui.md](app-owned-ui.md) for the `/apps/{appId}/` route contract, first-party
 bootstrap JSON, static asset security boundary, and API summary fields. See
@@ -237,7 +239,7 @@ crypta-app validate --bundle-dir build/dev-apps/hello-queue --strict
 crypta-app sign \
   --bundle-dir build/dev-apps/hello-queue \
   --key-id dev-local \
-  --private-key-file /abs/path/to/dev-app-signing-private.pem
+  --private-key-file dev/app-signing-private.pem
 crypta-app pack \
   --bundle-dir build/dev-apps/hello-queue \
   --output dist/apps/hello-queue-0.1.0.zip \
@@ -245,7 +247,7 @@ crypta-app pack \
 crypta-app verify \
   --bundle-dir build/dev-apps/hello-queue \
   --trusted-key-id dev-local \
-  --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
+  --trusted-public-key-file dev/app-signing-public.pem
 ```
 
 `crypta-app init` creates a standalone staged bundle directory, not a new Gradle subproject. The
@@ -254,7 +256,7 @@ is available, and copies canonical design-system assets into `static/crypta-ui/`
 [app-dev-cli.md](app-dev-cli.md) for the full scaffold, lint, pack, and catalog flow.
 
 The CLI does not replace the first-party Gradle workflow. Queue Manager, legacy Publisher, Site
-Publisher, Profile Publisher, Social Inbox Preview, Feed Reader, and Trust Graph Preview can keep
+Publisher, Profile Publisher, Social Inbox RC, Feed Reader, and Trust Graph Preview can keep
 using their `stageApp`, `signApp`, and `verifyApp` tasks.
 
 ## Catalog Store Metadata
@@ -375,7 +377,7 @@ Stage the Feed Reader reference app:
 ./gradlew :apps:feed-reader:stageApp
 ```
 
-Stage the Social Inbox Preview reference app:
+Stage the Social Inbox RC reference app:
 
 ```bash
 ./gradlew :apps:social-inbox:stageApp
@@ -392,7 +394,7 @@ Sign it with a local development key pair:
 ```bash
 ./gradlew :apps:queue-manager:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
 Sign Site Publisher with the same local development key pair:
@@ -400,7 +402,7 @@ Sign Site Publisher with the same local development key pair:
 ```bash
 ./gradlew :apps:site-publisher:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
 Sign Profile Publisher with the same local development key pair:
@@ -408,7 +410,7 @@ Sign Profile Publisher with the same local development key pair:
 ```bash
 ./gradlew :apps:profile-publisher:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
 Sign Feed Reader with the same local development key pair:
@@ -416,15 +418,15 @@ Sign Feed Reader with the same local development key pair:
 ```bash
 ./gradlew :apps:feed-reader:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
-Sign Social Inbox Preview with the same local development key pair:
+Sign Social Inbox RC with the same local development key pair:
 
 ```bash
 ./gradlew :apps:social-inbox:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
 Sign Trust Graph Preview with the same local development key pair:
@@ -432,7 +434,7 @@ Sign Trust Graph Preview with the same local development key pair:
 ```bash
 ./gradlew :apps:trust-graph:signApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
 Verify it with the matching public key:
@@ -440,7 +442,7 @@ Verify it with the matching public key:
 ```bash
 ./gradlew :apps:queue-manager:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 Verify Site Publisher with the matching public key:
@@ -448,7 +450,7 @@ Verify Site Publisher with the matching public key:
 ```bash
 ./gradlew :apps:site-publisher:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 Verify Profile Publisher with the matching public key:
@@ -456,7 +458,7 @@ Verify Profile Publisher with the matching public key:
 ```bash
 ./gradlew :apps:profile-publisher:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 Verify Feed Reader with the matching public key:
@@ -464,15 +466,15 @@ Verify Feed Reader with the matching public key:
 ```bash
 ./gradlew :apps:feed-reader:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
-Verify Social Inbox Preview with the matching public key:
+Verify Social Inbox RC with the matching public key:
 
 ```bash
 ./gradlew :apps:social-inbox:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 Verify Trust Graph Preview with the matching public key:
@@ -480,13 +482,13 @@ Verify Trust Graph Preview with the matching public key:
 ```bash
 ./gradlew :apps:trust-graph:verifyApp \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 Stage, sign, and verify all first-party apps:
 
 The root first-party tasks include Queue Manager, Publisher, Site Publisher, Profile Publisher,
-Social Inbox Preview, Feed Reader, and Trust Graph Preview.
+Social Inbox RC, Feed Reader, and Trust Graph Preview.
 
 ```bash
 ./gradlew \
@@ -494,8 +496,8 @@ Social Inbox Preview, Feed Reader, and Trust Graph Preview.
   signFirstPartyApps \
   verifyFirstPartyApps \
   -PcryptadAppSigningKeyId=dev-local \
-  -PcryptadAppSigningPrivateKeyFile=/abs/path/to/dev-app-signing-private.pem \
-  -PcryptadAppSigningPublicKeyFile=/abs/path/to/dev-app-signing-public.pem
+  -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem \
+  -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
 To install the signed bundle through the running node, export the matching trusted public key
@@ -503,7 +505,7 @@ before starting Cryptad:
 
 ```bash
 export CRYPTAD_APPHOST_TRUSTED_KEY_ID=dev-local
-export CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE=/abs/path/to/dev-app-signing-public.pem
+export CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE=dev/app-signing-public.pem
 ```
 
 If you deliberately want to test unsigned local bundles against a live node, opt in explicitly:

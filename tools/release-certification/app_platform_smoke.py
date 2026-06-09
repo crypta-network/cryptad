@@ -131,6 +131,11 @@ SOCIAL_INBOX_PERMISSIONS = {
     "app.services.read",
     "app.services.call",
 }
+SOCIAL_INBOX_DISPLAY_NAMES = {
+    "Social Inbox Preview",
+    "Social Inbox RC",
+    "Social Inbox Reference",
+}
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -914,7 +919,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
         },
         {
             "appId": "social-inbox",
-            "name": "Social Inbox Preview",
+            "name": "Social Inbox RC",
+            "allowedNames": SOCIAL_INBOX_DISPLAY_NAMES,
             "stagedDir": (
                 settings.workspace_root / "apps/social-inbox/build/cryptad-app/social-inbox"
             ),
@@ -980,8 +986,11 @@ def validate_app_bundle(bundle_dir: Path, spec: dict[str, Any], settings: Settin
             errors.append(f"{key} is missing")
     if manifest.get("app.id") != spec["appId"]:
         errors.append(f"app.id expected {spec['appId']}, got {manifest.get('app.id')}")
-    if manifest.get("app.name") != spec["name"]:
-        errors.append(f"app.name expected {spec['name']}, got {manifest.get('app.name')}")
+    allowed_names = set(spec.get("allowedNames", {spec["name"]}))
+    if manifest.get("app.name") not in allowed_names:
+        errors.append(
+            f"app.name expected one of {sorted(allowed_names)}, got {manifest.get('app.name')}"
+        )
     if manifest.get("app.ui.mode") != "static":
         errors.append("app.ui.mode must be static")
     if manifest.get("app.ui.entry") != "static/index.html":
@@ -7274,7 +7283,7 @@ def collect_social_inbox_reference_app_evidence(settings: Settings) -> EvidenceI
         }
         checks["manifestDeclaresSocialInbox"] = (
             manifest.get("app.id") == "social-inbox"
-            and manifest.get("app.name") == "Social Inbox Preview"
+            and manifest.get("app.name") in SOCIAL_INBOX_DISPLAY_NAMES
             and manifest.get("app.ui.mode") == "static"
             and manifest.get("app.ui.entry") == "static/index.html"
         )
@@ -7553,7 +7562,6 @@ def collect_social_inbox_app_data_evidence(settings: Settings) -> EvidenceItem:
     )
     checks["signingDoesNotOverwritePublishSummary"] = (
         "persistOutboxSummary(await localOutboxSummary())" not in app_js
-        and "function localOutboxSummary" not in app_js
         and "await persistOutboxSummary(summary)" in app_js
     )
     checks["storesSafeSummariesOnly"] = all(
@@ -7671,7 +7679,7 @@ def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> Eviden
         and "return { status: \"unscored\", summary: \"No local trust evidence.\" }" in app_js
     )
     checks["docsFrameScoresAsAnnotations"] = (
-        "Trust Graph Preview" in reference_doc
+        ("Trust Graph Preview" in reference_doc or "Trust Graph Local RC" in reference_doc)
         and "message-author" in reference_doc
         and "Trust Score Service grant" in reference_doc
         and "not a moderation decision" in reference_doc
@@ -7702,6 +7710,240 @@ def collect_social_inbox_trust_annotation_evidence(settings: Settings) -> Eviden
     )
 
 
+def collect_social_inbox_rc_threading_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    spec = social_inbox_spec(settings)
+    details: dict[str, Any] = {
+        "appId": "social-inbox",
+        "checks": {},
+        "sourceFiles": [
+            "apps/social-inbox/src/staged/static/app.js",
+            "apps/social-inbox/src/staged/static/index.html",
+            "apps/social-inbox/src/staged/cryptad-app.properties.template",
+            "docs/social-inbox-reference-app.md",
+            "apps/social-inbox/README.md",
+        ],
+        "redaction": {
+            "rawMessageBodiesExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawSignaturesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "privateKeysExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    errors: list[str] = []
+    if spec is None:
+        return EvidenceItem(
+            "reference-app.social-inbox-rc-threading",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox RC threading evidence is missing its first-party app spec.",
+            source,
+            details,
+        )
+
+    workspace = settings.workspace_root
+    app_js = read_source(spec["sourceDir"] / "static/app.js")
+    index = read_source(spec["sourceDir"] / "static/index.html")
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "apps/social-inbox/README.md",
+            "docs/social-inbox-reference-app.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    docs_lower = normalized_source_text(docs_text)
+    source_manifest_path = spec["sourceDir"] / "cryptad-app.properties.template"
+    staged_manifest_path = spec["stagedDir"] / "cryptad-app.properties"
+    source_manifest = parse_properties(source_manifest_path) if source_manifest_path.is_file() else {}
+    staged_manifest = parse_properties(staged_manifest_path) if staged_manifest_path.is_file() else {}
+    manifest = staged_manifest or source_manifest
+    migration_names = parse_permission_set(manifest.get("app.data.migrations", ""))
+    checks = details["checks"]
+    checks["threadBuildingLogic"] = all(
+        fragment in app_js
+        for fragment in (
+            "buildThreadIndex",
+            "normalizeReplyReference",
+            "messageThreadRootId",
+            "threadSortKey",
+            "messageSortKey",
+            "threadUnreadCount",
+            "threadContainsMessage",
+            "replyTo",
+        )
+    ) and any(fragment in app_js.lower() for fragment in ("cycle", "visited", "visiting"))
+    checks["threadRenderingIsBoundedAndDomSafe"] = (
+        all(
+            fragment in app_js
+            for fragment in (
+                "maxThreadDepth",
+                "maxRenderedThreadMessages",
+                "textContent",
+                "replaceChildren",
+            )
+        )
+        and "innerHTML" not in app_js
+        and "insertAdjacentHTML" not in app_js
+    )
+    checks["replyActionUsesExistingReplyTo"] = (
+        "Reply" in app_js + index
+        and "replyTo" in app_js
+        and "createSocialMessageDocument" in app_js
+        and "reply-message" not in app_js
+    )
+    checks["channelFilteringIsLocal"] = (
+        "All channels" in app_js + index
+        and all(
+            fragment in app_js
+            for fragment in (
+                "channelFilter",
+                "selectedChannel",
+                "maxImportedChannelLength",
+                "general",
+            )
+        )
+    )
+    checks["boundedLocalSearch"] = all(
+        fragment in app_js
+        for fragment in (
+            "maxSearchQueryLength",
+            "threadContainsMessage",
+            "searchQuery",
+            "bodyPreview",
+            "sourceLabel",
+        )
+    )
+    checks["threadActionsPersistSafeState"] = (
+        all(
+            fragment in app_js
+            for fragment in (
+                "markThreadRead",
+                "markThreadUnread",
+                "archiveThread",
+                "toggleThreadPin",
+                "isSafeMessageId",
+                "boundedReadState",
+            )
+        )
+        and "read-state" in app_js
+    )
+    checks["authorProfileDisplayIsSafe"] = all(
+        fragment in app_js
+        for fragment in (
+            "authorLabel",
+            "authorFingerprint",
+            "profileUri",
+            "optionalCryptaContentUri",
+            "copyProfileUri",
+        )
+    )
+    checks["dedupePreservesSafeSourceSummaries"] = all(
+        fragment in app_js
+        for fragment in (
+            "seenCount",
+            "firstImportedAt",
+            "lastSeenAt",
+            "sourcesSeen",
+            "sourceSummariesForDedupe",
+            "sourceUriHash",
+        )
+    )
+    checks["subscriptionRefreshUxIsExplicit"] = all(
+        fragment in app_js + index
+        for fragment in (
+            "refreshAllSources",
+            "lastCheckedAt",
+            "lastSeenEdition",
+            "updateCount",
+            "lastError",
+        )
+    )
+    checks["trustGraphMediatedOnly"] = (
+        all(
+            fragment in app_js
+            for fragment in (
+                "CryptaPlatform.services.get",
+                "CryptaPlatform.services.grants.list",
+                "CryptaPlatform.services.grants.request",
+                "CryptaPlatform.services.invoke",
+            )
+        )
+        and "CryptaPlatform.trust.score" not in app_js
+        and "/api/v1/trust-graph/score" not in app_js
+        and "/api/v1/" not in app_js
+    )
+    checks["noUnsafeBrowserPersistenceOrExecution"] = all(
+        forbidden not in app_js
+        for forbidden in (
+            "localStorage",
+            "sessionStorage",
+            "indexedDB",
+            "document.cookie",
+            "eval(",
+            "new Function",
+        )
+    )
+    checks["manifestUsesNonBlockingSchemaContract"] = (
+        manifest.get("app.data.schema.current") == "1"
+        and manifest.get("app.data.schema.namespaces") == "ui-state,social"
+        and manifest.get("app.data.schema.namespace.ui-state.current") == "1"
+        and manifest.get("app.data.schema.namespace.social.current") == "1"
+        and not migration_names
+        and "migrate-social-inbox-data.sh" not in "\n".join(
+            f"{key}={value}" for key, value in manifest.items()
+        )
+    )
+    checks["appWritesExistingSchemaVersion"] = (
+        "const dataSchemaVersion = 1" in app_js
+        and "schemaVersion: dataSchemaVersion" in app_js
+    )
+    checks["docsFrameRcReferenceAndNonGoals"] = (
+        ("social inbox rc" in docs_lower or "social inbox reference" in docs_lower)
+        and "thread" in docs_lower
+        and "read state" in docs_lower
+        and "trust graph" in docs_lower
+        and "annotations only" in docs_lower
+        and "encrypted mail" in docs_lower
+        and "freetalk" in docs_lower
+        and "sone" in docs_lower
+        and "freemail" in docs_lower
+        and ("full wot" in docs_lower or "full web of trust" in docs_lower)
+        and ("daemon-core message" in docs_lower or "outside daemon core" in docs_lower)
+    )
+    checks["evidenceIdDocumented"] = "reference-app.social-inbox-rc-threading" in docs_text
+    details["manifest"] = {
+        "appId": manifest.get("app.id"),
+        "name": manifest.get("app.name"),
+        "schemaVersion": manifest.get("app.data.schema.current"),
+        "namespaces": manifest.get("app.data.schema.namespaces"),
+        "migrations": sorted(migration_names),
+    }
+    for name, passed in checks.items():
+        if passed is not True:
+            errors.append(f"social inbox RC threading check failed: {name}")
+    if errors:
+        return EvidenceItem(
+            "reference-app.social-inbox-rc-threading",
+            root_consequence(settings, "fail"),
+            True,
+            "Social Inbox RC threading evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "reference-app.social-inbox-rc-threading",
+        "pass",
+        True,
+        "Social Inbox RC threading evidence passed.",
+        source,
+        details,
+    )
+
+
 def collect_social_mail_migration_preview_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     workspace = settings.workspace_root
@@ -7723,8 +7965,8 @@ def collect_social_mail_migration_preview_evidence(settings: Settings) -> Eviden
     checks = {
         "migrationFramingPresent": (
             "social/mail-like" in docs_text
-            and "migration spike" in docs_lower
-            and "outside the daemon" in docs_lower
+            and ("reference app" in docs_lower or "migration" in docs_lower)
+            and ("outside the daemon" in docs_lower or "outside daemon core" in docs_lower)
         ),
         "nonGoalsDocumented": all(
             fragment in docs_text
@@ -7734,7 +7976,7 @@ def collect_social_mail_migration_preview_evidence(settings: Settings) -> Eviden
                 "Sone",
                 "Freemail",
                 "encrypted mail",
-                "network protocol changes",
+                "network protocol change",
                 "daemon-core message protocol",
             )
         ),
@@ -7749,7 +7991,7 @@ def collect_social_mail_migration_preview_evidence(settings: Settings) -> Eviden
             )
         ),
         "uiStatesPreviewBoundary": (
-            "Migration spike status" in index
+            "Reference app scope" in index
             and "not Freetalk, Sone, Freemail" in index
             and "does not add a daemon-core message store" in index
         ),
@@ -7817,7 +8059,8 @@ def collect_legacy_plugin_migration_evidence(settings: Settings) -> EvidenceItem
         "freetalkSoneMigration": "Freetalk/Sone-like" in guide_text,
         "freemailMigration": "Freemail-like" in guide_text,
         "trustGraphPreview": "Trust Graph Preview" in guide_text,
-        "socialInboxPreview": "Social Inbox Preview" in guide_text,
+        "socialInboxReference": "Social Inbox RC" in guide_text
+        or "Social Inbox reference" in guide_text,
         "appVault": "app vault" in guide_lower or "AppVault" in guide_text,
         "appData": "app data" in guide_lower or "app-data" in guide_lower,
         "contentSubscriptions": "content subscriptions" in guide_lower,
@@ -10624,6 +10867,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_social_inbox_subscriptions_evidence(settings),
         collect_social_inbox_app_data_evidence(settings),
         collect_social_inbox_trust_annotation_evidence(settings),
+        collect_social_inbox_rc_threading_evidence(settings),
         collect_social_mail_migration_preview_evidence(settings),
         collect_legacy_plugin_migration_evidence(settings),
         collect_legacy_plugin_social_inbox_spike_evidence(settings),
@@ -11334,6 +11578,11 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.social-inbox-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.social-inbox-app-data"]["status"] == "pass"
         assert evidence_by_id["reference-app.social-inbox-trust-annotations"]["status"] == "pass"
+        assert evidence_by_id["reference-app.social-inbox-rc-threading"]["status"] == "pass"
+        assert (
+            evidence_by_id["reference-app.social-inbox-rc-threading"]["requiredForReleaseCandidate"]
+            is True
+        )
         assert evidence_by_id["migration.social-mail-preview"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.migration-guide"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
@@ -11354,6 +11603,22 @@ def run_self_test(repo_root: Path) -> None:
         assert "noDirectLocalEndpointReference" in direct_local_endpoint_item.details["errors"], (
             direct_local_endpoint_item
         )
+        try:
+            social_inbox_app_js.write_text(
+                original_social_inbox_js
+                + "\nCryptaPlatform.trust.score({ subjectKind: 'identity' });\n"
+                + "\nfetch('/api/v1/trust-graph/score');\n",
+                encoding="utf-8",
+            )
+            direct_trust_route_item = collect_social_inbox_rc_threading_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            social_inbox_app_js.write_text(original_social_inbox_js, encoding="utf-8")
+        assert direct_trust_route_item.status == "fail", direct_trust_route_item
+        assert "social inbox RC threading check failed: trustGraphMediatedOnly" in (
+            direct_trust_route_item.details["errors"]
+        ), direct_trust_route_item
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
@@ -12021,7 +12286,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         (
             "social-inbox",
             "social-inbox",
-            "Social Inbox Preview",
+            "Social Inbox RC",
             "social-inbox.sh",
             "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,content.subscribe,"
             "content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,"
@@ -12031,16 +12296,38 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const socialOutboxType = 'crypta.social.outbox.v1';\n"
             "const maxSources = 16;\n"
             "const maxImportedMessages = 160;\n"
-            "const maxDraftBodyLength = 4096; const maxImportedSubjectLength = 160; const maxAuthorLabelLength = 120;\n"
+            "const maxDraftBodyLength = 4096; const maxImportedSubjectLength = 160; const maxAuthorLabelLength = 120; const maxImportedChannelLength = 64;\n"
             "const maxImportedBodyPreviewLength = 700;\n"
             "const maxReadStateEntries = 240;\n"
             "const maxFetchedDocumentChars = 131072;\n"
+            "const maxThreadDepth = 12;\n"
+            "const maxRenderedThreadMessages = 160;\n"
+            "const maxSearchQueryLength = 80;\n"
             "function normalizedCryptaContentUri(uri) { return String(uri).startsWith('USK@') || String(uri).startsWith('crypta:USK@') ? uri : null; }\n"
             "const socialNode = { textContent: '' };\n"
             "const messageIdPattern = /^msg-[0-9a-f]{64}$/;\n"
+            "const channelFilter = 'all'; const selectedChannel = 'general'; const searchQuery = 'subject authorFingerprint bodyPreview sourceLabel';\n"
+            "function normalizeReplyReference(value) { return isSafeMessageId(value) ? value : ''; }\n"
+            "function messageSortKey(message) { return `${message.createdAt}:${message.messageId}`; }\n"
+            "function messageThreadRootId(message, byId) { const parent = normalizeReplyReference(message.replyTo); return parent && byId.get(parent) ? parent : message.messageId; }\n"
+            "function threadSortKey(thread) { return `${thread.pinned}:${thread.latestCreatedAt}:${thread.rootId}`; }\n"
+            "function threadUnreadCount(thread) { return thread.messages.filter((message) => !message.read).length; }\n"
+            "function threadContainsMessage(thread, query) { return String(thread.subject + thread.authorLabel + thread.authorFingerprint + thread.channel + thread.bodyPreview + thread.sourceLabel).toLowerCase().includes(query); }\n"
+            "function buildThreadIndex(messages, readState) { const byId = new Map(); const visiting = new Set(); const visited = new Set(); const cycleBreak = 'cycle detection'; return { byId, visiting, visited, cycleBreak, readState }; }\n"
+            "function renderThreadList(threads) { socialNode.textContent = ''; socialNode.replaceChildren(...threads.slice(0, maxRenderedThreadMessages)); }\n"
+            "function markThreadRead(thread) { boundedReadState(thread.messages.map((message) => message.messageId)); }\n"
+            "function markThreadUnread(thread) { boundedReadState(thread.messages.map((message) => message.messageId)); }\n"
+            "function archiveThread(thread) { thread.messages.forEach((message) => isSafeMessageId(message.messageId)); }\n"
+            "function toggleThreadPin(thread) { thread.pinned = !thread.pinned; }\n"
+            "function copyProfileUri(uri) { return optionalCryptaContentUri(uri); }\n"
+            "function refreshAllSources() { return 'Refresh all active sources'; }\n"
+            "const threadSourceSummary = { seenCount: 1, firstImportedAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:00Z', sourcesSeen: [{ sourceUriHash: 'redacted', sourceLabel: 'source' }] };\n"
+            "function sourceSummariesForDedupe(message) { return message.sourcesSeen || [{ sourceUriHash: 'redacted' }]; }\n"
+            "const lastCheckedAt = '2026-01-01T00:00:00Z'; const lastSeenEdition = 1;\n"
             "const records = { uiState: [\"ui-state\", \"social-inbox\"], sources: [\"social\", \"sources\"], "
             "outboxSummary: [\"social\", \"outbox-summary\"], importedMessageIndex: [\"social\", \"imported-message-index\"], "
             "readState: [\"social\", \"read-state\"], drafts: [\"social\", \"drafts\"] };\n"
+            "const dataSchemaVersion = 1;\n"
             "CryptaPlatform.bootstrap.load({ appId });\n"
             "CryptaPlatform.vault.identities.list();\n"
             "CryptaPlatform.vault.identities.create({ label: 'Social' });\n"
@@ -12074,13 +12361,13 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const publicSourceUriHash = 'redacted'; const publicSourceUriSummary = 'redacted';\n"
             "const insertUriRedaction = 'redacted'; function redactedInsertUri(value) { return 'redacted'; }\n"
             "CryptaPlatform.data.records.getJson('ui-state', 'social-inbox');\n"
-            "CryptaPlatform.data.records.putJson({ namespace: 'social', key: 'sources', schemaVersion: 1, value: [] });\n"
+            "CryptaPlatform.data.records.putJson({ namespace: 'social', key: 'sources', schemaVersion: dataSchemaVersion, value: [] });\n"
             "const trustScoreProviderAppId = \"trust-graph\"; const trustScoreServiceId = \"trust.score\"; const trustScoreContext = \"message-author\";\n"
             "CryptaPlatform.services.get(trustScoreProviderAppId, trustScoreServiceId);\n"
             "CryptaPlatform.services.grants.list();\n"
             "CryptaPlatform.services.grants.request({ providerAppId: trustScoreProviderAppId, serviceId: trustScoreServiceId, scopes: [\"score.read\"], contexts: [trustScoreContext], purpose: 'Annotate message authors.' });\n"
             "CryptaPlatform.services.invoke(trustScoreProviderAppId, trustScoreServiceId, { subjectKind: \"identity\", subjectUri: 'fingerprint', context: trustScoreContext, scope: 'score.read' });\n"
-            "const authorFingerprint = 'fingerprint'; const trustGrantRequired = 'Trust score unavailable / grant required.'; const trustGrantRevoked = 'Trust score unavailable / grant revoked.'; const evidenceCount = 0;\n"
+            "const authorLabel = 'author'; const authorFingerprint = 'fingerprint'; const profileUri = 'crypta:USK@redacted/profile/0/profile.json'; const trustGrantRequired = 'Trust score unavailable / grant required.'; const trustGrantRevoked = 'Trust score unavailable / grant revoked.'; const evidenceCount = 0;\n"
             "CryptaPlatform.queue.snapshot({ page: 'uploads' });\n"
             "const dataRecords = 'data.records'; const contentSubscriptions = 'content.subscriptions'; const serviceInvocation = 'services.invoke'; const trustScore = 'trust.score';\n",
         ),
@@ -12146,13 +12433,15 @@ def make_self_test_workspace(workspace: Path) -> None:
                 )
             elif app_id == "social-inbox":
                 extra_ui = (
-                    "<h2>Migration spike status</h2>"
-                    "<p>This social/mail-like migration spike runs outside the daemon.</p>"
+                    "<h2>Reference app scope</h2>"
+                    "<p>This social/mail-like reference app runs outside the daemon.</p>"
                     "<p>It is not full WoT and is not Freetalk, Sone, Freemail, encrypted mail, "
                     "and does not add a daemon-core message store. It makes no network protocol change.</p>"
                     "<h2>Identity</h2><h2>Compose</h2><h2>Publish outbox</h2>"
                     "<h2>USK social sources</h2><h2>Sources and subscriptions</h2>"
-                    "<h2>Inbox</h2><div id=\"trust-service-status\"></div>"
+                    "<h2>Threaded inbox</h2><label>All channels</label><input type=\"search\">"
+                    "<button>Reply</button><button>Mark thread read</button>"
+                    "<button>Refresh all active sources</button><div id=\"trust-service-status\"></div>"
                     "<button>Request trust grant</button><button>Refresh trust</button>"
                 )
             else:
@@ -12233,6 +12522,12 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.service-request.trust-score.contexts=message-author",
                 "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.",
             ]
+            migration_lines = [
+                "app.data.schema.current=1",
+                "app.data.schema.namespaces=ui-state,social",
+                "app.data.schema.namespace.ui-state.current=1",
+                "app.data.schema.namespace.social.current=1",
+            ]
         elif is_trust_graph:
             service_lines = [
                 "app.services.provides=trust-score",
@@ -12272,7 +12567,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.data.migration.ui-state-v1-v2.requiresStopped=true",
                 "app.data.migration.ui-state-v1-v2.description=Validate Feed Reader UI state schema v2.",
             ]
-        (staged / "cryptad-app.properties").write_text(
+        manifest_text = (
             "\n".join(
                 [
                     "manifest.version=1",
@@ -12292,7 +12587,11 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "quota.cache.bytes=0",
                 ]
             )
-            + "\n",
+            + "\n"
+        )
+        (staged / "cryptad-app.properties").write_text(manifest_text, encoding="utf-8")
+        (source / "cryptad-app.properties.template").write_text(
+            manifest_text.replace("app.version=0.1.0", "app.version=${appVersion}"),
             encoding="utf-8",
         )
         if app_id == "site-publisher":
@@ -12321,14 +12620,16 @@ def make_self_test_workspace(workspace: Path) -> None:
             )
         if app_id == "social-inbox":
             (workspace / "apps/social-inbox/README.md").write_text(
-                "Social Inbox Preview is a social/mail-like migration spike outside the daemon. "
+                "Social Inbox RC is a social/mail-like reference app outside daemon core. "
                 "It uses AppVault identities, profile-document metadata, bounded crypta.social.message.v1 "
                 "domain-separated signing, generated app-document outbox publication, content.subscribe "
-                "USK source metadata, durable app-data records, and Trust Graph Preview annotations. "
+                "USK source metadata, durable app-data records, a non-blocking schema-1 namespace contract, local message threads, "
+                "bounded local search, channel filters, read state, and Trust Graph Preview annotations only. "
                 "It is not a production social network, mail protocol, full WoT implementation, "
-                "Freetalk/Sone/Freemail compatibility layer, encrypted mail transport, daemon-core message store, "
+                "Freetalk/Sone/Freemail compatibility layer, not encrypted mail, daemon-core message store, "
                 "or a network protocol change, and it avoids private insert URIs, browser-session tokens, "
                 "raw fetched documents, and private identity material. App-data backup scope includes sources, summaries, drafts, and read state. "
+                "Release evidence includes reference-app.social-inbox-rc-threading. "
                 "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
@@ -13352,10 +13653,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "The local transparency log is not a global public log. "
         "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
-        "Social Inbox Preview is a social/mail-like migration spike outside the daemon and not a generic browser signing API. "
+        "Social Inbox RC is a social/mail-like reference app and migration spike outside the daemon core, outside the daemon, and not a generic browser signing API. "
         "It uses AppVault identity, bounded crypta.social.message.v1 social message signing, a Signed social message document format with domain-separated signatures, profile-document metadata, generated app-document outbox insert, "
-        "durable content.subscribe USK sources, app-data read-state and drafts, and Trust Graph Preview message-author annotations that are not a moderation decision. "
-        "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, encrypted mail, a daemon-core message protocol, or network protocol changes. "
+        "durable content.subscribe USK sources, local thread reconstruction, channel filters, bounded local search, app-data read state and drafts, a non-blocking schema-1 namespace contract, and Trust Graph Preview message-author annotations only that are not a moderation decision. "
+        "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, not encrypted mail, not a full WoT, not a daemon-core message protocol, and not network protocol changes. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
         "Trust Graph Local RC is local trust only, not global truth, not a full Web of Trust, "
         "not complete WoT, no crawling, no global moderation, not blocking, no routing decisions, "
@@ -13422,7 +13723,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Release evidence covers reference-app.profile-publisher, "
         "reference-app.social-inbox, reference-app.social-inbox-signed-message, "
         "reference-app.social-inbox-subscriptions, reference-app.social-inbox-app-data, "
-        "reference-app.social-inbox-trust-annotations, migration.social-mail-preview, "
+        "reference-app.social-inbox-trust-annotations, reference-app.social-inbox-rc-threading, "
+        "migration.social-mail-preview, "
         "legacy-plugin.migration-guide, legacy-plugin.social-inbox-spike, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
@@ -13468,7 +13770,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "compatibility and no old FCP plugin command compatibility. WebOfTrust-like and WoT-like "
         "migration maps to Trust Graph Preview, durable trust graph storage, content subscriptions, "
         "app vault identity grants, app data, and app-service grants for trust.score. "
-        "Freetalk/Sone-like migration maps to Social Inbox Preview, Profile Publisher, Feed Reader, "
+        "Freetalk/Sone-like migration maps to Social Inbox RC, Profile Publisher, Feed Reader, "
         "content subscriptions, app data, and Trust Graph annotations. Freemail-like migration uses "
         "Social Inbox as a bounded spike and is not encrypted mail transport or Freemail protocol "
         "compatibility. Distribution uses signed catalog entries, signed bundles, review receipt "

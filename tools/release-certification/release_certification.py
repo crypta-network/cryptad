@@ -1071,6 +1071,7 @@ def app_platform_evidence(
         "reference-app.social-inbox-subscriptions",
         "reference-app.social-inbox-app-data",
         "reference-app.social-inbox-trust-annotations",
+        "reference-app.social-inbox-rc-threading",
         "migration.social-mail-preview",
         "legacy-plugin.migration-guide",
         "legacy-plugin.social-inbox-spike",
@@ -2055,7 +2056,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="social-inbox-preview",
             category="reference-apps",
-            title="Social Inbox / Message Board Preview reference app",
+            title="Social Inbox RC message-threading reference app",
             required_evidence_ids=(
                 "app-platform.social-message-signing",
                 "reference-app.social-inbox",
@@ -2063,6 +2064,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "reference-app.social-inbox-subscriptions",
                 "reference-app.social-inbox-app-data",
                 "reference-app.social-inbox-trust-annotations",
+                "reference-app.social-inbox-rc-threading",
                 "reference-app.social-inbox-service-grant",
                 "migration.social-mail-preview",
             ),
@@ -3808,6 +3810,10 @@ def evaluate_reference_content_gate(
     previous_social_inbox_trust_item = previous.get(
         "reference-app.social-inbox-trust-annotations"
     )
+    social_inbox_rc_threading_item = current.get("reference-app.social-inbox-rc-threading")
+    previous_social_inbox_rc_threading_item = previous.get(
+        "reference-app.social-inbox-rc-threading"
+    )
     social_mail_migration_item = current.get("migration.social-mail-preview")
     previous_social_mail_migration_item = previous.get("migration.social-mail-preview")
     generated_document_item = current.get("app-platform.generated-document-insert")
@@ -3861,6 +3867,7 @@ def evaluate_reference_content_gate(
     social_inbox_subscription_details = evidence_details(social_inbox_subscription_item)
     social_inbox_app_data_details = evidence_details(social_inbox_app_data_item)
     social_inbox_trust_details = evidence_details(social_inbox_trust_item)
+    social_inbox_rc_threading_details = evidence_details(social_inbox_rc_threading_item)
     social_mail_migration_details = evidence_details(social_mail_migration_item)
     generated_document_details = evidence_details(generated_document_item)
     content_fetch_details = evidence_details(content_fetch_item)
@@ -3897,6 +3904,7 @@ def evaluate_reference_content_gate(
     social_inbox_subscription_checks = nested_dict(social_inbox_subscription_details, "checks")
     social_inbox_app_data_checks = nested_dict(social_inbox_app_data_details, "checks")
     social_inbox_trust_checks = nested_dict(social_inbox_trust_details, "checks")
+    social_inbox_rc_threading_checks = nested_dict(social_inbox_rc_threading_details, "checks")
     social_inbox_service_grant_checks = nested_dict(social_inbox_service_grant_details, "checks")
     social_mail_migration_checks = nested_dict(social_mail_migration_details, "checks")
     app_services_registry_checks = nested_dict(app_services_registry_details, "checks")
@@ -3944,6 +3952,10 @@ def evaluate_reference_content_gate(
     previous_social_inbox_app_data_status = evidence_status(previous_social_inbox_app_data_item)
     social_inbox_trust_status = evidence_status(social_inbox_trust_item)
     previous_social_inbox_trust_status = evidence_status(previous_social_inbox_trust_item)
+    social_inbox_rc_threading_status = evidence_status(social_inbox_rc_threading_item)
+    previous_social_inbox_rc_threading_status = evidence_status(
+        previous_social_inbox_rc_threading_item
+    )
     social_mail_migration_status = evidence_status(social_mail_migration_item)
     previous_social_mail_migration_status = evidence_status(previous_social_mail_migration_item)
     generated_document_status = evidence_status(generated_document_item)
@@ -4061,6 +4073,11 @@ def evaluate_reference_content_gate(
             "reference-app.social-inbox-trust-annotations",
             social_inbox_trust_status,
             previous_social_inbox_trust_status,
+        ),
+        (
+            "reference-app.social-inbox-rc-threading",
+            social_inbox_rc_threading_status,
+            previous_social_inbox_rc_threading_status,
         ),
         (
             "migration.social-mail-preview",
@@ -4376,6 +4393,31 @@ def evaluate_reference_content_gate(
                     "failureEvidenceIds",
                     "reference-app.social-inbox-trust-annotations",
                 )
+    if social_inbox_rc_threading_checks:
+        for key in (
+            "threadBuildingLogic",
+            "threadRenderingIsBoundedAndDomSafe",
+            "replyActionUsesExistingReplyTo",
+            "channelFilteringIsLocal",
+            "boundedLocalSearch",
+            "threadActionsPersistSafeState",
+            "authorProfileDisplayIsSafe",
+            "dedupePreservesSafeSourceSummaries",
+            "subscriptionRefreshUxIsExplicit",
+            "trustGraphMediatedOnly",
+            "noUnsafeBrowserPersistenceOrExecution",
+            "manifestUsesNonBlockingSchemaContract",
+            "appWritesExistingSchemaVersion",
+            "docsFrameRcReferenceAndNonGoals",
+            "evidenceIdDocumented",
+        ):
+            if social_inbox_rc_threading_checks.get(key) is not True:
+                failures.append(f"Social Inbox RC threading check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-rc-threading",
+                )
     if social_inbox_service_grant_checks:
         for key in (
             "socialManifestRequestsServiceGrant",
@@ -4584,6 +4626,8 @@ def evaluate_reference_content_gate(
             "previousSocialInboxAppDataStatus": previous_social_inbox_app_data_status,
             "socialInboxTrustAnnotationStatus": social_inbox_trust_status,
             "previousSocialInboxTrustAnnotationStatus": previous_social_inbox_trust_status,
+            "socialInboxRcThreadingStatus": social_inbox_rc_threading_status,
+            "previousSocialInboxRcThreadingStatus": previous_social_inbox_rc_threading_status,
             "socialMailMigrationStatus": social_mail_migration_status,
             "previousSocialMailMigrationStatus": previous_social_mail_migration_status,
             "generatedDocumentInsertStatus": generated_document_status,
@@ -5005,6 +5049,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.social-inbox-subscriptions",
         "reference-app.social-inbox-app-data",
         "reference-app.social-inbox-trust-annotations",
+        "reference-app.social-inbox-rc-threading",
         "migration.social-mail-preview",
         "legacy-plugin.migration-guide",
         "legacy-plugin.social-inbox-spike",
@@ -5799,6 +5844,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.trust-graph",
             "reference-app.trust-graph-durable-exchange",
             "reference-app.social-inbox",
+            "reference-app.social-inbox-rc-threading",
             "migration.social-mail-preview",
             "legacy-plugin.migration-guide",
             "legacy-plugin.social-inbox-spike",
@@ -5929,6 +5975,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox-subscriptions",
             "reference-app.social-inbox-app-data",
             "reference-app.social-inbox-trust-annotations",
+            "reference-app.social-inbox-rc-threading",
             "reference-app.social-inbox-service-grant",
             "migration.social-mail-preview",
             "legacy-plugin.migration-guide",

@@ -179,20 +179,21 @@ the app-data API for bounded drafts and publish summaries, and
 source-path authority. It should not request `content.insert`, `vault.identities.manage`, or
 `vault.secrets.*` unless a later feature needs those broader capabilities.
 
-Social Inbox Preview is the social/mail-like migration reference app. It requests
+Social Inbox RC is the threaded social inbox reference app. It requests
 `vault.identities.read`, `vault.identities.create`, and `vault.identities.use` to create/select an
 app-owned identity and call the bounded `social-message` signing route. It requests
 `content.insert.app-document`, `queue.write`, and `queue.read` to publish generated
 `crypta.social.outbox.v1` snapshots and display queue summaries. It requests `content.fetch` and
 `content.subscribe` for bounded USK source fetch/subscription metadata, `app.data.read` and
-`app.data.write` for sources, outbox summaries, imported-message summaries, read state, and
-explicitly saved drafts, and `app.services.read` plus `app.services.call` for the operator-approved
-Trust Graph Preview `trust.score` service used for `message-author` annotations.
+`app.data.write` for sources, outbox summaries, imported-message summaries, channel filters,
+message/thread read state, and explicitly saved drafts, and `app.services.read` plus
+`app.services.call` for the operator-approved Trust Graph Local RC `trust.score` service used for
+advisory `message-author` annotations.
 It should not request `vault.identities.manage`, `vault.secrets.*`, local source-path insert
-permissions, moderation authority, or any legacy plugin/Core protocol capability. Audit and
-release evidence must exclude raw social message bodies, raw fetched social documents, raw request
-bodies, raw signatures, private insert URIs, private identity material, browser-session tokens,
-form passwords, and local paths.
+permissions, moderation authority, crawler behavior, encrypted mail transport, or any legacy
+plugin/Core protocol capability. Audit and release evidence must exclude raw social message bodies,
+raw fetched social documents, raw profile documents, raw request bodies, raw signatures, private
+insert URIs, private identity material, browser-session tokens, form passwords, and local paths.
 
 Feed Reader is the first content-subscription reference app. Its read flow uses `content.fetch`
 for on-demand `POST /api/v1/content/fetch` rendering and `content.subscribe` for durable USK

@@ -14,6 +14,10 @@
   const maxImportedMessages = 160;
   const maxLocalOutboxMessages = 24;
   const maxReadStateEntries = 240;
+  const maxRenderedThreads = 80;
+  const maxRenderedThreadMessages = 140;
+  const maxThreadDepth = 12;
+  const maxSearchQueryLength = 80;
   const maxDraftBodyLength = 4096;
   const maxImportedSubjectLength = 160;
   const maxImportedChannelLength = 64;
@@ -27,6 +31,7 @@
   const maxTagCount = 12;
   const maxTagLength = 32;
   const maxImportedBodyPreviewLength = 700;
+  const maxSourcesPerMessage = 8;
   const maxFetchedDocumentChars = 128 * 1024;
   const sourcePollIntervalSeconds = 15 * 60;
   const dataSchemaVersion = 1;
@@ -55,6 +60,9 @@
     trustServiceDescriptor: null,
     trustServiceGrants: [],
     trustServiceError: "",
+    channelFilter: "",
+    readFilter: "active",
+    searchQuery: "",
   };
 
   const elements = {
@@ -62,7 +70,10 @@
     identityForm: document.getElementById("identity-form"),
     identitySelect: document.getElementById("identity-select"),
     identitySummary: document.getElementById("identity-summary"),
+    channelFilter: document.getElementById("channel-filter"),
+    inboxFilters: document.getElementById("inbox-filters"),
     inboxList: document.getElementById("inbox-list"),
+    inboxResultSummary: document.getElementById("inbox-result-summary"),
     outboxList: document.getElementById("outbox-list"),
     prepareProfileButton: document.getElementById("prepare-profile-button"),
     profileForm: document.getElementById("profile-form"),
@@ -71,10 +82,16 @@
     publishSummary: document.getElementById("publish-summary"),
     queuePreview: document.getElementById("queue-preview"),
     refreshIdentitiesButton: document.getElementById("refresh-identities-button"),
+    refreshAllSourcesButton: document.getElementById("refresh-all-sources-button"),
     refreshQueueButton: document.getElementById("refresh-queue-button"),
     refreshSubscriptionsButton: document.getElementById("refresh-subscriptions-button"),
     refreshTrustButton: document.getElementById("refresh-trust-button"),
     requestTrustGrantButton: document.getElementById("request-trust-grant-button"),
+    replyContext: document.getElementById("reply-context"),
+    clearReplyButton: document.getElementById("clear-reply-button"),
+    readFilter: document.getElementById("read-filter"),
+    searchInput: document.getElementById("search-input"),
+    clearSearchButton: document.getElementById("clear-search-button"),
     sourceForm: document.getElementById("source-form"),
     sourceList: document.getElementById("source-list"),
     status: document.getElementById("status"),
@@ -108,10 +125,18 @@
     elements.publishForm.addEventListener("submit", publishOutbox);
     elements.sourceForm.addEventListener("submit", addSource);
     elements.refreshIdentitiesButton.addEventListener("click", refreshIdentities);
+    elements.refreshAllSourcesButton.addEventListener("click", refreshAllSources);
     elements.refreshQueueButton.addEventListener("click", refreshUploadQueue);
     elements.refreshSubscriptionsButton.addEventListener("click", refreshSubscriptions);
     elements.refreshTrustButton.addEventListener("click", refreshTrustAnnotations);
     elements.requestTrustGrantButton.addEventListener("click", requestTrustServiceGrant);
+    elements.inboxFilters.addEventListener("submit", (event) => event.preventDefault());
+    elements.channelFilter.addEventListener("change", updateChannelFilter);
+    elements.readFilter.addEventListener("change", updateReadFilter);
+    elements.searchInput.addEventListener("input", updateSearchQuery);
+    elements.clearSearchButton.addEventListener("click", clearSearchQuery);
+    elements.clearReplyButton.addEventListener("click", clearReplyContext);
+    elements.composeForm.elements.namedItem("replyTo").addEventListener("input", renderReplyContext);
   }
 
   async function createIdentity(event) {
@@ -181,7 +206,7 @@
           displayName,
           website: profileUri,
           contactUri: profileUri,
-          tags: ["social-inbox", "preview"],
+          tags: ["social-inbox", "rc"],
         }
       );
       elements.profilePreview.textContent = boundedPreview(
@@ -234,8 +259,7 @@
         delete state.drafts.message;
       }
       await persistDrafts();
-      renderOutbox();
-      renderPublishSummary();
+      renderAll();
       setStatus("Message signed and added to the local outbox.");
     } catch (error) {
       setStatus(CryptaPlatform.api.errorMessage(error), "error");
@@ -259,7 +283,7 @@
     }
     const sourceLabel =
       boundedPreview(textValue(formData, "sourceLabel"), maxSourceLabelLength) ||
-      "Social Inbox Preview";
+      "Social Inbox RC";
     const document = {
       type: socialOutboxType,
       appId,
@@ -426,6 +450,41 @@
     }
   }
 
+  async function refreshAllActiveSources() {
+    const activeSourceIds = state.sources
+      .filter((source) => source.subscriptionId && source.lastStatus !== "Subscription removed")
+      .map((source) => source.id)
+      .slice(0, maxSources);
+    if (activeSourceIds.length === 0) {
+      setStatus("No active social sources are available to refresh.", "warning");
+      return;
+    }
+    setStatus(`Refreshing ${activeSourceIds.length} active social source subscriptions...`);
+    for (const sourceId of activeSourceIds) {
+      const source = state.sources.find((item) => item.id === sourceId);
+      if (!source || !source.subscriptionId) {
+        continue;
+      }
+      try {
+        await CryptaPlatform.content.subscriptions.refresh(source.subscriptionId);
+        source.lastCheckedAt = new Date().toISOString();
+        source.lastStatus = "Refresh requested";
+        source.lastError = "";
+      } catch (error) {
+        source.lastStatus = "Error";
+        source.lastError = CryptaPlatform.api.errorMessage(error);
+      }
+    }
+    await persistSources();
+    await refreshSubscriptions({ silent: true });
+    renderAll();
+    setStatus("Active social source subscription refresh requested.");
+  }
+
+  async function refreshAllSources() {
+    await refreshAllActiveSources();
+  }
+
   async function mutateSubscription(subscriptionIdValue, action) {
     try {
       if (action === "refresh") {
@@ -485,18 +544,22 @@
       authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
       authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
       profileUri: optionalCryptaContentUri(message.profileUri),
-      channel: boundedPreview(message.channel, maxImportedChannelLength) || "general",
-      subject: boundedPreview(stringValue(message.subject), 180),
+      channel: normalizeChannel(message.channel),
+      subject: boundedPreview(stringValue(message.subject), maxImportedSubjectLength),
       bodyPreview: boundedPreview(body, maxImportedBodyPreviewLength),
       bodySha256: await sha256Hex(body),
       createdAt: boundedPreview(message.createdAt, 64),
-      replyTo: boundedPreview(message.replyTo, maxMessageReferenceLength),
+      replyTo: normalizeReplyReference(message.replyTo),
+      tags: boundedTags(message.tags),
       sourceId: source.id,
       sourceLabel: boundedPreview(source.label, maxSourceLabelLength),
       sourceUriHash: source.uriHash || (await sha256Hex(source.subscriptionId || source.id)),
       resolvedUri: redactedPublicUri(stringField(response, "resolvedUri", "requestedUri")),
       signatureSha256: await sha256Hex(stringValue(signature.signatureBase64)),
       importedAt: new Date().toISOString(),
+      firstImportedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      seenCount: 1,
     };
   }
 
@@ -813,14 +876,97 @@
   function mergeImportedMessages(messages) {
     const byId = new Map();
     for (const existing of state.importedMessages) {
-      byId.set(existing.messageId, existing);
+      byId.set(existing.messageId, boundedImportedMessage(existing));
     }
     for (const message of messages) {
-      byId.set(message.messageId, message);
+      const existing = byId.get(message.messageId);
+      byId.set(message.messageId, mergeImportedMessageSummary(existing, message));
     }
     state.importedMessages = Array.from(byId.values())
       .sort((left, right) => stringValue(right.createdAt).localeCompare(stringValue(left.createdAt)))
       .slice(0, maxImportedMessages);
+  }
+
+  function mergeImportedMessageSummary(existing, incoming) {
+    const current = existing || incoming;
+    const firstImportedAt = earliestTimestamp(
+      current.firstImportedAt || current.importedAt,
+      incoming.firstImportedAt || incoming.importedAt
+    );
+    const lastSeenAt = latestTimestamp(
+      current.lastSeenAt || current.importedAt,
+      incoming.lastSeenAt || incoming.importedAt
+    );
+    const sourcesSeen = mergeSourceSummaries(
+      sourceSummariesForDedupe(current),
+      sourceSummariesForDedupe(incoming)
+    );
+    return boundedImportedMessage(
+      Object.assign({}, current, {
+        firstImportedAt,
+        lastSeenAt,
+        seenCount: existing
+          ? Math.min(9999, Math.max(1, numberField(current, "seenCount")) + 1)
+          : Math.max(1, numberField(incoming, "seenCount")),
+        sourcesSeen,
+        sourceId: current.sourceId || incoming.sourceId,
+        sourceLabel: current.sourceLabel || incoming.sourceLabel,
+        sourceUriHash: current.sourceUriHash || incoming.sourceUriHash,
+        importedAt: firstImportedAt,
+      })
+    );
+  }
+
+  function sourceSummariesForDedupe(message) {
+    const summaries = boundedSourceSummaries(message && message.sourcesSeen);
+    if (summaries.length > 0) {
+      return summaries;
+    }
+    const fallback = sourceSummaryFromMessage(message);
+    const fallbackKey = fallback.sourceUriHash || fallback.sourceId || fallback.sourceLabel;
+    return fallbackKey ? [fallback] : [];
+  }
+
+  function sourceSummaryFromMessage(message) {
+    return {
+      sourceId: boundedPreview(message && message.sourceId, 80),
+      sourceLabel: boundedPreview(message && message.sourceLabel, maxSourceLabelLength),
+      sourceUriHash: boundedPreview(message && message.sourceUriHash, 64),
+      importedAt: boundedPreview(message && (message.lastSeenAt || message.importedAt), 64),
+    };
+  }
+
+  function mergeSourceSummaries(left, right) {
+    const byKey = new Map();
+    for (const summary of boundedArray(left, maxSourcesPerMessage).concat(
+      boundedArray(right, maxSourcesPerMessage)
+    )) {
+      const bounded = boundedSourceSummary(summary);
+      const key = bounded.sourceUriHash || bounded.sourceId || bounded.sourceLabel;
+      if (!key) {
+        continue;
+      }
+      const existing = byKey.get(key);
+      byKey.set(
+        key,
+        existing
+          ? Object.assign({}, existing, {
+              importedAt: latestTimestamp(existing.importedAt, bounded.importedAt),
+            })
+          : bounded
+      );
+    }
+    return Array.from(byKey.values()).slice(0, maxSourcesPerMessage);
+  }
+
+  function boundedSourceSummary(summary) {
+    return {
+      sourceId: boundedPreview(summary && summary.sourceId, 80),
+      sourceLabel:
+        boundedPreview(summary && summary.sourceLabel, maxSourceLabelLength) || "Social source",
+      sourceUriHash: boundedPreview(summary && summary.sourceUriHash, 64),
+      importedAt: boundedPreview(summary && summary.importedAt, 64),
+    };
   }
 
   async function refreshTrustAnnotations(options) {
@@ -932,6 +1078,8 @@
   async function loadDurableState() {
     const uiState = await readAppDataRecord(records.uiState, {});
     state.selectedIdentityId = stringValue(uiState.selectedIdentityId);
+    state.channelFilter = normalizeChannelFilter(uiState.channelFilter);
+    state.readFilter = normalizeReadFilter(uiState.readFilter);
     state.sources = boundedArray(await readAppDataRecord(records.sources, []), maxSources);
     state.outboxSummary = await readAppDataRecord(records.outboxSummary, null);
     state.importedMessages = boundedImportedMessages(
@@ -956,6 +1104,8 @@
   async function persistUiState() {
     await putJsonRecord(records.uiState, {
       selectedIdentityId: state.selectedIdentityId,
+      channelFilter: state.channelFilter,
+      readFilter: state.readFilter,
       updatedAt: new Date().toISOString(),
     });
   }
@@ -1021,6 +1171,8 @@
     renderOutbox();
     renderPublishSummary();
     renderTrustServiceStatus();
+    renderInboxControls();
+    renderReplyContext();
     renderInbox();
   }
 
@@ -1108,6 +1260,7 @@
       item.className = "source-item";
       item.append(
         headingText(source.label, "h3"),
+        sourceStatusBadges(source),
         paragraph("source-uri", source.uriSummary),
         summaryRow("Status", source.lastStatus || "Not fetched"),
         summaryRow("Last check", source.lastCheckedAt || ""),
@@ -1123,6 +1276,28 @@
       item.append(actions);
       elements.sourceList.append(item);
     }
+  }
+
+  function sourceStatusBadges(source) {
+    const values = [];
+    if (source.lastError || source.lastStatus === "Error") {
+      values.push("error");
+    }
+    if (isSourceStale(source)) {
+      values.push("stale");
+    }
+    if (source.subscriptionId) {
+      values.push("subscribed");
+    }
+    return badges(values.length > 0 ? values : ["not checked"], values.includes("error") ? "warning" : "neutral");
+  }
+
+  function isSourceStale(source) {
+    const lastChecked = timestampMillis(source.lastCheckedAt);
+    if (!lastChecked) {
+      return true;
+    }
+    return Date.now() - lastChecked > sourcePollIntervalSeconds * 2000;
   }
 
   function renderSubscriptions() {
@@ -1161,30 +1336,181 @@
     }
   }
 
+  function renderInboxControls() {
+    const channels = discoveredChannels();
+    elements.channelFilter.replaceChildren();
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All channels";
+    elements.channelFilter.append(allOption);
+    for (const channel of channels) {
+      const option = document.createElement("option");
+      option.value = channel;
+      option.textContent = channel;
+      elements.channelFilter.append(option);
+    }
+    if (state.channelFilter && !channels.includes(state.channelFilter)) {
+      const option = document.createElement("option");
+      option.value = state.channelFilter;
+      option.textContent = state.channelFilter;
+      elements.channelFilter.append(option);
+    }
+    elements.channelFilter.value = state.channelFilter;
+    elements.readFilter.value = state.readFilter;
+    elements.searchInput.value = state.searchQuery;
+  }
+
   function renderInbox() {
     elements.inboxList.replaceChildren();
-    const visibleMessages = state.importedMessages.filter((message) => !readState(message).archived);
-    if (visibleMessages.length === 0) {
-      elements.inboxList.append(empty("Imported message summaries appear here as plain text."));
+    const threadIndex = buildThreadIndex(allMessageSummaries(), state.readState);
+    const visibleThreads = filterThreads(threadIndex.threads).slice(0, maxRenderedThreads);
+    renderInboxResultSummary(threadIndex.threads.length, visibleThreads.length);
+    if (visibleThreads.length === 0) {
+      elements.inboxList.append(empty("Threaded message summaries appear here as plain text."));
       return;
     }
-    for (const message of visibleMessages) {
-      const itemState = readState(message);
+    for (const thread of visibleThreads) {
+      elements.inboxList.append(renderThreadCard(thread));
+    }
+  }
+
+  function renderInboxResultSummary(totalThreadCount, visibleThreadCount) {
+    const query = normalizedSearchQuery();
+    const fragments = [
+      `${visibleThreadCount} of ${totalThreadCount} threads`,
+      state.channelFilter ? `channel ${state.channelFilter}` : "all channels",
+      state.readFilter,
+    ];
+    if (query) {
+      fragments.push(`search ${query.length} chars`);
+    }
+    elements.inboxResultSummary.textContent = fragments.join(" / ");
+  }
+
+  function renderThreadCard(thread) {
+    const card = document.createElement("article");
+    card.className = "thread-card";
+    card.append(
+      renderThreadSummary(thread),
+      threadActionBar(thread),
+      renderThreadMessages(thread)
+    );
+    return card;
+  }
+
+  function renderThreadSummary(thread) {
+    const section = document.createElement("section");
+    section.className = "thread-summary";
+    const title = headingText(thread.rootMessage.subject || "(no subject)", "h3");
+    const meta = paragraph(
+      "message-meta",
+      `${thread.totalMessages} messages / ${thread.unreadMessages} unread / ${thread.sourceCount} sources`
+    );
+    section.append(
+      title,
+      meta,
+      badges(
+        [
+          thread.pinned ? "pinned thread" : "",
+          thread.archived ? "archived thread" : "",
+          `channel ${thread.channel}`,
+          `latest ${thread.latestAt || "not available"}`,
+        ],
+        thread.unreadMessages > 0 ? "warning" : "neutral"
+      )
+    );
+    return section;
+  }
+
+  function renderThreadMessages(thread) {
+    const container = document.createElement("div");
+    container.className = "thread-messages";
+    const rendered = new Set();
+    let count = 0;
+    const appendMessage = (message, depth) => {
+      if (!message || rendered.has(message.messageId) || count >= maxRenderedThreadMessages) {
+        return;
+      }
+      rendered.add(message.messageId);
+      count += 1;
+      container.append(renderMessageCard(message, thread, Math.min(depth, maxThreadDepth)));
+      if (depth >= maxThreadDepth) {
+        return;
+      }
+      const children = thread.children.get(message.messageId) || [];
+      for (const child of children) {
+        appendMessage(child, depth + 1);
+      }
+    };
+    appendMessage(thread.rootMessage, 0);
+    for (const message of thread.messages) {
+      appendMessage(message, 1);
+    }
+    if (thread.messages.length > count) {
+      container.append(empty("Additional thread messages are hidden by the local render cap."));
+    }
+    return container;
+  }
+
+  function renderMessageCard(message, thread, depth) {
       const card = document.createElement("article");
       card.className = "message-card";
+    card.dataset.depth = String(depth);
       card.append(
         headingText(message.subject || "(no subject)", "h3"),
-        paragraph(
-          "message-meta",
-          `${message.authorLabel || "Unknown author"} / ${message.authorFingerprint}`
-        ),
-        paragraph("message-meta", `${message.sourceLabel || "source"} / ${message.createdAt}`),
+      renderAuthorBlock(message),
+      paragraph("message-meta", messageMetaSummary(message)),
         paragraph("message-body", message.bodyPreview || ""),
         trustBadges(message),
-        messageActionBar(message, itemState)
+      messageActionBar(message, readState(message), thread)
       );
-      elements.inboxList.append(card);
+    return card;
+  }
+
+  function renderAuthorBlock(message) {
+    const section = document.createElement("section");
+    section.className = "author-block";
+    section.append(
+      paragraph(
+        "message-meta",
+        `${message.authorLabel || "Unknown author"} / ${fingerprintSummary(message.authorFingerprint)}`
+      )
+    );
+    if (message.profileUri) {
+      section.append(summaryRow("Profile URI", message.profileUri));
+      section.append(actionButton("Copy profile URI", () => copyProfileUri(message.profileUri)));
     }
+    return section;
+  }
+
+  function messageMetaSummary(message) {
+    const sourceCount = sourceCountForMessage(message);
+    const source =
+      sourceCount > 1
+        ? `${sourceCount} sources`
+        : boundedPreview(message.sourceLabel, maxSourceLabelLength) || "source";
+    const replyTo = normalizeReplyReference(message.replyTo);
+    return [
+      `${source} / ${message.createdAt || "not available"}`,
+      `Message ${message.messageId}`,
+      replyTo ? `Reply to ${replyTo}` : "",
+    ]
+      .filter((value) => value)
+      .join(" / ");
+  }
+
+  function threadActionBar(thread) {
+    const actions = document.createElement("div");
+    actions.className = "message-actions thread-actions";
+    const allRead = thread.unreadMessages === 0;
+    actions.append(
+      actionButton(allRead ? "Mark thread unread" : "Mark thread read", () =>
+        allRead ? markThreadUnread(thread) : markThreadRead(thread)
+      ),
+      actionButton(thread.pinned ? "Unpin thread" : "Pin thread", () => toggleThreadPin(thread)),
+      actionButton(thread.archived ? "Unarchive thread" : "Archive thread", () => archiveThread(thread))
+    );
+    return actions;
   }
 
   function renderTrustServiceStatus() {
@@ -1237,22 +1563,67 @@
     elements.queuePreview.append(content);
   }
 
-  function messageActionBar(message, itemState) {
+  function messageActionBar(message, itemState, thread) {
     const actions = document.createElement("div");
     actions.className = "message-actions";
     actions.append(
-      actionButton(itemState.read ? "Mark unread" : "Mark read", () =>
+      actionButton("Reply", () => prepareReply(message)),
+      actionButton(isMessageRead(message) ? "Mark unread" : "Mark read", () =>
         updateMessageState(message.messageId, {
-          read: !itemState.read,
+          read: !isMessageRead(message),
           lastViewedAt: new Date().toISOString(),
         })
       ),
       actionButton(itemState.pinned ? "Unpin" : "Pin", () =>
         updateMessageState(message.messageId, { pinned: !itemState.pinned })
       ),
-      actionButton("Archive", () => updateMessageState(message.messageId, { archived: true }))
+      actionButton(
+        itemState.archived ? "Unarchive" : "Archive",
+        () => updateMessageState(message.messageId, { archived: !itemState.archived })
+      )
     );
     return actions;
+  }
+
+  async function markThreadRead(thread) {
+    await updateThreadState(thread, {
+      read: true,
+      lastViewedAt: new Date().toISOString(),
+    });
+  }
+
+  async function markThreadUnread(thread) {
+    await updateThreadState(thread, {
+      read: false,
+      lastViewedAt: new Date().toISOString(),
+    });
+  }
+
+  async function archiveThread(thread) {
+    await updateThreadState(thread, { archived: !thread.archived });
+  }
+
+  async function toggleThreadPin(thread) {
+    if (thread.pinned) {
+      await updateThreadState(thread, { pinned: false });
+      return;
+    }
+    await updateMessageState(thread.rootId, { pinned: true });
+  }
+
+  async function updateThreadState(thread, patch) {
+    for (const message of thread.messages) {
+      if (!isSafeMessageId(message.messageId)) {
+        continue;
+      }
+      state.readState[message.messageId] = Object.assign(
+        Object.create(null),
+        state.readState[message.messageId] || {},
+        patch
+      );
+    }
+    await persistReadState();
+    renderInbox();
   }
 
   async function updateMessageState(messageId, patch) {
@@ -1272,9 +1643,16 @@
     const score = state.trustScores[message.authorFingerprint];
     const values = [];
     const itemState = readState(message);
-    values.push(itemState.read ? "read" : "unread");
+    values.push(isMessageRead(message) ? "read" : "unread");
+    values.push(`channel ${normalizeChannel(message.channel)}`);
     if (itemState.pinned) {
       values.push("pinned");
+    }
+    if (itemState.archived) {
+      values.push("archived");
+    }
+    if (message.local) {
+      values.push("local outbox");
     }
     if (!score) {
       return badges(values.concat([trustServiceUnavailableSummary()]));
@@ -1282,6 +1660,12 @@
     if (score.status === "scored") {
       values.push(`trust ${score.value}`);
       values.push(`${score.evidenceCount} evidence`);
+      if (score.reasonSummary) {
+        values.push(score.reasonSummary);
+      }
+      if (score.scopeSummary) {
+        values.push(score.scopeSummary);
+      }
       return badges(values, "score");
     }
     values.push(score.summary || "Trust score unavailable / grant required.");
@@ -1368,9 +1752,25 @@
       contributingEvidence > 0 &&
       Number.isFinite(value)
     ) {
-      return { status: "scored", value, evidenceCount: evidence };
+      return {
+        status: "scored",
+        value,
+        evidenceCount: evidence,
+        reasonSummary: boundedTrustReasonSummary(score),
+        scopeSummary: boundedPreview(stringField(score, "scope", "lifecycle", "scopeSummary"), 80),
+      };
     }
     return { status: "unscored", summary: "No local trust evidence." };
+  }
+
+  function boundedTrustReasonSummary(score) {
+    const reasons = stringListField(score, "reasonCodes", 4).concat(
+      stringListField(score, "reasons", 4)
+    );
+    if (reasons.length === 0) {
+      return "";
+    }
+    return `reasons ${reasons.map((reason) => boundedPreview(reason, 32)).slice(0, 4).join(", ")}`;
   }
 
   function syncSourceSubscriptionMetadata() {
@@ -1395,6 +1795,394 @@
           source.lastError,
       });
     });
+  }
+
+  function allMessageSummaries() {
+    return boundedImportedMessages(state.importedMessages, maxImportedMessages).concat(
+      localOutboxSummaries()
+    );
+  }
+
+  function localOutboxSummaries() {
+    return state.localOutbox
+      .map(localOutboxSummary)
+      .filter((message) => message && isSafeMessageId(message.messageId))
+      .slice(0, maxLocalOutboxMessages);
+  }
+
+  function localOutboxSummary(signedMessage) {
+    const message =
+      signedMessage && typeof signedMessage === "object" && !Array.isArray(signedMessage)
+        ? signedMessage.message || {}
+        : {};
+    const messageId = rawString(message.messageId);
+    if (!isSafeMessageId(messageId)) {
+      return null;
+    }
+    return {
+      messageId,
+      authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
+      authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
+      profileUri: optionalCryptaContentUri(message.profileUri),
+      channel: normalizeChannel(message.channel),
+      subject: boundedPreview(message.subject, maxImportedSubjectLength) || "(no subject)",
+      bodyPreview: boundedPreview(message.body, maxImportedBodyPreviewLength),
+      bodySha256: "",
+      createdAt: boundedPreview(message.createdAt, 64),
+      replyTo: normalizeReplyReference(message.replyTo),
+      tags: boundedTags(message.tags),
+      sourceId: "local-outbox",
+      sourceLabel: "local outbox",
+      sourceUriHash: "",
+      resolvedUri: "",
+      signatureSha256: "",
+      importedAt: boundedPreview(message.createdAt, 64),
+      firstImportedAt: boundedPreview(message.createdAt, 64),
+      lastSeenAt: boundedPreview(message.createdAt, 64),
+      seenCount: 1,
+      sourcesSeen: [boundedSourceSummary({ sourceId: "local-outbox", sourceLabel: "local outbox" })],
+      local: true,
+    };
+  }
+
+  function buildThreadIndex(messages, readStateValue) {
+    const byId = new Map();
+    for (const message of boundedArray(messages, maxImportedMessages + maxLocalOutboxMessages)) {
+      if (message && isSafeMessageId(message.messageId)) {
+        byId.set(message.messageId, boundedThreadMessage(message));
+      }
+    }
+    const parentById = new Map();
+    for (const message of byId.values()) {
+      const parentId = normalizeReplyReference(message.replyTo);
+      parentById.set(message.messageId, parentId && byId.has(parentId) ? parentId : "");
+    }
+    const rootCache = new Map();
+    const rootFor = (message) => messageThreadRootId(message, byId, parentById, rootCache);
+    const grouped = new Map();
+    for (const message of byId.values()) {
+      const rootId = rootFor(message);
+      if (!grouped.has(rootId)) {
+        grouped.set(rootId, []);
+      }
+      grouped.get(rootId).push(message);
+    }
+    const threads = [];
+    for (const [rootId, threadMessages] of grouped.entries()) {
+      const sortedMessages = threadMessages.slice().sort(messageSortCompare);
+      const children = new Map();
+      for (const message of sortedMessages) {
+        children.set(message.messageId, []);
+      }
+      for (const message of sortedMessages) {
+        const parentId = parentById.get(message.messageId);
+        if (
+          parentId &&
+          parentId !== message.messageId &&
+          rootFor(byId.get(parentId)) === rootId &&
+          !wouldCreateThreadCycle(message.messageId, parentId, parentById)
+        ) {
+          children.get(parentId).push(message);
+        }
+      }
+      for (const childList of children.values()) {
+        childList.sort(messageSortCompare);
+      }
+      const rootMessage = byId.get(rootId) || sortedMessages[0];
+      const thread = {
+        rootId,
+        rootMessage,
+        messages: sortedMessages,
+        children,
+        latestAt: latestMessageTimestamp(sortedMessages),
+        channel: normalizeChannel(rootMessage && rootMessage.channel),
+        pinned: sortedMessages.some((message) => readStateValueFor(message, readStateValue).pinned),
+        archived: sortedMessages.every((message) => readStateValueFor(message, readStateValue).archived),
+        hasArchived: sortedMessages.some((message) => readStateValueFor(message, readStateValue).archived),
+        totalMessages: sortedMessages.length,
+        unreadMessages: threadUnreadCount(sortedMessages, readStateValue),
+        sourceCount: threadSourceCount(sortedMessages),
+      };
+      threads.push(thread);
+    }
+    threads.sort((left, right) => threadSortKey(left).localeCompare(threadSortKey(right)));
+    return { byId, threads };
+  }
+
+  function boundedThreadMessage(message) {
+    return {
+      messageId: message.messageId,
+      authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
+      authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
+      profileUri: optionalCryptaContentUri(message.profileUri),
+      channel: normalizeChannel(message.channel),
+      subject: boundedPreview(message.subject, maxImportedSubjectLength) || "(no subject)",
+      bodyPreview: boundedPreview(message.bodyPreview, maxImportedBodyPreviewLength),
+      bodySha256: boundedPreview(message.bodySha256, 64),
+      createdAt: boundedPreview(message.createdAt, 64),
+      replyTo: normalizeReplyReference(message.replyTo),
+      tags: boundedTags(message.tags),
+      sourceId: boundedPreview(message.sourceId, 80),
+      sourceLabel: boundedPreview(message.sourceLabel, maxSourceLabelLength),
+      sourceUriHash: boundedPreview(message.sourceUriHash, 64),
+      resolvedUri: boundedPreview(message.resolvedUri, maxSourceSummaryLength),
+      signatureSha256: boundedPreview(message.signatureSha256, 64),
+      importedAt: boundedPreview(message.importedAt, 64),
+      firstImportedAt: boundedPreview(message.firstImportedAt || message.importedAt, 64),
+      lastSeenAt: boundedPreview(message.lastSeenAt || message.importedAt, 64),
+      seenCount: Math.max(1, numberField(message, "seenCount")),
+      sourcesSeen: boundedSourceSummaries(message.sourcesSeen),
+      local: Boolean(message.local),
+    };
+  }
+
+  function messageThreadRootId(message, byId, parentById, rootCache) {
+    if (!message || !isSafeMessageId(message.messageId)) {
+      return "";
+    }
+    if (rootCache.has(message.messageId)) {
+      return rootCache.get(message.messageId);
+    }
+    const path = [];
+    const seen = new Map();
+    let currentId = message.messageId;
+    while (isSafeMessageId(currentId) && byId.has(currentId)) {
+      if (seen.has(currentId)) {
+        const cycleNodes = path.slice(seen.get(currentId));
+        const rootId = cycleNodes.sort((left, right) => messageSortCompare(byId.get(left), byId.get(right)))[0];
+        for (const id of path) {
+          rootCache.set(id, rootId);
+        }
+        return rootId;
+      }
+      seen.set(currentId, path.length);
+      path.push(currentId);
+      const parentId = parentById.get(currentId);
+      if (!parentId || !byId.has(parentId)) {
+        for (const id of path) {
+          rootCache.set(id, currentId);
+        }
+        return currentId;
+      }
+      currentId = parentId;
+    }
+    rootCache.set(message.messageId, message.messageId);
+    return message.messageId;
+  }
+
+  function wouldCreateThreadCycle(messageId, parentId, parentById) {
+    const seen = new Set([messageId]);
+    let currentId = parentId;
+    while (currentId) {
+      if (seen.has(currentId)) {
+        return true;
+      }
+      seen.add(currentId);
+      currentId = parentById.get(currentId);
+    }
+    return false;
+  }
+
+  function threadSortKey(thread) {
+    const pinnedRank = thread.pinned ? "0" : "1";
+    const latestRank = String(9999999999999 - timestampMillis(thread.latestAt)).padStart(13, "0");
+    return `${pinnedRank}|${latestRank}|${thread.rootId}`;
+  }
+
+  function messageSortKey(message) {
+    return `${String(timestampMillis(message && message.createdAt)).padStart(13, "0")}|${
+      (message && message.messageId) || ""
+    }`;
+  }
+
+  function messageSortCompare(left, right) {
+    return messageSortKey(left).localeCompare(messageSortKey(right));
+  }
+
+  function latestMessageTimestamp(messages) {
+    let latest = "";
+    let latestMillis = -1;
+    for (const message of messages) {
+      const millis = timestampMillis(message.createdAt);
+      if (millis > latestMillis || (millis === latestMillis && message.messageId > latest)) {
+        latestMillis = millis;
+        latest = message.createdAt || latest;
+      }
+    }
+    return latest;
+  }
+
+  function threadUnreadCount(messages, readStateValue) {
+    return messages.filter(
+      (message) =>
+        !readStateValueFor(message, readStateValue).archived && !isMessageReadWithState(message, readStateValue)
+    ).length;
+  }
+
+  function threadSourceCount(messages) {
+    const sources = new Set();
+    for (const message of messages) {
+      for (const source of boundedSourceSummaries(message.sourcesSeen)) {
+        const key = source.sourceUriHash || source.sourceId || source.sourceLabel;
+        if (key) {
+          sources.add(key);
+        }
+      }
+      if (message.sourceUriHash || message.sourceId || message.local) {
+        sources.add(message.sourceUriHash || message.sourceId || "local-outbox");
+      }
+    }
+    return sources.size;
+  }
+
+  function filterThreads(threads) {
+    const query = normalizedSearchQuery();
+    const selectedChannelName = selectedChannel();
+    return threads.filter((thread) => {
+      if (
+        selectedChannelName &&
+        !thread.messages.some((message) => normalizeChannel(message.channel) === selectedChannelName)
+      ) {
+        return false;
+      }
+      if (state.readFilter === "active" && thread.archived) {
+        return false;
+      }
+      if (state.readFilter === "unread" && (thread.archived || thread.unreadMessages === 0)) {
+        return false;
+      }
+      if (state.readFilter === "archived" && !thread.hasArchived) {
+        return false;
+      }
+      return !query || threadContainsMessage(thread, query);
+    });
+  }
+
+  function threadContainsMessage(thread, query) {
+    return thread.messages.some((message) => searchableMessageText(message).includes(query));
+  }
+
+  function searchableMessageText(message) {
+    return [
+      message.subject,
+      message.authorLabel,
+      message.authorFingerprint,
+      fingerprintSummary(message.authorFingerprint),
+      message.channel,
+      message.bodyPreview,
+      boundedTags(message.tags).join(" "),
+      message.sourceLabel,
+      boundedSourceSummaries(message.sourcesSeen)
+        .map((source) => source.sourceLabel)
+        .join(" "),
+    ]
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function discoveredChannels() {
+    const values = new Set();
+    for (const message of allMessageSummaries()) {
+      values.add(normalizeChannel(message.channel));
+    }
+    return Array.from(values).sort((left, right) => left.localeCompare(right)).slice(0, 80);
+  }
+
+  function selectedChannel() {
+    return normalizeChannelFilter(state.channelFilter);
+  }
+
+  function updateChannelFilter() {
+    state.channelFilter = normalizeChannelFilter(elements.channelFilter.value);
+    persistUiState().catch((error) => setStatus(CryptaPlatform.api.errorMessage(error), "error"));
+    renderInbox();
+  }
+
+  function updateReadFilter() {
+    state.readFilter = normalizeReadFilter(elements.readFilter.value);
+    persistUiState().catch((error) => setStatus(CryptaPlatform.api.errorMessage(error), "error"));
+    renderInbox();
+  }
+
+  function updateSearchQuery() {
+    state.searchQuery = boundedSearchQuery(elements.searchInput.value);
+    renderInbox();
+  }
+
+  function clearSearchQuery() {
+    state.searchQuery = "";
+    elements.searchInput.value = "";
+    renderInbox();
+  }
+
+  function prepareReply(message) {
+    if (!message || !isSafeMessageId(message.messageId)) {
+      return;
+    }
+    setFieldValue(elements.composeForm, "replyTo", message.messageId);
+    setFieldValue(elements.composeForm, "channel", normalizeChannel(message.channel));
+    if (!fieldValue(elements.composeForm, "subject") && message.subject) {
+      const subject = message.subject.toLowerCase().startsWith("re:")
+        ? message.subject
+        : `Re: ${message.subject}`;
+      setFieldValue(elements.composeForm, "subject", boundedPreview(subject, maxImportedSubjectLength));
+    }
+    renderReplyContext();
+    elements.composeForm.elements.namedItem("body").focus();
+    setStatus("Reply target selected without copying the parent body.");
+  }
+
+  function clearReplyContext() {
+    setFieldValue(elements.composeForm, "replyTo", "");
+    renderReplyContext();
+  }
+
+  function renderReplyContext() {
+    elements.replyContext.replaceChildren();
+    const replyTo = normalizeReplyReference(fieldValue(elements.composeForm, "replyTo"));
+    elements.clearReplyButton.disabled = !replyTo;
+    if (!replyTo) {
+      elements.replyContext.append(empty("No reply target selected."));
+      return;
+    }
+    const parent = findMessageSummaryById(replyTo);
+    if (!parent) {
+      elements.replyContext.append(
+        summaryRow("Reply target", `${replyTo} / parent not imported locally`)
+      );
+      return;
+    }
+    elements.replyContext.append(
+      summaryRow("Reply subject", parent.subject || "(no subject)"),
+      summaryRow(
+        "Parent author",
+        `${parent.authorLabel || "Unknown author"} / ${fingerprintSummary(parent.authorFingerprint)}`
+      ),
+      summaryRow("Created", parent.createdAt),
+      summaryRow("Message", parent.messageId)
+    );
+  }
+
+  function findMessageSummaryById(messageId) {
+    return allMessageSummaries().find((message) => message.messageId === messageId) || null;
+  }
+
+  async function copyProfileUri(profileUri) {
+    const safeUri = optionalCryptaContentUri(profileUri);
+    if (!safeUri) {
+      setStatus("Profile URI is not a valid Crypta content key.", "error");
+      return;
+    }
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      setStatus("Profile URI is shown above; clipboard is unavailable.", "warning");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(safeUri);
+      setStatus("Profile URI copied.");
+    } catch (error) {
+      setStatus("Profile URI is shown above; clipboard write was denied.", "warning");
+    }
   }
 
   function selectedIdentity() {
@@ -1437,14 +2225,38 @@
     return state.readState[messageId] || {};
   }
 
+  function readStateValueFor(message, readStateValue) {
+    const messageId = message && rawString(message.messageId);
+    if (!isSafeMessageId(messageId)) {
+      return {};
+    }
+    const source =
+      readStateValue && typeof readStateValue === "object" && !Array.isArray(readStateValue)
+        ? readStateValue
+        : state.readState;
+    return source[messageId] || {};
+  }
+
+  function isMessageRead(message) {
+    return isMessageReadWithState(message, state.readState);
+  }
+
+  function isMessageReadWithState(message, readStateValue) {
+    const itemState = readStateValueFor(message, readStateValue);
+    if (Object.prototype.hasOwnProperty.call(itemState, "read")) {
+      return Boolean(itemState.read);
+    }
+    return Boolean(message && message.local);
+  }
+
   function messageDraftFromForm(formData) {
     return {
-      channel: textValue(formData, "channel") || "general",
+      channel: normalizeChannel(textValue(formData, "channel")),
       subject: boundedPreview(textValue(formData, "subject"), 160),
       body: textValue(formData, "body"),
       authorLabel: boundedPreview(fieldValue(elements.profileForm, "authorLabel"), maxAuthorLabelLength),
       profileUri: optionalCryptaContentUri(fieldValue(elements.profileForm, "profileUri")),
-      replyTo: textValue(formData, "replyTo"),
+      replyTo: normalizeReplyReference(textValue(formData, "replyTo")),
       recipientFingerprint: textValue(formData, "recipientFingerprint"),
       tags: tagsFromText(textValue(formData, "tags")),
     };
@@ -1452,12 +2264,12 @@
 
   function boundedDraft(message) {
     return {
-      channel: boundedPreview(message.channel, 64),
+      channel: normalizeChannel(message.channel),
       subject: boundedPreview(message.subject, 160),
       body: boundedPreview(message.body, maxDraftBodyLength),
-      replyTo: boundedPreview(message.replyTo, 512),
+      replyTo: normalizeReplyReference(message.replyTo),
       recipientFingerprint: boundedPreview(message.recipientFingerprint, 128),
-      tags: message.tags.slice(0, 12),
+      tags: boundedTags(message.tags),
       savedAt: new Date().toISOString(),
     };
   }
@@ -1521,18 +2333,23 @@
       authorFingerprint: boundedPreview(message.authorFingerprint, maxRecipientFingerprintLength),
       authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
       profileUri: optionalCryptaContentUri(message.profileUri),
-      channel: boundedPreview(message.channel, maxImportedChannelLength) || "general",
+      channel: normalizeChannel(message.channel),
       subject: boundedPreview(message.subject, maxImportedSubjectLength) || "(no subject)",
       bodyPreview: boundedPreview(message.bodyPreview, maxImportedBodyPreviewLength),
       bodySha256: boundedPreview(message.bodySha256, 64),
       createdAt: boundedPreview(message.createdAt, 64),
-      replyTo: boundedPreview(message.replyTo, maxMessageReferenceLength),
+      replyTo: normalizeReplyReference(message.replyTo),
+      tags: boundedTags(message.tags),
       sourceId: boundedPreview(message.sourceId, 80),
       sourceLabel: boundedPreview(message.sourceLabel, maxSourceLabelLength),
       sourceUriHash: boundedPreview(message.sourceUriHash, 64),
       resolvedUri: boundedPreview(message.resolvedUri, maxSourceSummaryLength),
       signatureSha256: boundedPreview(message.signatureSha256, 64),
       importedAt: boundedPreview(message.importedAt, 64),
+      firstImportedAt: boundedPreview(message.firstImportedAt || message.importedAt, 64),
+      lastSeenAt: boundedPreview(message.lastSeenAt || message.importedAt, 64),
+      seenCount: Math.max(1, numberField(message, "seenCount")),
+      sourcesSeen: boundedSourceSummaries(message.sourcesSeen),
     };
   }
 
@@ -1548,12 +2365,11 @@
       if (!item || typeof item !== "object" || Array.isArray(item)) {
         continue;
       }
-      result[key] = {
-        read: Boolean(item.read),
-        pinned: Boolean(item.pinned),
-        archived: Boolean(item.archived),
-        lastViewedAt: boundedPreview(item.lastViewedAt, 64),
-      };
+      const entry = boundedReadStateEntry(item);
+      if (Object.keys(entry).length === 0) {
+        continue;
+      }
+      result[key] = entry;
       count += 1;
       if (count >= limit) {
         break;
@@ -1562,8 +2378,62 @@
     return result;
   }
 
+  function boundedReadStateEntry(item) {
+    const entry = Object.create(null);
+    if (Object.prototype.hasOwnProperty.call(item, "read")) {
+      entry.read = Boolean(item.read);
+    }
+    if (item.pinned) {
+      entry.pinned = true;
+    }
+    if (item.archived) {
+      entry.archived = true;
+    }
+    const lastViewedAt = boundedPreview(item.lastViewedAt, 64);
+    if (lastViewedAt) {
+      entry.lastViewedAt = lastViewedAt;
+    }
+    return entry;
+  }
+
   function isSafeMessageId(value) {
     return typeof value === "string" && messageIdPattern.test(value);
+  }
+
+  function normalizeReplyReference(value) {
+    const text = boundedPreview(value, maxMessageReferenceLength);
+    return isSafeMessageId(text) ? text : "";
+  }
+
+  function normalizeChannel(value) {
+    const text = boundedPreview(value, maxImportedChannelLength).toLowerCase();
+    if (!text || /[\s\\/\u0000]/.test(text)) {
+      return "general";
+    }
+    return text;
+  }
+
+  function normalizeChannelFilter(value) {
+    const text = stringValue(value);
+    return text ? normalizeChannel(text) : "";
+  }
+
+  function normalizeReadFilter(value) {
+    return ["active", "unread", "archived", "all"].includes(value) ? value : "active";
+  }
+
+  function boundedSearchQuery(value) {
+    return boundedPreview(value, maxSearchQueryLength);
+  }
+
+  function normalizedSearchQuery() {
+    return boundedSearchQuery(state.searchQuery).toLowerCase();
+  }
+
+  function boundedTags(tags) {
+    return boundedArray(tags, maxTagCount)
+      .map((tag) => boundedPreview(tag, maxTagLength))
+      .filter((tag) => tag);
   }
 
   function tagsFromText(value) {
@@ -1571,7 +2441,57 @@
       .split(",")
       .map((tag) => tag.trim())
       .filter((tag) => tag)
-      .slice(0, 12);
+      .map((tag) => boundedPreview(tag, maxTagLength))
+      .slice(0, maxTagCount);
+  }
+
+  function boundedSourceSummaries(sourcesSeen) {
+    return boundedArray(sourcesSeen, maxSourcesPerMessage).map(boundedSourceSummary);
+  }
+
+  function sourceCountForMessage(message) {
+    const sources = boundedSourceSummaries(message && message.sourcesSeen);
+    if (sources.length > 0) {
+      return sources.length;
+    }
+    return message && (message.sourceUriHash || message.sourceId || message.local) ? 1 : 0;
+  }
+
+  function fingerprintSummary(value) {
+    const text = boundedPreview(value, maxRecipientFingerprintLength);
+    if (text.length <= 18) {
+      return text || "unknown fingerprint";
+    }
+    return `${text.slice(0, 12)}...${text.slice(-6)}`;
+  }
+
+  function timestampMillis(value) {
+    const parsed = Date.parse(stringValue(value));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function earliestTimestamp(left, right) {
+    const leftMillis = timestampMillis(left);
+    const rightMillis = timestampMillis(right);
+    if (!leftMillis) {
+      return boundedPreview(right, 64);
+    }
+    if (!rightMillis) {
+      return boundedPreview(left, 64);
+    }
+    return leftMillis <= rightMillis ? boundedPreview(left, 64) : boundedPreview(right, 64);
+  }
+
+  function latestTimestamp(left, right) {
+    const leftMillis = timestampMillis(left);
+    const rightMillis = timestampMillis(right);
+    if (!leftMillis) {
+      return boundedPreview(right, 64);
+    }
+    if (!rightMillis) {
+      return boundedPreview(left, 64);
+    }
+    return leftMillis >= rightMillis ? boundedPreview(left, 64) : boundedPreview(right, 64);
   }
 
   function queueRows(response) {

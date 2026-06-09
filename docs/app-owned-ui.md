@@ -445,12 +445,12 @@ source lists, selected subscription ids, read-state metadata, and safe draft fie
 persist raw feed bodies, raw request bodies, private insert URIs, app process tokens,
 browser-session tokens, form passwords, queue HTML, or local paths.
 
-Social Inbox Preview reference app bundle:
+Social Inbox RC reference app bundle:
 
 ```properties
 manifest.version=1
 app.id=social-inbox
-app.name=Social Inbox Preview
+app.name=Social Inbox RC
 app.version=1.0.0
 app.exec=bin/social-inbox.sh
 app.ui.mode=static
@@ -465,16 +465,17 @@ quota.data.bytes=2097152
 quota.cache.bytes=2097152
 ```
 
-Social Inbox Preview needs AppVault identity permissions for bounded social-message signing,
+Social Inbox RC needs AppVault identity permissions for bounded social-message signing,
 `content.insert.app-document` and queue permissions for generated outbox publication,
 `content.fetch` and `content.subscribe` for bounded USK source following, `app.data.*` for safe
-sources/read-state/draft summaries, and `app.services.read`/`app.services.call` for the
-operator-approved Trust Graph Preview `trust.score` message-author annotation service. It is a
-social/mail-like migration spike, not Freetalk/Sone/Freemail compatibility, encrypted mail, full
-WoT, a daemon-core message store, or a network protocol change. UI, app data, logs, and release
-evidence must not persist private insert URIs, private identity material, raw social message
-bodies, raw fetched social documents, raw app-service request bodies, raw signatures,
-browser-session tokens, form passwords, or local paths.
+source, channel-filter, message read-state-derived thread actions, and draft summaries, and
+`app.services.read`/`app.services.call` for the operator-approved Trust Graph Local RC
+`trust.score` message-author annotation service. It is a threaded reference app, not
+Freetalk/Sone/Freemail compatibility, encrypted mail, full WoT, a daemon-core message store,
+crawler, or a network protocol change. UI, app data, logs, and release evidence must not persist
+private insert URIs, private identity material, raw social message bodies, raw fetched social
+documents, raw profile documents, raw app-service request bodies, raw signatures, browser-session
+tokens, form passwords, or local paths.
 
 Trust Graph Preview reference app bundle:
 
