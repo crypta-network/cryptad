@@ -3,6 +3,7 @@
 This directory contains official, optional utilities and packaging assets that support development, ops, and distribution. These are not part of the core daemon runtime.
 
 - generator: Client-side utility code and assets (GWT/JS) historically used to generate/update web UI helpers. See the [generator README](generator/README.md) for details and usage.
+- codex-docker: Tracked Codex Docker and Playwright remote-browser debugging stack. See the [codex-docker README](codex-docker/README.md).
 - stats: Network size and churn probe utilities (scripts + small Java tool) to sample a local node, summarize data, and plot/upload graphs. See the [stats README](stats/README.md).
 - packaging/debian: Debian/Ubuntu packaging metadata and rules for building `.deb` packages (control, rules, maintainer scripts, defaults). Build Debian packages using debhelper from within `tools/packaging/debian` so paths like `debian/*` resolve correctly.
 

@@ -16,6 +16,9 @@ Use this skill when you:
 - Run or adjust SonarLint / SonarCloud / JaCoCo coverage tasks.
 - Need to analyze a single file with SonarLint.
 
+For the tracked Codex Docker stack, Playwright remote browser service, or helper scripts under
+`tools/codex-docker`, use `$cryptad-codex-docker` instead.
+
 ## Gradle wrapper and build-logic toolchains
 - The wrapper is pinned in `gradle/wrapper/gradle-wrapper.properties` and currently uses Gradle
   `9.4.1`.
